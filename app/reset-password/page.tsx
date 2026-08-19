@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Image from "next/image";
+import { createClient } from "@/lib/supabase/client";
 import { resetPassword, type ResetPasswordState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +11,46 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 
 const initialState: ResetPasswordState = { error: null };
 
+type SessionStatus = "checking" | "ready" | "invalid";
+
 export default function ResetPasswordPage() {
+  const [status, setStatus] = useState<SessionStatus>("checking");
   const [state, formAction, pending] = useActionState(resetPassword, initialState);
+
+  // Supabase's recovery link lands here with a code/token in the URL. The
+  // browser client auto-detects it, exchanges it for a real session, and
+  // writes it to cookies (so the server action below can read it too) —
+  // that's what we're waiting on before showing the form.
+  useEffect(() => {
+    const supabase = createClient();
+    let settled = false;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && !settled) {
+        settled = true;
+        setStatus("ready");
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === "PASSWORD_RECOVERY" || session) && !settled) {
+        settled = true;
+        setStatus("ready");
+      }
+    });
+
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setStatus("invalid");
+      }
+    }, 4000);
+
+    return () => {
+      listener.subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, []);
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
@@ -21,34 +60,43 @@ export default function ResetPasswordPage() {
           <CardDescription>Elige tu nueva contraseña.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="new_password">Nueva contraseña</Label>
-              <Input
-                id="new_password"
-                name="new_password"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="confirm_password">Confirmar contraseña</Label>
-              <Input
-                id="confirm_password"
-                name="confirm_password"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                required
-              />
-            </div>
-            {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
-            <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Guardando..." : "Guardar contraseña"}
-            </Button>
-          </form>
+          {status === "checking" ? (
+            <p className="text-sm text-muted-foreground">Verificando tu link...</p>
+          ) : status === "invalid" ? (
+            <p className="text-sm text-destructive">
+              El link expiró o ya se usó. Vuelve a la pantalla de inicio de sesión y solicita uno
+              nuevo.
+            </p>
+          ) : (
+            <form action={formAction} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="new_password">Nueva contraseña</Label>
+                <Input
+                  id="new_password"
+                  name="new_password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={6}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="confirm_password">Confirmar contraseña</Label>
+                <Input
+                  id="confirm_password"
+                  name="confirm_password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={6}
+                  required
+                />
+              </div>
+              {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+              <Button type="submit" className="w-full" disabled={pending}>
+                {pending ? "Guardando..." : "Guardar contraseña"}
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

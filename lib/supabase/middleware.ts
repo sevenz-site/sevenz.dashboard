@@ -39,7 +39,6 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/forgot-password");
   const isPublicRoute =
     request.nextUrl.pathname.startsWith("/s/") ||
-    request.nextUrl.pathname.startsWith("/auth/confirm") ||
     // The recovery link itself signs the visitor in, so this route must
     // never bounce them to /dashboard the way other auth routes do —
     // otherwise they'd never reach the "set a new password" form.
