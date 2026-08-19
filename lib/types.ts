@@ -1,0 +1,162 @@
+export type MovementType = "charge" | "payment";
+export type MovementSource = "photo_import" | "manual";
+
+export type Movement = {
+  id: string;
+  client_id: string;
+  type: MovementType;
+  amount: number;
+  description: string | null;
+  source: MovementSource;
+  running_balance: number;
+  needs_review: boolean;
+  photo_path: string | null;
+  plazo_dias: number | null;
+  created_at: string;
+};
+
+// Payment terms selectable on a charge. null ("Sin especificar") means no
+// due date — those charges fall back to the old immediate-mora behavior.
+export const PLAZO_PAGO_OPTIONS: { value: string; label: string; days: number | null }[] = [
+  { value: "7", label: "7 días", days: 7 },
+  { value: "15", label: "15 días", days: 15 },
+  { value: "30", label: "30 días", days: 30 },
+  { value: "45", label: "45 días", days: 45 },
+  { value: "sin_especificar", label: "Sin especificar", days: null },
+];
+export const DEFAULT_PLAZO_PAGO = "7";
+
+export type OwnerPlan = "free" | "pro";
+
+export type Owner = {
+  id: string;
+  email: string;
+  business_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  whatsapp: string | null;
+  address: string | null;
+  tax_id: string | null;
+  logo_path: string | null;
+  plan: OwnerPlan;
+  payment_info: string | null;
+  onboarding_completed_at: string | null;
+  created_at: string;
+};
+
+export type Client = {
+  id: string;
+  owner_id: string;
+  name: string;
+  whatsapp: string | null;
+  address: string | null;
+  document_id: string | null;
+  created_at: string;
+};
+
+export type ClientSummary = {
+  client_id: string;
+  owner_id: string;
+  name: string;
+  whatsapp: string | null;
+  client_created_at: string;
+  balance: number;
+  has_pending_review: boolean;
+  last_payment_at: string | null;
+  mora_reference_at: string;
+  days_since_payment: number;
+  oldest_unpaid_charge_at: string | null;
+  oldest_unpaid_charge_plazo_dias: number | null;
+};
+
+export type ClientStatus =
+  | "sin_deuda"
+  | "a_favor"
+  | "dentro_del_plazo"
+  | "plazo_vencido"
+  | "sin_plazo"
+  | "critico";
+
+const CRITICO_THRESHOLD_DAYS = 30;
+
+// Status reflects the balance first (does the client owe, or are they owed?).
+// While there IS a debt: if the oldest unpaid charge has a plazo (payment
+// term) and it hasn't expired yet, the client is simply "dentro_del_plazo" —
+// not late. Once that term expires it's "plazo_vencido"; if that charge never
+// had a term at all it's "sin_plazo" — same severity, different reason, so
+// callers can tell them apart. Either way it still escalates to "critico"
+// after CRITICO_THRESHOLD_DAYS since the last payment.
+export function getClientStatus(
+  balance: number,
+  daysSincePayment: number,
+  oldestUnpaidChargeAt: string | null = null,
+  oldestUnpaidChargePlazoDias: number | null = null,
+): ClientStatus {
+  if (balance === 0) return "sin_deuda";
+  if (balance < 0) return "a_favor";
+
+  const hasPlazo = oldestUnpaidChargeAt !== null && oldestUnpaidChargePlazoDias !== null;
+  if (hasPlazo) {
+    const daysSinceCharge = Math.floor(
+      (Date.now() - new Date(oldestUnpaidChargeAt).getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (daysSinceCharge <= oldestUnpaidChargePlazoDias) return "dentro_del_plazo";
+  }
+
+  if (daysSincePayment > CRITICO_THRESHOLD_DAYS) return "critico";
+  return hasPlazo ? "plazo_vencido" : "sin_plazo";
+}
+
+// Label for the balance figure itself (distinct from ClientStatus, which
+// only applies when there's a debt) — "Debe" only makes sense when the
+// client actually owes money.
+export function getBalanceLabel(balance: number): string {
+  if (balance > 0) return "Debe";
+  if (balance < 0) return "A favor";
+  return "Sin deuda";
+}
+
+export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
+  sin_deuda: "Sin deuda",
+  a_favor: "A favor",
+  dentro_del_plazo: "Dentro del plazo",
+  plazo_vencido: "Plazo vencido",
+  sin_plazo: "Sin plazo",
+  critico: "Crítico",
+};
+
+export const CLIENT_STATUS_DESCRIPTION: Record<ClientStatus, string> = {
+  sin_deuda: "No debe nada",
+  a_favor: "Pagó de más",
+  dentro_del_plazo: "Debe, pero aún no vence su plazo",
+  plazo_vencido: "Debe, y ya venció el plazo que se le dio",
+  sin_plazo: "Debe, y nunca se le puso plazo",
+  critico: "Debe hace más de 30 días sin abonar",
+};
+
+export const CLIENT_STATUS_BADGE_CLASS: Record<ClientStatus, string> = {
+  // text-foreground (not text-muted-foreground) — on bg-muted,
+  // muted-foreground only clears ~4.35:1 contrast, just under WCAG AA's
+  // 4.5:1 for this text size.
+  sin_deuda: "bg-muted text-foreground border-transparent",
+  a_favor:
+    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+  dentro_del_plazo:
+    "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20",
+  plazo_vencido:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+  sin_plazo:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+  critico:
+    "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+};
+
+export type ExtractedMovement = {
+  client_name: string;
+  date: string | null;
+  type: MovementType;
+  amount: number;
+  description: string | null;
+  read_balance: number | null;
+  confidence: "high" | "low";
+};

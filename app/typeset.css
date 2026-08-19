@@ -1,0 +1,242 @@
+/*
+ * Typeset — one CSS file for styling rendered markdown / long-form content.
+ * https://ui.shadcn.com/typeset
+ *
+ * This is a hand-written implementation of the documented Typeset contract
+ * (three rhythm controls, :where() zero-specificity selectors, theme tokens,
+ * not-typeset opt-out, streaming-safe spacing). It was written from the
+ * public spec, not scraped from the official builder — swap in the official
+ * generated file later if you ever run the builder yourself.
+ *
+ * Usage:
+ *   <div className="typeset typeset-docs">{renderedMarkdown}</div>
+ *
+ * Nothing in the app currently renders markdown, so nothing is wrapped in
+ * `typeset` yet — this file is just the foundation, ready for when it does.
+ */
+
+.typeset {
+  /* Fonts: default to the app's existing tokens (see app/globals.css). */
+  --typeset-font-body: inherit;
+  --typeset-font-heading: var(--font-heading, var(--font-sans));
+  --typeset-font-mono: var(--font-mono);
+
+  /* Rhythm: the only three values you should need to tune. */
+  --typeset-size: 1em;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.25em;
+
+  font-size: var(--typeset-size);
+  line-height: var(--typeset-leading);
+  font-family: var(--typeset-font-body);
+  color: inherit;
+  word-wrap: break-word;
+}
+
+/* A touch larger on small screens for readability, same rhythm values. */
+@media (max-width: 30em) {
+  .typeset {
+    font-size: calc(var(--typeset-size) * 1.05);
+  }
+}
+
+/* ---- scoping helper --------------------------------------------------
+ * Every rule below is scoped through this selector so that anything
+ * marked `not-typeset` (or `data-not-typeset`), and everything inside it,
+ * is left completely untouched — including a nested `.typeset` island,
+ * which stays opted out too.
+ * ---------------------------------------------------------------------- */
+
+.typeset :where(
+  :not(.not-typeset, .not-typeset *, [data-not-typeset], [data-not-typeset] *)
+) {
+  margin-block-end: 0;
+}
+
+.typeset
+  :where(
+    p,
+    ul,
+    ol,
+    dl,
+    blockquote,
+    pre,
+    table,
+    hr,
+    figure,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6
+  ):not(.not-typeset, .not-typeset *, [data-not-typeset], [data-not-typeset] *) {
+  margin-block-start: var(--typeset-flow);
+}
+
+.typeset > :where(*):first-child {
+  margin-block-start: 0;
+}
+
+/* ---- headings ---------------------------------------------------------- */
+
+.typeset
+  :where(h1, h2, h3, h4, h5, h6):not(
+    .not-typeset,
+    .not-typeset *,
+    [data-not-typeset],
+    [data-not-typeset] *
+  ) {
+  font-family: var(--typeset-font-heading);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+  margin-block-start: calc(var(--typeset-flow) * 1.6);
+}
+
+.typeset :where(h1 + h2, h2 + h3, h3 + h4, h4 + h5, h5 + h6, * + h1) {
+  margin-block-start: var(--typeset-flow);
+}
+
+.typeset :where(h1) {
+  font-size: calc(var(--typeset-size) * 2);
+  letter-spacing: -0.02em;
+}
+.typeset :where(h2) {
+  font-size: calc(var(--typeset-size) * 1.5);
+  letter-spacing: -0.015em;
+}
+.typeset :where(h3) {
+  font-size: calc(var(--typeset-size) * 1.25);
+}
+.typeset :where(h4) {
+  font-size: calc(var(--typeset-size) * 1.1);
+}
+.typeset :where(h5, h6) {
+  font-size: calc(var(--typeset-size) * 1);
+}
+
+/* ---- inline text -------------------------------------------------------- */
+
+.typeset :where(a) {
+  color: var(--color-primary, var(--primary));
+  text-underline-offset: 0.2em;
+  text-decoration: underline;
+}
+
+.typeset :where(strong) {
+  font-weight: 600;
+}
+
+.typeset :where(small) {
+  font-size: 0.875em;
+  color: var(--color-muted-foreground, var(--muted-foreground));
+}
+
+.typeset :where(code) {
+  font-family: var(--typeset-font-mono);
+  font-size: 0.875em;
+  background: var(--color-muted, var(--muted));
+  border-radius: 0.25em;
+  padding: 0.15em 0.4em;
+}
+
+.typeset :where(pre) {
+  font-family: var(--typeset-font-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  background: var(--color-card, var(--card));
+  border: 1px solid var(--color-border, var(--border));
+  border-radius: 0.5em;
+  padding: 1em;
+  overflow-x: auto;
+}
+
+.typeset :where(pre code) {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* ---- lists ---------------------------------------------------------- */
+
+.typeset :where(ul, ol) {
+  padding-inline-start: 1.5em;
+}
+
+.typeset :where(ul) {
+  list-style: disc;
+}
+
+.typeset :where(ol) {
+  list-style: decimal;
+}
+
+.typeset :where(li) {
+  margin-block-start: calc(var(--typeset-flow) * 0.35);
+}
+
+.typeset :where(li > ul, li > ol) {
+  margin-block-start: calc(var(--typeset-flow) * 0.35);
+}
+
+/* ---- quotes, rules, images -------------------------------------------- */
+
+.typeset :where(blockquote) {
+  border-inline-start: 3px solid var(--color-border, var(--border));
+  padding-inline-start: 1em;
+  color: var(--color-muted-foreground, var(--muted-foreground));
+  font-style: italic;
+}
+
+.typeset :where(hr) {
+  border: none;
+  border-block-start: 1px solid var(--color-border, var(--border));
+}
+
+.typeset :where(img, video) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5em;
+}
+
+/* ---- tables ------------------------------------------------------------
+ * Tables stay real tables. Wrap a wide one in `.typeset-scroll` to scroll
+ * it horizontally instead of letting it overflow the page.
+ * ---------------------------------------------------------------------- */
+
+.typeset :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.typeset :where(th, td) {
+  border-block-end: 1px solid var(--color-border, var(--border));
+  padding: 0.5em 0.75em;
+  text-align: start;
+}
+
+.typeset :where(th) {
+  font-weight: 600;
+  color: var(--color-foreground, var(--foreground));
+}
+
+.typeset-scroll {
+  overflow-x: auto;
+}
+
+.typeset-scroll :where(table) {
+  min-width: max-content;
+}
+
+/* ---- example preset ----------------------------------------------------
+ * Matches the "docs" example from the Typeset docs. Add more presets
+ * (e.g. .typeset-chat, tighter and smaller) as different contexts show up.
+ * ---------------------------------------------------------------------- */
+
+.typeset-docs {
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.25em;
+}
