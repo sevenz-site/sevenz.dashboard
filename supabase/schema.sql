@@ -217,7 +217,6 @@ select
   c.owner_id,
   c.name,
   c.whatsapp,
-  c.document_id,
   c.created_at as client_created_at,
   coalesce(latest.running_balance, 0) as balance,
   coalesce(review.any_needs_review, false) as has_pending_review,
@@ -225,7 +224,8 @@ select
   coalesce(last_payment.created_at, c.created_at) as mora_reference_at,
   extract(day from now() - coalesce(last_payment.created_at, c.created_at))::int as days_since_payment,
   oldest_unpaid.charge_at as oldest_unpaid_charge_at,
-  oldest_unpaid.plazo_dias as oldest_unpaid_charge_plazo_dias
+  oldest_unpaid.plazo_dias as oldest_unpaid_charge_plazo_dias,
+  c.document_id
 from public.clients c
 left join lateral (
   select m.running_balance
