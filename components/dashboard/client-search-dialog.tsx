@@ -20,6 +20,7 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { useTour } from "@/components/dashboard/tour-context";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -36,6 +37,7 @@ export function ClientSearchDialog({
   businessName: string;
 }) {
   const router = useRouter();
+  const tour = useTour();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
@@ -83,7 +85,13 @@ export function ClientSearchDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" data-tour="new-client-button">
+        <Button
+          size="sm"
+          data-tour="new-client-button"
+          onClick={() => {
+            if (tour.step === 1) tour.advance();
+          }}
+        >
           <Plus className="size-4" />
           Nuevo movimiento
         </Button>

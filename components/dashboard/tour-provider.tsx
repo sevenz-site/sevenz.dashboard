@@ -6,8 +6,13 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { completeOnboarding } from "@/app/(app)/actions";
 import { TourContext, type TourStep } from "@/components/dashboard/tour-context";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const STEP_ORDER: TourStep[] = [1, 2, 2.5, 3];
+// On mobile the client-list and add-movement steps (2, 2.5) render on top of
+// each other and are unreadable on a small screen — only the first step
+// ("Agrega un cliente") is worth showing there.
+const MOBILE_STEP_ORDER: TourStep[] = [1];
 
 const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: string }> = {
   1: {
@@ -39,10 +44,24 @@ const HIGHLIGHT_CLASSES = ["ring-2", "ring-primary", "ring-offset-2", "rounded-m
 export function TourProvider({ active, children }: { active: boolean; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isMobile = useIsMobile();
   const onDashboard = pathname === "/dashboard";
+  const stepOrder = isMobile ? MOBILE_STEP_ORDER : STEP_ORDER;
   const [step, setStep] = useState<TourStep | null>(active ? 1 : null);
+  const [dismissed, setDismissed] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const highlightedEl = useRef<Element | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  // Landing back on the dashboard always brings the current step's tooltip
+  // back into view, even if it was dismissed by an outside tap earlier.
+  const [prevOnDashboard, setPrevOnDashboard] = useState(onDashboard);
+  if (onDashboard !== prevOnDashboard) {
+    setPrevOnDashboard(onDashboard);
+    if (onDashboard) setDismissed(false);
+  }
+
+  const showing = step !== null && onDashboard && !dismissed && stepOrder.includes(step);
 
   useEffect(() => {
     function clearHighlight() {
@@ -52,7 +71,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
       }
     }
 
-    if (step === null || !onDashboard) {
+    if (!showing || step === null) {
       clearHighlight();
       return;
     }
@@ -88,7 +107,25 @@ export function TourProvider({ active, children }: { active: boolean; children: 
       window.removeEventListener("scroll", measure, true);
       clearHighlight();
     };
-  }, [step, onDashboard]);
+  }, [step, showing]);
+
+  // Tapping anything that isn't the tooltip itself or the element it's
+  // pointing at hides the tooltip without ending the tour — the tap still
+  // reaches its real target underneath (opening a dialog, a menu, etc.)
+  // instead of the tooltip floating on top of whatever that opens.
+  useEffect(() => {
+    if (!showing) return;
+
+    function handlePointerDown(e: PointerEvent) {
+      const target = e.target as Node;
+      if (tooltipRef.current?.contains(target)) return;
+      if (highlightedEl.current?.contains(target)) return;
+      setDismissed(true);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [showing]);
 
   function finish() {
     setStep(null);
@@ -97,34 +134,37 @@ export function TourProvider({ active, children }: { active: boolean; children: 
 
   function goNext() {
     if (step === null) return;
-    const idx = STEP_ORDER.indexOf(step);
-    if (idx === STEP_ORDER.length - 1) {
+    setDismissed(false);
+    const idx = stepOrder.indexOf(step);
+    if (idx === -1 || idx === stepOrder.length - 1) {
       finish();
       return;
     }
-    setStep(STEP_ORDER[idx + 1]);
+    setStep(stepOrder[idx + 1]);
   }
 
   function goPrev() {
     if (step === null) return;
-    const idx = STEP_ORDER.indexOf(step);
+    const idx = stepOrder.indexOf(step);
     if (idx <= 0) return;
-    setStep(STEP_ORDER[idx - 1]);
+    setStep(stepOrder[idx - 1]);
   }
 
   function restart() {
     if (!onDashboard) router.push("/dashboard");
+    setDismissed(false);
     setStep(1);
   }
 
-  const content = step !== null && onDashboard ? STEP_CONTENT[step] : null;
-  const stepIndex = step !== null ? STEP_ORDER.indexOf(step) : -1;
+  const content = showing && step !== null ? STEP_CONTENT[step] : null;
+  const stepIndex = step !== null ? stepOrder.indexOf(step) : -1;
 
   return (
     <TourContext.Provider value={{ step, advance: goNext, restart }}>
       {children}
       {content ? (
         <div
+          ref={tooltipRef}
           className="fixed z-[60] w-72 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
           style={pos ?? { top: 16, right: 16 }}
         >
@@ -137,7 +177,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
             <X className="size-4" />
           </button>
           <p className="text-xs text-muted-foreground">
-            Paso {stepIndex + 1} de {STEP_ORDER.length}
+            Paso {stepIndex + 1} de {stepOrder.length}
           </p>
           <p className="mt-1 font-medium">{content.title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{content.body}</p>
@@ -156,7 +196,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
                 </Button>
               ) : null}
               <Button type="button" size="sm" onClick={goNext}>
-                {stepIndex === STEP_ORDER.length - 1 ? "Entendido" : "Siguiente"}
+                {stepIndex === stepOrder.length - 1 ? "Entendido" : "Siguiente"}
               </Button>
             </div>
           </div>

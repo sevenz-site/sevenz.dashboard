@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { logout } from "@/app/(app)/actions";
 import { useImportJobs } from "@/components/import/import-context";
+import { useTour } from "@/components/dashboard/tour-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: LayoutDashboard, dataTour: undefined },
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
 
 export function AppSidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
+  const tour = useTour();
   const { isProcessing, jobs } = useImportJobs();
   const pendingCount = jobs.filter((j) => j.status === "queued" || j.status === "processing").length;
 
@@ -51,7 +53,13 @@ export function AppSidebar({ businessName }: { businessName: string }) {
               {NAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)}>
-                    <Link href={item.href} data-tour={item.dataTour}>
+                    <Link
+                      href={item.href}
+                      data-tour={item.dataTour}
+                      onClick={() => {
+                        if (item.href === "/import" && tour.step === 3) tour.advance();
+                      }}
+                    >
                       <item.icon />
                       <span>{item.label}</span>
                       {item.href === "/import" && isProcessing ? (
