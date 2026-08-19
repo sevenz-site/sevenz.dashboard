@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Wallet, ImageUp, CircleX } from "lucide-react";
+import { Bell, Wallet, ImageUp, CircleX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getNotifications, type NotificationItem } from "@/app/(app)/actions";
@@ -38,8 +38,16 @@ export function NotificationsButton({ initialUnreadCount }: { initialUnreadCount
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
-        <div className="border-b px-4 py-3">
+        <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="text-sm font-medium">Notificaciones</p>
+          <button
+            type="button"
+            onClick={() => handleOpenChange(false)}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Cerrar notificaciones"
+          >
+            <X className="size-4" />
+          </button>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {loading ? (

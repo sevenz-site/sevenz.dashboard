@@ -227,7 +227,6 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>ID/cédula</TableHead>
                     <TableHead>Por cobrar</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="hidden md:table-cell">Último abono</TableHead>
@@ -245,12 +244,14 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                         }}
                       >
                         <TableCell className="font-medium">
-                          Cliente de ejemplo
-                          <Badge variant="outline" className="ml-2 align-middle text-[10px]">
-                            ejemplo
-                          </Badge>
+                          <div>
+                            Cliente de ejemplo
+                            <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                              ejemplo
+                            </Badge>
+                          </div>
+                          <div className="text-xs font-normal text-muted-foreground">—</div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">—</TableCell>
                         <TableCell className="tabular-nums">{formatCurrency(0)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.sin_deuda}>
@@ -262,7 +263,7 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                       </TableRow>
                       {tour.step === 2.5 ? (
                         <TableRow className="bg-accent/20">
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={5}>
                             <div className="flex items-center justify-between py-1">
                               <span className="text-sm text-muted-foreground">
                                 Detalle de Cliente de ejemplo
@@ -295,14 +296,18 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                         onClick={() => router.push(`/clients/${row.client_id}`)}
                       >
                         <TableCell className="font-medium">
-                          {row.name}
-                          {row.has_pending_review ? (
-                            <Badge variant="outline" className="ml-2 align-middle text-[10px]">
-                              revisar
-                            </Badge>
-                          ) : null}
+                          <div>
+                            {row.name}
+                            {row.has_pending_review ? (
+                              <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                                revisar
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-xs font-normal text-muted-foreground">
+                            {row.document_id || "—"}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{row.document_id || "—"}</TableCell>
                         <TableCell className="tabular-nums">{formatCurrency(row.balance)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
