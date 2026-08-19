@@ -217,6 +217,7 @@ select
   c.owner_id,
   c.name,
   c.whatsapp,
+  c.document_id,
   c.created_at as client_created_at,
   coalesce(latest.running_balance, 0) as balance,
   coalesce(review.any_needs_review, false) as has_pending_review,

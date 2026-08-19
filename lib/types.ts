@@ -59,6 +59,7 @@ export type ClientSummary = {
   owner_id: string;
   name: string;
   whatsapp: string | null;
+  document_id: string | null;
   client_created_at: string;
   balance: number;
   has_pending_review: boolean;

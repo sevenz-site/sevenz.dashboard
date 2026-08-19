@@ -123,45 +123,81 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
     </div>
   );
 
+  const searchInput = (
+    <Input
+      placeholder="Buscar por nombre"
+      value={nameQuery}
+      onChange={(e) => updateFilter(setNameQuery, e.target.value)}
+      className="w-full sm:w-48"
+    />
+  );
+
+  const statusSelect = (
+    <Select
+      value={statusFilter}
+      onValueChange={(v) => updateFilter(setStatusFilter, v as ClientStatus | "todos")}
+    >
+      <SelectTrigger className="w-full sm:w-40">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {STATUS_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const amountInputs = (
+    <>
+      <Input
+        type="number"
+        placeholder="Monto desde"
+        value={minAmount}
+        onChange={(e) => updateFilter(setMinAmount, e.target.value)}
+        className="w-full sm:w-32"
+      />
+      <Input
+        type="number"
+        placeholder="Monto hasta"
+        value={maxAmount}
+        onChange={(e) => updateFilter(setMaxAmount, e.target.value)}
+        className="w-full sm:w-32"
+      />
+    </>
+  );
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="order-1 flex flex-wrap items-end gap-2">
-        <Input
-          placeholder="Buscar por nombre"
-          value={nameQuery}
-          onChange={(e) => updateFilter(setNameQuery, e.target.value)}
-          className="w-full sm:w-48"
-        />
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => updateFilter(setStatusFilter, v as ClientStatus | "todos")}
-        >
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="number"
-          placeholder="Monto desde"
-          value={minAmount}
-          onChange={(e) => updateFilter(setMinAmount, e.target.value)}
-          className="w-full sm:w-32"
-        />
-        <Input
-          type="number"
-          placeholder="Monto hasta"
-          value={maxAmount}
-          onChange={(e) => updateFilter(setMaxAmount, e.target.value)}
-          className="w-full sm:w-32"
-        />
-      </div>
+      {/* Desktop: every filter stays in one row, always visible.
+          Mobile: only the name search shows by default; the rest sit
+          behind a "Más filtros" collapsible so the filter bar doesn't
+          eat the whole screen. */}
+      {isMobile ? (
+        <div className="order-1 flex flex-col gap-2">
+          {searchInput}
+          <Collapsible>
+            <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
+              Más filtros
+              <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <div className="flex flex-wrap items-end gap-2">
+                {statusSelect}
+                {amountInputs}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      ) : (
+        <div className="order-1 flex flex-wrap items-end gap-2">
+          {searchInput}
+          {statusSelect}
+          {amountInputs}
+        </div>
+      )}
 
       {/* Desktop: legend stays above the table, always visible (order-2).
           Mobile: legend moves below the table (order-3) and starts
@@ -191,10 +227,11 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
+                    <TableHead>ID/cédula</TableHead>
                     <TableHead>Por cobrar</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead>Último abono</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead className="hidden md:table-cell">Último abono</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -213,18 +250,19 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                             ejemplo
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-muted-foreground">—</TableCell>
                         <TableCell className="tabular-nums">{formatCurrency(0)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.sin_deuda}>
                             {CLIENT_STATUS_LABEL.sin_deuda}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">—</TableCell>
-                        <TableCell />
+                        <TableCell className="hidden text-muted-foreground md:table-cell">—</TableCell>
+                        <TableCell className="hidden md:table-cell" />
                       </TableRow>
                       {tour.step === 2.5 ? (
                         <TableRow className="bg-accent/20">
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={6}>
                             <div className="flex items-center justify-between py-1">
                               <span className="text-sm text-muted-foreground">
                                 Detalle de Cliente de ejemplo
@@ -264,17 +302,18 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                             </Badge>
                           ) : null}
                         </TableCell>
+                        <TableCell className="text-muted-foreground">{row.document_id || "—"}</TableCell>
                         <TableCell className="tabular-nums">{formatCurrency(row.balance)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
                             {CLIENT_STATUS_LABEL[status]}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell className="hidden text-muted-foreground md:table-cell">
                           {row.last_payment_at ? formatDate(row.last_payment_at) : "Nunca"}
                           <span className="ml-1 text-xs">({row.days_since_payment}d)</span>
                         </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" asChild title="Ver más">
                               <Link href={`/clients/${row.client_id}`}>
