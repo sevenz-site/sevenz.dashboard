@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/sw-register";
@@ -30,6 +31,8 @@ export const viewport: Viewport = {
   themeColor: "#0a0a0a",
 };
 
+const CLARITY_PROJECT_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -40,6 +43,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <Toaster />
         <ServiceWorkerRegister />
+        {CLARITY_PROJECT_ID ? (
+          <Script id="clarity-analytics" strategy="afterInteractive">
+            {`(function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+            })(window, document, "clarity", "script", "${CLARITY_PROJECT_ID}");`}
+          </Script>
+        ) : null}
       </body>
     </html>
   );
