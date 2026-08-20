@@ -27,6 +27,7 @@ import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actio
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { formatCurrency } from "@/lib/format";
+import { track } from "@/lib/mixpanel";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -66,9 +67,10 @@ export function AddMovementDialog({
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
       toast.success("Movimiento registrado");
+      track("Movement Added", { client_id: state.clientId, movement_type: type });
       router.refresh();
     }
-  }, [state, pending, router]);
+  }, [state, pending, router, type]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

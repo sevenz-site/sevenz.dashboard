@@ -7,6 +7,7 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { ImportContext, type ImportJob } from "@/components/import/import-context";
 import type { ImportUsage } from "@/lib/import-usage";
 import { recordImportNotification } from "@/app/(app)/actions";
+import { track } from "@/lib/mixpanel";
 
 export function ImportProvider({
   initialUsage,
@@ -71,6 +72,7 @@ export function ImportProvider({
             if (!response.ok) throw new Error(data.error ?? "No pudimos leer la foto.");
             const movements = data.movements ?? [];
             updateJob(job.id, { status: "done", movements });
+            track("Import Photo Processed", { movements_count: movements.length });
             void recordImportNotification({
               fileName: job.fileName,
               status: "done",
@@ -90,6 +92,7 @@ export function ImportProvider({
           } catch (error) {
             const message = error instanceof Error ? error.message : "Error al procesar la foto.";
             updateJob(job.id, { status: "error", error: message });
+            track("Import Photo Failed", { error: message });
             void recordImportNotification({
               fileName: job.fileName,
               status: "error",

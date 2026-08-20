@@ -21,6 +21,7 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
+import { track } from "@/lib/mixpanel";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -73,6 +74,7 @@ export function ClientSearchDialog({
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
       toast.success("Cliente registrado");
+      track("Client Created", { client_id: state.clientId });
       router.push(`/clients/${state.clientId}`);
     }
   }, [state, pending, router]);

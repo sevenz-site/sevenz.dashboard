@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { TourProvider } from "@/components/dashboard/tour-provider";
 import { HelpButton } from "@/components/dashboard/help-button";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
+import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { ImportProvider } from "@/components/import/import-provider";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
 import { getImportUsageForOwner } from "@/lib/import-usage";
@@ -27,13 +28,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const [{ data: owner }, unreadCount, importUsage] = await Promise.all([
-    supabase.from("owners").select("business_name, onboarding_completed_at").eq("id", user.id).single(),
+    supabase.from("owners").select("business_name, onboarding_completed_at, plan").eq("id", user.id).single(),
     getUnreadNotificationCount(),
     getImportUsageForOwner(supabase, user.id),
   ]);
 
   return (
     <ImportProvider initialUsage={importUsage}>
+      <MixpanelIdentify ownerId={user.id} email={user.email ?? ""} plan={owner?.plan ?? "free"} />
       <TourProvider active={!owner?.onboarding_completed_at}>
         <SidebarProvider>
           <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />

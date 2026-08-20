@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { formatCurrency } from "@/lib/format";
+import { track } from "@/lib/mixpanel";
 
 export function ShareActions({
   clientId,
@@ -39,6 +40,7 @@ export function ShareActions({
     if (!url) return;
     await navigator.clipboard.writeText(url);
     toast.success("Link copiado", { description: url });
+    track("Share Link Opened", { client_id: clientId, method: "copy" });
   }
 
   async function handleRemind() {
@@ -48,6 +50,7 @@ export function ShareActions({
     const phone = whatsapp ? whatsapp.replace(/\D/g, "") : "";
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(wa, "_blank", "noopener,noreferrer");
+    track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
   }
 
   return (
