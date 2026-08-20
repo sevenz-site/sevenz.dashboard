@@ -29,6 +29,7 @@ type SharedBalance = {
   owner_logo_path: string | null;
   payment_info: string | null;
   client_name: string;
+  document_id: string | null;
   whatsapp_last4: string;
   balance: number;
   movements: SharedMovement[];
@@ -73,6 +74,7 @@ export default async function SharedBalancePage({
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
           <p className="text-sm text-muted-foreground">Saldo de {shared.client_name}</p>
+          <p className="text-xs text-muted-foreground">Cédula/documento: {shared.document_id || "—"}</p>
         </div>
       </div>
 

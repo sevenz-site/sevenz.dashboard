@@ -361,6 +361,7 @@ begin
     'owner_logo_path', v_owner_logo_path,
     'payment_info', v_payment_info,
     'client_name', v_client.name,
+    'document_id', v_client.document_id,
     'whatsapp_last4', right(coalesce(v_client.whatsapp, ''), 4),
     'balance', coalesce(v_balance, 0),
     'movements', coalesce(v_movements, '[]'::json)
