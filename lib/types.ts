@@ -52,6 +52,7 @@ export type Client = {
   address: string | null;
   document_id: string | null;
   created_at: string;
+  is_flagged: boolean;
 };
 
 export type ClientSummary = {
@@ -68,6 +69,16 @@ export type ClientSummary = {
   days_since_payment: number;
   oldest_unpaid_charge_at: string | null;
   oldest_unpaid_charge_plazo_dias: number | null;
+  is_flagged: boolean;
+};
+
+export type ClientFlag = {
+  id: string;
+  client_id: string;
+  owner_id: string;
+  reason: string;
+  flagged_at: string;
+  unflagged_at: string | null;
 };
 
 export type ClientStatus =
@@ -150,6 +161,25 @@ export const CLIENT_STATUS_BADGE_CLASS: Record<ClientStatus, string> = {
     "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
   critico:
     "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+};
+
+// Deliberately not part of CLIENT_STATUS_BADGE_CLASS's palette — "Mala paga"
+// is the owner's own judgment call, not a computed payment-status signal, so
+// it always shows as a second badge alongside the status one, styled to read
+// as a different kind of thing (a "blacklist" mark, not a severity level).
+export const MALA_PAGA_BADGE_CLASS = "border-transparent bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900";
+
+// Keyed by the tier label computeCreditScore() returns (lib/credit-score.ts)
+// — kept here alongside the other badge-class maps rather than in that pure
+// module, consistent with how CLIENT_STATUS_BADGE_CLASS lives here too.
+export const CREDIT_SCORE_TIER_BADGE_CLASS: Record<string, string> = {
+  Excelente:
+    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+  Bueno: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20",
+  Regular:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+  Malo: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+  "Sin historial": "bg-muted text-foreground border-transparent",
 };
 
 export type ExtractedMovement = {

@@ -6,9 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { MovementHistoryList } from "@/components/public/movement-history-list";
+import { formatCurrency } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
 import { VerifyBadge } from "@/components/public/verify-badge";
@@ -20,6 +20,7 @@ type SharedMovement = {
   description: string | null;
   running_balance: number;
   needs_review: boolean;
+  plazo_dias: number | null;
   created_at: string;
 };
 
@@ -105,34 +106,7 @@ export default async function SharedBalancePage({
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        {movements.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
-        ) : (
-          <ul className="flex flex-col divide-y rounded-lg border">
-            {movements.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {m.type === "charge" ? "Fiado" : "Abono"}
-                    {m.description ? ` · ${m.description}` : ""}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span className={`tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
-                    {m.type === "charge" ? "+" : "-"}
-                    {formatCurrency(m.amount)}
-                  </span>
-                  {m.needs_review ? (
-                    <Badge variant="outline" className="text-[10px]">
-                      en revisión
-                    </Badge>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <MovementHistoryList movements={movements} />
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">

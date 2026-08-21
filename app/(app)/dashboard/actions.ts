@@ -147,6 +147,7 @@ export async function addMovement(
       .from("movements")
       .select("running_balance")
       .eq("client_id", clientId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(1)
@@ -203,4 +204,102 @@ export async function getOrCreateShareLink(clientId: string): Promise<{ token: s
   if (error || !created) return { error: "No pudimos generar el link." };
 
   return { token: created.token };
+}
+
+// Soft-deletes a movement the owner registered by mistake. The row stays in
+// place (deleted_at set) so it can be restored later from a notification;
+// every movement after it gets its running_balance rewritten to match.
+export async function deleteMovement(movementId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { data: movement, error: fetchError } = await supabase
+    .from("movements")
+    .select("id, client_id")
+    .eq("id", movementId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (fetchError || !movement) {
+    return { error: "No encontramos ese movimiento." };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("movements")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", movementId);
+
+  if (deleteError) {
+    return { error: `No pudimos eliminar el movimiento: ${deleteError.message}` };
+  }
+
+  const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
+    p_client_id: movement.client_id,
+  });
+  if (recalcError) {
+    return { error: `No pudimos recalcular el saldo: ${recalcError.message}` };
+  }
+
+  const { error: notifyError } = await supabase.from("movement_deletions").insert({
+    movement_id: movementId,
+    owner_id: user.id,
+    client_id: movement.client_id,
+  });
+  if (notifyError) {
+    console.error("deleteMovement: failed to record notification", notifyError);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${movement.client_id}`);
+  return { error: null };
+}
+
+// Restores a movement previously deleted via deleteMovement, recalculating
+// balances the same way. Triggered from the "movimiento eliminado" notification.
+export async function restoreMovement(movementId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { data: movement, error: fetchError } = await supabase
+    .from("movements")
+    .select("id, client_id")
+    .eq("id", movementId)
+    .not("deleted_at", "is", null)
+    .maybeSingle();
+
+  if (fetchError || !movement) {
+    return { error: "No encontramos ese movimiento eliminado." };
+  }
+
+  const { error: restoreError } = await supabase
+    .from("movements")
+    .update({ deleted_at: null })
+    .eq("id", movementId);
+
+  if (restoreError) {
+    return { error: `No pudimos restaurar el movimiento: ${restoreError.message}` };
+  }
+
+  const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
+    p_client_id: movement.client_id,
+  });
+  if (recalcError) {
+    return { error: `No pudimos recalcular el saldo: ${recalcError.message}` };
+  }
+
+  await supabase
+    .from("movement_deletions")
+    .update({ restored_at: new Date().toISOString() })
+    .eq("movement_id", movementId)
+    .is("restored_at", null);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${movement.client_id}`);
+  return { error: null };
 }

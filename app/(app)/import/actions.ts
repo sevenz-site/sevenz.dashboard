@@ -10,7 +10,6 @@ export type ImportRow = {
   type: MovementType;
   amount: number;
   description: string | null;
-  needs_review: boolean;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -50,13 +49,15 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       clientIdByName.set(cacheKey, clientId);
     }
 
+    // No needs_review here: the owner already saw and could fix every
+    // flagged row in the import review screen before confirming, so
+    // confirming the import *is* the review — defaults to false in the DB.
     const { error: movementError } = await supabase.from("movements").insert({
       client_id: clientId,
       type: row.type,
       amount: row.amount,
       description: row.description,
       source: "photo_import",
-      needs_review: row.needs_review,
     });
 
     if (movementError) {

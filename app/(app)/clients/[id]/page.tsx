@@ -9,12 +9,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ShareActions } from "@/components/dashboard/share-actions";
 import { AddMovementDialog } from "@/components/dashboard/add-movement-dialog";
 import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
+import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
+import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { computeCreditScore } from "@/lib/credit-score";
+import { formatCurrency, formatDateTime } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
+  CREDIT_SCORE_TIER_BADGE_CLASS,
+  MALA_PAGA_BADGE_CLASS,
   getClientStatus,
   type Client,
+  type ClientFlag,
   type ClientSummary,
   type Movement,
 } from "@/lib/types";
@@ -70,6 +77,11 @@ export default async function ClientDetailPage({
               {CLIENT_STATUS_LABEL[status]}
             </Badge>
             {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+            {client.is_flagged ? (
+              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                Mala paga
+              </Badge>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -83,11 +95,13 @@ export default async function ClientDetailPage({
             whatsapp={client.whatsapp}
             balance={balance}
           />
+          <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
           <AddMovementDialog
             clientId={client.id}
             clientName={client.name}
             ownerId={user!.id}
             currentDebt={balance}
+            isFlagged={client.is_flagged}
           />
         </div>
       </div>
@@ -107,8 +121,23 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
+      <Suspense fallback={<CreditScoreSkeleton />}>
+        <CreditScoreSection
+          clientId={id}
+          balance={balance}
+          daysSincePayment={clientSummary?.days_since_payment ?? 0}
+          oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
+          oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
+          isFlagged={client.is_flagged}
+        />
+      </Suspense>
+
       <Suspense fallback={<MovementsSkeleton />}>
         <MovementHistory clientId={id} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <ClientFlagHistory clientId={id} />
       </Suspense>
     </div>
   );
@@ -125,6 +154,81 @@ function MovementsSkeleton() {
   );
 }
 
+function CreditScoreSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-28 w-full rounded-lg" />
+    </div>
+  );
+}
+
+async function CreditScoreSection({
+  clientId,
+  balance,
+  daysSincePayment,
+  oldestUnpaidChargeAt,
+  oldestUnpaidChargePlazoDias,
+  isFlagged,
+}: {
+  clientId: string;
+  balance: number;
+  daysSincePayment: number;
+  oldestUnpaidChargeAt: string | null;
+  oldestUnpaidChargePlazoDias: number | null;
+  isFlagged: boolean;
+}) {
+  const supabase = await createClient();
+
+  const [{ data: movements }, { data: lastUnflag }] = await Promise.all([
+    supabase
+      .from("movements")
+      .select("type, amount, created_at, plazo_dias")
+      .eq("client_id", clientId)
+      .is("deleted_at", null),
+    supabase
+      .from("client_flags")
+      .select("unflagged_at")
+      .eq("client_id", clientId)
+      .not("unflagged_at", "is", null)
+      .order("unflagged_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const result = computeCreditScore({
+    movements: (movements ?? []) as Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">[],
+    balance,
+    daysSincePayment,
+    oldestUnpaidChargeAt,
+    oldestUnpaidChargePlazoDias,
+    isFlagged,
+    mostRecentUnflaggedAt: lastUnflag?.unflagged_at ?? null,
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium text-muted-foreground">Puntaje de crédito</h2>
+      <div className="flex flex-col items-center gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:gap-6">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          <CreditScoreRadialChart score={result.score} tier={result.tier} />
+          <Badge variant="outline" className={CREDIT_SCORE_TIER_BADGE_CLASS[result.tier]}>
+            {result.tier}
+          </Badge>
+        </div>
+        <dl className="flex w-full flex-col gap-1.5 text-xs">
+          {result.breakdown.map((line) => (
+            <div key={line.label} className="flex flex-wrap justify-between gap-2">
+              <dt className="text-muted-foreground">{line.label}</dt>
+              <dd className="text-right">{line.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 async function MovementHistory({ clientId }: { clientId: string }) {
   const supabase = await createClient();
 
@@ -132,6 +236,7 @@ async function MovementHistory({ clientId }: { clientId: string }) {
     .from("movements")
     .select("*")
     .eq("client_id", clientId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   const movementRows = (movements ?? []) as Movement[];
@@ -150,49 +255,44 @@ async function MovementHistory({ clientId }: { clientId: string }) {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="text-sm font-medium text-muted-foreground">Historial de movimientos</h2>
-      {movementRows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
-      ) : (
-        <ul className="flex flex-col divide-y rounded-lg border">
-          {movementRows.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {m.type === "charge" ? "Fiado" : "Abono"}
-                  {m.description ? ` · ${m.description}` : ""}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(m.created_at)} · saldo {formatCurrency(m.running_balance)}
-                  {m.source === "photo_import" ? " · de libreta" : ""}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {m.photo_path && photoUrls.has(m.photo_path) ? (
-                  <a
-                    href={photoUrls.get(m.photo_path)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-muted-foreground underline underline-offset-4"
-                  >
-                    Ver foto
-                  </a>
-                ) : null}
-                <span
-                  className={`tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
-                >
-                  {m.type === "charge" ? "+" : "-"}
-                  {formatCurrency(m.amount)}
-                </span>
-                {m.needs_review ? (
-                  <Badge variant="outline" className="text-[10px]">
-                    revisar
-                  </Badge>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <MovementHistoryList movements={movementRows} photoUrls={Object.fromEntries(photoUrls)} />
+    </div>
+  );
+}
+
+// Renders nothing when the client has never been flagged — most clients.
+async function ClientFlagHistory({ clientId }: { clientId: string }) {
+  const supabase = await createClient();
+
+  const { data: flags } = await supabase
+    .from("client_flags")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("flagged_at", { ascending: false });
+
+  const flagRows = (flags ?? []) as ClientFlag[];
+  if (flagRows.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium text-muted-foreground">Historial de mala paga</h2>
+      <ul className="flex flex-col divide-y rounded-lg border">
+        {flagRows.map((f) => (
+          <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <div className="min-w-0">
+              <p className="text-sm">{f.reason}</p>
+              <p className="text-xs text-muted-foreground">Marcado: {formatDateTime(f.flagged_at)}</p>
+            </div>
+            {f.unflagged_at ? (
+              <span className="text-xs text-muted-foreground">Desmarcado: {formatDateTime(f.unflagged_at)}</span>
+            ) : (
+              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                Activo
+              </Badge>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

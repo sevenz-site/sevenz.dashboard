@@ -89,7 +89,6 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
         type: r.type,
         amount: r.amount,
         description: r.description,
-        needs_review: r.needs_review,
       }));
       const result = await confirmImport(rows);
       if (result.error) {

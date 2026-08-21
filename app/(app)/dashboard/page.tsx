@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { formatCurrency } from "@/lib/format";
 import type { ClientSummary } from "@/lib/types";
 
@@ -25,9 +26,14 @@ export default async function DashboardPage() {
   ]);
 
   const rows = (summaries ?? []) as ClientSummary[];
+  // Capital por cobrar counts every client's debt regardless of flag status —
+  // flagging only affects what's *visible* in the Cartera table below, never
+  // this total.
   const totalEnMora = rows
     .filter((r) => Number(r.balance) > 0)
     .reduce((sum, r) => sum + Number(r.balance), 0);
+  const visibleRows = rows.filter((r) => !r.is_flagged);
+  const scores = await computeCreditScoresForClients(supabase, visibleRows);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -48,7 +54,7 @@ export default async function DashboardPage() {
         <span className="font-medium text-foreground">Capital por cobrar:</span> lo que tus clientes
         te deben en total, sin descontar nada.
       </p>
-      <ClientTable rows={rows} />
+      <ClientTable rows={visibleRows} scores={scores} />
     </div>
   );
 }

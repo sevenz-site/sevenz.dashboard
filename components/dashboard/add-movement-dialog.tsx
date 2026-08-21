@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -37,13 +48,16 @@ export function AddMovementDialog({
   clientName,
   ownerId,
   currentDebt,
+  isFlagged,
 }: {
   clientId: string;
   clientName: string;
   ownerId: string;
   currentDebt: number;
+  isFlagged: boolean;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
@@ -85,7 +99,7 @@ export function AddMovementDialog({
           <DialogTitle>Registrar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="client_id" value={clientId} />
 
           <div className="flex flex-col gap-2">
@@ -142,9 +156,36 @@ export function AddMovementDialog({
           {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
 
           <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Guardando..." : "Guardar"}
-            </Button>
+            {isFlagged && type === "charge" ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button type="button" variant="destructive" disabled={pending}>
+                    {pending ? "Guardando..." : "Guardar"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{clientName} está marcado como Mala paga</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Revisa el motivo en su historial. ¿Fiarle de todas formas?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      onClick={() => formRef.current?.requestSubmit()}
+                    >
+                      Fiar de todas formas
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button type="submit" disabled={pending}>
+                {pending ? "Guardando..." : "Guardar"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

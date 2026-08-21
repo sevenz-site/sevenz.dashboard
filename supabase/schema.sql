@@ -60,7 +60,10 @@ create table if not exists public.clients (
   whatsapp text,
   address text,
   document_id text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- "Mala paga" flag: reversible, owner-scoped, requires a reason (see
+  -- client_flags below for the audit trail of every flag/unflag cycle).
+  is_flagged boolean not null default false
 );
 
 create index if not exists clients_owner_id_idx on public.clients (owner_id);
@@ -69,6 +72,29 @@ alter table public.clients enable row level security;
 
 create policy "owners manage own clients" on public.clients
   for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- ── client flags ("Mala paga") ─────────────────────────────────────────
+-- Log of every flag/unflag cycle, not a single row — a client can be flagged
+-- and later unflagged more than once over the relationship.
+create table if not exists public.client_flags (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients (id) on delete cascade,
+  owner_id uuid not null references public.owners (id) on delete cascade,
+  reason text not null,
+  flagged_at timestamptz not null default now(),
+  unflagged_at timestamptz
+);
+
+create index if not exists client_flags_client_id_idx
+  on public.client_flags (client_id, flagged_at desc);
+
+alter table public.client_flags enable row level security;
+
+drop policy if exists "owners manage own client flags" on public.client_flags;
+create policy "owners manage own client flags" on public.client_flags
+  for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+grant select, insert, update on public.client_flags to authenticated;
 
 -- ── movements ───────────────────────────────────────────────────────────
 create table if not exists public.movements (
@@ -82,10 +108,16 @@ create table if not exists public.movements (
   needs_review boolean not null default false,
   photo_path text,
   plazo_dias int check (plazo_dias is null or plazo_dias in (7, 15, 30, 45)),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Soft-delete: the owner can delete a mistaken movement, and restore it
+  -- later from a notification. The row stays put; every balance-reading
+  -- query below excludes rows where this is set.
+  deleted_at timestamptz
 );
 
 create index if not exists movements_client_id_idx on public.movements (client_id, created_at);
+create index if not exists movements_client_id_active_idx
+  on public.movements (client_id, created_at) where deleted_at is null;
 
 alter table public.movements enable row level security;
 
@@ -107,7 +139,7 @@ declare
 begin
   select running_balance into v_prev
   from public.movements
-  where client_id = new.client_id
+  where client_id = new.client_id and deleted_at is null
   order by created_at desc, id desc
   limit 1;
 
@@ -122,6 +154,33 @@ drop trigger if exists trg_set_movement_running_balance on public.movements;
 create trigger trg_set_movement_running_balance
   before insert on public.movements
   for each row execute function public.set_movement_running_balance();
+
+-- Walks a client's non-deleted movements oldest-to-newest and rewrites
+-- running_balance on every one of them. Called after a delete or a restore,
+-- since either one can shift every balance that came after it. Not
+-- SECURITY DEFINER: it runs as the calling owner, so movements RLS quietly
+-- limits it to that owner's own clients even if a bad client_id is passed.
+create or replace function public.recalc_client_running_balance(p_client_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  m record;
+  running numeric(12, 2) := 0;
+begin
+  for m in
+    select id, type, amount
+    from public.movements
+    where client_id = p_client_id and deleted_at is null
+    order by created_at asc, id asc
+  loop
+    running := running + (case when m.type = 'charge' then m.amount else -m.amount end);
+    update public.movements set running_balance = running where id = m.id;
+  end loop;
+end;
+$$;
+
+grant execute on function public.recalc_client_running_balance(uuid) to authenticated;
 
 -- ── share_links ─────────────────────────────────────────────────────────
 create table if not exists public.share_links (
@@ -169,7 +228,7 @@ begin
   for m in
     select mv.type, mv.amount, mv.created_at, mv.plazo_dias
     from public.movements mv
-    where mv.client_id = p_client_id
+    where mv.client_id = p_client_id and mv.deleted_at is null
     order by mv.created_at asc, mv.id asc
   loop
     if m.type = 'charge' then
@@ -225,24 +284,25 @@ select
   extract(day from now() - coalesce(last_payment.created_at, c.created_at))::int as days_since_payment,
   oldest_unpaid.charge_at as oldest_unpaid_charge_at,
   oldest_unpaid.plazo_dias as oldest_unpaid_charge_plazo_dias,
-  c.document_id
+  c.document_id,
+  c.is_flagged
 from public.clients c
 left join lateral (
   select m.running_balance
   from public.movements m
-  where m.client_id = c.id
+  where m.client_id = c.id and m.deleted_at is null
   order by m.created_at desc, m.id desc
   limit 1
 ) latest on true
 left join lateral (
   select bool_or(m.needs_review) as any_needs_review
   from public.movements m
-  where m.client_id = c.id
+  where m.client_id = c.id and m.deleted_at is null
 ) review on true
 left join lateral (
   select m.created_at
   from public.movements m
-  where m.client_id = c.id and m.type = 'payment'
+  where m.client_id = c.id and m.type = 'payment' and m.deleted_at is null
   order by m.created_at desc
   limit 1
 ) last_payment on true
@@ -299,6 +359,32 @@ create policy "owners manage own import notifications" on public.import_notifica
 
 grant select, insert, update on public.import_notifications to authenticated;
 
+-- ── movement deletions (drives the "movimiento eliminado" notification) ──
+-- The movement row itself stays put (soft-deleted, see movements.deleted_at
+-- above); this table is only the notification/audit trail — same read_at
+-- pattern as import_notifications. A movement can be deleted and restored
+-- more than once, so this is a log, not a 1:1 flag: only rows with
+-- restored_at is null are still "pending".
+create table if not exists public.movement_deletions (
+  id uuid primary key default gen_random_uuid(),
+  movement_id uuid not null references public.movements (id) on delete cascade,
+  owner_id uuid not null references public.owners (id) on delete cascade,
+  client_id uuid not null references public.clients (id) on delete cascade,
+  deleted_at timestamptz not null default now(),
+  restored_at timestamptz,
+  read_at timestamptz
+);
+
+create index if not exists movement_deletions_owner_id_idx on public.movement_deletions (owner_id);
+
+alter table public.movement_deletions enable row level security;
+
+drop policy if exists "owners manage own movement deletions" on public.movement_deletions;
+create policy "owners manage own movement deletions" on public.movement_deletions
+  for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+grant select, insert, update on public.movement_deletions to authenticated;
+
 -- ── public read-only access for the client balance page (/s/[token]) ─────
 -- No table-level SELECT policy is granted to anon; access is only through
 -- this SECURITY DEFINER function, scoped to exactly one client's data.
@@ -342,16 +428,17 @@ begin
       'description', m.description,
       'running_balance', m.running_balance,
       'needs_review', m.needs_review,
+      'plazo_dias', m.plazo_dias,
       'created_at', m.created_at
     ) order by m.created_at asc
   )
   into v_movements
   from public.movements m
-  where m.client_id = v_client.id;
+  where m.client_id = v_client.id and m.deleted_at is null;
 
   select running_balance into v_balance
   from public.movements
-  where client_id = v_client.id
+  where client_id = v_client.id and deleted_at is null
   order by created_at desc, id desc
   limit 1;
 

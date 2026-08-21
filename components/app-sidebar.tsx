@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Camera, Building2, LogOut, Loader2 } from "lucide-react";
+import { LayoutDashboard, ShieldAlert, Camera, Building2, LogOut, Loader2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +21,7 @@ import { useTour } from "@/components/dashboard/tour-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: LayoutDashboard, dataTour: undefined },
+  { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
   { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },
   { href: "/profile", label: "Mi negocio", icon: Building2, dataTour: undefined },
 ];

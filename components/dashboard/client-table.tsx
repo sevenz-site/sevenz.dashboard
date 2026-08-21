@@ -33,11 +33,14 @@ import {
 import { ShareActions } from "@/components/dashboard/share-actions";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { CreditScoreResult } from "@/lib/credit-score";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_DESCRIPTION,
   CLIENT_STATUS_LABEL,
+  CREDIT_SCORE_TIER_BADGE_CLASS,
+  MALA_PAGA_BADGE_CLASS,
   getClientStatus,
   type ClientStatus,
   type ClientSummary,
@@ -55,7 +58,15 @@ const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
 
 const PAGE_SIZE = 15;
 
-export function ClientTable({ rows }: { rows: ClientSummary[] }) {
+export function ClientTable({
+  rows,
+  scores,
+  emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
+}: {
+  rows: ClientSummary[];
+  scores?: Record<string, CreditScoreResult>;
+  emptyMessage?: string;
+}) {
   const router = useRouter();
   const tour = useTour();
   const isMobile = useIsMobile();
@@ -102,9 +113,7 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
   if (rows.length === 0 && !tourDemoActive) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <p className="text-sm text-muted-foreground">
-          Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.
-        </p>
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
       </div>
     );
   }
@@ -229,6 +238,7 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Por cobrar</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="hidden md:table-cell">Puntaje</TableHead>
                     <TableHead className="hidden md:table-cell">Último abono</TableHead>
                     <TableHead className="hidden text-right md:table-cell">Acciones</TableHead>
                   </TableRow>
@@ -259,11 +269,12 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">—</TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">—</TableCell>
                         <TableCell className="hidden md:table-cell" />
                       </TableRow>
                       {tour.step === 2.5 ? (
                         <TableRow className="bg-accent/20">
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={6}>
                             <div className="flex items-center justify-between py-1">
                               <span className="text-sm text-muted-foreground">
                                 Detalle de Cliente de ejemplo
@@ -289,6 +300,7 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                       row.oldest_unpaid_charge_at,
                       row.oldest_unpaid_charge_plazo_dias,
                     );
+                    const score = scores?.[row.client_id];
                     return (
                       <TableRow
                         key={row.client_id}
@@ -310,9 +322,28 @@ export function ClientTable({ rows }: { rows: ClientSummary[] }) {
                         </TableCell>
                         <TableCell className="tabular-nums">{formatCurrency(row.balance)}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                            {CLIENT_STATUS_LABEL[status]}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                              {CLIENT_STATUS_LABEL[status]}
+                            </Badge>
+                            {row.is_flagged ? (
+                              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                                Mala paga
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {score ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="tabular-nums">{score.score}</span>
+                              <Badge variant="outline" className={CREDIT_SCORE_TIER_BADGE_CLASS[score.tier]}>
+                                {score.tier}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">
                           {row.last_payment_at ? formatDate(row.last_payment_at) : "Nunca"}
