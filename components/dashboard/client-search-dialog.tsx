@@ -89,6 +89,7 @@ export function ClientSearchDialog({
       <DialogTrigger asChild>
         <Button
           size="sm"
+          className="w-full sm:w-auto"
           data-tour="new-client-button"
           onClick={() => {
             if (tour.step === 1) tour.advance();

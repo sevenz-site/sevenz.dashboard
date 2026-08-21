@@ -76,6 +76,10 @@ export function ClientTable({
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [page, setPage] = useState(1);
+  // Shared between the mobile and desktop legend triggers below — only one
+  // of the two ever renders at a time (isMobile picks the branch), so a
+  // single piece of state is enough for both.
+  const [legendOpen, setLegendOpen] = useState(false);
 
   const filteredRows = useMemo(() => {
     const query = nameQuery.trim().toLowerCase();
@@ -180,48 +184,50 @@ export function ClientTable({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Desktop: every filter stays in one row, always visible.
-          Mobile: only the name search shows by default; the rest sit
-          behind a "Más filtros" collapsible so the filter bar doesn't
-          eat the whole screen. */}
+      {/* Desktop: every filter stays in one row, always visible, with the
+          legend trigger right-aligned at the end of that same row — its
+          content still expands full-width below the whole row, not just
+          under the trigger. Mobile: only the name search shows by default;
+          the rest sit behind a "Más filtros" collapsible, and the legend
+          stays its own standalone trigger below the table (order-3). */}
       {isMobile ? (
-        <div className="order-1 flex flex-col gap-2">
-          {searchInput}
-          <Collapsible>
-            <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
-              Más filtros
+        <>
+          <div className="order-1 flex flex-col gap-2">
+            {searchInput}
+            <Collapsible>
+              <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
+                Más filtros
+                <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  {statusSelect}
+                  {amountInputs}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+          <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className="order-3">
+            <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium">
+              Qué significa cada estado
+              <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">{legendChips}</CollapsibleContent>
+          </Collapsible>
+        </>
+      ) : (
+        <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className="order-1">
+          <div className="flex flex-wrap items-end gap-2">
+            {searchInput}
+            {statusSelect}
+            {amountInputs}
+            <CollapsibleTrigger className="group ml-auto flex items-center gap-1 text-sm font-medium text-muted-foreground">
+              Qué significa cada estado
               <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
             </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2">
-              <div className="flex flex-wrap items-end gap-2">
-                {statusSelect}
-                {amountInputs}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      ) : (
-        <div className="order-1 flex flex-wrap items-end gap-2">
-          {searchInput}
-          {statusSelect}
-          {amountInputs}
-        </div>
-      )}
-
-      {/* Desktop: legend stays above the table, always visible (order-2).
-          Mobile: legend moves below the table (order-3) and starts
-          collapsed, since the full chip list is too heavy for a small
-          screen otherwise. */}
-      {isMobile ? (
-        <Collapsible className="order-3">
-          <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium">
-            Qué significa cada estado
-            <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-          </CollapsibleTrigger>
+          </div>
           <CollapsibleContent className="pt-2">{legendChips}</CollapsibleContent>
         </Collapsible>
-      ) : (
-        <div className="order-2">{legendChips}</div>
       )}
 
       <div className="order-2 flex flex-col gap-3 md:order-3">

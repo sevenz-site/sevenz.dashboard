@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { formatCurrency } from "@/lib/format";
+import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import type { ClientSummary } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -35,14 +37,39 @@ export default async function DashboardPage() {
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows);
 
+  // The lending chart counts every client's movements regardless of the
+  // Mala paga flag — same reasoning as Capital por cobrar above: this is
+  // about total lending activity, not who's currently visible in the table.
+  const clientIds = (clients ?? []).map((c) => c.id);
+  const { data: weeklyMovements } =
+    clientIds.length > 0
+      ? await supabase
+          .from("movements")
+          .select("type, amount, created_at")
+          .in("client_id", clientIds)
+          .is("deleted_at", null)
+      : { data: [] };
+  const weeklyMovementRows = (weeklyMovements ?? []) as {
+    type: "charge" | "payment";
+    amount: number;
+    created_at: string;
+  }[];
+  const weeklyLending = computeWeeklyFiadoAbono(weeklyMovementRows);
+
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-          <p className="text-3xl font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-            {formatCurrency(totalEnMora)}
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-1 flex-wrap items-start gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Capital por cobrar</p>
+            <p className="text-3xl font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+              {formatCurrency(totalEnMora)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Lo que tus clientes te deben en total, sin descontar nada.
+            </p>
+          </div>
+          <WeeklyLendingChart data={weeklyLending} />
         </div>
         <ClientSearchDialog
           clients={clients ?? []}
@@ -50,10 +77,6 @@ export default async function DashboardPage() {
           businessName={owner?.business_name || user!.email || "tu negocio"}
         />
       </div>
-      <p className="-mt-3 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Capital por cobrar:</span> lo que tus clientes
-        te deben en total, sin descontar nada.
-      </p>
       <ClientTable rows={visibleRows} scores={scores} />
     </div>
   );

@@ -39,6 +39,7 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { formatCurrency } from "@/lib/format";
 import { track } from "@/lib/mixpanel";
+import { cn } from "@/lib/utils";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -49,12 +50,16 @@ export function AddMovementDialog({
   ownerId,
   currentDebt,
   isFlagged,
+  triggerClassName,
 }: {
   clientId: string;
   clientName: string;
   ownerId: string;
   currentDebt: number;
   isFlagged: boolean;
+  // Lets the client detail page's mobile layout make this button full-width
+  // without affecting the default (desktop) trigger.
+  triggerClassName?: string;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -89,7 +94,7 @@ export function AddMovementDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size="sm" className={cn(triggerClassName)}>
           <Plus className="size-4" />
           Agregar movimiento
         </Button>

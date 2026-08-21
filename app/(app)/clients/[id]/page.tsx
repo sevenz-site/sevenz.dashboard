@@ -57,44 +57,80 @@ export default async function ClientDetailPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div>
+      <div className="flex items-center justify-between gap-4">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/dashboard">
             <ArrowLeft className="size-4" />
             Cartera
           </Link>
         </Button>
+        <ShareActions
+          clientId={client.id}
+          clientName={client.name}
+          whatsapp={client.whatsapp}
+          balance={balance}
+        />
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      {/* Mobile (< sm): status badges, balance, the mala paga control, and a
+          full-width "Agregar movimiento" stack vertically below the name.
+          Desktop keeps the side-by-side layout in the block after this one —
+          these two are mutually exclusive via hidden/sm:hidden, not a JS
+          breakpoint check, since this page is a server component. */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        <div className="flex items-center gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
+          <EditClientDialog client={client as Client} />
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+            {CLIENT_STATUS_LABEL[status]}
+          </Badge>
+          {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+          {client.is_flagged ? (
+            <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+              Mala paga
+            </Badge>
+          ) : null}
+        </div>
         <div>
+          <p className="text-sm text-muted-foreground">Por cobrar</p>
+          <p className="text-2xl font-semibold tabular-nums">{formatCurrency(balance)}</p>
+        </div>
+        <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
+        <AddMovementDialog
+          clientId={client.id}
+          clientName={client.name}
+          ownerId={user!.id}
+          currentDebt={balance}
+          isFlagged={client.is_flagged}
+          triggerClassName="w-full"
+        />
+      </div>
+
+      <div className="hidden flex-col gap-3 sm:flex">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-1">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
             <EditClientDialog client={client as Client} />
           </div>
-          <div className="mt-1 flex items-center gap-2">
-            <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-              {CLIENT_STATUS_LABEL[status]}
-            </Badge>
-            {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
-            {client.is_flagged ? (
-              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-                Mala paga
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-sm text-muted-foreground">Por cobrar</p>
             <p className="text-2xl font-semibold tabular-nums">{formatCurrency(balance)}</p>
           </div>
-          <ShareActions
-            clientId={client.id}
-            clientName={client.name}
-            whatsapp={client.whatsapp}
-            balance={balance}
-          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+            {CLIENT_STATUS_LABEL[status]}
+          </Badge>
+          {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+          {client.is_flagged ? (
+            <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+              Mala paga
+            </Badge>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
           <AddMovementDialog
             clientId={client.id}
@@ -106,21 +142,6 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 rounded-lg border p-4 text-sm sm:grid-cols-3">
-        <div>
-          <p className="text-muted-foreground">WhatsApp</p>
-          <p>{client.whatsapp || "—"}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">Cédula/documento</p>
-          <p>{client.document_id || "—"}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">Dirección</p>
-          <p>{client.address || "—"}</p>
-        </div>
-      </div>
-
       <Suspense fallback={<CreditScoreSkeleton />}>
         <CreditScoreSection
           clientId={id}
@@ -129,6 +150,9 @@ export default async function ClientDetailPage({
           oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
           isFlagged={client.is_flagged}
+          whatsapp={client.whatsapp}
+          documentId={client.document_id}
+          address={client.address}
         />
       </Suspense>
 
@@ -170,6 +194,9 @@ async function CreditScoreSection({
   oldestUnpaidChargeAt,
   oldestUnpaidChargePlazoDias,
   isFlagged,
+  whatsapp,
+  documentId,
+  address,
 }: {
   clientId: string;
   balance: number;
@@ -177,6 +204,9 @@ async function CreditScoreSection({
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
   isFlagged: boolean;
+  whatsapp: string | null;
+  documentId: string | null;
+  address: string | null;
 }) {
   const supabase = await createClient();
 
@@ -216,13 +246,27 @@ async function CreditScoreSection({
             {result.tier}
           </Badge>
         </div>
-        <dl className="flex w-full flex-col gap-1.5 text-xs">
+        <dl className="flex w-full flex-col gap-1.5 self-start text-xs sm:w-auto">
           {result.breakdown.map((line) => (
-            <div key={line.label} className="flex flex-wrap justify-between gap-2">
+            <div key={line.label} className="flex flex-col">
               <dt className="text-muted-foreground">{line.label}</dt>
-              <dd className="text-right">{line.detail}</dd>
+              <dd>{line.detail}</dd>
             </div>
           ))}
+        </dl>
+        <dl className="flex w-full flex-col gap-1.5 self-start text-xs sm:w-auto">
+          <div className="flex flex-col">
+            <dt className="text-muted-foreground">WhatsApp</dt>
+            <dd>{whatsapp || "—"}</dd>
+          </div>
+          <div className="flex flex-col">
+            <dt className="text-muted-foreground">Cédula/documento</dt>
+            <dd>{documentId || "—"}</dd>
+          </div>
+          <div className="flex flex-col">
+            <dt className="text-muted-foreground">Dirección</dt>
+            <dd>{address || "—"}</dd>
+          </div>
         </dl>
       </div>
     </div>
