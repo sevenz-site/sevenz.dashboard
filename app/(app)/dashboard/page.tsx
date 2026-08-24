@@ -79,60 +79,61 @@ export default async function DashboardPage() {
     <div className="flex flex-1 flex-col gap-4">
       {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-1 flex-wrap items-start gap-4">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
           {rateContext ? (
             <>
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
+                <div>
+                  <p className="text-sm text-muted-foreground">Capital por cobrar en USD</p>
+                  <ExchangeRateBalanceDisplay
+                    balance={totalUsd}
+                    currency="USD"
+                    ledger={ledger}
+                    rateMode={rateContext.rateMode}
+                    officialRateUsd={rateContext.officialRateUsd}
+                    mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lo que tus clientes te deben en total, sin descontar nada.
+                  </p>
+                </div>
+                <LendingChartPanel data={weeklyLendingUsd} title="Fiado vs. Abono (USD)" />
+              </div>
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
+                <div>
+                  <p className="text-sm text-muted-foreground">Capital por cobrar en Euro</p>
+                  <ExchangeRateBalanceDisplay
+                    balance={totalEur}
+                    currency="EUR"
+                    ledger={ledger}
+                    rateMode={rateContext.rateMode}
+                    officialRateUsd={rateContext.officialRateUsd}
+                    mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lo que tus clientes te deben en total, sin descontar nada.
+                  </p>
+                </div>
+                <LendingChartPanel data={weeklyLendingEur} title="Fiado vs. Abono (EUR)" />
+              </div>
+            </>
+          ) : (
+            <>
               <div>
-                <p className="text-sm text-muted-foreground">Capital por cobrar en USD</p>
+                <p className="text-sm text-muted-foreground">Capital por cobrar</p>
                 <ExchangeRateBalanceDisplay
-                  balance={totalUsd}
-                  currency="USD"
-                  ledger={ledger}
-                  rateMode={rateContext.rateMode}
-                  officialRateUsd={rateContext.officialRateUsd}
+                  balance={totalCop}
+                  currency={null}
+                  ledger={null}
                   mainClassName="text-3xl text-amber-600 dark:text-amber-400"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
                   Lo que tus clientes te deben en total, sin descontar nada.
                 </p>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Capital por cobrar en Euro</p>
-                <ExchangeRateBalanceDisplay
-                  balance={totalEur}
-                  currency="EUR"
-                  ledger={ledger}
-                  rateMode={rateContext.rateMode}
-                  officialRateUsd={rateContext.officialRateUsd}
-                  mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Lo que tus clientes te deben en total, sin descontar nada.
-                </p>
-              </div>
+              <WeeklyLendingChart data={weeklyLendingCop} />
             </>
-          ) : (
-            <div>
-              <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-              <ExchangeRateBalanceDisplay
-                balance={totalCop}
-                currency={null}
-                ledger={null}
-                mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Lo que tus clientes te deben en total, sin descontar nada.
-              </p>
-            </div>
-          )}
-          {rateContext ? (
-            <>
-              <LendingChartPanel data={weeklyLendingUsd} title="Fiado vs. Abono (USD)" />
-              <LendingChartPanel data={weeklyLendingEur} title="Fiado vs. Abono (EUR)" />
-            </>
-          ) : (
-            <WeeklyLendingChart data={weeklyLendingCop} />
           )}
         </div>
         <ClientSearchDialog
