@@ -15,13 +15,13 @@ export function LendingChartPanel({ data, title }: { data: WeeklyLendingPoint[];
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex w-full flex-col gap-2">
-      <CollapsibleContent>
-        <WeeklyLendingChart data={data} title={title} />
-      </CollapsibleContent>
       <CollapsibleTrigger className="group flex w-full items-center justify-between gap-1 rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium text-muted-foreground">
         {open ? `Ocultar ${title}` : `Mostrar ${title}`}
         <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
+      <CollapsibleContent>
+        <WeeklyLendingChart data={data} title={title} />
+      </CollapsibleContent>
     </Collapsible>
   );
 }
