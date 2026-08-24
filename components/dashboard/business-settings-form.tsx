@@ -18,31 +18,25 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import { LogoUploader } from "@/components/dashboard/logo-uploader";
 import { FormattedTextarea } from "@/components/dashboard/formatted-textarea";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { formatBs } from "@/lib/exchange-rate/format";
 import { updateBusinessSettings, type ProfileState } from "@/app/(app)/profile/actions";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
-import type { ExchangeRateMode, Owner, OwnerCountry, OwnerExchangeSettings } from "@/lib/types";
+import type { Owner } from "@/lib/types";
 
 const initialState: ProfileState = { error: null, success: false };
 
 export function BusinessSettingsForm({
   owner,
   logoUrl,
-  exchangeSettings,
-  currentBcvUsd,
-  currentBcvEur,
 }: {
   owner: Owner;
   logoUrl: string | null;
-  exchangeSettings: OwnerExchangeSettings | null;
-  currentBcvUsd: number | null;
-  currentBcvEur: number | null;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [logoPath, setLogoPath] = useState<string | null>(owner.logo_path);
-  const [country, setCountry] = useState(owner.country);
-  const [rateMode, setRateMode] = useState<ExchangeRateMode>(exchangeSettings?.rate_mode ?? "BCV_AUTO");
+  // País and the exchange-rate mode aren't user-editable — see the note
+  // by the "País" field below — so these never change after mount.
+  const country = owner.country;
   const { setDirty, guard } = useUnsavedChangesGuard();
   const [isDirty, setIsDirty] = useState(false);
   const [pending, setPending] = useState(false);
@@ -149,14 +143,7 @@ export function BusinessSettingsForm({
 
         <div className="flex flex-col gap-2">
           <Label>País</Label>
-          <Select
-            name="country"
-            value={country}
-            onValueChange={(v) => {
-              setCountry(v as OwnerCountry);
-              markDirty();
-            }}
-          >
+          <Select disabled value={country}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -165,11 +152,10 @@ export function BusinessSettingsForm({
               <SelectItem value="VE">Venezuela (Bs)</SelectItem>
             </SelectContent>
           </Select>
-          {country === "VE" ? (
-            <p className="text-xs text-muted-foreground">
-              Al guardar, verás una sección nueva de &quot;Tasa de cambio&quot; más abajo.
-            </p>
-          ) : null}
+          <input type="hidden" name="country" value={country} readOnly />
+          <p className="text-xs text-muted-foreground">
+            Para cambiar el país de tu negocio, contáctanos.
+          </p>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -200,14 +186,10 @@ export function BusinessSettingsForm({
 
           <div className="flex flex-col gap-2">
             <Label>Tasa de cambio</Label>
-            <RadioGroup
-              name="rate_mode"
-              value={rateMode}
-              onValueChange={(v) => {
-                setRateMode(v as ExchangeRateMode);
-                markDirty();
-              }}
-            >
+            {/* Locked to BCV_AUTO — owners can't set their own rate right
+                now, so both options render disabled instead of hiding the
+                choice entirely. */}
+            <RadioGroup disabled value="BCV_AUTO">
               <label className="flex items-center gap-2 text-sm">
                 <RadioGroupItem value="BCV_AUTO" />
                 Tasa BCV automática
@@ -218,41 +200,6 @@ export function BusinessSettingsForm({
               </label>
             </RadioGroup>
           </div>
-
-          {rateMode === "CUSTOM" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="custom_rate_usd">Tu tasa USD</Label>
-                <Input
-                  id="custom_rate_usd"
-                  name="custom_rate_usd"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={exchangeSettings?.custom_rate_usd ?? ""}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  BCV hoy: {currentBcvUsd ? formatBs(currentBcvUsd) : "—"}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="custom_rate_eur">Tu tasa EUR</Label>
-                <Input
-                  id="custom_rate_eur"
-                  name="custom_rate_eur"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={exchangeSettings?.custom_rate_eur ?? ""}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  BCV hoy: {currentBcvEur ? formatBs(currentBcvEur) : "—"}
-                </p>
-              </div>
-            </div>
-          ) : null}
 
           <ExchangeRateLegalDisclaimer />
         </section>

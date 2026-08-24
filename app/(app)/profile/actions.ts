@@ -54,8 +54,11 @@ export async function deleteLogo(): Promise<{ error: string | null }> {
 // Saves the "Datos del negocio" and "Tasa de cambio" sections together —
 // they used to be two separate forms with two separate save buttons, which
 // read as confusing since both live under the same "Mi negocio" screen.
-// Exchange-rate fields are only present (and only validated/written) when
-// the owner is 'VE', matching the section's own visibility rule.
+//
+// País and the rate mode aren't user-editable right now (both render
+// disabled in the form), so this always writes country back unchanged and
+// always forces rate_mode to BCV_AUTO for a VE owner — there's no CUSTOM
+// path to validate or read custom rate fields for anymore.
 export async function updateBusinessSettings(
   _prevState: ProfileState,
   formData: FormData,
@@ -84,35 +87,13 @@ export async function updateBusinessSettings(
   }
 
   if (country === "VE") {
-    const rateMode = String(formData.get("rate_mode") ?? "");
-    if (rateMode !== "BCV_AUTO" && rateMode !== "CUSTOM") {
-      return { error: "Modo de tasa inválido.", success: false };
-    }
-
-    let customRateUsd: number | null = null;
-    let customRateEur: number | null = null;
-
-    if (rateMode === "CUSTOM") {
-      customRateUsd = Number(formData.get("custom_rate_usd"));
-      customRateEur = Number(formData.get("custom_rate_eur"));
-      if (!Number.isFinite(customRateUsd) || customRateUsd <= 0) {
-        return { error: "Ingresa una tasa USD válida.", success: false };
-      }
-      if (!Number.isFinite(customRateEur) || customRateEur <= 0) {
-        return { error: "Ingresa una tasa EUR válida.", success: false };
-      }
-    }
-
+    // Doesn't touch custom_rate_usd/custom_rate_eur — if an owner has old
+    // values there from before this was locked down, they stay put but are
+    // inert since rate_mode is always BCV_AUTO now.
     const { error: rateError } = await supabase.from("owner_exchange_settings").upsert(
       {
         owner_id: user.id,
-        rate_mode: rateMode,
-        custom_rate_usd: customRateUsd,
-        custom_rate_eur: customRateEur,
-        // Only refreshed on an actual CUSTOM save — audits when the custom
-        // rate last changed, and is left untouched when switching back to
-        // BCV_AUTO so that history isn't lost if the owner flips back later.
-        ...(rateMode === "CUSTOM" ? { custom_rate_set_at: new Date().toISOString() } : {}),
+        rate_mode: "BCV_AUTO",
         updated_at: new Date().toISOString(),
       },
       { onConflict: "owner_id" },
