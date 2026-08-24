@@ -10,12 +10,16 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   const firstName = String(formData.get("first_name") ?? "").trim();
   const lastName = String(formData.get("last_name") ?? "").trim();
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
+  const country = String(formData.get("country") ?? "");
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
 
   if (!businessName || !firstName || !lastName || !whatsapp || !email || !password) {
     return { error: "Completa todos los campos.", success: false };
+  }
+  if (country !== "CO" && country !== "VE") {
+    return { error: "Selecciona un país válido.", success: false };
   }
   if (password.length < 6) {
     return { error: "La contraseña debe tener al menos 6 caracteres.", success: false };
@@ -34,6 +38,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         first_name: firstName,
         last_name: lastName,
         whatsapp: whatsapp || null,
+        country,
       },
     },
   });

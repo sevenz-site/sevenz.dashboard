@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { signup, type SignupState } from "./actions";
@@ -8,12 +8,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import type { OwnerCountry } from "@/lib/types";
 
 const initialState: SignupState = { error: null, success: false };
 
+// Dial code each country's WhatsApp field jumps to the moment "País" changes
+// — the owner can still pick a different code afterward, this just saves
+// the common case of it matching their own country.
+const COUNTRY_DIAL_CODE: Record<OwnerCountry, string> = { CO: "57", VE: "58" };
+
 export default function SignupPage() {
   const [state, formAction, pending] = useActionState(signup, initialState);
+  // Defaults to VE — most signups right now are Venezuelan business owners.
+  // This is the only place an owner ever sets their country: it can't be
+  // changed later from "Mi negocio" since currency and future DIAN/SENIAT
+  // rules key off of it.
+  const [country, setCountry] = useState<OwnerCountry>("VE");
 
   if (state.success) {
     return (
@@ -61,8 +79,32 @@ export default function SignupPage() {
               </div>
             </div>
             <div className="flex flex-col gap-2">
+              <Label htmlFor="country">País</Label>
+              <Select
+                name="country"
+                value={country}
+                onValueChange={(v) => setCountry(v as OwnerCountry)}
+              >
+                <SelectTrigger id="country" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CO">Colombia (COP)</SelectItem>
+                  <SelectItem value="VE">Venezuela (Bs)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                No podrás cambiarlo después — contáctanos si necesitas hacerlo.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
               <Label htmlFor="whatsapp">WhatsApp</Label>
-              <WhatsappInput id="whatsapp" name="whatsapp" required />
+              <WhatsappInput
+                id="whatsapp"
+                name="whatsapp"
+                required
+                preferredDialCode={COUNTRY_DIAL_CODE[country]}
+              />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>

@@ -38,14 +38,22 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.owners (id, email, business_name, first_name, last_name, whatsapp)
+  insert into public.owners (id, email, business_name, first_name, last_name, whatsapp, country)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'business_name', ''),
     new.raw_user_meta_data ->> 'first_name',
     new.raw_user_meta_data ->> 'last_name',
-    new.raw_user_meta_data ->> 'whatsapp'
+    new.raw_user_meta_data ->> 'whatsapp',
+    -- Signup is the only place an owner picks their country — 'Mi negocio'
+    -- renders it disabled afterward. Anything other than the two valid
+    -- codes (a missing field, an admin-created user, ...) falls back to
+    -- the column's own default rather than failing the whole signup.
+    case
+      when new.raw_user_meta_data ->> 'country' in ('CO', 'VE') then new.raw_user_meta_data ->> 'country'
+      else 'CO'
+    end
   );
   return new;
 end;
