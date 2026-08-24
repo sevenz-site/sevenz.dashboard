@@ -67,26 +67,40 @@ $$;
 grant execute on function public.recalc_client_running_balance(uuid) to authenticated;
 
 -- ── 2. convert existing VE movements from Bs to USD ─────────────────────
--- Uses the rate snapshot written with each movement; falls back to the
--- current official rate for rows written before those snapshots existed.
--- Deliberately does NOT fall back to exchange_rate_used: on a EUR-entered
--- movement that column holds the EUR rate, which would yield euros here.
-update public.movements m
-set amount = m.amount / nullif(
-  coalesce(m.rate_usd_at_time, (select usd from public.get_current_bcv_rate())), 0
-)
-where m.client_id in (
-  select c.id from public.clients c
-  join public.owners o on o.id = c.owner_id
-  where o.country = 'VE'
-)
-and coalesce(m.rate_usd_at_time, (select usd from public.get_current_bcv_rate())) is not null;
+-- Guarded by a marker row: this rewrites real amounts, and running it a
+-- second time would divide them by the rate twice. The guard makes the
+-- whole file safe to re-run.
+create table if not exists public.applied_data_migrations (
+  key text primary key,
+  applied_at timestamptz not null default now()
+);
 
--- ── 3. rebuild running balances for those clients ───────────────────────
 do $$
 declare
   r record;
+  v_rate numeric;
 begin
+  if exists (select 1 from public.applied_data_migrations where key = '024_usd_indexed_ledger') then
+    raise notice '024 data conversion already applied — skipping.';
+    return;
+  end if;
+
+  select usd into v_rate from public.get_current_bcv_rate();
+
+  -- Uses the rate snapshot written with each movement; falls back to the
+  -- current official rate for rows written before those snapshots existed.
+  -- Deliberately does NOT fall back to exchange_rate_used: on a EUR-entered
+  -- movement that column holds the EUR rate, which would yield euros here.
+  update public.movements m
+  set amount = m.amount / nullif(coalesce(m.rate_usd_at_time, v_rate), 0)
+  where m.client_id in (
+    select c.id from public.clients c
+    join public.owners o on o.id = c.owner_id
+    where o.country = 'VE'
+  )
+  and coalesce(m.rate_usd_at_time, v_rate) is not null;
+
+  -- Rebuild running balances for every affected client.
   for r in
     select distinct c.id
     from public.clients c
@@ -95,5 +109,7 @@ begin
   loop
     perform public.recalc_client_running_balance(r.id);
   end loop;
+
+  insert into public.applied_data_migrations (key) values ('024_usd_indexed_ledger');
 end
 $$;
