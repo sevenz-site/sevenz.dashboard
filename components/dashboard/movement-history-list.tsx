@@ -10,7 +10,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
-import { formatDate } from "@/lib/format";
+import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { Movement } from "@/lib/types";
 
@@ -64,12 +64,14 @@ export function MovementHistoryList({
             >
               <button
                 type="button"
-                className="flex w-full flex-wrap items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+                className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {m.type === "charge" ? "Fiado" : "Abono"}
-                    {m.description ? ` · ${m.description}` : ""}
+                  <p className="truncate text-sm font-medium">
+                    {truncateText(
+                      `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
+                      34,
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDate(m.created_at)}
@@ -77,7 +79,7 @@ export function MovementHistoryList({
                   </p>
                   <p className="text-xs text-muted-foreground">Por cobrar {balance.primary}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <div
                     className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
                   >

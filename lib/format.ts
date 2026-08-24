@@ -34,3 +34,13 @@ export function formatDateTime(iso: string): string {
 export function formatPlazoDias(days: number | null): string {
   return days == null ? "—" : `${days} días`;
 }
+
+// CSS truncate alone isn't enough on the movement-history rows: the title
+// wraps to a second line before the browser gets a chance to ellipsize it,
+// which pushes the row taller and breaks the amount's right alignment. A hard
+// character cap keeps every row the same height regardless of description
+// length.
+export function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}

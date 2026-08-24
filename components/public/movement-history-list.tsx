@@ -10,7 +10,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
-import { formatDate } from "@/lib/format";
+import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -84,8 +84,10 @@ export function MovementHistoryList({
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
-                    {m.type === "charge" ? "Fiado" : "Abono"}
-                    {m.description ? ` · ${m.description}` : ""}
+                    {truncateText(
+                      `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
+                      34,
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
                   <p className="text-xs text-muted-foreground">
