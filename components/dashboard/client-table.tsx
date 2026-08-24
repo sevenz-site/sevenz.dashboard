@@ -31,10 +31,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ShareActions } from "@/components/dashboard/share-actions";
+import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { CreditScoreResult } from "@/lib/credit-score";
-import { formatCurrency, formatDate } from "@/lib/format";
+import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { formatDate } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_DESCRIPTION,
@@ -61,10 +63,14 @@ const PAGE_SIZE = 15;
 export function ClientTable({
   rows,
   scores,
+  rateContext = null,
   emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
 }: {
   rows: ClientSummary[];
   scores?: Record<string, CreditScoreResult>;
+  // Only present for a country='VE' owner with a rate already fetched —
+  // absent (null) means every row renders exactly like today's COP figure.
+  rateContext?: OwnerRateContext | null;
   emptyMessage?: string;
 }) {
   const router = useRouter();
@@ -268,7 +274,9 @@ export function ClientTable({
                           </div>
                           <div className="text-xs font-normal text-muted-foreground">—</div>
                         </TableCell>
-                        <TableCell className="tabular-nums">{formatCurrency(0)}</TableCell>
+                        <TableCell className="tabular-nums">
+                          <ExchangeRateBalanceDisplay balance={0} rateContext={rateContext} size="sm" />
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.sin_deuda}>
                             {CLIENT_STATUS_LABEL.sin_deuda}
@@ -326,7 +334,9 @@ export function ClientTable({
                             {row.document_id || "—"}
                           </div>
                         </TableCell>
-                        <TableCell className="tabular-nums">{formatCurrency(row.balance)}</TableCell>
+                        <TableCell className="tabular-nums">
+                          <ExchangeRateBalanceDisplay balance={row.balance} rateContext={rateContext} size="sm" />
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>

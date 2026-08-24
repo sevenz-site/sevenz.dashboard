@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/format";
+import { formatBs } from "@/lib/exchange-rate/format";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { toBs, type MovementCurrency } from "@/lib/exchange-rate/convert";
 
 export type MovementFormState = { error: string | null; clientId: string | null };
 
@@ -12,16 +15,19 @@ type ParsedMovement =
       error: null;
       type: "charge" | "payment";
       amount: number;
+      currency: MovementCurrency;
       description: string | null;
       photoPath: string | null;
       plazoDias: number | null;
     };
 
 const ALLOWED_PLAZO_DIAS = [7, 15, 30, 45];
+const ALLOWED_CURRENCIES: MovementCurrency[] = ["VES", "USD", "EUR"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
   const type = String(formData.get("type") ?? "");
   const amountRaw = String(formData.get("amount") ?? "");
+  const currencyRaw = String(formData.get("movement_currency") ?? "VES");
   const description = String(formData.get("description") ?? "").trim();
   const photoPath = String(formData.get("photo_path") ?? "").trim();
   const plazoRaw = String(formData.get("plazo_dias") ?? "");
@@ -33,6 +39,9 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Ingresa un monto válido." };
   }
+  const currency = ALLOWED_CURRENCIES.includes(currencyRaw as MovementCurrency)
+    ? (currencyRaw as MovementCurrency)
+    : "VES";
 
   // A payment has no payment term. A charge's plazo is only ever what the
   // form actually submitted — "sin_especificar" (or missing) means null.
@@ -49,9 +58,47 @@ function parseMovementFields(formData: FormData): ParsedMovement {
     error: null,
     type,
     amount,
+    currency,
     description: description || null,
     photoPath: photoPath || null,
     plazoDias,
+  };
+}
+
+// Converts the entered amount into Bs (the canonical ledger unit) and
+// returns the audit snapshot for a country='VE' owner. Returns the amount
+// completely untouched (and every snapshot field null) for a 'CO' owner or
+// a 'VE' owner with no rate fetched yet — same as today's COP behavior.
+async function resolveMovementAmount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  rawAmount: number,
+  currency: MovementCurrency,
+) {
+  const rateContext = await getOwnerRateContext(supabase, ownerId);
+  if (!rateContext) {
+    return { amount: rawAmount, rateModeUsed: null, exchangeRateUsed: null, officialBcvRateAtTime: null };
+  }
+
+  const amount = toBs(rawAmount, currency, rateContext.effectiveRate);
+  const officialForCurrency =
+    currency === "USD"
+      ? rateContext.officialRate.usd
+      : currency === "EUR"
+        ? rateContext.officialRate.eur
+        : null;
+  const effectiveForCurrency =
+    currency === "USD"
+      ? rateContext.effectiveRate.usd
+      : currency === "EUR"
+        ? rateContext.effectiveRate.eur
+        : null;
+
+  return {
+    amount,
+    rateModeUsed: rateContext.rateMode,
+    exchangeRateUsed: effectiveForCurrency,
+    officialBcvRateAtTime: officialForCurrency,
   };
 }
 
@@ -77,7 +124,7 @@ export async function createClientWithMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, amount, description, photoPath, plazoDias } = fields;
+  const { type, amount, currency, description, photoPath, plazoDias } = fields;
 
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
   if (type === "payment") {
@@ -103,14 +150,19 @@ export async function createClientWithMovement(
     };
   }
 
+  const resolved = await resolveMovementAmount(supabase, user.id, amount, currency);
+
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: newClient.id,
     type,
-    amount,
+    amount: resolved.amount,
     description,
     source: "manual",
     photo_path: photoPath,
     plazo_dias: plazoDias,
+    rate_mode_used: resolved.rateModeUsed,
+    exchange_rate_used: resolved.exchangeRateUsed,
+    official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
   });
 
   if (movementError) {
@@ -137,7 +189,12 @@ export async function addMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, amount, description, photoPath, plazoDias } = fields;
+  const { type, amount, currency, description, photoPath, plazoDias } = fields;
+
+  // Converted to Bs (or left untouched for a 'CO' owner) before the debt
+  // check below — running_balance is always in the same unit as amount,
+  // so comparing a raw USD/EUR entry against it directly would be wrong.
+  const resolved = await resolveMovementAmount(supabase, user.id, amount, currency);
 
   // A payment can never exceed what the client currently owes — otherwise
   // the balance goes negative ("a favor"), which the product no longer
@@ -157,9 +214,14 @@ export async function addMovement(
     if (currentDebt <= 0) {
       return { error: "Este cliente no debe nada — no se puede registrar un abono.", clientId: null };
     }
-    if (amount > currentDebt) {
+    if (resolved.amount > currentDebt) {
+      // A VE owner's ledger is in Bs, not COP — resolveMovementAmount only
+      // returns a non-null rateModeUsed for that case, so it doubles as the
+      // signal for which formatter matches what's actually stored.
+      const formattedDebt =
+        resolved.rateModeUsed !== null ? formatBs(currentDebt) : formatCurrency(currentDebt);
       return {
-        error: `El abono no puede ser mayor a lo que debe (${formatCurrency(currentDebt)}).`,
+        error: `El abono no puede ser mayor a lo que debe (${formattedDebt}).`,
         clientId: null,
       };
     }
@@ -168,11 +230,14 @@ export async function addMovement(
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: clientId,
     type,
-    amount,
+    amount: resolved.amount,
     description,
     source: "manual",
     photo_path: photoPath,
     plazo_dias: plazoDias,
+    rate_mode_used: resolved.rateModeUsed,
+    exchange_rate_used: resolved.exchangeRateUsed,
+    official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
   });
 
   if (movementError) {

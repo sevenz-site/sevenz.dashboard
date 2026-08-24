@@ -19,10 +19,12 @@ import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
+import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { track } from "@/lib/mixpanel";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
+import type { MovementCurrency, MovementRateContext } from "@/lib/exchange-rate/convert";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -32,10 +34,14 @@ export function ClientSearchDialog({
   clients,
   ownerId,
   businessName,
+  rateContext,
 }: {
   clients: ClientOption[];
   ownerId: string;
   businessName: string;
+  // Only present for a country='VE' owner with a rate already fetched —
+  // null means "behave exactly like today's COP flow", no currency select.
+  rateContext: MovementRateContext | null;
 }) {
   const router = useRouter();
   const tour = useTour();
@@ -43,6 +49,8 @@ export function ClientSearchDialog({
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
+  const [currency, setCurrency] = useState<MovementCurrency>("VES");
+  const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
@@ -61,6 +69,7 @@ export function ClientSearchDialog({
       setStep("search");
       setQuery("");
       setPhotoPath(null);
+      setAmountStr("");
     }
   }
 
@@ -192,8 +201,26 @@ export function ClientSearchDialog({
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="amount">Monto</Label>
-                <Input id="amount" name="amount" type="number" min="0" step="0.01" required />
+                <Input
+                  id="amount"
+                  name="amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amountStr}
+                  onChange={(e) => setAmountStr(e.target.value)}
+                  required
+                />
               </div>
+
+              {rateContext ? (
+                <MovementCurrencyField
+                  amount={amountStr}
+                  currency={currency}
+                  onCurrencyChange={setCurrency}
+                  rateContext={rateContext}
+                />
+              ) : null}
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="description">Detalle (opcional)</Label>

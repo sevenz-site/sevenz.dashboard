@@ -1,6 +1,16 @@
-import type { DisplayCurrency } from "@/lib/types";
+import type { DisplayCurrency, ExchangeRateMode } from "@/lib/types";
 
 export type MovementCurrency = "VES" | "USD" | "EUR";
+
+// Client-safe subset of lib/exchange-rate/owner-rate.ts's OwnerRateContext —
+// no supabase-js dependency, so it's fine to pass down into "use client"
+// dialogs as a plain prop (loaded once server-side when the dialog's parent
+// page renders, not refetched per keystroke).
+export type MovementRateContext = {
+  rateMode: ExchangeRateMode;
+  effectiveRate: EffectiveRate;
+  officialRateUsd: number;
+};
 
 export const MOVEMENT_CURRENCY_OPTIONS: { value: MovementCurrency; label: string }[] = [
   { value: "VES", label: "Bs (Bolívares)" },
@@ -19,6 +29,16 @@ export function toBs(amount: number, currency: MovementCurrency, rate: Effective
   if (currency === "VES") return amount;
   const perUnit = currency === "USD" ? rate.usd : rate.eur;
   return amount * perUnit;
+}
+
+// Inverse of toBs — converts a Bs amount back into whatever currency is
+// currently selected, so a debt cap expressed in Bs (running_balance) can
+// be shown/enforced in the currency the owner is actually typing in.
+export function fromBs(bsAmount: number, currency: MovementCurrency, rate: EffectiveRate): number {
+  if (currency === "VES") return bsAmount;
+  const perUnit = currency === "USD" ? rate.usd : rate.eur;
+  if (!perUnit) return bsAmount;
+  return bsAmount / perUnit;
 }
 
 // Converts a Bs amount into the owner's chosen display currency, for the

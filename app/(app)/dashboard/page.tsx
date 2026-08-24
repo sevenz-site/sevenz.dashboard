@@ -3,8 +3,10 @@ import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
-import { formatCurrency } from "@/lib/format";
 import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -13,7 +15,7 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }] = await Promise.all([
+  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
@@ -25,7 +27,16 @@ export default async function DashboardPage() {
       .eq("owner_id", user!.id)
       .order("name"),
     supabase.from("owners").select("business_name").eq("id", user!.id).single(),
+    getOwnerRateContext(supabase, user!.id),
   ]);
+
+  const rateContext: MovementRateContext | null = ownerRate
+    ? {
+        rateMode: ownerRate.rateMode,
+        effectiveRate: ownerRate.effectiveRate,
+        officialRateUsd: ownerRate.officialRate.usd,
+      }
+    : null;
 
   const rows = (summaries ?? []) as ClientSummary[];
   // Capital por cobrar counts every client's debt regardless of flag status —
@@ -62,9 +73,11 @@ export default async function DashboardPage() {
         <div className="flex flex-1 flex-wrap items-start gap-4">
           <div>
             <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-            <p className="text-3xl font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-              {formatCurrency(totalEnMora)}
-            </p>
+            <ExchangeRateBalanceDisplay
+              balance={totalEnMora}
+              rateContext={ownerRate}
+              mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               Lo que tus clientes te deben en total, sin descontar nada.
             </p>
@@ -75,9 +88,10 @@ export default async function DashboardPage() {
           clients={clients ?? []}
           ownerId={user!.id}
           businessName={owner?.business_name || user!.email || "tu negocio"}
+          rateContext={rateContext}
         />
       </div>
-      <ClientTable rows={visibleRows} scores={scores} />
+      <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} />
     </div>
   );
 }

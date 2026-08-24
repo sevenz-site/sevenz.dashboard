@@ -12,8 +12,11 @@ import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { computeCreditScore } from "@/lib/credit-score";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
@@ -39,12 +42,21 @@ export default async function ClientDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: summary }] = await Promise.all([
+  const [{ data: client }, { data: summary }, ownerRate] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
     supabase.from("client_summary").select("*").eq("client_id", id).maybeSingle(),
+    getOwnerRateContext(supabase, user!.id),
   ]);
 
   if (!client) notFound();
+
+  const rateContext: MovementRateContext | null = ownerRate
+    ? {
+        rateMode: ownerRate.rateMode,
+        effectiveRate: ownerRate.effectiveRate,
+        officialRateUsd: ownerRate.officialRate.usd,
+      }
+    : null;
 
   const clientSummary = summary as ClientSummary | null;
   const balance = clientSummary?.balance ?? 0;
@@ -95,7 +107,7 @@ export default async function ClientDetailPage({
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Por cobrar</p>
-          <p className="text-2xl font-semibold tabular-nums">{formatCurrency(balance)}</p>
+          <ExchangeRateBalanceDisplay balance={balance} rateContext={ownerRate} />
         </div>
         <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
         <AddMovementDialog
@@ -105,6 +117,7 @@ export default async function ClientDetailPage({
           currentDebt={balance}
           isFlagged={client.is_flagged}
           triggerClassName="w-full"
+          rateContext={rateContext}
         />
       </div>
 
@@ -116,7 +129,7 @@ export default async function ClientDetailPage({
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">Por cobrar</p>
-            <p className="text-2xl font-semibold tabular-nums">{formatCurrency(balance)}</p>
+            <ExchangeRateBalanceDisplay balance={balance} rateContext={ownerRate} align="end" />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -138,6 +151,7 @@ export default async function ClientDetailPage({
             ownerId={user!.id}
             currentDebt={balance}
             isFlagged={client.is_flagged}
+            rateContext={rateContext}
           />
         </div>
       </div>

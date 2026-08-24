@@ -37,7 +37,10 @@ import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
+import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
 import { formatCurrency } from "@/lib/format";
+import { formatBs } from "@/lib/exchange-rate/format";
+import { fromBs, type MovementCurrency, type MovementRateContext } from "@/lib/exchange-rate/convert";
 import { track } from "@/lib/mixpanel";
 import { cn } from "@/lib/utils";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
@@ -51,6 +54,7 @@ export function AddMovementDialog({
   currentDebt,
   isFlagged,
   triggerClassName,
+  rateContext,
 }: {
   clientId: string;
   clientName: string;
@@ -60,20 +64,40 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
+  // Only present for a country='VE' owner with a rate already fetched —
+  // null means "behave exactly like today's COP flow", no currency select.
+  rateContext: MovementRateContext | null;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
+  const [currency, setCurrency] = useState<MovementCurrency>("VES");
+  const [amountStr, setAmountStr] = useState("");
   const canPay = currentDebt > 0;
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(addMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
 
+  // The debt cap has to be expressed in whatever currency the owner is
+  // currently typing in — running_balance/currentDebt is always Bs, so a
+  // USD/EUR entry needs the inverse conversion, not the raw Bs number.
+  const maxDebtInCurrency = rateContext
+    ? fromBs(currentDebt, currency, rateContext.effectiveRate)
+    : currentDebt;
+  const formattedMaxDebt = rateContext
+    ? currency === "VES"
+      ? formatBs(maxDebtInCurrency)
+      : maxDebtInCurrency.toFixed(2)
+    : formatCurrency(currentDebt);
+
   if (open !== prevOpen) {
     setPrevOpen(open);
-    if (!open) setPhotoPath(null);
+    if (!open) {
+      setPhotoPath(null);
+      setAmountStr("");
+    }
   }
 
   const [handledState, setHandledState] = useState(state);
@@ -136,16 +160,27 @@ export function AddMovementDialog({
               name="amount"
               type="number"
               min="0"
-              max={type === "payment" ? currentDebt : undefined}
+              max={type === "payment" ? maxDebtInCurrency : undefined}
               step="0.01"
+              value={amountStr}
+              onChange={(e) => setAmountStr(e.target.value)}
               required
             />
             {type === "payment" ? (
               <p className="text-xs text-muted-foreground">
-                Máximo {formatCurrency(currentDebt)} — lo que {clientName} debe hoy.
+                Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.
               </p>
             ) : null}
           </div>
+
+          {rateContext ? (
+            <MovementCurrencyField
+              amount={amountStr}
+              currency={currency}
+              onCurrencyChange={setCurrency}
+              rateContext={rateContext}
+            />
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="description">Detalle (opcional)</Label>
