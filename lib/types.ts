@@ -1,6 +1,9 @@
 export type MovementType = "charge" | "payment";
 export type MovementSource = "photo_import" | "manual";
 
+export type ExchangeRateMode = "BCV_AUTO" | "CUSTOM";
+export type DisplayCurrency = "USD" | "EUR";
+
 export type Movement = {
   id: string;
   client_id: string;
@@ -13,6 +16,13 @@ export type Movement = {
   photo_path: string | null;
   plazo_dias: number | null;
   created_at: string;
+  // Exchange-rate snapshot: null for every movement recorded by a country
+  // = 'CO' owner. official_bcv_rate_at_time is always filled in for a 'VE'
+  // owner even when rate_mode_used = 'CUSTOM' — the objective comparison
+  // point for a future dispute.
+  rate_mode_used: ExchangeRateMode | null;
+  exchange_rate_used: number | null;
+  official_bcv_rate_at_time: number | null;
 };
 
 // Payment terms selectable on a charge. null ("Sin especificar") means no
@@ -27,6 +37,9 @@ export const PLAZO_PAGO_OPTIONS: { value: string; label: string; days: number | 
 export const DEFAULT_PLAZO_PAGO = "7";
 
 export type OwnerPlan = "free" | "pro";
+// Gates the exchange-rate feature end to end: only 'VE' owners see any of
+// the Bs/BCV UI. 'CO' is the default — every existing owner is unaffected.
+export type OwnerCountry = "CO" | "VE";
 
 export type Owner = {
   id: string;
@@ -40,8 +53,28 @@ export type Owner = {
   logo_path: string | null;
   plan: OwnerPlan;
   payment_info: string | null;
+  country: OwnerCountry;
   onboarding_completed_at: string | null;
   created_at: string;
+};
+
+// No row = implicit BCV_AUTO + USD (the settings screen only upserts once
+// the owner actually saves).
+export type OwnerExchangeSettings = {
+  owner_id: string;
+  rate_mode: ExchangeRateMode;
+  custom_rate_usd: number | null;
+  custom_rate_eur: number | null;
+  custom_rate_set_at: string | null;
+  display_currency: DisplayCurrency;
+  updated_at: string;
+};
+
+export type BcvRate = {
+  usd: number;
+  eur: number;
+  source: string;
+  fetched_at: string;
 };
 
 export type Client = {

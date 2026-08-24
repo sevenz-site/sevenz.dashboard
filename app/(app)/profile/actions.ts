@@ -69,9 +69,13 @@ export async function updateProfile(
   const taxId = String(formData.get("tax_id") ?? "").trim();
   const logoPath = String(formData.get("logo_path") ?? "").trim();
   const paymentInfo = String(formData.get("payment_info") ?? "").trim().slice(0, 500);
+  const country = String(formData.get("country") ?? "CO");
 
   if (!businessName || !firstName || !lastName) {
     return { error: "Completa nombre del negocio, nombre y apellido.", success: false };
+  }
+  if (country !== "CO" && country !== "VE") {
+    return { error: "País inválido.", success: false };
   }
 
   const { error } = await supabase
@@ -85,6 +89,7 @@ export async function updateProfile(
       tax_id: taxId || null,
       logo_path: logoPath || null,
       payment_info: paymentInfo || null,
+      country,
     })
     .eq("id", user.id);
 

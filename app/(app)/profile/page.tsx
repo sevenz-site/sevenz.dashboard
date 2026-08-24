@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { ProfileForm } from "@/components/dashboard/profile-form";
 import { ChangePasswordForm } from "@/components/dashboard/change-password-form";
-import type { Owner } from "@/lib/types";
+import { ExchangeRateSettingsForm } from "@/components/dashboard/exchange-rate-settings-form";
+import type { Owner, OwnerExchangeSettings } from "@/lib/types";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -20,6 +21,22 @@ export default async function ProfilePage() {
 
   const logoUrl = owner.logo_path ? getPublicLogoUrl(owner.logo_path) : null;
 
+  // The whole exchange-rate section is gated on country — it never renders
+  // (and these two queries never run) for a 'CO' owner.
+  let exchangeSettings: OwnerExchangeSettings | null = null;
+  let currentBcvUsd: number | null = null;
+  let currentBcvEur: number | null = null;
+  if (owner.country === "VE") {
+    const [{ data: settings }, { data: currentRate }] = await Promise.all([
+      supabase.from("owner_exchange_settings").select("*").eq("owner_id", user!.id).maybeSingle(),
+      supabase.rpc("get_current_bcv_rate").maybeSingle(),
+    ]);
+    exchangeSettings = settings as OwnerExchangeSettings | null;
+    const rate = currentRate as unknown as { usd: number; eur: number } | null;
+    currentBcvUsd = rate?.usd ?? null;
+    currentBcvEur = rate?.eur ?? null;
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-8">
       <div>
@@ -33,6 +50,17 @@ export default async function ProfilePage() {
         <h2 className="text-sm font-medium text-muted-foreground">Datos del negocio</h2>
         <ProfileForm owner={owner as Owner} logoUrl={logoUrl} />
       </section>
+
+      {owner.country === "VE" ? (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium text-muted-foreground">Tasa de cambio</h2>
+          <ExchangeRateSettingsForm
+            settings={exchangeSettings}
+            currentBcvUsd={currentBcvUsd}
+            currentBcvEur={currentBcvEur}
+          />
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-muted-foreground">Contraseña</h2>

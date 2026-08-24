@@ -6,17 +6,25 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { LogoUploader } from "@/components/dashboard/logo-uploader";
 import { FormattedTextarea } from "@/components/dashboard/formatted-textarea";
 import { updateProfile, type ProfileState } from "@/app/(app)/profile/actions";
-import type { Owner } from "@/lib/types";
+import type { Owner, OwnerCountry } from "@/lib/types";
 
 const initialState: ProfileState = { error: null, success: false };
 
 export function ProfileForm({ owner, logoUrl }: { owner: Owner; logoUrl: string | null }) {
   const router = useRouter();
   const [logoPath, setLogoPath] = useState<string | null>(owner.logo_path);
+  const [country, setCountry] = useState(owner.country);
   const [state, formAction, pending] = useActionState(updateProfile, initialState);
 
   useEffect(() => {
@@ -58,6 +66,24 @@ export function ProfileForm({ owner, logoUrl }: { owner: Owner; logoUrl: string 
       <div className="flex flex-col gap-2">
         <Label htmlFor="whatsapp">WhatsApp</Label>
         <WhatsappInput id="whatsapp" name="whatsapp" defaultValue={owner.whatsapp} />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>País</Label>
+        <Select name="country" value={country} onValueChange={(v) => setCountry(v as OwnerCountry)}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="CO">Colombia (COP)</SelectItem>
+            <SelectItem value="VE">Venezuela (Bs)</SelectItem>
+          </SelectContent>
+        </Select>
+        {country === "VE" ? (
+          <p className="text-xs text-muted-foreground">
+            Al guardar, verás una sección nueva de &quot;Tasa de cambio&quot; más abajo.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
