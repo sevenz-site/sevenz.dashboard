@@ -283,6 +283,11 @@ grant select, insert, update, delete on public.movements to authenticated;
 grant select, insert, update, delete on public.share_links to authenticated;
 grant select, insert, update on public.owner_exchange_settings to authenticated;
 grant select on public.bcv_exchange_rate_fetches to authenticated;
+-- The rate-fetch route writes as the service role (no owner session exists
+-- when Vercel Cron calls it). service_role bypasses RLS but still needs
+-- table privileges, and this schema doesn't rely on Supabase's automatic
+-- default privileges — hence the explicit grant.
+grant select, insert on public.bcv_exchange_rate_fetches to service_role;
 
 -- Walks a client's movements oldest-to-newest, applying payments to charges
 -- FIFO (oldest charge first) the way a running balance implicitly does, and
