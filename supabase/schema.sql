@@ -119,6 +119,12 @@ create table if not exists public.movements (
   -- stored. numeric(14,4) rather than (12,2) because a Bs-entered amount
   -- becomes a fractional dollar figure that must round-trip cleanly.
   amount numeric(14, 4) not null check (amount > 0),
+  -- Denominates this specific movement — a VE client can owe USD and EUR at
+  -- the same time as two fully independent balances, so unlike the single
+  -- COP ledger (currency = null), amount's unit varies row by row. Every
+  -- balance-scoped query below (running_balance, FIFO matching) is scoped
+  -- by (client_id, currency), not client_id alone.
+  currency text check (currency is null or currency in ('USD', 'EUR')),
   description text,
   source text not null default 'manual' check (source in ('photo_import', 'manual')),
   running_balance numeric(14, 4) not null default 0,
@@ -154,6 +160,8 @@ create table if not exists public.movements (
 create index if not exists movements_client_id_idx on public.movements (client_id, created_at);
 create index if not exists movements_client_id_active_idx
   on public.movements (client_id, created_at) where deleted_at is null;
+create index if not exists movements_client_currency_idx
+  on public.movements (client_id, currency, created_at) where deleted_at is null;
 
 alter table public.movements enable row level security;
 
@@ -165,7 +173,9 @@ create policy "owners manage own movements" on public.movements
   );
 
 -- running_balance is always server-computed: previous balance for the client
--- plus/minus this movement's amount. This is the reconciliation source of truth.
+-- *in this same currency* plus/minus this movement's amount. This is the
+-- reconciliation source of truth. Scoped by (client_id, currency) — a VE
+-- client's USD and EUR balances are two independent chains.
 create or replace function public.set_movement_running_balance()
 returns trigger
 language plpgsql
@@ -175,7 +185,9 @@ declare
 begin
   select running_balance into v_prev
   from public.movements
-  where client_id = new.client_id and deleted_at is null
+  where client_id = new.client_id
+    and currency is not distinct from new.currency
+    and deleted_at is null
   order by created_at desc, id desc
   limit 1;
 
@@ -191,27 +203,38 @@ create trigger trg_set_movement_running_balance
   before insert on public.movements
   for each row execute function public.set_movement_running_balance();
 
--- Walks a client's non-deleted movements oldest-to-newest and rewrites
+-- Walks each of a client's currency chains oldest-to-newest and rewrites
 -- running_balance on every one of them. Called after a delete or a restore,
--- since either one can shift every balance that came after it. Not
--- SECURITY DEFINER: it runs as the calling owner, so movements RLS quietly
--- limits it to that owner's own clients even if a bad client_id is passed.
+-- since either one can shift every balance that came after it in that same
+-- currency. Not SECURITY DEFINER: it runs as the calling owner, so movements
+-- RLS quietly limits it to that owner's own clients even if a bad client_id
+-- is passed.
 create or replace function public.recalc_client_running_balance(p_client_id uuid)
 returns void
 language plpgsql
 as $$
 declare
+  cur record;
   m record;
-  running numeric(14, 4) := 0;
+  running numeric(14, 4);
 begin
-  for m in
-    select id, type, amount
+  for cur in
+    select distinct currency
     from public.movements
     where client_id = p_client_id and deleted_at is null
-    order by created_at asc, id asc
   loop
-    running := running + (case when m.type = 'charge' then m.amount else -m.amount end);
-    update public.movements set running_balance = running where id = m.id;
+    running := 0;
+    for m in
+      select id, type, amount
+      from public.movements
+      where client_id = p_client_id
+        and currency is not distinct from cur.currency
+        and deleted_at is null
+      order by created_at asc, id asc
+    loop
+      running := running + (case when m.type = 'charge' then m.amount else -m.amount end);
+      update public.movements set running_balance = running where id = m.id;
+    end loop;
   end loop;
 end;
 $$;
@@ -314,11 +337,15 @@ grant select on public.bcv_exchange_rate_fetches to authenticated;
 -- default privileges — hence the explicit grant.
 grant select, insert on public.bcv_exchange_rate_fetches to service_role;
 
--- Walks a client's movements oldest-to-newest, applying payments to charges
--- FIFO (oldest charge first) the way a running balance implicitly does, and
--- returns the date + plazo_dias of whichever charge is still oldest-unpaid.
--- Returns no rows once every charge has been fully paid off.
-create or replace function public.get_oldest_unpaid_charge(p_client_id uuid)
+-- Walks one currency chain of a client's movements oldest-to-newest,
+-- applying payments to charges FIFO (oldest charge first) the way a running
+-- balance implicitly does, and returns the date + plazo_dias of whichever
+-- charge is still oldest-unpaid *in that currency*. Returns no rows once
+-- every charge in that chain has been fully paid off.
+create or replace function public.get_oldest_unpaid_charge_for_currency(
+  p_client_id uuid,
+  p_currency text
+)
 returns table (charge_at timestamptz, plazo_dias int)
 language plpgsql
 stable
@@ -334,7 +361,9 @@ begin
   for m in
     select mv.type, mv.amount, mv.created_at, mv.plazo_dias
     from public.movements mv
-    where mv.client_id = p_client_id and mv.deleted_at is null
+    where mv.client_id = p_client_id
+      and mv.currency is not distinct from p_currency
+      and mv.deleted_at is null
     order by mv.created_at asc, mv.id asc
   loop
     if m.type = 'charge' then
@@ -372,9 +401,53 @@ begin
 end;
 $$;
 
+grant execute on function public.get_oldest_unpaid_charge_for_currency(uuid, text) to authenticated;
+
+-- Kept at the same signature the view and app already call: returns the
+-- earliest still-unpaid charge across every currency, since status and mora
+-- remain a single combined judgement per client even though the balances
+-- themselves are independent per currency.
+create or replace function public.get_oldest_unpaid_charge(p_client_id uuid)
+returns table (charge_at timestamptz, plazo_dias int)
+language plpgsql
+stable
+as $$
+declare
+  cur record;
+  r record;
+  best_at timestamptz;
+  best_plazo int;
+begin
+  for cur in
+    select distinct currency
+    from public.movements
+    where client_id = p_client_id and deleted_at is null
+  loop
+    select * into r
+    from public.get_oldest_unpaid_charge_for_currency(p_client_id, cur.currency);
+
+    if r.charge_at is not null and (best_at is null or r.charge_at < best_at) then
+      best_at := r.charge_at;
+      best_plazo := r.plazo_dias;
+    end if;
+  end loop;
+
+  if best_at is not null then
+    charge_at := best_at;
+    plazo_dias := best_plazo;
+    return next;
+  end if;
+
+  return;
+end;
+$$;
+
 grant execute on function public.get_oldest_unpaid_charge(uuid) to authenticated;
 
 -- ── dashboard view: one row per client with balance + days-since-payment ──
+-- COP owners (country='CO') use the currency-less chain (`balance`); VE
+-- owners get one independent balance per currency (`balance_usd`,
+-- `balance_eur`) since a client can owe both at once.
 create or replace view public.client_summary
 with (security_invoker = on) as
 select
@@ -383,7 +456,9 @@ select
   c.name,
   c.whatsapp,
   c.created_at as client_created_at,
-  coalesce(latest.running_balance, 0) as balance,
+  coalesce(latest_cop.running_balance, 0) as balance,
+  coalesce(latest_usd.running_balance, 0) as balance_usd,
+  coalesce(latest_eur.running_balance, 0) as balance_eur,
   coalesce(review.any_needs_review, false) as has_pending_review,
   last_payment.created_at as last_payment_at,
   coalesce(last_payment.created_at, c.created_at) as mora_reference_at,
@@ -394,12 +469,20 @@ select
   c.is_flagged
 from public.clients c
 left join lateral (
-  select m.running_balance
-  from public.movements m
-  where m.client_id = c.id and m.deleted_at is null
-  order by m.created_at desc, m.id desc
-  limit 1
-) latest on true
+  select m.running_balance from public.movements m
+  where m.client_id = c.id and m.currency is null and m.deleted_at is null
+  order by m.created_at desc, m.id desc limit 1
+) latest_cop on true
+left join lateral (
+  select m.running_balance from public.movements m
+  where m.client_id = c.id and m.currency = 'USD' and m.deleted_at is null
+  order by m.created_at desc, m.id desc limit 1
+) latest_usd on true
+left join lateral (
+  select m.running_balance from public.movements m
+  where m.client_id = c.id and m.currency = 'EUR' and m.deleted_at is null
+  order by m.created_at desc, m.id desc limit 1
+) latest_eur on true
 left join lateral (
   select bool_or(m.needs_review) as any_needs_review
   from public.movements m
@@ -508,6 +591,8 @@ declare
   v_payment_info text;
   v_movements json;
   v_balance numeric(14, 4);
+  v_balance_usd numeric(14, 4);
+  v_balance_eur numeric(14, 4);
   v_owner_country text;
   v_settings public.owner_exchange_settings%rowtype;
   v_current_bcv record;
@@ -534,6 +619,7 @@ begin
       'id', m.id,
       'type', m.type,
       'amount', m.amount,
+      'currency', m.currency,
       'description', m.description,
       'running_balance', m.running_balance,
       'needs_review', m.needs_review,
@@ -552,11 +638,9 @@ begin
   from public.movements m
   where m.client_id = v_client.id and m.deleted_at is null;
 
-  select running_balance into v_balance
-  from public.movements
-  where client_id = v_client.id and deleted_at is null
-  order by created_at desc, id desc
-  limit 1;
+  select coalesce(balance, 0), coalesce(balance_usd, 0), coalesce(balance_eur, 0)
+    into v_balance, v_balance_usd, v_balance_eur
+  from public.client_summary where client_id = v_client.id;
 
   if v_owner_country = 'VE' then
     select * into v_settings from public.owner_exchange_settings where owner_id = v_client.owner_id;
@@ -572,10 +656,11 @@ begin
     'document_id', v_client.document_id,
     'whatsapp_last4', right(coalesce(v_client.whatsapp, ''), 4),
     'balance', coalesce(v_balance, 0),
+    'balance_usd', coalesce(v_balance_usd, 0),
+    'balance_eur', coalesce(v_balance_eur, 0),
     'movements', coalesce(v_movements, '[]'::json),
     'owner_country', v_owner_country,
     'rate_mode', v_settings.rate_mode,
-    'display_currency', coalesce(v_settings.display_currency, 'USD'),
     'current_bcv_usd', v_current_bcv.usd,
     'current_bcv_eur', v_current_bcv.eur,
     'custom_rate_usd', v_settings.custom_rate_usd,
