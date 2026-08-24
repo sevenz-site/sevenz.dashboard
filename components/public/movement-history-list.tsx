@@ -87,20 +87,23 @@ export function MovementHistoryList({
                     {m.type === "charge" ? "Fiado" : "Abono"}
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
+                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} · {getBalanceLabel(m.running_balance)} {balance.primary}
+                    {getBalanceLabel(m.running_balance)} {balance.primary}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className={`text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
-                    {m.type === "charge" ? "+" : "-"}
-                    {amount.primary}
+                  <div
+                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+                  >
+                    <span>
+                      {m.type === "charge" ? "+" : "-"}
+                      {amount.primary}
+                    </span>
                     {amount.secondary ? (
-                      <span className="block font-normal text-muted-foreground">
-                        {amount.secondary}
-                      </span>
+                      <span className="font-normal text-muted-foreground">{amount.secondary}</span>
                     ) : null}
-                  </span>
+                  </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>
               </button>
