@@ -27,6 +27,11 @@ import { Button } from "@/components/ui/button";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatCurrency, formatDate, formatPlazoDias } from "@/lib/format";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
+import {
+  bsToDisplayAt,
+  type LedgerDisplay,
+  type MovementRateSnapshot,
+} from "@/lib/exchange-rate/movement-display";
 import type { ExchangeRateMode, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 export function MovementDetailPopover({
@@ -44,7 +49,8 @@ export function MovementDetailPopover({
   exchangeRateUsed = null,
   officialBcvRateAtTime = null,
   rateModeUsed = null,
-  isBsLedger = false,
+  rateSnapshot = { rate_usd_at_time: null, rate_eur_at_time: null },
+  ledger = null,
   children,
 }: {
   // Only the owner's dashboard passes this — it's what shows the "Eliminar
@@ -70,11 +76,11 @@ export function MovementDetailPopover({
   exchangeRateUsed?: number | null;
   officialBcvRateAtTime?: number | null;
   rateModeUsed?: ExchangeRateMode | null;
-  // A VE owner's ledger is denominated in Bs, not COP — this picks which
-  // formatter the Monto/balance rows use. Comes from the owner's country,
-  // not from this movement, so a legacy movement in a VE owner's history
-  // still renders in the same unit as the rest of their ledger.
-  isBsLedger?: boolean;
+  rateSnapshot?: MovementRateSnapshot;
+  // null = plain COP ledger (every country='CO' owner), which formats
+  // exactly as it always has. Non-null switches the ledger to Bs with the
+  // owner's chosen display currency as the principal figure.
+  ledger?: LedgerDisplay | null;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -100,7 +106,25 @@ export function MovementDetailPopover({
       ? officialBcvRateAtTime
       : null;
 
-  const formatLedger = (value: number) => (isBsLedger ? formatBs(value) : formatCurrency(value));
+  // "Monto" shows exactly what the owner typed, in the currency they chose —
+  // the Bs equivalent rides along underneath rather than replacing it.
+  const montoPrimary = conversion
+    ? `${formatDisplayCurrency(conversion.amount, conversion.currency)} ${conversion.currency}`
+    : ledger
+      ? formatBs(amount)
+      : formatCurrency(amount);
+  const montoSecondary = conversion ? formatBs(amount) : null;
+
+  // The running balance is the one figure that leads in the owner's chosen
+  // display currency, converted at the rate that applied when this movement
+  // happened so the number never drifts.
+  const balancePrimary = ledger
+    ? formatDisplayCurrency(
+        bsToDisplayAt(runningBalance, rateSnapshot, ledger),
+        ledger.displayCurrency,
+      )
+    : formatCurrency(runningBalance);
+  const balanceSecondary = ledger ? formatBs(runningBalance) : null;
 
   async function handleDelete() {
     if (!movementId) return;
@@ -130,13 +154,16 @@ export function MovementDetailPopover({
           <dt className="text-muted-foreground">Plazo de pago</dt>
           <dd>{formatPlazoDias(plazoDias)}</dd>
 
+          <dt className="text-muted-foreground">Monto</dt>
+          <dd className="tabular-nums">
+            {montoPrimary}
+            {montoSecondary ? (
+              <span className="block text-muted-foreground">{montoSecondary}</span>
+            ) : null}
+          </dd>
+
           {conversion ? (
             <>
-              <dt className="text-muted-foreground">Monto original</dt>
-              <dd className="tabular-nums">
-                {formatDisplayCurrency(conversion.amount, conversion.currency)} {conversion.currency}
-              </dd>
-
               <dt className="text-muted-foreground">Tasa de cambio</dt>
               <dd className="tabular-nums">
                 {formatRateEquivalence(conversion.currency, conversion.rate)}
@@ -153,9 +180,6 @@ export function MovementDetailPopover({
               </dd>
             </>
           ) : null}
-
-          <dt className="text-muted-foreground">Monto</dt>
-          <dd className="tabular-nums">{formatLedger(amount)}</dd>
 
           <dt className="text-muted-foreground">Detalle</dt>
           <dd className="truncate">{description || "—"}</dd>
@@ -186,7 +210,12 @@ export function MovementDetailPopover({
           <dd>{formatDate(createdAt)}</dd>
 
           <dt className="text-muted-foreground">{balanceLabel}</dt>
-          <dd className="font-medium tabular-nums">{formatLedger(runningBalance)}</dd>
+          <dd className="font-medium tabular-nums">
+            {balancePrimary}
+            {balanceSecondary ? (
+              <span className="block font-normal text-muted-foreground">{balanceSecondary}</span>
+            ) : null}
+          </dd>
         </dl>
 
         {movementId ? (

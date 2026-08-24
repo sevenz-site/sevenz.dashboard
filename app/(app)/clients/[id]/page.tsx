@@ -17,6 +17,7 @@ import { computeCreditScore } from "@/lib/credit-score";
 import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
@@ -171,7 +172,14 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} isBsLedger={ownerRate !== null} />
+        <MovementHistory
+          clientId={id}
+          ledger={
+            ownerRate
+              ? { displayCurrency: ownerRate.displayCurrency, fallbackRate: ownerRate.effectiveRate }
+              : null
+          }
+        />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -289,10 +297,10 @@ async function CreditScoreSection({
 
 async function MovementHistory({
   clientId,
-  isBsLedger,
+  ledger,
 }: {
   clientId: string;
-  isBsLedger: boolean;
+  ledger: LedgerDisplay | null;
 }) {
   const supabase = await createClient();
 
@@ -322,7 +330,7 @@ async function MovementHistory({
       <MovementHistoryList
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
-        isBsLedger={isBsLedger}
+        ledger={ledger}
       />
     </div>
   );

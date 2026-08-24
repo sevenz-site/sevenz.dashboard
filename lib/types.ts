@@ -27,6 +27,10 @@ export type Movement = {
   // entry_currency 'VES' means no conversion happened at all.
   entry_currency: MovementCurrencyCode | null;
   entry_amount: number | null;
+  // Both effective rates at write time, so any Bs figure on this movement can
+  // be converted to either display currency using the rate that applied then.
+  rate_usd_at_time: number | null;
+  rate_eur_at_time: number | null;
 };
 
 // Mirrors lib/exchange-rate/convert.ts's MovementCurrency — declared here

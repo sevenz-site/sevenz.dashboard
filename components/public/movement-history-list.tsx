@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
+import { bsToDisplayAt, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
 
@@ -29,19 +30,20 @@ type SharedMovement = {
   official_bcv_rate_at_time: number | null;
   entry_currency: MovementCurrencyCode | null;
   entry_amount: number | null;
+  rate_usd_at_time: number | null;
+  rate_eur_at_time: number | null;
 };
 
 const PAGE_SIZE = 10;
 
 export function MovementHistoryList({
   movements,
-  isBsLedger = false,
+  ledger = null,
 }: {
   movements: SharedMovement[];
-  isBsLedger?: boolean;
+  ledger?: LedgerDisplay | null;
 }) {
   const [page, setPage] = useState(1);
-  const formatLedger = (value: number) => (isBsLedger ? formatBs(value) : formatCurrency(value));
 
   if (movements.length === 0) {
     return <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>;
@@ -54,7 +56,16 @@ export function MovementHistoryList({
   return (
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y rounded-lg border">
-        {pagedMovements.map((m) => (
+        {pagedMovements.map((m) => {
+          const rateLine =
+            (m.entry_currency === "USD" || m.entry_currency === "EUR") && m.exchange_rate_used != null
+              ? formatRateEquivalence(m.entry_currency, m.exchange_rate_used)
+              : null;
+          const amountPrimary = ledger
+            ? formatDisplayCurrency(bsToDisplayAt(m.amount, m, ledger), ledger.displayCurrency)
+            : formatCurrency(m.amount);
+
+          return (
           <li key={m.id}>
             <MovementDetailPopover
               type={m.type}
@@ -69,7 +80,8 @@ export function MovementHistoryList({
               exchangeRateUsed={m.exchange_rate_used}
               officialBcvRateAtTime={m.official_bcv_rate_at_time}
               rateModeUsed={m.rate_mode_used}
-              isBsLedger={isBsLedger}
+              rateSnapshot={m}
+              ledger={ledger}
             >
               <button
                 type="button"
@@ -81,20 +93,28 @@ export function MovementHistoryList({
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} · {getBalanceLabel(m.running_balance)} {formatLedger(m.running_balance)}
+                    {formatDate(m.created_at)} ·{" "}
+                    {rateLine ??
+                      `${getBalanceLabel(m.running_balance)} ${ledger ? formatBs(m.running_balance) : formatCurrency(m.running_balance)}`}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className={`tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  <span className={`text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {m.type === "charge" ? "+" : "-"}
-                    {formatLedger(m.amount)}
+                    {amountPrimary}
+                    {ledger ? (
+                      <span className="block font-normal text-muted-foreground">
+                        {formatBs(m.amount)}
+                      </span>
+                    ) : null}
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>
               </button>
             </MovementDetailPopover>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {pageCount > 1 ? (

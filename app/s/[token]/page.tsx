@@ -42,6 +42,8 @@ type SharedBalance = {
     official_bcv_rate_at_time: number | null;
     entry_currency: MovementCurrencyCode | null;
     entry_amount: number | null;
+    rate_usd_at_time: number | null;
+    rate_eur_at_time: number | null;
   })[];
   // Only meaningful when owner_country = 'VE' — a 'CO' owner's payload
   // still includes these keys (the SQL function always returns them) but
@@ -145,7 +147,17 @@ export default async function SharedBalancePage({
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList movements={movements} isBsLedger={rateContext !== null} />
+        <MovementHistoryList
+          movements={movements}
+          ledger={
+            rateContext
+              ? {
+                  displayCurrency: rateContext.displayCurrency,
+                  fallbackRate: rateContext.effectiveRate,
+                }
+              : null
+          }
+        />
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">

@@ -129,7 +129,13 @@ create table if not exists public.movements (
   -- conversion ("$50,00 USD · $1 = Bs. 779,95 · Bs. 38.997,61") rather than
   -- a bare rate number with no indication of which currency it applied to.
   entry_currency text check (entry_currency is null or entry_currency in ('VES', 'USD', 'EUR')),
-  entry_amount numeric
+  entry_amount numeric,
+  -- Both effective rates at write time. A balance is converted with the rate
+  -- in effect when the movement happened, so a past figure never drifts —
+  -- and the display currency isn't always the entered one, so storing only
+  -- exchange_rate_used above wouldn't be enough.
+  rate_usd_at_time numeric,
+  rate_eur_at_time numeric
 );
 
 create index if not exists movements_client_id_idx on public.movements (client_id, created_at);
@@ -524,6 +530,8 @@ begin
       'official_bcv_rate_at_time', m.official_bcv_rate_at_time,
       'entry_currency', m.entry_currency,
       'entry_amount', m.entry_amount,
+      'rate_usd_at_time', m.rate_usd_at_time,
+      'rate_eur_at_time', m.rate_eur_at_time,
       'created_at', m.created_at
     ) order by m.created_at asc
   )

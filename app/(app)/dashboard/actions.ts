@@ -84,6 +84,8 @@ async function resolveMovementAmount(
       officialBcvRateAtTime: null,
       entryCurrency: null,
       entryAmount: null,
+      rateUsdAtTime: null,
+      rateEurAtTime: null,
     };
   }
 
@@ -110,6 +112,10 @@ async function resolveMovementAmount(
     // conversion instead of a derived-after-the-fact figure.
     entryCurrency: currency,
     entryAmount: rawAmount,
+    // Both rates, not just the entered currency's — a balance shown in USD
+    // needs that day's USD rate even when the movement was entered in EUR.
+    rateUsdAtTime: rateContext.effectiveRate.usd,
+    rateEurAtTime: rateContext.effectiveRate.eur,
   };
 }
 
@@ -176,6 +182,8 @@ export async function createClientWithMovement(
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
     entry_currency: resolved.entryCurrency,
     entry_amount: resolved.entryAmount,
+    rate_usd_at_time: resolved.rateUsdAtTime,
+    rate_eur_at_time: resolved.rateEurAtTime,
   });
 
   if (movementError) {
@@ -253,6 +261,8 @@ export async function addMovement(
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
     entry_currency: resolved.entryCurrency,
     entry_amount: resolved.entryAmount,
+    rate_usd_at_time: resolved.rateUsdAtTime,
+    rate_eur_at_time: resolved.rateEurAtTime,
   });
 
   if (movementError) {
