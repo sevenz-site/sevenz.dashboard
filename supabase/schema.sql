@@ -105,10 +105,15 @@ create table if not exists public.movements (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id) on delete cascade,
   type text not null check (type in ('charge', 'payment')),
-  amount numeric(12, 2) not null check (amount > 0),
+  -- Denominated in the owner's canonical unit: COP for a country='CO' owner,
+  -- USD for 'VE'. A VE ledger is dollar-indexed — the bolívar figure is
+  -- derived at read time from the current rate and floats daily, never
+  -- stored. numeric(14,4) rather than (12,2) because a Bs-entered amount
+  -- becomes a fractional dollar figure that must round-trip cleanly.
+  amount numeric(14, 4) not null check (amount > 0),
   description text,
   source text not null default 'manual' check (source in ('photo_import', 'manual')),
-  running_balance numeric(12, 2) not null default 0,
+  running_balance numeric(14, 4) not null default 0,
   needs_review boolean not null default false,
   photo_path text,
   plazo_dias int check (plazo_dias is null or plazo_dias in (7, 15, 30, 45)),
@@ -124,16 +129,16 @@ create table if not exists public.movements (
   rate_mode_used text check (rate_mode_used in ('BCV_AUTO', 'CUSTOM')),
   exchange_rate_used numeric,
   official_bcv_rate_at_time numeric,
-  -- What the owner actually typed, before conversion — amount above is
-  -- always Bs. Needed so a movement detail can show the full, verifiable
-  -- conversion ("$50,00 USD · $1 = Bs. 779,95 · Bs. 38.997,61") rather than
-  -- a bare rate number with no indication of which currency it applied to.
+  -- What the owner actually typed, before conversion to the stored USD.
+  -- Lets a movement detail show the verifiable transaction record ("$50,00
+  -- USD · $1 = Bs. 779,95") rather than a bare rate with no indication of
+  -- which currency it applied to.
   entry_currency text check (entry_currency is null or entry_currency in ('VES', 'USD', 'EUR')),
   entry_amount numeric,
-  -- Both effective rates at write time. A balance is converted with the rate
-  -- in effect when the movement happened, so a past figure never drifts —
-  -- and the display currency isn't always the entered one, so storing only
-  -- exchange_rate_used above wouldn't be enough.
+  -- Both effective rates as of the moment of the movement — the historical
+  -- record of what the conversion was done at. Balances are NOT converted
+  -- with these (the ledger is USD-indexed, so bolívares always come from
+  -- today's rate); they exist for the audit trail and the data migration.
   rate_usd_at_time numeric,
   rate_eur_at_time numeric
 );
@@ -158,7 +163,7 @@ returns trigger
 language plpgsql
 as $$
 declare
-  v_prev numeric(12, 2);
+  v_prev numeric(14, 4);
 begin
   select running_balance into v_prev
   from public.movements
@@ -189,7 +194,7 @@ language plpgsql
 as $$
 declare
   m record;
-  running numeric(12, 2) := 0;
+  running numeric(14, 4) := 0;
 begin
   for m in
     select id, type, amount
@@ -494,7 +499,7 @@ declare
   v_owner_logo_path text;
   v_payment_info text;
   v_movements json;
-  v_balance numeric(12, 2);
+  v_balance numeric(14, 4);
   v_owner_country text;
   v_settings public.owner_exchange_settings%rowtype;
   v_current_bcv record;

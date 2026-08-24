@@ -1,15 +1,15 @@
-import { formatCurrency } from "@/lib/format";
-import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
-import { bsToDisplay } from "@/lib/exchange-rate/convert";
 import { CustomRateBadge } from "@/components/exchange-rate-custom-badge";
+import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 
 // Shared by the dashboard total, the client-list rows, the client detail
-// page, and (a JSON-shaped equivalent of) the public client screen. When
-// rateContext is null (a 'CO' owner, or a 'VE' owner before any rate has
-// ever been fetched) this renders exactly what the app has always shown —
-// no behavior change at all.
+// page and the public client screen. When rateContext is null (a 'CO' owner,
+// or a 'VE' owner before any rate has ever been fetched) this renders exactly
+// what the app has always shown — no behavior change at all.
+//
+// For a VE owner the balance passed in is USD (the ledger's canonical unit);
+// the bolívar line underneath is today's equivalent and moves with the rate.
 export function ExchangeRateBalanceDisplay({
   balance,
   rateContext,
@@ -31,16 +31,19 @@ export function ExchangeRateBalanceDisplay({
     mainClassName,
   );
 
-  if (!rateContext) {
-    return <p className={mainClass}>{formatCurrency(balance)}</p>;
-  }
+  const ledger: LedgerDisplay | null = rateContext
+    ? { displayCurrency: rateContext.displayCurrency, rate: rateContext.effectiveRate }
+    : null;
+  const { primary, secondary } = formatLedgerAmount(balance, ledger);
 
-  const displayAmount = bsToDisplay(balance, rateContext.displayCurrency, rateContext.effectiveRate);
+  if (!ledger || !rateContext) {
+    return <p className={mainClass}>{primary}</p>;
+  }
 
   return (
     <div className={cn("flex flex-col gap-0.5", align === "end" && "items-end")}>
-      <p className={mainClass}>{formatDisplayCurrency(displayAmount, rateContext.displayCurrency)}</p>
-      <p className="text-xs text-muted-foreground tabular-nums">{formatBs(balance)} (BCV)</p>
+      <p className={mainClass}>{primary}</p>
+      <p className="text-xs text-muted-foreground tabular-nums">{secondary} hoy</p>
       {rateContext.rateMode === "CUSTOM" ? (
         <CustomRateBadge currentBcvUsd={rateContext.officialRate.usd} />
       ) : null}

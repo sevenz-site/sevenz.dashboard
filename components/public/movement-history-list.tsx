@@ -10,9 +10,9 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
-import { bsToDisplayAt, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { formatDate } from "@/lib/format";
+import { formatRateEquivalence } from "@/lib/exchange-rate/format";
+import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
 
@@ -61,9 +61,8 @@ export function MovementHistoryList({
             (m.entry_currency === "USD" || m.entry_currency === "EUR") && m.exchange_rate_used != null
               ? formatRateEquivalence(m.entry_currency, m.exchange_rate_used)
               : null;
-          const amountPrimary = ledger
-            ? formatDisplayCurrency(bsToDisplayAt(m.amount, m, ledger), ledger.displayCurrency)
-            : formatCurrency(m.amount);
+          const amount = formatLedgerAmount(m.amount, ledger);
+          const balance = formatLedgerAmount(m.running_balance, ledger);
 
           return (
           <li key={m.id}>
@@ -80,7 +79,6 @@ export function MovementHistoryList({
               exchangeRateUsed={m.exchange_rate_used}
               officialBcvRateAtTime={m.official_bcv_rate_at_time}
               rateModeUsed={m.rate_mode_used}
-              rateSnapshot={m}
               ledger={ledger}
             >
               <button
@@ -94,17 +92,16 @@ export function MovementHistoryList({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDate(m.created_at)} ·{" "}
-                    {rateLine ??
-                      `${getBalanceLabel(m.running_balance)} ${ledger ? formatBs(m.running_balance) : formatCurrency(m.running_balance)}`}
+                    {rateLine ?? `${getBalanceLabel(m.running_balance)} ${balance.primary}`}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={`text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {m.type === "charge" ? "+" : "-"}
-                    {amountPrimary}
-                    {ledger ? (
+                    {amount.primary}
+                    {amount.secondary ? (
                       <span className="block font-normal text-muted-foreground">
-                        {formatBs(m.amount)}
+                        {amount.secondary}
                       </span>
                     ) : null}
                   </span>

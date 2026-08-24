@@ -25,13 +25,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
-import { formatCurrency, formatDate, formatPlazoDias } from "@/lib/format";
-import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
-import {
-  bsToDisplayAt,
-  type LedgerDisplay,
-  type MovementRateSnapshot,
-} from "@/lib/exchange-rate/movement-display";
+import { formatDate, formatPlazoDias } from "@/lib/format";
+import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
+import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ExchangeRateMode, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 export function MovementDetailPopover({
@@ -49,7 +45,6 @@ export function MovementDetailPopover({
   exchangeRateUsed = null,
   officialBcvRateAtTime = null,
   rateModeUsed = null,
-  rateSnapshot = { rate_usd_at_time: null, rate_eur_at_time: null },
   ledger = null,
   children,
 }: {
@@ -76,7 +71,6 @@ export function MovementDetailPopover({
   exchangeRateUsed?: number | null;
   officialBcvRateAtTime?: number | null;
   rateModeUsed?: ExchangeRateMode | null;
-  rateSnapshot?: MovementRateSnapshot;
   // null = plain COP ledger (every country='CO' owner), which formats
   // exactly as it always has. Non-null switches the ledger to Bs with the
   // owner's chosen display currency as the principal figure.
@@ -107,24 +101,15 @@ export function MovementDetailPopover({
       : null;
 
   // "Monto" shows exactly what the owner typed, in the currency they chose —
-  // the Bs equivalent rides along underneath rather than replacing it.
+  // the transaction as agreed. Its bolívar value underneath is today's, since
+  // the debt is dollar-indexed and that figure moves with the rate.
+  const ledgerAmount = formatLedgerAmount(amount, ledger);
   const montoPrimary = conversion
     ? `${formatDisplayCurrency(conversion.amount, conversion.currency)} ${conversion.currency}`
-    : ledger
-      ? formatBs(amount)
-      : formatCurrency(amount);
-  const montoSecondary = conversion ? formatBs(amount) : null;
+    : ledgerAmount.primary;
+  const montoSecondary = ledgerAmount.secondary;
 
-  // The running balance is the one figure that leads in the owner's chosen
-  // display currency, converted at the rate that applied when this movement
-  // happened so the number never drifts.
-  const balancePrimary = ledger
-    ? formatDisplayCurrency(
-        bsToDisplayAt(runningBalance, rateSnapshot, ledger),
-        ledger.displayCurrency,
-      )
-    : formatCurrency(runningBalance);
-  const balanceSecondary = ledger ? formatBs(runningBalance) : null;
+  const balance = formatLedgerAmount(runningBalance, ledger);
 
   async function handleDelete() {
     if (!movementId) return;
@@ -158,7 +143,7 @@ export function MovementDetailPopover({
           <dd className="tabular-nums">
             {montoPrimary}
             {montoSecondary ? (
-              <span className="block text-muted-foreground">{montoSecondary}</span>
+              <span className="block text-muted-foreground">{montoSecondary} hoy</span>
             ) : null}
           </dd>
 
@@ -211,9 +196,9 @@ export function MovementDetailPopover({
 
           <dt className="text-muted-foreground">{balanceLabel}</dt>
           <dd className="font-medium tabular-nums">
-            {balancePrimary}
-            {balanceSecondary ? (
-              <span className="block font-normal text-muted-foreground">{balanceSecondary}</span>
+            {balance.primary}
+            {balance.secondary ? (
+              <span className="block font-normal text-muted-foreground">{balance.secondary} hoy</span>
             ) : null}
           </dd>
         </dl>

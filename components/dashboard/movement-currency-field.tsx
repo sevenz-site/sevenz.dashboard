@@ -10,7 +10,8 @@ import {
 import { CustomRateBadge } from "@/components/exchange-rate-custom-badge";
 import {
   MOVEMENT_CURRENCY_OPTIONS,
-  toBs,
+  toUsd,
+  usdToBs,
   type MovementCurrency,
   type MovementRateContext,
 } from "@/lib/exchange-rate/convert";
@@ -34,7 +35,12 @@ export function MovementCurrencyField({
 }) {
   const parsed = Number(amount);
   const hasAmount = Number.isFinite(parsed) && parsed > 0;
-  const bsPreview = hasAmount ? toBs(parsed, currency, rateContext.effectiveRate) : null;
+  // Round-trips through USD (what actually gets stored) rather than
+  // converting straight to Bs, so the preview shows the same figure the
+  // ledger will report back.
+  const bsPreview = hasAmount
+    ? usdToBs(toUsd(parsed, currency, rateContext.effectiveRate), rateContext.effectiveRate)
+    : null;
 
   return (
     <div className="flex flex-col gap-2">

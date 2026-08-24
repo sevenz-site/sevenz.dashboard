@@ -39,8 +39,8 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
 import { formatCurrency } from "@/lib/format";
-import { formatBs } from "@/lib/exchange-rate/format";
-import { fromBs, type MovementCurrency, type MovementRateContext } from "@/lib/exchange-rate/convert";
+import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { fromUsd, type MovementCurrency, type MovementRateContext } from "@/lib/exchange-rate/convert";
 import { track } from "@/lib/mixpanel";
 import { cn } from "@/lib/utils";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
@@ -81,15 +81,15 @@ export function AddMovementDialog({
   const [prevOpen, setPrevOpen] = useState(open);
 
   // The debt cap has to be expressed in whatever currency the owner is
-  // currently typing in — running_balance/currentDebt is always Bs, so a
-  // USD/EUR entry needs the inverse conversion, not the raw Bs number.
+  // currently typing in — currentDebt is USD (the ledger's unit for a VE
+  // owner), so a Bs or EUR entry needs converting before it can be compared.
   const maxDebtInCurrency = rateContext
-    ? fromBs(currentDebt, currency, rateContext.effectiveRate)
+    ? fromUsd(currentDebt, currency, rateContext.effectiveRate)
     : currentDebt;
   const formattedMaxDebt = rateContext
     ? currency === "VES"
       ? formatBs(maxDebtInCurrency)
-      : maxDebtInCurrency.toFixed(2)
+      : formatDisplayCurrency(maxDebtInCurrency, currency)
     : formatCurrency(currentDebt);
 
   if (open !== prevOpen) {

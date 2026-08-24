@@ -153,7 +153,7 @@ export default async function SharedBalancePage({
             rateContext
               ? {
                   displayCurrency: rateContext.displayCurrency,
-                  fallbackRate: rateContext.effectiveRate,
+                  rate: rateContext.effectiveRate,
                 }
               : null
           }

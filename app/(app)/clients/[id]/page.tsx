@@ -56,6 +56,7 @@ export default async function ClientDetailPage({
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
+        displayCurrency: ownerRate.displayCurrency,
       }
     : null;
 
@@ -176,7 +177,7 @@ export default async function ClientDetailPage({
           clientId={id}
           ledger={
             ownerRate
-              ? { displayCurrency: ownerRate.displayCurrency, fallbackRate: ownerRate.effectiveRate }
+              ? { displayCurrency: ownerRate.displayCurrency, rate: ownerRate.effectiveRate }
               : null
           }
         />

@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/format";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { toBs, type MovementCurrency } from "@/lib/exchange-rate/convert";
+import { toUsd, usdToDisplay, type MovementCurrency } from "@/lib/exchange-rate/convert";
 
 export type MovementFormState = { error: string | null; clientId: string | null };
 
@@ -65,10 +65,10 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   };
 }
 
-// Converts the entered amount into Bs (the canonical ledger unit) and
-// returns the audit snapshot for a country='VE' owner. Returns the amount
+// Converts the entered amount into USD — the canonical unit of a VE owner's
+// dollar-indexed ledger — and returns the audit snapshot. Returns the amount
 // completely untouched (and every snapshot field null) for a 'CO' owner or
-// a 'VE' owner with no rate fetched yet — same as today's COP behavior.
+// a 'VE' owner with no rate fetched yet, whose ledger stays plain COP.
 async function resolveMovementAmount(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ownerId: string,
@@ -86,10 +86,11 @@ async function resolveMovementAmount(
       entryAmount: null,
       rateUsdAtTime: null,
       rateEurAtTime: null,
+      ledger: null,
     };
   }
 
-  const amount = toBs(rawAmount, currency, rateContext.effectiveRate);
+  const amount = toUsd(rawAmount, currency, rateContext.effectiveRate);
   const officialForCurrency =
     currency === "USD"
       ? rateContext.officialRate.usd
@@ -116,6 +117,10 @@ async function resolveMovementAmount(
     // needs that day's USD rate even when the movement was entered in EUR.
     rateUsdAtTime: rateContext.effectiveRate.usd,
     rateEurAtTime: rateContext.effectiveRate.eur,
+    ledger: {
+      displayCurrency: rateContext.displayCurrency,
+      rate: rateContext.effectiveRate,
+    },
   };
 }
 
@@ -236,11 +241,14 @@ export async function addMovement(
       return { error: "Este cliente no debe nada — no se puede registrar un abono.", clientId: null };
     }
     if (resolved.amount > currentDebt) {
-      // A VE owner's ledger is in Bs, not COP — resolveMovementAmount only
-      // returns a non-null rateModeUsed for that case, so it doubles as the
-      // signal for which formatter matches what's actually stored.
-      const formattedDebt =
-        resolved.rateModeUsed !== null ? formatBs(currentDebt) : formatCurrency(currentDebt);
+      // currentDebt is in the ledger's own unit — USD for a VE owner, COP
+      // otherwise — so it has to be formatted with the matching formatter.
+      const formattedDebt = resolved.ledger
+        ? formatDisplayCurrency(
+            usdToDisplay(currentDebt, resolved.ledger.displayCurrency, resolved.ledger.rate),
+            resolved.ledger.displayCurrency,
+          )
+        : formatCurrency(currentDebt);
       return {
         error: `El abono no puede ser mayor a lo que debe (${formattedDebt}).`,
         clientId: null,

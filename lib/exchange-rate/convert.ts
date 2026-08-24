@@ -10,6 +10,7 @@ export type MovementRateContext = {
   rateMode: ExchangeRateMode;
   effectiveRate: EffectiveRate;
   officialRateUsd: number;
+  displayCurrency: DisplayCurrency;
 };
 
 export const MOVEMENT_CURRENCY_OPTIONS: { value: MovementCurrency; label: string }[] = [
@@ -23,47 +24,64 @@ export const MOVEMENT_CURRENCY_OPTIONS: { value: MovementCurrency; label: string
 // (the live fetched rate) or CUSTOM (the owner's own numbers).
 export type EffectiveRate = { usd: number; eur: number };
 
-// Converts an amount entered in any of the three currencies into Bs — the
-// canonical ledger unit (see movements.amount). VES needs no conversion.
-export function toBs(amount: number, currency: MovementCurrency, rate: EffectiveRate): number {
-  if (currency === "VES") return amount;
-  const perUnit = currency === "USD" ? rate.usd : rate.eur;
-  return amount * perUnit;
+// ── The ledger is USD-indexed ───────────────────────────────────────────
+// For a country='VE' owner, movements.amount and running_balance hold USD,
+// not Bs. The debt itself is denominated in dollars — a client who owes $50
+// still owes $50 tomorrow, while the bolívar figure floats with the rate.
+// Bs is therefore always derived at read time from the *current* rate,
+// never stored as the balance.
+//
+// USD is the anchor even when the owner displays EUR: one summable unit
+// means a running balance always adds up and switching display currency
+// can never corrupt existing debt.
+
+// Converts an amount typed in any of the three currencies into the USD the
+// ledger stores.
+export function toUsd(amount: number, currency: MovementCurrency, rate: EffectiveRate): number {
+  if (currency === "USD") return amount;
+  if (currency === "VES") return rate.usd ? amount / rate.usd : 0;
+  return rate.usd ? (amount * rate.eur) / rate.usd : 0;
 }
 
-// Inverse of toBs — converts a Bs amount back into whatever currency is
-// currently selected, so a debt cap expressed in Bs (running_balance) can
-// be shown/enforced in the currency the owner is actually typing in.
-export function fromBs(bsAmount: number, currency: MovementCurrency, rate: EffectiveRate): number {
-  if (currency === "VES") return bsAmount;
-  const perUnit = currency === "USD" ? rate.usd : rate.eur;
-  if (!perUnit) return bsAmount;
-  return bsAmount / perUnit;
+// Inverse of toUsd — used to express a USD debt cap in whichever currency
+// the owner is currently typing in.
+export function fromUsd(usdAmount: number, currency: MovementCurrency, rate: EffectiveRate): number {
+  if (currency === "USD") return usdAmount;
+  if (currency === "VES") return usdAmount * rate.usd;
+  return rate.eur ? (usdAmount * rate.usd) / rate.eur : 0;
 }
 
-// One conversion function powering both UI surfaces that need "what is this
-// worth in the other currencies" — the rate-strip's mini-calculator and (in
-// spirit) the movement form's live preview above. Given an amount in any of
-// the three currencies, returns its equivalent in all three.
+// The stored USD amount shown in the owner's chosen display currency.
+export function usdToDisplay(
+  usdAmount: number,
+  displayCurrency: DisplayCurrency,
+  rate: EffectiveRate,
+): number {
+  if (displayCurrency === "USD") return usdAmount;
+  return rate.eur ? (usdAmount * rate.usd) / rate.eur : 0;
+}
+
+// Today's bolívar value of a stored USD amount. This is the figure that
+// moves day to day as the rate moves — the whole point of indexing.
+export function usdToBs(usdAmount: number, rate: EffectiveRate): number {
+  return usdAmount * rate.usd;
+}
+
+// Standalone converter behind the rate strip's calculator — pure "what is X
+// worth in the other two currencies" arithmetic, unrelated to how the ledger
+// stores anything.
 export function convertToAllCurrencies(
   amount: number,
   fromCurrency: MovementCurrency,
   rate: EffectiveRate,
 ): { ves: number; usd: number; eur: number } {
-  const ves = toBs(amount, fromCurrency, rate);
+  const ves =
+    fromCurrency === "VES"
+      ? amount
+      : amount * (fromCurrency === "USD" ? rate.usd : rate.eur);
   return {
     ves,
     usd: rate.usd ? ves / rate.usd : 0,
     eur: rate.eur ? ves / rate.eur : 0,
   };
-}
-
-// Converts a Bs amount into the owner's chosen display currency, for the
-// dashboard/public balance figure (the "$47.00" in "Saldo: $47.00 / Bs.
-// 8.906,25"). Never used to recompute a movement's own historical Bs
-// value — each movement's amount stays Bs forever.
-export function bsToDisplay(bsAmount: number, displayCurrency: DisplayCurrency, rate: EffectiveRate): number {
-  const perUnit = displayCurrency === "USD" ? rate.usd : rate.eur;
-  if (!perUnit) return 0;
-  return bsAmount / perUnit;
 }
