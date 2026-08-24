@@ -11,6 +11,12 @@ export function formatBs(amount: number): string {
   return `Bs. ${bsNumberFormatter.format(amount)}`;
 }
 
+// Same "es-VE", 2-decimal formatting as formatBs, without the "Bs. " prefix —
+// for surfaces (like an amount input) that show the number on its own.
+export function formatBsAmount(amount: number): string {
+  return bsNumberFormatter.format(amount);
+}
+
 const displayCurrencyFormatters: Record<"USD" | "EUR", Intl.NumberFormat> = {
   USD: new Intl.NumberFormat("en-US", {
     style: "currency",

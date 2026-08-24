@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import {
   MOVEMENT_CURRENCY_OPTIONS,
   convertToAllCurrencies,
   type MovementCurrency,
   type MovementRateContext,
 } from "@/lib/exchange-rate/convert";
-import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
 
 // Always-visible compact strip on the owner's dashboard (7.3 in the design
 // doc). Expands to a mini-calculator on tap — pure client-side arithmetic,
@@ -34,8 +35,15 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   // The rate figures are plain display text — only the "Calcular" button
   // opens the calculator, so it's unambiguous what's tappable.
   const rateInfo = (
-    <span className="flex flex-1 items-center gap-2 text-sm tabular-nums">
-      $1 = {formatBs(rateContext.effectiveRate.usd)} · €1 = {formatBs(rateContext.effectiveRate.eur)}
+    <span className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
+      <span className="flex items-center gap-1.5">
+        <CurrencyFlagIcon currency="USD" />
+        $1 = {formatBs(rateContext.effectiveRate.usd)}
+      </span>
+      <span className="flex items-center gap-1.5">
+        <CurrencyFlagIcon currency="EUR" />
+        €1 = {formatBs(rateContext.effectiveRate.eur)}
+      </span>
       {rateContext.rateMode === "CUSTOM" ? (
         <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
           tasa propia
@@ -53,18 +61,18 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
 
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Drawer open={open} onOpenChange={setOpen} direction="bottom">
         <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
           {rateInfo}
-          <SheetTrigger asChild>{trigger}</SheetTrigger>
+          <DrawerTrigger asChild>{trigger}</DrawerTrigger>
         </div>
-        <SheetContent side="bottom">
-          <SheetHeader>
-            <SheetTitle>Calculadora rápida</SheetTitle>
-          </SheetHeader>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Calculadora rápida</DrawerTitle>
+          </DrawerHeader>
           <div className="px-4 pb-4">{calculator}</div>
-        </SheetContent>
-      </Sheet>
+        </DrawerContent>
+      </Drawer>
     );
   }
 
@@ -82,12 +90,22 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
 }
 
 function RateCalculator({ rate }: { rate: { usd: number; eur: number } }) {
-  const [amountStr, setAmountStr] = useState("");
+  // Digits-only "cents" mask — the same way a POS amount field works: typing
+  // shifts digits in from the right, the last two are always the decimals.
+  // Opens prefilled with 1 USD's Bs equivalence instead of empty, so there's
+  // always a result to look at right away.
+  const [rawDigits, setRawDigits] = useState(() => String(Math.max(0, Math.round(rate.usd * 100))));
   const [fromCurrency, setFromCurrency] = useState<MovementCurrency>("VES");
 
-  const parsed = Number(amountStr);
-  const hasAmount = Number.isFinite(parsed) && parsed > 0;
+  const cents = Number(rawDigits || "0");
+  const parsed = cents / 100;
+  const displayValue = formatBsAmount(parsed);
+  const hasAmount = parsed > 0;
   const result = hasAmount ? convertToAllCurrencies(parsed, fromCurrency, rate) : null;
+
+  function handleAmountChange(e: ChangeEvent<HTMLInputElement>) {
+    setRawDigits(e.target.value.replace(/\D/g, "").slice(0, 15));
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -105,12 +123,11 @@ function RateCalculator({ rate }: { rate: { usd: number; eur: number } }) {
           </SelectContent>
         </Select>
         <Input
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
+          inputMode="numeric"
           placeholder="Monto"
-          value={amountStr}
-          onChange={(e) => setAmountStr(e.target.value)}
+          value={displayValue}
+          onChange={handleAmountChange}
           autoFocus
         />
       </div>
@@ -124,13 +141,17 @@ function RateCalculator({ rate }: { rate: { usd: number; eur: number } }) {
           ) : null}
           {fromCurrency !== "USD" ? (
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">USD</dt>
+              <dt className="flex items-center gap-1.5 text-muted-foreground">
+                <CurrencyFlagIcon currency="USD" /> USD
+              </dt>
               <dd className="tabular-nums">{formatDisplayCurrency(result.usd, "USD")}</dd>
             </div>
           ) : null}
           {fromCurrency !== "EUR" ? (
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">EUR</dt>
+              <dt className="flex items-center gap-1.5 text-muted-foreground">
+                <CurrencyFlagIcon currency="EUR" /> EUR
+              </dt>
               <dd className="tabular-nums">{formatDisplayCurrency(result.eur, "EUR")}</dd>
             </div>
           ) : null}
