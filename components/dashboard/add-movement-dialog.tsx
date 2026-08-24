@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
-import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
+import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -139,15 +139,6 @@ export function AddMovementDialog({
         <form ref={formRef} action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="client_id" value={clientId} />
 
-          {rateContext ? (
-            <MovementCurrencyField
-              amount={amountStr}
-              currency={currency}
-              onCurrencyChange={setCurrency}
-              rateContext={rateContext}
-            />
-          ) : null}
-
           <div className="flex flex-col gap-2">
             <Label>Tipo</Label>
             <Select name="type" value={type} onValueChange={(v) => setType(v as "charge" | "payment")}>
@@ -170,6 +161,8 @@ export function AddMovementDialog({
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
 
+          {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="amount">Monto</Label>
             <Input
@@ -183,6 +176,9 @@ export function AddMovementDialog({
               onChange={(e) => setAmountStr(e.target.value)}
               required
             />
+            {rateContext ? (
+              <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
+            ) : null}
             {type === "payment" ? (
               <p className="text-xs text-muted-foreground">
                 Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.

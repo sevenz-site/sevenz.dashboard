@@ -7,27 +7,17 @@ import { toBs, type MovementRateContext } from "@/lib/exchange-rate/convert";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { LEDGER_CURRENCIES, type LedgerCurrency } from "@/lib/types";
 
-// Shared by the "Nuevo cliente" and "Agregar movimiento" forms: a USD/EUR
-// radio choice (never Bs — an owner can't register a movement directly in
-// bolívares) plus a read-only "≈ Bs. X" preview that recomputes client-side
-// as the owner types, using the rate already loaded when the dialog opened.
-// Only rendered when the owner is in country='VE' mode — the parent decides
-// that.
-export function MovementCurrencyField({
-  amount,
+// The USD/EUR choice, shown above the amount input (Tipo → Plazo → Moneda →
+// Monto). Never Bs — an owner can't register a movement directly in
+// bolívares, only ever USD or EUR. Only rendered when the owner is in
+// country='VE' mode — the parent decides that.
+export function LedgerCurrencyRadio({
   currency,
   onCurrencyChange,
-  rateContext,
 }: {
-  amount: string;
   currency: LedgerCurrency;
   onCurrencyChange: (value: LedgerCurrency) => void;
-  rateContext: MovementRateContext;
 }) {
-  const parsed = Number(amount);
-  const hasAmount = Number.isFinite(parsed) && parsed > 0;
-  const bsPreview = hasAmount ? toBs(parsed, currency, rateContext.effectiveRate) : null;
-
   return (
     <div className="flex flex-col gap-2">
       <Label>Moneda</Label>
@@ -44,10 +34,33 @@ export function MovementCurrencyField({
           </label>
         ))}
       </RadioGroup>
+    </div>
+  );
+}
+
+// The live "≈ Bs. X" preview + CUSTOM-mode badge, shown directly below the
+// amount input — it's a property of what was just typed there, recomputed
+// client-side as the owner types using the rate already loaded when the
+// dialog opened (no network call per keystroke).
+export function BsAmountPreview({
+  amount,
+  currency,
+  rateContext,
+}: {
+  amount: string;
+  currency: LedgerCurrency;
+  rateContext: MovementRateContext;
+}) {
+  const parsed = Number(amount);
+  const hasAmount = Number.isFinite(parsed) && parsed > 0;
+  const bsPreview = hasAmount ? toBs(parsed, currency, rateContext.effectiveRate) : null;
+
+  return (
+    <>
       {bsPreview !== null ? <p className="text-xs text-muted-foreground">≈ {formatBs(bsPreview)}</p> : null}
       {rateContext.rateMode === "CUSTOM" ? (
         <CustomRateBadge currentBcvUsd={rateContext.officialRateUsd} />
       ) : null}
-    </div>
+    </>
   );
 }

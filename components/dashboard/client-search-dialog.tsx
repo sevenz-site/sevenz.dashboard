@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
-import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
+import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { track } from "@/lib/mixpanel";
@@ -199,6 +199,8 @@ export function ClientSearchDialog({
 
               <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} />
 
+              {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+
               <div className="flex flex-col gap-2">
                 <Label htmlFor="amount">Monto</Label>
                 <Input
@@ -211,16 +213,10 @@ export function ClientSearchDialog({
                   onChange={(e) => setAmountStr(e.target.value)}
                   required
                 />
+                {rateContext ? (
+                  <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
+                ) : null}
               </div>
-
-              {rateContext ? (
-                <MovementCurrencyField
-                  amount={amountStr}
-                  currency={currency}
-                  onCurrencyChange={setCurrency}
-                  rateContext={rateContext}
-                />
-              ) : null}
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="description">Detalle (opcional)</Label>
