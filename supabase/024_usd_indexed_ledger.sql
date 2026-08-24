@@ -75,6 +75,11 @@ create table if not exists public.applied_data_migrations (
   applied_at timestamptz not null default now()
 );
 
+-- Internal bookkeeping, never read by app code. RLS on with no policies at
+-- all = deny by default for anon/authenticated; the DO block below runs as
+-- postgres, which owns the table and bypasses RLS.
+alter table public.applied_data_migrations enable row level security;
+
 do $$
 declare
   r record;
