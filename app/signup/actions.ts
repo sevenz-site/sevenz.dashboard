@@ -47,7 +47,11 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     if (error.message.toLowerCase().includes("already registered")) {
       return { error: "Ese correo ya tiene una cuenta.", success: false, alreadyRegistered: true };
     }
-    return { error: "No pudimos crear tu cuenta. Intenta de nuevo.", success: false };
+    // Surfaced directly (not a generic fallback) so a real Supabase error —
+    // e.g. an email rate limit from repeated test signups, or a rejected
+    // domain — is visible without needing server log access.
+    console.error("[signup] supabase.auth.signUp failed:", error.message);
+    return { error: `No pudimos crear tu cuenta: ${error.message}`, success: false };
   }
 
   // Supabase returns no error for a duplicate email when email confirmation is
