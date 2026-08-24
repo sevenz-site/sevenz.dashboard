@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
-import type { DisplayCurrency, ExchangeRateMode } from "@/lib/types";
+import type { ExchangeRateMode } from "@/lib/types";
 
 export type OwnerRateContext = {
   rateMode: ExchangeRateMode;
@@ -12,9 +12,6 @@ export type OwnerRateContext = {
   // what official_bcv_rate_at_time snapshots and what the CUSTOM badge
   // shows as "no es la tasa oficial BCV (X hoy)".
   officialRate: EffectiveRate;
-  // Which currency the balance figure itself is shown in — Bs is always
-  // the complement, never the principal, once an owner opts into this.
-  displayCurrency: DisplayCurrency;
 };
 
 // Loads what's needed to convert a movement into Bs and snapshot the audit
@@ -48,6 +45,5 @@ export async function getOwnerRateContext(
     rateMode,
     effectiveRate,
     officialRate: { usd: officialRate.usd, eur: officialRate.eur },
-    displayCurrency: (settings?.display_currency as DisplayCurrency) ?? "USD",
   };
 }

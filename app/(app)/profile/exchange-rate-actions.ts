@@ -16,13 +16,9 @@ export async function updateExchangeSettings(
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", success: false };
 
   const rateMode = String(formData.get("rate_mode") ?? "");
-  const displayCurrency = String(formData.get("display_currency") ?? "");
 
   if (rateMode !== "BCV_AUTO" && rateMode !== "CUSTOM") {
     return { error: "Modo de tasa inválido.", success: false };
-  }
-  if (displayCurrency !== "USD" && displayCurrency !== "EUR") {
-    return { error: "Moneda inválida.", success: false };
   }
 
   let customRateUsd: number | null = null;
@@ -49,7 +45,6 @@ export async function updateExchangeSettings(
       // rate last changed, and is left untouched when switching back to
       // BCV_AUTO so that history isn't lost if the owner flips back later.
       ...(rateMode === "CUSTOM" ? { custom_rate_set_at: new Date().toISOString() } : {}),
-      display_currency: displayCurrency,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "owner_id" },

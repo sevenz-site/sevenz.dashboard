@@ -4,6 +4,13 @@ export type MovementSource = "photo_import" | "manual";
 export type ExchangeRateMode = "BCV_AUTO" | "CUSTOM";
 export type DisplayCurrency = "USD" | "EUR";
 
+// The two currencies a VE owner's debt can be denominated in. Each is its
+// own independent ledger: a client can owe $50 and €20 at the same time, and
+// a dollar payment only ever reduces the dollar debt.
+export type LedgerCurrency = "USD" | "EUR";
+export const LEDGER_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
+export const DEFAULT_LEDGER_CURRENCY: LedgerCurrency = "USD";
+
 export type Movement = {
   id: string;
   client_id: string;
@@ -16,6 +23,9 @@ export type Movement = {
   photo_path: string | null;
   plazo_dias: number | null;
   created_at: string;
+  // Which ledger this movement belongs to. null for a country='CO' owner,
+  // whose single ledger is COP.
+  currency: LedgerCurrency | null;
   // Exchange-rate snapshot: null for every movement recorded by a country
   // = 'CO' owner. official_bcv_rate_at_time is always filled in for a 'VE'
   // owner even when rate_mode_used = 'CUSTOM' — the objective comparison
@@ -107,7 +117,11 @@ export type ClientSummary = {
   whatsapp: string | null;
   document_id: string | null;
   client_created_at: string;
+  // The COP ledger (country='CO'). A VE owner's debt lives in the two
+  // per-currency balances below instead.
   balance: number;
+  balance_usd: number;
+  balance_eur: number;
   has_pending_review: boolean;
   last_payment_at: string | null;
   mora_reference_at: string;

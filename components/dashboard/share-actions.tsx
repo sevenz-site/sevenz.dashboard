@@ -5,19 +5,22 @@ import { Share2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
-import { formatCurrency } from "@/lib/format";
 import { track } from "@/lib/mixpanel";
 
 export function ShareActions({
   clientId,
   clientName,
   whatsapp,
-  balance,
+  balanceText,
 }: {
   clientId: string;
   clientName: string;
   whatsapp: string | null;
-  balance: number;
+  // Pre-formatted by the caller — "$47.000,00" for a COP client, or
+  // "$50.00 y €20.00" for a VE client with debt in both currencies. Keeps
+  // this component currency-agnostic rather than re-deriving formatting
+  // logic that already lives in formatLedgerAmount/formatCurrency.
+  balanceText: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -46,7 +49,7 @@ export function ShareActions({
   async function handleRemind() {
     const url = await resolveUrl();
     if (!url) return;
-    const message = `Hola ${clientName}, tu saldo actual es ${formatCurrency(balance)}. Puedes verlo aquí: ${url}`;
+    const message = `Hola ${clientName}, tu saldo actual es ${balanceText}. Puedes verlo aquí: ${url}`;
     const phone = whatsapp ? whatsapp.replace(/\D/g, "") : "";
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(wa, "_blank", "noopener,noreferrer");

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { toUsd, usdToDisplay, type MovementCurrency } from "@/lib/exchange-rate/convert";
+import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = { error: string | null; clientId: string | null };
 
@@ -15,19 +15,22 @@ type ParsedMovement =
       error: null;
       type: "charge" | "payment";
       amount: number;
-      currency: MovementCurrency;
+      // Absent means the owner is 'CO' (plain COP, no currency select shown
+      // at all) — validated against the owner's actual country below, not
+      // trusted from the form alone.
+      currency: LedgerCurrency | null;
       description: string | null;
       photoPath: string | null;
       plazoDias: number | null;
     };
 
 const ALLOWED_PLAZO_DIAS = [7, 15, 30, 45];
-const ALLOWED_CURRENCIES: MovementCurrency[] = ["VES", "USD", "EUR"];
+const ALLOWED_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
   const type = String(formData.get("type") ?? "");
   const amountRaw = String(formData.get("amount") ?? "");
-  const currencyRaw = String(formData.get("movement_currency") ?? "VES");
+  const currencyRaw = formData.get("movement_currency");
   const description = String(formData.get("description") ?? "").trim();
   const photoPath = String(formData.get("photo_path") ?? "").trim();
   const plazoRaw = String(formData.get("plazo_dias") ?? "");
@@ -39,9 +42,9 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Ingresa un monto válido." };
   }
-  const currency = ALLOWED_CURRENCIES.includes(currencyRaw as MovementCurrency)
-    ? (currencyRaw as MovementCurrency)
-    : "VES";
+  const currency = ALLOWED_CURRENCIES.includes(currencyRaw as LedgerCurrency)
+    ? (currencyRaw as LedgerCurrency)
+    : null;
 
   // A payment has no payment term. A charge's plazo is only ever what the
   // form actually submitted — "sin_especificar" (or missing) means null.
@@ -65,20 +68,22 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   };
 }
 
-// Converts the entered amount into USD — the canonical unit of a VE owner's
-// dollar-indexed ledger — and returns the audit snapshot. Returns the amount
-// completely untouched (and every snapshot field null) for a 'CO' owner or
-// a 'VE' owner with no rate fetched yet, whose ledger stays plain COP.
-async function resolveMovementAmount(
+type MovementLedger = { currency: LedgerCurrency | null; rate: { usd: number; eur: number } | null };
+
+// Resolves the rate snapshot for a movement. No conversion happens here —
+// USD/EUR amounts are stored exactly as typed, since $50 and €20 are two
+// independent debts, not one debt seen two ways. A 'CO' owner (or a 'VE'
+// owner with no rate fetched yet) gets every snapshot field null and a null
+// currency, same as today's plain COP behavior.
+async function resolveMovementRateSnapshot(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ownerId: string,
-  rawAmount: number,
-  currency: MovementCurrency,
+  currency: LedgerCurrency | null,
 ) {
   const rateContext = await getOwnerRateContext(supabase, ownerId);
-  if (!rateContext) {
+  if (!rateContext || !currency) {
     return {
-      amount: rawAmount,
+      currency: null,
       rateModeUsed: null,
       exchangeRateUsed: null,
       officialBcvRateAtTime: null,
@@ -86,41 +91,25 @@ async function resolveMovementAmount(
       entryAmount: null,
       rateUsdAtTime: null,
       rateEurAtTime: null,
-      ledger: null,
+      ledger: null as MovementLedger | null,
     };
   }
 
-  const amount = toUsd(rawAmount, currency, rateContext.effectiveRate);
-  const officialForCurrency =
-    currency === "USD"
-      ? rateContext.officialRate.usd
-      : currency === "EUR"
-        ? rateContext.officialRate.eur
-        : null;
-  const effectiveForCurrency =
-    currency === "USD"
-      ? rateContext.effectiveRate.usd
-      : currency === "EUR"
-        ? rateContext.effectiveRate.eur
-        : null;
+  const officialForCurrency = currency === "USD" ? rateContext.officialRate.usd : rateContext.officialRate.eur;
+  const effectiveForCurrency = currency === "USD" ? rateContext.effectiveRate.usd : rateContext.effectiveRate.eur;
 
   return {
-    amount,
+    currency,
     rateModeUsed: rateContext.rateMode,
     exchangeRateUsed: effectiveForCurrency,
     officialBcvRateAtTime: officialForCurrency,
-    // Stored as typed, so the movement detail can show a verifiable
-    // conversion instead of a derived-after-the-fact figure.
+    // entry_currency/entry_amount mirror currency/amount now that nothing
+    // gets converted at write time — kept so the movement detail's existing
+    // "what was typed" rows keep working unchanged.
     entryCurrency: currency,
-    entryAmount: rawAmount,
-    // Both rates, not just the entered currency's — a balance shown in USD
-    // needs that day's USD rate even when the movement was entered in EUR.
     rateUsdAtTime: rateContext.effectiveRate.usd,
     rateEurAtTime: rateContext.effectiveRate.eur,
-    ledger: {
-      displayCurrency: rateContext.displayCurrency,
-      rate: rateContext.effectiveRate,
-    },
+    ledger: { currency, rate: rateContext.effectiveRate } as MovementLedger,
   };
 }
 
@@ -172,12 +161,13 @@ export async function createClientWithMovement(
     };
   }
 
-  const resolved = await resolveMovementAmount(supabase, user.id, amount, currency);
+  const resolved = await resolveMovementRateSnapshot(supabase, user.id, currency);
 
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: newClient.id,
     type,
-    amount: resolved.amount,
+    amount,
+    currency: resolved.currency,
     description,
     source: "manual",
     photo_path: photoPath,
@@ -186,7 +176,7 @@ export async function createClientWithMovement(
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
     entry_currency: resolved.entryCurrency,
-    entry_amount: resolved.entryAmount,
+    entry_amount: resolved.entryCurrency ? amount : null,
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
   });
@@ -217,20 +207,23 @@ export async function addMovement(
   if (fields.error !== null) return { error: fields.error, clientId: null };
   const { type, amount, currency, description, photoPath, plazoDias } = fields;
 
-  // Converted to Bs (or left untouched for a 'CO' owner) before the debt
-  // check below — running_balance is always in the same unit as amount,
-  // so comparing a raw USD/EUR entry against it directly would be wrong.
-  const resolved = await resolveMovementAmount(supabase, user.id, amount, currency);
+  const resolved = await resolveMovementRateSnapshot(supabase, user.id, currency);
 
-  // A payment can never exceed what the client currently owes — otherwise
-  // the balance goes negative ("a favor"), which the product no longer
-  // allows a payment to cause.
+  // A payment can never exceed what the client currently owes in that SAME
+  // currency — a dollar payment can't pay off a euro debt, since they're
+  // independent ledgers. is("currency", ...) / eq("currency", ...) below
+  // scopes the lookup to the right one (null = the CO owner's plain ledger).
   if (type === "payment") {
-    const { data: latest } = await supabase
+    let balanceQuery = supabase
       .from("movements")
       .select("running_balance")
       .eq("client_id", clientId)
-      .is("deleted_at", null)
+      .is("deleted_at", null);
+    balanceQuery = resolved.currency
+      ? balanceQuery.eq("currency", resolved.currency)
+      : balanceQuery.is("currency", null);
+
+    const { data: latest } = await balanceQuery
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(1)
@@ -238,16 +231,11 @@ export async function addMovement(
 
     const currentDebt = Number(latest?.running_balance ?? 0);
     if (currentDebt <= 0) {
-      return { error: "Este cliente no debe nada — no se puede registrar un abono.", clientId: null };
+      return { error: "Este cliente no debe nada en esta moneda — no se puede registrar un abono.", clientId: null };
     }
-    if (resolved.amount > currentDebt) {
-      // currentDebt is in the ledger's own unit — USD for a VE owner, COP
-      // otherwise — so it has to be formatted with the matching formatter.
-      const formattedDebt = resolved.ledger
-        ? formatDisplayCurrency(
-            usdToDisplay(currentDebt, resolved.ledger.displayCurrency, resolved.ledger.rate),
-            resolved.ledger.displayCurrency,
-          )
+    if (amount > currentDebt) {
+      const formattedDebt = resolved.currency
+        ? formatDisplayCurrency(currentDebt, resolved.currency)
         : formatCurrency(currentDebt);
       return {
         error: `El abono no puede ser mayor a lo que debe (${formattedDebt}).`,
@@ -259,7 +247,8 @@ export async function addMovement(
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: clientId,
     type,
-    amount: resolved.amount,
+    amount,
+    currency: resolved.currency,
     description,
     source: "manual",
     photo_path: photoPath,
@@ -268,7 +257,7 @@ export async function addMovement(
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
     entry_currency: resolved.entryCurrency,
-    entry_amount: resolved.entryAmount,
+    entry_amount: resolved.entryCurrency ? amount : null,
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
   });

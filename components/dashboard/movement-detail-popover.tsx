@@ -28,12 +28,13 @@ import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { ExchangeRateMode, MovementCurrencyCode, MovementType } from "@/lib/types";
+import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 export function MovementDetailPopover({
   movementId,
   type,
   amount,
+  currency = null,
   description,
   plazoDias,
   createdAt,
@@ -53,6 +54,12 @@ export function MovementDetailPopover({
   movementId?: string;
   type: MovementType;
   amount: number;
+  // Which ledger this movement belongs to (USD/EUR) — null for a 'CO' owner.
+  // The authoritative source for which currency to format amount/
+  // runningBalance in; entryCurrency below is only the historical "what was
+  // typed" record and can't be relied on for that (older rows may say 'VES'
+  // even though the stored amount was migrated to USD).
+  currency?: LedgerCurrency | null;
   description: string | null;
   plazoDias: number | null;
   createdAt: string;
@@ -72,8 +79,7 @@ export function MovementDetailPopover({
   officialBcvRateAtTime?: number | null;
   rateModeUsed?: ExchangeRateMode | null;
   // null = plain COP ledger (every country='CO' owner), which formats
-  // exactly as it always has. Non-null switches the ledger to Bs with the
-  // owner's chosen display currency as the principal figure.
+  // exactly as it always has.
   ledger?: LedgerDisplay | null;
   children: React.ReactNode;
 }) {
@@ -103,13 +109,13 @@ export function MovementDetailPopover({
   // "Monto" shows exactly what the owner typed, in the currency they chose —
   // the transaction as agreed. Its bolívar value underneath is today's, since
   // the debt is dollar-indexed and that figure moves with the rate.
-  const ledgerAmount = formatLedgerAmount(amount, ledger);
+  const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
   const montoPrimary = conversion
     ? `${formatDisplayCurrency(conversion.amount, conversion.currency)} ${conversion.currency}`
     : ledgerAmount.primary;
   const montoSecondary = ledgerAmount.secondary;
 
-  const balance = formatLedgerAmount(runningBalance, ledger);
+  const balance = formatLedgerAmount(runningBalance, currency, ledger);
 
   async function handleDelete() {
     if (!movementId) return;

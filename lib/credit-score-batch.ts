@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { computeCreditScore, type CreditScoreResult } from "@/lib/credit-score";
+import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, Movement } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -8,9 +9,15 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 // row for a whole page of clients at once — two `.in("client_id", ...)`
 // queries instead of one per client, grouped in JS and fed through the same
 // pure computeCreditScore() the client detail page uses for a single client.
+//
+// effectiveRate is only present for a VE owner. Movements are converted to
+// USD before scoring — computeCreditScore's FIFO payment-matching assumes
+// every movement is one comparable unit, and a EUR payment could otherwise
+// appear to close a USD charge just because it's the oldest unpaid one.
 export async function computeCreditScoresForClients(
   supabase: SupabaseServerClient,
   rows: ClientSummary[],
+  effectiveRate: EffectiveRate | null = null,
 ): Promise<Record<string, CreditScoreResult>> {
   const clientIds = rows.map((r) => r.client_id);
   if (clientIds.length === 0) return {};
@@ -18,7 +25,7 @@ export async function computeCreditScoresForClients(
   const [{ data: movements }, { data: flags }] = await Promise.all([
     supabase
       .from("movements")
-      .select("client_id, type, amount, created_at, plazo_dias")
+      .select("client_id, type, amount, currency, created_at, plazo_dias")
       .in("client_id", clientIds)
       .is("deleted_at", null),
     supabase
@@ -29,10 +36,15 @@ export async function computeCreditScoresForClients(
       .order("unflagged_at", { ascending: false }),
   ]);
 
-  const movementsByClient = new Map<string, Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">[]>();
+  const movementsByClient = new Map<
+    string,
+    Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">[]
+  >();
   for (const m of movements ?? []) {
     const list = movementsByClient.get(m.client_id) ?? [];
-    list.push(m);
+    list.push(
+      effectiveRate ? { ...m, amount: toCombinedUsd(m.amount, m.currency, effectiveRate) } : m,
+    );
     movementsByClient.set(m.client_id, list);
   }
 
@@ -47,9 +59,12 @@ export async function computeCreditScoresForClients(
 
   const scores: Record<string, CreditScoreResult> = {};
   for (const row of rows) {
+    const balance = effectiveRate
+      ? combinedBalanceUsd(row.balance_usd, row.balance_eur, effectiveRate)
+      : row.balance;
     scores[row.client_id] = computeCreditScore({
       movements: movementsByClient.get(row.client_id) ?? [],
-      balance: row.balance,
+      balance,
       daysSincePayment: row.days_since_payment,
       oldestUnpaidChargeAt: row.oldest_unpaid_charge_at,
       oldestUnpaidChargePlazoDias: row.oldest_unpaid_charge_plazo_dias,

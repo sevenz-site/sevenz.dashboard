@@ -13,13 +13,15 @@ import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-di
 import { formatCurrency } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
-import type { DisplayCurrency, ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
+import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { VerifyBadge } from "@/components/public/verify-badge";
 
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
   amount: number;
+  currency: LedgerCurrency | null;
   description: string | null;
   running_balance: number;
   needs_review: boolean;
@@ -35,7 +37,11 @@ type SharedBalance = {
   client_name: string;
   document_id: string | null;
   whatsapp_last4: string;
+  // The COP ledger (country='CO'). A VE client's debt lives in the two
+  // per-currency balances below instead.
   balance: number;
+  balance_usd: number;
+  balance_eur: number;
   movements: (SharedMovement & {
     rate_mode_used: ExchangeRateMode | null;
     exchange_rate_used: number | null;
@@ -50,7 +56,6 @@ type SharedBalance = {
   // every value is null, and the page falls back to the plain COP figure.
   owner_country: "CO" | "VE" | null;
   rate_mode: ExchangeRateMode | null;
-  display_currency: DisplayCurrency | null;
   current_bcv_usd: number | null;
   current_bcv_eur: number | null;
   custom_rate_usd: number | null;
@@ -94,9 +99,9 @@ export default async function SharedBalancePage({
               ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
               : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
           officialRate: { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
-          displayCurrency: shared.display_currency ?? ("USD" as DisplayCurrency),
         }
       : null;
+  const ledger: LedgerDisplay | null = rateContext ? { rate: rateContext.effectiveRate } : null;
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
@@ -117,11 +122,36 @@ export default async function SharedBalancePage({
       </div>
 
       <div className="rounded-xl border bg-card p-5">
-        <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance)}</p>
         {rateContext ? (
-          <ExchangeRateBalanceDisplay balance={shared.balance} rateContext={rateContext} mainClassName="text-4xl" />
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance_usd)} (USD)</p>
+              <ExchangeRateBalanceDisplay
+                balance={shared.balance_usd}
+                currency="USD"
+                ledger={ledger}
+                rateMode={rateContext.rateMode}
+                officialRateUsd={rateContext.officialRate.usd}
+                mainClassName="text-4xl"
+              />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance_eur)} (EUR)</p>
+              <ExchangeRateBalanceDisplay
+                balance={shared.balance_eur}
+                currency="EUR"
+                ledger={ledger}
+                rateMode={rateContext.rateMode}
+                officialRateUsd={rateContext.officialRate.usd}
+                mainClassName="text-4xl"
+              />
+            </div>
+          </div>
         ) : (
-          <p className="text-4xl font-semibold tabular-nums">{formatCurrency(shared.balance)}</p>
+          <>
+            <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance)}</p>
+            <p className="text-4xl font-semibold tabular-nums">{formatCurrency(shared.balance)}</p>
+          </>
         )}
         {shared.payment_info ? (
           <div className="mt-4 border-t pt-4">
@@ -147,17 +177,7 @@ export default async function SharedBalancePage({
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList
-          movements={movements}
-          ledger={
-            rateContext
-              ? {
-                  displayCurrency: rateContext.displayCurrency,
-                  rate: rateContext.effectiveRate,
-                }
-              : null
-          }
-        />
+        <MovementHistoryList movements={movements} ledger={ledger} />
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">

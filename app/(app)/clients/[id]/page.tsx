@@ -16,8 +16,9 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { computeCreditScore } from "@/lib/credit-score";
 import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
+import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
@@ -56,14 +57,20 @@ export default async function ClientDetailPage({
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
-        displayCurrency: ownerRate.displayCurrency,
       }
     : null;
+  const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
 
   const clientSummary = summary as ClientSummary | null;
   const balance = clientSummary?.balance ?? 0;
+  const balanceUsd = clientSummary?.balance_usd ?? 0;
+  const balanceEur = clientSummary?.balance_eur ?? 0;
+  // Status/mora/score are one combined judgement per client even when a VE
+  // owner tracks two independent balances — converted to USD so they're
+  // comparable, per the "uno solo, combinado" decision.
+  const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
   const status = getClientStatus(
-    balance,
+    judgementBalance,
     clientSummary?.days_since_payment ?? 0,
     clientSummary?.oldest_unpaid_charge_at ?? null,
     clientSummary?.oldest_unpaid_charge_plazo_dias ?? null,
@@ -82,7 +89,7 @@ export default async function ClientDetailPage({
           clientId={client.id}
           clientName={client.name}
           whatsapp={client.whatsapp}
-          balance={balance}
+          balanceText={formatBalanceSummary(balance, balanceUsd, balanceEur, ledger)}
         />
       </div>
 
@@ -107,16 +114,31 @@ export default async function ClientDetailPage({
             </Badge>
           ) : null}
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground">Por cobrar</p>
-          <ExchangeRateBalanceDisplay balance={balance} rateContext={ownerRate} />
-        </div>
+        {rateContext ? (
+          <div className="flex flex-wrap gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+              <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+              <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-muted-foreground">Por cobrar</p>
+            <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} />
+          </div>
+        )}
         <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
         <AddMovementDialog
           clientId={client.id}
           clientName={client.name}
           ownerId={user!.id}
-          currentDebt={balance}
+          currentDebtCop={balance}
+          currentDebtUsd={balanceUsd}
+          currentDebtEur={balanceEur}
           isFlagged={client.is_flagged}
           triggerClassName="w-full"
           rateContext={rateContext}
@@ -129,10 +151,23 @@ export default async function ClientDetailPage({
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
             <EditClientDialog client={client as Client} />
           </div>
-          <div className="text-right">
-            <p className="text-sm text-muted-foreground">Por cobrar</p>
-            <ExchangeRateBalanceDisplay balance={balance} rateContext={ownerRate} align="end" />
-          </div>
+          {rateContext ? (
+            <div className="flex gap-4">
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+                <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+                <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
+              </div>
+            </div>
+          ) : (
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Por cobrar</p>
+              <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
@@ -151,7 +186,9 @@ export default async function ClientDetailPage({
             clientId={client.id}
             clientName={client.name}
             ownerId={user!.id}
-            currentDebt={balance}
+            currentDebtCop={balance}
+            currentDebtUsd={balanceUsd}
+            currentDebtEur={balanceEur}
             isFlagged={client.is_flagged}
             rateContext={rateContext}
           />
@@ -161,7 +198,8 @@ export default async function ClientDetailPage({
       <Suspense fallback={<CreditScoreSkeleton />}>
         <CreditScoreSection
           clientId={id}
-          balance={balance}
+          balance={judgementBalance}
+          effectiveRate={ownerRate?.effectiveRate ?? null}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
@@ -173,14 +211,7 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory
-          clientId={id}
-          ledger={
-            ownerRate
-              ? { displayCurrency: ownerRate.displayCurrency, rate: ownerRate.effectiveRate }
-              : null
-          }
-        />
+        <MovementHistory clientId={id} ledger={ledger} />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -213,6 +244,7 @@ function CreditScoreSkeleton() {
 async function CreditScoreSection({
   clientId,
   balance,
+  effectiveRate,
   daysSincePayment,
   oldestUnpaidChargeAt,
   oldestUnpaidChargePlazoDias,
@@ -223,6 +255,11 @@ async function CreditScoreSection({
 }: {
   clientId: string;
   balance: number;
+  // Only present for a VE owner — needed to convert USD/EUR movements into
+  // one comparable unit before the score's FIFO payment-matching runs.
+  // Without this, a EUR payment could appear to close a USD charge just
+  // because it's the oldest unpaid one, which is wrong.
+  effectiveRate: EffectiveRate | null;
   daysSincePayment: number;
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
@@ -236,7 +273,7 @@ async function CreditScoreSection({
   const [{ data: movements }, { data: lastUnflag }] = await Promise.all([
     supabase
       .from("movements")
-      .select("type, amount, created_at, plazo_dias")
+      .select("type, amount, currency, created_at, plazo_dias")
       .eq("client_id", clientId)
       .is("deleted_at", null),
     supabase
@@ -249,8 +286,16 @@ async function CreditScoreSection({
       .maybeSingle(),
   ]);
 
+  const movementRows = (movements ?? []) as Pick<
+    Movement,
+    "type" | "amount" | "currency" | "created_at" | "plazo_dias"
+  >[];
+  const scoreMovements = effectiveRate
+    ? movementRows.map((m) => ({ ...m, amount: toCombinedUsd(m.amount, m.currency, effectiveRate) }))
+    : movementRows;
+
   const result = computeCreditScore({
-    movements: (movements ?? []) as Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">[],
+    movements: scoreMovements,
     balance,
     daysSincePayment,
     oldestUnpaidChargeAt,

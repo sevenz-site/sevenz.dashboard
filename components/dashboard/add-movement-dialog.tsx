@@ -39,11 +39,11 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { MovementCurrencyField } from "@/components/dashboard/movement-currency-field";
 import { formatCurrency } from "@/lib/format";
-import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
-import { fromUsd, type MovementCurrency, type MovementRateContext } from "@/lib/exchange-rate/convert";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { track } from "@/lib/mixpanel";
 import { cn } from "@/lib/utils";
-import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
+import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -51,7 +51,9 @@ export function AddMovementDialog({
   clientId,
   clientName,
   ownerId,
-  currentDebt,
+  currentDebtCop,
+  currentDebtUsd,
+  currentDebtEur,
   isFlagged,
   triggerClassName,
   rateContext,
@@ -59,7 +61,12 @@ export function AddMovementDialog({
   clientId: string;
   clientName: string;
   ownerId: string;
-  currentDebt: number;
+  // COP debt — used when rateContext is null (a 'CO' owner).
+  currentDebtCop: number;
+  // Independent per-currency debts — used when rateContext is present. A
+  // client can owe in one currency, the other, both, or neither.
+  currentDebtUsd: number;
+  currentDebtEur: number;
   isFlagged: boolean;
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
@@ -73,24 +80,25 @@ export function AddMovementDialog({
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<MovementCurrency>("VES");
+  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
-  const canPay = currentDebt > 0;
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(addMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
 
-  // The debt cap has to be expressed in whatever currency the owner is
-  // currently typing in — currentDebt is USD (the ledger's unit for a VE
-  // owner), so a Bs or EUR entry needs converting before it can be compared.
-  const maxDebtInCurrency = rateContext
-    ? fromUsd(currentDebt, currency, rateContext.effectiveRate)
-    : currentDebt;
-  const formattedMaxDebt = rateContext
-    ? currency === "VES"
-      ? formatBs(maxDebtInCurrency)
-      : formatDisplayCurrency(maxDebtInCurrency, currency)
-    : formatCurrency(currentDebt);
+  // The debt each currency owes is independent — no conversion, since the
+  // cap is the currency the owner is actively typing in. Switching between
+  // USD/EUR while "Abono" is open picks a different cap live.
+  const currentDebt = rateContext ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
+  const canPay = currentDebt > 0;
+  const formattedMaxDebt = rateContext ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+
+  // "Abono" only makes sense for a currency that's actually owed — if the
+  // owner picks payment then switches to a currency with no debt, fall back
+  // to a charge rather than leaving an invalid combination selected.
+  if (type === "payment" && !canPay) {
+    setType("charge");
+  }
 
   if (open !== prevOpen) {
     setPrevOpen(open);
@@ -131,6 +139,15 @@ export function AddMovementDialog({
         <form ref={formRef} action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="client_id" value={clientId} />
 
+          {rateContext ? (
+            <MovementCurrencyField
+              amount={amountStr}
+              currency={currency}
+              onCurrencyChange={setCurrency}
+              rateContext={rateContext}
+            />
+          ) : null}
+
           <div className="flex flex-col gap-2">
             <Label>Tipo</Label>
             <Select name="type" value={type} onValueChange={(v) => setType(v as "charge" | "payment")}>
@@ -146,7 +163,7 @@ export function AddMovementDialog({
             </Select>
             {!canPay ? (
               <p className="text-xs text-muted-foreground">
-                {clientName} no debe nada — no se puede registrar un abono.
+                {clientName} no debe nada{rateContext ? ` en ${currency}` : ""} — no se puede registrar un abono.
               </p>
             ) : null}
           </div>
@@ -160,7 +177,7 @@ export function AddMovementDialog({
               name="amount"
               type="number"
               min="0"
-              max={type === "payment" ? maxDebtInCurrency : undefined}
+              max={type === "payment" ? currentDebt : undefined}
               step="0.01"
               value={amountStr}
               onChange={(e) => setAmountStr(e.target.value)}
@@ -172,15 +189,6 @@ export function AddMovementDialog({
               </p>
             ) : null}
           </div>
-
-          {rateContext ? (
-            <MovementCurrencyField
-              amount={amountStr}
-              currency={currency}
-              onCurrencyChange={setCurrency}
-              rateContext={rateContext}
-            />
-          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="description">Detalle (opcional)</Label>

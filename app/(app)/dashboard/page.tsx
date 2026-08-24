@@ -9,6 +9,7 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummary } from "@/lib/types";
 
 export default async function DashboardPage() {
@@ -37,26 +38,26 @@ export default async function DashboardPage() {
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
-        displayCurrency: ownerRate.displayCurrency,
       }
     : null;
+  const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
 
   const rows = (summaries ?? []) as ClientSummary[];
   // Capital por cobrar counts every client's debt regardless of flag status —
   // flagging only affects what's *visible* in the Cartera table below, never
-  // this total.
-  const totalEnMora = rows
-    .filter((r) => Number(r.balance) > 0)
-    .reduce((sum, r) => sum + Number(r.balance), 0);
+  // this total. USD and EUR are independent ledgers, so each gets its own sum.
+  const totalCop = rows.filter((r) => Number(r.balance) > 0).reduce((sum, r) => sum + Number(r.balance), 0);
+  const totalUsd = rows.filter((r) => Number(r.balance_usd) > 0).reduce((sum, r) => sum + Number(r.balance_usd), 0);
+  const totalEur = rows.filter((r) => Number(r.balance_eur) > 0).reduce((sum, r) => sum + Number(r.balance_eur), 0);
   const visibleRows = rows.filter((r) => !r.is_flagged);
-  const scores = await computeCreditScoresForClients(supabase, visibleRows);
+  const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
-  // The lending chart counts every client's movements regardless of the
-  // Mala paga flag — same reasoning as Capital por cobrar above: this is
-  // about total lending activity, not who's currently visible in the table.
+  // The lending chart sums raw movement amounts across every client — for a
+  // VE owner that would mix USD and EUR into one meaningless total, so it
+  // only renders for the plain-COP case for now.
   const clientIds = (clients ?? []).map((c) => c.id);
   const { data: weeklyMovements } =
-    clientIds.length > 0
+    !rateContext && clientIds.length > 0
       ? await supabase
           .from("movements")
           .select("type, amount, created_at")
@@ -76,18 +77,52 @@ export default async function DashboardPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-1 flex-wrap items-start gap-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-            <ExchangeRateBalanceDisplay
-              balance={totalEnMora}
-              rateContext={ownerRate}
-              mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Lo que tus clientes te deben en total, sin descontar nada.
-            </p>
-          </div>
-          <WeeklyLendingChart data={weeklyLending} />
+          {rateContext ? (
+            <>
+              <div>
+                <p className="text-sm text-muted-foreground">Capital por cobrar en USD</p>
+                <ExchangeRateBalanceDisplay
+                  balance={totalUsd}
+                  currency="USD"
+                  ledger={ledger}
+                  rateMode={rateContext.rateMode}
+                  officialRateUsd={rateContext.officialRateUsd}
+                  mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Lo que tus clientes te deben en total, sin descontar nada.
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Capital por cobrar en Euro</p>
+                <ExchangeRateBalanceDisplay
+                  balance={totalEur}
+                  currency="EUR"
+                  ledger={ledger}
+                  rateMode={rateContext.rateMode}
+                  officialRateUsd={rateContext.officialRateUsd}
+                  mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Lo que tus clientes te deben en total, sin descontar nada.
+                </p>
+              </div>
+            </>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground">Capital por cobrar</p>
+              <ExchangeRateBalanceDisplay
+                balance={totalCop}
+                currency={null}
+                ledger={null}
+                mainClassName="text-3xl text-amber-600 dark:text-amber-400"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Lo que tus clientes te deben en total, sin descontar nada.
+              </p>
+            </div>
+          )}
+          {!rateContext ? <WeeklyLendingChart data={weeklyLending} /> : null}
         </div>
         <ClientSearchDialog
           clients={clients ?? []}

@@ -46,11 +46,11 @@ export function MovementHistoryList({
           // Bs-entered movement had no conversion, so it keeps showing the
           // balance instead of a rate that was never applied.
           const rateLine =
-            (m.entry_currency === "USD" || m.entry_currency === "EUR") && m.exchange_rate_used != null
-              ? formatRateEquivalence(m.entry_currency, m.exchange_rate_used)
+            m.currency && m.exchange_rate_used != null
+              ? formatRateEquivalence(m.currency, m.exchange_rate_used)
               : null;
-          const amount = formatLedgerAmount(m.amount, ledger);
-          const balance = formatLedgerAmount(m.running_balance, ledger);
+          const amount = formatLedgerAmount(m.amount, m.currency, ledger);
+          const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
           return (
           <li key={m.id}>
@@ -58,6 +58,7 @@ export function MovementHistoryList({
               movementId={m.id}
               type={m.type}
               amount={m.amount}
+              currency={m.currency}
               description={m.description}
               plazoDias={m.plazo_dias}
               createdAt={m.created_at}

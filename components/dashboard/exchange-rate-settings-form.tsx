@@ -7,20 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   updateExchangeSettings,
   type ExchangeSettingsState,
 } from "@/app/(app)/profile/exchange-rate-actions";
-import type { DisplayCurrency, ExchangeRateMode, OwnerExchangeSettings } from "@/lib/types";
+import type { ExchangeRateMode, OwnerExchangeSettings } from "@/lib/types";
 
 const initialState: ExchangeSettingsState = { error: null, success: false };
 
@@ -35,9 +28,6 @@ export function ExchangeRateSettingsForm({
 }) {
   const router = useRouter();
   const [rateMode, setRateMode] = useState<ExchangeRateMode>(settings?.rate_mode ?? "BCV_AUTO");
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(
-    settings?.display_currency ?? "USD",
-  );
   const [state, formAction, pending] = useActionState(updateExchangeSettings, initialState);
 
   useEffect(() => {
@@ -98,26 +88,6 @@ export function ExchangeRateSettingsForm({
           </div>
         </div>
       ) : null}
-
-      <div className="flex flex-col gap-2">
-        <Label>Moneda principal del saldo</Label>
-        <Select
-          name="display_currency"
-          value={displayCurrency}
-          onValueChange={(v) => setDisplayCurrency(v as DisplayCurrency)}
-        >
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="USD">USD</SelectItem>
-            <SelectItem value="EUR">EUR</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          El Bolívar siempre aparece como complemento, nunca como moneda principal.
-        </p>
-      </div>
 
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
 

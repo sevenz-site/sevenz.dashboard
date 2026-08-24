@@ -23,8 +23,8 @@ import { MovementCurrencyField } from "@/components/dashboard/movement-currency-
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { track } from "@/lib/mixpanel";
-import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
-import type { MovementCurrency, MovementRateContext } from "@/lib/exchange-rate/convert";
+import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -49,7 +49,7 @@ export function ClientSearchDialog({
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<MovementCurrency>("VES");
+  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);

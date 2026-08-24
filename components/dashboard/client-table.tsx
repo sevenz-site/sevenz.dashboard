@@ -36,6 +36,8 @@ import { useTour } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
+import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { formatDate } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -86,6 +88,13 @@ export function ClientTable({
   // of the two ever renders at a time (isMobile picks the branch), so a
   // single piece of state is enough for both.
   const [legendOpen, setLegendOpen] = useState(false);
+  const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
+
+  // Status and the amount filter need ONE number per client even though a VE
+  // owner may have two independent balances — combined to USD, matching the
+  // "uno solo, combinado" decision for status/mora/score.
+  const judgementBalance = (row: ClientSummary) =>
+    rateContext ? combinedBalanceUsd(row.balance_usd, row.balance_eur, rateContext.effectiveRate) : row.balance;
 
   const filteredRows = useMemo(() => {
     const query = nameQuery.trim().toLowerCase();
@@ -94,20 +103,22 @@ export function ClientTable({
 
     return rows.filter((row) => {
       if (query && !row.name.toLowerCase().includes(query)) return false;
+      const balance = judgementBalance(row);
       if (statusFilter !== "todos") {
         const status = getClientStatus(
-          row.balance,
+          balance,
           row.days_since_payment,
           row.oldest_unpaid_charge_at,
           row.oldest_unpaid_charge_plazo_dias,
         );
         if (status !== statusFilter) return false;
       }
-      if (min !== null && !Number.isNaN(min) && row.balance < min) return false;
-      if (max !== null && !Number.isNaN(max) && row.balance > max) return false;
+      if (min !== null && !Number.isNaN(min) && balance < min) return false;
+      if (max !== null && !Number.isNaN(max) && balance > max) return false;
       return true;
     });
-  }, [rows, nameQuery, statusFilter, minAmount, maxAmount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, nameQuery, statusFilter, minAmount, maxAmount, rateContext]);
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -248,7 +259,14 @@ export function ClientTable({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Por cobrar</TableHead>
+                    {rateContext ? (
+                      <>
+                        <TableHead>Por cobrar USD</TableHead>
+                        <TableHead>Por cobrar EUR</TableHead>
+                      </>
+                    ) : (
+                      <TableHead>Por cobrar</TableHead>
+                    )}
                     <TableHead>Estado</TableHead>
                     <TableHead className="hidden md:table-cell">Puntaje</TableHead>
                     <TableHead className="hidden md:table-cell">Último abono</TableHead>
@@ -274,9 +292,20 @@ export function ClientTable({
                           </div>
                           <div className="text-xs font-normal text-muted-foreground">—</div>
                         </TableCell>
-                        <TableCell className="tabular-nums">
-                          <ExchangeRateBalanceDisplay balance={0} rateContext={rateContext} size="sm" />
-                        </TableCell>
+                        {rateContext ? (
+                          <>
+                            <TableCell className="tabular-nums">
+                              <ExchangeRateBalanceDisplay balance={0} currency="USD" ledger={ledger} size="sm" />
+                            </TableCell>
+                            <TableCell className="tabular-nums">
+                              <ExchangeRateBalanceDisplay balance={0} currency="EUR" ledger={ledger} size="sm" />
+                            </TableCell>
+                          </>
+                        ) : (
+                          <TableCell className="tabular-nums">
+                            <ExchangeRateBalanceDisplay balance={0} currency={null} ledger={null} size="sm" />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.sin_deuda}>
                             {CLIENT_STATUS_LABEL.sin_deuda}
@@ -288,7 +317,7 @@ export function ClientTable({
                       </TableRow>
                       {tour.step === 2.5 ? (
                         <TableRow className="bg-accent/20">
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={rateContext ? 7 : 6}>
                             <div className="flex items-center justify-between py-1">
                               <span className="text-sm text-muted-foreground">
                                 Detalle de Cliente de ejemplo
@@ -309,7 +338,7 @@ export function ClientTable({
                   ) : null}
                   {pagedRows.map((row) => {
                     const status = getClientStatus(
-                      row.balance,
+                      judgementBalance(row),
                       row.days_since_payment,
                       row.oldest_unpaid_charge_at,
                       row.oldest_unpaid_charge_plazo_dias,
@@ -334,9 +363,30 @@ export function ClientTable({
                             {row.document_id || "—"}
                           </div>
                         </TableCell>
-                        <TableCell className="tabular-nums">
-                          <ExchangeRateBalanceDisplay balance={row.balance} rateContext={rateContext} size="sm" />
-                        </TableCell>
+                        {rateContext ? (
+                          <>
+                            <TableCell className="tabular-nums">
+                              <ExchangeRateBalanceDisplay
+                                balance={row.balance_usd}
+                                currency="USD"
+                                ledger={ledger}
+                                size="sm"
+                              />
+                            </TableCell>
+                            <TableCell className="tabular-nums">
+                              <ExchangeRateBalanceDisplay
+                                balance={row.balance_eur}
+                                currency="EUR"
+                                ledger={ledger}
+                                size="sm"
+                              />
+                            </TableCell>
+                          </>
+                        ) : (
+                          <TableCell className="tabular-nums">
+                            <ExchangeRateBalanceDisplay balance={row.balance} currency={null} ledger={null} size="sm" />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
@@ -376,7 +426,7 @@ export function ClientTable({
                               clientId={row.client_id}
                               clientName={row.name}
                               whatsapp={row.whatsapp}
-                              balance={row.balance}
+                              balanceText={formatBalanceSummary(row.balance, row.balance_usd, row.balance_eur, ledger)}
                             />
                           </div>
                         </TableCell>

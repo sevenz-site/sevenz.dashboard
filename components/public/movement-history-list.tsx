@@ -14,12 +14,13 @@ import { formatDate } from "@/lib/format";
 import { formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getBalanceLabel } from "@/lib/types";
-import type { ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
+import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
   amount: number;
+  currency: LedgerCurrency | null;
   description: string | null;
   running_balance: number;
   needs_review: boolean;
@@ -58,17 +59,18 @@ export function MovementHistoryList({
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
           const rateLine =
-            (m.entry_currency === "USD" || m.entry_currency === "EUR") && m.exchange_rate_used != null
-              ? formatRateEquivalence(m.entry_currency, m.exchange_rate_used)
+            m.currency && m.exchange_rate_used != null
+              ? formatRateEquivalence(m.currency, m.exchange_rate_used)
               : null;
-          const amount = formatLedgerAmount(m.amount, ledger);
-          const balance = formatLedgerAmount(m.running_balance, ledger);
+          const amount = formatLedgerAmount(m.amount, m.currency, ledger);
+          const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
           return (
           <li key={m.id}>
             <MovementDetailPopover
               type={m.type}
               amount={m.amount}
+              currency={m.currency}
               description={m.description}
               plazoDias={m.plazo_dias}
               createdAt={m.created_at}
