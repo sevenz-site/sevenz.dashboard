@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, ShieldAlert, Camera, Building2, LogOut, Loader2 } from "lucide-react";
 import {
   Sidebar,
@@ -19,6 +19,7 @@ import {
 import { logout } from "@/app/(app)/actions";
 import { useImportJobs } from "@/components/import/import-context";
 import { useTour } from "@/components/dashboard/tour-context";
+import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: LayoutDashboard, dataTour: undefined },
@@ -29,9 +30,11 @@ const NAV_ITEMS = [
 
 export function AppSidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const tour = useTour();
   const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();
+  const { guard } = useUnsavedChangesGuard();
   const pendingCount = jobs.filter((j) => j.status === "queued" || j.status === "processing").length;
 
   return (
@@ -59,9 +62,16 @@ export function AppSidebar({ businessName }: { businessName: string }) {
                     <Link
                       href={item.href}
                       data-tour={item.dataTour}
-                      onClick={() => {
-                        if (item.href === "/import" && tour.step === 3) tour.advance();
-                        setOpenMobile(false);
+                      onClick={(e) => {
+                        // Let modifier/middle clicks open a new tab as usual —
+                        // only a plain click actually leaves this page.
+                        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                        e.preventDefault();
+                        guard(() => {
+                          if (item.href === "/import" && tour.step === 3) tour.advance();
+                          setOpenMobile(false);
+                          router.push(item.href);
+                        });
                       }}
                     >
                       <item.icon />
@@ -83,12 +93,10 @@ export function AppSidebar({ businessName }: { businessName: string }) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <form action={logout}>
-              <SidebarMenuButton type="submit">
-                <LogOut />
-                <span>Cerrar sesión</span>
-              </SidebarMenuButton>
-            </form>
+            <SidebarMenuButton onClick={() => guard(() => logout())}>
+              <LogOut />
+              <span>Cerrar sesión</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
-import { ProfileForm } from "@/components/dashboard/profile-form";
-import { ChangePasswordForm } from "@/components/dashboard/change-password-form";
-import { ExchangeRateSettingsForm } from "@/components/dashboard/exchange-rate-settings-form";
+import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
+import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
 import type { Owner, OwnerExchangeSettings } from "@/lib/types";
 
 export default async function ProfilePage() {
@@ -46,25 +45,17 @@ export default async function ProfilePage() {
         </p>
       </div>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium text-muted-foreground">Datos del negocio</h2>
-        <ProfileForm owner={owner as Owner} logoUrl={logoUrl} />
-      </section>
-
-      {owner.country === "VE" ? (
-        <section className="flex flex-col gap-4">
-          <h2 className="text-sm font-medium text-muted-foreground">Tasa de cambio</h2>
-          <ExchangeRateSettingsForm
-            settings={exchangeSettings}
-            currentBcvUsd={currentBcvUsd}
-            currentBcvEur={currentBcvEur}
-          />
-        </section>
-      ) : null}
+      <BusinessSettingsForm
+        owner={owner as Owner}
+        logoUrl={logoUrl}
+        exchangeSettings={exchangeSettings}
+        currentBcvUsd={currentBcvUsd}
+        currentBcvEur={currentBcvEur}
+      />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-muted-foreground">Contraseña</h2>
-        <ChangePasswordForm />
+        <ChangePasswordDialog />
       </section>
     </div>
   );

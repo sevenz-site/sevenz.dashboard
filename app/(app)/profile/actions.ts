@@ -51,7 +51,12 @@ export async function deleteLogo(): Promise<{ error: string | null }> {
   return { error: null };
 }
 
-export async function updateProfile(
+// Saves the "Datos del negocio" and "Tasa de cambio" sections together —
+// they used to be two separate forms with two separate save buttons, which
+// read as confusing since both live under the same "Mi negocio" screen.
+// Exchange-rate fields are only present (and only validated/written) when
+// the owner is 'VE', matching the section's own visibility rule.
+export async function updateBusinessSettings(
   _prevState: ProfileState,
   formData: FormData,
 ): Promise<ProfileState> {
@@ -76,6 +81,46 @@ export async function updateProfile(
   }
   if (country !== "CO" && country !== "VE") {
     return { error: "País inválido.", success: false };
+  }
+
+  if (country === "VE") {
+    const rateMode = String(formData.get("rate_mode") ?? "");
+    if (rateMode !== "BCV_AUTO" && rateMode !== "CUSTOM") {
+      return { error: "Modo de tasa inválido.", success: false };
+    }
+
+    let customRateUsd: number | null = null;
+    let customRateEur: number | null = null;
+
+    if (rateMode === "CUSTOM") {
+      customRateUsd = Number(formData.get("custom_rate_usd"));
+      customRateEur = Number(formData.get("custom_rate_eur"));
+      if (!Number.isFinite(customRateUsd) || customRateUsd <= 0) {
+        return { error: "Ingresa una tasa USD válida.", success: false };
+      }
+      if (!Number.isFinite(customRateEur) || customRateEur <= 0) {
+        return { error: "Ingresa una tasa EUR válida.", success: false };
+      }
+    }
+
+    const { error: rateError } = await supabase.from("owner_exchange_settings").upsert(
+      {
+        owner_id: user.id,
+        rate_mode: rateMode,
+        custom_rate_usd: customRateUsd,
+        custom_rate_eur: customRateEur,
+        // Only refreshed on an actual CUSTOM save — audits when the custom
+        // rate last changed, and is left untouched when switching back to
+        // BCV_AUTO so that history isn't lost if the owner flips back later.
+        ...(rateMode === "CUSTOM" ? { custom_rate_set_at: new Date().toISOString() } : {}),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "owner_id" },
+    );
+
+    if (rateError) {
+      return { error: `No pudimos guardar la tasa de cambio: ${rateError.message}`, success: false };
+    }
   }
 
   const { error } = await supabase

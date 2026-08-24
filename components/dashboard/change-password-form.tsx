@@ -9,13 +9,16 @@ import { changePassword, type PasswordState } from "@/app/(app)/profile/actions"
 
 const initialState: PasswordState = { error: null, success: false };
 
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
   const [state, formAction, pending] = useActionState(changePassword, initialState);
 
   useEffect(() => {
     if (state === initialState || pending) return;
-    if (state.success) toast.success("Contraseña actualizada");
-  }, [state, pending]);
+    if (state.success) {
+      toast.success("Contraseña actualizada");
+      onSuccess?.();
+    }
+  }, [state, pending, onSuccess]);
 
   return (
     <form

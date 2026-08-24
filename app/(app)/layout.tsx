@@ -10,6 +10,7 @@ import { HelpButton } from "@/components/dashboard/help-button";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { ImportProvider } from "@/components/import/import-provider";
+import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
 import { getImportUsageForOwner } from "@/lib/import-usage";
 
@@ -37,23 +38,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ImportProvider initialUsage={importUsage}>
       <MixpanelIdentify ownerId={user.id} email={user.email ?? ""} plan={owner?.plan ?? "free"} />
       <TourProvider active={!owner?.onboarding_completed_at}>
-        <SidebarProvider>
-          <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
-          <SidebarInset>
-            <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <span className="text-sm font-medium text-muted-foreground">
-                {owner?.business_name || "Mi negocio"}
-              </span>
-              <div className="ml-auto flex items-center gap-1">
-                <HelpButton />
-                <NotificationsButton initialUnreadCount={unreadCount} />
-              </div>
-            </header>
-            <main className="flex flex-1 flex-col gap-4 p-4">{children}</main>
-          </SidebarInset>
-        </SidebarProvider>
+        <UnsavedChangesProvider>
+          <SidebarProvider>
+            <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
+            <SidebarInset>
+              <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mr-2 h-4" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  {owner?.business_name || "Mi negocio"}
+                </span>
+                <div className="ml-auto flex items-center gap-1">
+                  <HelpButton />
+                  <NotificationsButton initialUnreadCount={unreadCount} />
+                </div>
+              </header>
+              <main className="flex flex-1 flex-col gap-4 p-4">{children}</main>
+            </SidebarInset>
+          </SidebarProvider>
+        </UnsavedChangesProvider>
       </TourProvider>
     </ImportProvider>
   );
