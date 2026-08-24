@@ -6,6 +6,8 @@ import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
+import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary } from "@/lib/types";
 
@@ -69,6 +71,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-1 flex-wrap items-start gap-4">
           <div>
@@ -92,6 +96,8 @@ export default async function DashboardPage() {
         />
       </div>
       <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} />
+
+      {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
     </div>
   );
 }

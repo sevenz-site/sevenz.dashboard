@@ -41,6 +41,23 @@ export function fromBs(bsAmount: number, currency: MovementCurrency, rate: Effec
   return bsAmount / perUnit;
 }
 
+// One conversion function powering both UI surfaces that need "what is this
+// worth in the other currencies" — the rate-strip's mini-calculator and (in
+// spirit) the movement form's live preview above. Given an amount in any of
+// the three currencies, returns its equivalent in all three.
+export function convertToAllCurrencies(
+  amount: number,
+  fromCurrency: MovementCurrency,
+  rate: EffectiveRate,
+): { ves: number; usd: number; eur: number } {
+  const ves = toBs(amount, fromCurrency, rate);
+  return {
+    ves,
+    usd: rate.usd ? ves / rate.usd : 0,
+    eur: rate.eur ? ves / rate.eur : 0,
+  };
+}
+
 // Converts a Bs amount into the owner's chosen display currency, for the
 // dashboard/public balance figure (the "$47.00" in "Saldo: $47.00 / Bs.
 // 8.906,25"). Never used to recompute a movement's own historical Bs

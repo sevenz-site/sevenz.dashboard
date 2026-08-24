@@ -8,9 +8,12 @@ import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
+import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { formatCurrency } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
+import type { DisplayCurrency, ExchangeRateMode } from "@/lib/types";
 import { VerifyBadge } from "@/components/public/verify-badge";
 
 type SharedMovement = {
@@ -34,6 +37,16 @@ type SharedBalance = {
   whatsapp_last4: string;
   balance: number;
   movements: SharedMovement[];
+  // Only meaningful when owner_country = 'VE' — a 'CO' owner's payload
+  // still includes these keys (the SQL function always returns them) but
+  // every value is null, and the page falls back to the plain COP figure.
+  owner_country: "CO" | "VE" | null;
+  rate_mode: ExchangeRateMode | null;
+  display_currency: DisplayCurrency | null;
+  current_bcv_usd: number | null;
+  current_bcv_eur: number | null;
+  custom_rate_usd: number | null;
+  custom_rate_eur: number | null;
 };
 
 export default async function SharedBalancePage({
@@ -61,6 +74,22 @@ export default async function SharedBalancePage({
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
   const logoUrl = shared.owner_logo_path ? getPublicLogoUrl(shared.owner_logo_path) : "/icon.svg";
 
+  // Absent (null) for a 'CO' owner, or a 'VE' owner before any rate has ever
+  // been fetched — the balance then renders exactly like today's plain COP
+  // figure, same as everywhere else this shape is used.
+  const rateContext =
+    shared.owner_country === "VE" && shared.current_bcv_usd != null && shared.current_bcv_eur != null
+      ? {
+          rateMode: shared.rate_mode ?? ("BCV_AUTO" as ExchangeRateMode),
+          effectiveRate:
+            shared.rate_mode === "CUSTOM" && shared.custom_rate_usd && shared.custom_rate_eur
+              ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
+              : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
+          officialRate: { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
+          displayCurrency: shared.display_currency ?? ("USD" as DisplayCurrency),
+        }
+      : null;
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
       <div className="flex items-center gap-3 pt-2">
@@ -81,7 +110,11 @@ export default async function SharedBalancePage({
 
       <div className="rounded-xl border bg-card p-5">
         <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance)}</p>
-        <p className="text-4xl font-semibold tabular-nums">{formatCurrency(shared.balance)}</p>
+        {rateContext ? (
+          <ExchangeRateBalanceDisplay balance={shared.balance} rateContext={rateContext} mainClassName="text-4xl" />
+        ) : (
+          <p className="text-4xl font-semibold tabular-nums">{formatCurrency(shared.balance)}</p>
+        )}
         {shared.payment_info ? (
           <div className="mt-4 border-t pt-4">
             <p className="mb-1 text-sm font-medium text-muted-foreground">Cómo pagar</p>
@@ -117,6 +150,8 @@ export default async function SharedBalancePage({
           <Link href="/signup">Regístrate en Sevenz</Link>
         </Button>
       </div>
+
+      {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
     </div>
   );
 }

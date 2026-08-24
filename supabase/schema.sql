@@ -542,7 +542,9 @@ begin
     'rate_mode', v_settings.rate_mode,
     'display_currency', coalesce(v_settings.display_currency, 'USD'),
     'current_bcv_usd', v_current_bcv.usd,
-    'current_bcv_eur', v_current_bcv.eur
+    'current_bcv_eur', v_current_bcv.eur,
+    'custom_rate_usd', v_settings.custom_rate_usd,
+    'custom_rate_eur', v_settings.custom_rate_eur
   );
 end;
 $$;
