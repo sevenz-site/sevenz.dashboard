@@ -18,9 +18,55 @@
 -- ledger needs more decimals: Bs. 5.000 is $6.4106…, and rounding that to
 -- $6.41 would round-trip back to Bs. 4.999,17 — visibly wrong to an owner
 -- who typed exactly 5.000.
+-- client_summary selects running_balance, and Postgres refuses to alter a
+-- column a view depends on ("cannot alter type of a column used by a view or
+-- rule"), so the view has to be dropped and rebuilt around the change.
+drop view if exists public.client_summary;
+
 alter table public.movements
   alter column amount type numeric(14, 4),
   alter column running_balance type numeric(14, 4);
+
+create view public.client_summary
+with (security_invoker = on) as
+select
+  c.id as client_id,
+  c.owner_id,
+  c.name,
+  c.whatsapp,
+  c.created_at as client_created_at,
+  coalesce(latest.running_balance, 0) as balance,
+  coalesce(review.any_needs_review, false) as has_pending_review,
+  last_payment.created_at as last_payment_at,
+  coalesce(last_payment.created_at, c.created_at) as mora_reference_at,
+  extract(day from now() - coalesce(last_payment.created_at, c.created_at))::int as days_since_payment,
+  oldest_unpaid.charge_at as oldest_unpaid_charge_at,
+  oldest_unpaid.plazo_dias as oldest_unpaid_charge_plazo_dias,
+  c.document_id,
+  c.is_flagged
+from public.clients c
+left join lateral (
+  select m.running_balance
+  from public.movements m
+  where m.client_id = c.id and m.deleted_at is null
+  order by m.created_at desc, m.id desc
+  limit 1
+) latest on true
+left join lateral (
+  select bool_or(m.needs_review) as any_needs_review
+  from public.movements m
+  where m.client_id = c.id and m.deleted_at is null
+) review on true
+left join lateral (
+  select m.created_at
+  from public.movements m
+  where m.client_id = c.id and m.type = 'payment' and m.deleted_at is null
+  order by m.created_at desc
+  limit 1
+) last_payment on true
+left join lateral public.get_oldest_unpaid_charge(c.id) oldest_unpaid on true;
+
+grant select on public.client_summary to authenticated;
 
 -- The trigger and recalc helpers declare their own locals, which would
 -- silently round back to 2 decimals if left alone.
