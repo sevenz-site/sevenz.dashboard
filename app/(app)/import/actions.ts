@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import type { MovementType } from "@/lib/types";
 
 export type ImportRow = {
@@ -21,6 +22,11 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", imported: 0 };
   if (rows.length === 0) return { error: "No hay movimientos para importar.", imported: 0 };
+
+  // Same resolution every imported row gets — a photo import never collects
+  // a per-row currency, so this is either null (CO owner) or the owner's
+  // current ledger currency (VE owner), resolved once for the whole batch.
+  const resolved = await resolveMovementRateSnapshot(supabase, user.id, null);
 
   const clientIdByName = new Map<string, string>();
   let imported = 0;
@@ -56,8 +62,16 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       client_id: clientId,
       type: row.type,
       amount: row.amount,
+      currency: resolved.currency,
       description: row.description,
       source: "photo_import",
+      rate_mode_used: resolved.rateModeUsed,
+      exchange_rate_used: resolved.exchangeRateUsed,
+      official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
+      entry_currency: resolved.entryCurrency,
+      entry_amount: resolved.entryCurrency ? row.amount : null,
+      rate_usd_at_time: resolved.rateUsdAtTime,
+      rate_eur_at_time: resolved.rateEurAtTime,
     });
 
     if (movementError) {

@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
-import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
+import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = { error: string | null; clientId: string | null };
 
@@ -65,63 +65,6 @@ function parseMovementFields(formData: FormData): ParsedMovement {
     description: description || null,
     photoPath: photoPath || null,
     plazoDias,
-  };
-}
-
-type MovementLedger = { currency: LedgerCurrency | null; rate: { usd: number; eur: number } | null };
-
-// Resolves the rate snapshot for a movement. No conversion happens here —
-// USD/EUR amounts are stored exactly as typed, since $50 and €20 are two
-// independent debts, not one debt seen two ways. A 'CO' owner gets every
-// snapshot field null and a null currency, same as today's plain COP
-// behavior — that's the only case where a null currency is correct.
-async function resolveMovementRateSnapshot(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  ownerId: string,
-  currency: LedgerCurrency | null,
-) {
-  const rateContext = await getOwnerRateContext(supabase, ownerId);
-  if (!rateContext) {
-    return {
-      currency: null,
-      rateModeUsed: null,
-      exchangeRateUsed: null,
-      officialBcvRateAtTime: null,
-      entryCurrency: null,
-      entryAmount: null,
-      rateUsdAtTime: null,
-      rateEurAtTime: null,
-      ledger: null as MovementLedger | null,
-    };
-  }
-
-  // getOwnerRateContext re-reads the owner fresh from the database on every
-  // request, so a non-null rateContext here means this owner is VE *right
-  // now* — regardless of what the submitted form believed. A page rendered
-  // before the owner's country changed won't have shown the currency field
-  // at all, so `currency` arrives null even though this is really a VE
-  // movement; falling through to the null-currency branch above would
-  // silently save it into the wrong (COP) ledger. Default to USD instead of
-  // trusting the client's stale assumption.
-  const resolvedCurrency = currency ?? DEFAULT_LEDGER_CURRENCY;
-
-  const officialForCurrency =
-    resolvedCurrency === "USD" ? rateContext.officialRate.usd : rateContext.officialRate.eur;
-  const effectiveForCurrency =
-    resolvedCurrency === "USD" ? rateContext.effectiveRate.usd : rateContext.effectiveRate.eur;
-
-  return {
-    currency: resolvedCurrency,
-    rateModeUsed: rateContext.rateMode,
-    exchangeRateUsed: effectiveForCurrency,
-    officialBcvRateAtTime: officialForCurrency,
-    // entry_currency/entry_amount mirror currency/amount now that nothing
-    // gets converted at write time — kept so the movement detail's existing
-    // "what was typed" rows keep working unchanged.
-    entryCurrency: resolvedCurrency,
-    rateUsdAtTime: rateContext.effectiveRate.usd,
-    rateEurAtTime: rateContext.effectiveRate.eur,
-    ledger: { currency: resolvedCurrency, rate: rateContext.effectiveRate } as MovementLedger,
   };
 }
 
