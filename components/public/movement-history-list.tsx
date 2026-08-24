@@ -11,7 +11,9 @@ import {
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { formatBs } from "@/lib/exchange-rate/format";
 import { getBalanceLabel } from "@/lib/types";
+import type { ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
 
 type SharedMovement = {
   id: string;
@@ -22,12 +24,24 @@ type SharedMovement = {
   needs_review: boolean;
   plazo_dias: number | null;
   created_at: string;
+  rate_mode_used: ExchangeRateMode | null;
+  exchange_rate_used: number | null;
+  official_bcv_rate_at_time: number | null;
+  entry_currency: MovementCurrencyCode | null;
+  entry_amount: number | null;
 };
 
 const PAGE_SIZE = 10;
 
-export function MovementHistoryList({ movements }: { movements: SharedMovement[] }) {
+export function MovementHistoryList({
+  movements,
+  isBsLedger = false,
+}: {
+  movements: SharedMovement[];
+  isBsLedger?: boolean;
+}) {
   const [page, setPage] = useState(1);
+  const formatLedger = (value: number) => (isBsLedger ? formatBs(value) : formatCurrency(value));
 
   if (movements.length === 0) {
     return <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>;
@@ -50,6 +64,12 @@ export function MovementHistoryList({ movements }: { movements: SharedMovement[]
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               balanceLabel={getBalanceLabel(m.running_balance)}
+              entryCurrency={m.entry_currency}
+              entryAmount={m.entry_amount}
+              exchangeRateUsed={m.exchange_rate_used}
+              officialBcvRateAtTime={m.official_bcv_rate_at_time}
+              rateModeUsed={m.rate_mode_used}
+              isBsLedger={isBsLedger}
             >
               <button
                 type="button"
@@ -61,13 +81,13 @@ export function MovementHistoryList({ movements }: { movements: SharedMovement[]
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} · {getBalanceLabel(m.running_balance)} {formatCurrency(m.running_balance)}
+                    {formatDate(m.created_at)} · {getBalanceLabel(m.running_balance)} {formatLedger(m.running_balance)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={`tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {m.type === "charge" ? "+" : "-"}
-                    {formatCurrency(m.amount)}
+                    {formatLedger(m.amount)}
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>

@@ -13,7 +13,7 @@ import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-di
 import { formatCurrency } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
-import type { DisplayCurrency, ExchangeRateMode } from "@/lib/types";
+import type { DisplayCurrency, ExchangeRateMode, MovementCurrencyCode } from "@/lib/types";
 import { VerifyBadge } from "@/components/public/verify-badge";
 
 type SharedMovement = {
@@ -36,7 +36,13 @@ type SharedBalance = {
   document_id: string | null;
   whatsapp_last4: string;
   balance: number;
-  movements: SharedMovement[];
+  movements: (SharedMovement & {
+    rate_mode_used: ExchangeRateMode | null;
+    exchange_rate_used: number | null;
+    official_bcv_rate_at_time: number | null;
+    entry_currency: MovementCurrencyCode | null;
+    entry_amount: number | null;
+  })[];
   // Only meaningful when owner_country = 'VE' — a 'CO' owner's payload
   // still includes these keys (the SQL function always returns them) but
   // every value is null, and the page falls back to the plain COP figure.
@@ -139,7 +145,7 @@ export default async function SharedBalancePage({
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList movements={movements} />
+        <MovementHistoryList movements={movements} isBsLedger={rateContext !== null} />
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">

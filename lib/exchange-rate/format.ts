@@ -29,3 +29,9 @@ const displayCurrencyFormatters: Record<"USD" | "EUR", Intl.NumberFormat> = {
 export function formatDisplayCurrency(amount: number, currency: "USD" | "EUR"): string {
   return displayCurrencyFormatters[currency].format(amount);
 }
+
+// "$1 = Bs. 779,95" / "€1 = Bs. 911,22" — the rate always shown as a full
+// equivalence, never a bare number, so it's clear which currency it converts.
+export function formatRateEquivalence(currency: "USD" | "EUR", rate: number): string {
+  return `${currency === "USD" ? "$" : "€"}1 = ${formatBs(rate)}`;
+}

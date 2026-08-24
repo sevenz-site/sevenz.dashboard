@@ -171,7 +171,7 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} />
+        <MovementHistory clientId={id} isBsLedger={ownerRate !== null} />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -287,7 +287,13 @@ async function CreditScoreSection({
   );
 }
 
-async function MovementHistory({ clientId }: { clientId: string }) {
+async function MovementHistory({
+  clientId,
+  isBsLedger,
+}: {
+  clientId: string;
+  isBsLedger: boolean;
+}) {
   const supabase = await createClient();
 
   const { data: movements } = await supabase
@@ -313,7 +319,11 @@ async function MovementHistory({ clientId }: { clientId: string }) {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="text-sm font-medium text-muted-foreground">Historial de movimientos</h2>
-      <MovementHistoryList movements={movementRows} photoUrls={Object.fromEntries(photoUrls)} />
+      <MovementHistoryList
+        movements={movementRows}
+        photoUrls={Object.fromEntries(photoUrls)}
+        isBsLedger={isBsLedger}
+      />
     </div>
   );
 }

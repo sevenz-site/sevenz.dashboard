@@ -77,7 +77,14 @@ async function resolveMovementAmount(
 ) {
   const rateContext = await getOwnerRateContext(supabase, ownerId);
   if (!rateContext) {
-    return { amount: rawAmount, rateModeUsed: null, exchangeRateUsed: null, officialBcvRateAtTime: null };
+    return {
+      amount: rawAmount,
+      rateModeUsed: null,
+      exchangeRateUsed: null,
+      officialBcvRateAtTime: null,
+      entryCurrency: null,
+      entryAmount: null,
+    };
   }
 
   const amount = toBs(rawAmount, currency, rateContext.effectiveRate);
@@ -99,6 +106,10 @@ async function resolveMovementAmount(
     rateModeUsed: rateContext.rateMode,
     exchangeRateUsed: effectiveForCurrency,
     officialBcvRateAtTime: officialForCurrency,
+    // Stored as typed, so the movement detail can show a verifiable
+    // conversion instead of a derived-after-the-fact figure.
+    entryCurrency: currency,
+    entryAmount: rawAmount,
   };
 }
 
@@ -163,6 +174,8 @@ export async function createClientWithMovement(
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
+    entry_currency: resolved.entryCurrency,
+    entry_amount: resolved.entryAmount,
   });
 
   if (movementError) {
@@ -238,6 +251,8 @@ export async function addMovement(
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
+    entry_currency: resolved.entryCurrency,
+    entry_amount: resolved.entryAmount,
   });
 
   if (movementError) {

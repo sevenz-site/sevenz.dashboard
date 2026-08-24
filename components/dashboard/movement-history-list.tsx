@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
 
 const PAGE_SIZE = 10;
@@ -18,11 +19,15 @@ const PAGE_SIZE = 10;
 export function MovementHistoryList({
   movements,
   photoUrls,
+  isBsLedger = false,
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
+  // A VE owner's ledger is in Bs, not COP — see MovementDetailPopover.
+  isBsLedger?: boolean;
 }) {
   const [page, setPage] = useState(1);
+  const formatLedger = (value: number) => (isBsLedger ? formatBs(value) : formatCurrency(value));
 
   if (movements.length === 0) {
     return <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>;
@@ -46,6 +51,12 @@ export function MovementHistoryList({
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               photoUrl={m.photo_path ? (photoUrls[m.photo_path] ?? null) : null}
+              entryCurrency={m.entry_currency}
+              entryAmount={m.entry_amount}
+              exchangeRateUsed={m.exchange_rate_used}
+              officialBcvRateAtTime={m.official_bcv_rate_at_time}
+              rateModeUsed={m.rate_mode_used}
+              isBsLedger={isBsLedger}
             >
               <button
                 type="button"
@@ -57,7 +68,7 @@ export function MovementHistoryList({
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} · Por cobrar {formatCurrency(m.running_balance)}
+                    {formatDate(m.created_at)} · Por cobrar {formatLedger(m.running_balance)}
                     {m.source === "photo_import" ? " · de libreta" : ""}
                   </p>
                 </div>
@@ -66,7 +77,7 @@ export function MovementHistoryList({
                     className={`tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
                     {m.type === "charge" ? "+" : "-"}
-                    {formatCurrency(m.amount)}
+                    {formatLedger(m.amount)}
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>

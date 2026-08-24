@@ -23,7 +23,15 @@ export type Movement = {
   rate_mode_used: ExchangeRateMode | null;
   exchange_rate_used: number | null;
   official_bcv_rate_at_time: number | null;
+  // What the owner actually typed, before conversion (amount is always Bs).
+  // entry_currency 'VES' means no conversion happened at all.
+  entry_currency: MovementCurrencyCode | null;
+  entry_amount: number | null;
 };
+
+// Mirrors lib/exchange-rate/convert.ts's MovementCurrency — declared here
+// too so lib/types.ts stays free of a dependency on that module.
+export type MovementCurrencyCode = "VES" | "USD" | "EUR";
 
 // Payment terms selectable on a charge. null ("Sin especificar") means no
 // due date — those charges fall back to the old immediate-mora behavior.

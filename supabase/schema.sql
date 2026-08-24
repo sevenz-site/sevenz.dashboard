@@ -123,7 +123,13 @@ create table if not exists public.movements (
   -- always has an objective, auditable comparison point.
   rate_mode_used text check (rate_mode_used in ('BCV_AUTO', 'CUSTOM')),
   exchange_rate_used numeric,
-  official_bcv_rate_at_time numeric
+  official_bcv_rate_at_time numeric,
+  -- What the owner actually typed, before conversion — amount above is
+  -- always Bs. Needed so a movement detail can show the full, verifiable
+  -- conversion ("$50,00 USD · $1 = Bs. 779,95 · Bs. 38.997,61") rather than
+  -- a bare rate number with no indication of which currency it applied to.
+  entry_currency text check (entry_currency is null or entry_currency in ('VES', 'USD', 'EUR')),
+  entry_amount numeric
 );
 
 create index if not exists movements_client_id_idx on public.movements (client_id, created_at);
@@ -515,6 +521,9 @@ begin
       'plazo_dias', m.plazo_dias,
       'rate_mode_used', m.rate_mode_used,
       'exchange_rate_used', m.exchange_rate_used,
+      'official_bcv_rate_at_time', m.official_bcv_rate_at_time,
+      'entry_currency', m.entry_currency,
+      'entry_amount', m.entry_amount,
       'created_at', m.created_at
     ) order by m.created_at asc
   )
