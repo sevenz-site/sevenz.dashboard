@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
+import { LendingChartPanel } from "@/components/dashboard/lending-chart-panel";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -52,24 +53,27 @@ export default async function DashboardPage() {
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
-  // The lending chart sums raw movement amounts across every client — for a
-  // VE owner that would mix USD and EUR into one meaningless total, so it
-  // only renders for the plain-COP case for now.
+  // The lending chart sums raw movement amounts, which only means something
+  // within one currency — a VE owner sees one chart per currency (each
+  // filtered to its own movements, no conversion) instead of one mixed total.
   const clientIds = (clients ?? []).map((c) => c.id);
   const { data: weeklyMovements } =
-    !rateContext && clientIds.length > 0
+    clientIds.length > 0
       ? await supabase
           .from("movements")
-          .select("type, amount, created_at")
+          .select("type, amount, currency, created_at")
           .in("client_id", clientIds)
           .is("deleted_at", null)
       : { data: [] };
   const weeklyMovementRows = (weeklyMovements ?? []) as {
     type: "charge" | "payment";
     amount: number;
+    currency: "USD" | "EUR" | null;
     created_at: string;
   }[];
-  const weeklyLending = computeWeeklyFiadoAbono(weeklyMovementRows);
+  const weeklyLendingCop = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => !m.currency));
+  const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
+  const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -122,7 +126,14 @@ export default async function DashboardPage() {
               </p>
             </div>
           )}
-          {!rateContext ? <WeeklyLendingChart data={weeklyLending} /> : null}
+          {rateContext ? (
+            <>
+              <LendingChartPanel data={weeklyLendingUsd} title="Fiado vs. Abono (USD)" />
+              <LendingChartPanel data={weeklyLendingEur} title="Fiado vs. Abono (EUR)" />
+            </>
+          ) : (
+            <WeeklyLendingChart data={weeklyLendingCop} />
+          )}
         </div>
         <ClientSearchDialog
           clients={clients ?? []}

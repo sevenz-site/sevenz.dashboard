@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatDate } from "@/lib/format";
-import { formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -58,10 +57,6 @@ export function MovementHistoryList({
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
-          const rateLine =
-            m.currency && m.exchange_rate_used != null
-              ? formatRateEquivalence(m.currency, m.exchange_rate_used)
-              : null;
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
           const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
@@ -93,8 +88,7 @@ export function MovementHistoryList({
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} ·{" "}
-                    {rateLine ?? `${getBalanceLabel(m.running_balance)} ${balance.primary}`}
+                    {formatDate(m.created_at)} · {getBalanceLabel(m.running_balance)} {balance.primary}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

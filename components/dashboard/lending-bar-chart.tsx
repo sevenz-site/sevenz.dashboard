@@ -19,10 +19,16 @@ const chartConfig = {
   abono: { label: "Abono", color: "var(--color-emerald-500)" },
 } satisfies ChartConfig;
 
-export function WeeklyLendingChart({ data }: { data: WeeklyLendingPoint[] }) {
+export function WeeklyLendingChart({
+  data,
+  title = "Fiado vs. Abono de la semana",
+}: {
+  data: WeeklyLendingPoint[];
+  title?: string;
+}) {
   return (
     <div className="flex min-w-64 flex-1 flex-col gap-2 rounded-lg border p-4">
-      <p className="text-sm font-medium text-muted-foreground">Fiado vs. Abono de la semana</p>
+      <p className="text-sm font-medium text-muted-foreground">{title}</p>
       <ChartContainer config={chartConfig} className="h-[180px] w-full">
         <BarChart data={data} margin={{ top: 10 }}>
           <CartesianGrid vertical={false} />

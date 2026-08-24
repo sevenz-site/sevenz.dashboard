@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,29 +31,33 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
 
-  const strip = (
-    <button
-      type="button"
-      onClick={() => setOpen(true)}
-      className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left text-sm hover:bg-muted/50 sm:w-auto"
-    >
-      <span className="tabular-nums">
-        $1 = {formatBs(rateContext.effectiveRate.usd)} · €1 = {formatBs(rateContext.effectiveRate.eur)}
-      </span>
+  // The rate figures are plain display text — only the "Calcular" button
+  // opens the calculator, so it's unambiguous what's tappable.
+  const rateInfo = (
+    <span className="flex flex-1 items-center gap-2 text-sm tabular-nums">
+      $1 = {formatBs(rateContext.effectiveRate.usd)} · €1 = {formatBs(rateContext.effectiveRate.eur)}
       {rateContext.rateMode === "CUSTOM" ? (
         <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
           tasa propia
         </Badge>
       ) : null}
-    </button>
+    </span>
   );
 
   const calculator = <RateCalculator rate={rateContext.effectiveRate} />;
+  const trigger = (
+    <Button type="button" size="sm" variant="outline">
+      Calcular
+    </Button>
+  );
 
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>{strip}</SheetTrigger>
+        <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+          {rateInfo}
+          <SheetTrigger asChild>{trigger}</SheetTrigger>
+        </div>
         <SheetContent side="bottom">
           <SheetHeader>
             <SheetTitle>Calculadora rápida</SheetTitle>
@@ -65,7 +70,10 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{strip}</PopoverTrigger>
+      <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 sm:w-auto">
+        {rateInfo}
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      </div>
       <PopoverContent align="start" className="w-80">
         {calculator}
       </PopoverContent>

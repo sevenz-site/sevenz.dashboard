@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatDate } from "@/lib/format";
-import { formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { Movement } from "@/lib/types";
 
@@ -41,14 +40,6 @@ export function MovementHistoryList({
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
-          // The rate line replaces the running balance in the subtitle, so
-          // the transparency is visible without opening the detail. A
-          // Bs-entered movement had no conversion, so it keeps showing the
-          // balance instead of a rate that was never applied.
-          const rateLine =
-            m.currency && m.exchange_rate_used != null
-              ? formatRateEquivalence(m.currency, m.exchange_rate_used)
-              : null;
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
           const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
@@ -81,7 +72,7 @@ export function MovementHistoryList({
                     {m.description ? ` · ${m.description}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)} · {rateLine ?? `Por cobrar ${balance.primary}`}
+                    {formatDate(m.created_at)} · Por cobrar {balance.primary}
                     {m.source === "photo_import" ? " · de libreta" : ""}
                   </p>
                 </div>

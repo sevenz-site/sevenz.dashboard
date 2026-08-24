@@ -14,6 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { logout } from "@/app/(app)/actions";
 import { useImportJobs } from "@/components/import/import-context";
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
 export function AppSidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const tour = useTour();
+  const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();
   const pendingCount = jobs.filter((j) => j.status === "queued" || j.status === "processing").length;
 
@@ -59,6 +61,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
                       data-tour={item.dataTour}
                       onClick={() => {
                         if (item.href === "/import" && tour.step === 3) tour.advance();
+                        setOpenMobile(false);
                       }}
                     >
                       <item.icon />
