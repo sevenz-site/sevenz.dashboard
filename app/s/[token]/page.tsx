@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDocumentId } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -117,7 +117,7 @@ export default async function SharedBalancePage({
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
           <p className="text-sm text-muted-foreground">Saldo de {shared.client_name}</p>
-          <p className="text-xs text-muted-foreground">Cédula/documento: {shared.document_id || "—"}</p>
+          <p className="text-xs text-muted-foreground">Cédula/documento: {formatDocumentId(shared.document_id)}</p>
         </div>
       </div>
 

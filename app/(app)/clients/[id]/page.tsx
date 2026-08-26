@@ -14,7 +14,7 @@ import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radi
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { computeCreditScore } from "@/lib/credit-score";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDocumentId } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -99,9 +99,14 @@ export default async function ClientDetailPage({
           these two are mutually exclusive via hidden/sm:hidden, not a JS
           breakpoint check, since this page is a server component. */}
       <div className="flex flex-col gap-3 sm:hidden">
-        <div className="flex items-center gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-          <EditClientDialog client={client as Client} />
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
+            <EditClientDialog client={client as Client} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Cédula/documento: {formatDocumentId(client.document_id)}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
@@ -147,9 +152,14 @@ export default async function ClientDetailPage({
 
       <div className="hidden flex-col gap-3 sm:flex">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-            <EditClientDialog client={client as Client} />
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1">
+              <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
+              <EditClientDialog client={client as Client} />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Cédula/documento: {formatDocumentId(client.document_id)}
+            </p>
           </div>
           {rateContext ? (
             <div className="flex gap-4">
@@ -205,7 +215,6 @@ export default async function ClientDetailPage({
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
           isFlagged={client.is_flagged}
           whatsapp={client.whatsapp}
-          documentId={client.document_id}
           address={client.address}
         />
       </Suspense>
@@ -250,7 +259,6 @@ async function CreditScoreSection({
   oldestUnpaidChargePlazoDias,
   isFlagged,
   whatsapp,
-  documentId,
   address,
 }: {
   clientId: string;
@@ -265,7 +273,6 @@ async function CreditScoreSection({
   oldestUnpaidChargePlazoDias: number | null;
   isFlagged: boolean;
   whatsapp: string | null;
-  documentId: string | null;
   address: string | null;
 }) {
   const supabase = await createClient();
@@ -326,10 +333,6 @@ async function CreditScoreSection({
           <div className="flex flex-col">
             <dt className="text-muted-foreground">WhatsApp</dt>
             <dd>{whatsapp || "—"}</dd>
-          </div>
-          <div className="flex flex-col">
-            <dt className="text-muted-foreground">Cédula/documento</dt>
-            <dd>{documentId || "—"}</dd>
           </div>
           <div className="flex flex-col">
             <dt className="text-muted-foreground">Dirección</dt>

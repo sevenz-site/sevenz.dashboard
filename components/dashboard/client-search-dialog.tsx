@@ -23,6 +23,7 @@ import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/mov
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { track } from "@/lib/mixpanel";
+import { formatDocumentId } from "@/lib/format";
 import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
@@ -135,7 +136,7 @@ export function ClientSearchDialog({
                         <UserRound className="size-4 text-muted-foreground" />
                         <span className="font-medium">{c.name}</span>
                         {c.document_id ? (
-                          <span className="text-xs text-muted-foreground">{c.document_id}</span>
+                          <span className="text-xs text-muted-foreground">{formatDocumentId(c.document_id)}</span>
                         ) : null}
                       </button>
                     </li>

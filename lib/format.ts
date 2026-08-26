@@ -35,6 +35,15 @@ export function formatPlazoDias(days: number | null): string {
   return days == null ? "—" : `${days} días`;
 }
 
+// Cédula-style grouping (23.845.083) — only applied to purely numeric
+// documents; a document with letters (e.g. a foreigner ID prefix) is shown
+// exactly as stored rather than guessed at.
+export function formatDocumentId(documentId: string | null): string {
+  if (!documentId) return "—";
+  if (!/^\d+$/.test(documentId)) return documentId;
+  return documentId.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 // CSS truncate alone isn't enough on the movement-history rows: the title
 // wraps to a second line before the browser gets a chance to ellipsize it,
 // which pushes the row taller and breaks the amount's right alignment. A hard

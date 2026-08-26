@@ -38,7 +38,7 @@ import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_DESCRIPTION,
@@ -360,7 +360,7 @@ export function ClientTable({
                             ) : null}
                           </div>
                           <div className="text-xs font-normal text-muted-foreground">
-                            {row.document_id || "—"}
+                            {formatDocumentId(row.document_id)}
                           </div>
                         </TableCell>
                         {rateContext ? (

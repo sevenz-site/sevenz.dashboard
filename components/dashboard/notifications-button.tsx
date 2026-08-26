@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
 import { getNotifications, getUnreadNotificationCount, type NotificationItem } from "@/app/(app)/actions";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
 
 const UNREAD_POLL_MS = 20_000;
 
@@ -94,7 +94,7 @@ export function NotificationsButton({ initialUnreadCount }: { initialUnreadCount
                         <div className="min-w-0">
                           <p className="font-medium">{n.clientName} abrió su saldo</p>
                           <p className="text-xs text-muted-foreground">
-                            Cédula: {n.documentId || "—"} · {formatDateTime(n.occurredAt)}
+                            Cédula: {formatDocumentId(n.documentId)} · {formatDateTime(n.occurredAt)}
                           </p>
                         </div>
                       </>
