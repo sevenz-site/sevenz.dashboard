@@ -80,12 +80,25 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
 
 ## 6. Migration hygiene
 
+- **Hard blocking check — ledger parity.** Ask the user to run
+  `select key from public.schema_migrations order by key;` in both the dev
+  branch's SQL editor and production's, and paste both results. Diff the
+  key sets. If dev has any key production doesn't, **stop — do not approve
+  the launch**: tell the user exactly which key(s) are missing and that
+  those SQL statements need to be run against production first (see
+  CLAUDE.md's migration-ledger rule). This is the check that exists
+  specifically to prevent a repeat of a deploy going out before its
+  migrations ran — do not treat it as optional or skip it because the diff
+  "looks small."
 - Every new SQL migration is idempotent / safe to re-run (matches this
   project's established pattern: `if not exists`, `create or replace`,
   guard tables for one-time data conversions).
 - If the migration touches existing data (not just schema), confirm
   there's a real rollback path — either a written reverse script, or an
   explanation of why one isn't needed.
+- Every migration and every ad hoc SQL fix run against dev ends with an
+  insert into `public.schema_migrations` recording it (see CLAUDE.md) — if
+  a diff shows raw SQL without that insert, flag it before proceeding.
 
 ## 7. Final report format
 

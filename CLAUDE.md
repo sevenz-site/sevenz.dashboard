@@ -43,6 +43,32 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 ```
 
+## Record every dev SQL change in the migration ledger
+
+`public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)
+tracks every schema change ever run against a database — not just numbered
+migration files, and not just the one-time data conversions that
+`applied_data_migrations` exists for. Its whole purpose is letting a
+pre-launch check compare dev's and production's own copies of this table
+and catch anything dev has that production doesn't, so a migration never
+again gets forgotten before a production deploy.
+
+Any SQL run against the dev branch — a numbered migration file **or** a
+two-line manual fix typed directly into the SQL editor — must end with:
+
+```sql
+insert into public.schema_migrations (key, description)
+values ('<key>', '<one-line description>')
+on conflict (key) do nothing;
+```
+
+Use the migration file's own name as `<key>` when one exists (e.g.
+`028_schema_migrations_ledger`); for an ad hoc fix with no file, use a short
+dated slug (e.g. `2026-08-27_fix_stray_null_currency`). No exceptions for
+"it's just a small fix" — an unlogged fix is exactly what this table exists
+to prevent. When the same SQL is later run against production, insert the
+same key there too — that match is what the parity check compares.
+
 ## Ask before assuming
 
 For product/data-modeling decisions, currency or financial-logic choices,
