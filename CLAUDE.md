@@ -19,12 +19,29 @@ This covers, concretely:
 - Anything that touches the production Supabase project directly (SQL
   editor scripts, env vars, dashboard settings).
 
-**Today**, dev and production are two fully separate Supabase projects
-(dev: `ukufbludmpmcgdpqnvtm`, prod: `rabmiyqodnvnrwiartuj`) — every
-migration has to be run manually in both SQL editors. A persistent-branch
-migration (production branching, replacing the standalone dev project) is
-planned but not yet done — when it happens, update this note, not the rule
-above; "dev environment" vs. "production environment" stays true either way.
+As of 2026-08-27, dev is a **persistent Supabase branch** of the production
+project (branch ref `vzqppwrwnmlbrxizskdh`), not a separate project — this
+replaced the old standalone dev project (`ukufbludmpmcgdpqnvtm`, now retired
+but left dormant, not deleted). Production is `rabmiyqodnvnrwiartuj`. A
+migration still has to be run manually in both the branch and production —
+branching only removed "two unrelated projects to remember," not "run every
+migration twice."
+
+**Gotcha if another branch is ever created**: branch creation clones
+everything in the `public` schema (tables, functions, grants) correctly, but
+a trigger defined on `auth.users` does not get cloned, even though the
+function it calls does. Concretely, `handle_new_user()` existed on the new
+branch but the `on_auth_user_created` trigger firing it didn't, so signups
+silently created no `owners` row. A schema check that only verifies the
+function exists won't catch this — only one that verifies a real signup
+actually produced an owner row will. Fix, if it recurs:
+
+```sql
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+```
 
 ## Ask before assuming
 
