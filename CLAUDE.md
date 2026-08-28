@@ -43,6 +43,27 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 ```
 
+**Second gotcha, found 2026-08-28: Storage buckets don't get cloned either.**
+Branch creation clones the SQL schema (tables, policies, functions) but not
+Storage buckets — the dev branch had zero buckets at all (`logos`,
+`attachments` both existed only in production), meaning every logo/attachment
+upload would fail outright until this was caught. A schema check that only
+verifies `storage.objects` policies exist won't catch this either — the
+policies can be perfectly correct while the buckets they apply to don't
+exist. Fix, if it recurs (see `supabase/030_dev_storage_buckets.sql` for the
+full version matching this project's actual buckets):
+
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('<bucket>', '<bucket>', <public bool>, <bytes>, array['<mime>', ...])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+```
+Then recreate every policy on `storage.objects` for that bucket — they're
+ordinary Postgres policies, droppable/creatable like any other.
+
 ## Record every dev SQL change in the migration ledger
 
 `public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)
