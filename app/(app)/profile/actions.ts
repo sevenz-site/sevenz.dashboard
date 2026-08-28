@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { validatePasswordComplexity } from "@/lib/password";
 
 export type ProfileState = { error: string | null; success: boolean };
 
@@ -138,8 +139,9 @@ export async function changePassword(
   const newPassword = String(formData.get("new_password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
 
-  if (newPassword.length < 6) {
-    return { error: "La contraseña debe tener al menos 6 caracteres.", success: false };
+  const passwordError = validatePasswordComplexity(newPassword);
+  if (passwordError) {
+    return { error: passwordError, success: false };
   }
   if (newPassword !== confirmPassword) {
     return { error: "Las contraseñas no coinciden.", success: false };

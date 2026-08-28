@@ -5,9 +5,10 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { resetPassword, type ResetPasswordState } from "./actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { PasswordCriteriaChecklist } from "@/components/password-criteria-checklist";
 
 const initialState: ResetPasswordState = { error: null };
 
@@ -16,6 +17,7 @@ type SessionStatus = "checking" | "ready" | "invalid";
 export default function ResetPasswordPage() {
   const [status, setStatus] = useState<SessionStatus>("checking");
   const [state, formAction, pending] = useActionState(resetPassword, initialState);
+  const [password, setPassword] = useState("");
 
   // Supabase's recovery link lands here with a code/token in the URL. The
   // browser client auto-detects it, exchanges it for a real session, and
@@ -71,23 +73,23 @@ export default function ResetPasswordPage() {
             <form action={formAction} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="new_password">Nueva contraseña</Label>
-                <Input
+                <PasswordInput
                   id="new_password"
                   name="new_password"
-                  type="password"
                   autoComplete="new-password"
-                  minLength={6}
                   required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-describedby="new-password-criteria"
                 />
+                <PasswordCriteriaChecklist id="new-password-criteria" password={password} />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="confirm_password">Confirmar contraseña</Label>
-                <Input
+                <PasswordInput
                   id="confirm_password"
                   name="confirm_password"
-                  type="password"
                   autoComplete="new-password"
-                  minLength={6}
                   required
                 />
               </div>

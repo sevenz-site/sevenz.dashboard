@@ -43,6 +43,9 @@ export async function updateSession(request: NextRequest) {
     // never bounce them to /dashboard the way other auth routes do —
     // otherwise they'd never reach the "set a new password" form.
     request.nextUrl.pathname.startsWith("/reset-password") ||
+    // Linked from the signup form's terms checkbox — must be reachable by a
+    // visitor who isn't signed in yet.
+    request.nextUrl.pathname.startsWith("/terminos") ||
     request.nextUrl.pathname === "/" ||
     // Cron/service routes authenticate via their own Authorization: Bearer
     // $CRON_SECRET header, not a login session — Vercel Cron (and a manual

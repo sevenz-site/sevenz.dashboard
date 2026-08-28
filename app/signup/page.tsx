@@ -6,7 +6,9 @@ import Link from "next/link";
 import { signup, type SignupState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -16,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { PasswordCriteriaChecklist } from "@/components/password-criteria-checklist";
+import { getPasswordCriteria } from "@/lib/password";
 import type { OwnerCountry } from "@/lib/types";
 
 const initialState: SignupState = { error: null, success: false };
@@ -32,6 +36,10 @@ export default function SignupPage() {
   // changed later from "Mi negocio" since currency and future DIAN/SENIAT
   // rules key off of it.
   const [country, setCountry] = useState<OwnerCountry>("VE");
+  const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  const passwordMeetsCriteria = getPasswordCriteria(password).every((c) => c.met);
 
   if (state.success) {
     return (
@@ -112,25 +120,46 @@ export default function SignupPage() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">Contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 autoComplete="new-password"
-                minLength={6}
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-describedby="password-criteria"
               />
+              <PasswordCriteriaChecklist id="password-criteria" password={password} />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirm_password">Confirmar contraseña</Label>
-              <Input
+              <PasswordInput
                 id="confirm_password"
                 name="confirm_password"
-                type="password"
                 autoComplete="new-password"
-                minLength={6}
                 required
               />
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="accepted_terms"
+                name="accepted_terms"
+                required
+                checked={acceptedTerms}
+                onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="accepted_terms" className="text-sm font-normal">
+                Acepto los{" "}
+                <Link
+                  href="/terminos"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  Términos y condiciones
+                </Link>
+              </Label>
             </div>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             {state.alreadyRegistered ? (
@@ -138,7 +167,11 @@ export default function SignupPage() {
                 <Link href="/login">Ir a iniciar sesión</Link>
               </Button>
             ) : null}
-            <Button type="submit" className="w-full" disabled={pending}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={pending || !acceptedTerms || !passwordMeetsCriteria}
+            >
               {pending ? "Creando..." : "Crear cuenta"}
             </Button>
           </form>

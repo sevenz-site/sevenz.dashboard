@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { validatePasswordComplexity } from "@/lib/password";
 
 export type SignupState = { error: string | null; success: boolean; alreadyRegistered?: boolean };
 
@@ -14,6 +15,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
+  const acceptedTerms = formData.get("accepted_terms") === "on";
 
   if (!businessName || !firstName || !lastName || !whatsapp || !email || !password) {
     return { error: "Completa todos los campos.", success: false };
@@ -21,11 +23,20 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   if (country !== "CO" && country !== "VE") {
     return { error: "Selecciona un país válido.", success: false };
   }
-  if (password.length < 6) {
-    return { error: "La contraseña debe tener al menos 6 caracteres.", success: false };
+  // Matches the password policy set in Supabase Auth (Sign In / Providers →
+  // Email → "Password requirements") — checked here too so a mismatch is a
+  // friendly Spanish message instead of Supabase's own raw rejection.
+  const passwordError = validatePasswordComplexity(password);
+  if (passwordError) {
+    return { error: passwordError, success: false };
   }
   if (password !== confirmPassword) {
     return { error: "Las contraseñas no coinciden.", success: false };
+  }
+  // Re-checked here even though the form disables submit until this is
+  // checked — a raw POST to this action must not be able to skip it.
+  if (!acceptedTerms) {
+    return { error: "Debes aceptar los Términos y condiciones.", success: false };
   }
 
   const supabase = await createClient();
