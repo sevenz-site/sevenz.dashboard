@@ -148,7 +148,14 @@ Add a **Notes** column whenever there's a caveat, a partial pass, or a
 follow-up worth flagging. The point is to keep the work auditable and let
 the user spot at a glance where confidence is real vs. where something
 still needs scrutiny, and to give feedback on a specific row instead of
-the effort as a whole. This applies to the `qa-regression-checklist`
+the effort as a whole.
+
+After the table, add a short **Recommendations** section covering every
+row that wasn't a clean pass (⚠️/❌/partial) — one line per row, naming the
+concrete next action: what was already fixed and how, or what's still
+open and the specific step to close it. Skip this section entirely if
+every row is a clean pass — don't manufacture a recommendation where
+there isn't a real one. This applies to the `qa-regression-checklist`
 skill's own final report (see its section 7), to any security-audit pass
 (e.g. the 2026-08-28 audit), and to any live verification of a new
 feature (build checks, browser testing, etc.) — not just pre-launch runs.

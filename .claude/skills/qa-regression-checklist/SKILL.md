@@ -173,6 +173,8 @@ table" rule) — one row per section above, not prose alone:
 |---------|-----------------|--------|
 
 Add a Notes column for anything skipped and why (e.g. "skipped — diff
-doesn't touch this area"), or any caveat worth flagging. End with a direct
-question: does the user want to proceed with the launch, given these
-results.
+doesn't touch this area"), or any caveat worth flagging. Follow the table
+with a **Recommendations** section for every row that wasn't a clean pass
+— the concrete next action, not just a restatement of the problem. Skip
+that section if every row passed cleanly. End with a direct question:
+does the user want to proceed with the launch, given these results.
