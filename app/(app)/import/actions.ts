@@ -28,16 +28,34 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // current ledger currency (VE owner), resolved once for the whole batch.
   const resolved = await resolveMovementRateSnapshot(supabase, user.id, null);
 
+  // client_id, when present, comes straight from the browser — verify each
+  // one actually belongs to this owner before trusting it, rather than
+  // relying only on the movements insert's RLS check to catch a mismatch.
+  const providedClientIds = [...new Set(rows.map((r) => r.client_id).filter((id): id is string => Boolean(id)))];
+  let ownedClientIds = new Set<string>();
+  if (providedClientIds.length > 0) {
+    const { data: ownedClients } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("owner_id", user.id)
+      .in("id", providedClientIds);
+    ownedClientIds = new Set((ownedClients ?? []).map((c) => c.id as string));
+  }
+
   const clientIdByName = new Map<string, string>();
   let imported = 0;
 
   for (const row of rows) {
     const cacheKey = row.client_name.trim().toLowerCase();
-    const resolvedId: string | null = row.client_id ?? clientIdByName.get(cacheKey) ?? null;
     let clientId: string;
 
-    if (resolvedId) {
-      clientId = resolvedId;
+    if (row.client_id) {
+      if (!ownedClientIds.has(row.client_id)) {
+        return { error: `Cliente inválido para "${row.client_name}".`, imported };
+      }
+      clientId = row.client_id;
+    } else if (clientIdByName.has(cacheKey)) {
+      clientId = clientIdByName.get(cacheKey)!;
     } else {
       const { data: newClient, error: clientError } = await supabase
         .from("clients")

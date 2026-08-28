@@ -228,6 +228,18 @@ export async function addMovement(
 
 export async function getOrCreateShareLink(clientId: string): Promise<{ token: string } | { error: string }> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!client) return { error: "Cliente inválido." };
 
   const { data: existing } = await supabase
     .from("share_links")
