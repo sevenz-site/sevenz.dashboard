@@ -166,7 +166,13 @@ them directly.
 
 ## 7. Final report format
 
-Summarize as a pass/fail list, one line per section above, calling out
-anything not checked and why (e.g. "skipped — diff doesn't touch this
-area"). End with a direct question: does the user want to proceed with
-the launch, given these results.
+Report as a table (see CLAUDE.md's "Report QA and verification work as a
+table" rule) — one row per section above, not prose alone:
+
+| Section | Skill/tool used | Result |
+|---------|-----------------|--------|
+
+Add a Notes column for anything skipped and why (e.g. "skipped — diff
+doesn't touch this area"), or any caveat worth flagging. End with a direct
+question: does the user want to proceed with the launch, given these
+results.

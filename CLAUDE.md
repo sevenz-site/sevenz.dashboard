@@ -134,6 +134,25 @@ question before implementing. Don't guess and bake the guess into code or
 a migration — this is doubly true for anything touching real customer
 balances or money.
 
+## Report QA and verification work as a table
+
+Whenever a round of testing or verification wraps up — a security audit, a
+live feature check, a full `qa-regression-checklist` run, anything where
+something was actually tested rather than just written — report it as a
+table, not prose alone. One row per specific test/check, minimum columns:
+
+| Test | Skill/tool used | Result |
+|------|-----------------|--------|
+
+Add a **Notes** column whenever there's a caveat, a partial pass, or a
+follow-up worth flagging. The point is to keep the work auditable and let
+the user spot at a glance where confidence is real vs. where something
+still needs scrutiny, and to give feedback on a specific row instead of
+the effort as a whole. This applies to the `qa-regression-checklist`
+skill's own final report (see its section 7), to any security-audit pass
+(e.g. the 2026-08-28 audit), and to any live verification of a new
+feature (build checks, browser testing, etc.) — not just pre-launch runs.
+
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production
