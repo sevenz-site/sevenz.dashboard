@@ -34,8 +34,15 @@ export default function SignupPage() {
   // Defaults to VE — most signups right now are Venezuelan business owners.
   // This is the only place an owner ever sets their country: it can't be
   // changed later from "Mi negocio" since currency and future DIAN/SENIAT
-  // rules key off of it.
-  const [country, setCountry] = useState<OwnerCountry>("VE");
+  // rules key off of it. If a slow connection meant this page's JS hadn't
+  // hydrated yet when the owner tapped submit, the browser falls back to a
+  // real form POST — a genuine page reload that would otherwise silently
+  // wipe every field. state.values (echoed back by the action on any
+  // failure) is what this initial value and every defaultValue below
+  // restore from, so that reload doesn't lose what was already typed.
+  const [country, setCountry] = useState<OwnerCountry>(
+    () => (state.values?.country as OwnerCountry) || "VE",
+  );
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
@@ -74,16 +81,33 @@ export default function SignupPage() {
           <form action={formAction} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="business_name">Nombre del negocio</Label>
-              <Input id="business_name" name="business_name" required />
+              <Input
+                id="business_name"
+                name="business_name"
+                defaultValue={state.values?.business_name ?? ""}
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="first_name">Nombre</Label>
-                <Input id="first_name" name="first_name" autoComplete="given-name" required />
+                <Input
+                  id="first_name"
+                  name="first_name"
+                  autoComplete="given-name"
+                  defaultValue={state.values?.first_name ?? ""}
+                  required
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="last_name">Apellido</Label>
-                <Input id="last_name" name="last_name" autoComplete="family-name" required />
+                <Input
+                  id="last_name"
+                  name="last_name"
+                  autoComplete="family-name"
+                  defaultValue={state.values?.last_name ?? ""}
+                  required
+                />
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -111,12 +135,20 @@ export default function SignupPage() {
                 id="whatsapp"
                 name="whatsapp"
                 required
+                defaultValue={state.values?.whatsapp}
                 preferredDialCode={COUNTRY_DIAL_CODE[country]}
               />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required />
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                defaultValue={state.values?.email ?? ""}
+                required
+              />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">Contraseña</Label>
