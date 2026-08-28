@@ -66,17 +66,76 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   matches what the page destructures (a function signature change here is
   a silent breakage, not a build error).
 
-## 5. Data-security pass
+## 5. Security checklist
 
-- No secrets, API keys, or service-role credentials appear in the diff
-  (grep the diff for anything key-shaped, not just an obvious `.env` file).
-- Any new SQL grant is least-privilege — matches the existing pattern of
-  explicit per-table grants, not a broad grant that wasn't there before.
-- Any new or changed RLS policy: confirm it still scopes to
-  `owner_id = auth.uid()` (or the equivalent existing pattern) and hasn't
-  been accidentally loosened.
-- Any new API route authenticates the same way existing ones do (bearer
-  secret for cron-style routes, session-based auth for owner-facing ones).
+From the full security audit done 2026-08-28. Two cadences: **re-check
+every launch** (things new code can regress) vs. **stable** (structural
+facts that only need re-checking if the diff actually touches that area).
+
+### Re-check every launch
+
+- **Ownership checks in the diff**: any new/changed server action that
+  takes an ID from the browser (`clientId`, `movementId`, etc.) explicitly
+  verifies it belongs to `auth.getUser()`'s owner — not just RLS. This is
+  the exact bug class found and fixed in `getOrCreateShareLink` and
+  `confirmImport` (see CLAUDE.md's "Explicit ownership checks" rule).
+  Don't let it back in.
+- **No secrets in the diff or in the client bundle**: grep the diff for
+  anything key-shaped. If the diff touches build config or adds a new
+  server-only env var, run `next build` and grep `.next/static` for that
+  var's raw value (should be zero matches) — this is how
+  `GEMINI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET` were verified
+  clean.
+- **RLS parity, dev vs. prod** — if the diff touches any table or policy,
+  run this in both environments and confirm they match:
+  ```sql
+  select t.tablename, t.rowsecurity, count(p.policyname) as policy_count
+  from pg_tables t
+  left join pg_policies p on p.schemaname = t.schemaname and p.tablename = t.tablename
+  where t.schemaname = 'public'
+  group by t.tablename, t.rowsecurity
+  order by t.tablename;
+  ```
+  For any table holding real customer data, also pull `pg_policies.qual`/
+  `with_check` and confirm it scopes to `owner_id = auth.uid()` (directly
+  or via a join) — a policy existing isn't the same as a policy being
+  correct.
+- **`Confirm email` is ON in production** (Auth → Sign In / Providers) —
+  this gets toggled off in dev-branch test-signup sprints; confirm it
+  never leaked into prod before a launch.
+- **New API routes** authenticate the same way existing ones do (bearer
+  secret for cron-style routes, session-based auth for owner-facing ones),
+  and don't echo raw third-party error bodies back to the client beyond
+  what's necessary.
+
+### Stable — only re-check if the diff touches the relevant area
+
+- `.env*` never committed (`git log --all -- .env*` across all refs) —
+  re-check only if `.gitignore` changes.
+- No SQL built by string concatenation anywhere — re-check only if a new
+  Postgres function or raw query is added.
+- IDs are `uuid`/`gen_random_uuid()`, and any public-facing token uses
+  `gen_random_bytes` with real entropy — re-check only if a new table or
+  public-facing identifier is added.
+- No admin panel or route outside `(app)`'s session guard — re-check only
+  if a new top-level route is added.
+- No CORS header set on custom API routes (Supabase's own APIs don't need
+  one — they're policy-gated, not origin-gated) — re-check only if a route
+  sets response headers.
+
+### Not yet formalized — tracked, not blocking
+
+Some of the original audit's items haven't been closed out yet: output
+HTML sanitization beyond the one `dangerouslySetInnerHTML` in
+`components/ui/chart.tsx`, stack traces / raw third-party error bodies in
+production responses, request-body logging depth, webhook signature
+verification (relevant once Kapso/WhatsApp or any webhook integration
+ships — pair with the `new-api-risk-review` skill then), dependency
+freshness (`npm outdated`/`npm audit`), Supabase's leaked-password check
+(HaveIBeenPwned toggle in Auth settings), and Storage bucket-level
+MIME/size policies. Flag these as open follow-up in the launch report —
+they don't block a launch unless the diff being reviewed touches one of
+them directly.
 
 ## 6. Migration hygiene
 

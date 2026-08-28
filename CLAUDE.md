@@ -69,6 +69,24 @@ dated slug (e.g. `2026-08-27_fix_stray_null_currency`). No exceptions for
 to prevent. When the same SQL is later run against production, insert the
 same key there too — that match is what the parity check compares.
 
+## Explicit ownership checks in server actions
+
+Any server action that reads or writes a row identified by an ID that comes
+from the browser (`clientId`, `movementId`, etc.) must verify that row
+actually belongs to the authenticated owner **explicitly in code** — e.g.
+`.eq("owner_id", user.id)`, or a pre-check against `clients` when the table
+doesn't carry `owner_id` directly — matching the pattern already used in
+`app/(app)/clients/[id]/actions.ts`. RLS is the backstop, not the only line
+of defense.
+
+A security audit (2026-08-28) found two functions that had skipped this and
+relied on RLS alone — `getOrCreateShareLink` and `confirmImport`. Neither
+was actually exploitable (RLS held in both cases), but each was a single
+point of failure: if a future migration ever loosened the relevant RLS
+policy by mistake, these were the only two places with no second layer of
+defense. Both were fixed. Don't reintroduce this pattern in new server
+actions — every new one should get the same explicit check from the start.
+
 ## Ask before assuming
 
 For product/data-modeling decisions, currency or financial-logic choices,
