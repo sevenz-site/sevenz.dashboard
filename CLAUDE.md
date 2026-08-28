@@ -87,6 +87,24 @@ policy by mistake, these were the only two places with no second layer of
 defense. Both were fixed. Don't reintroduce this pattern in new server
 actions — every new one should get the same explicit check from the start.
 
+## Mask raw errors on unauthenticated endpoints
+
+Before shipping any endpoint — a new one, or a change to an existing one —
+ask: "who can call this without logging in?" If the answer isn't "nobody,"
+its error responses must never leak raw upstream/third-party error text,
+database error detail, or anything else internal. Return a generic,
+user-facing message instead; log the real detail server-side only
+(`console.error`), never in the response body.
+
+Endpoints that *do* require authentication (a session, or a bearer secret
+like `CRON_SECRET`) may keep surfacing real error text for debugging
+convenience — see `signup/actions.ts`, `/api/extract`,
+`/api/cron/exchange-rate`, all deliberate, all gated by auth. That's an
+accepted tradeoff for a narrow, authenticated audience, not a gap. The
+rule is specifically about endpoints anyone can reach with no account at
+all — e.g. `/s/[token]` and its `get_shared_balance()` RPC, or any future
+public page or webhook receiver.
+
 ## Ask before assuming
 
 For product/data-modeling decisions, currency or financial-logic choices,

@@ -104,9 +104,14 @@ facts that only need re-checking if the diff actually touches that area).
   this gets toggled off in dev-branch test-signup sprints; confirm it
   never leaked into prod before a launch.
 - **New API routes** authenticate the same way existing ones do (bearer
-  secret for cron-style routes, session-based auth for owner-facing ones),
-  and don't echo raw third-party error bodies back to the client beyond
-  what's necessary.
+  secret for cron-style routes, session-based auth for owner-facing ones).
+- **Mask raw errors on anything unauthenticated** — for any new or changed
+  endpoint, ask "who can call this without logging in?" (see CLAUDE.md's
+  rule of the same name). If the answer isn't "nobody," its error
+  responses must be a generic message only — no raw upstream/third-party
+  error text, no database error detail. An authenticated endpoint (session
+  or bearer secret) may keep surfacing real error text for debugging —
+  that's a deliberate, accepted tradeoff, not a gap.
 
 ### Stable — only re-check if the diff touches the relevant area
 
