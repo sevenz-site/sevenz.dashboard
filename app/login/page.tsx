@@ -37,7 +37,14 @@ export default function LoginPage() {
           <form action={formAction} className="mt-4 flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required />
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                defaultValue={state.email ?? ""}
+                required
+              />
             </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
