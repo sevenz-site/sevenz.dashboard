@@ -183,14 +183,14 @@ export default function SignupPage() {
               />
               <Label htmlFor="accepted_terms" className="text-sm font-normal">
                 Acepto los{" "}
-                <Link
-                  href="/terminos"
+                <a
+                  href="https://sevenz.site/terminos-y-condiciones"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-foreground underline underline-offset-4"
                 >
                   Términos y condiciones
-                </Link>
+                </a>
               </Label>
             </div>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
