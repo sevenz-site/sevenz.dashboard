@@ -160,6 +160,38 @@ skill's own final report (see its section 7), to any security-audit pass
 (e.g. the 2026-08-28 audit), and to any live verification of a new
 feature (build checks, browser testing, etc.) — not just pre-launch runs.
 
+## Explain bugs in two languages: dev and plain
+
+Whenever explaining a bug, a fix, or a technical finding — by default,
+not only when asked — give both:
+
+1. **Dev explanation**: precise, references the actual code/state/logic
+   and the exact condition that triggers it.
+2. **Plain-language explanation**: no jargon, told as a real, concrete
+   scenario with a name — something a non-technical shop owner could
+   follow without reading code.
+
+Reason: whoever's reading the report might not be a programmer, and even
+when they are, a concrete story makes real-world severity legible faster
+than a code trace does.
+
+Real example (the `openForPayment()` currency bug, 2026-08-28):
+
+- **Dev**: `openForPayment()` only corrected `currency` toward `"EUR"`
+  (`if (currentDebtUsd <= 0 && currentDebtEur > 0) setCurrency("EUR")`),
+  never back toward `"USD"`. If `currency` was already `"EUR"` from a
+  prior interaction while `currentDebtUsd > 0` and `currentDebtEur <= 0`,
+  `type` got set to `"payment"` but the existing
+  `type === "payment" && !canPay` guard (computed against the stale
+  `"EUR"` selection) immediately reverted it to `"charge"` before paint.
+- **Plain**: imagine a Venezuelan owner who was just looking at a
+  different client's account in euros. They open Pedro's page — Pedro
+  owes $50 in dollars, nothing in euros — and tap "Agregar abono" to log
+  that Pedro just paid. Because the app still remembered "euros" from
+  moments ago, it quietly flips the screen back to "register a new
+  charge" instead, with zero explanation. The owner tapped a button that
+  said "record a payment" and landed on "add a debt" instead.
+
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production
