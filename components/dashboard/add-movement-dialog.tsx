@@ -25,13 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -82,6 +76,12 @@ export function AddMovementDialog({
   const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
+  // True right after the owner clicks "Abono (paga)" while it isn't actually
+  // available — shows the red explanation below the radio group. Not the
+  // same as canPay itself: this tracks a real click attempt, not just the
+  // current (in)validity, so the message only appears when it's actually
+  // relevant to what just happened.
+  const [paymentBlocked, setPaymentBlocked] = useState(false);
   const [state, formAction, pending] = useActionState(addMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -100,6 +100,18 @@ export function AddMovementDialog({
   function openForCharge() {
     setType("charge");
     setOpen(true);
+  }
+
+  // "Abono" is never natively disabled (see the radio markup below) — this
+  // is what actually gates it. Selecting it while unavailable shows the red
+  // explanation instead of changing the value.
+  function handleTypeChange(value: string) {
+    if (value === "payment" && !canPay) {
+      setPaymentBlocked(true);
+      return;
+    }
+    setPaymentBlocked(false);
+    setType(value as "charge" | "payment");
   }
 
   function openForPayment() {
@@ -123,11 +135,19 @@ export function AddMovementDialog({
     setType("charge");
   }
 
+  // Clears the red explanation the moment it stops being relevant — e.g.
+  // switching currency makes "Abono" valid again without the owner having
+  // to touch the radio group at all.
+  if (paymentBlocked && canPay) {
+    setPaymentBlocked(false);
+  }
+
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (!open) {
       setPhotoPath(null);
       setAmountStr("");
+      setPaymentBlocked(false);
     }
   }
 
@@ -169,17 +189,26 @@ export function AddMovementDialog({
 
           <div className="flex flex-col gap-2">
             <Label>Tipo</Label>
-            <Select name="type" value={type} onValueChange={(v) => setType(v as "charge" | "payment")}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="charge">Cargo (fía algo)</SelectItem>
-                <SelectItem value="payment" disabled={!canPay}>
-                  Abono (paga)
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <RadioGroup name="type" value={type} onValueChange={handleTypeChange} className="flex flex-row gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <RadioGroupItem value="charge" />
+                Cargo (fía algo)
+              </label>
+              <label
+                className={cn("flex items-center gap-2 text-sm", !canPay && "cursor-not-allowed opacity-50")}
+              >
+                {/* Not natively disabled — a disabled control never fires a
+                    click at all, and the whole point is that clicking this
+                    while blocked explains why instead of doing nothing. */}
+                <RadioGroupItem value="payment" />
+                Abono (paga)
+              </label>
+            </RadioGroup>
+            {paymentBlocked ? (
+              <p className="text-xs text-destructive">
+                {clientName} no debe nada{rateContext ? ` en ${currency}` : ""} — no se puede registrar un abono.
+              </p>
+            ) : null}
           </div>
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
