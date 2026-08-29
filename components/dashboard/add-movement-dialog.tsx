@@ -13,7 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -93,6 +92,27 @@ export function AddMovementDialog({
   const canPay = currentDebt > 0;
   const formattedMaxDebt = rateContext ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
 
+  // Whether "Agregar abono" should even be clickable — checked against
+  // whichever currency actually has debt, not just the one currently
+  // selected (which defaults to USD before the dialog has ever opened).
+  const canPayAny = rateContext ? currentDebtUsd > 0 || currentDebtEur > 0 : currentDebtCop > 0;
+
+  function openForCharge() {
+    setType("charge");
+    setOpen(true);
+  }
+
+  function openForPayment() {
+    // Land on whichever currency actually has debt, so the in-dialog
+    // Select isn't immediately reverted back to "charge" by the
+    // type === "payment" && !canPay guard below.
+    if (rateContext && currentDebtUsd <= 0 && currentDebtEur > 0) {
+      setCurrency("EUR");
+    }
+    setType("payment");
+    setOpen(true);
+  }
+
   // "Abono" only makes sense for a currency that's actually owed — if the
   // owner picks payment then switches to a currency with no debt, fall back
   // to a charge rather than leaving an invalid combination selected.
@@ -124,13 +144,18 @@ export function AddMovementDialog({
   }, [state, pending, router, type]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" className={cn(triggerClassName)}>
+    <>
+      <div className={cn("flex gap-2", triggerClassName)}>
+        <Button size="sm" className="flex-1" onClick={openForCharge}>
           <Plus className="size-4" />
-          Agregar movimiento
+          Agregar fiado
         </Button>
-      </DialogTrigger>
+        <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
+          <Plus className="size-4" />
+          Agregar abono
+        </Button>
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar movimiento</DialogTitle>
@@ -233,6 +258,7 @@ export function AddMovementDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }
