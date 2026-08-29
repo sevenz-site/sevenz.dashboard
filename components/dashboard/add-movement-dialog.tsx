@@ -206,7 +206,7 @@ export function AddMovementDialog({
             </RadioGroup>
             {paymentBlocked ? (
               <p className="text-xs text-destructive">
-                {clientName} no debe nada{rateContext ? ` en ${currency}` : ""} — no se puede registrar un abono.
+                {`${clientName} no debe nada${rateContext ? ` en ${currency === "EUR" ? "EUROS" : currency}` : ""}, por eso no se puede registrar un abono.`}
               </p>
             ) : null}
           </div>

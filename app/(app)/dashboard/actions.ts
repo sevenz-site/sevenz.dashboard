@@ -186,7 +186,10 @@ export async function addMovement(
 
     const currentDebt = Number(latest?.running_balance ?? 0);
     if (currentDebt <= 0) {
-      return { error: "Este cliente no debe nada en esta moneda — no se puede registrar un abono.", clientId: null };
+      return {
+        error: "Este cliente no debe nada en esta moneda, por eso no se puede registrar un abono.",
+        clientId: null,
+      };
     }
     if (amount > currentDebt) {
       const formattedDebt = resolved.currency
