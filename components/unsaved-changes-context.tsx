@@ -14,12 +14,19 @@ import {
 import { Button } from "@/components/ui/button";
 
 type SaveFn = () => Promise<boolean>;
+// A form that traps the physical back button (see business-settings-form's
+// popstate handler) pushes a sentinel history entry while dirty — this is
+// how it gets a chance to clean that entry up before any navigation away
+// actually proceeds, regardless of which path triggered it (discard,
+// save-and-leave, or even a later navigation after an in-place save that
+// never went through the dialog at all).
+type BeforeLeaveFn = () => Promise<void> | void;
 
 type UnsavedChangesContextValue = {
   // A form with unsaved changes registers itself here so any exit attempt
   // (sidebar nav, logout, browser back/refresh/close) can offer to save
   // before leaving instead of just blocking or silently discarding.
-  setDirty: (dirty: boolean, onSave?: SaveFn) => void;
+  setDirty: (dirty: boolean, onSave?: SaveFn, onBeforeLeave?: BeforeLeaveFn) => void;
   // Anything that would navigate away calls this instead of navigating
   // directly — it runs `proceed` immediately when nothing is dirty, or
   // opens the confirm dialog and runs it only if the user allows the exit.
@@ -31,36 +38,47 @@ const UnsavedChangesContext = createContext<UnsavedChangesContextValue | null>(n
 export function UnsavedChangesProvider({ children }: { children: React.ReactNode }) {
   const isDirtyRef = useRef(false);
   const saveRef = useRef<SaveFn | null>(null);
+  // Deliberately never cleared on `setDirty(false, ...)` — a sentinel
+  // pushed while dirty can still be sitting in the browser's history stack
+  // after dirty goes back to false (e.g. a successful in-place save), and
+  // needs to be consumed before whatever navigation happens next, whenever
+  // that ends up being.
+  const beforeLeaveRef = useRef<BeforeLeaveFn | null>(null);
   const pendingRef = useRef<(() => void) | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const setDirty = useCallback((dirty: boolean, onSave?: SaveFn) => {
+  const setDirty = useCallback((dirty: boolean, onSave?: SaveFn, onBeforeLeave?: BeforeLeaveFn) => {
     isDirtyRef.current = dirty;
-    if (dirty && onSave) saveRef.current = onSave;
-    if (!dirty) saveRef.current = null;
+    if (dirty) {
+      if (onSave) saveRef.current = onSave;
+      if (onBeforeLeave) beforeLeaveRef.current = onBeforeLeave;
+    } else {
+      saveRef.current = null;
+    }
   }, []);
 
   const guard = useCallback((proceed: () => void) => {
     if (!isDirtyRef.current) {
-      proceed();
+      Promise.resolve(beforeLeaveRef.current?.()).finally(proceed);
       return;
     }
     pendingRef.current = proceed;
     setOpen(true);
   }, []);
 
-  function handleLeaveWithoutSaving() {
+  async function handleLeaveWithoutSaving() {
     setOpen(false);
     isDirtyRef.current = false;
     saveRef.current = null;
+    await beforeLeaveRef.current?.();
     pendingRef.current?.();
     pendingRef.current = null;
   }
 
   async function handleSaveAndLeave() {
     if (!saveRef.current) {
-      handleLeaveWithoutSaving();
+      await handleLeaveWithoutSaving();
       return;
     }
     setSaving(true);
@@ -68,6 +86,7 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
     setSaving(false);
     if (!ok) return; // error already surfaced by the form itself; stay on the dialog
     setOpen(false);
+    await beforeLeaveRef.current?.();
     pendingRef.current?.();
     pendingRef.current = null;
   }

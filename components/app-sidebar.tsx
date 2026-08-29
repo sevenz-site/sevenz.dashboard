@@ -70,7 +70,16 @@ export function AppSidebar({ businessName }: { businessName: string }) {
                         guard(() => {
                           if (item.href === "/import" && tour.step === 3) tour.advance();
                           setOpenMobile(false);
-                          router.push(item.href);
+                          // Cartera is the app's home screen — replacing (not
+                          // pushing) its entry means it never sits stacked
+                          // behind whatever screen the user came from, so
+                          // physical back from Cartera can't bounce into
+                          // that screen again.
+                          if (item.href === "/dashboard") {
+                            router.replace(item.href);
+                          } else {
+                            router.push(item.href);
+                          }
                         });
                       }}
                     >

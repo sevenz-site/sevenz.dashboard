@@ -72,7 +72,7 @@ export function BusinessSettingsForm({
   function markDirty() {
     if (isDirty) return;
     setIsDirty(true);
-    setDirty(true, saveNow);
+    setDirty(true, saveNow, consumeSentinelIfAny);
   }
 
   // Real browser exits (refresh, close tab, typing a new URL) — Next's
@@ -88,21 +88,56 @@ export function BusinessSettingsForm({
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
+  // Whether the sentinel entry pushed below is still sitting, unconsumed,
+  // in the browser's history stack. Bug this fixes: leaving via the
+  // sidebar (a forward router.push, not a real back-press) never fired
+  // this popstate handler at all, so the sentinel was silently left
+  // behind under whatever page came next — pressing physical back from
+  // there landed back on "Mi negocio" instead of leaving it. Idempotent by
+  // design, since it can now run from two places (see onBeforeLeave below
+  // and the popstate handler's own "leave" branch) without double-
+  // consuming.
+  const hasSentinelRef = useRef(false);
+  const popstateHandlerRef = useRef<(() => void) | null>(null);
+
+  function consumeSentinelIfAny() {
+    if (!hasSentinelRef.current) return;
+    hasSentinelRef.current = false;
+    if (popstateHandlerRef.current) {
+      window.removeEventListener("popstate", popstateHandlerRef.current);
+      popstateHandlerRef.current = null;
+    }
+    return new Promise<void>((resolve) => {
+      function onPop() {
+        window.removeEventListener("popstate", onPop);
+        resolve();
+      }
+      window.addEventListener("popstate", onPop);
+      history.back();
+    });
+  }
+
   // Browser Back/Forward inside the app: Next never fully unloads the page
   // for these, so beforeunload can't catch them. Trap the back navigation
   // with a sentinel history entry, then run it through the same guard.
   useEffect(() => {
     if (!isDirty) return;
     history.pushState(null, "", location.href);
+    hasSentinelRef.current = true;
     function onPopState() {
       history.pushState(null, "", location.href);
+      hasSentinelRef.current = true;
       guard(() => {
-        window.removeEventListener("popstate", onPopState);
-        history.back();
+        popstateHandlerRef.current = null;
+        consumeSentinelIfAny();
       });
     }
+    popstateHandlerRef.current = onPopState;
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      popstateHandlerRef.current = null;
+    };
   }, [isDirty, guard]);
 
   return (
