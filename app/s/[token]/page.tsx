@@ -130,8 +130,6 @@ export default async function SharedBalancePage({
                 balance={shared.balance_usd}
                 currency="USD"
                 ledger={ledger}
-                rateMode={rateContext.rateMode}
-                officialRateUsd={rateContext.officialRate.usd}
                 mainClassName="text-4xl"
               />
             </div>
@@ -141,8 +139,6 @@ export default async function SharedBalancePage({
                 balance={shared.balance_eur}
                 currency="EUR"
                 ledger={ledger}
-                rateMode={rateContext.rateMode}
-                officialRateUsd={rateContext.officialRate.usd}
                 mainClassName="text-4xl"
               />
             </div>

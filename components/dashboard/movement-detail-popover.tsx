@@ -28,7 +28,7 @@ import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
+import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 export function MovementDetailPopover({
   movementId,
@@ -44,8 +44,6 @@ export function MovementDetailPopover({
   entryCurrency = null,
   entryAmount = null,
   exchangeRateUsed = null,
-  officialBcvRateAtTime = null,
-  rateModeUsed = null,
   ledger = null,
   children,
 }: {
@@ -76,8 +74,6 @@ export function MovementDetailPopover({
   entryCurrency?: MovementCurrencyCode | null;
   entryAmount?: number | null;
   exchangeRateUsed?: number | null;
-  officialBcvRateAtTime?: number | null;
-  rateModeUsed?: ExchangeRateMode | null;
   // null = plain COP ledger (every country='CO' owner), which formats
   // exactly as it always has.
   ledger?: LedgerDisplay | null;
@@ -96,14 +92,6 @@ export function MovementDetailPopover({
     entryAmount != null &&
     exchangeRateUsed != null
       ? { currency: entryCurrency, amount: entryAmount, rate: exchangeRateUsed }
-      : null;
-
-  // The objective comparison point, shown to owner and client alike — only
-  // meaningful when the business used its own rate (in BCV_AUTO mode the
-  // applied rate IS the official one, so a second identical row is noise).
-  const officialRate =
-    conversion && rateModeUsed === "CUSTOM" && officialBcvRateAtTime != null
-      ? officialBcvRateAtTime
       : null;
 
   // "Monto" shows exactly what the owner typed, in the currency they chose —
@@ -158,16 +146,6 @@ export function MovementDetailPopover({
               <dt className="text-muted-foreground">Tasa de cambio</dt>
               <dd className="tabular-nums">
                 {formatRateEquivalence(conversion.currency, conversion.rate)}
-              </dd>
-            </>
-          ) : null}
-
-          {officialRate !== null && conversion ? (
-            <>
-              <dt className="text-muted-foreground">Tasa oficial BCV</dt>
-              <dd className="tabular-nums">
-                {formatRateEquivalence(conversion.currency, officialRate)}
-                <span className="ml-1 text-muted-foreground">(ese día)</span>
               </dd>
             </>
           ) : null}

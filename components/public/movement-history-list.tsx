@@ -74,8 +74,6 @@ export function MovementHistoryList({
               entryCurrency={m.entry_currency}
               entryAmount={m.entry_amount}
               exchangeRateUsed={m.exchange_rate_used}
-              officialBcvRateAtTime={m.official_bcv_rate_at_time}
-              rateModeUsed={m.rate_mode_used}
               ledger={ledger}
             >
               <button

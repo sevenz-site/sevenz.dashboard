@@ -2,7 +2,6 @@
 
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CustomRateBadge } from "@/components/exchange-rate-custom-badge";
 import { toBs, type MovementRateContext } from "@/lib/exchange-rate/convert";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { LEDGER_CURRENCIES, type LedgerCurrency } from "@/lib/types";
@@ -38,10 +37,10 @@ export function LedgerCurrencyRadio({
   );
 }
 
-// The live "≈ Bs. X" preview + CUSTOM-mode badge, shown directly below the
-// amount input — it's a property of what was just typed there, recomputed
-// client-side as the owner types using the rate already loaded when the
-// dialog opened (no network call per keystroke).
+// The live "≈ Bs. X" preview, shown directly below the amount input — it's
+// a property of what was just typed there, recomputed client-side as the
+// owner types using the rate already loaded when the dialog opened (no
+// network call per keystroke).
 export function BsAmountPreview({
   amount,
   currency,
@@ -55,12 +54,5 @@ export function BsAmountPreview({
   const hasAmount = Number.isFinite(parsed) && parsed > 0;
   const bsPreview = hasAmount ? toBs(parsed, currency, rateContext.effectiveRate) : null;
 
-  return (
-    <>
-      {bsPreview !== null ? <p className="text-xs text-muted-foreground">≈ {formatBs(bsPreview)}</p> : null}
-      {rateContext.rateMode === "CUSTOM" ? (
-        <CustomRateBadge currentBcvUsd={rateContext.officialRateUsd} />
-      ) : null}
-    </>
-  );
+  return bsPreview !== null ? <p className="text-xs text-muted-foreground">≈ {formatBs(bsPreview)}</p> : null;
 }

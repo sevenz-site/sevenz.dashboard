@@ -187,16 +187,13 @@ export function BusinessSettingsForm({
           <div className="flex flex-col gap-2">
             <Label>Tasa de cambio</Label>
             {/* Locked to BCV_AUTO — owners can't set their own rate right
-                now, so both options render disabled instead of hiding the
-                choice entirely. */}
+                now. "Mi propia tasa" is hidden entirely rather than shown
+                disabled, since offering a choice that can never be picked
+                is more confusing than just not showing it. */}
             <RadioGroup disabled value="BCV_AUTO">
               <label className="flex items-center gap-2 text-sm">
                 <RadioGroupItem value="BCV_AUTO" />
                 Tasa BCV automática
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <RadioGroupItem value="CUSTOM" />
-                Mi propia tasa
               </label>
             </RadioGroup>
           </div>

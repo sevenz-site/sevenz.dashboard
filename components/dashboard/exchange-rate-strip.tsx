@@ -3,8 +3,8 @@
 import { useState, type ChangeEvent } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -44,11 +44,6 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
         <CurrencyFlagIcon currency="EUR" />
         €1 = {formatBs(rateContext.effectiveRate.eur)}
       </span>
-      {rateContext.rateMode === "CUSTOM" ? (
-        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
-          tasa propia
-        </Badge>
-      ) : null}
     </span>
   );
 
@@ -70,7 +65,10 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
           <DrawerHeader>
             <DrawerTitle>Calculadora rápida</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-4">{calculator}</div>
+          <div className="flex flex-col gap-4 px-4 pb-4">
+            {calculator}
+            <ExchangeRateLegalDisclaimer />
+          </div>
         </DrawerContent>
       </Drawer>
     );
@@ -83,7 +81,10 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       </div>
       <PopoverContent align="start" className="w-80">
-        {calculator}
+        <div className="flex flex-col gap-4">
+          {calculator}
+          <ExchangeRateLegalDisclaimer />
+        </div>
       </PopoverContent>
     </Popover>
   );

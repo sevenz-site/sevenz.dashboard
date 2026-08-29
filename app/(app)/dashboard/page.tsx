@@ -90,8 +90,6 @@ export default async function DashboardPage() {
                     balance={totalUsd}
                     currency="USD"
                     ledger={ledger}
-                    rateMode={rateContext.rateMode}
-                    officialRateUsd={rateContext.officialRateUsd}
                     mainClassName="text-3xl text-amber-600 dark:text-amber-400"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -107,8 +105,6 @@ export default async function DashboardPage() {
                     balance={totalEur}
                     currency="EUR"
                     ledger={ledger}
-                    rateMode={rateContext.rateMode}
-                    officialRateUsd={rateContext.officialRateUsd}
                     mainClassName="text-3xl text-amber-600 dark:text-amber-400"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
