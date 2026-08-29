@@ -177,11 +177,6 @@ export function AddMovementDialog({
                 </SelectItem>
               </SelectContent>
             </Select>
-            {!canPay ? (
-              <p className="text-xs text-muted-foreground">
-                {clientName} no debe nada{rateContext ? ` en ${currency}` : ""} — no se puede registrar un abono.
-              </p>
-            ) : null}
           </div>
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
@@ -229,7 +224,7 @@ export function AddMovementDialog({
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button type="button" variant="destructive" disabled={pending}>
-                    {pending ? "Guardando..." : "Guardar"}
+                    {pending ? "Guardando fiado..." : "Guardar fiado"}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -252,7 +247,13 @@ export function AddMovementDialog({
               </AlertDialog>
             ) : (
               <Button type="submit" disabled={pending}>
-                {pending ? "Guardando..." : "Guardar"}
+                {pending
+                  ? type === "charge"
+                    ? "Guardando fiado..."
+                    : "Guardando abono..."
+                  : type === "charge"
+                    ? "Guardar fiado"
+                    : "Guardar abono"}
               </Button>
             )}
           </DialogFooter>
