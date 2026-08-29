@@ -4,14 +4,22 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { WeeklyLendingPoint } from "@/lib/lending-charts";
 
 // Wraps WeeklyLendingChart with its own show/hide toggle — a VE owner sees
 // two of these (USD, EUR), each hideable independently since they're two
 // unrelated ledgers. The toggle row sits below the chart, full width, same
 // label+chevron pattern as the table's "Más filtros"/legend triggers.
+//
+// Starts closed on mobile (screen real estate is scarcer, the chart isn't
+// the first thing worth seeing) and open on desktop — same useIsMobile()
+// hook already used for this kind of behavior-not-just-layout decision in
+// exchange-rate-strip.tsx, so the threshold matches that, not the sm:
+// breakpoint the rest of this page's CSS layout switches at.
 export function LendingChartPanel({ data, title }: { data: WeeklyLendingPoint[]; title: string }) {
-  const [open, setOpen] = useState(true);
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(() => !isMobile);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex w-full flex-col gap-2">

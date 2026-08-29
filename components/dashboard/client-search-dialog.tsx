@@ -234,7 +234,7 @@ export function ClientSearchDialog({
 
               <DialogFooter>
                 <Button type="submit" disabled={pending}>
-                  {pending ? "Guardando..." : "Guardar"}
+                  {pending ? "Guardando fiado..." : "Guardar fiado"}
                 </Button>
               </DialogFooter>
             </form>
