@@ -105,9 +105,12 @@ export function AddMovementDialog({
   function openForPayment() {
     // Land on whichever currency actually has debt, so the in-dialog
     // Select isn't immediately reverted back to "charge" by the
-    // type === "payment" && !canPay guard below.
-    if (rateContext && currentDebtUsd <= 0 && currentDebtEur > 0) {
-      setCurrency("EUR");
+    // type === "payment" && !canPay guard below. Corrects in either
+    // direction — currency may already be sitting on the wrong one from
+    // a previous open (e.g. left on EUR while USD is what's now owed).
+    if (rateContext) {
+      if (currentDebtUsd > 0) setCurrency("USD");
+      else if (currentDebtEur > 0) setCurrency("EUR");
     }
     setType("payment");
     setOpen(true);
