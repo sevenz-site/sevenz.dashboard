@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Eye } from "lucide-react";
+import { Broom, ChevronDown, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -131,6 +131,17 @@ export function ClientTable({
     setPage(1);
   }
 
+  const hasActiveFilters =
+    nameQuery.trim() !== "" || statusFilter !== "todos" || minAmount.trim() !== "" || maxAmount.trim() !== "";
+
+  function clearFilters() {
+    setNameQuery("");
+    setStatusFilter("todos");
+    setMinAmount("");
+    setMaxAmount("");
+    setPage(1);
+  }
+
   if (rows.length === 0 && !tourDemoActive) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
@@ -199,6 +210,16 @@ export function ClientTable({
     </>
   );
 
+  // Only rendered once at least one filter has a non-default value — an
+  // owner with a clean/default table shouldn't see a button with nothing
+  // to clear.
+  const clearFiltersButton = hasActiveFilters ? (
+    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={clearFilters}>
+      <Broom className="size-4" />
+      Limpiar filtros
+    </Button>
+  ) : null;
+
   return (
     <div className="flex flex-col gap-3">
       {/* Desktop: every filter stays in one row, always visible, with the
@@ -210,7 +231,10 @@ export function ClientTable({
       {isMobile ? (
         <>
           <div className="order-1 flex flex-col gap-2">
-            {searchInput}
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">{searchInput}</div>
+              {clearFiltersButton}
+            </div>
             <Collapsible>
               <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
                 Más filtros
@@ -238,6 +262,7 @@ export function ClientTable({
             {searchInput}
             {statusSelect}
             {amountInputs}
+            {clearFiltersButton}
             <CollapsibleTrigger className="group ml-auto flex items-center gap-1 text-sm font-medium text-muted-foreground">
               Qué significa cada estado
               <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
