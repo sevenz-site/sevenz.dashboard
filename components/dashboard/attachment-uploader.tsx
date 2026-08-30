@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Paperclip, Loader2, X } from "lucide-react";
+import { Camera, Paperclip, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { fileToResizedBlob } from "@/lib/image";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function AttachmentUploader({
   ownerId,
@@ -17,6 +18,8 @@ export function AttachmentUploader({
   onChange: (path: string | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
 
@@ -38,6 +41,7 @@ export function AttachmentUploader({
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
   }
 
@@ -90,6 +94,35 @@ export function AttachmentUploader({
           </>
         )}
       </Button>
+      {isMobile ? (
+        <>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 w-full justify-start text-muted-foreground"
+            disabled={uploading}
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Subiendo...
+              </>
+            ) : (
+              <>
+                <Camera className="size-4" /> Tomar foto
+              </>
+            )}
+          </Button>
+        </>
+      ) : null}
     </>
   );
 }
