@@ -139,7 +139,7 @@ export default async function DashboardPage() {
           rateContext={rateContext}
         />
       </div>
-      <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} />
+      <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
 
       {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
     </div>

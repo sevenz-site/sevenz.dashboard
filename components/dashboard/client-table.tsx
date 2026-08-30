@@ -34,6 +34,7 @@ import { ShareActions } from "@/components/dashboard/share-actions";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { track } from "@/lib/mixpanel";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
@@ -67,6 +68,7 @@ export function ClientTable({
   scores,
   rateContext = null,
   emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
+  source,
 }: {
   rows: ClientSummary[];
   scores?: Record<string, CreditScoreResult>;
@@ -74,6 +76,9 @@ export function ClientTable({
   // absent (null) means every row renders exactly like today's COP figure.
   rateContext?: OwnerRateContext | null;
   emptyMessage?: string;
+  // Which page rendered this table — tags "Client Details Opened" so it's
+  // possible to tell regular Cartera lookups apart from Malas Pagas ones.
+  source: "cartera" | "malas_pagas";
 }) {
   const router = useRouter();
   const tour = useTour();
@@ -373,7 +378,10 @@ export function ClientTable({
                       <TableRow
                         key={row.client_id}
                         className="cursor-pointer"
-                        onClick={() => router.push(`/clients/${row.client_id}`)}
+                        onClick={() => {
+                          track("Client Details Opened", { client_id: row.client_id, source });
+                          router.push(`/clients/${row.client_id}`);
+                        }}
                       >
                         <TableCell className="font-medium">
                           <div>
@@ -443,7 +451,12 @@ export function ClientTable({
                         <TableCell className="hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" asChild title="Ver más">
-                              <Link href={`/clients/${row.client_id}`}>
+                              <Link
+                                href={`/clients/${row.client_id}`}
+                                onClick={() =>
+                                  track("Client Details Opened", { client_id: row.client_id, source })
+                                }
+                              >
                                 <Eye className="size-4" />
                               </Link>
                             </Button>

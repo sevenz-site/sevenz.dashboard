@@ -36,6 +36,7 @@ export default async function MalasPagasPage() {
         scores={scores}
         rateContext={ownerRate}
         emptyMessage="No tienes clientes marcados como mala paga."
+        source="malas_pagas"
       />
     </div>
   );
