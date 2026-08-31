@@ -6,7 +6,7 @@ export type RateHistoryPoint = {
 
 type HistoricoEntry = { promedio: number; fecha: string };
 
-const HISTORY_DAYS = 90;
+const HISTORY_DAYS = 7;
 
 async function fetchHistorico(url: string): Promise<HistoricoEntry[]> {
   const response = await fetch(url);
@@ -16,14 +16,17 @@ async function fetchHistorico(url: string): Promise<HistoricoEntry[]> {
 
 // Module-scoped, not component state — the calculator's Drawer/Popover
 // content unmounts when closed (Radix's default), so without this a
-// history-window re-open of the "Calcular" panel would refetch the same 90
-// days again. Cached for the lifetime of the page; a hard refresh starts
-// fresh, which is fine for a "recent trend" chart.
+// re-open of the "Calcular" panel would refetch the same days again.
+// Cached for the lifetime of the page; a hard refresh starts fresh, which
+// is fine for a "recent trend" chart.
 let cachedHistory: Promise<RateHistoryPoint[]> | null = null;
 
 // ve.dolarapi.com's historicos endpoints return a currency's FULL daily
 // series since Jan 2023 in one call — there's no "last N days" param, so
-// the 90-day window is applied client-side after fetching both currencies.
+// the HISTORY_DAYS window is applied client-side after fetching both
+// currencies. Kept short (a week, not months) — Venezuela's rate moves
+// fast enough that a longer window reads as noise rather than signal for
+// a "what's the trend right now" glance.
 export function getRateHistory(): Promise<RateHistoryPoint[]> {
   if (!cachedHistory) {
     cachedHistory = Promise.all([

@@ -62,7 +62,7 @@ export function RateHistoryChart() {
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground">Tasa BCV — últimos 90 días</p>
+      <p className="text-xs font-medium text-muted-foreground">Tasa BCV — últimos 7 días</p>
       <ChartContainer config={chartConfig} className="h-[160px] w-full">
         <LineChart data={state.data} margin={{ left: 12, right: 12 }}>
           <CartesianGrid vertical={false} />
