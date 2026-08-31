@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
+import { RateHistoryChart } from "@/components/dashboard/rate-history-chart";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -67,6 +68,7 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
           </DrawerHeader>
           <div className="flex flex-col gap-4 px-4 pb-4">
             {calculator}
+            <RateHistoryChart />
             <ExchangeRateLegalDisclaimer />
           </div>
         </DrawerContent>
@@ -80,9 +82,10 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
         {rateInfo}
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       </div>
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent align="start" className="w-96">
         <div className="flex flex-col gap-4">
           {calculator}
+          <RateHistoryChart />
           <ExchangeRateLegalDisclaimer />
         </div>
       </PopoverContent>
