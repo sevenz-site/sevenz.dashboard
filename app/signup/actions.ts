@@ -88,6 +88,19 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     if (error.message.toLowerCase().includes("already registered")) {
       return { error: "Ese correo ya tiene una cuenta.", success: false, alreadyRegistered: true, values };
     }
+    // Supabase's leaked-password check (HaveIBeenPwned) rejects this at the
+    // API level, after our own validatePasswordComplexity already passed —
+    // it's a different check (breach-database lookup, not complexity
+    // rules), so it needs its own Spanish message rather than falling
+    // through to the raw-English fallback below. error.code is the stable
+    // identifier Supabase docs recommend checking, not the message text.
+    if (error.code === "weak_password") {
+      return {
+        error: "Esa contraseña es muy común o ha aparecido en filtraciones de datos conocidas — elige una diferente.",
+        success: false,
+        values,
+      };
+    }
     // Surfaced directly (not a generic fallback) so a real Supabase error —
     // e.g. an email rate limit from repeated test signups, or a rejected
     // domain — is visible without needing server log access.
