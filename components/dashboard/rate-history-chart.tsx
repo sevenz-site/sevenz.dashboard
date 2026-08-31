@@ -26,6 +26,13 @@ const chartConfig = {
 const tickFormatter = (value: string) =>
   new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short" }).format(new Date(`${value}T00:00:00`));
 
+// Day number only, no month — with all 7 days forced onto the axis
+// (interval={0} below) and every one of them falling in the same month
+// most of the time, repeating "de ago" seven times in a row just overlaps
+// and becomes illegible. The tooltip keeps the full "25 ago" via
+// tickFormatter above.
+const xAxisFormatter = (value: string) => new Date(`${value}T00:00:00`).getDate().toString();
+
 // Whole bolívares, no decimals — an axis tick is a scale reference, not a
 // precise figure (the tooltip already shows the exact value on hover).
 const yAxisFormatter = (value: number) => Math.round(value).toLocaleString("es-VE");
@@ -76,8 +83,8 @@ export function RateHistoryChart() {
             axisLine={false}
             tickMargin={8}
             fontSize={11}
-            minTickGap={40}
-            tickFormatter={tickFormatter}
+            interval={0}
+            tickFormatter={xAxisFormatter}
           />
           <YAxis
             tickLine={false}
