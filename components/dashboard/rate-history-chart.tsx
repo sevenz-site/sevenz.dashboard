@@ -26,12 +26,14 @@ const chartConfig = {
 const tickFormatter = (value: string) =>
   new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short" }).format(new Date(`${value}T00:00:00`));
 
-// Day number only, no month — with all 7 days forced onto the axis
-// (interval={0} below) and every one of them falling in the same month
-// most of the time, repeating "de ago" seven times in a row just overlaps
-// and becomes illegible. The tooltip keeps the full "25 ago" via
-// tickFormatter above.
-const xAxisFormatter = (value: string) => new Date(`${value}T00:00:00`).getDate().toString();
+// Short "25 ago" form, built manually rather than via Intl — the ICU
+// short-month format for es-CO adds a trailing period ("ago."), which
+// only makes seven crowded axis labels wider for no benefit.
+const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const xAxisFormatter = (value: string) => {
+  const date = new Date(`${value}T00:00:00`);
+  return `${date.getDate()} ${MONTH_ABBR[date.getMonth()]}`;
+};
 
 // Whole bolívares, no decimals — an axis tick is a scale reference, not a
 // precise figure (the tooltip already shows the exact value on hover).
