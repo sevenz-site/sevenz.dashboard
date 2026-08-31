@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
   ChartLegend,
@@ -25,6 +25,10 @@ const chartConfig = {
 
 const tickFormatter = (value: string) =>
   new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short" }).format(new Date(`${value}T00:00:00`));
+
+// Whole bolívares, no decimals — an axis tick is a scale reference, not a
+// precise figure (the tooltip already shows the exact value on hover).
+const yAxisFormatter = (value: number) => Math.round(value).toLocaleString("es-VE");
 
 type State = { status: "loading" } | { status: "error" } | { status: "ready"; data: RateHistoryPoint[] };
 
@@ -74,6 +78,14 @@ export function RateHistoryChart() {
             fontSize={11}
             minTickGap={40}
             tickFormatter={tickFormatter}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            fontSize={11}
+            width={44}
+            tickFormatter={yAxisFormatter}
           />
           <ChartTooltip content={<ChartTooltipContent labelFormatter={tickFormatter} />} />
           <Line dataKey="usd" type="monotone" stroke="var(--color-usd)" strokeWidth={2} dot={false} />
