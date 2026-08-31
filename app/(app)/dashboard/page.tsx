@@ -6,7 +6,7 @@ import { LendingChartPanel } from "@/components/dashboard/lending-chart-panel";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { HideableBalance } from "@/components/dashboard/hideable-balance";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
               <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
                 <div>
                   <p className="text-sm text-muted-foreground">Capital por cobrar en USD</p>
-                  <ExchangeRateBalanceDisplay
+                  <HideableBalance
                     balance={totalUsd}
                     currency="USD"
                     ledger={ledger}
@@ -101,7 +101,7 @@ export default async function DashboardPage() {
               <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
                 <div>
                   <p className="text-sm text-muted-foreground">Capital por cobrar en Euro</p>
-                  <ExchangeRateBalanceDisplay
+                  <HideableBalance
                     balance={totalEur}
                     currency="EUR"
                     ledger={ledger}
@@ -118,7 +118,7 @@ export default async function DashboardPage() {
             <>
               <div>
                 <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-                <ExchangeRateBalanceDisplay
+                <HideableBalance
                   balance={totalCop}
                   currency={null}
                   ledger={null}
