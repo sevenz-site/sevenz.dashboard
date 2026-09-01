@@ -5,6 +5,11 @@ export type ReviewRow = ExtractedMovement & {
   matched_client_id: string | null;
   computed_balance: number;
   needs_review: boolean;
+  // True when there's no existing client on file with a document_id for
+  // this row — either it's a brand-new client, or it matched an existing
+  // one that's never had a cédula/documento recorded. False (no need to
+  // ask again) when the matched client already has one.
+  needs_document_id: boolean;
 };
 
 const RECONCILE_TOLERANCE = 1;
@@ -15,7 +20,7 @@ function normalizeName(name: string): string {
 
 export function reconcileMovements(
   extracted: ExtractedMovement[],
-  existingClients: { id: string; name: string; balance: number }[],
+  existingClients: { id: string; name: string; balance: number; document_id: string | null }[],
 ): ReviewRow[] {
   const byName = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
   const runningBalances = new Map<string, number>();
@@ -41,6 +46,7 @@ export function reconcileMovements(
       matched_client_id: matched?.id ?? null,
       computed_balance: computedBalance,
       needs_review: movement.confidence === "low" || movement.read_balance === null || !reconciles,
+      needs_document_id: !matched?.document_id,
     };
   });
 }

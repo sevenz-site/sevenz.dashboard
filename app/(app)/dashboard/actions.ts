@@ -87,6 +87,9 @@ export async function createClientWithMovement(
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };
   }
+  if (!documentId) {
+    return { error: "Escribe la cédula o documento del cliente.", clientId: null };
+  }
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };

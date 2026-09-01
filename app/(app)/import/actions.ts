@@ -11,6 +11,10 @@ export type ImportRow = {
   type: MovementType;
   amount: number;
   description: string | null;
+  // Required unless client_id already points to a client who has one on
+  // file — see the "needs_document_id" review-table logic that decides
+  // when the owner actually had to type this in.
+  document_id: string | null;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -32,14 +36,21 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // one actually belongs to this owner before trusting it, rather than
   // relying only on the movements insert's RLS check to catch a mismatch.
   const providedClientIds = [...new Set(rows.map((r) => r.client_id).filter((id): id is string => Boolean(id)))];
-  let ownedClientIds = new Set<string>();
+  const ownedClientIds = new Set<string>();
+  // Existing clients' current document_id, checked server-side rather than
+  // trusting the review table's own needs_document_id flag — that flag is
+  // just what decided whether to show/require the input client-side.
+  const existingDocumentIds = new Map<string, string | null>();
   if (providedClientIds.length > 0) {
     const { data: ownedClients } = await supabase
       .from("clients")
-      .select("id")
+      .select("id, document_id")
       .eq("owner_id", user.id)
       .in("id", providedClientIds);
-    ownedClientIds = new Set((ownedClients ?? []).map((c) => c.id as string));
+    for (const c of ownedClients ?? []) {
+      ownedClientIds.add(c.id as string);
+      existingDocumentIds.set(c.id as string, c.document_id as string | null);
+    }
   }
 
   const clientIdByName = new Map<string, string>();
@@ -49,17 +60,40 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     const cacheKey = row.client_name.trim().toLowerCase();
     let clientId: string;
 
+    const documentId = row.document_id?.trim() || null;
+
     if (row.client_id) {
       if (!ownedClientIds.has(row.client_id)) {
         return { error: `Cliente inválido para "${row.client_name}".`, imported };
       }
       clientId = row.client_id;
+      // Only require/persist a document_id here if this client didn't
+      // already have one — never overwrite an existing value.
+      if (!existingDocumentIds.get(clientId)) {
+        if (!documentId) {
+          return { error: `Falta la cédula/documento de "${row.client_name}".`, imported };
+        }
+        const { error: updateError } = await supabase
+          .from("clients")
+          .update({ document_id: documentId })
+          .eq("id", clientId);
+        if (updateError) {
+          return {
+            error: `No pudimos guardar la cédula de "${row.client_name}": ${updateError.message}`,
+            imported,
+          };
+        }
+        existingDocumentIds.set(clientId, documentId);
+      }
     } else if (clientIdByName.has(cacheKey)) {
       clientId = clientIdByName.get(cacheKey)!;
     } else {
+      if (!documentId) {
+        return { error: `Falta la cédula/documento de "${row.client_name}".`, imported };
+      }
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
-        .insert({ owner_id: user.id, name: row.client_name.trim() })
+        .insert({ owner_id: user.id, name: row.client_name.trim(), document_id: documentId })
         .select("id")
         .single();
 

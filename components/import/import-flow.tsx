@@ -24,7 +24,7 @@ import type { ExtractedMovement } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 
-type ExistingClient = { id: string; name: string; balance: number };
+type ExistingClient = { id: string; name: string; balance: number; document_id: string | null };
 
 const ATTACHMENT_STATE: Record<ImportJobStatus, "uploading" | "processing" | "done" | "error"> = {
   queued: "uploading",
@@ -56,6 +56,11 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
     () => (reviewMovements ? reconcileMovements(reviewMovements, existingClients) : []),
     [reviewMovements, existingClients],
   );
+
+  // A client without a cédula/documento on file must get one before the
+  // import can be confirmed — same requirement as the manual "Registrar
+  // cliente nuevo" form, just applied per row here.
+  const missingDocumentId = reviewRows.some((r) => r.needs_document_id && !r.document_id?.trim());
 
   function handleFilesSelected(fileList: FileList | null) {
     if (!fileList) return;
@@ -89,6 +94,7 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
         type: r.type,
         amount: r.amount,
         description: r.description,
+        document_id: r.document_id,
       }));
       const result = await confirmImport(rows);
       if (result.error) {
@@ -113,11 +119,16 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
           onRemove={removeMovement}
           existingClients={existingClients}
         />
+        {missingDocumentId ? (
+          <p className="text-sm text-destructive">
+            Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar.
+          </p>
+        ) : null}
         <div className="flex items-center justify-between">
           <Button variant="outline" onClick={() => setReviewMovements(null)} disabled={confirming}>
             Volver
           </Button>
-          <Button onClick={handleConfirm} disabled={confirming || reviewRows.length === 0}>
+          <Button onClick={handleConfirm} disabled={confirming || reviewRows.length === 0 || missingDocumentId}>
             {confirming ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> Guardando...

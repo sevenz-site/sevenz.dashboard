@@ -91,6 +91,7 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
       description: typeof m.description === "string" ? m.description : null,
       read_balance: typeof m.read_balance === "number" ? m.read_balance : null,
       confidence: m.confidence === "low" ? "low" : "high",
+      document_id: null,
     }))
     .filter((m) => m.client_name && m.amount > 0);
 }

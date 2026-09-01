@@ -9,13 +9,14 @@ export default async function ImportPage() {
 
   const { data: clients } = await supabase
     .from("client_summary")
-    .select("client_id, name, balance")
+    .select("client_id, name, balance, document_id")
     .eq("owner_id", user!.id);
 
   const existingClients = (clients ?? []).map((c) => ({
     id: c.client_id as string,
     name: c.name as string,
     balance: c.balance as number,
+    document_id: c.document_id as string | null,
   }));
 
   return (

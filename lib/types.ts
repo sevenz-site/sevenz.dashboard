@@ -249,4 +249,8 @@ export type ExtractedMovement = {
   description: string | null;
   read_balance: number | null;
   confidence: "high" | "low";
+  // Never extracted by the AI (a libreta photo doesn't show it) — filled in
+  // by the owner during review, only actually required for a client who
+  // doesn't already have one on file (see ReviewRow.needs_document_id).
+  document_id: string | null;
 };

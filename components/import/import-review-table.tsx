@@ -45,6 +45,7 @@ export function ImportReviewTable({
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[10rem]">Cliente</TableHead>
+            <TableHead>Cédula/documento</TableHead>
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead className="min-w-[10rem]">Detalle</TableHead>
@@ -62,6 +63,18 @@ export function ImportReviewTable({
                   value={row.client_name}
                   onChange={(e) => onUpdate(index, { client_name: e.target.value })}
                 />
+              </TableCell>
+              <TableCell>
+                {row.needs_document_id ? (
+                  <Input
+                    placeholder="Requerida"
+                    className={row.document_id?.trim() ? undefined : "border-destructive"}
+                    value={row.document_id ?? ""}
+                    onChange={(e) => onUpdate(index, { document_id: e.target.value || null })}
+                  />
+                ) : (
+                  <span className="text-sm text-muted-foreground">{row.document_id}</span>
+                )}
               </TableCell>
               <TableCell>
                 <Select
