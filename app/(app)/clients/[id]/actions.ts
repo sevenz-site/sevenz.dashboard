@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { OwnerCountry } from "@/lib/types";
 
 export type EditClientState = { error: string | null; success: boolean };
+
+const ALLOWED_DOCUMENT_COUNTRIES: OwnerCountry[] = ["CO", "VE"];
 
 export async function updateClient(
   _prevState: EditClientState,
@@ -20,6 +23,13 @@ export async function updateClient(
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const documentId = String(formData.get("document_id") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
+  // Validated against the two real codes rather than trusted from the form —
+  // an unrecognized value would otherwise hit the CHECK constraint and
+  // surface as a raw Postgres error instead of a clean fallback.
+  const documentCountryRaw = String(formData.get("document_country") ?? "");
+  const documentCountry = ALLOWED_DOCUMENT_COUNTRIES.includes(documentCountryRaw as OwnerCountry)
+    ? (documentCountryRaw as OwnerCountry)
+    : null;
 
   if (!clientId) return { error: "Cliente inválido.", success: false };
   if (!name) return { error: "El nombre no puede quedar vacío.", success: false };
@@ -30,6 +40,7 @@ export async function updateClient(
       name,
       whatsapp: whatsapp || null,
       document_id: documentId || null,
+      document_country: documentCountry,
       address: address || null,
     })
     .eq("id", clientId)

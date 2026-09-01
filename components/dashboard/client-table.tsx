@@ -61,6 +61,22 @@ const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
   { value: "critico", label: CLIENT_STATUS_LABEL.critico },
 ];
 
+// Alphabetical is the default: an owner looking for a specific person scans
+// by name, which is why the search box is the one filter always visible.
+// The two amount orders answer the other common question — "quién me debe
+// más" — without needing the Monto desde/hasta inputs. "atraso" reproduces
+// what this table used to render before any sort control existed (the page
+// query's own `order("days_since_payment", desc)`), so an owner who used
+// the top of the list as their "who to chase today" view doesn't lose it.
+type SortOption = "nombre" | "monto_desc" | "monto_asc" | "atraso";
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "nombre", label: "Orden alfabético" },
+  { value: "monto_desc", label: "Monto: mayor a menor" },
+  { value: "monto_asc", label: "Monto: menor a mayor" },
+  { value: "atraso", label: "Más atrasados primero" },
+];
+
 const PAGE_SIZE = 15;
 
 export function ClientTable({
@@ -88,6 +104,7 @@ export function ClientTable({
   const [statusFilter, setStatusFilter] = useState<ClientStatus | "todos">("todos");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("nombre");
   const [page, setPage] = useState(1);
   // Shared between the mobile and desktop legend triggers below — only one
   // of the two ever renders at a time (isMobile picks the branch), so a
@@ -129,9 +146,29 @@ export function ClientTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, nameQuery, statusFilter, minAmount, maxAmount, rateContext]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const sortedRows = useMemo(() => {
+    const sorted = [...filteredRows];
+    if (sortBy === "nombre") {
+      // Spanish collation with sensitivity "base" so "Angélica" and
+      // "Angelica" land next to each other instead of the accented one
+      // being sorted away from its twin.
+      sorted.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+    } else if (sortBy === "atraso") {
+      sorted.sort((a, b) => b.days_since_payment - a.days_since_payment);
+    } else {
+      // Same combined-to-USD figure the status and amount filters use, so a
+      // VE owner's two ledgers order as one number rather than by whichever
+      // currency happens to be bigger.
+      const direction = sortBy === "monto_asc" ? 1 : -1;
+      sorted.sort((a, b) => (judgementBalance(a) - judgementBalance(b)) * direction);
+    }
+    return sorted;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredRows, sortBy, rateContext]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const pagedRows = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedRows = sortedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   // Any filter change invalidates the current page, so always jump back to
   // page 1 rather than risk landing on an empty page of results.
@@ -200,6 +237,24 @@ export function ClientTable({
     </Select>
   );
 
+  // Deliberately not part of hasActiveFilters / clearFilters: sorting is a
+  // view preference, not a filter that hides rows. "Limpiar filtros"
+  // shouldn't silently throw away the order the owner chose.
+  const sortSelect = (
+    <Select value={sortBy} onValueChange={(v) => updateFilter(setSortBy, v as SortOption)}>
+      <SelectTrigger className="w-full sm:w-52" aria-label="Ordenar por">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {SORT_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            Ordenar por: {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   const amountInputs = (
     <>
       <Input
@@ -251,6 +306,7 @@ export function ClientTable({
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2">
                 <div className="flex flex-wrap items-end gap-2">
+                  {sortSelect}
                   {statusSelect}
                   {amountInputs}
                 </div>
@@ -269,6 +325,7 @@ export function ClientTable({
         <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className="order-1">
           <div className="flex flex-wrap items-end gap-2">
             {searchInput}
+            {sortSelect}
             {statusSelect}
             {amountInputs}
             {clearFiltersButton}
@@ -282,7 +339,7 @@ export function ClientTable({
       )}
 
       <div className="order-2 flex flex-col gap-3 md:order-3">
-        {filteredRows.length === 0 && !tourDemoActive ? (
+        {sortedRows.length === 0 && !tourDemoActive ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
             <p className="text-sm text-muted-foreground">Ningún cliente coincide con estos filtros.</p>
           </div>

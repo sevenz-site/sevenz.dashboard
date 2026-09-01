@@ -106,6 +106,11 @@ export type Client = {
   whatsapp: string | null;
   address: string | null;
   document_id: string | null;
+  // Which country issued document_id. Inherited from the owner's own
+  // country when the client is created, correctable per client — CO and VE
+  // cédulas can share the same digits and belong to different people, so
+  // this pairs with document_id as the real identity key.
+  document_country: OwnerCountry | null;
   profile_picture_path: string | null;
   created_at: string;
   is_flagged: boolean;

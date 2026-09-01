@@ -26,6 +26,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -35,7 +42,12 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { track } from "@/lib/mixpanel";
 import { formatDocumentId } from "@/lib/format";
-import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
+import {
+  DEFAULT_PLAZO_PAGO,
+  DEFAULT_LEDGER_CURRENCY,
+  type LedgerCurrency,
+  type OwnerCountry,
+} from "@/lib/types";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -46,11 +58,15 @@ export function ClientSearchDialog({
   clients,
   ownerId,
   businessName,
+  ownerCountry,
   rateContext,
 }: {
   clients: ClientOption[];
   ownerId: string;
   businessName: string;
+  // Seeds "País del documento" below — right for the overwhelming majority
+  // of clients, and correctable per client for the cross-border ones.
+  ownerCountry: OwnerCountry;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
@@ -67,6 +83,7 @@ export function ClientSearchDialog({
   // step change or server response.
   const [nameValue, setNameValue] = useState("");
   const [documentIdValue, setDocumentIdValue] = useState("");
+  const [documentCountry, setDocumentCountry] = useState<OwnerCountry>(ownerCountry);
   const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
   const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
@@ -92,6 +109,7 @@ export function ClientSearchDialog({
       setAmountStr("");
       setNameValue("");
       setDocumentIdValue("");
+      setDocumentCountry(ownerCountry);
       setAddressValue("");
     }
   }
@@ -247,6 +265,22 @@ export function ClientSearchDialog({
                   onChange={(e) => setDocumentIdValue(e.target.value)}
                   required
                 />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="document_country">País del documento</Label>
+                <Select
+                  name="document_country"
+                  value={documentCountry}
+                  onValueChange={(v) => setDocumentCountry(v as OwnerCountry)}
+                >
+                  <SelectTrigger id="document_country" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CO">Colombia</SelectItem>
+                    <SelectItem value="VE">Venezuela</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="address">Dirección (opcional)</Label>
