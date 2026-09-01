@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import type { MovementType } from "@/lib/types";
 
@@ -53,6 +54,28 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     }
   }
 
+  // Nothing stops the same person being registered twice under one owner —
+  // catch it here before creating a brand-new client, same as the manual
+  // "Registrar cliente nuevo" flow. Seeded from every client this owner
+  // already has on file, then grown as new clients get created below so
+  // two different rows in the SAME batch can't collide with each other
+  // either. There's no per-row picker in this batch flow, so a hit just
+  // blocks the whole import with a clear message instead of silently
+  // duplicating.
+  const { data: allOwnerClients } = await supabase
+    .from("clients")
+    .select("id, name, document_id")
+    .eq("owner_id", user.id)
+    .not("document_id", "is", null);
+  const clientsByNormalizedDocumentId = new Map<string, { id: string; name: string }>();
+  for (const c of allOwnerClients ?? []) {
+    if (!c.document_id) continue;
+    clientsByNormalizedDocumentId.set(normalizeDocumentId(c.document_id as string), {
+      id: c.id as string,
+      name: c.name as string,
+    });
+  }
+
   const clientIdByName = new Map<string, string>();
   let imported = 0;
 
@@ -91,6 +114,16 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       if (!documentId) {
         return { error: `Falta la cédula/documento de "${row.client_name}".`, imported };
       }
+
+      const normalizedDocumentId = normalizeDocumentId(documentId);
+      const duplicate = clientsByNormalizedDocumentId.get(normalizedDocumentId);
+      if (duplicate) {
+        return {
+          error: `Ya existe un cliente con esta cédula: ${duplicate.name}. Selecciónalo en la tabla en vez de crear uno nuevo.`,
+          imported,
+        };
+      }
+
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
         .insert({ owner_id: user.id, name: row.client_name.trim(), document_id: documentId })
@@ -105,6 +138,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       }
       clientId = newClient.id as string;
       clientIdByName.set(cacheKey, clientId);
+      clientsByNormalizedDocumentId.set(normalizedDocumentId, { id: clientId, name: row.client_name.trim() });
     }
 
     // No needs_review here: the owner already saw and could fix every

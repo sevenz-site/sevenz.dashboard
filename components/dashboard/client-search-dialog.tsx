@@ -230,7 +230,21 @@ export function ClientSearchDialog({
                 <input type="hidden" name="photo_path" value={photoPath ?? ""} />
               </div>
 
-              {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+              {state.error ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-destructive">{state.error}</p>
+                  {state.duplicate ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectExisting(state.duplicate!.id)}
+                    >
+                      Ir a {state.duplicate.name}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
 
               <DialogFooter>
                 <Button type="submit" disabled={pending}>

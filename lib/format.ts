@@ -44,6 +44,13 @@ export function formatDocumentId(documentId: string | null): string {
   return documentId.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+// Strips punctuation/spacing so "555.111.222" and "555 111 222" compare equal
+// to "555111222" — document_id is stored exactly as typed with no fixed
+// format, so duplicate detection has to normalize before comparing.
+export function normalizeDocumentId(documentId: string): string {
+  return documentId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
 // CSS truncate alone isn't enough on the movement-history rows: the title
 // wraps to a second line before the browser gets a chance to ellipsize it,
 // which pushes the row taller and breaks the amount's right alignment. A hard

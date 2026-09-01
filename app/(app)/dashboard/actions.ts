@@ -2,12 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import type { LedgerCurrency } from "@/lib/types";
 
-export type MovementFormState = { error: string | null; clientId: string | null };
+export type MovementFormState = {
+  error: string | null;
+  clientId: string | null;
+  // Present only when error is the "duplicate document_id" case — lets the
+  // dialog offer a direct "go to this client" action instead of a dead end.
+  duplicate?: { id: string; name: string } | null;
+};
 
 type ParsedMovement =
   | { error: string }
@@ -98,6 +104,27 @@ export async function createClientWithMovement(
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
   if (type === "payment") {
     return { error: "Un cliente nuevo no puede empezar con un abono — todavía no debe nada.", clientId: null };
+  }
+
+  // Nothing today stops the same person being registered twice under one
+  // owner — catch it here instead of creating a silent duplicate. Compared
+  // normalized (punctuation/case-insensitive) since document_id is stored
+  // exactly as typed, with no fixed format.
+  const normalizedDocumentId = normalizeDocumentId(documentId);
+  const { data: ownerClients } = await supabase
+    .from("clients")
+    .select("id, name, document_id")
+    .eq("owner_id", user.id)
+    .not("document_id", "is", null);
+  const duplicate = ownerClients?.find(
+    (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
+  );
+  if (duplicate) {
+    return {
+      error: `Ya existe un cliente con esta cédula: ${duplicate.name}`,
+      clientId: null,
+      duplicate: { id: duplicate.id as string, name: duplicate.name as string },
+    };
   }
 
   const { data: newClient, error: clientError } = await supabase
