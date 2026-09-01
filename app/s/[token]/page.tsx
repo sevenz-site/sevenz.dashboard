@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
@@ -123,8 +123,12 @@ export default async function SharedBalancePage({
             <p className="text-xs text-muted-foreground">Cédula/documento: {formatDocumentId(shared.document_id)}</p>
           </div>
         </div>
-        <Button asChild variant="outline" size="sm" className="shrink-0">
-          <Link href={`/s/${token}/perfil`}>Mi perfil</Link>
+        {/* Disabled until client login/verification ships — today anyone
+            with this link could reach the profile page and change the
+            picture, with no way to confirm they're really the client. */}
+        <Button variant="outline" size="sm" className="shrink-0" disabled title="Próximamente">
+          <UserRound className="size-4" />
+          Mi perfil
         </Button>
       </div>
 
