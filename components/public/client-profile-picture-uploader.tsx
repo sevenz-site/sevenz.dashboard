@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { fileToResizedBlob } from "@/lib/image";
 import { uploadProfilePicture } from "@/app/s/[token]/actions";
 import { getPublicClientProfilePictureUrl } from "@/lib/supabase/storage";
+import { CameraCaptureDialog } from "@/components/public/camera-capture-dialog";
 
 // Client-only edit on this page: unlike the document ID (one-time,
 // server-validated), a profile picture can be replaced anytime — every
@@ -20,24 +21,17 @@ export function ClientProfilePictureUploader({
   token: string;
   initialPath: string | null;
 }) {
-  // Two separate hidden inputs rather than one: capture="environment"
-  // (same convention as attachment-uploader.tsx/import-flow.tsx) forces
-  // mobile browsers straight to the camera, which only makes sense for
-  // "Tomar foto" — "Subir foto" needs the plain picker instead, so a
-  // client choosing an existing photo doesn't get shoved into the camera.
   const galleryInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initialPath ? getPublicClientProfilePictureUrl(initialPath) : null,
   );
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
+  async function uploadBlob(blob: Blob) {
     setUploading(true);
     try {
-      const blob = await fileToResizedBlob(file);
       const formData = new FormData();
       formData.set("file", blob, "profile.jpg");
       const result = await uploadProfilePicture(token, formData);
@@ -48,9 +42,14 @@ export function ClientProfilePictureUploader({
       toast.error(error instanceof Error ? error.message : "No pudimos subir tu foto.");
     } finally {
       setUploading(false);
-      if (galleryInputRef.current) galleryInputRef.current.value = "";
-      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
+  }
+
+  async function handleGalleryFile(file: File | undefined) {
+    if (!file) return;
+    const blob = await fileToResizedBlob(file);
+    await uploadBlob(blob);
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   }
 
   return (
@@ -68,19 +67,17 @@ export function ClientProfilePictureUploader({
         type="file"
         accept="image/*"
         className="sr-only"
-        onChange={(e) => handleFile(e.target.files?.[0])}
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="sr-only"
-        onChange={(e) => handleFile(e.target.files?.[0])}
+        onChange={(e) => handleGalleryFile(e.target.files?.[0])}
       />
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => setOpen(true)}>
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={uploading}
+          onClick={() => setPickerOpen(true)}
+        >
           {uploading ? (
             <>
               <Loader2 className="size-4 animate-spin" /> Subiendo...
@@ -100,7 +97,7 @@ export function ClientProfilePictureUploader({
               type="button"
               variant="outline"
               onClick={() => {
-                setOpen(false);
+                setPickerOpen(false);
                 galleryInputRef.current?.click();
               }}
             >
@@ -111,8 +108,8 @@ export function ClientProfilePictureUploader({
               type="button"
               variant="outline"
               onClick={() => {
-                setOpen(false);
-                cameraInputRef.current?.click();
+                setPickerOpen(false);
+                setCameraOpen(true);
               }}
             >
               <Camera className="size-4" />
@@ -121,6 +118,8 @@ export function ClientProfilePictureUploader({
           </div>
         </DialogContent>
       </Dialog>
+
+      <CameraCaptureDialog open={cameraOpen} onOpenChange={setCameraOpen} onCapture={uploadBlob} />
     </div>
   );
 }

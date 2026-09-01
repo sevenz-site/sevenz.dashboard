@@ -57,6 +57,7 @@ declare
   v_client public.clients%rowtype;
   v_business text;
   v_owner_logo_path text;
+  v_owner_whatsapp text;
 begin
   select c.* into v_client
   from public.share_links sl
@@ -67,12 +68,13 @@ begin
     return null;
   end if;
 
-  select business_name, logo_path into v_business, v_owner_logo_path
+  select business_name, logo_path, whatsapp into v_business, v_owner_logo_path, v_owner_whatsapp
   from public.owners where id = v_client.owner_id;
 
   return json_build_object(
     'business_name', v_business,
     'owner_logo_path', v_owner_logo_path,
+    'owner_whatsapp', v_owner_whatsapp,
     'client_name', v_client.name,
     'document_id', v_client.document_id,
     'whatsapp', v_client.whatsapp,

@@ -1,23 +1,28 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
+import { Button } from "@/components/ui/button";
 import { ClientProfilePictureUploader } from "@/components/public/client-profile-picture-uploader";
 import { formatDocumentId } from "@/lib/format";
 
 type SharedClientProfile = {
   business_name: string;
   owner_logo_path: string | null;
+  owner_whatsapp: string | null;
   client_name: string;
   document_id: string | null;
   whatsapp: string | null;
   address: string | null;
   profile_picture_path: string | null;
 };
+
+const EDIT_REQUEST_MESSAGE =
+  "Hola, quiero solicitar la edición de mi información personal (nombre, cédula, WhatsApp o dirección).";
 
 export default async function ClientProfilePage({
   params,
@@ -39,6 +44,7 @@ export default async function ClientProfilePage({
 
   const profile = data as SharedClientProfile;
   const logoUrl = profile.owner_logo_path ? getPublicLogoUrl(profile.owner_logo_path) : "/icon.svg";
+  const ownerWhatsappDigits = profile.owner_whatsapp?.replace(/\D/g, "");
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
@@ -91,6 +97,27 @@ export default async function ClientProfilePage({
           Estos datos los administra {profile.business_name} — solo puedes actualizar tu foto de
           perfil desde aquí.
         </p>
+      </div>
+
+      {ownerWhatsappDigits ? (
+        <a
+          href={`https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(EDIT_REQUEST_MESSAGE)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+        >
+          <MessageCircle className="size-4" />
+          Solicitar editar información personal
+        </a>
+      ) : null}
+
+      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
+        <p className="text-sm font-medium">
+          ¿Quieres tener las cuentas claras con tus clientes?
+        </p>
+        <Button asChild size="sm" className="w-full">
+          <Link href="/signup">Regístrate en Sevenz</Link>
+        </Button>
       </div>
     </div>
   );
