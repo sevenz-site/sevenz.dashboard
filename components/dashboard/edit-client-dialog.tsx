@@ -15,40 +15,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import { updateClient, type EditClientState } from "@/app/(app)/clients/[id]/actions";
 import { WhatsappInput } from "@/components/whatsapp-input";
-import type { Client, OwnerCountry } from "@/lib/types";
+import type { Client } from "@/lib/types";
 
 const initialState: EditClientState = { error: null, success: false };
 
-export function EditClientDialog({
-  client,
-  ownerCountry,
-}: {
-  client: Client;
-  // Fallback for a client whose document_country was never set — a client
-  // created before this field existed, or by a path that doesn't collect it
-  // (e.g. photo import). Defaulting to the owner's own country matches how
-  // "Registrar cliente nuevo" seeds it, rather than silently guessing 'CO'.
-  ownerCountry: OwnerCountry;
-}) {
+export function EditClientDialog({ client }: { client: Client }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(updateClient, initialState);
   const [handledState, setHandledState] = useState(state);
-  // Controlled because Radix's Select doesn't submit a plain defaultValue
-  // the way a native input does — it needs the value tracked explicitly.
-  const [documentCountry, setDocumentCountry] = useState<OwnerCountry>(
-    client.document_country ?? ownerCountry,
-  );
 
   if (state !== handledState && state.success) {
     setHandledState(state);
@@ -90,22 +68,6 @@ export function EditClientDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_document_id">Cédula/documento (opcional)</Label>
             <Input id="edit_document_id" name="document_id" defaultValue={client.document_id ?? ""} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit_document_country">País del documento</Label>
-            <Select
-              name="document_country"
-              value={documentCountry}
-              onValueChange={(v) => setDocumentCountry(v as OwnerCountry)}
-            >
-              <SelectTrigger id="edit_document_country" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CO">Colombia</SelectItem>
-                <SelectItem value="VE">Venezuela</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_address">Dirección (opcional)</Label>
