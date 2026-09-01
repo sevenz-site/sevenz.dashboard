@@ -107,7 +107,11 @@ export function ClientTable({
     const max = maxAmount.trim() ? Number(maxAmount) : null;
 
     return rows.filter((row) => {
-      if (query && !row.name.toLowerCase().includes(query)) return false;
+      if (query) {
+        const matchesName = row.name.toLowerCase().includes(query);
+        const matchesDocument = row.document_id?.toLowerCase().includes(query) ?? false;
+        if (!matchesName && !matchesDocument) return false;
+      }
       const balance = judgementBalance(row);
       if (statusFilter !== "todos") {
         const status = getClientStatus(
@@ -171,7 +175,7 @@ export function ClientTable({
 
   const searchInput = (
     <Input
-      placeholder="Buscar por nombre"
+      placeholder="Buscar por nombre o documento"
       value={nameQuery}
       onChange={(e) => updateFilter(setNameQuery, e.target.value)}
       className="w-full sm:w-48"

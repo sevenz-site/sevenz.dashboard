@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -46,9 +57,17 @@ export function ClientSearchDialog({
 }) {
   const router = useRouter();
   const tour = useTour();
+  const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
+  // Controlled (unlike relying on defaultValue) so a server action round trip
+  // — e.g. the duplicate-document check — never visually wipes what the
+  // owner already typed. Only reset on full dialog close, not on every
+  // step change or server response.
+  const [nameValue, setNameValue] = useState("");
+  const [documentIdValue, setDocumentIdValue] = useState("");
+  const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
   const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
@@ -71,6 +90,9 @@ export function ClientSearchDialog({
       setQuery("");
       setPhotoPath(null);
       setAmountStr("");
+      setNameValue("");
+      setDocumentIdValue("");
+      setAddressValue("");
     }
   }
 
@@ -92,6 +114,21 @@ export function ClientSearchDialog({
   function selectExisting(id: string) {
     setOpen(false);
     router.push(`/clients/${id}`);
+  }
+
+  // After a server action submission, the browser resets this form's
+  // (uncontrolled) fields — fine normally, since a plain error just means
+  // the owner retypes everything. But the duplicate-confirmation retry needs
+  // the ORIGINAL values, not whatever the now-blank DOM shows. Caching the
+  // submitted FormData here (before that reset happens) and resubmitting the
+  // cached copy directly sidesteps it entirely.
+  const lastFormDataRef = useRef<FormData | null>(null);
+
+  function confirmDuplicateAndSubmit() {
+    const data = lastFormDataRef.current;
+    if (!data) return;
+    data.set("confirm_duplicate", "true");
+    formAction(data);
   }
 
   return (
@@ -146,7 +183,14 @@ export function ClientSearchDialog({
                 <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
               ) : null}
 
-              <Button type="button" variant="outline" onClick={() => setStep("new")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setNameValue(query);
+                  setStep("new");
+                }}
+              >
                 <Plus className="size-4" />
                 {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
               </Button>
@@ -171,22 +215,47 @@ export function ClientSearchDialog({
                 Negocio: {businessName} · queda con el primer movimiento registrado.
               </DialogDescription>
             </DialogHeader>
-            <form action={formAction} className="flex flex-col gap-4">
+            <form
+              ref={formRef}
+              action={formAction}
+              onSubmit={(e) => {
+                lastFormDataRef.current = new FormData(e.currentTarget);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <input type="hidden" name="confirm_duplicate" defaultValue="false" />
               <div className="flex flex-col gap-2">
                 <Label htmlFor="new_client_name">Nombre del cliente</Label>
-                <Input id="new_client_name" name="new_client_name" defaultValue={query} required />
+                <Input
+                  id="new_client_name"
+                  name="new_client_name"
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  required
+                />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
-                <WhatsappInput id="whatsapp" name="whatsapp" />
+                <Label htmlFor="whatsapp">WhatsApp</Label>
+                <WhatsappInput id="whatsapp" name="whatsapp" required />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="document_id">Cédula/documento</Label>
-                <Input id="document_id" name="document_id" required />
+                <Input
+                  id="document_id"
+                  name="document_id"
+                  value={documentIdValue}
+                  onChange={(e) => setDocumentIdValue(e.target.value)}
+                  required
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="address">Dirección (opcional)</Label>
-                <Input id="address" name="address" />
+                <Input
+                  id="address"
+                  name="address"
+                  value={addressValue}
+                  onChange={(e) => setAddressValue(e.target.value)}
+                />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -230,12 +299,50 @@ export function ClientSearchDialog({
                 <input type="hidden" name="photo_path" value={photoPath ?? ""} />
               </div>
 
-              {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+              {state.error ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-destructive">{state.error}</p>
+                  {state.duplicate ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectExisting(state.duplicate!.id)}
+                    >
+                      Ver cuenta de {state.duplicate.name}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
 
               <DialogFooter>
-                <Button type="submit" disabled={pending}>
-                  {pending ? "Guardando fiado..." : "Guardar fiado"}
-                </Button>
+                {state.duplicate ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button">Crear cuenta separada</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
+                          continúa si esto es a propósito — por ejemplo, cuentas separadas para lo
+                          personal y el negocio de un mismo cliente.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
+                          Sí, crear cuenta separada
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : (
+                  <Button type="submit" disabled={pending}>
+                    {pending ? "Guardando fiado..." : "Guardar fiado"}
+                  </Button>
+                )}
               </DialogFooter>
             </form>
           </>

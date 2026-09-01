@@ -2,12 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import type { LedgerCurrency } from "@/lib/types";
 
-export type MovementFormState = { error: string | null; clientId: string | null };
+export type MovementFormState = {
+  error: string | null;
+  clientId: string | null;
+  // Present only when error is the "duplicate document_id" case — lets the
+  // dialog offer a direct "go to this client" action instead of a dead end.
+  duplicate?: { id: string; name: string } | null;
+};
 
 type ParsedMovement =
   | { error: string }
@@ -87,6 +93,9 @@ export async function createClientWithMovement(
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };
   }
+  if (!whatsapp) {
+    return { error: "Escribe el WhatsApp del cliente.", clientId: null };
+  }
   if (!documentId) {
     return { error: "Escribe la cédula o documento del cliente.", clientId: null };
   }
@@ -98,6 +107,33 @@ export async function createClientWithMovement(
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
   if (type === "payment") {
     return { error: "Un cliente nuevo no puede empezar con un abono — todavía no debe nada.", clientId: null };
+  }
+
+  // Most of the time the same document_id under one owner is an accidental
+  // duplicate (a typo, forgetting the client already exists) — catch it
+  // here. But it can also be deliberate: an informal business with no legal
+  // registration of its own is sometimes tracked as a second, separate
+  // ledger under the same owner (e.g. "Pepito" personal vs. "Pepito
+  // negocio"). So this only blocks silently the first time — the owner can
+  // explicitly confirm it's a separate account via confirm_duplicate.
+  // Compared normalized (punctuation/case-insensitive) since document_id is
+  // stored exactly as typed, with no fixed format.
+  const normalizedDocumentId = normalizeDocumentId(documentId);
+  const confirmDuplicate = formData.get("confirm_duplicate") === "true";
+  const { data: ownerClients } = await supabase
+    .from("clients")
+    .select("id, name, document_id")
+    .eq("owner_id", user.id)
+    .not("document_id", "is", null);
+  const duplicate = ownerClients?.find(
+    (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
+  );
+  if (duplicate && !confirmDuplicate) {
+    return {
+      error: `Ya existe un cliente con esta cédula: ${duplicate.name}`,
+      clientId: null,
+      duplicate: { id: duplicate.id as string, name: duplicate.name as string },
+    };
   }
 
   const { data: newClient, error: clientError } = await supabase
@@ -160,6 +196,34 @@ export async function addMovement(
 
   const clientId = String(formData.get("client_id") ?? "");
   if (!clientId) return { error: "Cliente inválido.", clientId: null };
+
+  // Nothing requires a client's WhatsApp at creation time, so a real backlog
+  // of clients has none on file. Backfilling it here (rather than a one-off
+  // nag screen) piggybacks on something every owner already does routinely
+  // — only asked for this specific client when it's missing; a client who
+  // already has one sees no change to this form at all.
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("whatsapp")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!clientRow) return { error: "Cliente inválido.", clientId: null };
+
+  if (!clientRow.whatsapp) {
+    const whatsapp = String(formData.get("whatsapp") ?? "").trim();
+    if (!whatsapp) {
+      return { error: "Escribe el WhatsApp del cliente.", clientId: null };
+    }
+    const { error: whatsappError } = await supabase
+      .from("clients")
+      .update({ whatsapp })
+      .eq("id", clientId)
+      .eq("owner_id", user.id);
+    if (whatsappError) {
+      return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
+    }
+  }
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };

@@ -100,7 +100,7 @@ export default async function ClientDetailPage({
           breakpoint check, since this page is a server component. */}
       <div className="flex flex-col gap-3 sm:hidden">
         <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1">
+          <div className="flex w-full items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
             <EditClientDialog client={client as Client} />
           </div>
@@ -140,6 +140,7 @@ export default async function ClientDetailPage({
         <AddMovementDialog
           clientId={client.id}
           clientName={client.name}
+          clientWhatsapp={client.whatsapp}
           ownerId={user!.id}
           currentDebtCop={balance}
           currentDebtUsd={balanceUsd}
@@ -195,6 +196,7 @@ export default async function ClientDetailPage({
           <AddMovementDialog
             clientId={client.id}
             clientName={client.name}
+            clientWhatsapp={client.whatsapp}
             ownerId={user!.id}
             currentDebtCop={balance}
             currentDebtUsd={balanceUsd}
