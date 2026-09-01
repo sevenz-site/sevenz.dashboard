@@ -240,7 +240,7 @@ export function ClientSearchDialog({
                       size="sm"
                       onClick={() => selectExisting(state.duplicate!.id)}
                     >
-                      Ir a {state.duplicate.name}
+                      Ver cuenta de {state.duplicate.name}
                     </Button>
                   ) : null}
                 </div>
