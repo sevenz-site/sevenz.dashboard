@@ -107,20 +107,25 @@ export default async function SharedBalancePage({
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
       <DocumentIdDialog token={token} clientName={shared.client_name} initialDocumentId={shared.document_id} />
-      <div className="flex items-center gap-3 pt-2">
-        <Image
-          src={logoUrl}
-          alt=""
-          width={40}
-          height={40}
-          unoptimized={Boolean(shared.owner_logo_path)}
-          className="size-10 shrink-0 rounded-md object-cover"
-        />
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
-          <p className="text-sm text-muted-foreground">Saldo de {shared.client_name}</p>
-          <p className="text-xs text-muted-foreground">Cédula/documento: {formatDocumentId(shared.document_id)}</p>
+      <div className="flex items-start justify-between gap-3 pt-2">
+        <div className="flex items-center gap-3">
+          <Image
+            src={logoUrl}
+            alt=""
+            width={40}
+            height={40}
+            unoptimized={Boolean(shared.owner_logo_path)}
+            className="size-10 shrink-0 rounded-md object-cover"
+          />
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
+            <p className="text-sm text-muted-foreground">Saldo de {shared.client_name}</p>
+            <p className="text-xs text-muted-foreground">Cédula/documento: {formatDocumentId(shared.document_id)}</p>
+          </div>
         </div>
+        <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Link href={`/s/${token}/perfil`}>Mi perfil</Link>
+        </Button>
       </div>
 
       <div className="rounded-xl border bg-card p-5">

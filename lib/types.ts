@@ -106,6 +106,7 @@ export type Client = {
   whatsapp: string | null;
   address: string | null;
   document_id: string | null;
+  profile_picture_path: string | null;
   created_at: string;
   is_flagged: boolean;
 };
