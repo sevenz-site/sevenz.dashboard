@@ -67,6 +67,7 @@ export function DocumentIdDialog({
             <Input
               id="shared_document_id"
               autoFocus
+              required
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />

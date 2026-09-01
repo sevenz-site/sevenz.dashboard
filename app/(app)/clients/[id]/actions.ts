@@ -23,6 +23,10 @@ export async function updateClient(
 
   if (!clientId) return { error: "Cliente inválido.", success: false };
   if (!name) return { error: "El nombre no puede quedar vacío.", success: false };
+  // Both are required everywhere a client is created, so editing can't be a
+  // back door that empties them again.
+  if (!whatsapp) return { error: "Escribe el WhatsApp del cliente.", success: false };
+  if (!documentId) return { error: "Escribe la cédula o documento del cliente.", success: false };
 
   // document_country is deliberately absent from this update: it's inherited
   // from the owner at creation and no longer editable in the UI, so listing
@@ -31,8 +35,8 @@ export async function updateClient(
     .from("clients")
     .update({
       name,
-      whatsapp: whatsapp || null,
-      document_id: documentId || null,
+      whatsapp,
+      document_id: documentId,
       address: address || null,
     })
     .eq("id", clientId)

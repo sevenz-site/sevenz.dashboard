@@ -62,12 +62,17 @@ export function EditClientDialog({ client }: { client: Client }) {
             <Input id="edit_name" name="name" defaultValue={client.name} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit_whatsapp">WhatsApp (opcional)</Label>
-            <WhatsappInput id="edit_whatsapp" name="whatsapp" defaultValue={client.whatsapp} />
+            <Label htmlFor="edit_whatsapp">WhatsApp</Label>
+            <WhatsappInput id="edit_whatsapp" name="whatsapp" defaultValue={client.whatsapp} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit_document_id">Cédula/documento (opcional)</Label>
-            <Input id="edit_document_id" name="document_id" defaultValue={client.document_id ?? ""} />
+            <Label htmlFor="edit_document_id">Cédula/documento</Label>
+            <Input
+              id="edit_document_id"
+              name="document_id"
+              defaultValue={client.document_id ?? ""}
+              required
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_address">Dirección (opcional)</Label>
