@@ -188,6 +188,25 @@ export async function addMovement(
   const clientId = String(formData.get("client_id") ?? "");
   if (!clientId) return { error: "Cliente inválido.", clientId: null };
 
+  // Nothing requires a client's WhatsApp at creation time, so a real backlog
+  // of clients has none on file. Backfilling it here (rather than a one-off
+  // nag screen) piggybacks on something every owner already does routinely
+  // — only asked for this specific client when it's missing; a client who
+  // already has one sees no change to this form at all.
+  const { data: clientRow } = await supabase.from("clients").select("whatsapp").eq("id", clientId).maybeSingle();
+  if (!clientRow) return { error: "Cliente inválido.", clientId: null };
+
+  if (!clientRow.whatsapp) {
+    const whatsapp = String(formData.get("whatsapp") ?? "").trim();
+    if (!whatsapp) {
+      return { error: "Escribe el WhatsApp del cliente.", clientId: null };
+    }
+    const { error: whatsappError } = await supabase.from("clients").update({ whatsapp }).eq("id", clientId);
+    if (whatsappError) {
+      return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
+    }
+  }
+
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
   const { type, amount, currency, description, photoPath, plazoDias } = fields;

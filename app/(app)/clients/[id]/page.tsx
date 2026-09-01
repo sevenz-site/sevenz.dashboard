@@ -140,6 +140,7 @@ export default async function ClientDetailPage({
         <AddMovementDialog
           clientId={client.id}
           clientName={client.name}
+          clientWhatsapp={client.whatsapp}
           ownerId={user!.id}
           currentDebtCop={balance}
           currentDebtUsd={balanceUsd}
@@ -195,6 +196,7 @@ export default async function ClientDetailPage({
           <AddMovementDialog
             clientId={client.id}
             clientName={client.name}
+            clientWhatsapp={client.whatsapp}
             ownerId={user!.id}
             currentDebtCop={balance}
             currentDebtUsd={balanceUsd}

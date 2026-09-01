@@ -31,6 +31,7 @@ import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actio
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
+import { WhatsappInput } from "@/components/whatsapp-input";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -43,6 +44,7 @@ const initialState: MovementFormState = { error: null, clientId: null };
 export function AddMovementDialog({
   clientId,
   clientName,
+  clientWhatsapp,
   ownerId,
   currentDebtCop,
   currentDebtUsd,
@@ -53,6 +55,9 @@ export function AddMovementDialog({
 }: {
   clientId: string;
   clientName: string;
+  // Only rendered as a required field when this is null — a client who
+  // already has one on file sees no change to this form at all.
+  clientWhatsapp: string | null;
   ownerId: string;
   // COP debt — used when rateContext is null (a 'CO' owner).
   currentDebtCop: number;
@@ -186,6 +191,13 @@ export function AddMovementDialog({
         </DialogHeader>
         <form ref={formRef} action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="client_id" value={clientId} />
+
+          {!clientWhatsapp ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="whatsapp">WhatsApp de {clientName}</Label>
+              <WhatsappInput id="whatsapp" name="whatsapp" required />
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label>Tipo</Label>
