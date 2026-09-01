@@ -44,8 +44,9 @@ export function EditClientDialog({ client }: { client: Client }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Editar cliente">
+        <Button variant="ghost" size="sm">
           <Pencil className="size-4" />
+          Editar
         </Button>
       </DialogTrigger>
       <DialogContent>
