@@ -93,6 +93,9 @@ export async function createClientWithMovement(
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };
   }
+  if (!whatsapp) {
+    return { error: "Escribe el WhatsApp del cliente.", clientId: null };
+  }
   if (!documentId) {
     return { error: "Escribe la cédula o documento del cliente.", clientId: null };
   }

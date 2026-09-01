@@ -235,8 +235,8 @@ export function ClientSearchDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
-                <WhatsappInput id="whatsapp" name="whatsapp" />
+                <Label htmlFor="whatsapp">WhatsApp</Label>
+                <WhatsappInput id="whatsapp" name="whatsapp" required />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="document_id">Cédula/documento</Label>
