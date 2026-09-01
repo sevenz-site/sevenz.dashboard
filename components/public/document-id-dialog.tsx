@@ -12,7 +12,15 @@ import { submitDocumentId } from "@/app/s/[token]/actions";
 // submit_shared_document_id()'s own "never overwrite" guard). No close
 // button, no click-outside, no Escape — the only way out is submitting a
 // value, which persists for every future visit, by anyone, forever.
-export function DocumentIdDialog({ token, initialDocumentId }: { token: string; initialDocumentId: string | null }) {
+export function DocumentIdDialog({
+  token,
+  clientName,
+  initialDocumentId,
+}: {
+  token: string;
+  clientName: string;
+  initialDocumentId: string | null;
+}) {
   const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +49,7 @@ export function DocumentIdDialog({ token, initialDocumentId }: { token: string; 
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>Confirma tu documento de identidad</DialogTitle>
+          <DialogTitle>¡Hola {clientName}, confirma tu cédula!</DialogTitle>
           <DialogDescription>
             Para ayudarte a encontrar tu cuenta más fácilmente en el futuro, indícanos tu cédula o
             documento de identidad.
@@ -49,7 +57,7 @@ export function DocumentIdDialog({ token, initialDocumentId }: { token: string; 
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="shared_document_id">Cédula/documento</Label>
+            <Label htmlFor="shared_document_id">Número de cédula</Label>
             <Input
               id="shared_document_id"
               autoFocus
