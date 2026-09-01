@@ -202,7 +202,12 @@ export async function addMovement(
   // nag screen) piggybacks on something every owner already does routinely
   // — only asked for this specific client when it's missing; a client who
   // already has one sees no change to this form at all.
-  const { data: clientRow } = await supabase.from("clients").select("whatsapp").eq("id", clientId).maybeSingle();
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("whatsapp")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
   if (!clientRow) return { error: "Cliente inválido.", clientId: null };
 
   if (!clientRow.whatsapp) {
@@ -210,7 +215,11 @@ export async function addMovement(
     if (!whatsapp) {
       return { error: "Escribe el WhatsApp del cliente.", clientId: null };
     }
-    const { error: whatsappError } = await supabase.from("clients").update({ whatsapp }).eq("id", clientId);
+    const { error: whatsappError } = await supabase
+      .from("clients")
+      .update({ whatsapp })
+      .eq("id", clientId)
+      .eq("owner_id", user.id);
     if (whatsappError) {
       return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
     }
