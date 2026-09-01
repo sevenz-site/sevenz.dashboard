@@ -61,6 +61,13 @@ export function ClientSearchDialog({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
+  // Controlled (unlike relying on defaultValue) so a server action round trip
+  // — e.g. the duplicate-document check — never visually wipes what the
+  // owner already typed. Only reset on full dialog close, not on every
+  // step change or server response.
+  const [nameValue, setNameValue] = useState("");
+  const [documentIdValue, setDocumentIdValue] = useState("");
+  const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
   const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
@@ -83,6 +90,9 @@ export function ClientSearchDialog({
       setQuery("");
       setPhotoPath(null);
       setAmountStr("");
+      setNameValue("");
+      setDocumentIdValue("");
+      setAddressValue("");
     }
   }
 
@@ -173,7 +183,14 @@ export function ClientSearchDialog({
                 <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
               ) : null}
 
-              <Button type="button" variant="outline" onClick={() => setStep("new")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setNameValue(query);
+                  setStep("new");
+                }}
+              >
                 <Plus className="size-4" />
                 {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
               </Button>
@@ -209,7 +226,13 @@ export function ClientSearchDialog({
               <input type="hidden" name="confirm_duplicate" defaultValue="false" />
               <div className="flex flex-col gap-2">
                 <Label htmlFor="new_client_name">Nombre del cliente</Label>
-                <Input id="new_client_name" name="new_client_name" defaultValue={query} required />
+                <Input
+                  id="new_client_name"
+                  name="new_client_name"
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  required
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
@@ -217,11 +240,22 @@ export function ClientSearchDialog({
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="document_id">Cédula/documento</Label>
-                <Input id="document_id" name="document_id" required />
+                <Input
+                  id="document_id"
+                  name="document_id"
+                  value={documentIdValue}
+                  onChange={(e) => setDocumentIdValue(e.target.value)}
+                  required
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="address">Dirección (opcional)</Label>
-                <Input id="address" name="address" />
+                <Input
+                  id="address"
+                  name="address"
+                  value={addressValue}
+                  onChange={(e) => setAddressValue(e.target.value)}
+                />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -269,47 +303,46 @@ export function ClientSearchDialog({
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-destructive">{state.error}</p>
                   {state.duplicate ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => selectExisting(state.duplicate!.id)}
-                      >
-                        Ver cuenta de {state.duplicate.name}
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button type="button" variant="ghost" size="sm">
-                            Es una cuenta distinta, crear de todas formas
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
-                              continúa si esto es a propósito — por ejemplo, cuentas separadas para
-                              lo personal y el negocio de un mismo cliente.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
-                              Sí, crear cuenta separada
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectExisting(state.duplicate!.id)}
+                    >
+                      Ver cuenta de {state.duplicate.name}
+                    </Button>
                   ) : null}
                 </div>
               ) : null}
 
               <DialogFooter>
-                <Button type="submit" disabled={pending}>
-                  {pending ? "Guardando fiado..." : "Guardar fiado"}
-                </Button>
+                {state.duplicate ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button">Crear cuenta separada</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
+                          continúa si esto es a propósito — por ejemplo, cuentas separadas para lo
+                          personal y el negocio de un mismo cliente.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
+                          Sí, crear cuenta separada
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : (
+                  <Button type="submit" disabled={pending}>
+                    {pending ? "Guardando fiado..." : "Guardar fiado"}
+                  </Button>
+                )}
               </DialogFooter>
             </form>
           </>
