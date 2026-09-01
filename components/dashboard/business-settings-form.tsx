@@ -173,7 +173,7 @@ export function BusinessSettingsForm({
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="whatsapp">WhatsApp</Label>
-          <WhatsappInput id="whatsapp" name="whatsapp" defaultValue={owner.whatsapp} />
+          <WhatsappInput id="whatsapp" name="whatsapp" defaultValue={owner.whatsapp} required />
         </div>
 
         <div className="flex flex-col gap-2">

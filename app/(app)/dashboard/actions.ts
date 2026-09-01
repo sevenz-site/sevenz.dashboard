@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
-import type { LedgerCurrency, OwnerCountry } from "@/lib/types";
+import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = {
   error: string | null;
@@ -32,7 +32,6 @@ type ParsedMovement =
 
 const ALLOWED_PLAZO_DIAS = [7, 15, 30, 45];
 const ALLOWED_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
-const ALLOWED_DOCUMENT_COUNTRIES: OwnerCountry[] = ["CO", "VE"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
   const type = String(formData.get("type") ?? "");
@@ -90,13 +89,20 @@ export async function createClientWithMovement(
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const documentId = String(formData.get("document_id") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
-  // Validated against the two real codes rather than trusted from the form —
-  // an unrecognized value would otherwise hit the CHECK constraint and
-  // surface as a raw Postgres error instead of a clean fallback.
-  const documentCountryRaw = String(formData.get("document_country") ?? "");
-  const documentCountry = ALLOWED_DOCUMENT_COUNTRIES.includes(documentCountryRaw as OwnerCountry)
-    ? (documentCountryRaw as OwnerCountry)
-    : null;
+  // Inherited from the owner's own country rather than asked for in the
+  // form: which country issued a client's cédula is a database concern, not
+  // something a shop owner thinks about mid-sale, and it's only consulted by
+  // the (currently paused) cross-owner identity matching. Read server-side
+  // instead of via a hidden input so the browser can't set it at all.
+  // Nothing in the UI overrides this today — a cross-border client (a
+  // Venezuelan cédula at a Colombian shop) will inherit the wrong country
+  // until the matching work resumes and gives the field a visible purpose.
+  const { data: ownerRow } = await supabase
+    .from("owners")
+    .select("country")
+    .eq("id", user.id)
+    .maybeSingle();
+  const documentCountry = (ownerRow?.country as string | undefined) ?? null;
 
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };

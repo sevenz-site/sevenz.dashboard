@@ -11,7 +11,7 @@ import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { ClientSummary, OwnerCountry } from "@/lib/types";
+import type { ClientSummary } from "@/lib/types";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -30,7 +30,7 @@ export default async function DashboardPage() {
       .select("id, name, document_id")
       .eq("owner_id", user!.id)
       .order("name"),
-    supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
+    supabase.from("owners").select("business_name").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
@@ -136,7 +136,6 @@ export default async function DashboardPage() {
           clients={clients ?? []}
           ownerId={user!.id}
           businessName={owner?.business_name || user!.email || "tu negocio"}
-          ownerCountry={(owner?.country as OwnerCountry) ?? "CO"}
           rateContext={rateContext}
         />
       </div>

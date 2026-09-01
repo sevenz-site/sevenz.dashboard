@@ -83,6 +83,11 @@ export async function updateBusinessSettings(
   if (!businessName || !firstName || !lastName) {
     return { error: "Completa nombre del negocio, nombre y apellido.", success: false };
   }
+  // Required at signup, so "Mi negocio" can't be the place it gets cleared —
+  // it's the number clients reach the business on from every share link.
+  if (!whatsapp) {
+    return { error: "Escribe el WhatsApp del negocio.", success: false };
+  }
   if (country !== "CO" && country !== "VE") {
     return { error: "País inválido.", success: false };
   }
@@ -111,7 +116,7 @@ export async function updateBusinessSettings(
       business_name: businessName,
       first_name: firstName,
       last_name: lastName,
-      whatsapp: whatsapp || null,
+      whatsapp,
       address: address || null,
       tax_id: taxId || null,
       logo_path: logoPath || null,

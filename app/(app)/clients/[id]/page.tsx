@@ -29,7 +29,6 @@ import {
   type ClientFlag,
   type ClientSummary,
   type Movement,
-  type OwnerCountry,
 } from "@/lib/types";
 
 const SIGNED_URL_TTL_SECONDS = 300;
@@ -45,10 +44,9 @@ export default async function ClientDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: summary }, { data: owner }, ownerRate] = await Promise.all([
+  const [{ data: client }, { data: summary }, ownerRate] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
     supabase.from("client_summary").select("*").eq("client_id", id).maybeSingle(),
-    supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
@@ -104,7 +102,7 @@ export default async function ClientDetailPage({
         <div className="flex flex-col gap-0.5">
           <div className="flex w-full items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-            <EditClientDialog client={client as Client} ownerCountry={(owner?.country as OwnerCountry) ?? "CO"} />
+            <EditClientDialog client={client as Client} />
           </div>
           <p className="text-sm text-muted-foreground">
             Cédula/documento: {formatDocumentId(client.document_id)}
@@ -158,7 +156,7 @@ export default async function ClientDetailPage({
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
               <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-              <EditClientDialog client={client as Client} ownerCountry={(owner?.country as OwnerCountry) ?? "CO"} />
+              <EditClientDialog client={client as Client} />
             </div>
             <p className="text-sm text-muted-foreground">
               Cédula/documento: {formatDocumentId(client.document_id)}
