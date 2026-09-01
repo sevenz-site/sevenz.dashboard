@@ -106,11 +106,17 @@ export async function createClientWithMovement(
     return { error: "Un cliente nuevo no puede empezar con un abono — todavía no debe nada.", clientId: null };
   }
 
-  // Nothing today stops the same person being registered twice under one
-  // owner — catch it here instead of creating a silent duplicate. Compared
-  // normalized (punctuation/case-insensitive) since document_id is stored
-  // exactly as typed, with no fixed format.
+  // Most of the time the same document_id under one owner is an accidental
+  // duplicate (a typo, forgetting the client already exists) — catch it
+  // here. But it can also be deliberate: an informal business with no legal
+  // registration of its own is sometimes tracked as a second, separate
+  // ledger under the same owner (e.g. "Pepito" personal vs. "Pepito
+  // negocio"). So this only blocks silently the first time — the owner can
+  // explicitly confirm it's a separate account via confirm_duplicate.
+  // Compared normalized (punctuation/case-insensitive) since document_id is
+  // stored exactly as typed, with no fixed format.
   const normalizedDocumentId = normalizeDocumentId(documentId);
+  const confirmDuplicate = formData.get("confirm_duplicate") === "true";
   const { data: ownerClients } = await supabase
     .from("clients")
     .select("id, name, document_id")
@@ -119,7 +125,7 @@ export async function createClientWithMovement(
   const duplicate = ownerClients?.find(
     (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
   );
-  if (duplicate) {
+  if (duplicate && !confirmDuplicate) {
     return {
       error: `Ya existe un cliente con esta cédula: ${duplicate.name}`,
       clientId: null,

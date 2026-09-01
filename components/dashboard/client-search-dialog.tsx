@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -46,6 +57,7 @@ export function ClientSearchDialog({
 }) {
   const router = useRouter();
   const tour = useTour();
+  const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
@@ -92,6 +104,21 @@ export function ClientSearchDialog({
   function selectExisting(id: string) {
     setOpen(false);
     router.push(`/clients/${id}`);
+  }
+
+  // After a server action submission, the browser resets this form's
+  // (uncontrolled) fields — fine normally, since a plain error just means
+  // the owner retypes everything. But the duplicate-confirmation retry needs
+  // the ORIGINAL values, not whatever the now-blank DOM shows. Caching the
+  // submitted FormData here (before that reset happens) and resubmitting the
+  // cached copy directly sidesteps it entirely.
+  const lastFormDataRef = useRef<FormData | null>(null);
+
+  function confirmDuplicateAndSubmit() {
+    const data = lastFormDataRef.current;
+    if (!data) return;
+    data.set("confirm_duplicate", "true");
+    formAction(data);
   }
 
   return (
@@ -171,7 +198,15 @@ export function ClientSearchDialog({
                 Negocio: {businessName} · queda con el primer movimiento registrado.
               </DialogDescription>
             </DialogHeader>
-            <form action={formAction} className="flex flex-col gap-4">
+            <form
+              ref={formRef}
+              action={formAction}
+              onSubmit={(e) => {
+                lastFormDataRef.current = new FormData(e.currentTarget);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <input type="hidden" name="confirm_duplicate" defaultValue="false" />
               <div className="flex flex-col gap-2">
                 <Label htmlFor="new_client_name">Nombre del cliente</Label>
                 <Input id="new_client_name" name="new_client_name" defaultValue={query} required />
@@ -234,14 +269,39 @@ export function ClientSearchDialog({
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-destructive">{state.error}</p>
                   {state.duplicate ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => selectExisting(state.duplicate!.id)}
-                    >
-                      Ver cuenta de {state.duplicate.name}
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => selectExisting(state.duplicate!.id)}
+                      >
+                        Ver cuenta de {state.duplicate.name}
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button type="button" variant="ghost" size="sm">
+                            Es una cuenta distinta, crear de todas formas
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
+                              continúa si esto es a propósito — por ejemplo, cuentas separadas para
+                              lo personal y el negocio de un mismo cliente.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
+                              Sí, crear cuenta separada
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
                   ) : null}
                 </div>
               ) : null}
