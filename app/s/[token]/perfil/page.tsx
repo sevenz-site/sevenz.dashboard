@@ -112,10 +112,11 @@ export default async function ClientProfilePage({
       ) : null}
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
+        <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-1" />
         <p className="text-sm font-medium">
           ¿Quieres tener las cuentas claras con tus clientes?
         </p>
-        <Button asChild size="sm" className="w-full">
+        <Button asChild size="sm">
           <Link href="/signup">Regístrate en Sevenz</Link>
         </Button>
       </div>

@@ -169,7 +169,7 @@ export default async function SharedBalancePage({
           href={`https://wa.me/${ownerWhatsappDigits}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
         >
           <MessageCircle className="size-4" />
           Escribir a {shared.business_name} por WhatsApp
@@ -184,6 +184,7 @@ export default async function SharedBalancePage({
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
+        <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-1" />
         <p className="text-sm font-medium">
           ¿Quieres tener las cuentas claras con tus clientes?
         </p>
