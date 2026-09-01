@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
-import type { LedgerCurrency } from "@/lib/types";
+import type { LedgerCurrency, OwnerCountry } from "@/lib/types";
 
 export type MovementFormState = {
   error: string | null;
@@ -32,6 +32,7 @@ type ParsedMovement =
 
 const ALLOWED_PLAZO_DIAS = [7, 15, 30, 45];
 const ALLOWED_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
+const ALLOWED_DOCUMENT_COUNTRIES: OwnerCountry[] = ["CO", "VE"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
   const type = String(formData.get("type") ?? "");
@@ -89,6 +90,13 @@ export async function createClientWithMovement(
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const documentId = String(formData.get("document_id") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
+  // Validated against the two real codes rather than trusted from the form —
+  // an unrecognized value would otherwise hit the CHECK constraint and
+  // surface as a raw Postgres error instead of a clean fallback.
+  const documentCountryRaw = String(formData.get("document_country") ?? "");
+  const documentCountry = ALLOWED_DOCUMENT_COUNTRIES.includes(documentCountryRaw as OwnerCountry)
+    ? (documentCountryRaw as OwnerCountry)
+    : null;
 
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };
@@ -144,6 +152,7 @@ export async function createClientWithMovement(
       whatsapp: whatsapp || null,
       address: address || null,
       document_id: documentId || null,
+      document_country: documentCountry,
     })
     .select("id")
     .single();

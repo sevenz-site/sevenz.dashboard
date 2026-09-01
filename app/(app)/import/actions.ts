@@ -33,6 +33,17 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // current ledger currency (VE owner), resolved once for the whole batch.
   const resolved = await resolveMovementRateSnapshot(supabase, user.id, null);
 
+  // The import review table collects no per-client document country, so a
+  // client created here inherits the owner's own — right for the vast
+  // majority, and correctable afterward from "Editar cliente" for the
+  // cross-border exceptions.
+  const { data: ownerRow } = await supabase
+    .from("owners")
+    .select("country")
+    .eq("id", user.id)
+    .maybeSingle();
+  const ownerCountry = (ownerRow?.country as string | undefined) ?? null;
+
   // client_id, when present, comes straight from the browser — verify each
   // one actually belongs to this owner before trusting it, rather than
   // relying only on the movements insert's RLS check to catch a mismatch.
@@ -126,7 +137,12 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
 
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
-        .insert({ owner_id: user.id, name: row.client_name.trim(), document_id: documentId })
+        .insert({
+          owner_id: user.id,
+          name: row.client_name.trim(),
+          document_id: documentId,
+          document_country: ownerCountry,
+        })
         .select("id")
         .single();
 
