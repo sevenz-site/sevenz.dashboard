@@ -64,13 +64,17 @@ const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
 // Alphabetical is the default: an owner looking for a specific person scans
 // by name, which is why the search box is the one filter always visible.
 // The two amount orders answer the other common question — "quién me debe
-// más" — without needing the Monto desde/hasta inputs.
-type SortOption = "nombre" | "monto_desc" | "monto_asc";
+// más" — without needing the Monto desde/hasta inputs. "atraso" reproduces
+// what this table used to render before any sort control existed (the page
+// query's own `order("days_since_payment", desc)`), so an owner who used
+// the top of the list as their "who to chase today" view doesn't lose it.
+type SortOption = "nombre" | "monto_desc" | "monto_asc" | "atraso";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "nombre", label: "Orden alfabético" },
   { value: "monto_desc", label: "Monto: mayor a menor" },
   { value: "monto_asc", label: "Monto: menor a mayor" },
+  { value: "atraso", label: "Más atrasados primero" },
 ];
 
 const PAGE_SIZE = 15;
@@ -149,6 +153,8 @@ export function ClientTable({
       // "Angelica" land next to each other instead of the accented one
       // being sorted away from its twin.
       sorted.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+    } else if (sortBy === "atraso") {
+      sorted.sort((a, b) => b.days_since_payment - a.days_since_payment);
     } else {
       // Same combined-to-USD figure the status and amount filters use, so a
       // VE owner's two ledgers order as one number rather than by whichever
