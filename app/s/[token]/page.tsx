@@ -16,6 +16,7 @@ import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { VerifyBadge } from "@/components/public/verify-badge";
+import { DocumentIdDialog } from "@/components/public/document-id-dialog";
 
 type SharedMovement = {
   id: string;
@@ -105,6 +106,7 @@ export default async function SharedBalancePage({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
+      <DocumentIdDialog token={token} initialDocumentId={shared.document_id} />
       <div className="flex items-center gap-3 pt-2">
         <Image
           src={logoUrl}
