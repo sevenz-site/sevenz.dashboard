@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ export function DocumentIdDialog({
   clientName: string;
   initialDocumentId: string | null;
 }) {
+  const router = useRouter();
   const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +40,10 @@ export function DocumentIdDialog({
       return;
     }
     setDocumentId(result.documentId);
+    // The "Cédula/documento: —" line above is rendered by the parent
+    // Server Component from data fetched once at page load — without this,
+    // it keeps showing the old (missing) value until a manual reload.
+    router.refresh();
   }
 
   return (
