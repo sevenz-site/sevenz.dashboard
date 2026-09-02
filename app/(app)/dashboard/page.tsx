@@ -119,7 +119,7 @@ export default async function DashboardPage({
             server-side as well as in the browser, so it is treated as present.
             The guard is only for a row that predates that rule — rendering
             "¡Hola !" would be worse than dropping the name. */}
-        <p className="text-xl font-semibold">
+        <p className="text-2xl font-semibold">
           ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
         </p>
         {lastSignIn ? (
