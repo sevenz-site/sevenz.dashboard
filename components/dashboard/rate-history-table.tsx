@@ -87,7 +87,13 @@ function DeltaCell({ row }: { row: Row }) {
           reads as two percentages, since the neighbouring columns all carry
           "Bs." and this one didn't. */}
       {sign}Bs. {bs.format(rounded)}{" "}
-      <span className="text-xs opacity-70">
+      {/* Both readings need 363px and a phone gives the panel 308, so the
+          percentage is the one that drops: the bolívar amount is what an
+          owner says out loud, and a percentage alone would leave them doing
+          the arithmetic the column exists to save them. It also means the
+          phone shows "+Bs. 2,85" with no % anywhere near it — the exact
+          misreading that started this. */}
+      <span className="hidden text-xs opacity-70 sm:inline">
         ({sign}
         {pct.format(row.deltaUsdPct)}%)
       </span>
@@ -195,13 +201,19 @@ export function RateHistoryTable() {
           below the table's natural width and pushes the whole panel sideways
           instead of scrolling inside itself. */}
       <div className="max-h-[280px] min-w-0 overflow-auto rounded-lg border">
-        <Table className="text-xs [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
+        <Table className="text-xs [&_td]:px-1.5 [&_td]:py-1.5 [&_th]:px-1.5">
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead>Fecha</TableHead>
               <TableHead className="text-right whitespace-nowrap">Dólar BCV</TableHead>
               <TableHead className="text-right whitespace-nowrap">Euro BCV</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Variación USD</TableHead>
+              <TableHead className="text-right whitespace-nowrap">
+                {/* With the percentage hidden, this header becomes the widest
+                    thing in its column again, so it has to shrink too — one
+                    without the other still overflows. */}
+                <span className="sm:hidden">Var. USD</span>
+                <span className="hidden sm:inline">Variación USD</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
