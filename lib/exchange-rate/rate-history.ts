@@ -6,7 +6,7 @@ export type RateHistoryPoint = {
 
 type HistoricoEntry = { promedio: number; fecha: string };
 
-const HISTORY_DAYS = 7;
+const HISTORY_DAYS = 90;
 
 async function fetchHistorico(url: string): Promise<HistoricoEntry[]> {
   const response = await fetch(url);
@@ -24,9 +24,9 @@ let cachedHistory: Promise<RateHistoryPoint[]> | null = null;
 // ve.dolarapi.com's historicos endpoints return a currency's FULL daily
 // series since Jan 2023 in one call — there's no "last N days" param, so
 // the HISTORY_DAYS window is applied client-side after fetching both
-// currencies. Kept short (a week, not months) — Venezuela's rate moves
-// fast enough that a longer window reads as noise rather than signal for
-// a "what's the trend right now" glance.
+// currencies. Ninety days: long enough for the table to be worth filtering,
+// and the ceiling on what the date picker offers — a calendar that lets you
+// pick a month with no data behind it is a dead end dressed as a feature.
 export function getRateHistory(): Promise<RateHistoryPoint[]> {
   if (!cachedHistory) {
     cachedHistory = Promise.all([

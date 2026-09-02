@@ -160,6 +160,41 @@ skill's own final report (see its section 7), to any security-audit pass
 (e.g. the 2026-08-28 audit), and to any live verification of a new
 feature (build checks, browser testing, etc.) — not just pre-launch runs.
 
+## Every requirement must account for iPhone
+
+Sevenz owners work from their phones, and a large share of those are
+iPhones. Any requirement, plan or fix has to be evaluated against iOS
+before it's considered complete — on two separate fronts, because they
+fail in different ways.
+
+**What the browser may refuse to do.** iOS Safari blocks, restricts or
+periodically erases things other browsers allow: requests to third-party
+domains, `localStorage` and cookies (wiped after a period of inactivity,
+which silently changes any ID stored there), background work after a tab
+is closed, and notifications. Never make anything that matters depend on
+the customer's browser cooperating. If a feature has to record something,
+send something, or remember who someone is, the server does it — the
+browser is treated as a convenience that may simply not happen.
+
+This is not hypothetical. In September 2026 an owner used the app on eight
+of nine days while Mixpanel showed him churned: Supabase held 31 movements
+and Mixpanel held zero, because the events were being sent from his device
+and never arrived. The instrumentation was correct the whole time. The fix
+was moving the events to the server (`lib/mixpanel-server.ts`), which works
+regardless of *which* iOS restriction was responsible — a diagnosis we
+never actually confirmed, and didn't need to.
+
+**How it looks and behaves.** Safari on iPhone is not Chrome on a laptop:
+it zooms in when a font-size under 16px gets focus, `100vh` doesn't account
+for the toolbar, safe areas need respecting on notched devices, `:hover`
+has no meaning, date and file inputs render their own native UI, and
+installed PWAs behave differently again. A layout verified only in the
+desktop preview has not been verified.
+
+When a change is previewable, check it at iPhone width before reporting it
+done, and say in the QA table which viewport was actually tested — a row
+that doesn't name the viewport reads as if it were tested everywhere.
+
 ## Explain bugs in two languages: dev and plain
 
 Whenever explaining a bug, a fix, or a technical finding — by default,

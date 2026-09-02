@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, type ChangeEvent } from "react";
+import dynamic from "next/dynamic";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { RateHistoryChart } from "@/components/dashboard/rate-history-chart";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -23,6 +23,16 @@ import {
   type MovementRateContext,
 } from "@/lib/exchange-rate/convert";
 import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+
+// react-day-picker weighs ~19 KB gzipped and only matters once someone opens
+// this panel and asks to filter by date. Loading it lazily keeps it out of the
+// dashboard's initial download entirely — an owner who only ever registers
+// fiados never pays for it. ssr:false because the calendar is client-only and
+// there is nothing useful to render for it on the server.
+const RateHistoryTable = dynamic(
+  () => import("@/components/dashboard/rate-history-table").then((m) => m.RateHistoryTable),
+  { ssr: false, loading: () => <div className="h-[260px] w-full animate-pulse rounded-lg bg-muted/40" /> },
+);
 
 // Always-visible compact strip on the owner's dashboard (7.3 in the design
 // doc). Expands to a mini-calculator on tap — pure client-side arithmetic,
@@ -68,7 +78,7 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
           </DrawerHeader>
           <div className="flex flex-col gap-4 px-4 pb-4">
             {calculator}
-            <RateHistoryChart />
+            <RateHistoryTable />
             <ExchangeRateLegalDisclaimer />
           </div>
         </DrawerContent>
@@ -82,10 +92,10 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
         {rateInfo}
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       </div>
-      <PopoverContent align="start" className="w-96">
+      <PopoverContent align="start" className="w-[min(640px,calc(100vw-2rem))]">
         <div className="flex flex-col gap-4">
           {calculator}
-          <RateHistoryChart />
+          <RateHistoryTable />
           <ExchangeRateLegalDisclaimer />
         </div>
       </PopoverContent>
