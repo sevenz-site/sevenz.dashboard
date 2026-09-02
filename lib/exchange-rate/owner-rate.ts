@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ExchangeRateMode } from "@/lib/types";
+import { refreshBcvRateIfStale } from "@/lib/exchange-rate/ensure-fresh";
 
 export type OwnerRateContext = {
   rateMode: ExchangeRateMode;
@@ -32,8 +33,17 @@ export async function getOwnerRateContext(
 
   if (owner?.country !== "VE") return null;
 
-  const officialRate = current as { usd: number; eur: number } | null;
-  if (!officialRate) return null;
+  const stored = current as { usd: number; eur: number; fetched_at: string } | null;
+  if (!stored) return null;
+
+  // The Vercel cron fires once a day (Hobby plan), which left the dashboard
+  // showing yesterday's rate while sevenz.site — fetching from the visitor's
+  // own browser — was current. Refreshing here instead of on a schedule keeps
+  // both the number on screen and the rate stamped onto a new fiado on the
+  // same value, which is the whole point: an owner must never be shown one
+  // rate and have another one recorded.
+  const refreshed = await refreshBcvRateIfStale(stored.fetched_at);
+  const officialRate = refreshed ?? { usd: stored.usd, eur: stored.eur };
 
   const rateMode: ExchangeRateMode = settings?.rate_mode ?? "BCV_AUTO";
   const effectiveRate =
