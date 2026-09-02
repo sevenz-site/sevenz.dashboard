@@ -18,11 +18,22 @@ import {
 import { toast } from "sonner";
 import { updateClient, type EditClientState } from "@/app/(app)/clients/[id]/actions";
 import { WhatsappInput } from "@/components/whatsapp-input";
-import type { Client } from "@/lib/types";
+import type { Client, OwnerCountry } from "@/lib/types";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 
 const initialState: EditClientState = { error: null, success: false };
 
-export function EditClientDialog({ client }: { client: Client }) {
+// ownerCountry only decides where the picker STARTS. A client who already
+// has a number keeps whatever prefix it was saved with, since splitPhoneNumber
+// wins over preferredDialCode — editing an address must never silently
+// rewrite a genuinely foreign number.
+export function EditClientDialog({
+  client,
+  ownerCountry,
+}: {
+  client: Client;
+  ownerCountry: OwnerCountry;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(updateClient, initialState);
@@ -63,7 +74,13 @@ export function EditClientDialog({ client }: { client: Client }) {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_whatsapp">WhatsApp</Label>
-            <WhatsappInput id="edit_whatsapp" name="whatsapp" defaultValue={client.whatsapp} required />
+            <WhatsappInput
+              id="edit_whatsapp"
+              name="whatsapp"
+              defaultValue={client.whatsapp}
+              required
+              preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_document_id">Cédula/documento</Label>

@@ -36,7 +36,13 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { cn } from "@/lib/utils";
-import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
+import {
+  DEFAULT_PLAZO_PAGO,
+  DEFAULT_LEDGER_CURRENCY,
+  type LedgerCurrency,
+  type OwnerCountry,
+} from "@/lib/types";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -45,6 +51,7 @@ export function AddMovementDialog({
   clientName,
   clientWhatsapp,
   ownerId,
+  ownerCountry,
   currentDebtCop,
   currentDebtUsd,
   currentDebtEur,
@@ -58,6 +65,9 @@ export function AddMovementDialog({
   // already has one on file sees no change to this form at all.
   clientWhatsapp: string | null;
   ownerId: string;
+  // Same reason as in client-search-dialog: the picker must start on the
+  // shop's country, not on Colombia.
+  ownerCountry: OwnerCountry;
   // COP debt — used when rateContext is null (a 'CO' owner).
   currentDebtCop: number;
   // Independent per-currency debts — used when rateContext is present. A
@@ -195,7 +205,12 @@ export function AddMovementDialog({
           {!clientWhatsapp ? (
             <div className="flex flex-col gap-2">
               <Label htmlFor="whatsapp">WhatsApp de {clientName}</Label>
-              <WhatsappInput id="whatsapp" name="whatsapp" required />
+              <WhatsappInput
+                id="whatsapp"
+                name="whatsapp"
+                required
+                preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+              />
             </div>
           ) : null}
 

@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { CountryCodeSelect } from "@/components/country-code-select";
-import { DEFAULT_COUNTRY_ISO2, COUNTRIES, splitPhoneNumber } from "@/lib/countries";
+import {
+  DEFAULT_COUNTRY_ISO2,
+  COUNTRIES,
+  splitPhoneNumber,
+  exampleLocalNumber,
+} from "@/lib/countries";
 
 export function WhatsappInput({
   name,
@@ -50,7 +55,7 @@ export function WhatsappInput({
         id={id}
         type="tel"
         inputMode="numeric"
-        placeholder="3001234567"
+        placeholder={exampleLocalNumber(dialCode)}
         value={local}
         onChange={(e) => setLocal(e.target.value.replace(/\D/g, ""))}
         required={required}

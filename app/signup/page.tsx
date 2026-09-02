@@ -20,6 +20,7 @@ import {
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { PasswordCriteriaChecklist } from "@/components/password-criteria-checklist";
 import { getPasswordCriteria } from "@/lib/password";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { OwnerCountry } from "@/lib/types";
 
 const initialState: SignupState = { error: null, success: false };
@@ -27,7 +28,6 @@ const initialState: SignupState = { error: null, success: false };
 // Dial code each country's WhatsApp field jumps to the moment "País" changes
 // — the owner can still pick a different code afterward, this just saves
 // the common case of it matching their own country.
-const COUNTRY_DIAL_CODE: Record<OwnerCountry, string> = { CO: "57", VE: "58" };
 
 export default function SignupPage() {
   const [state, formAction, pending] = useActionState(signup, initialState);
@@ -136,7 +136,7 @@ export default function SignupPage() {
                 name="whatsapp"
                 required
                 defaultValue={state.values?.whatsapp}
-                preferredDialCode={COUNTRY_DIAL_CODE[country]}
+                preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
               />
             </div>
             <div className="flex flex-col gap-2">

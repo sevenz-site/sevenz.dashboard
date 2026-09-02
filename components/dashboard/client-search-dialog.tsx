@@ -34,7 +34,13 @@ import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/mov
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { formatDocumentId } from "@/lib/format";
-import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
+import {
+  DEFAULT_PLAZO_PAGO,
+  DEFAULT_LEDGER_CURRENCY,
+  type LedgerCurrency,
+  type OwnerCountry,
+} from "@/lib/types";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -45,11 +51,15 @@ export function ClientSearchDialog({
   clients,
   ownerId,
   businessName,
+  ownerCountry,
   rateContext,
 }: {
   clients: ClientOption[];
   ownerId: string;
   businessName: string;
+  // Defaults the phone country picker to the shop's own country. Without it
+  // a Venezuelan owner silently saves every client under +57.
+  ownerCountry: OwnerCountry;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
@@ -237,7 +247,12 @@ export function ClientSearchDialog({
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="whatsapp">WhatsApp</Label>
-                <WhatsappInput id="whatsapp" name="whatsapp" required />
+                <WhatsappInput
+                  id="whatsapp"
+                  name="whatsapp"
+                  required
+                  preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="document_id">Cédula/documento</Label>

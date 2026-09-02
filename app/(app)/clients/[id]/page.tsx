@@ -29,6 +29,7 @@ import {
   type ClientFlag,
   type ClientSummary,
   type Movement,
+  type OwnerCountry,
 } from "@/lib/types";
 
 const SIGNED_URL_TTL_SECONDS = 300;
@@ -44,13 +45,18 @@ export default async function ClientDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: summary }, ownerRate] = await Promise.all([
+  const [{ data: client }, { data: summary }, ownerRate, { data: ownerRow }] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
     supabase.from("client_summary").select("*").eq("client_id", id).maybeSingle(),
     getOwnerRateContext(supabase, user!.id),
+    // getOwnerRateContext reads owners.country too, but discards it for a CO
+    // owner. Asking again here is cheaper than widening its contract.
+    supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
   ]);
 
   if (!client) notFound();
+
+  const ownerCountry = (ownerRow?.country as OwnerCountry | undefined) ?? "CO";
 
   const rateContext: MovementRateContext | null = ownerRate
     ? {
@@ -102,7 +108,7 @@ export default async function ClientDetailPage({
         <div className="flex flex-col gap-0.5">
           <div className="flex w-full items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-            <EditClientDialog client={client as Client} />
+            <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
           </div>
           <p className="text-sm text-muted-foreground">
             Cédula/documento: {formatDocumentId(client.document_id)}
@@ -142,6 +148,7 @@ export default async function ClientDetailPage({
           clientName={client.name}
           clientWhatsapp={client.whatsapp}
           ownerId={user!.id}
+          ownerCountry={ownerCountry}
           currentDebtCop={balance}
           currentDebtUsd={balanceUsd}
           currentDebtEur={balanceEur}
@@ -156,7 +163,7 @@ export default async function ClientDetailPage({
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
               <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-              <EditClientDialog client={client as Client} />
+              <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
             </div>
             <p className="text-sm text-muted-foreground">
               Cédula/documento: {formatDocumentId(client.document_id)}
@@ -198,6 +205,7 @@ export default async function ClientDetailPage({
             clientName={client.name}
             clientWhatsapp={client.whatsapp}
             ownerId={user!.id}
+            ownerCountry={ownerCountry}
             currentDebtCop={balance}
             currentDebtUsd={balanceUsd}
             currentDebtEur={balanceEur}
