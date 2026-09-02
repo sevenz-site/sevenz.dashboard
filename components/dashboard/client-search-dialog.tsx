@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,7 @@ export function ClientSearchDialog({
   rateContext: MovementRateContext | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const tour = useTour();
   const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
@@ -87,21 +88,32 @@ export function ClientSearchDialog({
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
 
-  // Opens once per arrival. Set during render rather than in an effect, the
-  // same pattern the rest of this component uses for prop-driven state.
-  const [handledAutoOpen, setHandledAutoOpen] = useState(false);
-  if (autoOpen && !handledAutoOpen) {
-    setHandledAutoOpen(true);
-    setStep("search");
-    setOpen(true);
+  // Opens on each false -> true transition of autoOpen, not on a one-shot
+  // latch. A latch only ever fires once, so the first tap of the bar's
+  // "Agregar" worked and every tap afterwards did nothing. Re-arming it on
+  // close doesn't work either: the marker is still in the address at that
+  // moment, so the guard immediately fires again and the dialog reopens the
+  // instant it is dismissed. Tracking the transition is what makes repeat taps
+  // work without looping — the effect below returns autoOpen to false once the
+  // dialog is closed, which arms the next one.
+  const [prevAutoOpen, setPrevAutoOpen] = useState(autoOpen);
+  if (autoOpen !== prevAutoOpen) {
+    setPrevAutoOpen(autoOpen);
+    if (autoOpen) {
+      setStep("search");
+      setOpen(true);
+    }
   }
 
-  // Strips the marker with replaceState rather than router.replace: a real
-  // navigation would refetch this page and close the dialog that was just
-  // requested. Without this, a reload would reopen the dialog by itself.
+  // Clears the marker only once the dialog is CLOSED, through the router rather
+  // than history.replaceState. replaceState moves the address bar behind Next's
+  // back: the router still believed it was on ?nuevo=1, so tapping the bar again
+  // was a navigation to the page it thought it was already on — the spinner ran
+  // and nothing opened. Leaving the marker instead makes a refresh spring the
+  // dialog open on its own, which is the other half of what was reported.
   useEffect(() => {
-    if (handledAutoOpen) window.history.replaceState(null, "", "/dashboard");
-  }, [handledAutoOpen]);
+    if (autoOpen && !open) router.replace(pathname, { scroll: false });
+  }, [autoOpen, open, router, pathname]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
