@@ -96,10 +96,18 @@ export function ClientSearchDialog({
   // instant it is dismissed. Tracking the transition is what makes repeat taps
   // work without looping — the effect below returns autoOpen to false once the
   // dialog is closed, which arms the next one.
-  const [prevAutoOpen, setPrevAutoOpen] = useState(autoOpen);
-  if (autoOpen !== prevAutoOpen) {
-    setPrevAutoOpen(autoOpen);
-    if (autoOpen) {
+  // Seeded false, never from autoOpen. Tapping "Agregar" from another screen
+  // mounts this component fresh with autoOpen ALREADY true; seeding from the
+  // prop would record that as the starting value, so there was no transition
+  // to react to and the dialog never opened. Starting false makes a fresh
+  // mount carrying the marker a transition in its own right.
+  // Normalised once: the prop is optional, so undefined and false have to mean
+  // the same thing to the comparison below.
+  const wantsOpen = autoOpen === true;
+  const [prevAutoOpen, setPrevAutoOpen] = useState(false);
+  if (wantsOpen !== prevAutoOpen) {
+    setPrevAutoOpen(wantsOpen);
+    if (wantsOpen) {
       setStep("search");
       setOpen(true);
     }
@@ -112,8 +120,8 @@ export function ClientSearchDialog({
   // and nothing opened. Leaving the marker instead makes a refresh spring the
   // dialog open on its own, which is the other half of what was reported.
   useEffect(() => {
-    if (autoOpen && !open) router.replace(pathname, { scroll: false });
-  }, [autoOpen, open, router, pathname]);
+    if (wantsOpen && !open) router.replace(pathname, { scroll: false });
+  }, [wantsOpen, open, router, pathname]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ComponentType } from "react";
-import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect, useState, useTransition, type ComponentType, type MouseEvent } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Building2, LayoutDashboard, Loader2, Menu, Plus } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
+import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 
 // Shown only below md. Deliberately a CSS media query rather than the
@@ -75,44 +76,52 @@ const itemClass = (active: boolean) =>
     active ? "text-foreground" : "text-muted-foreground",
   );
 
-// Must live inside the Link: useLinkStatus reports the pending state of its
-// enclosing Link. Without this the button looks dead while the page loads, so
-// the owner taps again — and each extra tap queues more work, making it slower
-// still. That was the rage-click.
-function NavLinkBody({
-  icon: Icon,
-  label,
-  emphasis,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  emphasis?: boolean;
-}) {
-  const { pending } = useLinkStatus();
-  const glyph = pending ? <Loader2 className="size-5 animate-spin" /> : <Icon className="size-5" />;
-
-  return (
-    <>
-      {emphasis ? (
-        <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          {glyph}
-        </span>
-      ) : (
-        glyph
-      )}
-      {label}
-    </>
-  );
-}
-
 export function MobileNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { setOpenMobile } = useSidebar();
+  const { guard } = useUnsavedChangesGuard();
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
 
+  // Drives the spinner. useLinkStatus can't be used here: these links call
+  // preventDefault so the unsaved-changes guard runs first, and a link whose
+  // default was prevented never reports a pending state.
+  const [isPending, startTransition] = useTransition();
+  const [goingTo, setGoingTo] = useState<string | null>(null);
+
   if (overlayOpen || keyboardOpen) return null;
+
+  // Mirrors the sidebar's own link behaviour exactly, including the guard.
+  // Without it the bar walked straight out of "Mi negocio" with unsaved edits
+  // and no warning — the sidebar asks, so the bar has to ask too, or which
+  // control you happened to use decides whether your work survives.
+  function navigate(event: MouseEvent<HTMLAnchorElement>, href: string, before?: () => void) {
+    // Let modifier and middle clicks open a new tab as usual.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    guard(() => {
+      before?.();
+      setGoingTo(href);
+      startTransition(() => {
+        // Cartera is the app's home screen — replacing rather than pushing
+        // keeps it from stacking behind whatever screen the owner came from,
+        // matching how the sidebar navigates there.
+        if (href.startsWith("/dashboard")) router.replace(href);
+        else router.push(href);
+      });
+    });
+  }
+
+  const glyph = (href: string, Icon: ComponentType<{ className?: string }>) =>
+    isPending && goingTo === href ? (
+      <Loader2 className="size-5 animate-spin" />
+    ) : (
+      <Icon className="size-5" />
+    );
 
   return (
     <nav
@@ -127,22 +136,31 @@ export function MobileNav() {
       aria-label="Navegación principal"
     >
       <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
-        {/* Local state, no navigation — nothing to wait for. */}
+        {/* Local state, no navigation — nothing to guard and nothing to wait for. */}
         <button type="button" onClick={() => setOpenMobile(true)} className={itemClass(false)}>
           <Menu className="size-5" />
           Menú
         </button>
 
-        {/* Kept as Links rather than router.push so Next keeps prefetching
-            them. The bar is permanently on screen, so both destinations are
-            preloaded before the owner ever taps — which matters far more on
-            mobile data than any code here. */}
-        <Link href="/dashboard" className={itemClass(pathname === "/dashboard")}>
-          <NavLinkBody icon={LayoutDashboard} label="Cartera" />
+        {/* Still anchors rather than buttons: Next prefetches a Link's href
+            while it is on screen, and this bar is always on screen, so both
+            destinations are preloaded before the owner ever taps. */}
+        <Link
+          href="/dashboard"
+          onClick={(e) => navigate(e, "/dashboard")}
+          className={itemClass(pathname === "/dashboard")}
+        >
+          {glyph("/dashboard", LayoutDashboard)}
+          Cartera
         </Link>
 
-        <Link href="/profile" className={itemClass(pathname.startsWith("/profile"))}>
-          <NavLinkBody icon={Building2} label="Mi negocio" />
+        <Link
+          href="/profile"
+          onClick={(e) => navigate(e, "/profile")}
+          className={itemClass(pathname.startsWith("/profile"))}
+        >
+          {glyph("/profile", Building2)}
+          Mi negocio
         </Link>
 
         <Link
@@ -152,12 +170,21 @@ export function MobileNav() {
           // the DOM — two elements sharing a marker means it can highlight the
           // wrong one, or one that isn't on screen.
           data-tour="new-client-button-mobile"
-          onClick={() => {
-            if (tour.step === 1) tour.advance();
-          }}
+          onClick={(e) =>
+            navigate(e, "/dashboard?nuevo=1", () => {
+              if (tour.step === 1) tour.advance();
+            })
+          }
           className={itemClass(false)}
         >
-          <NavLinkBody icon={Plus} label="Agregar" emphasis />
+          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            {isPending && goingTo === "/dashboard?nuevo=1" ? (
+              <Loader2 className="size-5 animate-spin" />
+            ) : (
+              <Plus className="size-5" />
+            )}
+          </span>
+          Agregar
         </Link>
       </div>
     </nav>
