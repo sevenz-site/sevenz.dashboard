@@ -92,7 +92,17 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
         {rateInfo}
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       </div>
-      <PopoverContent align="start" className="w-[min(640px,calc(100vw-2rem))]">
+      {/* The 90-day table made this panel taller than the screen, so Radix
+          pushed it up to fit and the calculator's own inputs ended up above the
+          top edge — reachable by nobody. Radix publishes how much room it
+          actually has as --radix-popover-content-available-height; bounding the
+          panel to that and letting it scroll keeps the calculator at the top
+          where it belongs. collisionPadding keeps it off the viewport edge. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={16}
+        className="max-h-[var(--radix-popover-content-available-height)] w-[min(640px,calc(100vw-2rem))] overflow-y-auto"
+      >
         <div className="flex flex-col gap-4">
           {calculator}
           <RateHistoryTable />
