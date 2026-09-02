@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { CountryCodeSelect } from "@/components/country-code-select";
-import { DEFAULT_COUNTRY_ISO2, COUNTRIES, splitPhoneNumber } from "@/lib/countries";
+import {
+  DEFAULT_COUNTRY_ISO2,
+  COUNTRIES,
+  splitPhoneNumber,
+  exampleLocalNumber,
+} from "@/lib/countries";
+import { normalizePhone, phoneWarning } from "@/lib/phone";
 
 export function WhatsappInput({
   name,
@@ -40,22 +46,32 @@ export function WhatsappInput({
     if (preferredDialCode) setDialCode(preferredDialCode);
   }
 
-  const digits = local.replace(/\D/g, "");
-  const combined = digits ? `${dialCode}${digits}` : "";
+  // The stored value is always the formatted one — the owner shouldn't have to
+  // know that WhatsApp wants 414 and not 0414. Applied on blur too, so the
+  // field visibly shows what was saved rather than rewriting it behind their
+  // back: a silent correction that guessed wrong would be undetectable.
+  const check = normalizePhone(dialCode, local);
+  const combined = check.local ? `${dialCode}${check.local}` : "";
+  const warning = local ? phoneWarning(check, dialCode) : null;
 
   return (
-    <div className="flex gap-2">
-      <CountryCodeSelect value={dialCode} onChange={setDialCode} />
-      <Input
-        id={id}
-        type="tel"
-        inputMode="numeric"
-        placeholder="3001234567"
-        value={local}
-        onChange={(e) => setLocal(e.target.value.replace(/\D/g, ""))}
-        required={required}
-      />
-      <input type="hidden" name={name} value={combined} />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex gap-2">
+        <CountryCodeSelect value={dialCode} onChange={setDialCode} />
+        <Input
+          id={id}
+          type="tel"
+          inputMode="numeric"
+          placeholder={exampleLocalNumber(dialCode)}
+          value={local}
+          onChange={(e) => setLocal(e.target.value.replace(/\D/g, ""))}
+          onBlur={() => setLocal(check.local)}
+          required={required}
+          aria-invalid={warning ? true : undefined}
+        />
+        <input type="hidden" name={name} value={combined} />
+      </div>
+      {warning ? <p className="text-xs text-amber-600">{warning}</p> : null}
     </div>
   );
 }

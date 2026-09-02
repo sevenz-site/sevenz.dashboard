@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import { trackServer } from "@/lib/mixpanel-server";
 import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = {
@@ -194,6 +195,12 @@ export async function createClientWithMovement(
     return { error: `No pudimos guardar el movimiento: ${movementError.message}`, clientId: null };
   }
 
+  // Tracked here rather than in the browser: this fires after the response
+  // is sent (see trackServer), so it can't slow or break the save, and no
+  // blocker or iOS setting can suppress it the way it does the client-side
+  // version.
+  trackServer("Client Created", user.id, { client_id: newClient.id }, user.email);
+
   revalidatePath("/dashboard");
   return { error: null, clientId: newClient.id };
 }
@@ -305,6 +312,8 @@ export async function addMovement(
   if (movementError) {
     return { error: `No pudimos guardar el movimiento: ${movementError.message}`, clientId: null };
   }
+
+  trackServer("Movement Added", user.id, { client_id: clientId, movement_type: type }, user.email);
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${clientId}`);

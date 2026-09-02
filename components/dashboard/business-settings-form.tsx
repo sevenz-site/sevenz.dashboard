@@ -21,6 +21,7 @@ import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-di
 import { updateBusinessSettings, type ProfileState } from "@/app/(app)/profile/actions";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import type { Owner } from "@/lib/types";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 
 const initialState: ProfileState = { error: null, success: false };
 
@@ -173,7 +174,13 @@ export function BusinessSettingsForm({
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="whatsapp">WhatsApp</Label>
-          <WhatsappInput id="whatsapp" name="whatsapp" defaultValue={owner.whatsapp} required />
+          <WhatsappInput
+            id="whatsapp"
+            name="whatsapp"
+            defaultValue={owner.whatsapp}
+            required
+            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[owner.country]}
+          />
         </div>
 
         <div className="flex flex-col gap-2">

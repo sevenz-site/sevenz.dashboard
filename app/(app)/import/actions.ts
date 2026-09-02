@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import { trackServer } from "@/lib/mixpanel-server";
 import type { MovementType } from "@/lib/types";
 
 export type ImportRow = {
@@ -185,6 +186,18 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
 
     imported += 1;
   }
+
+  // The photo-import path had no analytics at all: an owner who works mainly
+  // from their libreta could import dozens of movements and register as
+  // completely inactive. One event per confirmed import rather than one per
+  // row — the batch is the meaningful action, and per-row events would be a
+  // burst of near-identical noise.
+  trackServer(
+    "Import Confirmed",
+    user.id,
+    { movements_imported: imported, clients_created: clientIdByName.size },
+    user.email,
+  );
 
   revalidatePath("/dashboard");
   return { error: null, imported };

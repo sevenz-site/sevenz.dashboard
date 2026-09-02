@@ -1,3 +1,5 @@
+import type { OwnerCountry } from "@/lib/types";
+
 export type Country = { iso2: string; name: string; dialCode: string };
 
 // ISO 3166-1 alpha-2 + E.164 calling code, names in Spanish.
@@ -249,4 +251,29 @@ export function splitPhoneNumber(digits: string): { country: Country; local: str
   }
   const fallback = COUNTRIES.find((c) => c.iso2 === DEFAULT_COUNTRY_ISO2)!;
   return { country: fallback, local: clean };
+}
+
+// The dial code each owner country registers under. Lives here rather than in
+// app/signup/page.tsx (its only caller until now) because every in-app form
+// that asks for a phone number needs the same mapping to default correctly.
+export const OWNER_COUNTRY_DIAL_CODE: Record<OwnerCountry, string> = { CO: "57", VE: "58" };
+
+// Example national number per country, shown as the input placeholder. A
+// Colombian example in front of a Venezuelan owner is not a cosmetic problem:
+// it teaches the wrong shape to someone who has no other cue about what the
+// field wants. Only the two markets Sevenz operates in are spelled out; any
+// other country falls back to a neutral shape rather than borrowing one of
+// these two.
+const EXAMPLE_LOCAL_NUMBER: Record<string, string> = {
+  CO: "3001234567",
+  VE: "4141234567",
+};
+const FALLBACK_EXAMPLE_LOCAL_NUMBER = "1234567890";
+
+// Matched by dial code rather than iso2 because that is what the country
+// picker stores. Ambiguous codes (+1 covers the US, Canada and much of the
+// Caribbean) simply land on the fallback, which is the honest answer.
+export function exampleLocalNumber(dialCode: string): string {
+  const country = COUNTRIES.find((c) => c.dialCode === dialCode);
+  return (country && EXAMPLE_LOCAL_NUMBER[country.iso2]) || FALLBACK_EXAMPLE_LOCAL_NUMBER;
 }
