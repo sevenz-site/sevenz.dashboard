@@ -39,7 +39,7 @@ export default async function DashboardPage({
       .select("id, name, document_id")
       .eq("owner_id", user!.id)
       .order("name"),
-    supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
+    supabase.from("owners").select("business_name, country, first_name").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
@@ -88,8 +88,53 @@ export default async function DashboardPage({
   const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
   const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
 
+  // Both values ride along on work this page already does: first_name is one
+  // more column on the owners query above, and last_sign_in_at is already in
+  // the getUser() response. No extra round trip for either.
+  //
+  // The timezone is not cosmetic. Vercel runs its servers in UTC, so formatting
+  // without naming a zone would show a Colombian owner 12:15 p. m. for a sign-in
+  // that happened at 7:15 a. m. their time. The owner's own country is already
+  // loaded, so it decides the zone.
+  //
+  // es-VE for the format itself: it renders "2 sept. 2026", where es-CO gives
+  // the wordier "2 de sept de 2026" — the shorter one fits a two-line corner
+  // label better and matches the format asked for.
+  const lastSignIn = user!.last_sign_in_at
+    ? new Intl.DateTimeFormat("es-VE", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: owner?.country === "VE" ? "America/Caracas" : "America/Bogota",
+      }).format(new Date(user!.last_sign_in_at))
+    : null;
+
   return (
     <div className="flex flex-1 flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
+        {/* first_name is required by both the signup form and "Mi negocio",
+            server-side as well as in the browser, so it is treated as present.
+            The guard is only for a row that predates that rule — rendering
+            "¡Hola !" would be worse than dropping the name. */}
+        <p className="text-xl font-semibold">
+          ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
+        </p>
+        {lastSignIn ? (
+          /* shrink-0 and nowrap together are what keep this at two lines. As a
+             plain flex child it gets squeezed by a longer name and wraps to
+             four: "Último inicio de / sesión: / 12 sept. 2026, 11:45 p. / m."
+             The greeting wraps instead, which reads fine; this does not. */
+          <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-muted-foreground">
+            Último inicio de sesión:
+            <br />
+            {lastSignIn}
+          </p>
+        ) : null}
+      </div>
+
       {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
       <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
