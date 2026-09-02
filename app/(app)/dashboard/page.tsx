@@ -13,7 +13,16 @@ import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nuevo?: string }>;
+}) {
+  // Set by the mobile bar's "Agregar", which navigates here because this
+  // is where the movement will appear and where the client list already
+  // lives. The dialog clears it from the address once open, so a reload
+  // can't reopen it on its own.
+  const { nuevo } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -141,6 +150,7 @@ export default async function DashboardPage() {
           ownerId={user!.id}
           businessName={owner?.business_name || user!.email || "tu negocio"}
           ownerCountry={ownerCountry}
+          autoOpen={nuevo === "1"}
           rateContext={rateContext}
         />
       </div>

@@ -52,6 +52,7 @@ export function ClientSearchDialog({
   ownerId,
   businessName,
   ownerCountry,
+  autoOpen,
   rateContext,
 }: {
   clients: ClientOption[];
@@ -60,6 +61,8 @@ export function ClientSearchDialog({
   // Defaults the phone country picker to the shop's own country. Without it
   // a Venezuelan owner silently saves every client under +57.
   ownerCountry: OwnerCountry;
+  // True when the mobile bar navigated here asking for the dialog.
+  autoOpen?: boolean;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
@@ -83,6 +86,22 @@ export function ClientSearchDialog({
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const [prevOpen, setPrevOpen] = useState(open);
+
+  // Opens once per arrival. Set during render rather than in an effect, the
+  // same pattern the rest of this component uses for prop-driven state.
+  const [handledAutoOpen, setHandledAutoOpen] = useState(false);
+  if (autoOpen && !handledAutoOpen) {
+    setHandledAutoOpen(true);
+    setStep("search");
+    setOpen(true);
+  }
+
+  // Strips the marker with replaceState rather than router.replace: a real
+  // navigation would refetch this page and close the dialog that was just
+  // requested. Without this, a reload would reopen the dialog by itself.
+  useEffect(() => {
+    if (handledAutoOpen) window.history.replaceState(null, "", "/dashboard");
+  }, [handledAutoOpen]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -154,7 +173,7 @@ export function ClientSearchDialog({
           }}
         >
           <Plus className="size-4" />
-          Nuevo movimiento
+          Agregar movimiento
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
