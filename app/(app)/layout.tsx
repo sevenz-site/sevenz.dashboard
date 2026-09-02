@@ -11,6 +11,7 @@ import { HelpButton } from "@/components/dashboard/help-button";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
+import { AppHeader } from "@/components/dashboard/app-header";
 import { ImportProvider } from "@/components/import/import-provider";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
@@ -44,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SidebarProvider>
             <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
             <SidebarInset>
-              <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+              <AppHeader>
                 {/* Below md the menu lives in the bottom bar, so the header
                     shows the mark instead of a trigger that would duplicate it.
                     Swapped with CSS rather than a JS check so neither version
@@ -66,7 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   <HelpButton />
                   <NotificationsButton initialUnreadCount={unreadCount} />
                 </div>
-              </header>
+              </AppHeader>
               {/* Reserves the bar's height plus the iPhone home-indicator strip, so
                   the last row of a list is never stranded underneath it. Kept
                   constant whether the bar is currently visible or not —

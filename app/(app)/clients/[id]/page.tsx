@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, IdCard, MapPin, Phone } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,7 +94,10 @@ export default async function ClientDetailPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
+      {/* On a phone this replaces the app header (see AppHeader), so it
+          carries the same bottom rule the header does. From sm up the real
+          header is back above it and the rule would double, hence sm:border-0. */}
+      <div className="flex items-center justify-between gap-4 border-b pb-3 sm:border-0 sm:pb-0">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/dashboard">
             <ArrowLeft className="size-4" />
@@ -115,44 +118,50 @@ export default async function ClientDetailPage({
           these two are mutually exclusive via hidden/sm:hidden, not a JS
           breakpoint check, since this page is a server component. */}
       <div className="flex flex-col gap-3 sm:hidden">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">
           <div className="flex w-full items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
             <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Cédula/documento: {formatDocumentId(client.document_id)}
-          </p>
+          <ClientInfoRows
+            documentId={client.document_id}
+            whatsapp={client.whatsapp}
+            address={client.address}
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {CLIENT_STATUS_LABEL[status]}
-          </Badge>
-          {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
-          {client.is_flagged ? (
-            <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-              Mala paga
+
+        <h2 className="mt-10 text-xl font-semibold">Cartera pendiente</h2>
+        <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+          {rateContext ? (
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+                <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+                <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground">Por cobrar</p>
+              <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} />
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+              {CLIENT_STATUS_LABEL[status]}
             </Badge>
-          ) : null}
+            {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+            {client.is_flagged ? (
+              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                Mala paga
+              </Badge>
+            ) : null}
+          </div>
+          <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
         </div>
-        {rateContext ? (
-          <div className="flex flex-wrap gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Por cobrar USD</p>
-              <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
-              <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} />
-            </div>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm text-muted-foreground">Por cobrar</p>
-            <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} />
-          </div>
-        )}
-        <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
         <AddMovementDialog
           clientId={client.id}
           clientName={client.name}
@@ -171,15 +180,19 @@ export default async function ClientDetailPage({
       </div>
 
       <div className="hidden flex-col gap-3 sm:flex">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        {/* Info and balances stay side by side here — the phone stacks them
+            into two cards instead. Same section rule either way. */}
+        <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
               <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
               <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Cédula/documento: {formatDocumentId(client.document_id)}
-            </p>
+            <ClientInfoRows
+              documentId={client.document_id}
+              whatsapp={client.whatsapp}
+              address={client.address}
+            />
           </div>
           {rateContext ? (
             <div className="flex gap-4">
@@ -236,8 +249,6 @@ export default async function ClientDetailPage({
           oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
           isFlagged={client.is_flagged}
-          whatsapp={client.whatsapp}
-          address={client.address}
         />
       </Suspense>
 
@@ -249,6 +260,36 @@ export default async function ClientDetailPage({
         <ClientFlagHistory clientId={id} />
       </Suspense>
     </div>
+  );
+}
+
+// Cédula, teléfono and dirección as icon rows under the client's name. Empty
+// values keep their row and show a dash, so every client's card has the same
+// shape and the absence of a phone or an address is itself visible.
+function ClientInfoRows({
+  documentId,
+  whatsapp,
+  address,
+}: {
+  documentId: string | null;
+  whatsapp: string | null;
+  address: string | null;
+}) {
+  const rows = [
+    { icon: IdCard, label: "Cédula / Documento", value: formatDocumentId(documentId) },
+    { icon: Phone, label: "Teléfono", value: whatsapp || "—" },
+    { icon: MapPin, label: "Dirección", value: address || "—" },
+  ];
+  return (
+    <dl className="flex flex-col gap-1 text-sm text-muted-foreground">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-center gap-2">
+          <dt className="sr-only">{row.label}</dt>
+          <row.icon className="size-4 shrink-0" aria-hidden="true" />
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -280,8 +321,6 @@ async function CreditScoreSection({
   oldestUnpaidChargeAt,
   oldestUnpaidChargePlazoDias,
   isFlagged,
-  whatsapp,
-  address,
 }: {
   clientId: string;
   balance: number;
@@ -294,8 +333,6 @@ async function CreditScoreSection({
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
   isFlagged: boolean;
-  whatsapp: string | null;
-  address: string | null;
 }) {
   const supabase = await createClient();
 
@@ -335,7 +372,7 @@ async function CreditScoreSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-muted-foreground">Puntaje de crédito</h2>
+      <h2 className="mt-10 text-xl font-semibold">Puntaje de crédito</h2>
       <div className="flex flex-col items-center gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:gap-6">
         <div className="flex shrink-0 flex-col items-center gap-2">
           <CreditScoreRadialChart score={result.score} tier={result.tier} />
@@ -350,16 +387,6 @@ async function CreditScoreSection({
               <dd>{line.detail}</dd>
             </div>
           ))}
-        </dl>
-        <dl className="flex w-full flex-col gap-1.5 self-start text-xs sm:w-auto">
-          <div className="flex flex-col">
-            <dt className="text-muted-foreground">WhatsApp</dt>
-            <dd>{whatsapp || "—"}</dd>
-          </div>
-          <div className="flex flex-col">
-            <dt className="text-muted-foreground">Dirección</dt>
-            <dd>{address || "—"}</dd>
-          </div>
         </dl>
       </div>
     </div>
@@ -397,7 +424,7 @@ async function MovementHistory({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-muted-foreground">Historial de movimientos</h2>
+      <h2 className="mt-10 text-xl font-semibold">Historial de movimientos</h2>
       <MovementHistoryList
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
