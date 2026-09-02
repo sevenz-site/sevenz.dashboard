@@ -135,7 +135,22 @@ export default async function DashboardPage({
 
       {/* Section titles carry 40px of separation above them (mt-10), which is
           what marks where one part of the screen ends and the next begins. */}
-      <h2 className="mt-10 text-xl font-semibold">Cartera pendiente</h2>
+      <div className="mt-10 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+        {/* Desktop only: beside the title, hugging its own width. The phone
+            keeps it full width below the rate card, which is a different place
+            in the document — so it is rendered in both spots and each is shown
+            at one breakpoint. */}
+        <div className="hidden sm:block">
+          <ClientSearchDialog
+            clients={clients ?? []}
+            ownerId={user!.id}
+            businessName={owner?.business_name || user!.email || "tu negocio"}
+            ownerCountry={ownerCountry}
+            rateContext={rateContext}
+          />
+        </div>
+      </div>
 
       {/* Stacked on a phone, side by side once there is room — the cards are
           two independent ledgers, not a sequence, so they read better abreast
@@ -173,14 +188,20 @@ export default async function DashboardPage({
 
       {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
-      <ClientSearchDialog
-        clients={clients ?? []}
-        ownerId={user!.id}
-        businessName={owner?.business_name || user!.email || "tu negocio"}
-        ownerCountry={ownerCountry}
-        autoOpen={nuevo === "1"}
-        rateContext={rateContext}
-      />
+      {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
+          autoOpen lives here; the desktop one must not also receive it or both
+          would open and stack. */}
+      <div className="sm:hidden">
+        <ClientSearchDialog
+          clients={clients ?? []}
+          ownerId={user!.id}
+          businessName={owner?.business_name || user!.email || "tu negocio"}
+          ownerCountry={ownerCountry}
+          autoOpen={nuevo === "1"}
+          showTourTarget={false}
+          rateContext={rateContext}
+        />
+      </div>
 
       {/* Named for what is actually underneath: a list of clients and their
           balances. "Historial de movimientos" already means a different screen

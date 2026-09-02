@@ -53,6 +53,7 @@ export function ClientSearchDialog({
   businessName,
   ownerCountry,
   autoOpen,
+  showTourTarget = true,
   rateContext,
 }: {
   clients: ClientOption[];
@@ -63,6 +64,13 @@ export function ClientSearchDialog({
   ownerCountry: OwnerCountry;
   // True when the mobile bar navigated here asking for the dialog.
   autoOpen?: boolean;
+  // Cartera renders this trigger twice — beside the section title on
+  // desktop, below the rate card on a phone — because the two sit in
+  // different places in the document and CSS alone cannot move an element
+  // between parents. Only the desktop one carries the tour marker: the tour
+  // finds its target with querySelector, which returns whichever matches
+  // first in the DOM, and that would be the hidden one.
+  showTourTarget?: boolean;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
@@ -187,7 +195,7 @@ export function ClientSearchDialog({
         <Button
           size="sm"
           className="w-full sm:w-auto"
-          data-tour="new-client-button"
+          data-tour={showTourTarget ? "new-client-button" : undefined}
           onClick={() => {
             if (tour.step === 1) tour.advance();
           }}
