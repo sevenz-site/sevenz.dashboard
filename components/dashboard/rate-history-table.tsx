@@ -203,7 +203,15 @@ export function RateHistoryTable() {
               <TableHead>Fecha</TableHead>
               <TableHead className="text-right whitespace-nowrap">Dólar BCV</TableHead>
               <TableHead className="text-right whitespace-nowrap">Euro BCV</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Variación</TableHead>
+              {/* "Variación USD" is 27px wider than the phone panel allows, and
+                  this header is what sets the column's width — the cells below
+                  are narrower. Abbreviated only where it doesn't fit, so the
+                  full label still reads on desktop and the column stays visible
+                  on a phone instead of being cut off mid-number. */}
+              <TableHead className="text-right whitespace-nowrap">
+                <span className="sm:hidden">Var. USD</span>
+                <span className="hidden sm:inline">Variación USD</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
