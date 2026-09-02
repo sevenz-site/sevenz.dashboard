@@ -42,10 +42,14 @@ export default async function ClientDetailPage({
   searchParams: Promise<{ movimiento?: string }>;
 }) {
   const { id } = await params;
-  // Set by the mobile bar's "Agregar" while this client is on screen. Passed
-  // to the mobile AddMovementDialog only — the sm+ layout below renders a
-  // second instance, and both opening would stack two dialogs.
+  // Which action the mobile bar asked for while this client is on screen. The
+  // bar carries "Agregar fiado" / "Agregar abono" on this route, so it marks
+  // the URL rather than navigating. Passed to the mobile AddMovementDialog
+  // only — the sm+ layout below renders a second instance, and both opening
+  // would stack two dialogs.
   const { movimiento } = await searchParams;
+  const autoOpenType =
+    movimiento === "abono" ? ("payment" as const) : movimiento === "fiado" ? ("charge" as const) : undefined;
   const supabase = await createClient();
   const {
     data: { user },
@@ -160,7 +164,8 @@ export default async function ClientDetailPage({
           currentDebtEur={balanceEur}
           isFlagged={client.is_flagged}
           triggerClassName="w-full"
-          autoOpen={movimiento === "1"}
+          autoOpen={autoOpenType}
+          hideTriggers
           rateContext={rateContext}
         />
       </div>

@@ -119,13 +119,15 @@ export function MobileNav() {
   const [isPending, startTransition] = useTransition();
   const [goingTo, setGoingTo] = useState<string | null>(null);
 
-  // On a client's page "Agregar" means "add a movement to THIS client" — that
-  // is what owners expected, and the generic client-picker read as a bug.
-  // Anywhere else it keeps meaning "pick a client, then add". Marking the
-  // current URL rather than navigating keeps the owner on the record they are
-  // looking at; the dialog strips the marker once it closes.
+  // On a client's page the bar becomes the two actions that screen is for.
+  // "Agregar" there meant "pick a client", which read as a bug when one is
+  // already on screen. Marking the current URL rather than navigating keeps
+  // the owner on the record they are looking at; the dialog strips the marker
+  // once it closes.
   const onClientDetail = pathname.startsWith("/clients/");
-  const agregarHref = onClientDetail ? `${pathname}?movimiento=1` : "/dashboard?nuevo=1";
+  const agregarHref = "/dashboard?nuevo=1";
+  const abonoHref = `${pathname}?movimiento=abono`;
+  const fiadoHref = `${pathname}?movimiento=fiado`;
 
   if (overlayOpen || keyboardOpen) return null;
 
@@ -159,18 +161,56 @@ export function MobileNav() {
       <Icon className="size-5" />
     );
 
+  // The bar's own classes, shared by both variants so the height and the
+  // safe-area padding stay identical — the layout reserves exactly this much
+  // space, and a variant that measured differently would strand the last row
+  // of content on one route but not another.
+  const navClass = cn(
+    "fixed inset-x-0 bottom-0 z-40 border-t bg-background touch-manipulation md:hidden",
+    "pb-[env(safe-area-inset-bottom)]",
+  );
+
+  if (onClientDetail) {
+    // Deliberately only these two: on a client's screen these are the actions
+    // that matter, and the page keeps its own "← Cartera" link at the top.
+    // Abono left, Fiado right, mirroring the page's own primary/secondary
+    // hierarchy — fiar is the common action, abono the secondary one.
+    const actionClass =
+      "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-colors active:opacity-80";
+    return (
+      <nav className={navClass} aria-label="Acciones del cliente">
+        <div className={cn("flex items-center gap-2 px-3", NAV_HEIGHT_CLASS)}>
+          <Link
+            href={abonoHref}
+            onClick={(e) => navigate(e, abonoHref)}
+            className={cn(actionClass, "border bg-background text-foreground")}
+          >
+            {/* Never disabled here. The bar has no access to this client's
+                balance, so rather than guess it always offers the action and
+                the dialog answers — it opens and explains when the client owes
+                nothing, instead of silently doing something else. */}
+            {glyph(abonoHref, Plus)}
+            Agregar abono
+          </Link>
+          <Link
+            href={fiadoHref}
+            onClick={(e) => navigate(e, fiadoHref)}
+            className={cn(actionClass, "bg-primary text-primary-foreground")}
+          >
+            {glyph(fiadoHref, Plus)}
+            Agregar fiado
+          </Link>
+        </div>
+      </nav>
+    );
+  }
+
   return (
-    <nav
-      // z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The
-      // bar also unmounts while one is open, so this is belt and braces.
-      // touch-action: manipulation drops the browser's wait for a possible
-      // double-tap-to-zoom, which otherwise delays every single tap.
-      className={cn(
-        "fixed inset-x-0 bottom-0 z-40 border-t bg-background touch-manipulation md:hidden",
-        "pb-[env(safe-area-inset-bottom)]",
-      )}
-      aria-label="Navegación principal"
-    >
+    // z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The bar
+    // also unmounts while one is open, so this is belt and braces.
+    // touch-action: manipulation drops the browser's wait for a possible
+    // double-tap-to-zoom, which otherwise delays every single tap.
+    <nav className={navClass} aria-label="Navegación principal">
       <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
         {/* Left: Cartera. Still an anchor rather than a button: Next
             prefetches a Link's href while it is on screen, and this bar is

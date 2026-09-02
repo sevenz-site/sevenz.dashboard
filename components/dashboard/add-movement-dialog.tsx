@@ -58,6 +58,7 @@ export function AddMovementDialog({
   isFlagged,
   triggerClassName,
   autoOpen,
+  hideTriggers,
   rateContext,
 }: {
   clientId: string;
@@ -79,11 +80,15 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
-  // Set by the mobile bar's "Agregar" while the owner is looking at this
-  // client. Only ever passed to the mobile instance of this dialog — the
-  // page renders a second one for the sm+ layout, and both receiving it
+  // Which movement the mobile bar asked for while the owner is looking at
+  // this client. Only ever passed to the mobile instance of this dialog —
+  // the page renders a second one for the sm+ layout, and both receiving it
   // would open two stacked dialogs.
-  autoOpen?: boolean;
+  autoOpen?: "charge" | "payment";
+  // The mobile bar now carries "Agregar fiado" / "Agregar abono" itself, so
+  // the in-page pair would be the same two actions twice on one screen. The
+  // dialog still has to mount to be opened by the bar — only its triggers go.
+  hideTriggers?: boolean;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
@@ -168,18 +173,35 @@ export function AddMovementDialog({
   // its own right — the same pattern client-search-dialog.tsx uses, and for
   // the same reason: a one-shot latch fires once and never again, and seeding
   // from the prop means a fresh mount carrying the marker never opens at all.
-  const wantsOpen = autoOpen === true;
+  const wantsOpen = autoOpen === "charge" || autoOpen === "payment";
   const [prevAutoOpen, setPrevAutoOpen] = useState(false);
   if (wantsOpen !== prevAutoOpen) {
     setPrevAutoOpen(wantsOpen);
     if (wantsOpen) {
-      // Explicit, not inherited. Closing this dialog does NOT reset `type`, so
-      // an owner who last used "Agregar abono" would find the nav button
-      // opening on Abono — registering a payment when they meant a charge is a
-      // money error, not a navigation one. This is exactly what openForCharge()
-      // does for the page's own primary button.
-      setType("charge");
-      setPaymentBlocked(false);
+      // Always set explicitly, never inherited. Closing this dialog does NOT
+      // reset `type`, so an owner whose last action was "Agregar abono" would
+      // find the bar opening on Abono — registering a payment when a charge was
+      // meant is a money error, not a navigation one.
+      if (autoOpen === "payment" && canPayAny) {
+        // Mirrors openForPayment(): land on a currency that actually has debt,
+        // or the guard further down would bounce this straight back to charge.
+        if (rateContext) {
+          if (currentDebtUsd > 0) setCurrency("USD");
+          else if (currentDebtEur > 0) setCurrency("EUR");
+        }
+        setType("payment");
+        setPaymentBlocked(false);
+      } else if (autoOpen === "payment") {
+        // Abono asked for on a client who owes nothing. The bar can't know the
+        // balance, so it always offers the button and this is where the answer
+        // comes: open on charge and show the same explanation the in-dialog
+        // radio gives, rather than silently substituting a different action.
+        setType("charge");
+        setPaymentBlocked(true);
+      } else {
+        setType("charge");
+        setPaymentBlocked(false);
+      }
       setOpen(true);
     }
   }
@@ -221,16 +243,21 @@ export function AddMovementDialog({
 
   return (
     <>
-      <div className={cn("flex gap-2", triggerClassName)}>
-        <Button size="sm" className="flex-1" onClick={openForCharge}>
-          <Plus className="size-4" />
-          Agregar fiado
-        </Button>
-        <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
-          <Plus className="size-4" />
-          Agregar abono
-        </Button>
-      </div>
+      {/* Not hidden with a class: "flex" and "hidden" in one list is a CSS
+          conflict resolved by stylesheet order, not class order, so it is not
+          reliably one or the other. Rendered or not rendered instead. */}
+      {hideTriggers ? null : (
+        <div className={cn("flex gap-2", triggerClassName)}>
+          <Button size="sm" className="flex-1" onClick={openForCharge}>
+            <Plus className="size-4" />
+            Agregar fiado
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
+            <Plus className="size-4" />
+            Agregar abono
+          </Button>
+        </div>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
