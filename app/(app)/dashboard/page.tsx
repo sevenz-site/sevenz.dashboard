@@ -128,7 +128,7 @@ export default async function DashboardPage({
              four: "Último inicio de / sesión: / 12 sept. 2026, 11:45 p. / m."
              The greeting wraps instead, which reads fine; this does not. */
           <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-muted-foreground">
-            Último inicio de sesión:
+            Última conexión:
             <br />
             {lastSignIn}
           </p>
