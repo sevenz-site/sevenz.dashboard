@@ -35,7 +35,6 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
-import { track } from "@/lib/mixpanel";
 import { cn } from "@/lib/utils";
 import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
 
@@ -166,10 +165,11 @@ export function AddMovementDialog({
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
       toast.success("Movimiento registrado");
-      track("Movement Added", { client_id: state.clientId, movement_type: type });
+      // "Movement Added" is tracked server-side in addMovement — see the note
+      // in client-search-dialog.tsx on why it isn't tracked here too.
       router.refresh();
     }
-  }, [state, pending, router, type]);
+  }, [state, pending, router]);
 
   return (
     <>

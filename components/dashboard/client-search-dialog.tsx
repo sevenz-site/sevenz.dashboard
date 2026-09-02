@@ -33,7 +33,6 @@ import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
-import { track } from "@/lib/mixpanel";
 import { formatDocumentId } from "@/lib/format";
 import { DEFAULT_PLAZO_PAGO, DEFAULT_LEDGER_CURRENCY, type LedgerCurrency } from "@/lib/types";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -106,7 +105,9 @@ export function ClientSearchDialog({
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
       toast.success("Cliente registrado");
-      track("Client Created", { client_id: state.clientId });
+      // "Client Created" is tracked server-side in createClientWithMovement —
+      // tracking it here too would double-count for every owner whose browser
+      // isn't blocking Mixpanel, skewing the numbers unevenly.
       router.push(`/clients/${state.clientId}`);
     }
   }, [state, pending, router]);
