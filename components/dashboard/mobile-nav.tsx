@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ComponentType, type MouseEvent } from "react";
+import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, Loader2, Menu, Plus } from "lucide-react";
+import { LayoutDashboard, Loader2, Menu, Plus } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
@@ -67,14 +67,42 @@ function useKeyboardOpen() {
   return open;
 }
 
-const itemClass = (active: boolean) =>
-  cn(
-    "flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium",
-    // Instant press feedback, applied by the browser before any JavaScript
-    // runs — the tap is acknowledged even while the page is still loading.
-    "transition-colors active:bg-accent",
-    active ? "text-foreground" : "text-muted-foreground",
+// Only Cartera can carry the "selected" pill — Agregar is an action (it
+// doesn't represent "where you are"), and Menú opens a sheet rather than
+// navigating anywhere. Deliberately exact-match only: Malas pagas, Mi negocio
+// and a client's detail page all live one tap away in the menu now rather than
+// in the bar itself, and a highlight that meant "somewhere in this section"
+// would apply inconsistently across them — a client's page would light up
+// Cartera while Malas pagas lit up nothing, for two screens that are equally
+// one tap from the menu.
+function NavItem({
+  active,
+  children,
+  className,
+  ...props
+}: {
+  active: boolean;
+  children: ReactNode;
+  className?: string;
+} & Record<string, unknown>) {
+  return (
+    <div className={cn("flex flex-1 items-center justify-center", className)} {...props}>
+      <div
+        className={cn(
+          "flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors",
+          // Soft gray pill behind icon+label together, not just the icon —
+          // reads as one unit and matches how the sidebar already marks its
+          // own active item. Text stays foreground-dark rather than switching
+          // to the muted color the inactive items use, since the pill itself
+          // is what signals selection here.
+          active ? "bg-muted text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {children}
+      </div>
+    </div>
   );
+}
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -85,7 +113,7 @@ export function MobileNav() {
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
 
-  // Drives the spinner. useLinkStatus can't be used here: these links call
+  // Drives the spinner. useLinkStatus can't be used here: this link calls
   // preventDefault so the unsaved-changes guard runs first, and a link whose
   // default was prevented never reports a pending state.
   const [isPending, startTransition] = useTransition();
@@ -110,8 +138,7 @@ export function MobileNav() {
         // Cartera is the app's home screen — replacing rather than pushing
         // keeps it from stacking behind whatever screen the owner came from,
         // matching how the sidebar navigates there.
-        if (href.startsWith("/dashboard")) router.replace(href);
-        else router.push(href);
+        router.replace(href);
       });
     });
   }
@@ -136,46 +163,36 @@ export function MobileNav() {
       aria-label="Navegación principal"
     >
       <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
-        {/* Local state, no navigation — nothing to guard and nothing to wait for. */}
-        <button type="button" onClick={() => setOpenMobile(true)} className={itemClass(false)}>
-          <Menu className="size-5" />
-          Menú
-        </button>
-
-        {/* Still anchors rather than buttons: Next prefetches a Link's href
-            while it is on screen, and this bar is always on screen, so both
-            destinations are preloaded before the owner ever taps. */}
+        {/* Left: Cartera. Still an anchor rather than a button: Next
+            prefetches a Link's href while it is on screen, and this bar is
+            always on screen, so the destination is preloaded before the
+            owner ever taps. */}
         <Link
           href="/dashboard"
           onClick={(e) => navigate(e, "/dashboard")}
-          className={itemClass(pathname === "/dashboard")}
+          className="flex flex-1"
         >
-          {glyph("/dashboard", LayoutDashboard)}
-          Cartera
+          <NavItem active={pathname === "/dashboard"} className="w-full">
+            {glyph("/dashboard", LayoutDashboard)}
+            Cartera
+          </NavItem>
         </Link>
 
-        <Link
-          href="/profile"
-          onClick={(e) => navigate(e, "/profile")}
-          className={itemClass(pathname.startsWith("/profile"))}
-        >
-          {glyph("/profile", Building2)}
-          Mi negocio
-        </Link>
-
+        {/* Center: Agregar. Never carries the active pill — it's an action,
+            not a place, so "selected" has no meaning for it. */}
         <Link
           href="/dashboard?nuevo=1"
           // Its own marker, not the one the page CTA uses. The tour finds its
-          // target with querySelector, which returns whichever matches first in
-          // the DOM — two elements sharing a marker means it can highlight the
-          // wrong one, or one that isn't on screen.
+          // target with querySelector, which returns whichever matches first
+          // in the DOM — two elements sharing a marker means it can highlight
+          // the wrong one, or one that isn't on screen.
           data-tour="new-client-button-mobile"
           onClick={(e) =>
             navigate(e, "/dashboard?nuevo=1", () => {
               if (tour.step === 1) tour.advance();
             })
           }
-          className={itemClass(false)}
+          className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
         >
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             {isPending && goingTo === "/dashboard?nuevo=1" ? (
@@ -186,6 +203,18 @@ export function MobileNav() {
           </span>
           Agregar
         </Link>
+
+        {/* Right: Menú. Local state only — no navigation, so nothing to guard
+            and nothing to wait for. Never carries the active pill: opening
+            the sheet is transient, not a place the owner "is". */}
+        <button
+          type="button"
+          onClick={() => setOpenMobile(true)}
+          className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
+        >
+          <Menu className="size-5" />
+          Menú
+        </button>
       </div>
     </nav>
   );
