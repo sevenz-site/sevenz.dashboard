@@ -201,9 +201,9 @@ export function RateHistoryTable() {
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead>Fecha</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Dólar (Bs.)</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Euro (Bs.)</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Var. USD</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Dólar BCV</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Euro BCV</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Variación</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -217,8 +217,8 @@ export function RateHistoryTable() {
               visible.map((row) => (
                 <TableRow key={row.date}>
                   <TableCell className="whitespace-nowrap">{formatDate(row.date)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{bs.format(row.usd)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{bs.format(row.eur)}</TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">Bs. {bs.format(row.usd)}</TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">Bs. {bs.format(row.eur)}</TableCell>
                   <TableCell className="text-right">
                     <DeltaCell row={row} />
                   </TableCell>
