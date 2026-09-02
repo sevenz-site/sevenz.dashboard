@@ -36,10 +36,16 @@ const SIGNED_URL_TTL_SECONDS = 300;
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ movimiento?: string }>;
 }) {
   const { id } = await params;
+  // Set by the mobile bar's "Agregar" while this client is on screen. Passed
+  // to the mobile AddMovementDialog only — the sm+ layout below renders a
+  // second instance, and both opening would stack two dialogs.
+  const { movimiento } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -154,6 +160,7 @@ export default async function ClientDetailPage({
           currentDebtEur={balanceEur}
           isFlagged={client.is_flagged}
           triggerClassName="w-full"
+          autoOpen={movimiento === "1"}
           rateContext={rateContext}
         />
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,7 @@ export function AddMovementDialog({
   currentDebtEur,
   isFlagged,
   triggerClassName,
+  autoOpen,
   rateContext,
 }: {
   clientId: string;
@@ -78,11 +79,17 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
+  // Set by the mobile bar's "Agregar" while the owner is looking at this
+  // client. Only ever passed to the mobile instance of this dialog — the
+  // page renders a second one for the sm+ layout, and both receiving it
+  // would open two stacked dialogs.
+  autoOpen?: boolean;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
@@ -156,6 +163,27 @@ export function AddMovementDialog({
     setPaymentBlocked(false);
   }
 
+  // Opens on each false -> true transition of autoOpen, seeded false so that
+  // arriving with the marker already in the address counts as a transition in
+  // its own right — the same pattern client-search-dialog.tsx uses, and for
+  // the same reason: a one-shot latch fires once and never again, and seeding
+  // from the prop means a fresh mount carrying the marker never opens at all.
+  const wantsOpen = autoOpen === true;
+  const [prevAutoOpen, setPrevAutoOpen] = useState(false);
+  if (wantsOpen !== prevAutoOpen) {
+    setPrevAutoOpen(wantsOpen);
+    if (wantsOpen) {
+      // Explicit, not inherited. Closing this dialog does NOT reset `type`, so
+      // an owner who last used "Agregar abono" would find the nav button
+      // opening on Abono — registering a payment when they meant a charge is a
+      // money error, not a navigation one. This is exactly what openForCharge()
+      // does for the page's own primary button.
+      setType("charge");
+      setPaymentBlocked(false);
+      setOpen(true);
+    }
+  }
+
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (!open) {
@@ -170,6 +198,16 @@ export function AddMovementDialog({
     setHandledState(state);
     setOpen(false);
   }
+
+  // Clears the marker only once the dialog is CLOSED, and through the router
+  // rather than history.replaceState — replaceState moves the address bar
+  // behind Next's back, leaving the router believing it is still on the marked
+  // URL, so the next tap navigates to where it thinks it already is and
+  // nothing opens. Leaving the marker instead makes a refresh reopen the
+  // dialog on its own.
+  useEffect(() => {
+    if (wantsOpen && !open) router.replace(pathname, { scroll: false });
+  }, [wantsOpen, open, router, pathname]);
 
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
@@ -196,7 +234,7 @@ export function AddMovementDialog({
       <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Registrar movimiento</DialogTitle>
+          <DialogTitle>Agregar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
         <form ref={formRef} action={formAction} className="flex flex-col gap-4">

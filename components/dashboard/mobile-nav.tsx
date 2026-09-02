@@ -119,6 +119,14 @@ export function MobileNav() {
   const [isPending, startTransition] = useTransition();
   const [goingTo, setGoingTo] = useState<string | null>(null);
 
+  // On a client's page "Agregar" means "add a movement to THIS client" — that
+  // is what owners expected, and the generic client-picker read as a bug.
+  // Anywhere else it keeps meaning "pick a client, then add". Marking the
+  // current URL rather than navigating keeps the owner on the record they are
+  // looking at; the dialog strips the marker once it closes.
+  const onClientDetail = pathname.startsWith("/clients/");
+  const agregarHref = onClientDetail ? `${pathname}?movimiento=1` : "/dashboard?nuevo=1";
+
   if (overlayOpen || keyboardOpen) return null;
 
   // Mirrors the sidebar's own link behaviour exactly, including the guard.
@@ -135,9 +143,10 @@ export function MobileNav() {
       before?.();
       setGoingTo(href);
       startTransition(() => {
-        // Cartera is the app's home screen — replacing rather than pushing
-        // keeps it from stacking behind whatever screen the owner came from,
-        // matching how the sidebar navigates there.
+        // Replace, never push: for Cartera it keeps the home screen from
+        // stacking behind wherever the owner came from (matching the sidebar),
+        // and for a client's page it keeps the marked URL out of history, so
+        // Back can't land on it and reopen the dialog.
         router.replace(href);
       });
     });
@@ -181,21 +190,24 @@ export function MobileNav() {
         {/* Center: Agregar. Never carries the active pill — it's an action,
             not a place, so "selected" has no meaning for it. */}
         <Link
-          href="/dashboard?nuevo=1"
+          href={agregarHref}
           // Its own marker, not the one the page CTA uses. The tour finds its
           // target with querySelector, which returns whichever matches first
           // in the DOM — two elements sharing a marker means it can highlight
           // the wrong one, or one that isn't on screen.
           data-tour="new-client-button-mobile"
           onClick={(e) =>
-            navigate(e, "/dashboard?nuevo=1", () => {
-              if (tour.step === 1) tour.advance();
+            navigate(e, agregarHref, () => {
+              // Only advance the tour on the dashboard: step 1's tooltip only
+              // renders there, so advancing from a client's page would
+              // silently consume a step the owner never saw.
+              if (!onClientDetail && tour.step === 1) tour.advance();
             })
           }
           className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
         >
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            {isPending && goingTo === "/dashboard?nuevo=1" ? (
+            {isPending && goingTo === agregarHref ? (
               <Loader2 className="size-5 animate-spin" />
             ) : (
               <Plus className="size-5" />
