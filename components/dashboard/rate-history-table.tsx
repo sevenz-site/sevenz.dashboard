@@ -83,13 +83,11 @@ function DeltaCell({ row }: { row: Row }) {
         rounded === 0 && "text-muted-foreground",
       )}
     >
-      {sign}
-      {bs.format(rounded)}{" "}
-      {/* Four numeric columns need ~337px and a phone gives the panel ~308.
-          The percentage is what doesn't fit, so it drops on narrow screens
-          and the concrete bolívar change stays — that is the number a shop
-          owner reads out loud. Nothing is lost on desktop. */}
-      <span className="hidden text-xs opacity-70 sm:inline">
+      {/* The unit is what makes this readable: without it "+2,85 (+0,36%)"
+          reads as two percentages, since the neighbouring columns all carry
+          "Bs." and this one didn't. */}
+      {sign}Bs. {bs.format(rounded)}{" "}
+      <span className="text-xs opacity-70">
         ({sign}
         {pct.format(row.deltaUsdPct)}%)
       </span>
@@ -203,15 +201,7 @@ export function RateHistoryTable() {
               <TableHead>Fecha</TableHead>
               <TableHead className="text-right whitespace-nowrap">Dólar BCV</TableHead>
               <TableHead className="text-right whitespace-nowrap">Euro BCV</TableHead>
-              {/* "Variación USD" is 27px wider than the phone panel allows, and
-                  this header is what sets the column's width — the cells below
-                  are narrower. Abbreviated only where it doesn't fit, so the
-                  full label still reads on desktop and the column stays visible
-                  on a phone instead of being cut off mid-number. */}
-              <TableHead className="text-right whitespace-nowrap">
-                <span className="sm:hidden">Var. USD</span>
-                <span className="hidden sm:inline">Variación USD</span>
-              </TableHead>
+              <TableHead className="text-right whitespace-nowrap">Variación USD</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
