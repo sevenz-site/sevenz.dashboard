@@ -1,12 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
-import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
-import { LendingChartPanel } from "@/components/dashboard/lending-chart-panel";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { HideableBalance } from "@/components/dashboard/hideable-balance";
+import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -135,70 +133,61 @@ export default async function DashboardPage({
         ) : null}
       </div>
 
+      {/* Section titles carry 40px of separation above them (mt-10), which is
+          what marks where one part of the screen ends and the next begins. */}
+      <h2 className="mt-10 text-xl font-semibold">Cartera pendiente</h2>
+
+      {/* Stacked on a phone, side by side once there is room — the cards are
+          two independent ledgers, not a sequence, so they read better abreast
+          than stacked on a wide screen. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        {rateContext ? (
+          <>
+            <BalanceCard
+              label="Capital por cobrar en USD"
+              balance={totalUsd}
+              currency="USD"
+              ledger={ledger}
+              chartData={weeklyLendingUsd}
+              chartTitle="Fiado vs. Abono (USD)"
+            />
+            <BalanceCard
+              label="Capital por cobrar en Euro"
+              balance={totalEur}
+              currency="EUR"
+              ledger={ledger}
+              chartData={weeklyLendingEur}
+              chartTitle="Fiado vs. Abono (EUR)"
+            />
+          </>
+        ) : (
+          <BalanceCard
+            label="Capital por cobrar"
+            balance={totalCop}
+            currency={null}
+            ledger={null}
+            chartData={weeklyLendingCop}
+          />
+        )}
+      </div>
+
       {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
-      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-        <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
-          {rateContext ? (
-            <>
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
-                <div>
-                  <p className="text-sm text-muted-foreground">Capital por cobrar en USD</p>
-                  <HideableBalance
-                    balance={totalUsd}
-                    currency="USD"
-                    ledger={ledger}
-                    mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Lo que tus clientes te deben en total, sin descontar nada.
-                  </p>
-                </div>
-                <LendingChartPanel data={weeklyLendingUsd} title="Fiado vs. Abono (USD)" />
-              </div>
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-64">
-                <div>
-                  <p className="text-sm text-muted-foreground">Capital por cobrar en Euro</p>
-                  <HideableBalance
-                    balance={totalEur}
-                    currency="EUR"
-                    ledger={ledger}
-                    mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Lo que tus clientes te deben en total, sin descontar nada.
-                  </p>
-                </div>
-                <LendingChartPanel data={weeklyLendingEur} title="Fiado vs. Abono (EUR)" />
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <p className="text-sm text-muted-foreground">Capital por cobrar</p>
-                <HideableBalance
-                  balance={totalCop}
-                  currency={null}
-                  ledger={null}
-                  mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Lo que tus clientes te deben en total, sin descontar nada.
-                </p>
-              </div>
-              <WeeklyLendingChart data={weeklyLendingCop} />
-            </>
-          )}
-        </div>
-        <ClientSearchDialog
-          clients={clients ?? []}
-          ownerId={user!.id}
-          businessName={owner?.business_name || user!.email || "tu negocio"}
-          ownerCountry={ownerCountry}
-          autoOpen={nuevo === "1"}
-          rateContext={rateContext}
-        />
-      </div>
+      <ClientSearchDialog
+        clients={clients ?? []}
+        ownerId={user!.id}
+        businessName={owner?.business_name || user!.email || "tu negocio"}
+        ownerCountry={ownerCountry}
+        autoOpen={nuevo === "1"}
+        rateContext={rateContext}
+      />
+
+      {/* Named for what is actually underneath: a list of clients and their
+          balances. "Historial de movimientos" already means a different screen
+          — the movement list inside one client — and reusing it here would
+          promise movements and deliver people. */}
+      <h2 className="mt-10 text-xl font-semibold">Clientes</h2>
+
       <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
 
       {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
