@@ -133,9 +133,11 @@ export default async function DashboardPage({
         ) : null}
       </div>
 
-      {/* Section titles carry 40px of separation above them (mt-10), which is
-          what marks where one part of the screen ends and the next begins. */}
-      <div className="mt-10 flex items-center justify-between gap-3">
+      {/* 20px of separation above a section title, measured on screen. The
+          container is a flex column with gap-4, and a margin ADDS to a flex gap
+          rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
+          the 20px. Changing the container's gap changes this too. */}
+      <div className="mt-1 flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Cartera pendiente</h2>
         {/* Desktop only: beside the title, hugging its own width. The phone
             keeps it full width below the rate card, which is a different place
@@ -207,7 +209,7 @@ export default async function DashboardPage({
           balances. "Historial de movimientos" already means a different screen
           — the movement list inside one client — and reusing it here would
           promise movements and deliver people. */}
-      <h2 className="mt-10 text-xl font-semibold">Clientes</h2>
+      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
 
       <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
 

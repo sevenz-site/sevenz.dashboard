@@ -9,14 +9,20 @@ stating, not an accident.
 **Sections are introduced by a title, not a divider.**
 
 ```tsx
-<h2 className="mt-10 text-xl font-semibold">Cartera pendiente</h2>
+<h2 className="mt-1 text-xl font-semibold">Cartera pendiente</h2>
 ```
 
 - `text-xl font-semibold` — one title style, everywhere. There is no "small
   section label" variant; if a heading feels too heavy, the section probably
   doesn't need one.
-- `mt-10` — 40px above each title. That gap is what separates one part of a
-  screen from the next. Nothing else is used for that job.
+- **20px above each title, measured on screen** — the separation between one
+  part of a screen and the next. Nothing else is used for that job.
+- **A margin adds to a flex gap, it does not collapse into it.** These pages are
+  flex columns with `gap-4` (16px), so `mt-1` (4px) is what produces 20px. Quote
+  what a ruler would show, never the token: the first version of this rule said
+  "40px" while `mt-10` inside the same `gap-4` column actually rendered 56px.
+- Below the title stays at the container's 16px, so the heading reads as
+  attached to the content it introduces rather than floating between blocks.
 - The title names **what is actually underneath it**. "Historial de
   movimientos" means a list of movements; a list of clients is "Clientes". The
   same name must not label two different screens.

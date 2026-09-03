@@ -130,7 +130,7 @@ export default async function ClientDetailPage({
           />
         </div>
 
-        <h2 className="mt-10 text-xl font-semibold">Cartera pendiente</h2>
+        <h2 className="mt-1 text-xl font-semibold">Cartera pendiente</h2>
         <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-3 py-2">
           {rateContext ? (
             <div className="flex flex-wrap gap-6">
@@ -372,7 +372,7 @@ async function CreditScoreSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="mt-10 text-xl font-semibold">Puntaje de crédito</h2>
+      <h2 className="mt-1 text-xl font-semibold">Puntaje de crédito</h2>
       <div className="flex flex-col items-center gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:gap-6">
         <div className="flex shrink-0 flex-col items-center gap-2">
           <CreditScoreRadialChart score={result.score} tier={result.tier} />
@@ -424,7 +424,7 @@ async function MovementHistory({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="mt-10 text-xl font-semibold">Historial de movimientos</h2>
+      <h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>
       <MovementHistoryList
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
