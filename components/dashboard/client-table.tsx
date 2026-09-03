@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Broom, ChevronDown, ChevronRight, Eye, IdCard } from "lucide-react";
+import { Broom, ChevronDown, ChevronRight, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -379,8 +379,7 @@ export function ClientTable({
                           </Badge>
                         ) : null}
                       </p>
-                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <IdCard className="size-4 shrink-0" aria-hidden="true" />
+                      <p className="text-sm text-muted-foreground">
                         Cédula / Documento: {formatDocumentId(row.document_id)}
                       </p>
                       <div className="flex flex-wrap gap-x-6 gap-y-1">
@@ -393,6 +392,7 @@ export function ClientTable({
                                 currency="USD"
                                 ledger={ledger}
                                 size="sm"
+                                showSecondary={false}
                               />
                             </div>
                             <div>
@@ -402,6 +402,7 @@ export function ClientTable({
                                 currency="EUR"
                                 ledger={ledger}
                                 size="sm"
+                                showSecondary={false}
                               />
                             </div>
                           </>

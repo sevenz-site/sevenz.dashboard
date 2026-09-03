@@ -95,9 +95,15 @@ same rows, the same filters and sorting above them, switched with CSS.
   the right to say so. No per-record action buttons: they compete with the
   tap-anywhere gesture on the smallest screen, and they live on the record's
   own page.
-- Keep the secondary line under an amount (`Bs. 44.064,64 hoy`). For a
-  Venezuelan owner that is the figure that matters; dropping it to shorten the
-  card puts it one tap away on every row.
+- **A card carries less than a table row, not the same content restyled.** The
+  `Bs.` line and the leading icons were tried on the client card and removed:
+  name, document, amounts and status is already dense on a 375px screen, and
+  each extra element costs more than it adds. The `Bs.` line stays in the table,
+  where there is room. Reviewing it on a real screen settled this; arguing it
+  beforehand did not.
+- To drop that secondary line, pass `showSecondary={false}` — **never
+  `ledger={null}`**, which also silently reformats a USD figure with the COP
+  formatter.
 
 ## Buttons
 
