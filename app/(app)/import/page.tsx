@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import { ImportFlow } from "@/components/import/import-flow";
 
 export default async function ImportPage() {
@@ -21,6 +24,17 @@ export default async function ImportPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
+          one: flush to the top, edge to edge. The negative margins cancel main's
+          p-4 and px-4 restores the inset for the content itself. Hidden from sm
+          up, where the real header returns. */}
+      <div className="-mx-4 -mt-4 flex items-center border-b px-4 py-3 sm:hidden">
+        <Button variant="ghost" size="icon" asChild className="-ml-2">
+          <Link href="/dashboard" aria-label="Volver a Cartera">
+            <ChevronLeft className="size-5" />
+          </Link>
+        </Button>
+      </div>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
         <p className="text-sm text-muted-foreground">

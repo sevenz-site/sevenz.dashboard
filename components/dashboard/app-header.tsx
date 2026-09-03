@@ -18,10 +18,15 @@ import { cn } from "@/lib/utils";
 export function AppHeader({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Screens that carry their own contextual bar on a phone: a client, the
-  // Clientes list, and Malas pagas. All three replace this header below sm
-  // rather than stacking a second bar on top of it.
+  // Clientes list, Malas pagas, Importar cartera, and Mi negocio. All of
+  // these replace this header below sm rather than stacking a second bar
+  // on top of it.
   const hasOwnBar =
-    pathname.startsWith("/clients/") || pathname === "/clients" || pathname.startsWith("/malas-pagas");
+    pathname.startsWith("/clients/") ||
+    pathname === "/clients" ||
+    pathname.startsWith("/malas-pagas") ||
+    pathname.startsWith("/import") ||
+    pathname.startsWith("/profile");
 
   return (
     <header
