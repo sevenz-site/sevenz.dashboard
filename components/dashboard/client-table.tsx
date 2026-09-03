@@ -368,10 +368,10 @@ export function ClientTable({
                       track("Client Details Opened", { client_id: row.client_id, source });
                       router.push(`/clients/${row.client_id}`);
                     }}
-                    className="flex w-full items-start justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors active:bg-accent"
+                    className="flex w-full flex-col gap-1 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors active:bg-accent"
                   >
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <p className="text-lg font-semibold">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 flex-1 text-lg font-semibold">
                         {row.name}
                         {row.has_pending_review ? (
                           <Badge variant="outline" className="ml-2 align-middle text-[10px]">
@@ -379,6 +379,9 @@ export function ClientTable({
                           </Badge>
                         ) : null}
                       </p>
+                      <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    </div>
+                    <div className="flex flex-col gap-1">
                       <div className="flex flex-wrap gap-x-6 gap-y-1">
                         {rateContext ? (
                           <>
@@ -434,7 +437,6 @@ export function ClientTable({
                         </div>
                       </div>
                     </div>
-                    <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   </button>
                 );
               })}
