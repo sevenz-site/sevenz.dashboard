@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, ShieldAlert, Camera, Building2, LogOut, Loader2 } from "lucide-react";
+import { LayoutDashboard, Users, ShieldAlert, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,7 @@ import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: LayoutDashboard, dataTour: undefined },
+  { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
   { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },
   { href: "/profile", label: "Mi negocio", icon: Building2, dataTour: undefined },
@@ -101,6 +102,12 @@ export function AppSidebar({ businessName }: { businessName: string }) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={tour.restart}>
+              <CircleHelp />
+              <span>Ayuda</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => guard(() => logout())}>
               <LogOut />

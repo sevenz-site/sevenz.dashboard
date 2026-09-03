@@ -7,7 +7,6 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { TourProvider } from "@/components/dashboard/tour-provider";
-import { HelpButton } from "@/components/dashboard/help-button";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
@@ -64,7 +63,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   {owner?.business_name || "Mi negocio"}
                 </span>
                 <div className="ml-auto flex items-center gap-1">
-                  <HelpButton />
                   <NotificationsButton initialUnreadCount={unreadCount} />
                 </div>
               </AppHeader>

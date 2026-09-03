@@ -12,14 +12,16 @@ import { cn } from "@/lib/utils";
 // breakpoint is CSS, so nothing flashes: the server and the client agree on
 // the pathname, and the media query is applied before the first paint.
 //
-// Consequence worth knowing: below sm on a client's screen, Ayuda and
-// Notificaciones are only reachable after going back to Cartera.
+// Consequence worth knowing: below sm on one of these screens,
+// Notificaciones is only reachable after going back to Cartera. Ayuda lives
+// in the sidebar menu now, so it isn't affected by this at all.
 export function AppHeader({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // Screens that carry their own contextual bar on a phone: a client, and
-  // Malas pagas. Both replace this header below sm rather than stacking a
-  // second bar on top of it.
-  const hasOwnBar = pathname.startsWith("/clients/") || pathname.startsWith("/malas-pagas");
+  // Screens that carry their own contextual bar on a phone: a client, the
+  // Clientes list, and Malas pagas. All three replace this header below sm
+  // rather than stacking a second bar on top of it.
+  const hasOwnBar =
+    pathname.startsWith("/clients/") || pathname === "/clients" || pathname.startsWith("/malas-pagas");
 
   return (
     <header

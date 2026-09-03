@@ -93,8 +93,9 @@ export function ClientTable({
   rateContext?: OwnerRateContext | null;
   emptyMessage?: string;
   // Which page rendered this table — tags "Client Details Opened" so it's
-  // possible to tell regular Cartera lookups apart from Malas Pagas ones.
-  source: "cartera" | "malas_pagas";
+  // possible to tell regular Cartera lookups apart from Malas Pagas and the
+  // standalone Clientes list.
+  source: "cartera" | "malas_pagas" | "clientes";
 }) {
   const router = useRouter();
   const tour = useTour();
@@ -423,7 +424,7 @@ export function ClientTable({
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                          Cédula / Documento: {formatDocumentId(row.document_id)}
+                          Documento: {formatDocumentId(row.document_id)}
                         </p>
                         <div className="flex shrink-0 items-center gap-1">
                           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
