@@ -379,54 +379,59 @@ export function ClientTable({
                           </Badge>
                         ) : null}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        Cédula / Documento: {formatDocumentId(row.document_id)}
-                      </p>
                       <div className="flex flex-wrap gap-x-6 gap-y-1">
                         {rateContext ? (
                           <>
                             <div>
-                              <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+                              <p className="text-xs text-muted-foreground">Por cobrar USD</p>
                               <ExchangeRateBalanceDisplay
                                 balance={row.balance_usd}
                                 currency="USD"
                                 ledger={ledger}
                                 size="sm"
                                 showSecondary={false}
+                                mainClassName="text-base"
                               />
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+                              <p className="text-xs text-muted-foreground">Por cobrar EUR</p>
                               <ExchangeRateBalanceDisplay
                                 balance={row.balance_eur}
                                 currency="EUR"
                                 ledger={ledger}
                                 size="sm"
                                 showSecondary={false}
+                                mainClassName="text-base"
                               />
                             </div>
                           </>
                         ) : (
                           <div>
-                            <p className="text-sm text-muted-foreground">Por cobrar</p>
+                            <p className="text-xs text-muted-foreground">Por cobrar</p>
                             <ExchangeRateBalanceDisplay
                               balance={row.balance}
                               currency={null}
                               ledger={null}
                               size="sm"
+                              mainClassName="text-base"
                             />
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                          {CLIENT_STATUS_LABEL[status]}
-                        </Badge>
-                        {row.is_flagged ? (
-                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-                            Mala paga
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                          Cédula / Documento: {formatDocumentId(row.document_id)}
+                        </p>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                            {CLIENT_STATUS_LABEL[status]}
                           </Badge>
-                        ) : null}
+                          {row.is_flagged ? (
+                            <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                              Mala paga
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />

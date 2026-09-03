@@ -104,6 +104,19 @@ same rows, the same filters and sorting above them, switched with CSS.
 - To drop that secondary line, pass `showSecondary={false}` — **never
   `ledger={null}`**, which also silently reformats a USD figure with the COP
   formatter.
+- **Card row order: name → amount labels (`text-xs`) → amounts (`text-base`)
+  → document + status badge, that last pair sharing one row.** Smaller than
+  the table's own `text-sm`/`text-lg` because the card is read at a glance,
+  not studied — the amount is still the most prominent thing on it, just not
+  at the table's size. Override with `mainClassName="text-base"` on
+  `ExchangeRateBalanceDisplay` rather than adding a new `size` variant, since
+  no other caller needs this size.
+- **The document line truncates instead of wrapping**
+  (`min-w-0 flex-1 truncate` on the text, `shrink-0` on the badge group) so it
+  stays on one row with the badge. A plain `flex-wrap` here looked fine until
+  a real cédula plus a "Mala paga" badge together were a few pixels wider than
+  the card — just enough to wrap the badge onto its own line, off the far
+  left instead of sitting next to the text it was supposed to be beside.
 
 ## Buttons
 
