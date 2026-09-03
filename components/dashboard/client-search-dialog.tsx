@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -78,23 +78,19 @@ export function ClientSearchDialog({
   const router = useRouter();
   const pathname = usePathname();
   const tour = useTour();
-  const formRef = useRef<HTMLFormElement>(null);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"search" | "new">("search");
-  const [query, setQuery] = useState("");
-  // Controlled (unlike relying on defaultValue) so a server action round trip
-  // — e.g. the duplicate-document check — never visually wipes what the
-  // owner already typed. Only reset on full dialog close, not on every
-  // step change or server response.
-  const [nameValue, setNameValue] = useState("");
-  const [documentIdValue, setDocumentIdValue] = useState("");
-  const [addressValue, setAddressValue] = useState("");
-  const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
-  const [amountStr, setAmountStr] = useState("");
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
-  const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
-  const [prevOpen, setPrevOpen] = useState(open);
+  // Bumped every time the dialog fully closes, and used as the body's `key`
+  // below. Remounting is what actually guarantees a clean form next open —
+  // this component's own state (nameValue, plazoPago, ...) already got reset
+  // field-by-field before, but a WhatsappInput's own internal phone number
+  // lived below that reset and was never touched, so it kept surviving a
+  // close. A key-remount resets everything in one place, including whatever
+  // a future field adds, instead of one more line to remember to update.
+  const [instanceKey, setInstanceKey] = useState(0);
+  // Read synchronously from the Dialog's onOpenChange handler below, so a
+  // ref rather than state — nothing here needs to re-render when it changes.
+  const dirtyRef = useRef(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
 
   // Opens on each false -> true transition of autoOpen, not on a one-shot
   // latch. A latch only ever fires once, so the first tap of the bar's
@@ -115,10 +111,7 @@ export function ClientSearchDialog({
   const [prevAutoOpen, setPrevAutoOpen] = useState(false);
   if (wantsOpen !== prevAutoOpen) {
     setPrevAutoOpen(wantsOpen);
-    if (wantsOpen) {
-      setStep("search");
-      setOpen(true);
-    }
+    if (wantsOpen) setOpen(true);
   }
 
   // Clears the marker only once the dialog is CLOSED, through the router rather
@@ -131,6 +124,129 @@ export function ClientSearchDialog({
     if (wantsOpen && !open) router.replace(pathname, { scroll: false });
   }, [wantsOpen, open, router, pathname]);
 
+  function closeAndReset() {
+    setOpen(false);
+    setInstanceKey((k) => k + 1);
+  }
+
+  const handleDirtyChange = useCallback((dirty: boolean) => {
+    dirtyRef.current = dirty;
+  }, []);
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            setOpen(true);
+            return;
+          }
+          // Covers every way Radix can ask to close — the X button, Escape,
+          // and a click outside — with one check instead of guarding each
+          // affordance separately.
+          if (dirtyRef.current) {
+            setConfirmDiscardOpen(true);
+            return;
+          }
+          closeAndReset();
+        }}
+      >
+        <DialogTrigger asChild>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            data-tour={showTourTarget ? "new-client-button" : undefined}
+            onClick={() => {
+              if (tour.step === 1) tour.advance();
+            }}
+          >
+            <Plus className="size-4" />
+            Agregar movimiento
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <ClientSearchDialogBody
+            key={instanceKey}
+            clients={clients}
+            ownerId={ownerId}
+            businessName={businessName}
+            ownerCountry={ownerCountry}
+            rateContext={rateContext}
+            onDirtyChange={handleDirtyChange}
+            onDone={closeAndReset}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Descartar este registro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todavía no guardaste este cliente ni su movimiento — si sales ahora se pierde lo que
+              ya escribiste.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDiscardOpen(false);
+                closeAndReset();
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// Everything below is remounted (via the `key` above) on every fresh open,
+// which is what makes "close without saving, reopen" start from a blank
+// slate — including WhatsappInput's own phone number, which lives entirely
+// inside that child and was never reachable from a field-by-field reset up
+// in the parent.
+function ClientSearchDialogBody({
+  clients,
+  ownerId,
+  businessName,
+  ownerCountry,
+  rateContext,
+  onDirtyChange,
+  onDone,
+}: {
+  clients: ClientOption[];
+  ownerId: string;
+  businessName: string;
+  ownerCountry: OwnerCountry;
+  rateContext: MovementRateContext | null;
+  onDirtyChange: (dirty: boolean) => void;
+  // Called once this instance is done with the dialog — a client was
+  // created, an existing one was picked, or the owner confirmed abandoning
+  // the registration. The parent closes and remounts a fresh instance.
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [step, setStep] = useState<"search" | "new">("search");
+  const [query, setQuery] = useState("");
+  const [nameValue, setNameValue] = useState("");
+  const [documentIdValue, setDocumentIdValue] = useState("");
+  const [addressValue, setAddressValue] = useState("");
+  const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
+  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
+  const [amountStr, setAmountStr] = useState("");
+  // Controlled like every other field in this form now — it used to be the
+  // one plain uncontrolled input, which is exactly the field a resubmit
+  // after the duplicate-document warning could silently blank out.
+  const [descriptionValue, setDescriptionValue] = useState("");
+  const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -139,23 +255,28 @@ export function ClientSearchDialog({
       .slice(0, 8);
   }, [clients, query]);
 
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (!open) {
-      setStep("search");
-      setQuery("");
-      setPhotoPath(null);
-      setAmountStr("");
-      setNameValue("");
-      setDocumentIdValue("");
-      setAddressValue("");
-    }
-  }
+  // There is something to lose once the owner has actually typed something
+  // into the registration form — not merely reached that step, since
+  // "Nuevo cliente" with an empty search query lands here with nothing
+  // filled in yet.
+  const isDirty =
+    step === "new" &&
+    Boolean(
+      nameValue.trim() ||
+        documentIdValue.trim() ||
+        addressValue.trim() ||
+        amountStr.trim() ||
+        descriptionValue.trim() ||
+        photoPath,
+    );
+  useEffect(() => {
+    onDirtyChange(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const [handledState, setHandledState] = useState(state);
   if (state !== handledState && state.clientId) {
     setHandledState(state);
-    setOpen(false);
+    onDone();
   }
 
   useEffect(() => {
@@ -170,247 +291,222 @@ export function ClientSearchDialog({
   }, [state, pending, router]);
 
   function selectExisting(id: string) {
-    setOpen(false);
+    onDone();
     router.push(`/clients/${id}`);
   }
 
-  // After a server action submission, the browser resets this form's
-  // (uncontrolled) fields — fine normally, since a plain error just means
-  // the owner retypes everything. But the duplicate-confirmation retry needs
-  // the ORIGINAL values, not whatever the now-blank DOM shows. Caching the
-  // submitted FormData here (before that reset happens) and resubmitting the
-  // cached copy directly sidesteps it entirely.
-  const lastFormDataRef = useRef<FormData | null>(null);
-
+  // Every field the form needs is React-controlled now, so the live DOM
+  // always matches current state — reading it fresh here (rather than a
+  // FormData snapshot captured back when the duplicate warning first
+  // appeared) is what makes a resubmit pick up anything edited since.
   function confirmDuplicateAndSubmit() {
-    const data = lastFormDataRef.current;
-    if (!data) return;
+    if (!formRef.current) return;
+    const data = new FormData(formRef.current);
     data.set("confirm_duplicate", "true");
     formAction(data);
   }
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+  return step === "search" ? (
+    <>
+      <DialogHeader>
+        <DialogTitle>Buscar cliente</DialogTitle>
+        <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-3">
+        <Input
+          autoFocus
+          placeholder="Nombre o cédula del cliente"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        {results.length > 0 ? (
+          <ul className="flex flex-col divide-y rounded-md border">
+            {results.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => selectExisting(c.id)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <UserRound className="size-4 text-muted-foreground" />
+                  <span className="font-medium">{c.name}</span>
+                  {c.document_id ? (
+                    <span className="text-xs text-muted-foreground">{formatDocumentId(c.document_id)}</span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : query.trim() ? (
+          <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
+        ) : null}
+
         <Button
-          size="sm"
-          className="w-full sm:w-auto"
-          data-tour={showTourTarget ? "new-client-button" : undefined}
+          type="button"
+          variant="outline"
           onClick={() => {
-            if (tour.step === 1) tour.advance();
+            setNameValue(query);
+            setStep("new");
           }}
         >
           <Plus className="size-4" />
-          Agregar movimiento
+          {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
-        {step === "search" ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Buscar cliente</DialogTitle>
-              <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <Input
-                autoFocus
-                placeholder="Nombre o cédula del cliente"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+      </div>
+    </>
+  ) : (
+    <>
+      <DialogHeader>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            onClick={() => setStep("search")}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <DialogTitle>Registrar cliente nuevo</DialogTitle>
+        </div>
+        <DialogDescription>
+          Negocio: {businessName} · queda con el primer movimiento registrado.
+        </DialogDescription>
+      </DialogHeader>
+      <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+        <input type="hidden" name="confirm_duplicate" defaultValue="false" />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="new_client_name">Nombre del cliente</Label>
+          <Input
+            id="new_client_name"
+            name="new_client_name"
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            required
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="whatsapp">WhatsApp</Label>
+          <WhatsappInput
+            id="whatsapp"
+            name="whatsapp"
+            required
+            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="document_id">Cédula/documento</Label>
+          <Input
+            id="document_id"
+            name="document_id"
+            value={documentIdValue}
+            onChange={(e) => setDocumentIdValue(e.target.value)}
+            required
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="address">Dirección (opcional)</Label>
+          <Input
+            id="address"
+            name="address"
+            value={addressValue}
+            onChange={(e) => setAddressValue(e.target.value)}
+          />
+        </div>
 
-              {results.length > 0 ? (
-                <ul className="flex flex-col divide-y rounded-md border">
-                  {results.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => selectExisting(c.id)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                      >
-                        <UserRound className="size-4 text-muted-foreground" />
-                        <span className="font-medium">{c.name}</span>
-                        {c.document_id ? (
-                          <span className="text-xs text-muted-foreground">{formatDocumentId(c.document_id)}</span>
-                        ) : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : query.trim() ? (
-                <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
-              ) : null}
+        <div className="flex flex-col gap-2">
+          <Label>Tipo</Label>
+          <input type="hidden" name="type" value="charge" />
+          <p className="text-sm text-muted-foreground">
+            Cargo (fía algo) — un cliente nuevo siempre empieza debiendo. Para registrar un
+            abono, hazlo después desde el detalle del cliente.
+          </p>
+        </div>
 
+        <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} />
+
+        {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="amount">Monto</Label>
+          <Input
+            id="amount"
+            name="amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+            required
+          />
+          {rateContext ? (
+            <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="description">Detalle (opcional)</Label>
+          <Input
+            id="description"
+            name="description"
+            value={descriptionValue}
+            onChange={(e) => setDescriptionValue(e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>Foto (opcional)</Label>
+          <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+          <input type="hidden" name="photo_path" value={photoPath ?? ""} />
+        </div>
+
+        {state.error ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-destructive">{state.error}</p>
+            {state.duplicate ? (
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  setNameValue(query);
-                  setStep("new");
-                }}
+                size="sm"
+                onClick={() => selectExisting(state.duplicate!.id)}
               >
-                <Plus className="size-4" />
-                {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
+                Ver cuenta de {state.duplicate.name}
               </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-6"
-                  onClick={() => setStep("search")}
-                >
-                  <ArrowLeft className="size-4" />
-                </Button>
-                <DialogTitle>Registrar cliente nuevo</DialogTitle>
-              </div>
-              <DialogDescription>
-                Negocio: {businessName} · queda con el primer movimiento registrado.
-              </DialogDescription>
-            </DialogHeader>
-            <form
-              ref={formRef}
-              action={formAction}
-              onSubmit={(e) => {
-                lastFormDataRef.current = new FormData(e.currentTarget);
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="confirm_duplicate" defaultValue="false" />
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="new_client_name">Nombre del cliente</Label>
-                <Input
-                  id="new_client_name"
-                  name="new_client_name"
-                  value={nameValue}
-                  onChange={(e) => setNameValue(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="whatsapp">WhatsApp</Label>
-                <WhatsappInput
-                  id="whatsapp"
-                  name="whatsapp"
-                  required
-                  preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="document_id">Cédula/documento</Label>
-                <Input
-                  id="document_id"
-                  name="document_id"
-                  value={documentIdValue}
-                  onChange={(e) => setDocumentIdValue(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="address">Dirección (opcional)</Label>
-                <Input
-                  id="address"
-                  name="address"
-                  value={addressValue}
-                  onChange={(e) => setAddressValue(e.target.value)}
-                />
-              </div>
+            ) : null}
+          </div>
+        ) : null}
 
-              <div className="flex flex-col gap-2">
-                <Label>Tipo</Label>
-                <input type="hidden" name="type" value="charge" />
-                <p className="text-sm text-muted-foreground">
-                  Cargo (fía algo) — un cliente nuevo siempre empieza debiendo. Para registrar un
-                  abono, hazlo después desde el detalle del cliente.
-                </p>
-              </div>
-
-              <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} />
-
-              {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="amount">Monto</Label>
-                <Input
-                  id="amount"
-                  name="amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={amountStr}
-                  onChange={(e) => setAmountStr(e.target.value)}
-                  required
-                />
-                {rateContext ? (
-                  <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
-                ) : null}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="description">Detalle (opcional)</Label>
-                <Input id="description" name="description" />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label>Foto (opcional)</Label>
-                <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
-                <input type="hidden" name="photo_path" value={photoPath ?? ""} />
-              </div>
-
-              {state.error ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm text-destructive">{state.error}</p>
-                  {state.duplicate ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => selectExisting(state.duplicate!.id)}
-                    >
-                      Ver cuenta de {state.duplicate.name}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <DialogFooter>
-                {state.duplicate ? (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button type="button">Crear cuenta separada</Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
-                          continúa si esto es a propósito — por ejemplo, cuentas separadas para lo
-                          personal y el negocio de un mismo cliente.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
-                          Sí, crear cuenta separada
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                ) : (
-                  <Button type="submit" disabled={pending}>
-                    {pending ? "Guardando fiado..." : "Guardar fiado"}
-                  </Button>
-                )}
-              </DialogFooter>
-            </form>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+        <DialogFooter>
+          {state.duplicate ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button">Crear cuenta separada</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
+                    continúa si esto es a propósito — por ejemplo, cuentas separadas para lo
+                    personal y el negocio de un mismo cliente.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
+                    Sí, crear cuenta separada
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : (
+            <Button type="submit" disabled={pending}>
+              {pending ? "Guardando fiado..." : "Guardar fiado"}
+            </Button>
+          )}
+        </DialogFooter>
+      </form>
+    </>
   );
 }
