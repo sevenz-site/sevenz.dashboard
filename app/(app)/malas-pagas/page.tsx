@@ -28,10 +28,11 @@ export default async function MalasPagasPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Replaces the app header on a phone (see AppHeader), so it carries the
-          same bottom rule. From sm up the real header is back above it and this
-          bar would be a redundant second one. */}
-      <div className="flex items-center border-b pb-3 sm:hidden">
+      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
+          one: flush to the top, edge to edge. The negative margins cancel main's
+          p-4 and px-4 restores the inset for the content itself. Hidden from sm
+          up, where the real header returns. */}
+      <div className="-mx-4 -mt-4 flex items-center border-b px-4 py-3 sm:hidden">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href="/dashboard" aria-label="Volver a Cartera">
             <ChevronLeft className="size-5" />

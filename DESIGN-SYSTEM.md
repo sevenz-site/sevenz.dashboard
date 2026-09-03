@@ -67,8 +67,11 @@ routes; the screen renders the bar.
 
 - **Back is a bare `ChevronLeft`**, never a labelled button. The destination is
   named in `aria-label`, not on screen.
-- It carries the same `border-b` the app header does, so the screen still has a
-  rule under its top bar.
+- It carries the same `border-b` the app header does, and must be **full-bleed**:
+  `main` wraps every page in `p-4`, so without `-mx-4 -mt-4 px-4` the rule stops
+  16px short of both edges and the bar floats below the top — visibly not a
+  header. The negative margins cancel that padding; `px-4` puts the contents
+  back on the page's own inset.
 - `size="icon"` (32px), matching the share and message buttons that sit beside
   it on a client's screen. Below the 44px commonly recommended for touch —
   accepted for consistency within the bar, worth revisiting if it proves fiddly
