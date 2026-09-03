@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Broom, ChevronDown, Eye } from "lucide-react";
+import { Broom, ChevronDown, ChevronRight, Eye, IdCard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -345,7 +345,96 @@ export function ClientTable({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border">
+            {/* Below md the table is stripped to four columns anyway — Puntaje,
+                Último abono and Acciones are md-only — so the same four pieces
+                of data are shown as cards instead, which read far better on a
+                phone than a horizontally scrolling table. md, not sm, so a
+                screen either behaves like a phone or doesn't: the bottom nav
+                switches at exactly the same width. The tour's demo row isn't
+                repeated here — on mobile the tour only runs step 1. */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {pagedRows.map((row) => {
+                const status = getClientStatus(
+                  judgementBalance(row),
+                  row.days_since_payment,
+                  row.oldest_unpaid_charge_at,
+                  row.oldest_unpaid_charge_plazo_dias,
+                );
+                return (
+                  <button
+                    key={row.client_id}
+                    type="button"
+                    onClick={() => {
+                      track("Client Details Opened", { client_id: row.client_id, source });
+                      router.push(`/clients/${row.client_id}`);
+                    }}
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors active:bg-accent"
+                  >
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <p className="text-lg font-semibold">
+                        {row.name}
+                        {row.has_pending_review ? (
+                          <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                            revisar
+                          </Badge>
+                        ) : null}
+                      </p>
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <IdCard className="size-4 shrink-0" aria-hidden="true" />
+                        Cédula / Documento: {formatDocumentId(row.document_id)}
+                      </p>
+                      <div className="flex flex-wrap gap-x-6 gap-y-1">
+                        {rateContext ? (
+                          <>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+                              <ExchangeRateBalanceDisplay
+                                balance={row.balance_usd}
+                                currency="USD"
+                                ledger={ledger}
+                                size="sm"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+                              <ExchangeRateBalanceDisplay
+                                balance={row.balance_eur}
+                                currency="EUR"
+                                ledger={ledger}
+                                size="sm"
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Por cobrar</p>
+                            <ExchangeRateBalanceDisplay
+                              balance={row.balance}
+                              currency={null}
+                              ledger={null}
+                              size="sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                          {CLIENT_STATUS_LABEL[status]}
+                        </Badge>
+                        {row.is_flagged ? (
+                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                            Mala paga
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-lg border md:block">
               <Table>
                 <TableHeader>
                   <TableRow>

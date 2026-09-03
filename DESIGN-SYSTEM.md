@@ -80,6 +80,25 @@ routes; the screen renders the bar.
   share and message. Malas pagas hides it from `sm` up, where the real header
   returns and a lone back button would duplicate the sidebar.
 
+## Lists: cards on a phone, table from md up
+
+A list of records is a **table from `md` (768px) up and cards below it** — the
+same rows, the same filters and sorting above them, switched with CSS.
+
+- `md`, not `sm`, so a screen either behaves like a phone or it doesn't: the
+  bottom nav switches at the same width.
+- The card carries only what the table shows at that width. Before adding a
+  field to a card, check whether the table already hides it above `md` —
+  Puntaje, Último abono and Acciones are `hidden md:table-cell`, so the client
+  card drops nothing a phone ever had.
+- The whole card is one button that opens the record, with a `ChevronRight` on
+  the right to say so. No per-record action buttons: they compete with the
+  tap-anywhere gesture on the smallest screen, and they live on the record's
+  own page.
+- Keep the secondary line under an amount (`Bs. 44.064,64 hoy`). For a
+  Venezuelan owner that is the figure that matters; dropping it to shorten the
+  card puts it one tap away on every row.
+
 ## Buttons
 
 - **Every labelled button is 40px tall** (`h-10`) — `default`, `sm` and `lg`
