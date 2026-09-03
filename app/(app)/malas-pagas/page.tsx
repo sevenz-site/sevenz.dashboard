@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -25,6 +28,16 @@ export default async function MalasPagasPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* Replaces the app header on a phone (see AppHeader), so it carries the
+          same bottom rule. From sm up the real header is back above it and this
+          bar would be a redundant second one. */}
+      <div className="flex items-center border-b pb-3 sm:hidden">
+        <Button variant="ghost" size="icon" asChild className="-ml-2">
+          <Link href="/dashboard" aria-label="Volver a Cartera">
+            <ChevronLeft className="size-5" />
+          </Link>
+        </Button>
+      </div>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
         <p className="text-sm text-muted-foreground">

@@ -16,13 +16,16 @@ import { cn } from "@/lib/utils";
 // Notificaciones are only reachable after going back to Cartera.
 export function AppHeader({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const onClientDetail = pathname.startsWith("/clients/");
+  // Screens that carry their own contextual bar on a phone: a client, and
+  // Malas pagas. Both replace this header below sm rather than stacking a
+  // second bar on top of it.
+  const hasOwnBar = pathname.startsWith("/clients/") || pathname.startsWith("/malas-pagas");
 
   return (
     <header
       className={cn(
         "h-14 shrink-0 items-center gap-2 border-b px-4",
-        onClientDetail ? "hidden sm:flex" : "flex",
+        hasOwnBar ? "hidden sm:flex" : "flex",
       )}
     >
       {children}

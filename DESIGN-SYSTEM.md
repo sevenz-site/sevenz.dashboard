@@ -48,6 +48,35 @@ inconsistent with each other.
 Every card on a screen uses this exact combination, so the rate calculator, the
 balance cards and a client's info block read as one family.
 
+## Contextual bar (phone only)
+
+A screen reached *from* somewhere — a client, Malas pagas — replaces the app
+header below `sm` with its own bar, rather than stacking a second one on a
+screen that can least afford the height. `AppHeader` hides itself on those
+routes; the screen renders the bar.
+
+```tsx
+<div className="flex items-center border-b pb-3 sm:hidden">
+  <Button variant="ghost" size="icon" asChild className="-ml-2">
+    <Link href="/dashboard" aria-label="Volver a Cartera">
+      <ChevronLeft className="size-5" />
+    </Link>
+  </Button>
+</div>
+```
+
+- **Back is a bare `ChevronLeft`**, never a labelled button. The destination is
+  named in `aria-label`, not on screen.
+- It carries the same `border-b` the app header does, so the screen still has a
+  rule under its top bar.
+- `size="icon"` (32px), matching the share and message buttons that sit beside
+  it on a client's screen. Below the 44px commonly recommended for touch —
+  accepted for consistency within the bar, worth revisiting if it proves fiddly
+  on a real phone.
+- The client screen keeps this bar at every width, because it also carries
+  share and message. Malas pagas hides it from `sm` up, where the real header
+  returns and a lone back button would duplicate the sidebar.
+
 ## Buttons
 
 - **Every labelled button is 40px tall** (`h-10`) — `default`, `sm` and `lg`

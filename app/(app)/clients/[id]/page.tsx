@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, IdCard, MapPin, Phone } from "lucide-react";
+import { ChevronLeft, IdCard, MapPin, Phone } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,10 +98,12 @@ export default async function ClientDetailPage({
           carries the same bottom rule the header does. From sm up the real
           header is back above it and the rule would double, hence sm:border-0. */}
       <div className="flex items-center justify-between gap-4 border-b pb-3 sm:border-0 sm:pb-0">
-        <Button variant="ghost" size="sm" asChild className="-ml-2">
-          <Link href="/dashboard">
-            <ArrowLeft className="size-4" />
-            Cartera
+        {/* Icon only. The destination is named by the screen it returns to, and
+            the label lives in aria-label rather than on screen — the bar is
+            the phone's header here, where width is scarcest. */}
+        <Button variant="ghost" size="icon" asChild className="-ml-2">
+          <Link href="/dashboard" aria-label="Volver a Cartera">
+            <ChevronLeft className="size-5" />
           </Link>
         </Button>
         <ShareActions
