@@ -8,11 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { email as emailRule } from "@/lib/form-validation";
 
 const initialState: ForgotPasswordState = { error: null, success: false };
 
 export default function ForgotPasswordPage() {
   const [state, formAction, pending] = useActionState(requestPasswordReset, initialState);
+  const [formRef, setFormRef] = useFormRef();
+  const { errors, validate, recheck } = useFieldErrors({ email: emailRule });
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
@@ -32,10 +36,26 @@ export default function ForgotPasswordPage() {
               contraseña nueva.
             </p>
           ) : (
-            <form action={formAction} className="flex flex-col gap-4">
+            <form
+              ref={setFormRef}
+              action={formAction}
+              onSubmit={(e) => {
+                if (!validate(e.currentTarget)) e.preventDefault();
+              }}
+              className="flex flex-col gap-4"
+            >
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">Correo</Label>
-                <Input id="email" name="email" type="email" autoComplete="email" required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  aria-invalid={Boolean(errors.email)}
+                  onChange={() => recheck("email", formRef.current)}
+                />
+                {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
               </div>
               {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
               <Button type="submit" className="w-full" disabled={pending}>

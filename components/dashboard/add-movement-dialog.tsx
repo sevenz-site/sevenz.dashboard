@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,8 @@ import {
   type OwnerCountry,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -95,7 +97,7 @@ export function AddMovementDialog({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const formRef = useRef<HTMLFormElement>(null);
+  const [formRef, setFormRef] = useFormRef();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
@@ -117,6 +119,27 @@ export function AddMovementDialog({
   const currentDebt = rateContext ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
   const canPay = currentDebt > 0;
   const formattedMaxDebt = rateContext ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+
+  const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
+    // Only a real field when the client has no number on file at all — see
+    // clientWhatsapp above.
+    ...(!clientWhatsapp ? { whatsapp: whatsappRule } : {}),
+    amount: amountRule({
+      max: type === "payment" ? currentDebt : null,
+      maxMessage: `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`,
+    }),
+  });
+
+  // The amount cap depends on type and currency (no cap for a charge,
+  // currentDebt for a payment in whichever currency is selected) — an
+  // effect, not a call inline in the handlers that change either one,
+  // because it needs to run AFTER the render that rebuilds the rule above
+  // with the new type/currentDebt; calling recheck synchronously inside
+  // setType's own handler would still see the previous render's rule.
+  useEffect(() => {
+    recheck("amount", formRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, currentDebt]);
 
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
@@ -212,6 +235,7 @@ export function AddMovementDialog({
       setPhotoPath(null);
       setAmountStr("");
       setPaymentBlocked(false);
+      resetErrors();
     }
   }
 
@@ -264,7 +288,14 @@ export function AddMovementDialog({
           <DialogTitle>Agregar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
-        <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+        <form
+          ref={setFormRef}
+          action={formAction}
+          onSubmit={(e) => {
+            if (!validate(e.currentTarget)) e.preventDefault();
+          }}
+          className="flex flex-col gap-4"
+        >
           <input type="hidden" name="client_id" value={clientId} />
 
           {!clientWhatsapp ? (
@@ -275,7 +306,10 @@ export function AddMovementDialog({
                 name="whatsapp"
                 required
                 preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+                invalid={Boolean(errors.whatsapp)}
+                onValueChange={() => recheck("whatsapp", formRef.current)}
               />
+              {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
             </div>
           ) : null}
 
@@ -317,8 +351,12 @@ export function AddMovementDialog({
               max={type === "payment" ? currentDebt : undefined}
               step="0.01"
               value={amountStr}
-              onChange={(e) => setAmountStr(e.target.value)}
+              onChange={(e) => {
+                setAmountStr(e.target.value);
+                recheck("amount", formRef.current);
+              }}
               required
+              aria-invalid={Boolean(errors.amount)}
             />
             {rateContext ? (
               <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
@@ -328,6 +366,7 @@ export function AddMovementDialog({
                 Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.
               </p>
             ) : null}
+            {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
           </div>
 
           <div className="flex flex-col gap-2">

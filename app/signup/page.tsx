@@ -22,6 +22,8 @@ import { PasswordCriteriaChecklist } from "@/components/password-criteria-checkl
 import { getPasswordCriteria } from "@/lib/password";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { OwnerCountry } from "@/lib/types";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { required, email as emailRule, whatsapp as whatsappRule, confirmPassword } from "@/lib/form-validation";
 
 const initialState: SignupState = { error: null, success: false };
 
@@ -45,6 +47,19 @@ export default function SignupPage() {
   );
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [formRef, setFormRef] = useFormRef();
+  // Password itself isn't in here: the checklist above already shows exactly
+  // what's unmet per-criterion, richer than one general message, and the
+  // submit button stays disabled until it's satisfied — a redundant red
+  // error would just repeat what the checklist already says.
+  const { errors, validate, recheck } = useFieldErrors({
+    business_name: required,
+    first_name: required,
+    last_name: required,
+    whatsapp: whatsappRule,
+    email: emailRule,
+    confirm_password: confirmPassword("password"),
+  });
 
   const passwordMeetsCriteria = getPasswordCriteria(password).every((c) => c.met);
 
@@ -78,7 +93,14 @@ export default function SignupPage() {
           <CardDescription>Empieza a compartir el saldo con tus clientes.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="flex flex-col gap-4">
+          <form
+            ref={setFormRef}
+            action={formAction}
+            onSubmit={(e) => {
+              if (!validate(e.currentTarget)) e.preventDefault();
+            }}
+            className="flex flex-col gap-4"
+          >
             <div className="flex flex-col gap-2">
               <Label htmlFor="business_name">Nombre del negocio</Label>
               <Input
@@ -86,7 +108,12 @@ export default function SignupPage() {
                 name="business_name"
                 defaultValue={state.values?.business_name ?? ""}
                 required
+                aria-invalid={Boolean(errors.business_name)}
+                onChange={() => recheck("business_name", formRef.current)}
               />
+              {errors.business_name ? (
+                <p className="text-xs text-destructive">{errors.business_name}</p>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
@@ -97,7 +124,12 @@ export default function SignupPage() {
                   autoComplete="given-name"
                   defaultValue={state.values?.first_name ?? ""}
                   required
+                  aria-invalid={Boolean(errors.first_name)}
+                  onChange={() => recheck("first_name", formRef.current)}
                 />
+                {errors.first_name ? (
+                  <p className="text-xs text-destructive">{errors.first_name}</p>
+                ) : null}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="last_name">Apellido</Label>
@@ -107,7 +139,12 @@ export default function SignupPage() {
                   autoComplete="family-name"
                   defaultValue={state.values?.last_name ?? ""}
                   required
+                  aria-invalid={Boolean(errors.last_name)}
+                  onChange={() => recheck("last_name", formRef.current)}
                 />
+                {errors.last_name ? (
+                  <p className="text-xs text-destructive">{errors.last_name}</p>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -137,7 +174,10 @@ export default function SignupPage() {
                 required
                 defaultValue={state.values?.whatsapp}
                 preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
+                invalid={Boolean(errors.whatsapp)}
+                onValueChange={() => recheck("whatsapp", formRef.current)}
               />
+              {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
@@ -148,7 +188,10 @@ export default function SignupPage() {
                 autoComplete="email"
                 defaultValue={state.values?.email ?? ""}
                 required
+                aria-invalid={Boolean(errors.email)}
+                onChange={() => recheck("email", formRef.current)}
               />
+              {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">Contraseña</Label>
@@ -158,7 +201,13 @@ export default function SignupPage() {
                 autoComplete="new-password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  // A confirm error is "doesn't match password" — it can go
+                  // stale the moment password itself changes, not just when
+                  // confirm_password does.
+                  recheck("confirm_password", formRef.current);
+                }}
                 aria-describedby="password-criteria"
               />
               <PasswordCriteriaChecklist id="password-criteria" password={password} />
@@ -170,7 +219,12 @@ export default function SignupPage() {
                 name="confirm_password"
                 autoComplete="new-password"
                 required
+                aria-invalid={Boolean(errors.confirm_password)}
+                onChange={() => recheck("confirm_password", formRef.current)}
               />
+              {errors.confirm_password ? (
+                <p className="text-xs text-destructive">{errors.confirm_password}</p>
+              ) : null}
             </div>
             <div className="flex items-start gap-2">
               <Checkbox

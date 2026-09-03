@@ -20,6 +20,8 @@ import { updateClient, type EditClientState } from "@/app/(app)/clients/[id]/act
 import { WhatsappInput } from "@/components/whatsapp-input";
 import type { Client, OwnerCountry } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
 
 const initialState: EditClientState = { error: null, success: false };
 
@@ -38,6 +40,12 @@ export function EditClientDialog({
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(updateClient, initialState);
   const [handledState, setHandledState] = useState(state);
+  const [formRef, setFormRef] = useFormRef();
+  const { errors, validate, recheck, reset } = useFieldErrors({
+    name: required,
+    whatsapp: whatsappRule,
+    document_id: required,
+  });
 
   if (state !== handledState && state.success) {
     setHandledState(state);
@@ -53,7 +61,16 @@ export function EditClientDialog({
   }, [state, pending, router]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Radix doesn't guarantee this content unmounts on close, so without
+        // this a validation error from a previous open could still be
+        // showing red the next time this dialog opens.
+        if (!next) reset();
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <Pencil className="size-4" />
@@ -65,12 +82,27 @@ export function EditClientDialog({
           <DialogTitle>Editar cliente</DialogTitle>
           <DialogDescription>Actualiza los datos de contacto.</DialogDescription>
         </DialogHeader>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form
+          ref={setFormRef}
+          action={formAction}
+          onSubmit={(e) => {
+            if (!validate(e.currentTarget)) e.preventDefault();
+          }}
+          className="flex flex-col gap-4"
+        >
           <input type="hidden" name="client_id" value={client.id} />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_name">Nombre del cliente</Label>
-            <Input id="edit_name" name="name" defaultValue={client.name} required />
+            <Input
+              id="edit_name"
+              name="name"
+              defaultValue={client.name}
+              required
+              aria-invalid={Boolean(errors.name)}
+              onChange={() => recheck("name", formRef.current)}
+            />
+            {errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_whatsapp">WhatsApp</Label>
@@ -80,7 +112,10 @@ export function EditClientDialog({
               defaultValue={client.whatsapp}
               required
               preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+              invalid={Boolean(errors.whatsapp)}
+              onValueChange={() => recheck("whatsapp", formRef.current)}
             />
+            {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_document_id">Cédula/documento</Label>
@@ -89,7 +124,12 @@ export function EditClientDialog({
               name="document_id"
               defaultValue={client.document_id ?? ""}
               required
+              aria-invalid={Boolean(errors.document_id)}
+              onChange={() => recheck("document_id", formRef.current)}
             />
+            {errors.document_id ? (
+              <p className="text-xs text-destructive">{errors.document_id}</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_address">Dirección (opcional)</Label>

@@ -42,6 +42,8 @@ import {
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -231,7 +233,7 @@ function ClientSearchDialogBody({
   onDone: () => void;
 }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
+  const [formRef, setFormRef] = useFormRef();
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
   const [nameValue, setNameValue] = useState("");
@@ -246,6 +248,12 @@ function ClientSearchDialogBody({
   const [descriptionValue, setDescriptionValue] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
+  const { errors, validate, recheck } = useFieldErrors({
+    new_client_name: required,
+    whatsapp: whatsappRule,
+    document_id: required,
+    amount: amountRule(),
+  });
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -301,6 +309,7 @@ function ClientSearchDialogBody({
   // appeared) is what makes a resubmit pick up anything edited since.
   function confirmDuplicateAndSubmit() {
     if (!formRef.current) return;
+    if (!validate(formRef.current)) return;
     const data = new FormData(formRef.current);
     data.set("confirm_duplicate", "true");
     formAction(data);
@@ -374,7 +383,14 @@ function ClientSearchDialogBody({
           Negocio: {businessName} · queda con el primer movimiento registrado.
         </DialogDescription>
       </DialogHeader>
-      <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+      <form
+        ref={setFormRef}
+        action={formAction}
+        onSubmit={(e) => {
+          if (!validate(e.currentTarget)) e.preventDefault();
+        }}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="confirm_duplicate" defaultValue="false" />
         <div className="flex flex-col gap-2">
           <Label htmlFor="new_client_name">Nombre del cliente</Label>
@@ -382,9 +398,16 @@ function ClientSearchDialogBody({
             id="new_client_name"
             name="new_client_name"
             value={nameValue}
-            onChange={(e) => setNameValue(e.target.value)}
+            onChange={(e) => {
+              setNameValue(e.target.value);
+              recheck("new_client_name", formRef.current);
+            }}
             required
+            aria-invalid={Boolean(errors.new_client_name)}
           />
+          {errors.new_client_name ? (
+            <p className="text-xs text-destructive">{errors.new_client_name}</p>
+          ) : null}
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="whatsapp">WhatsApp</Label>
@@ -393,7 +416,10 @@ function ClientSearchDialogBody({
             name="whatsapp"
             required
             preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+            invalid={Boolean(errors.whatsapp)}
+            onValueChange={() => recheck("whatsapp", formRef.current)}
           />
+          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="document_id">Cédula/documento</Label>
@@ -401,9 +427,16 @@ function ClientSearchDialogBody({
             id="document_id"
             name="document_id"
             value={documentIdValue}
-            onChange={(e) => setDocumentIdValue(e.target.value)}
+            onChange={(e) => {
+              setDocumentIdValue(e.target.value);
+              recheck("document_id", formRef.current);
+            }}
             required
+            aria-invalid={Boolean(errors.document_id)}
           />
+          {errors.document_id ? (
+            <p className="text-xs text-destructive">{errors.document_id}</p>
+          ) : null}
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="address">Dirección (opcional)</Label>
@@ -437,12 +470,17 @@ function ClientSearchDialogBody({
             min="0"
             step="0.01"
             value={amountStr}
-            onChange={(e) => setAmountStr(e.target.value)}
+            onChange={(e) => {
+              setAmountStr(e.target.value);
+              recheck("amount", formRef.current);
+            }}
             required
+            aria-invalid={Boolean(errors.amount)}
           />
           {rateContext ? (
             <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
           ) : null}
+          {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
         </div>
 
         <div className="flex flex-col gap-2">

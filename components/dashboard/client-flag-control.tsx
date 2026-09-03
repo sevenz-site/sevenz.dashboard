@@ -26,6 +26,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { flagClient, unflagClient, type FlagClientState } from "@/app/(app)/clients/[id]/actions";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { required } from "@/lib/form-validation";
 
 const initialState: FlagClientState = { error: null, success: false };
 
@@ -44,6 +46,8 @@ export function ClientFlagControl({
   const [confirmUnmarkOpen, setConfirmUnmarkOpen] = useState(false);
   const [state, formAction, pending] = useActionState(flagClient, initialState);
   const [unflagging, setUnflagging] = useState(false);
+  const [formRef, setFormRef] = useFormRef();
+  const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({ reason: required });
 
   const [handledState, setHandledState] = useState(state);
   if (state !== handledState && state.success) {
@@ -86,7 +90,16 @@ export function ClientFlagControl({
         </Label>
       </div>
 
-      <Dialog open={markOpen} onOpenChange={setMarkOpen}>
+      <Dialog
+        open={markOpen}
+        onOpenChange={(next) => {
+          setMarkOpen(next);
+          // Radix doesn't guarantee this content unmounts on close, so
+          // without this a validation error from a previous open could
+          // still be showing red the next time this dialog opens.
+          if (!next) resetErrors();
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Marcar a {clientName} como mala paga</DialogTitle>
@@ -95,11 +108,26 @@ export function ClientFlagControl({
               quites la marca.
             </DialogDescription>
           </DialogHeader>
-          <form action={formAction} className="flex flex-col gap-4">
+          <form
+            ref={setFormRef}
+            action={formAction}
+            onSubmit={(e) => {
+              if (!validate(e.currentTarget)) e.preventDefault();
+            }}
+            className="flex flex-col gap-4"
+          >
             <input type="hidden" name="client_id" value={clientId} />
             <div className="flex flex-col gap-2">
               <Label htmlFor="reason">Motivo</Label>
-              <Textarea id="reason" name="reason" required placeholder="¿Por qué ya no le vas a fiar?" />
+              <Textarea
+                id="reason"
+                name="reason"
+                required
+                placeholder="¿Por qué ya no le vas a fiar?"
+                aria-invalid={Boolean(errors.reason)}
+                onChange={() => recheck("reason", formRef.current)}
+              />
+              {errors.reason ? <p className="text-xs text-destructive">{errors.reason}</p> : null}
             </div>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             <DialogFooter>
