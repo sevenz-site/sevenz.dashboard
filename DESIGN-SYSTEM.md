@@ -27,6 +27,18 @@ stating, not an accident.
   movimientos" means a list of movements; a list of clients is "Clientes". The
   same name must not label two different screens.
 
+**Two heading levels, and only two.**
+
+| Level | Style | What it is |
+|---|---|---|
+| `h1` | `text-2xl font-semibold` | The screen's own name — "Malas pagas", or the client's name. Cartera uses the greeting in this slot. One per screen, at most. |
+| `h2` | `text-xl font-semibold` + 20px above | A section within the screen — "Cartera pendiente", "Clientes", "Puntaje de crédito". |
+
+A screen with a single block of content still gets its `h2` if that block is a
+distinct thing — "Malas pagas" names the screen, "Clientes" names the list on
+it. Skipping it because there is only one section is how screens end up
+inconsistent with each other.
+
 **Content inside a section goes in an outlined card.**
 
 ```tsx

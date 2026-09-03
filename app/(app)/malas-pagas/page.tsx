@@ -31,6 +31,9 @@ export default async function MalasPagasPage() {
           Clientes marcados como mala paga — no aparecen en la Cartera principal.
         </p>
       </div>
+      {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
+          16px gap), text-xl, and named for what is actually underneath it. */}
+      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
       <ClientTable
         rows={rows}
         scores={scores}
