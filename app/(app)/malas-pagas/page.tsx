@@ -3,9 +3,11 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import type { ClientSummary } from "@/lib/types";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function MalasPagasPage() {
   const supabase = await createClient();
@@ -13,15 +15,32 @@ export default async function MalasPagasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, ownerRate] = await Promise.all([
+  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
       .eq("owner_id", user!.id)
       .eq("is_flagged", true)
       .order("days_since_payment", { ascending: false }),
+    supabase
+      .from("clients")
+      .select("id, name, document_id")
+      .eq("owner_id", user!.id)
+      .order("name"),
+    supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
+
+  // Same fallback as Cartera: every real owner has a country from signup, so
+  // this only covers a row that somehow predates it.
+  const ownerCountry = (owner?.country as OwnerCountry | undefined) ?? "CO";
+  const rateContext: MovementRateContext | null = ownerRate
+    ? {
+        rateMode: ownerRate.rateMode,
+        effectiveRate: ownerRate.effectiveRate,
+        officialRateUsd: ownerRate.officialRate.usd,
+      }
+    : null;
 
   const rows = (summaries ?? []) as ClientSummary[];
   const scores = await computeCreditScoresForClients(supabase, rows, ownerRate?.effectiveRate ?? null);
@@ -39,11 +58,25 @@ export default async function MalasPagasPage() {
           </Link>
         </Button>
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
-        <p className="text-sm text-muted-foreground">
-          Clientes marcados como mala paga — no aparecen en la Cartera principal.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
+          <p className="text-sm text-muted-foreground">
+            Clientes marcados como mala paga — no aparecen en la Cartera principal.
+          </p>
+        </div>
+        {/* Desktop only, same as Cartera: the phone keeps this action in the
+            bottom bar's "Agregar" instead, which is why there is no sm:hidden
+            counterpart of this trigger the way Cartera has one. */}
+        <div className="hidden sm:block">
+          <ClientSearchDialog
+            clients={clients ?? []}
+            ownerId={user!.id}
+            businessName={owner?.business_name || user!.email || "tu negocio"}
+            ownerCountry={ownerCountry}
+            rateContext={rateContext}
+          />
+        </div>
       </div>
       {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
           16px gap), text-xl, and named for what is actually underneath it. */}
