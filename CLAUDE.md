@@ -64,6 +64,72 @@ on conflict (id) do update set
 Then recreate every policy on `storage.objects` for that bucket — they're
 ordinary Postgres policies, droppable/creatable like any other.
 
+## Deploy order, and keeping `dev` and `main` identical
+
+`dev` is where work happens; `main` is production — pushing to it deploys.
+Every deploy follows the same four steps, in this order, and step 4 is not
+optional bookkeeping: skipping it is what makes step 2 stop working.
+
+**1. Migrations into production first, code second.** Always. The code is
+written against the new schema, so shipping it first means every request
+hitting the changed function fails. On 2026-09-04, `app/s/[token]/page.tsx`
+started passing `p_limit` to `get_shared_balance`; deploying that before
+migration 036 would have made *every* share link 404 — Venezuelan as well as
+Colombian — instead of fixing the Colombian ones. The reverse order degrades
+gracefully instead: the old code's one-argument call still resolved against
+the new function and simply defaulted. Prefer the order whose failure mode is
+"slightly reduced" over the one whose failure mode is "everyone is down."
+
+**2. Before merging, check for divergence.** Run:
+
+```sh
+git diff origin/dev...origin/main
+```
+
+Empty means `main` holds no code `dev` lacks, and the merge is safe. **Any
+output means stop** — production contains something `dev` doesn't (typically
+a hotfix applied straight to `main`), and merging `dev` over it would silently
+revert that work. A successful-looking deploy that quietly reinstates a fixed
+bug is the failure this check exists to prevent.
+
+Do not substitute `git log origin/dev..origin/main` for this. Counting commits
+is not the same question. On 2026-09-04 that log showed 6 commits on `main`
+missing from `dev` — which looked alarming and was nothing: all six were
+`Merge dev:` commits, the receipts `main` writes each time it takes work from
+`dev`, and `dev` never receives back. The file diff was empty. **Commit counts
+mislead; the file diff decides.**
+
+**3. Merge with `--no-ff`** so `git log --first-parent origin/main` stays a
+clean list of production versions, one line per deploy. That list is the
+rollback menu.
+
+**4. Merge `main` back into `dev` immediately after deploying**, so the two
+branches are identical again. This changes no code — it only carries the merge
+receipt across — and it's what keeps step 2's check meaningful. Without it the
+gap grows by one every release, until "6 commits on main" is background noise
+nobody reads, and a real hotfix eventually gets overwritten unnoticed.
+
+### The one exception: never back-merge a revert on autopilot
+
+If production is ever rolled back by **reverting on `main`** (not a Vercel
+rollback — see below), stop before step 4 and ask the user what `dev` should
+do with it. A revert merged into `dev` removes the feature *there* too, and
+because the revert stays in history, rebuilding on top can have a later merge
+strip it out again. This is the one case where the routine is wrong.
+
+### Rolling back
+
+Reach for **Vercel first**: promote the previous deployment in the dashboard.
+It takes seconds, needs no rebuild, and touches no git history — so nothing
+propagates anywhere and step 4 stays safe. Then reconcile git deliberately
+(revert or fix forward), because until you do, `main` still claims the broken
+version is current and the next push redeploys it.
+
+**Roll back code, keep migrations applied.** Migrations are written so the
+previous code still works against them (see step 1). Undoing the database as
+well reintroduces whatever the migration fixed — on 2026-09-04 that would have
+restored the Colombian 404.
+
 ## Record every dev SQL change in the migration ledger
 
 `public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)
