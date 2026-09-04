@@ -1,14 +1,41 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { ChartColumn, Eye, EyeOff } from "lucide-react";
 import { HideableBalance } from "@/components/dashboard/hideable-balance";
-import { WeeklyLendingChart } from "@/components/dashboard/lending-bar-chart";
 import { useHiddenBalances } from "@/hooks/use-hidden-balances";
 import { cn } from "@/lib/utils";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { WeeklyLendingPoint } from "@/lib/lending-charts";
 import type { LedgerCurrency } from "@/lib/types";
+
+// The charting library is 368 KB — the second largest thing the app ships —
+// and this chart starts closed, so most owners never see it. Loading it on
+// demand keeps that weight off every Cartera load instead of spending it on
+// a phone that may never open a chart. Same pattern the rate calculator's
+// history table already uses.
+//
+// The placeholder mirrors the real chart's box rather than declaring a height
+// of its own, so opening a chart on a phone doesn't shove the rest of the page
+// down and then yank it back once the library arrives. It has to be built from
+// the same parts — same outer classes, a title-sized line, a 180px plot area —
+// because a plain height on this box does nothing: flex-1 in the card's column
+// resolves to flex-basis 0 and wins over it. An earlier version set
+// style={{height: 250}} and still collapsed to 41px, jumping 208px at 375px
+// wide the moment recharts landed.
+const WeeklyLendingChart = dynamic(
+  () => import("@/components/dashboard/lending-bar-chart").then((m) => m.WeeklyLendingChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-w-64 flex-1 flex-col gap-2 rounded-lg border p-4">
+        <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+        <div className="h-[180px] w-full animate-pulse rounded bg-muted/50" />
+      </div>
+    ),
+  },
+);
 
 // One "Capital por cobrar" figure as an outlined card, matching the rate
 // calculator's card so the whole section reads as one family. Both controls

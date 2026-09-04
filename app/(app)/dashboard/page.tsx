@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
-import { computeWeeklyFiadoAbono } from "@/lib/lending-charts";
+import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
@@ -69,6 +69,11 @@ export default async function DashboardPage({
   // within one currency — a VE owner sees one chart per currency (each
   // filtered to its own movements, no conversion) instead of one mixed total.
   const clientIds = (clients ?? []).map((c) => c.id);
+  // Only the window the chart actually draws. This query used to have no date
+  // filter at all: it pulled every movement the shop had ever recorded — 411 ms
+  // and climbing forever on a 10,560-movement shop — to render a rolling 7-day
+  // chart.
+  const chartWindowStart = chartFetchWindowStart();
   const { data: weeklyMovements } =
     clientIds.length > 0
       ? await supabase
@@ -76,6 +81,7 @@ export default async function DashboardPage({
           .select("type, amount, currency, created_at")
           .in("client_id", clientIds)
           .is("deleted_at", null)
+          .gte("created_at", chartWindowStart)
       : { data: [] };
   const weeklyMovementRows = (weeklyMovements ?? []) as {
     type: "charge" | "payment";

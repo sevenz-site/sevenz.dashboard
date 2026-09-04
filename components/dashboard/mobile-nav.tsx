@@ -8,6 +8,7 @@ import { useTour } from "@/components/dashboard/tour-context";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
+import { BADGE_MAX } from "@/lib/types";
 
 // The three places the bar navigates to, in order, before Agregar. Exact
 // pathname matching, not startsWith: a client's own screen replaces this
@@ -241,7 +242,7 @@ export function MobileNav() {
                 {glyph(item.href, item.icon)}
                 {item.href === "/notificaciones" && unreadCount > 0 ? (
                   <span className="absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
-                    {unreadCount > 9 ? "9+" : unreadCount}
+                    {unreadCount > BADGE_MAX ? `${BADGE_MAX}+` : unreadCount}
                   </span>
                 ) : null}
               </span>

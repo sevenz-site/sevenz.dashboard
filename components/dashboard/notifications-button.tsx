@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { NotificationList } from "@/components/dashboard/notification-list";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { getNotifications, type NotificationItem } from "@/app/(app)/actions";
+import { BADGE_MAX } from "@/lib/types";
 
 // Desktop only — a phone reaches the same notifications through the bottom
 // bar and the /notificaciones page instead, where a popover anchored to a
@@ -43,7 +44,7 @@ export function NotificationsButton() {
           Notificaciones
           {unreadCount > 0 ? (
             <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {unreadCount > BADGE_MAX ? `${BADGE_MAX}+` : unreadCount}
             </span>
           ) : null}
         </Button>

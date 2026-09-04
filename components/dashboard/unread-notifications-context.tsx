@@ -3,7 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
 
-const UNREAD_POLL_MS = 20_000;
+// 60s, not 20s. This fires in every open tab for as long as it stays open, so
+// it's the one request whose volume tracks how many owners have the app open
+// rather than what any of them are doing: at 1,000 open tabs, 20s meant 50
+// polls a second before anyone had registered a single fiado. A notification
+// badge does not need 20-second freshness.
+const UNREAD_POLL_MS = 60_000;
 
 type UnreadNotificationsValue = {
   unreadCount: number;
@@ -39,16 +44,31 @@ export function UnreadNotificationsProvider({
 
   useEffect(() => {
     let cancelled = false;
+
     async function refresh() {
+      // Nothing to update while nobody can see the badge. On a phone this is
+      // most of the time: switching apps or locking the screen hides the tab,
+      // and iOS keeps that tab alive in the background — without this check a
+      // phone in someone's pocket keeps polling all day.
+      if (document.visibilityState === "hidden") return;
       const startedAt = generationRef.current;
       const count = await getUnreadNotificationCount();
       if (!cancelled && generationRef.current === startedAt) setUnreadCount(count);
     }
+
+    // Coming back to the tab is exactly when a stale badge is most visible, so
+    // catch up immediately rather than waiting out the rest of the interval.
+    function onVisible() {
+      if (document.visibilityState === "visible") refresh();
+    }
+
     refresh();
     const interval = setInterval(refresh, UNREAD_POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
