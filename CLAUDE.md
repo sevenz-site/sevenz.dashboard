@@ -160,6 +160,17 @@ skill's own final report (see its section 7), to any security-audit pass
 (e.g. the 2026-08-28 audit), and to any live verification of a new
 feature (build checks, browser testing, etc.) — not just pre-launch runs.
 
+## Follow the UI rules in DESIGN-SYSTEM.md
+
+Any new screen, dialog or form follows `DESIGN-SYSTEM.md` at the repo root:
+section titles, card styling, button heights, number and date formatting,
+responsive breakpoints, and the specific traps that have already cost this
+codebase real bugs (flex/hidden conflicts, unbounded popovers, Radix leaving
+dialogs mounted, duplicate tour markers).
+
+Read it before writing UI, and update it when a new rule is established —
+it exists so the next screen doesn't have to rediscover the same failures.
+
 ## Every requirement must account for iPhone
 
 Sevenz owners work from their phones, and a large share of those are

@@ -37,6 +37,18 @@ const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: st
   },
 };
 
+// On mobile the first step points at the bottom bar's "Agregar", which is the
+// button that exists there — the page CTA is further down and may be off
+// screen. Resolved per render rather than baked into STEP_CONTENT because
+// rotating an iPhone crosses the breakpoint mid-tour: landscape is 812px wide
+// and gets the desktop layout, so the target has to be able to change.
+// querySelector returns whichever element matches first in the DOM, so the two
+// buttons carry different markers and are chosen explicitly here.
+function selectorForStep(step: TourStep, isMobile: boolean): string {
+  if (step === 1 && isMobile) return '[data-tour="new-client-button-mobile"]';
+  return STEP_CONTENT[step].selector;
+}
+
 type TooltipPos = { top: number; left: number };
 
 const HIGHLIGHT_CLASSES = ["ring-2", "ring-primary", "ring-offset-2", "rounded-md", "relative", "z-50"];
@@ -76,7 +88,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
       return;
     }
 
-    const { selector } = STEP_CONTENT[step];
+    const selector = selectorForStep(step, isMobile);
 
     function measure() {
       clearHighlight();
@@ -107,7 +119,10 @@ export function TourProvider({ active, children }: { active: boolean; children: 
       window.removeEventListener("scroll", measure, true);
       clearHighlight();
     };
-  }, [step, showing]);
+    // isMobile belongs here: crossing the breakpoint (an iPhone rotating to
+    // landscape) changes which element step 1 points at, and without it the
+    // tour would keep highlighting a target that is no longer on screen.
+  }, [step, showing, isMobile]);
 
   // Tapping anything that isn't the tooltip itself or the element it's
   // pointing at hides the tooltip without ending the tour — the tap still

@@ -14,6 +14,7 @@ export function ExchangeRateBalanceDisplay({
   size = "lg",
   mainClassName,
   align = "start",
+  showSecondary = true,
 }: {
   balance: number;
   currency: LedgerCurrency | null;
@@ -24,6 +25,11 @@ export function ExchangeRateBalanceDisplay({
   mainClassName?: string;
   // The client detail page's desktop layout right-aligns this whole block.
   align?: "start" | "end";
+  // Drops the "Bs. X hoy" line while keeping the primary amount formatted in
+  // its own currency. Passing ledger={null} would also hide it, but would
+  // silently reformat a USD figure with the COP formatter — a money-display
+  // bug, not a styling choice.
+  showSecondary?: boolean;
 }) {
   const mainClass = cn(
     size === "lg" ? "text-2xl font-semibold tabular-nums" : "text-lg font-semibold tabular-nums",
@@ -31,7 +37,7 @@ export function ExchangeRateBalanceDisplay({
   );
   const { primary, secondary } = formatLedgerAmount(balance, currency, ledger);
 
-  if (!ledger || !currency) {
+  if (!ledger || !currency || !showSecondary) {
     return <p className={mainClass}>{primary}</p>;
   }
 

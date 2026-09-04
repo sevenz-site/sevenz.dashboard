@@ -41,7 +41,19 @@ export function CountryCodeSelect({
           <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-0">
+      {/* With the keyboard open, Radix often has to flip this above the
+          trigger instead of below it — and without a size cap it renders at
+          its natural height (CommandList's own max-h-72) regardless of
+          whether that fits the shrunk space above, pushing the top of the
+          list past the visible viewport. Bounding to what Radix reports as
+          actually available and letting it scroll keeps the whole panel,
+          search input included, on screen. Same fix as the rate calculator
+          popover in exchange-rate-strip.tsx. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={16}
+        className="max-h-[var(--radix-popover-content-available-height)] w-64 overflow-y-auto p-0"
+      >
         <Command>
           <CommandInput placeholder="Buscar país..." />
           <CommandList>

@@ -22,6 +22,8 @@ import { updateBusinessSettings, type ProfileState } from "@/app/(app)/profile/a
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import type { Owner } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
 
 const initialState: ProfileState = { error: null, success: false };
 
@@ -33,7 +35,7 @@ export function BusinessSettingsForm({
   logoUrl: string | null;
 }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
+  const [formRef, setFormRef] = useFormRef();
   const [logoPath, setLogoPath] = useState<string | null>(owner.logo_path);
   // País and the exchange-rate mode aren't user-editable — see the note
   // by the "País" field below — so these never change after mount.
@@ -42,12 +44,22 @@ export function BusinessSettingsForm({
   const [isDirty, setIsDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { errors, validate, recheck } = useFieldErrors({
+    business_name: required,
+    first_name: required,
+    last_name: required,
+    whatsapp: whatsappRule,
+  });
 
   // Shared by both save paths: the button's own submit and "Guardar y salir"
   // from the unsaved-changes dialog. Calls the server action directly (not
-  // through useActionState) so both callers can await the same result.
+  // through useActionState) so both callers can await the same result. The
+  // validate() call here (rather than only in handleSubmit) is what makes
+  // "Guardar y salir" from the unsaved-changes dialog check these same
+  // fields too, instead of only the button's own click.
   async function saveNow(): Promise<boolean> {
     if (!formRef.current) return false;
+    if (!validate(formRef.current)) return false;
     const formData = new FormData(formRef.current);
     const result = await updateBusinessSettings(initialState, formData);
     if (result.error) {
@@ -142,7 +154,7 @@ export function BusinessSettingsForm({
   }, [isDirty, guard]);
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onChange={markDirty} className="flex max-w-lg flex-col gap-8">
+    <form ref={setFormRef} onSubmit={handleSubmit} onChange={markDirty} className="flex max-w-lg flex-col gap-8">
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-muted-foreground">Datos del negocio</h2>
 
@@ -158,17 +170,43 @@ export function BusinessSettingsForm({
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="business_name">Nombre del negocio</Label>
-          <Input id="business_name" name="business_name" defaultValue={owner.business_name} required />
+          <Input
+            id="business_name"
+            name="business_name"
+            defaultValue={owner.business_name}
+            required
+            aria-invalid={Boolean(errors.business_name)}
+            onChange={() => recheck("business_name", formRef.current)}
+          />
+          {errors.business_name ? (
+            <p className="text-xs text-destructive">{errors.business_name}</p>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-2">
             <Label htmlFor="first_name">Nombre</Label>
-            <Input id="first_name" name="first_name" defaultValue={owner.first_name ?? ""} required />
+            <Input
+              id="first_name"
+              name="first_name"
+              defaultValue={owner.first_name ?? ""}
+              required
+              aria-invalid={Boolean(errors.first_name)}
+              onChange={() => recheck("first_name", formRef.current)}
+            />
+            {errors.first_name ? <p className="text-xs text-destructive">{errors.first_name}</p> : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="last_name">Apellido</Label>
-            <Input id="last_name" name="last_name" defaultValue={owner.last_name ?? ""} required />
+            <Input
+              id="last_name"
+              name="last_name"
+              defaultValue={owner.last_name ?? ""}
+              required
+              aria-invalid={Boolean(errors.last_name)}
+              onChange={() => recheck("last_name", formRef.current)}
+            />
+            {errors.last_name ? <p className="text-xs text-destructive">{errors.last_name}</p> : null}
           </div>
         </div>
 
@@ -180,7 +218,10 @@ export function BusinessSettingsForm({
             defaultValue={owner.whatsapp}
             required
             preferredDialCode={OWNER_COUNTRY_DIAL_CODE[owner.country]}
+            invalid={Boolean(errors.whatsapp)}
+            onValueChange={() => recheck("whatsapp", formRef.current)}
           />
+          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
         </div>
 
         <div className="flex flex-col gap-2">

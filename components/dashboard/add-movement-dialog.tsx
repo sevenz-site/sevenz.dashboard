@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,8 @@ import {
   type OwnerCountry,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -57,6 +59,8 @@ export function AddMovementDialog({
   currentDebtEur,
   isFlagged,
   triggerClassName,
+  autoOpen,
+  hideTriggers,
   rateContext,
 }: {
   clientId: string;
@@ -78,12 +82,22 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
+  // Which movement the mobile bar asked for while the owner is looking at
+  // this client. Only ever passed to the mobile instance of this dialog —
+  // the page renders a second one for the sm+ layout, and both receiving it
+  // would open two stacked dialogs.
+  autoOpen?: "charge" | "payment";
+  // The mobile bar now carries "Agregar fiado" / "Agregar abono" itself, so
+  // the in-page pair would be the same two actions twice on one screen. The
+  // dialog still has to mount to be opened by the bar — only its triggers go.
+  hideTriggers?: boolean;
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
 }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
+  const pathname = usePathname();
+  const [formRef, setFormRef] = useFormRef();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
@@ -105,6 +119,27 @@ export function AddMovementDialog({
   const currentDebt = rateContext ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
   const canPay = currentDebt > 0;
   const formattedMaxDebt = rateContext ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+
+  const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
+    // Only a real field when the client has no number on file at all — see
+    // clientWhatsapp above.
+    ...(!clientWhatsapp ? { whatsapp: whatsappRule } : {}),
+    amount: amountRule({
+      max: type === "payment" ? currentDebt : null,
+      maxMessage: `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`,
+    }),
+  });
+
+  // The amount cap depends on type and currency (no cap for a charge,
+  // currentDebt for a payment in whichever currency is selected) — an
+  // effect, not a call inline in the handlers that change either one,
+  // because it needs to run AFTER the render that rebuilds the rule above
+  // with the new type/currentDebt; calling recheck synchronously inside
+  // setType's own handler would still see the previous render's rule.
+  useEffect(() => {
+    recheck("amount", formRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, currentDebt]);
 
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
@@ -156,12 +191,51 @@ export function AddMovementDialog({
     setPaymentBlocked(false);
   }
 
+  // Opens on each false -> true transition of autoOpen, seeded false so that
+  // arriving with the marker already in the address counts as a transition in
+  // its own right — the same pattern client-search-dialog.tsx uses, and for
+  // the same reason: a one-shot latch fires once and never again, and seeding
+  // from the prop means a fresh mount carrying the marker never opens at all.
+  const wantsOpen = autoOpen === "charge" || autoOpen === "payment";
+  const [prevAutoOpen, setPrevAutoOpen] = useState(false);
+  if (wantsOpen !== prevAutoOpen) {
+    setPrevAutoOpen(wantsOpen);
+    if (wantsOpen) {
+      // Always set explicitly, never inherited. Closing this dialog does NOT
+      // reset `type`, so an owner whose last action was "Agregar abono" would
+      // find the bar opening on Abono — registering a payment when a charge was
+      // meant is a money error, not a navigation one.
+      if (autoOpen === "payment" && canPayAny) {
+        // Mirrors openForPayment(): land on a currency that actually has debt,
+        // or the guard further down would bounce this straight back to charge.
+        if (rateContext) {
+          if (currentDebtUsd > 0) setCurrency("USD");
+          else if (currentDebtEur > 0) setCurrency("EUR");
+        }
+        setType("payment");
+        setPaymentBlocked(false);
+      } else if (autoOpen === "payment") {
+        // Abono asked for on a client who owes nothing. The bar can't know the
+        // balance, so it always offers the button and this is where the answer
+        // comes: open on charge and show the same explanation the in-dialog
+        // radio gives, rather than silently substituting a different action.
+        setType("charge");
+        setPaymentBlocked(true);
+      } else {
+        setType("charge");
+        setPaymentBlocked(false);
+      }
+      setOpen(true);
+    }
+  }
+
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (!open) {
       setPhotoPath(null);
       setAmountStr("");
       setPaymentBlocked(false);
+      resetErrors();
     }
   }
 
@@ -170,6 +244,16 @@ export function AddMovementDialog({
     setHandledState(state);
     setOpen(false);
   }
+
+  // Clears the marker only once the dialog is CLOSED, and through the router
+  // rather than history.replaceState — replaceState moves the address bar
+  // behind Next's back, leaving the router believing it is still on the marked
+  // URL, so the next tap navigates to where it thinks it already is and
+  // nothing opens. Leaving the marker instead makes a refresh reopen the
+  // dialog on its own.
+  useEffect(() => {
+    if (wantsOpen && !open) router.replace(pathname, { scroll: false });
+  }, [wantsOpen, open, router, pathname]);
 
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
@@ -183,23 +267,35 @@ export function AddMovementDialog({
 
   return (
     <>
-      <div className={cn("flex gap-2", triggerClassName)}>
-        <Button size="sm" className="flex-1" onClick={openForCharge}>
-          <Plus className="size-4" />
-          Agregar fiado
-        </Button>
-        <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
-          <Plus className="size-4" />
-          Agregar abono
-        </Button>
-      </div>
+      {/* Not hidden with a class: "flex" and "hidden" in one list is a CSS
+          conflict resolved by stylesheet order, not class order, so it is not
+          reliably one or the other. Rendered or not rendered instead. */}
+      {hideTriggers ? null : (
+        <div className={cn("flex gap-2", triggerClassName)}>
+          <Button size="sm" className="flex-1" onClick={openForCharge}>
+            <Plus className="size-4" />
+            Agregar fiado
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
+            <Plus className="size-4" />
+            Agregar abono
+          </Button>
+        </div>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Registrar movimiento</DialogTitle>
+          <DialogTitle>Agregar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
-        <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+        <form
+          ref={setFormRef}
+          action={formAction}
+          onSubmit={(e) => {
+            if (!validate(e.currentTarget)) e.preventDefault();
+          }}
+          className="flex flex-col gap-4"
+        >
           <input type="hidden" name="client_id" value={clientId} />
 
           {!clientWhatsapp ? (
@@ -210,7 +306,10 @@ export function AddMovementDialog({
                 name="whatsapp"
                 required
                 preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+                invalid={Boolean(errors.whatsapp)}
+                onValueChange={() => recheck("whatsapp", formRef.current)}
               />
+              {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
             </div>
           ) : null}
 
@@ -252,8 +351,12 @@ export function AddMovementDialog({
               max={type === "payment" ? currentDebt : undefined}
               step="0.01"
               value={amountStr}
-              onChange={(e) => setAmountStr(e.target.value)}
+              onChange={(e) => {
+                setAmountStr(e.target.value);
+                recheck("amount", formRef.current);
+              }}
               required
+              aria-invalid={Boolean(errors.amount)}
             />
             {rateContext ? (
               <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
@@ -263,6 +366,7 @@ export function AddMovementDialog({
                 Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.
               </p>
             ) : null}
+            {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
           </div>
 
           <div className="flex flex-col gap-2">

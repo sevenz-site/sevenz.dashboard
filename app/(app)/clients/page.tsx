@@ -9,7 +9,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
-export default async function MalasPagasPage() {
+export default async function ClientsPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -20,7 +20,6 @@ export default async function MalasPagasPage() {
       .from("client_summary")
       .select("*")
       .eq("owner_id", user!.id)
-      .eq("is_flagged", true)
       .order("days_since_payment", { ascending: false }),
     supabase
       .from("clients")
@@ -42,7 +41,10 @@ export default async function MalasPagasPage() {
       }
     : null;
 
-  const rows = (summaries ?? []) as ClientSummary[];
+  // Same rows Cartera shows: a flagged client already has its own screen
+  // (Malas pagas), so it stays out of this list too rather than appearing
+  // in both.
+  const rows = ((summaries ?? []) as ClientSummary[]).filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, rows, ownerRate?.effectiveRate ?? null);
 
   return (
@@ -60,14 +62,13 @@ export default async function MalasPagasPage() {
       </div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
           <p className="text-sm text-muted-foreground">
-            Clientes marcados como mala paga — no aparecen en la Cartera principal.
+            Todos tus clientes registrados, con su saldo actual.
           </p>
         </div>
-        {/* Desktop only, same as Cartera: the phone keeps this action in the
-            bottom bar's "Agregar" instead, which is why there is no sm:hidden
-            counterpart of this trigger the way Cartera has one. */}
+        {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
+            action in the bottom bar's "Agregar" instead. */}
         <div className="hidden sm:block">
           <ClientSearchDialog
             clients={clients ?? []}
@@ -78,16 +79,10 @@ export default async function MalasPagasPage() {
           />
         </div>
       </div>
-      {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
-          16px gap), text-xl, and named for what is actually underneath it. */}
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
-      <ClientTable
-        rows={rows}
-        scores={scores}
-        rateContext={ownerRate}
-        emptyMessage="No tienes clientes marcados como mala paga."
-        source="malas_pagas"
-      />
+      {/* No second "Clientes" heading here: the h1 above already names what
+          this whole screen is, unlike Malas pagas where the h1 names a filter
+          and the h2 names the list underneath it. */}
+      <ClientTable rows={rows} scores={scores} rateContext={ownerRate} source="clientes" />
     </div>
   );
 }

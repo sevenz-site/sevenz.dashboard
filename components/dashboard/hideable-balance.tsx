@@ -17,11 +17,16 @@ export function HideableBalance({
   currency,
   ledger,
   mainClassName,
+  showToggle = true,
 }: {
   balance: number;
   currency: LedgerCurrency | null;
   ledger: LedgerDisplay | null;
   mainClassName?: string;
+  // BalanceCard renders the eye itself, in a column beside its own chart
+  // toggle, so the two controls sit together. State is still shared through
+  // useHiddenBalances, so both stay in sync either way.
+  showToggle?: boolean;
 }) {
   const [hidden, toggle] = useHiddenBalances();
 
@@ -38,19 +43,21 @@ export function HideableBalance({
       ) : (
         <ExchangeRateBalanceDisplay balance={balance} currency={currency} ledger={ledger} mainClassName={mainClassName} />
       )}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
-        aria-pressed={!hidden}
-        className="mt-1 shrink-0 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {hidden ? (
-          <Eye className="size-4" aria-hidden="true" />
-        ) : (
-          <EyeOff className="size-4" aria-hidden="true" />
-        )}
-      </button>
+      {showToggle ? (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
+          aria-pressed={!hidden}
+          className="mt-1 shrink-0 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {hidden ? (
+            <Eye className="size-4" aria-hidden="true" />
+          ) : (
+            <EyeOff className="size-4" aria-hidden="true" />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BADGE_MAX } from "@/lib/types";
 
 export async function logout() {
   const supabase = await createClient();
@@ -251,27 +252,37 @@ export async function getUnreadNotificationCount(): Promise<number> {
   } = await supabase.auth.getUser();
   if (!user) return 0;
 
+  // The badge renders "9+" above nine, so nothing above ten is ever read —
+  // and an exact count is the most expensive way to ask, because Postgres has
+  // to walk (and RLS-check) every unread row just to reach a total nobody
+  // sees. Fetching at most CAP ids per table answers the same question and
+  // stops as soon as it has enough. This runs on a timer in every open tab,
+  // so it's the query that scales with how many owners have the app open
+  // rather than with what they're doing.
+  const CAP = BADGE_MAX + 1;
   const [
-    { count: openCount, error: openError },
-    { count: importCount, error: importError },
-    { count: deletionCount, error: deletionError },
+    { data: opens, error: openError },
+    { data: imports, error: importError },
+    { data: deletions, error: deletionError },
   ] = await Promise.all([
-    supabase.from("link_opens").select("*", { count: "exact", head: true }).is("read_at", null),
+    supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
     supabase
       .from("import_notifications")
-      .select("*", { count: "exact", head: true })
+      .select("id")
       .eq("owner_id", user.id)
-      .is("read_at", null),
+      .is("read_at", null)
+      .limit(CAP),
     supabase
       .from("movement_deletions")
-      .select("*", { count: "exact", head: true })
+      .select("id")
       .eq("owner_id", user.id)
-      .is("read_at", null),
+      .is("read_at", null)
+      .limit(CAP),
   ]);
 
   if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
   if (importError) console.error("getUnreadNotificationCount: import_notifications query failed", importError);
   if (deletionError) console.error("getUnreadNotificationCount: movement_deletions query failed", deletionError);
 
-  return (openCount ?? 0) + (importCount ?? 0) + (deletionCount ?? 0);
+  return (opens?.length ?? 0) + (imports?.length ?? 0) + (deletions?.length ?? 0);
 }

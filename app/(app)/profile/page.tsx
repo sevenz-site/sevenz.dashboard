@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
 import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
+import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
 
 export default async function ProfilePage() {
@@ -22,6 +23,13 @@ export default async function ProfilePage() {
 
   return (
     <div className="flex flex-1 flex-col gap-8">
+      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
+          one: flush to the top, edge to edge. The negative margins cancel main's
+          p-4 and px-4 restores the inset for the content itself. Hidden from sm
+          up, where the real header returns. */}
+      <div className="-mx-4 -mt-4 flex items-center border-b px-4 py-3 sm:hidden">
+        <CarteraBackButton />
+      </div>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Mi negocio</h1>
         <p className="text-sm text-muted-foreground">

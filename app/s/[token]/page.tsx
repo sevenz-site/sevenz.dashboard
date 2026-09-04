@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { MessageCircle, UserRound } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { formatCurrency, formatDocumentId } from "@/lib/format";
+import { formatDocumentId } from "@/lib/format";
 import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -55,6 +55,9 @@ type SharedBalance = {
   // Only meaningful when owner_country = 'VE' — a 'CO' owner's payload
   // still includes these keys (the SQL function always returns them) but
   // every value is null, and the page falls back to the plain COP figure.
+  // How many movements exist in total, counted before the limit is applied —
+  // so the page can say what it's holding back and whether to offer "ver todo".
+  movement_total: number;
   owner_country: "CO" | "VE" | null;
   rate_mode: ExchangeRateMode | null;
   current_bcv_usd: number | null;
@@ -63,12 +66,37 @@ type SharedBalance = {
   custom_rate_eur: number | null;
 };
 
+// One currency's balance as its own card, label left and figure right —
+// matching how the owner's own client screen shows the same two numbers.
+function BalanceRowCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// How many movements a client sees before asking for the rest. Their own
+// recent activity is what they open this link for; the full ledger of a
+// years-old account was 203 KB of HTML with no ceiling, downloaded over
+// mobile data every time.
+const DEFAULT_MOVEMENT_LIMIT = 50;
+
 export default async function SharedBalancePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ historial?: string }>;
 }) {
   const { token } = await params;
+  const { historial } = await searchParams;
+  // A plain link, not a button with state: the whole page is server-rendered,
+  // so "ver todo" costs nothing to implement and still works with no JS.
+  const showAll = historial === "todo";
 
   if (!isSupabaseConfigured()) {
     return <SetupNotice />;
@@ -76,7 +104,10 @@ export default async function SharedBalancePage({
 
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("get_shared_balance", { p_token: token });
+  const { data, error } = await supabase.rpc("get_shared_balance", {
+    p_token: token,
+    p_limit: showAll ? null : DEFAULT_MOVEMENT_LIMIT,
+  });
 
   if (error || !data) {
     notFound();
@@ -107,66 +138,74 @@ export default async function SharedBalancePage({
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
       <DocumentIdDialog token={token} clientName={shared.client_name} initialDocumentId={shared.document_id} />
-      <div className="flex items-start justify-between gap-3 pt-2">
-        <div className="flex items-center gap-3">
-          <Image
-            src={logoUrl}
-            alt=""
-            width={40}
-            height={40}
-            unoptimized={Boolean(shared.owner_logo_path)}
-            className="size-10 shrink-0 rounded-md object-cover"
-          />
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
-            <p className="text-sm text-muted-foreground">Saldo de {shared.client_name}</p>
-            <p className="text-xs text-muted-foreground">Cédula/documento: {formatDocumentId(shared.document_id)}</p>
-          </div>
+      {/* Not a card: no border, no padding of its own, so the logo and the
+          business name start on the page's own inset, in line with
+          "Pendiente" and the edges of the balance cards below. */}
+      <div className="mt-2 flex items-center gap-3">
+        <Image
+          src={logoUrl}
+          alt=""
+          width={64}
+          height={64}
+          unoptimized={Boolean(shared.owner_logo_path)}
+          className="size-16 shrink-0 rounded-xl object-cover"
+        />
+        <div className="flex min-w-0 flex-col">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
+          <p className="truncate text-sm font-medium">{shared.client_name}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            Documento: {formatDocumentId(shared.document_id)}
+          </p>
         </div>
-        {/* Disabled until client login/verification ships — today anyone
-            with this link could reach the profile page and change the
-            picture, with no way to confirm they're really the client. */}
-        <Button variant="outline" size="sm" className="shrink-0" disabled title="Próximamente">
-          <UserRound className="size-4" />
-          Mi perfil
-        </Button>
       </div>
 
-      <div className="rounded-xl border bg-card p-5">
-        {rateContext ? (
-          <div className="flex flex-wrap gap-6">
-            <div>
-              <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance_usd)} (USD)</p>
-              <ExchangeRateBalanceDisplay
-                balance={shared.balance_usd}
-                currency="USD"
-                ledger={ledger}
-                mainClassName="text-4xl"
-              />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance_eur)} (EUR)</p>
-              <ExchangeRateBalanceDisplay
-                balance={shared.balance_eur}
-                currency="EUR"
-                ledger={ledger}
-                mainClassName="text-4xl"
-              />
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="text-sm text-muted-foreground">{getBalanceLabel(shared.balance)}</p>
-            <p className="text-4xl font-semibold tabular-nums">{formatCurrency(shared.balance)}</p>
-          </>
-        )}
-        {shared.payment_info ? (
-          <div className="mt-4 border-t pt-4">
-            <p className="mb-1 text-sm font-medium text-muted-foreground">Cómo pagar</p>
-            <p className="text-sm">{renderFormattedText(shared.payment_info)}</p>
-          </div>
-        ) : null}
-      </div>
+      <h2 className="text-xl font-semibold">Pendiente</h2>
+
+      {/* One card per currency, label left and figure right. The label is
+          getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
+          reads "A favor en Dólares" rather than being told they owe a
+          negative amount. */}
+      {rateContext ? (
+        <>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}>
+            <ExchangeRateBalanceDisplay
+              balance={shared.balance_usd}
+              currency="USD"
+              ledger={ledger}
+              align="end"
+              mainClassName="text-3xl"
+            />
+          </BalanceRowCard>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`}>
+            <ExchangeRateBalanceDisplay
+              balance={shared.balance_eur}
+              currency="EUR"
+              ledger={ledger}
+              align="end"
+              mainClassName="text-3xl"
+            />
+          </BalanceRowCard>
+        </>
+      ) : (
+        <BalanceRowCard label={getBalanceLabel(shared.balance)}>
+          <ExchangeRateBalanceDisplay
+            balance={shared.balance}
+            currency={null}
+            ledger={null}
+            align="end"
+            mainClassName="text-3xl"
+          />
+        </BalanceRowCard>
+      )}
+
+      {/* Its own card now that the balances are two: how to pay applies to
+          both currencies, so hanging it off either one would be wrong. */}
+      {shared.payment_info ? (
+        <div className="rounded-xl border bg-card p-4">
+          <p className="mb-1 text-sm font-medium text-muted-foreground">Cómo pagar</p>
+          <p className="text-sm">{renderFormattedText(shared.payment_info)}</p>
+        </div>
+      ) : null}
 
       {ownerWhatsappDigits ? (
         <a
@@ -185,6 +224,20 @@ export default async function SharedBalancePage({
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
         <MovementHistoryList movements={movements} ledger={ledger} />
+        {!showAll && shared.movement_total > movements.length ? (
+          <div className="flex flex-col items-center gap-2 pt-1">
+            <p className="text-xs text-muted-foreground">
+              Mostrando los {movements.length} movimientos más recientes de {shared.movement_total}.
+            </p>
+            {/* h-10 so it matches every other labelled button in the app and
+                clears a thumb on a phone. */}
+            <Button asChild variant="outline" size="sm" className="w-full">
+              <Link href={`/s/${token}?historial=todo`} scroll={false}>
+                Ver todo el historial
+              </Link>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">

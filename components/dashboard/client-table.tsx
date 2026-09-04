@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Broom, ChevronDown, Eye } from "lucide-react";
+import { Broom, ChevronDown, ChevronRight, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -38,7 +38,7 @@ import { track } from "@/lib/mixpanel";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
-import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
+import { formatBalanceSummary, formatLedgerAmount } from "@/lib/exchange-rate/movement-display";
 import { formatDate, formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -79,6 +79,20 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 const PAGE_SIZE = 15;
 
+// Compact-card-only palette for the left status bar — the status itself is
+// a CLIENT_STATUS_BADGE_CLASS chip, same as the table, and the bar now
+// matches that chip's own color family (a pill's background color doesn't
+// translate directly to a 3px stripe, so this is its own map, not a literal
+// reuse of the chip classes) rather than diverging for dentro_del_plazo.
+const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
+  sin_deuda: "bg-muted-foreground/30",
+  a_favor: "bg-emerald-500",
+  dentro_del_plazo: "bg-sky-500",
+  plazo_vencido: "bg-amber-500",
+  sin_plazo: "bg-amber-500",
+  critico: "bg-red-500",
+};
+
 export function ClientTable({
   rows,
   scores,
@@ -93,8 +107,9 @@ export function ClientTable({
   rateContext?: OwnerRateContext | null;
   emptyMessage?: string;
   // Which page rendered this table — tags "Client Details Opened" so it's
-  // possible to tell regular Cartera lookups apart from Malas Pagas ones.
-  source: "cartera" | "malas_pagas";
+  // possible to tell regular Cartera lookups apart from Malas Pagas and the
+  // standalone Clientes list.
+  source: "cartera" | "malas_pagas" | "clientes";
 }) {
   const router = useRouter();
   const tour = useTour();
@@ -345,7 +360,103 @@ export function ClientTable({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border">
+            {/* Below md the table is stripped to four columns anyway — Puntaje,
+                Último abono and Acciones are md-only — so the same four pieces
+                of data are shown as cards instead, which read far better on a
+                phone than a horizontally scrolling table. md, not sm, so a
+                screen either behaves like a phone or doesn't: the bottom nav
+                switches at exactly the same width. The tour's demo row isn't
+                repeated here — on mobile the tour only runs step 1. */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {pagedRows.map((row) => {
+                const status = getClientStatus(
+                  judgementBalance(row),
+                  row.days_since_payment,
+                  row.oldest_unpaid_charge_at,
+                  row.oldest_unpaid_charge_plazo_dias,
+                );
+                const usd = formatLedgerAmount(row.balance_usd, "USD", ledger);
+                const eur = formatLedgerAmount(row.balance_eur, "EUR", ledger);
+                const cop = formatLedgerAmount(row.balance, null, null);
+                return (
+                  <button
+                    key={row.client_id}
+                    type="button"
+                    onClick={() => {
+                      track("Client Details Opened", { client_id: row.client_id, source });
+                      router.push(`/clients/${row.client_id}`);
+                    }}
+                    className="flex w-full items-center gap-3.5 rounded-[14px] border bg-background px-4 py-3.5 text-left transition-colors active:bg-accent"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`w-[3px] shrink-0 self-stretch rounded-full ${CLIENT_STATUS_ACCENT_CLASS[status]}`}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-[64px] flex-1 truncate text-[15.5px] font-semibold tracking-[-0.01em] text-foreground">
+                          {row.name}
+                        </span>
+                        {row.has_pending_review ? (
+                          <Badge variant="outline" className="shrink-0 align-middle text-[10px]">
+                            revisar
+                          </Badge>
+                        ) : null}
+                        {/* Bounded and shrinkable, not shrink-0 — a long name
+                            plus a real document number plus the (rare)
+                            "revisar" badge all competing for one row would
+                            otherwise leave the name crushed to a couple of
+                            letters, since everything else marked shrink-0
+                            pushes 100% of the squeeze onto the one flexible
+                            item. The name's own min-w-[64px] is what actually
+                            protects it — this cap just means the document is
+                            what gives way first, not the name. */}
+                        <span className="min-w-0 max-w-10 shrink truncate font-mono text-[11.5px] text-muted-foreground">
+                          · {formatDocumentId(row.document_id)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                          {CLIENT_STATUS_LABEL[status]}
+                        </Badge>
+                        {row.is_flagged ? (
+                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                            Mala paga
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      {rateContext ? (
+                        <>
+                          <p className="flex items-baseline gap-1">
+                            <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                              {usd.primary}
+                            </span>
+                            <span className="text-[11px] font-medium text-muted-foreground">USD</span>
+                          </p>
+                          <p className="flex items-baseline gap-1">
+                            <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                              {eur.primary}
+                            </span>
+                            <span className="text-[11px] font-medium text-muted-foreground">EUR</span>
+                          </p>
+                        </>
+                      ) : (
+                        <p className="flex items-baseline gap-1">
+                          <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                            {cop.primary}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight className="size-[17px] shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-lg border md:block">
               <Table>
                 <TableHeader>
                   <TableRow>

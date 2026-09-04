@@ -58,6 +58,12 @@ export const PLAZO_PAGO_OPTIONS: { value: string; label: string; days: number | 
 ];
 export const DEFAULT_PLAZO_PAGO = "7";
 
+// Highest number the unread badge spells out; anything above renders as "9+".
+// Shared so the counting query and the badge agree — the query stops looking
+// once it has this many, so a larger display cap would silently show a wrong
+// number rather than a bigger one.
+export const BADGE_MAX = 9;
+
 export type OwnerPlan = "free" | "pro";
 // Gates the exchange-rate feature end to end: only 'VE' owners see any of
 // the Bs/BCV UI. 'CO' is the default — every existing owner is unaffected.

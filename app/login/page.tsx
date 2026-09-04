@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { email as emailRule, required } from "@/lib/form-validation";
 
 const initialState: AuthState = { error: null };
 
@@ -22,6 +24,11 @@ function LinkExpiredNotice() {
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, initialState);
+  const [formRef, setFormRef] = useFormRef();
+  // Login only checks that a password was typed, never the complexity
+  // policy — an account created before that policy existed still has to be
+  // able to sign in with its real (older) password.
+  const { errors, validate, recheck } = useFieldErrors({ email: emailRule, password: required });
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
@@ -34,7 +41,14 @@ export default function LoginPage() {
           <Suspense fallback={null}>
             <LinkExpiredNotice />
           </Suspense>
-          <form action={formAction} className="mt-4 flex flex-col gap-4">
+          <form
+            ref={setFormRef}
+            action={formAction}
+            onSubmit={(e) => {
+              if (!validate(e.currentTarget)) e.preventDefault();
+            }}
+            className="mt-4 flex flex-col gap-4"
+          >
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
               <Input
@@ -44,7 +58,10 @@ export default function LoginPage() {
                 autoComplete="email"
                 defaultValue={state.email ?? ""}
                 required
+                aria-invalid={Boolean(errors.email)}
+                onChange={() => recheck("email", formRef.current)}
               />
+              {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
             </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -61,7 +78,10 @@ export default function LoginPage() {
                 name="password"
                 autoComplete="current-password"
                 required
+                aria-invalid={Boolean(errors.password)}
+                onChange={() => recheck("password", formRef.current)}
               />
+              {errors.password ? <p className="text-xs text-destructive">{errors.password}</p> : null}
             </div>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             <Button type="submit" className="w-full" disabled={pending}>
