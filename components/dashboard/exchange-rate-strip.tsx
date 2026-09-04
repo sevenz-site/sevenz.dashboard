@@ -3,7 +3,7 @@
 import { useState, type ChangeEvent } from "react";
 import dynamic from "next/dynamic";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import {
   MOVEMENT_CURRENCY_OPTIONS,
@@ -41,6 +42,7 @@ const RateHistoryTable = dynamic(
 // from, not a second copy of the math.
 export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateContext }) {
   const isMobile = useIsMobile();
+  const { inset: keyboardInset, visibleHeight } = useKeyboardInset();
   const [open, setOpen] = useState(false);
 
   // The rate figures are plain display text — only the "Calcular" button
@@ -66,23 +68,44 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   );
 
   if (isMobile) {
+    // A Sheet (Radix Dialog) rather than vaul's Drawer. The Drawer positions
+    // itself with a JS-driven transform, which fought the on-screen keyboard:
+    // opening the calculator with the keyboard up left the sheet's top cut off
+    // above the screen, and the only way back was to dismiss the keyboard and
+    // refocus the input so the browser repositioned it.
+    //
+    // Switching primitives is not by itself the fix — a bottom sheet is still
+    // `fixed bottom-0`, anchored to a layout viewport that does not shrink for
+    // the keyboard. The sizing below is what actually fixes it: bottom is
+    // lifted by however much the keyboard covers, and the height is capped to
+    // the space actually visible, both measured from visualViewport rather
+    // than assumed from vh units.
     return (
-      <Drawer open={open} onOpenChange={setOpen} direction="bottom">
+      <Sheet open={open} onOpenChange={setOpen}>
         <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
           {rateInfo}
-          <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+          <SheetTrigger asChild>{trigger}</SheetTrigger>
         </div>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Calculadora rápida</DrawerTitle>
-          </DrawerHeader>
-          <div className="flex flex-col gap-4 px-4 pb-4">
+        <SheetContent
+          side="bottom"
+          className="max-h-[85dvh] rounded-t-xl"
+          style={{
+            bottom: keyboardInset || undefined,
+            maxHeight: visibleHeight ? Math.round(visibleHeight * 0.85) : undefined,
+          }}
+        >
+          <SheetHeader className="pb-0">
+            <SheetTitle>Calculadora rápida</SheetTitle>
+          </SheetHeader>
+          {/* The sheet is capped, so the body is what scrolls — otherwise the
+              rate history table simply overflows past the top edge again. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
             {calculator}
             <RateHistoryTable />
             <ExchangeRateLegalDisclaimer />
           </div>
-        </DrawerContent>
-      </Drawer>
+        </SheetContent>
+      </Sheet>
     );
   }
 
