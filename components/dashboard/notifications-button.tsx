@@ -1,41 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NotificationList } from "@/components/dashboard/notification-list";
-import { getNotifications, getUnreadNotificationCount, type NotificationItem } from "@/app/(app)/actions";
-
-const UNREAD_POLL_MS = 20_000;
+import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
+import { getNotifications, type NotificationItem } from "@/app/(app)/actions";
 
 // Desktop only — a phone reaches the same notifications through the bottom
 // bar and the /notificaciones page instead, where a popover anchored to a
 // header button would have nowhere useful to sit.
-export function NotificationsButton({ initialUnreadCount }: { initialUnreadCount: number }) {
+export function NotificationsButton() {
   const [open, setOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [notifications, setNotifications] = useState<NotificationItem[] | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // This button stays mounted across client-side navigations, so a delete or
-  // restore elsewhere on the page (which calls router.refresh()) doesn't
-  // reliably re-render this component with a fresh initialUnreadCount on any
-  // predictable timing. Rather than depend on that, poll for the true count
-  // directly — self-correcting regardless of when/whether the layout re-runs.
-  useEffect(() => {
-    let cancelled = false;
-    async function refresh() {
-      const count = await getUnreadNotificationCount();
-      if (!cancelled) setUnreadCount(count);
-    }
-    refresh();
-    const interval = setInterval(refresh, UNREAD_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  // The count is polled once for the whole app rather than here: this button
+  // stays mounted across client-side navigations, so a delete or restore
+  // elsewhere (which calls router.refresh()) doesn't re-render it with a
+  // fresh count on any predictable timing.
+  const { unreadCount, clear } = useUnreadNotifications();
 
   async function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -46,7 +30,7 @@ export function NotificationsButton({ initialUnreadCount }: { initialUnreadCount
       setLoading(true);
       const data = await getNotifications();
       setNotifications(data);
-      setUnreadCount(0);
+      clear();
       setLoading(false);
     }
   }

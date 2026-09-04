@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Users, ShieldAlert, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
+import { Wallet, Users, ShieldAlert, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,7 +22,7 @@ import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Cartera", icon: LayoutDashboard, dataTour: undefined },
+  { href: "/dashboard", label: "Cartera", icon: Wallet, dataTour: undefined },
   { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
   { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },

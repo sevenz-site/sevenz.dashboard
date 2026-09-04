@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationList } from "@/components/dashboard/notification-list";
+import { MarkNotificationsSeen } from "@/components/dashboard/mark-notifications-seen";
 import { getNotifications } from "@/app/(app)/actions";
 
 // The phone's own notifications screen, reached from the bottom bar — the
@@ -36,6 +37,7 @@ export default async function NotificacionesPage() {
       <div className="-mx-4 border-y">
         <NotificationList notifications={notifications} />
       </div>
+      <MarkNotificationsSeen />
     </div>
   );
 }

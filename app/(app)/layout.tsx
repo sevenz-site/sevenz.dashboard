@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { TourProvider } from "@/components/dashboard/tour-provider";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
 import { SidebarMenuTrigger } from "@/components/dashboard/sidebar-menu-trigger";
+import { UnreadNotificationsProvider } from "@/components/dashboard/unread-notifications-context";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
 import { AppHeader } from "@/components/dashboard/app-header";
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MixpanelIdentify ownerId={user.id} email={user.email ?? ""} plan={owner?.plan ?? "free"} />
       <TourProvider active={!owner?.onboarding_completed_at}>
         <UnsavedChangesProvider>
+          <UnreadNotificationsProvider initialCount={unreadCount}>
           <SidebarProvider>
             <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
             <SidebarInset>
@@ -69,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   {/* Desktop only: a phone reaches the same list through the
                       bottom bar's Notificaciones and the /notificaciones page. */}
                   <div className="hidden md:block">
-                    <NotificationsButton initialUnreadCount={unreadCount} />
+                    <NotificationsButton />
                   </div>
                   <SidebarMenuTrigger className="md:hidden" />
                 </div>
@@ -84,6 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <MobileNav />
             </SidebarInset>
           </SidebarProvider>
+          </UnreadNotificationsProvider>
         </UnsavedChangesProvider>
       </TourProvider>
     </ImportProvider>

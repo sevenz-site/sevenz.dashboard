@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, Loader2, Plus, Users, Wallet } from "lucide-react";
 import { useTour } from "@/components/dashboard/tour-context";
+import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 
@@ -114,6 +115,7 @@ export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { guard } = useUnsavedChangesGuard();
+  const { unreadCount } = useUnreadNotifications();
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
@@ -231,7 +233,18 @@ export function MobileNav() {
             className="flex flex-1"
           >
             <NavItem active={pathname === item.href} className="w-full">
-              {glyph(item.href, item.icon)}
+              {/* The unread badge hangs off the icon, so it needs a
+                  positioned box of its own — the pill around icon+label is
+                  the wrong anchor, it would float the count out over the
+                  neighbouring item. */}
+              <span className="relative">
+                {glyph(item.href, item.icon)}
+                {item.href === "/notificaciones" && unreadCount > 0 ? (
+                  <span className="absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+              </span>
               {item.label}
             </NavItem>
           </Link>
