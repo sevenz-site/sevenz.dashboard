@@ -126,10 +126,14 @@ export function ClientSearchDialog({
     if (wantsOpen && !open) router.replace(pathname, { scroll: false });
   }, [wantsOpen, open, router, pathname]);
 
-  function closeAndReset() {
+  // Stable identity: the body passes this to an effect (see handledState
+  // below), and a fresh function every render would re-run that effect on
+  // every render — each run bumping instanceKey, which re-renders, which
+  // makes another new function. Both setters are stable, so [] is correct.
+  const closeAndReset = useCallback(() => {
     setOpen(false);
     setInstanceKey((k) => k + 1);
-  }
+  }, []);
 
   const handleDirtyChange = useCallback((dirty: boolean) => {
     dirtyRef.current = dirty;
@@ -281,11 +285,25 @@ function ClientSearchDialogBody({
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
 
+  // Adjusting local state during render is the sanctioned React pattern for
+  // "react to a changed prop", and setHandledState stays here because it only
+  // touches this component. onDone does not: it is the parent's closeAndReset,
+  // so calling it here updated ClientSearchDialog while ClientSearchDialogBody
+  // was still rendering — React's "Cannot update a component while rendering a
+  // different component" error, logged on every successful client creation.
+  // It reads as harmless because the client is still created, but the reset it
+  // triggers is no longer guaranteed to land in that pass.
+  //
+  // This line used to be setOpen(false) — local, and therefore legal. It became
+  // cross-component when the close was lifted into the parent so the form could
+  // be cleared on close, and the render-phase call came along unnoticed.
   const [handledState, setHandledState] = useState(state);
   if (state !== handledState && state.clientId) {
     setHandledState(state);
-    onDone();
   }
+  useEffect(() => {
+    if (handledState.clientId) onDone();
+  }, [handledState, onDone]);
 
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
