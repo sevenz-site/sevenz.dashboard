@@ -101,20 +101,30 @@ same rows, the same filters and sorting above them, switched with CSS.
   each extra element costs more than it adds. The `Bs.` line stays in the table,
   where there is room. Reviewing it on a real screen settled this; arguing it
   beforehand did not.
-- To drop that secondary line, pass `showSecondary={false}` — **never
-  `ledger={null}`**, which also silently reformats a USD figure with the COP
-  formatter.
-- **Card row order: name → document → amount labels (`text-xs`) → amounts
-  (`text-base`) → status badge(s), each on its own row.** Amounts are smaller
-  than the table's own `text-sm`/`text-lg` because the card is read at a
-  glance, not studied — still the most prominent thing on it, just not at the
-  table's size. Override with `mainClassName="text-base"` on
-  `ExchangeRateBalanceDisplay` rather than adding a new `size` variant, since
-  no other caller needs this size. The document line and the badge row used to
-  share one row (truncating the document text so a badge always fit beside
-  it) — moved apart when the reference layout put the badge on its own row
-  instead; the truncate/shrink-0 pairing that made the shared row work is
-  gone with it, not carried over into the new layout.
+- **The client card is one row, not a stack.** Left to right: a `3px`
+  `self-stretch` status-color bar, the identity block (`flex-1`: name · document
+  on one line, status text below, "Mala paga" as a further line if flagged),
+  the amounts block (right-aligned, one row per currency, the code — `USD`/`EUR`
+  — inline after the figure and dropped entirely for a COP owner), then the
+  chevron. Status is a colored bar + plain text here, not the pill
+  `CLIENT_STATUS_BADGE_CLASS` uses on the table and used to use on this same
+  card — a deliberate divergence for this one surface. `bg-background`
+  (plain white), not the `bg-muted/30` every other outlined card on this app
+  uses — this card is meant to sit on a page, not blend into one.
+- **The name gets a protected minimum, not an equal share.** A long name, the
+  (rare) "revisar" tag, and a real document number all fit on one line by
+  every non-name segment being capped or shrinkable — but a plain equal
+  shrink still crushes the name to a couple of letters, since a shrink-0
+  sibling forces 100% of the squeeze onto whatever the one flexible item is.
+  The name carries `min-w-[64px]` so it always shows something legible; the
+  document (`max-w-10`, ~40px) is what gives way first, down to just its
+  leading digits or the `·` alone in the worst case — acceptable, since the
+  full document is one tap away on the client's own page.
+- To drop the secondary `Bs.` line elsewhere `ExchangeRateBalanceDisplay` is
+  used, pass `showSecondary={false}` — **never `ledger={null}`**, which also
+  silently reformats a USD figure with the COP formatter. This card formats
+  amounts directly with `formatLedgerAmount` instead of that component, since
+  its label-above-amount shape doesn't fit a single inline row.
 
 ## Buttons
 

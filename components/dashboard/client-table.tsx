@@ -38,7 +38,7 @@ import { track } from "@/lib/mixpanel";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
-import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
+import { formatBalanceSummary, formatLedgerAmount } from "@/lib/exchange-rate/movement-display";
 import { formatDate, formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -78,6 +78,30 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 const PAGE_SIZE = 15;
+
+// Compact-card-only palette: a status bar + plain colored text, not the
+// pill treatment CLIENT_STATUS_BADGE_CLASS uses for the desktop table and
+// for this same card before this layout. dentro_del_plazo reads as green
+// here (matching the reference this layout was built from) rather than the
+// table's sky blue — a deliberate divergence for this one surface, not a
+// correction to the table's own palette.
+const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
+  sin_deuda: "bg-muted-foreground/30",
+  a_favor: "bg-emerald-500",
+  dentro_del_plazo: "bg-emerald-500",
+  plazo_vencido: "bg-amber-500",
+  sin_plazo: "bg-amber-500",
+  critico: "bg-red-500",
+};
+
+const CLIENT_STATUS_TEXT_CLASS: Record<ClientStatus, string> = {
+  sin_deuda: "text-muted-foreground",
+  a_favor: "text-emerald-700 dark:text-emerald-400",
+  dentro_del_plazo: "text-emerald-700 dark:text-emerald-400",
+  plazo_vencido: "text-amber-700 dark:text-amber-400",
+  sin_plazo: "text-amber-700 dark:text-amber-400",
+  critico: "text-red-700 dark:text-red-400",
+};
 
 export function ClientTable({
   rows,
@@ -361,6 +385,9 @@ export function ClientTable({
                   row.oldest_unpaid_charge_at,
                   row.oldest_unpaid_charge_plazo_dias,
                 );
+                const usd = formatLedgerAmount(row.balance_usd, "USD", ledger);
+                const eur = formatLedgerAmount(row.balance_eur, "EUR", ledger);
+                const cop = formatLedgerAmount(row.balance, null, null);
                 return (
                   <button
                     key={row.client_id}
@@ -369,73 +396,67 @@ export function ClientTable({
                       track("Client Details Opened", { client_id: row.client_id, source });
                       router.push(`/clients/${row.client_id}`);
                     }}
-                    className="flex w-full flex-col gap-1 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors active:bg-accent"
+                    className="flex w-full items-center gap-3.5 rounded-[14px] border bg-background px-4 py-3.5 text-left transition-colors active:bg-accent"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 flex-1 text-lg font-semibold">
-                        {row.name}
+                    <span
+                      aria-hidden="true"
+                      className={`w-[3px] shrink-0 self-stretch rounded-full ${CLIENT_STATUS_ACCENT_CLASS[status]}`}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-[64px] flex-1 truncate text-[15.5px] font-semibold tracking-[-0.01em] text-foreground">
+                          {row.name}
+                        </span>
                         {row.has_pending_review ? (
-                          <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                          <Badge variant="outline" className="shrink-0 align-middle text-[10px]">
                             revisar
                           </Badge>
                         ) : null}
-                      </p>
-                      <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <p className="truncate text-sm text-muted-foreground">
-                        Documento: {formatDocumentId(row.document_id)}
-                      </p>
-                      <div className="flex flex-wrap gap-x-6 gap-y-1">
-                        {rateContext ? (
-                          <>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Por cobrar USD</p>
-                              <ExchangeRateBalanceDisplay
-                                balance={row.balance_usd}
-                                currency="USD"
-                                ledger={ledger}
-                                size="sm"
-                                showSecondary={false}
-                                mainClassName="text-base"
-                              />
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Por cobrar EUR</p>
-                              <ExchangeRateBalanceDisplay
-                                balance={row.balance_eur}
-                                currency="EUR"
-                                ledger={ledger}
-                                size="sm"
-                                showSecondary={false}
-                                mainClassName="text-base"
-                              />
-                            </div>
-                          </>
-                        ) : (
-                          <div>
-                            <p className="text-xs text-muted-foreground">Por cobrar</p>
-                            <ExchangeRateBalanceDisplay
-                              balance={row.balance}
-                              currency={null}
-                              ledger={null}
-                              size="sm"
-                              mainClassName="text-base"
-                            />
-                          </div>
-                        )}
+                        {/* Bounded and shrinkable, not shrink-0 — a long name
+                            plus a real document number plus the (rare)
+                            "revisar" badge all competing for one row would
+                            otherwise leave the name crushed to a couple of
+                            letters, since everything else marked shrink-0
+                            pushes 100% of the squeeze onto the one flexible
+                            item. The name's own min-w-[64px] is what actually
+                            protects it — this cap just means the document is
+                            what gives way first, not the name. */}
+                        <span className="min-w-0 max-w-10 shrink truncate font-mono text-[11.5px] text-muted-foreground">
+                          · {formatDocumentId(row.document_id)}
+                        </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                          {CLIENT_STATUS_LABEL[status]}
-                        </Badge>
-                        {row.is_flagged ? (
-                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-                            Mala paga
-                          </Badge>
-                        ) : null}
-                      </div>
+                      <p className={`text-[12.5px] font-medium ${CLIENT_STATUS_TEXT_CLASS[status]}`}>
+                        {CLIENT_STATUS_LABEL[status]}
+                      </p>
+                      {row.is_flagged ? (
+                        <p className="text-[12.5px] font-semibold text-foreground">Mala paga</p>
+                      ) : null}
                     </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      {rateContext ? (
+                        <>
+                          <p className="flex items-baseline gap-1">
+                            <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                              {usd.primary}
+                            </span>
+                            <span className="text-[11px] font-medium text-muted-foreground">USD</span>
+                          </p>
+                          <p className="flex items-baseline gap-1">
+                            <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                              {eur.primary}
+                            </span>
+                            <span className="text-[11px] font-medium text-muted-foreground">EUR</span>
+                          </p>
+                        </>
+                      ) : (
+                        <p className="flex items-baseline gap-1">
+                          <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
+                            {cop.primary}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight className="size-[17px] shrink-0 text-muted-foreground/60" aria-hidden="true" />
                   </button>
                 );
               })}
