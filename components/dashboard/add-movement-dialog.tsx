@@ -271,14 +271,17 @@ export function AddMovementDialog({
           conflict resolved by stylesheet order, not class order, so it is not
           reliably one or the other. Rendered or not rendered instead. */}
       {hideTriggers ? null : (
+        // Abono left, fiado right — the order owners already learned from the
+        // phone bar these buttons replaced. Desktop follows the same order so
+        // the two viewports do not disagree about which side is which.
         <div className={cn("flex gap-2", triggerClassName)}>
-          <Button size="sm" className="flex-1" onClick={openForCharge}>
-            <Plus className="size-4" />
-            Agregar fiado
-          </Button>
           <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
             <Plus className="size-4" />
             Agregar abono
+          </Button>
+          <Button size="sm" className="flex-1" onClick={openForCharge}>
+            <Plus className="size-4" />
+            Agregar fiado
           </Button>
         </div>
       )}

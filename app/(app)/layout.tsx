@@ -12,6 +12,7 @@ import { SidebarMenuTrigger } from "@/components/dashboard/sidebar-menu-trigger"
 import { UnreadNotificationsProvider } from "@/components/dashboard/unread-notifications-context";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
+import { AppMain } from "@/components/dashboard/app-main";
 import { AppHeader } from "@/components/dashboard/app-header";
 import { ImportProvider } from "@/components/import/import-provider";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
@@ -81,9 +82,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   the last row of a list is never stranded underneath it. Kept
                   constant whether the bar is currently visible or not —
                   otherwise the page would jump every time a dialog opened. */}
-              <main className="flex flex-1 flex-col gap-4 p-4 pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)] md:pb-4">
-                {children}
-              </main>
+              <AppMain>{children}</AppMain>
               <MobileNav />
             </SidebarInset>
           </SidebarProvider>

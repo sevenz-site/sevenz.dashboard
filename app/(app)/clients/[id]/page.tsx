@@ -188,7 +188,6 @@ export default async function ClientDetailPage({
           isFlagged={client.is_flagged}
           triggerClassName="w-full"
           autoOpen={autoOpenType}
-          hideTriggers
           rateContext={rateContext}
         />
       </div>
