@@ -200,6 +200,43 @@ question before implementing. Don't guess and bake the guess into code or
 a migration — this is doubly true for anything touching real customer
 balances or money.
 
+## Test every requirement before reporting it delivered
+
+Nothing is reported as done, fixed, or verified until it has been **run and
+observed**. Understanding why a change works is not evidence that it does.
+"I reasoned it through" and "the types check" are not test results.
+
+This is not the same as testing the reported symptom. A fix is delivered when:
+
+1. **The reported case passes** — the exact thing the user described.
+2. **Every path the change touches passes** — including the ones that already
+   worked. A change that fixes one entry point and breaks its neighbour is not
+   a fix. If a shared function, prop, or effect was edited, every caller of it
+   is in scope.
+3. **The requirement's own sub-cases pass.** If the request had four parts,
+   four parts get tested — not the one that was hardest to build.
+
+**Never write an untested claim into a commit message, a report, or a table.**
+Saying "the create path had the same race and is fixed with it" when that path
+was never run puts a false statement into the permanent record, which is worse
+than saying nothing. If it wasn't run, the honest words are "not tested".
+
+**Anything that could not be tested is named explicitly in the report**, with
+the reason — no session to sign in with, needs a real inbox, needs a physical
+device, needs production data. A requirement quietly missing from a report
+reads as passed. State the gap and let the user decide whether it matters.
+
+Real examples from 2026-09-04, all three reported as complete before they were:
+
+- A phone-bar tier was reported as a clean pass after testing repeat taps on
+  one of its four items and checking the other three only by their `href`.
+- A dialog fix was reported "found, fixed, verified" while the commit sat
+  unpushed on a local branch. The user tested production, which had never
+  contained the fix, and reported the same bug back.
+- That same fix shipped with three untested paths, one of which — whether the
+  `?nuevo=1` marker still cleared on a normal close — could have re-broken a
+  bug fixed earlier the same day.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
