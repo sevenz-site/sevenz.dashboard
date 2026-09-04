@@ -29,6 +29,20 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#0a0a0a",
+  // Without this, Chrome and Brave on Android default to "resizes-visual":
+  // the on-screen keyboard is painted OVER the page and the layout viewport
+  // keeps its full height. Anything anchored with `fixed bottom-0` is then
+  // anchored behind the keyboard, and every `vh` still measures the whole
+  // screen — so the rate calculator's bottom drawer (max-h-[80vh]) was taller
+  // than the strip left visible and its top was pushed off the top edge. The
+  // only way out was to dismiss the keyboard and refocus the input, which made
+  // the browser reposition it.
+  //
+  // "resizes-content" makes the keyboard shrink the layout viewport instead,
+  // so vh units, fixed positioning and bottom-0 all follow the space actually
+  // on screen. It applies to every dialog and drawer with an input in it, not
+  // just this one.
+  interactiveWidget: "resizes-content",
 };
 
 const CLARITY_PROJECT_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
