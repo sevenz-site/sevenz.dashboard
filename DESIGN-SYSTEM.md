@@ -110,11 +110,12 @@ same rows, the same filters and sorting above them, switched with CSS.
   `CLIENT_STATUS_BADGE_CLASS` pill the table uses — a plain-text version was
   tried here and reverted once it was on screen next to real data. The bar is
   its own accent (`CLIENT_STATUS_ACCENT_CLASS`), since a pill's own background
-  color doesn't translate to a 3px stripe; `dentro_del_plazo` reads green on
-  the bar (matching the reference this layout was built from) against sky
-  blue on the chip itself, matching the table. `bg-background` (plain white),
-  not the `bg-muted/30` every other outlined card on this app uses — this
-  card is meant to sit on a page, not blend into one.
+  color doesn't translate to a 3px stripe, but keyed to match each status's
+  chip color family — `dentro_del_plazo` first shipped as a green bar against
+  its own sky-blue chip and got corrected once seen side by side.
+  `bg-background` (plain white), not the `bg-muted/30` every other outlined
+  card on this app uses — this card is meant to sit on a page, not blend into
+  one.
 - **The name gets a protected minimum, not an equal share.** A long name, the
   (rare) "revisar" tag, and a real document number all fit on one line by
   every non-name segment being capped or shrinkable — but a plain equal

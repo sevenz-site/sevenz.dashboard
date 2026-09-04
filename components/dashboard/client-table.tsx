@@ -80,16 +80,14 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 const PAGE_SIZE = 15;
 
 // Compact-card-only palette for the left status bar — the status itself is
-// a CLIENT_STATUS_BADGE_CLASS chip, same as the table, but the bar is its
-// own accent since a pill's background color doesn't translate to a 3px
-// stripe. dentro_del_plazo reads as green here (matching the reference this
-// layout was built from) rather than the table's sky blue — a deliberate
-// divergence for this one surface, not a correction to the table's own
-// palette.
+// a CLIENT_STATUS_BADGE_CLASS chip, same as the table, and the bar now
+// matches that chip's own color family (a pill's background color doesn't
+// translate directly to a 3px stripe, so this is its own map, not a literal
+// reuse of the chip classes) rather than diverging for dentro_del_plazo.
 const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
   sin_deuda: "bg-muted-foreground/30",
   a_favor: "bg-emerald-500",
-  dentro_del_plazo: "bg-emerald-500",
+  dentro_del_plazo: "bg-sky-500",
   plazo_vencido: "bg-amber-500",
   sin_plazo: "bg-amber-500",
   critico: "bg-red-500",
