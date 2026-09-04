@@ -55,6 +55,9 @@ type SharedBalance = {
   // Only meaningful when owner_country = 'VE' — a 'CO' owner's payload
   // still includes these keys (the SQL function always returns them) but
   // every value is null, and the page falls back to the plain COP figure.
+  // How many movements exist in total, counted before the limit is applied —
+  // so the page can say what it's holding back and whether to offer "ver todo".
+  movement_total: number;
   owner_country: "CO" | "VE" | null;
   rate_mode: ExchangeRateMode | null;
   current_bcv_usd: number | null;
@@ -76,12 +79,24 @@ function BalanceRowCard({ label, children }: { label: string; children: React.Re
   );
 }
 
+// How many movements a client sees before asking for the rest. Their own
+// recent activity is what they open this link for; the full ledger of a
+// years-old account was 203 KB of HTML with no ceiling, downloaded over
+// mobile data every time.
+const DEFAULT_MOVEMENT_LIMIT = 50;
+
 export default async function SharedBalancePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ historial?: string }>;
 }) {
   const { token } = await params;
+  const { historial } = await searchParams;
+  // A plain link, not a button with state: the whole page is server-rendered,
+  // so "ver todo" costs nothing to implement and still works with no JS.
+  const showAll = historial === "todo";
 
   if (!isSupabaseConfigured()) {
     return <SetupNotice />;
@@ -89,7 +104,10 @@ export default async function SharedBalancePage({
 
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("get_shared_balance", { p_token: token });
+  const { data, error } = await supabase.rpc("get_shared_balance", {
+    p_token: token,
+    p_limit: showAll ? null : DEFAULT_MOVEMENT_LIMIT,
+  });
 
   if (error || !data) {
     notFound();
@@ -206,6 +224,20 @@ export default async function SharedBalancePage({
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
         <MovementHistoryList movements={movements} ledger={ledger} />
+        {!showAll && shared.movement_total > movements.length ? (
+          <div className="flex flex-col items-center gap-2 pt-1">
+            <p className="text-xs text-muted-foreground">
+              Mostrando los {movements.length} movimientos más recientes de {shared.movement_total}.
+            </p>
+            {/* h-10 so it matches every other labelled button in the app and
+                clears a thumb on a phone. */}
+            <Button asChild variant="outline" size="sm" className="w-full">
+              <Link href={`/s/${token}?historial=todo`} scroll={false}>
+                Ver todo el historial
+              </Link>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
