@@ -103,14 +103,18 @@ same rows, the same filters and sorting above them, switched with CSS.
   beforehand did not.
 - **The client card is one row, not a stack.** Left to right: a `3px`
   `self-stretch` status-color bar, the identity block (`flex-1`: name · document
-  on one line, status text below, "Mala paga" as a further line if flagged),
-  the amounts block (right-aligned, one row per currency, the code — `USD`/`EUR`
-  — inline after the figure and dropped entirely for a COP owner), then the
-  chevron. Status is a colored bar + plain text here, not the pill
-  `CLIENT_STATUS_BADGE_CLASS` uses on the table and used to use on this same
-  card — a deliberate divergence for this one surface. `bg-background`
-  (plain white), not the `bg-muted/30` every other outlined card on this app
-  uses — this card is meant to sit on a page, not blend into one.
+  on one line, the status chip below, a "Mala paga" chip alongside it when
+  flagged), the amounts block (right-aligned, one row per currency, the code
+  — `USD`/`EUR` — inline after the figure and dropped entirely for a COP
+  owner), then the chevron. The status chip is the same
+  `CLIENT_STATUS_BADGE_CLASS` pill the table uses — a plain-text version was
+  tried here and reverted once it was on screen next to real data. The bar is
+  its own accent (`CLIENT_STATUS_ACCENT_CLASS`), since a pill's own background
+  color doesn't translate to a 3px stripe; `dentro_del_plazo` reads green on
+  the bar (matching the reference this layout was built from) against sky
+  blue on the chip itself, matching the table. `bg-background` (plain white),
+  not the `bg-muted/30` every other outlined card on this app uses — this
+  card is meant to sit on a page, not blend into one.
 - **The name gets a protected minimum, not an equal share.** A long name, the
   (rare) "revisar" tag, and a real document number all fit on one line by
   every non-name segment being capped or shrinkable — but a plain equal

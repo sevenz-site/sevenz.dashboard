@@ -79,12 +79,13 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 const PAGE_SIZE = 15;
 
-// Compact-card-only palette: a status bar + plain colored text, not the
-// pill treatment CLIENT_STATUS_BADGE_CLASS uses for the desktop table and
-// for this same card before this layout. dentro_del_plazo reads as green
-// here (matching the reference this layout was built from) rather than the
-// table's sky blue — a deliberate divergence for this one surface, not a
-// correction to the table's own palette.
+// Compact-card-only palette for the left status bar — the status itself is
+// a CLIENT_STATUS_BADGE_CLASS chip, same as the table, but the bar is its
+// own accent since a pill's background color doesn't translate to a 3px
+// stripe. dentro_del_plazo reads as green here (matching the reference this
+// layout was built from) rather than the table's sky blue — a deliberate
+// divergence for this one surface, not a correction to the table's own
+// palette.
 const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
   sin_deuda: "bg-muted-foreground/30",
   a_favor: "bg-emerald-500",
@@ -92,15 +93,6 @@ const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
   plazo_vencido: "bg-amber-500",
   sin_plazo: "bg-amber-500",
   critico: "bg-red-500",
-};
-
-const CLIENT_STATUS_TEXT_CLASS: Record<ClientStatus, string> = {
-  sin_deuda: "text-muted-foreground",
-  a_favor: "text-emerald-700 dark:text-emerald-400",
-  dentro_del_plazo: "text-emerald-700 dark:text-emerald-400",
-  plazo_vencido: "text-amber-700 dark:text-amber-400",
-  sin_plazo: "text-amber-700 dark:text-amber-400",
-  critico: "text-red-700 dark:text-red-400",
 };
 
 export function ClientTable({
@@ -425,12 +417,16 @@ export function ClientTable({
                           · {formatDocumentId(row.document_id)}
                         </span>
                       </div>
-                      <p className={`text-[12.5px] font-medium ${CLIENT_STATUS_TEXT_CLASS[status]}`}>
-                        {CLIENT_STATUS_LABEL[status]}
-                      </p>
-                      {row.is_flagged ? (
-                        <p className="text-[12.5px] font-semibold text-foreground">Mala paga</p>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                          {CLIENT_STATUS_LABEL[status]}
+                        </Badge>
+                        {row.is_flagged ? (
+                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                            Mala paga
+                          </Badge>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-0.5">
                       {rateContext ? (
