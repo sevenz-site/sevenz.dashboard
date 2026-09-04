@@ -48,20 +48,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
             <SidebarInset>
               <AppHeader>
-                {/* Phone: the full wordmark on the left, the sidebar trigger on
+                {/* Phone: the sidebar trigger on the left, the full wordmark on
                     the right — the business name moved under Cartera's greeting
-                    and the bottom bar no longer carries "Menú", so this is the
-                    only way into the sidebar there. Desktop keeps the trigger on
-                    the left beside the business name. Swapped with CSS rather
-                    than a JS check so neither version flashes on load. */}
-                <Image
-                  src="/logo.svg"
-                  alt="Sevenz"
-                  width={96}
-                  height={30}
-                  className="h-7 w-auto md:hidden"
-                  priority
-                />
+                    and the bottom bar no longer carries "Menú", so this trigger
+                    is the only way into the sidebar there. Desktop keeps its own
+                    trigger on the left beside the business name. Swapped with
+                    CSS rather than a JS check so neither version flashes on
+                    load. */}
+                <SidebarMenuTrigger className="-ml-1 md:hidden" />
                 <SidebarTrigger className="-ml-1 hidden md:flex" />
                 <Separator orientation="vertical" className="mr-2 hidden h-4 md:block" />
                 <span className="hidden text-sm font-medium text-muted-foreground md:inline">
@@ -73,7 +67,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   <div className="hidden md:block">
                     <NotificationsButton />
                   </div>
-                  <SidebarMenuTrigger className="md:hidden" />
+                  <Image
+                    src="/logo.svg"
+                    alt="Sevenz"
+                    width={96}
+                    height={30}
+                    className="h-7 w-auto md:hidden"
+                    priority
+                  />
                 </div>
               </AppHeader>
               {/* Reserves the bar's height plus the iPhone home-indicator strip, so
