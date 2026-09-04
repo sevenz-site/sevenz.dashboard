@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { mixpanelConfigured, sendEvent } from "@/lib/mixpanel-http";
 
 // Server-side counterpart to lib/mixpanel.ts. The browser version depends on
 // the user's device being willing to reach api.mixpanel.com — iOS Safari,
@@ -23,11 +24,10 @@ import { after } from "next/server";
 //      so an unresponsive Mixpanel would otherwise keep the function billing
 //      until Vercel's own limit killed it.
 //
-// distinct_id is the owner's id, matching mixpanel.identify(ownerId) on the
-// client, so server and browser events land on the same profile.
-const MIXPANEL_TOKEN = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
-
-const TIMEOUT_MS = 5000;
+// distinct_id is the owner's id. The browser path now resolves the same id
+// server-side in app/api/track/route.ts, so events from both routes land on
+// one profile. The actual HTTP call lives in lib/mixpanel-http.ts, shared with
+// that route so there is a single implementation to keep correct.
 
 export function trackServer(
   event: string,
@@ -37,57 +37,17 @@ export function trackServer(
   // never lets identifyOwner() run — that's what leaves "Updated at" stale.
   ownerEmail?: string | null,
 ) {
-  if (!MIXPANEL_TOKEN) return;
+  if (!mixpanelConfigured()) return;
 
   try {
     after(async () => {
-      try {
-        const payload = [
-          {
-            event,
-            properties: {
-              token: MIXPANEL_TOKEN,
-              distinct_id: ownerId,
-              time: Date.now(),
-              // Makes the event idempotent: if this ever gets retried, Mixpanel
-              // discards the duplicate instead of double-counting.
-              $insert_id: crypto.randomUUID(),
-              source: "server",
-              ...props,
-              ...(ownerEmail ? { $set: { $email: ownerEmail } } : {}),
-            },
-          },
-        ];
-
-        // verbose=1 makes Mixpanel answer with a JSON reason instead of a bare
-        // "0", which is the difference between a debuggable failure and a
-        // silent one.
-        const res = await fetch("https://api.mixpanel.com/track?verbose=1", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-
-        // Mixpanel answers {"error":null,"status":1} — parsed rather than
-        // string-matched, since the exact spacing isn't part of any contract
-        // and a substring check silently reports every success as a failure.
-        const body = await res.text();
-        let accepted = false;
-        try {
-          accepted = (JSON.parse(body) as { status?: number }).status === 1;
-        } catch {
-          accepted = false;
-        }
-        if (!res.ok || !accepted) {
-          console.error(`[mixpanel] "${event}" rechazado (${res.status}):`, body);
-        }
-      } catch (error) {
-        console.error(
-          `[mixpanel] "${event}" falló:`,
-          error instanceof Error ? error.message : error,
-        );
-      }
+      await sendEvent(
+        event,
+        ownerId,
+        props,
+        "server",
+        ownerEmail ? { $email: ownerEmail } : undefined,
+      );
     });
   } catch (error) {
     // after() itself refusing (e.g. called outside a request scope) must not
