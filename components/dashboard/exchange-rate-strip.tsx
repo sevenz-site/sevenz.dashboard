@@ -201,7 +201,13 @@ function RateCalculator({
   }
 
   async function handleShare() {
-    const text = `${putValue || putPlaceholder} = ${getText}${entry === "VES" ? ` ${pairPlural}` : ""} · ${stampLabel}`;
+    // With nothing typed there is no conversion to send, but the rate itself is
+    // still worth sharing — and it is the thing an owner is most often asked
+    // for. Sharing "Bs. 0,00 = $0.00" instead, or disabling the button with no
+    // explanation, both waste the tap.
+    const text = hasAmount
+      ? `${putValue} = ${getText}${entry === "VES" ? ` ${pairPlural}` : ""} · ${stampLabel}`
+      : `1 ${pairName} = ${formatBs(pairRate)} · ${stampLabel}`;
     try {
       // The native sheet is what gets this into WhatsApp, which is where these
       // quotes actually go. Clipboard is the fallback for desktop, where
@@ -298,7 +304,7 @@ function RateCalculator({
         <span className="text-xs opacity-70">{stampLabel}</span>
       </div>
 
-      <Button type="button" variant="outline" onClick={handleShare} disabled={!hasAmount}>
+      <Button type="button" variant="outline" onClick={handleShare}>
         {shared ? "Copiado" : "Compartir"}
         <Share2 className="size-4" />
       </Button>
