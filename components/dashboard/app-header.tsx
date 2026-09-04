@@ -26,7 +26,8 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     pathname === "/clients" ||
     pathname.startsWith("/malas-pagas") ||
     pathname.startsWith("/import") ||
-    pathname.startsWith("/profile");
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/notificaciones");
 
   return (
     <header

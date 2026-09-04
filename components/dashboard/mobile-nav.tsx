@@ -3,11 +3,20 @@
 import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Loader2, Menu, Plus } from "lucide-react";
-import { useSidebar } from "@/components/ui/sidebar";
+import { Bell, Loader2, Plus, Users, Wallet } from "lucide-react";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
+
+// The three places the bar navigates to, in order, before Agregar. Exact
+// pathname matching, not startsWith: a client's own screen replaces this
+// whole bar anyway (see onClientDetail below), so there is no case where a
+// child route should light up its parent here.
+const DESTINATIONS = [
+  { href: "/dashboard", label: "Cartera", icon: Wallet },
+  { href: "/clients", label: "Clientes", icon: Users },
+  { href: "/notificaciones", label: "Notificaciones", icon: Bell },
+] as const;
 
 // Shown only below md. Deliberately a CSS media query rather than the
 // useIsMobile hook: the hook resolves after hydration, so the bar would pop in
@@ -67,14 +76,11 @@ function useKeyboardOpen() {
   return open;
 }
 
-// Only Cartera can carry the "selected" pill — Agregar is an action (it
-// doesn't represent "where you are"), and Menú opens a sheet rather than
-// navigating anywhere. Deliberately exact-match only: Malas pagas, Mi negocio
-// and a client's detail page all live one tap away in the menu now rather than
-// in the bar itself, and a highlight that meant "somewhere in this section"
-// would apply inconsistently across them — a client's page would light up
-// Cartera while Malas pagas lit up nothing, for two screens that are equally
-// one tap from the menu.
+// Only the three destinations carry the "selected" pill — Agregar is an
+// action, not a place, so "selected" has no meaning for it. Deliberately
+// exact-match only: Malas pagas, Importar cartera and Mi negocio live in the
+// sidebar rather than in this bar, and a highlight meaning "somewhere in this
+// section" would apply inconsistently across them.
 function NavItem({
   active,
   children,
@@ -107,7 +113,6 @@ function NavItem({
 export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { setOpenMobile } = useSidebar();
   const { guard } = useUnsavedChangesGuard();
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
@@ -212,23 +217,28 @@ export function MobileNav() {
     // double-tap-to-zoom, which otherwise delays every single tap.
     <nav className={navClass} aria-label="Navegación principal">
       <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
-        {/* Left: Cartera. Still an anchor rather than a button: Next
-            prefetches a Link's href while it is on screen, and this bar is
-            always on screen, so the destination is preloaded before the
-            owner ever taps. */}
-        <Link
-          href="/dashboard"
-          onClick={(e) => navigate(e, "/dashboard")}
-          className="flex flex-1"
-        >
-          <NavItem active={pathname === "/dashboard"} className="w-full">
-            {glyph("/dashboard", LayoutDashboard)}
-            Cartera
-          </NavItem>
-        </Link>
+        {/* The three destinations, then Agregar. All anchors rather than
+            buttons: Next prefetches a Link's href while it is on screen, and
+            this bar always is, so each destination is preloaded before the
+            owner ever taps. Menú is gone from here — the sidebar opens from
+            the header's own trigger now, which is why that trigger exists on
+            a phone at all. */}
+        {DESTINATIONS.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={(e) => navigate(e, item.href)}
+            className="flex flex-1"
+          >
+            <NavItem active={pathname === item.href} className="w-full">
+              {glyph(item.href, item.icon)}
+              {item.label}
+            </NavItem>
+          </Link>
+        ))}
 
-        {/* Center: Agregar. Never carries the active pill — it's an action,
-            not a place, so "selected" has no meaning for it. */}
+        {/* Agregar. Never carries the active pill — it's an action, not a
+            place, so "selected" has no meaning for it. */}
         <Link
           href={agregarHref}
           // Its own marker, not the one the page CTA uses. The tour finds its
@@ -255,18 +265,6 @@ export function MobileNav() {
           </span>
           Agregar
         </Link>
-
-        {/* Right: Menú. Local state only — no navigation, so nothing to guard
-            and nothing to wait for. Never carries the active pill: opening
-            the sheet is transient, not a place the owner "is". */}
-        <button
-          type="button"
-          onClick={() => setOpenMobile(true)}
-          className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
-        >
-          <Menu className="size-5" />
-          Menú
-        </button>
       </div>
     </nav>
   );

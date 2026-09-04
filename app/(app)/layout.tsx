@@ -8,6 +8,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { TourProvider } from "@/components/dashboard/tour-provider";
 import { NotificationsButton } from "@/components/dashboard/notifications-button";
+import { SidebarMenuTrigger } from "@/components/dashboard/sidebar-menu-trigger";
 import { MixpanelIdentify } from "@/components/dashboard/mixpanel-identify";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
 import { AppHeader } from "@/components/dashboard/app-header";
@@ -45,25 +46,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
             <SidebarInset>
               <AppHeader>
-                {/* Below md the menu lives in the bottom bar, so the header
-                    shows the mark instead of a trigger that would duplicate it.
-                    Swapped with CSS rather than a JS check so neither version
-                    flashes on load. */}
+                {/* Phone: the full wordmark on the left, the sidebar trigger on
+                    the right — the business name moved under Cartera's greeting
+                    and the bottom bar no longer carries "Menú", so this is the
+                    only way into the sidebar there. Desktop keeps the trigger on
+                    the left beside the business name. Swapped with CSS rather
+                    than a JS check so neither version flashes on load. */}
                 <Image
-                  src="/icon.svg"
+                  src="/logo.svg"
                   alt="Sevenz"
-                  width={28}
-                  height={28}
-                  className="size-7 rounded-md md:hidden"
+                  width={96}
+                  height={30}
+                  className="h-7 w-auto md:hidden"
                   priority
                 />
                 <SidebarTrigger className="-ml-1 hidden md:flex" />
                 <Separator orientation="vertical" className="mr-2 hidden h-4 md:block" />
-                <span className="text-sm font-medium text-muted-foreground">
+                <span className="hidden text-sm font-medium text-muted-foreground md:inline">
                   {owner?.business_name || "Mi negocio"}
                 </span>
                 <div className="ml-auto flex items-center gap-1">
-                  <NotificationsButton initialUnreadCount={unreadCount} />
+                  {/* Desktop only: a phone reaches the same list through the
+                      bottom bar's Notificaciones and the /notificaciones page. */}
+                  <div className="hidden md:block">
+                    <NotificationsButton initialUnreadCount={unreadCount} />
+                  </div>
+                  <SidebarMenuTrigger className="md:hidden" />
                 </div>
               </AppHeader>
               {/* Reserves the bar's height plus the iPhone home-indicator strip, so

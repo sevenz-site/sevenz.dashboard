@@ -1,3 +1,4 @@
+import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
@@ -113,13 +114,23 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
-        {/* first_name is required by both the signup form and "Mi negocio",
-            server-side as well as in the browser, so it is treated as present.
-            The guard is only for a row that predates that rule — rendering
-            "¡Hola !" would be worse than dropping the name. */}
-        <p className="text-2xl font-semibold">
-          ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
-        </p>
+        <div className="flex min-w-0 flex-col gap-1">
+          {/* first_name is required by both the signup form and "Mi negocio",
+              server-side as well as in the browser, so it is treated as present.
+              The guard is only for a row that predates that rule — rendering
+              "¡Hola !" would be worse than dropping the name. */}
+          <p className="text-2xl font-semibold">
+            ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
+          </p>
+          {/* Phone only: the header still carries the business name from md up,
+              and showing it twice on one screen reads as a mistake. Below that
+              the header is just the wordmark and the sidebar trigger, so this
+              is the only place the owner sees which business they're in. */}
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground md:hidden">
+            <Store className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{owner?.business_name || "Mi negocio"}</span>
+          </p>
+        </div>
         {lastSignIn ? (
           /* shrink-0 and nowrap together are what keep this at two lines. As a
              plain flex child it gets squeezed by a longer name and wraps to
