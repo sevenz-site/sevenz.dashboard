@@ -122,7 +122,19 @@ export function ClientSearchDialog({
   // was a navigation to the page it thought it was already on — the spinner ran
   // and nothing opened. Leaving the marker instead makes a refresh spring the
   // dialog open on its own, which is the other half of what was reported.
+  //
+  // Skipped entirely when the dialog is closing *because* we are navigating to
+  // a client. Picking a client from the search results ran onDone() (open ->
+  // false) and then router.push("/clients/<id>"), which armed this effect while
+  // `pathname` was still "/dashboard" — so the replace landed after the push
+  // and put the owner straight back on Cartera. The dialog closed and nothing
+  // else happened, and only from the bar's "Agregar", since that is the only
+  // entry point that sets ?nuevo=1 and therefore the only one where wantsOpen
+  // is true. There is nothing to clean up in that case anyway: navigating to
+  // another route leaves the marker behind on its own.
+  const navigatingAwayRef = useRef(false);
   useEffect(() => {
+    if (navigatingAwayRef.current) return;
     if (wantsOpen && !open) router.replace(pathname, { scroll: false });
   }, [wantsOpen, open, router, pathname]);
 
@@ -130,7 +142,11 @@ export function ClientSearchDialog({
   // below), and a fresh function every render would re-run that effect on
   // every render — each run bumping instanceKey, which re-renders, which
   // makes another new function. Both setters are stable, so [] is correct.
-  const closeAndReset = useCallback(() => {
+  // `navigating` tells the marker-clearing effect above to stand down: the
+  // body is closing this dialog on its way to a client page, and the replace
+  // would land after that push and cancel it.
+  const closeAndReset = useCallback((navigating = false) => {
+    navigatingAwayRef.current = navigating;
     setOpen(false);
     setInstanceKey((k) => k + 1);
   }, []);
@@ -234,7 +250,8 @@ function ClientSearchDialogBody({
   // Called once this instance is done with the dialog — a client was
   // created, an existing one was picked, or the owner confirmed abandoning
   // the registration. The parent closes and remounts a fresh instance.
-  onDone: () => void;
+  // `true` means "I am navigating to a client page" — see closeAndReset.
+  onDone: (navigating?: boolean) => void;
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
@@ -302,7 +319,7 @@ function ClientSearchDialogBody({
     setHandledState(state);
   }
   useEffect(() => {
-    if (handledState.clientId) onDone();
+    if (handledState.clientId) onDone(true);
   }, [handledState, onDone]);
 
   useEffect(() => {
@@ -317,7 +334,7 @@ function ClientSearchDialogBody({
   }, [state, pending, router]);
 
   function selectExisting(id: string) {
-    onDone();
+    onDone(true);
     router.push(`/clients/${id}`);
   }
 
