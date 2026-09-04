@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { flagClient, unflagClient, type FlagClientState } from "@/app/(app)/clients/[id]/actions";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { cn } from "@/lib/utils";
 import { required } from "@/lib/form-validation";
 
 const initialState: FlagClientState = { error: null, success: false };
@@ -35,10 +36,16 @@ export function ClientFlagControl({
   clientId,
   clientName,
   isFlagged,
+  spread,
 }: {
   clientId: string;
   clientName: string;
   isFlagged: boolean;
+  // Fills its container with the label at one end and the checkbox at the
+  // other, for the phone layout where this sits alone in its own card. The
+  // default keeps the two side by side, which is what the desktop row —
+  // where it shares a line with "Agregar movimiento" — needs.
+  spread?: boolean;
 }) {
   const router = useRouter();
   const checkboxId = useId();
@@ -83,11 +90,24 @@ export function ClientFlagControl({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Checkbox id={checkboxId} checked={isFlagged} onCheckedChange={(v) => handleCheckedChange(v === true)} />
-        <Label htmlFor={checkboxId}>
-          {isFlagged ? "Desmarcar como mala paga" : "Marcar como mala paga"}
-        </Label>
+      {/* Order flips with `spread`: label first when it fills a card of its
+          own, checkbox first when it sits inline beside another control. */}
+      <div className={cn("flex items-center gap-2", spread && "w-full justify-between")}>
+        {spread ? (
+          <>
+            <Label htmlFor={checkboxId}>
+              {isFlagged ? "Desmarcar como mala paga" : "Marcar como mala paga"}
+            </Label>
+            <Checkbox id={checkboxId} checked={isFlagged} onCheckedChange={(v) => handleCheckedChange(v === true)} />
+          </>
+        ) : (
+          <>
+            <Checkbox id={checkboxId} checked={isFlagged} onCheckedChange={(v) => handleCheckedChange(v === true)} />
+            <Label htmlFor={checkboxId}>
+              {isFlagged ? "Desmarcar como mala paga" : "Marcar como mala paga"}
+            </Label>
+          </>
+        )}
       </div>
 
       <Dialog

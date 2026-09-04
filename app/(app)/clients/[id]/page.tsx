@@ -135,26 +135,12 @@ export default async function ClientDetailPage({
           />
         </div>
 
-        <h2 className="mt-1 text-xl font-semibold">Cartera pendiente</h2>
-        <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-          {rateContext ? (
-            <div className="flex flex-wrap gap-6">
-              <div>
-                <p className="text-sm text-muted-foreground">Por cobrar USD</p>
-                <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
-                <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm text-muted-foreground">Por cobrar</p>
-              <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} />
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Status rides beside the section title rather than sitting inside
+            the balance card — it judges the whole account, not one currency,
+            and the card below is now one card per currency. */}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+          <div className="flex flex-wrap items-center gap-1">
             <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
               {CLIENT_STATUS_LABEL[status]}
             </Badge>
@@ -165,7 +151,30 @@ export default async function ClientDetailPage({
               </Badge>
             ) : null}
           </div>
-          <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
+        </div>
+
+        {rateContext ? (
+          <>
+            <BalanceRowCard label="Por cobrar Dólares">
+              <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
+            </BalanceRowCard>
+            <BalanceRowCard label="Por cobrar Euros">
+              <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
+            </BalanceRowCard>
+          </>
+        ) : (
+          <BalanceRowCard label="Por cobrar">
+            <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
+          </BalanceRowCard>
+        )}
+
+        <div className="rounded-lg border bg-muted/30 px-3 py-2">
+          <ClientFlagControl
+            clientId={client.id}
+            clientName={client.name}
+            isFlagged={client.is_flagged}
+            spread
+          />
         </div>
         <AddMovementDialog
           clientId={client.id}
@@ -202,11 +211,11 @@ export default async function ClientDetailPage({
           {rateContext ? (
             <div className="flex gap-4">
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Por cobrar USD</p>
+                <p className="text-sm text-muted-foreground">Por cobrar Dólares</p>
                 <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
               </div>
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Por cobrar EUR</p>
+                <p className="text-sm text-muted-foreground">Por cobrar Euros</p>
                 <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
               </div>
             </div>
@@ -268,9 +277,25 @@ export default async function ClientDetailPage({
   );
 }
 
-// Cédula, teléfono and dirección as icon rows under the client's name. Empty
-// values keep their row and show a dash, so every client's card has the same
-// shape and the absence of a phone or an address is itself visible.
+// One currency's balance as its own outlined card, label left and figure
+// right. One card per currency rather than both in one: they're independent
+// debts, and a phone reads them faster as two rows than as two columns.
+function BalanceRowCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Documento, teléfono and dirección as labelled icon rows under the client's
+// name. Empty values keep their row and show a dash, so every client's card
+// has the same shape and the absence of a phone or an address is itself
+// visible. The labels are on screen, not just in `dt`'s screen-reader text —
+// an icon alone tells you it's an address only once you already know.
 function ClientInfoRows({
   documentId,
   whatsapp,
@@ -281,17 +306,17 @@ function ClientInfoRows({
   address: string | null;
 }) {
   const rows = [
-    { icon: IdCard, label: "Cédula / Documento", value: formatDocumentId(documentId) },
+    { icon: IdCard, label: "Documento", value: formatDocumentId(documentId) },
     { icon: Phone, label: "Teléfono", value: whatsapp || "—" },
     { icon: MapPin, label: "Dirección", value: address || "—" },
   ];
   return (
     <dl className="flex flex-col gap-1 text-sm text-muted-foreground">
       {rows.map((row) => (
-        <div key={row.label} className="flex items-center gap-2">
-          <dt className="sr-only">{row.label}</dt>
-          <row.icon className="size-4 shrink-0" aria-hidden="true" />
-          <dd>{row.value}</dd>
+        <div key={row.label} className="flex items-center gap-1.5">
+          <row.icon className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
+          <dt>{row.label}:</dt>
+          <dd className="min-w-0 truncate">{row.value}</dd>
         </div>
       ))}
     </dl>
