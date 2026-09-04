@@ -383,6 +383,9 @@ export function ClientTable({
                       <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                     </div>
                     <div className="flex flex-col gap-1">
+                      <p className="truncate text-sm text-muted-foreground">
+                        Documento: {formatDocumentId(row.document_id)}
+                      </p>
                       <div className="flex flex-wrap gap-x-6 gap-y-1">
                         {rateContext ? (
                           <>
@@ -422,20 +425,15 @@ export function ClientTable({
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                          Documento: {formatDocumentId(row.document_id)}
-                        </p>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                            {CLIENT_STATUS_LABEL[status]}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
+                          {CLIENT_STATUS_LABEL[status]}
+                        </Badge>
+                        {row.is_flagged ? (
+                          <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                            Mala paga
                           </Badge>
-                          {row.is_flagged ? (
-                            <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-                              Mala paga
-                            </Badge>
-                          ) : null}
-                        </div>
+                        ) : null}
                       </div>
                     </div>
                   </button>
