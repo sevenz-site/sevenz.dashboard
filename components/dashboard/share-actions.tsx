@@ -38,20 +38,42 @@ export function ShareActions({
     });
   }
 
+  // One message, both buttons. They differ only in how it leaves the app —
+  // WhatsApp with the client's own number prefilled, or the share sheet, which
+  // has no recipient of its own.
+  function buildMessage(url: string) {
+    return `Hola ${clientName}, tu saldo actual es ${balanceText}. Puedes verlo aquí: ${url}`;
+  }
+
   async function handleShare() {
     const url = await resolveUrl();
     if (!url) return;
-    await navigator.clipboard.writeText(url);
-    toast.success("Link copiado", { description: url });
+    const message = buildMessage(url);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: message });
+        track("Share Link Opened", { client_id: clientId, method: "native" });
+      } catch {
+        // Dismissing the sheet rejects. That is the owner deciding not to
+        // send, not a failure, so it gets no toast and no event.
+      }
+      return;
+    }
+
+    // Desktop browsers without navigator.share fall back to the clipboard —
+    // the whole message rather than the bare link, so what you paste is the
+    // same thing the sheet would have sent.
+    await navigator.clipboard.writeText(message);
+    toast.success("Mensaje copiado", { description: message });
     track("Share Link Opened", { client_id: clientId, method: "copy" });
   }
 
   async function handleRemind() {
     const url = await resolveUrl();
     if (!url) return;
-    const message = `Hola ${clientName}, tu saldo actual es ${balanceText}. Puedes verlo aquí: ${url}`;
     const phone = whatsapp ? whatsapp.replace(/\D/g, "") : "";
-    const wa = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const wa = `https://wa.me/${phone}?text=${encodeURIComponent(buildMessage(url))}`;
     window.open(wa, "_blank", "noopener,noreferrer");
     track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
   }

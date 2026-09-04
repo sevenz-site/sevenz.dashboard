@@ -51,6 +51,7 @@ export default async function DashboardPage({
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
+        rateFetchedAt: ownerRate.fetchedAt,
       }
     : null;
   const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
