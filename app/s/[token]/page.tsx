@@ -120,7 +120,10 @@ export default async function SharedBalancePage({
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
       <DocumentIdDialog token={token} clientName={shared.client_name} initialDocumentId={shared.document_id} />
-      <div className="mt-2 flex items-center gap-3 rounded-xl border bg-card p-4">
+      {/* Not a card: no border, no padding of its own, so the logo and the
+          business name start on the page's own inset, in line with
+          "Pendiente" and the edges of the balance cards below. */}
+      <div className="mt-2 flex items-center gap-3">
         <Image
           src={logoUrl}
           alt=""
