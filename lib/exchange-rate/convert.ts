@@ -23,6 +23,11 @@ export type MovementRateContext = {
   rateMode: ExchangeRateMode;
   effectiveRate: EffectiveRate;
   officialRateUsd: number;
+  // When the rate on screen was captured, for the calculator's stamp. Optional
+  // because only the dashboard (the one place that renders the calculator)
+  // has any use for it — the movement forms care what the rate IS, not when
+  // it was read.
+  rateFetchedAt?: string | null;
 };
 
 // ── Per-currency ledgers ────────────────────────────────────────────────

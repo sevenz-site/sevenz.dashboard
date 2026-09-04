@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { LedgerCurrency } from "@/lib/types";
 import { es } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { CalendarIcon, ChevronDown } from "lucide-react";
@@ -53,6 +54,8 @@ type Row = RateHistoryPoint & {
   // row would read as "no change" purely because of where the filter starts.
   deltaUsd: number | null;
   deltaUsdPct: number | null;
+  deltaEur: number | null;
+  deltaEurPct: number | null;
 };
 
 type State = { status: "loading" } | { status: "error" } | { status: "ready"; rows: Row[] };
@@ -60,19 +63,30 @@ type State = { status: "loading" } | { status: "error" } | { status: "ready"; ro
 function buildRows(data: RateHistoryPoint[]): Row[] {
   return data.map((point, i) => {
     const prev = i > 0 ? data[i - 1] : null;
-    if (!prev) return { ...point, deltaUsd: null, deltaUsdPct: null };
+    if (!prev) return { ...point, deltaUsd: null, deltaUsdPct: null, deltaEur: null, deltaEurPct: null };
     const deltaUsd = point.usd - prev.usd;
-    return { ...point, deltaUsd, deltaUsdPct: (deltaUsd / prev.usd) * 100 };
+    const deltaEur = point.eur - prev.eur;
+    return {
+      ...point,
+      deltaUsd,
+      deltaUsdPct: (deltaUsd / prev.usd) * 100,
+      deltaEur,
+      deltaEurPct: (deltaEur / prev.eur) * 100,
+    };
   });
 }
 
-function DeltaCell({ row }: { row: Row }) {
-  if (row.deltaUsd === null || row.deltaUsdPct === null) {
+function DeltaCell({ row, currency }: { row: Row; currency: LedgerCurrency }) {
+  // Which currency's day-over-day move this column shows follows the pill in
+  // the calculator above — an owner looking at euros wants the euro's swing.
+  const delta = currency === "USD" ? row.deltaUsd : row.deltaEur;
+  const pctValue = currency === "USD" ? row.deltaUsdPct : row.deltaEurPct;
+  if (delta === null || pctValue === null) {
     return <span className="text-muted-foreground">—</span>;
   }
   // Rounded before comparing: a change of 0.004 Bs. displays as "0,00", and
   // painting that green would claim a rise the number on screen doesn't show.
-  const rounded = Number(row.deltaUsd.toFixed(2));
+  const rounded = Number(delta.toFixed(2));
   const sign = rounded > 0 ? "+" : "";
   return (
     <span
@@ -95,13 +109,13 @@ function DeltaCell({ row }: { row: Row }) {
           misreading that started this. */}
       <span className="hidden text-xs opacity-70 sm:inline">
         ({sign}
-        {pct.format(row.deltaUsdPct)}%)
+        {pct.format(pctValue)}%)
       </span>
     </span>
   );
 }
 
-export function RateHistoryTable() {
+export function RateHistoryTable({ currency = "USD" }: { currency?: LedgerCurrency }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [range, setRange] = useState<DateRange | undefined>();
   const [filterOpen, setFilterOpen] = useState(false);
@@ -211,8 +225,8 @@ export function RateHistoryTable() {
                 {/* With the percentage hidden, this header becomes the widest
                     thing in its column again, so it has to shrink too — one
                     without the other still overflows. */}
-                <span className="sm:hidden">Var. USD</span>
-                <span className="hidden sm:inline">Variación USD</span>
+                <span className="sm:hidden">Var. {currency}</span>
+                <span className="hidden sm:inline">Variación {currency}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -230,7 +244,7 @@ export function RateHistoryTable() {
                   <TableCell className="text-right tabular-nums whitespace-nowrap">Bs. {bs.format(row.usd)}</TableCell>
                   <TableCell className="text-right tabular-nums whitespace-nowrap">Bs. {bs.format(row.eur)}</TableCell>
                   <TableCell className="text-right">
-                    <DeltaCell row={row} />
+                    <DeltaCell row={row} currency={currency} />
                   </TableCell>
                 </TableRow>
               ))

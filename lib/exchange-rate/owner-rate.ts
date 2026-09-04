@@ -5,6 +5,7 @@ import { refreshBcvRateIfStale } from "@/lib/exchange-rate/ensure-fresh";
 
 export type OwnerRateContext = {
   rateMode: ExchangeRateMode;
+  fetchedAt: string;
   // Bs per USD / Bs per EUR, whichever is actually applied to a new
   // movement right now (the owner's CUSTOM numbers, or the live BCV_AUTO
   // fetch).
@@ -55,5 +56,8 @@ export async function getOwnerRateContext(
     rateMode,
     effectiveRate,
     officialRate: { usd: officialRate.usd, eur: officialRate.eur },
+    // If refreshBcvRateIfStale returned something, that fetch just happened,
+    // so the stored row's timestamp is already out of date by one refresh.
+    fetchedAt: refreshed ? new Date().toISOString() : stored.fetched_at,
   };
 }
