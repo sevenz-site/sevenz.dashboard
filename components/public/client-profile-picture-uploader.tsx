@@ -47,9 +47,19 @@ export function ClientProfilePictureUploader({
 
   async function handleGalleryFile(file: File | undefined) {
     if (!file) return;
-    const blob = await fileToResizedBlob(file);
-    await uploadBlob(blob);
-    if (galleryInputRef.current) galleryInputRef.current.value = "";
+    try {
+      // Inside the try, not before it. fileToResizedBlob decodes the file
+      // through a canvas and throws on anything that is not a real image — a
+      // corrupt photo, a file that only looks like one. That rejection used to
+      // escape unhandled: the picker closed, no toast appeared, and the button
+      // sat there as though nothing had been chosen.
+      const blob = await fileToResizedBlob(file);
+      await uploadBlob(blob);
+    } catch {
+      toast.error("No pudimos leer esa imagen. Intenta con otra foto.");
+    } finally {
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
   }
 
   return (

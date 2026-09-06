@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { ALLOWED_IMAGE_TYPES, sniffImageType } from "@/lib/image-type";
 
 export type SubmitDocumentIdState = { error: string | null; documentId: string | null };
 
@@ -48,10 +49,18 @@ export type UploadProfilePictureState = { error: string | null; path: string | n
 // Unlike the document ID, this is repeatable: every upload replaces
 // whatever picture was there before (old file best-effort deleted after
 // the new one is confirmed saved).
+// The bucket's own ceiling. Next caps a server action body at 1 MB before this
+// runs, so in practice the body limit bites first — this is here so the rule
+// still holds if that limit is ever raised, rather than depending on it.
+const MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024;
+
 export async function uploadProfilePicture(token: string, formData: FormData): Promise<UploadProfilePictureState> {
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Selecciona una foto.", path: null };
+  }
+  if (file.size > MAX_PROFILE_PICTURE_BYTES) {
+    return { error: "La foto es muy pesada. Elige una de menos de 5 MB.", path: null };
   }
 
   const supabase = await createClient();
@@ -70,11 +79,18 @@ export async function uploadProfilePicture(token: string, formData: FormData): P
     .eq("id", clientId)
     .single();
 
-  const path = `${clientId}/profile-${Date.now()}.jpg`;
   const arrayBuffer = await file.arrayBuffer();
+  const mimeType = sniffImageType(new Uint8Array(arrayBuffer.slice(0, 8)));
+  if (!mimeType) {
+    // Deliberately vague about why. An anonymous caller does not need to learn
+    // which byte signatures this accepts.
+    return { error: "Ese archivo no es una foto válida. Usa una imagen JPG o PNG.", path: null };
+  }
+
+  const path = `${clientId}/profile-${Date.now()}.${ALLOWED_IMAGE_TYPES[mimeType]}`;
   const { error: uploadError } = await serviceClient.storage
     .from("client-profile-pictures")
-    .upload(path, arrayBuffer, { contentType: "image/jpeg" });
+    .upload(path, arrayBuffer, { contentType: mimeType });
 
   if (uploadError) {
     console.error("[uploadProfilePicture] storage upload failed:", uploadError.message);
