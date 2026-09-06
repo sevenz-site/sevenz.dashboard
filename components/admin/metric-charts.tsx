@@ -44,9 +44,13 @@ export function MetricCharts({ trend, bucket }: { trend: TrendPoint[]; bucket: s
     );
   }
 
+  // min-w-0 on the cards is load-bearing, not tidying. A grid item defaults to
+  // min-width:auto, so Recharts' SVG widens the track instead of being
+  // constrained by it, and at 375px that pushed the whole page 66px wider than
+  // the viewport — a sideways scroll on every phone.
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <div className="flex flex-col gap-2 rounded-lg border p-4">
+      <div className="flex min-w-0 flex-col gap-2 rounded-lg border p-4">
         <p className="text-sm font-medium">Actividad — fiados vs abonos</p>
         <ChartContainer config={activityConfig} className="h-[220px] w-full">
           <BarChart data={data} margin={{ top: 10 }}>
@@ -60,7 +64,7 @@ export function MetricCharts({ trend, bucket }: { trend: TrendPoint[]; bucket: s
         </ChartContainer>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border p-4">
+      <div className="flex min-w-0 flex-col gap-2 rounded-lg border p-4">
         <p className="text-sm font-medium">Crecimiento — clientes nuevos</p>
         <ChartContainer config={growthConfig} className="h-[220px] w-full">
           <LineChart data={data} margin={{ top: 10 }}>

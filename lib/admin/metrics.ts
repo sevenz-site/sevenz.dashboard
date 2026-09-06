@@ -106,15 +106,41 @@ export async function getByOwner(f: MetricFilters): Promise<OwnerRow[]> {
   return (data ?? []) as OwnerRow[];
 }
 
-// Owners, for the filter bar's select.
+// Every read below goes through a SECURITY DEFINER function rather than
+// touching a table directly.
+//
+// Not a style preference — a correctness one. Production has SELECT revoked
+// from service_role on the customer tables (deliberate hardening); the dev
+// branch never had it revoked. So the first version of this file read `owners`
+// directly, worked in dev, and returned 500 in production with "permission
+// denied for table owners". The functions run as their owner and need no table
+// grants at all. See supabase/039_admin_reads_without_table_grants.sql.
+
+// PostgREST returns at most 1,000 rows and says nothing about the ones it
+// dropped — set-returning functions included, so moving behind an RPC does not
+// remove the ceiling. Both unbounded reads below page through it, because a
+// truncated list would not fail loudly here: it would quietly produce an
+// average over an arbitrary thousand clients and look perfectly plausible.
+async function rpcAll<T>(fn: string, args: Record<string, unknown>): Promise<T[]> {
+  const db = createServiceClient();
+  const rows: T[] = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await db.rpc(fn, args).range(page * 1000, page * 1000 + 999);
+    if (error) throw new Error(`${fn}: ${error.message}`);
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < 1000) break;
+  }
+  return rows;
+}
+
+// Owners, for the filter bar's select. Small enough not to need paging, and it
+// would stop being a filter bar long before it needed one.
 export async function getOwnerOptions(): Promise<{ id: string; business_name: string; country: string }[]> {
   const db = createServiceClient();
-  const { data, error } = await db
-    .from("owners")
-    .select("id, business_name, country")
-    .order("business_name");
-  if (error) throw new Error(`owners: ${error.message}`);
-  return data ?? [];
+  const { data, error } = await db.rpc("admin_owner_options");
+  if (error) throw new Error(`admin_owner_options: ${error.message}`);
+  return (data ?? []) as { id: string; business_name: string; country: string }[];
 }
 
 // The one metric that cannot be aggregated in SQL.
@@ -131,65 +157,19 @@ export async function getOwnerOptions(): Promise<{ id: string; business_name: st
 export async function getAverageCreditScore(
   f: MetricFilters,
 ): Promise<{ average: number | null; clients: number }> {
-  const db = createServiceClient();
+  // Currency is deliberately not passed: a credit score is a property of a
+  // client, not of one currency's movements, so filtering by it would produce
+  // a score computed from a partial ledger.
+  const { p_country, p_owner, p_from, p_to } = rpcArgs(f);
+  const args = { p_country, p_owner, p_from, p_to };
 
-  let ownersQuery = db.from("owners").select("id");
-  if (f.country) ownersQuery = ownersQuery.eq("country", f.country);
-  if (f.ownerId) ownersQuery = ownersQuery.eq("id", f.ownerId);
-  const { data: owners } = await ownersQuery;
-  const ownerIds = new Set((owners ?? []).map((o) => o.id));
-  if (ownerIds.size === 0) return { average: null, clients: 0 };
-
-  // Paged for the same reason the movements loop below is: PostgREST returns
-  // at most 1,000 rows and says nothing about the ones it dropped. Unpaged,
-  // the "average across every client" would quietly become "average across an
-  // arbitrary thousand" the day the platform passes that mark.
-  const summaries: Record<string, unknown>[] = [];
-  for (let page = 0; ; page++) {
-    const { data, error } = await db
-      .from("client_summary")
-      .select("*")
-      .range(page * 1000, page * 1000 + 999);
-    if (error) throw new Error(`client_summary: ${error.message}`);
-    summaries.push(...((data ?? []) as Record<string, unknown>[]));
-    if (!data || data.length < 1000) break;
-  }
-  const scoped = summaries.filter((r) => {
-    if (!ownerIds.has(r.owner_id as string)) return false;
-    if (f.from && (r.client_created_at as string) < f.from) return false;
-    if (f.to && (r.client_created_at as string) >= f.to) return false;
-    return true;
-  });
+  const scoped = await rpcAll<Record<string, unknown>>("admin_credit_inputs", args);
   if (scoped.length === 0) return { average: null, clients: 0 };
 
-  const clientIds = scoped.map((r) => r.client_id as string);
-
-  // Paged: PostgREST caps a plain select at 1,000 rows and truncates without
-  // erroring. A partial movement list would not fail loudly here — it would
-  // quietly produce a wrong score, which is worse.
-  const movements: Movement[] = [];
-  for (let page = 0; ; page++) {
-    const { data, error } = await db
-      .from("movements")
-      .select("id, client_id, type, amount, currency, plazo_dias, created_at")
-      .in("client_id", clientIds)
-      .is("deleted_at", null)
-      .order("created_at")
-      .range(page * 1000, page * 1000 + 999);
-    if (error) throw new Error(`movements: ${error.message}`);
-    movements.push(...((data ?? []) as Movement[]));
-    if (!data || data.length < 1000) break;
-  }
-
-  const { data: flags } = await db.from("client_flags").select("client_id, unflagged_at");
-  const lastUnflagged = new Map<string, string>();
-  for (const f2 of flags ?? []) {
-    if (!f2.unflagged_at) continue;
-    const prev = lastUnflagged.get(f2.client_id as string);
-    if (!prev || new Date(f2.unflagged_at as string) > new Date(prev)) {
-      lastUnflagged.set(f2.client_id as string, f2.unflagged_at as string);
-    }
-  }
+  // The same four filters, so the two functions cannot disagree about which
+  // clients are in scope. Any movement belonging to a client outside `scoped`
+  // is simply never looked up below.
+  const movements = await rpcAll<Movement>("admin_credit_movements", args);
 
   const byClient = new Map<string, Movement[]>();
   for (const m of movements) {
@@ -207,7 +187,7 @@ export async function getAverageCreditScore(
         oldestUnpaidChargeAt: (r.oldest_unpaid_charge_at as string | null) ?? null,
         oldestUnpaidChargePlazoDias: (r.oldest_unpaid_charge_plazo_dias as number | null) ?? null,
         isFlagged: Boolean(r.is_flagged),
-        mostRecentUnflaggedAt: lastUnflagged.get(r.client_id as string) ?? null,
+        mostRecentUnflaggedAt: (r.most_recent_unflagged_at as string | null) ?? null,
       }).score,
   );
 
