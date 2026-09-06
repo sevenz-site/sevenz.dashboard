@@ -20,7 +20,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/format";
-import type { ExtractedMovement } from "@/lib/types";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
 
 export function ImportReviewTable({
@@ -28,11 +29,14 @@ export function ImportReviewTable({
   onUpdate,
   onRemove,
   existingClients,
+  showCurrency,
 }: {
   rows: ReviewRow[];
   onUpdate: (index: number, patch: Partial<ExtractedMovement>) => void;
   onRemove: (index: number) => void;
   existingClients: { id: string; name: string }[];
+  // False for a CO owner, whose ledger has no currency dimension.
+  showCurrency: boolean;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -90,15 +94,34 @@ export function ImportReviewTable({
                   </SelectContent>
                 </Select>
               </TableCell>
+              {/* Currency sits with the amount rather than in its own column:
+                  it is a property of that number, and on a phone an extra
+                  column is one more thing to scroll past to reach it. */}
               <TableCell>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="w-28"
-                  value={row.amount}
-                  onChange={(e) => onUpdate(index, { amount: Number(e.target.value) || 0 })}
-                />
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-24"
+                    value={row.amount}
+                    onChange={(e) => onUpdate(index, { amount: Number(e.target.value) || 0 })}
+                  />
+                  {showCurrency ? (
+                    <Select
+                      value={row.currency ?? "USD"}
+                      onValueChange={(v) => onUpdate(index, { currency: v as LedgerCurrency })}
+                    >
+                      <SelectTrigger className="w-[4.5rem]" aria-label={`Moneda de ${row.client_name}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell>
                 <Input
@@ -106,7 +129,17 @@ export function ImportReviewTable({
                   onChange={(e) => onUpdate(index, { description: e.target.value || null })}
                 />
               </TableCell>
-              <TableCell className="tabular-nums">{formatCurrency(row.computed_balance)}</TableCell>
+              {/* The running total is per currency, so on a mixed libreta a
+                  bare number would be ambiguous. formatCurrency is hardcoded to
+                  COP and renders "$" — appending "EUR" to it produced
+                  "$ 20,00 EUR", a dollar sign contradicting a euro code. Same
+                  helper the client table and the movement detail use, so a
+                  euro reads "€20,00" here exactly as it does everywhere else. */}
+              <TableCell className="tabular-nums whitespace-nowrap">
+                {row.currency
+                  ? formatDisplayCurrency(row.computed_balance, row.currency)
+                  : formatCurrency(row.computed_balance)}
+              </TableCell>
               <TableCell>
                 {row.needs_review ? (
                   <Badge variant="destructive">Revisar</Badge>

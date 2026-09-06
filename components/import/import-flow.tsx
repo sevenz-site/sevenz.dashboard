@@ -20,11 +20,13 @@ import {
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
 import { reconcileMovements } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
-import type { ExtractedMovement } from "@/lib/types";
+import { DEFAULT_LEDGER_CURRENCY, type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 
-type ExistingClient = { id: string; name: string; balance: number; document_id: string | null };
+import type { ReconcileClient } from "@/lib/reconcile";
+
+type ExistingClient = ReconcileClient;
 
 const ATTACHMENT_STATE: Record<ImportJobStatus, "uploading" | "processing" | "done" | "error"> = {
   queued: "uploading",
@@ -40,8 +42,18 @@ const STATUS_LABEL: Record<ImportJobStatus, string> = {
   error: "Error",
 };
 
-export function ImportFlow({ existingClients }: { existingClients: ExistingClient[] }) {
+export function ImportFlow({
+  existingClients,
+  ownerCountry,
+}: {
+  existingClients: ExistingClient[];
+  ownerCountry: string | null;
+}) {
   const router = useRouter();
+  // Only a VE owner has a currency to choose. A CO owner's ledger has no
+  // currency dimension at all — null means COP — so showing them a selector
+  // would invent a decision they don't have.
+  const showCurrency = ownerCountry === "VE";
   const { jobs, isProcessing, usage, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
@@ -68,7 +80,21 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
   }
 
   function handleViewResults() {
-    setReviewMovements(doneJobs.flatMap((j) => j.movements));
+    // Seeded here rather than in the extraction: the photo doesn't say, and
+    // USD is what almost every owner's libreta is kept in. The per-row select
+    // and the "aplicar a todas" shortcut are what handle the rest.
+    setReviewMovements(
+      doneJobs
+        .flatMap((j) => j.movements)
+        .map((m) => ({ ...m, currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null })),
+    );
+  }
+
+  // A libreta is usually kept in one currency even though it can mix, so
+  // setting all rows at once is the common path and the per-row select is the
+  // exception — not the other way round.
+  function applyCurrencyToAll(currency: LedgerCurrency) {
+    setReviewMovements((prev) => (prev ? prev.map((m) => ({ ...m, currency })) : prev));
   }
 
   function updateMovement(index: number, patch: Partial<ExtractedMovement>) {
@@ -95,6 +121,7 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
         amount: r.amount,
         description: r.description,
         document_id: r.document_id,
+        currency: r.currency,
       }));
       const result = await confirmImport(rows);
       if (result.error) {
@@ -113,11 +140,28 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4">
+        {showCurrency ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+            <span className="text-sm font-medium">Moneda de toda la libreta</span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("USD")}>
+                Todo en USD
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("EUR")}>
+                Todo en EUR
+              </Button>
+            </div>
+            <p className="w-full text-xs text-muted-foreground">
+              Puedes cambiar filas sueltas después, si la libreta mezcla.
+            </p>
+          </div>
+        ) : null}
         <ImportReviewTable
           rows={reviewRows}
           onUpdate={updateMovement}
           onRemove={removeMovement}
           existingClients={existingClients}
+          showCurrency={showCurrency}
         />
         {missingDocumentId ? (
           <p className="text-sm text-destructive">

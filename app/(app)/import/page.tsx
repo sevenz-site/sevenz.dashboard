@@ -10,15 +10,24 @@ export default async function ImportPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: clients } = await supabase
-    .from("client_summary")
-    .select("client_id, name, balance, document_id")
-    .eq("owner_id", user!.id);
+  // balance_usd/balance_eur alongside balance: the review table's running
+  // total is per currency, so it needs the right starting point for each one.
+  // A VE owner's `balance` is not the sum of the other two and must not be
+  // used as a stand-in.
+  const [{ data: clients }, { data: owner }] = await Promise.all([
+    supabase
+      .from("client_summary")
+      .select("client_id, name, balance, balance_usd, balance_eur, document_id")
+      .eq("owner_id", user!.id),
+    supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+  ]);
 
   const existingClients = (clients ?? []).map((c) => ({
     id: c.client_id as string,
     name: c.name as string,
-    balance: c.balance as number,
+    balance: (c.balance as number | null) ?? 0,
+    balance_usd: (c.balance_usd as number | null) ?? 0,
+    balance_eur: (c.balance_eur as number | null) ?? 0,
     document_id: c.document_id as string | null,
   }));
 
@@ -41,7 +50,10 @@ export default async function ImportPage() {
           Sube fotos de la libreta. Revisa cada línea antes de guardarla.
         </p>
       </div>
-      <ImportFlow existingClients={existingClients} />
+      <ImportFlow
+        existingClients={existingClients}
+        ownerCountry={(owner?.country as string | null) ?? null}
+      />
     </div>
   );
 }
