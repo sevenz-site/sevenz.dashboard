@@ -2,14 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { ALLOWED_IMAGE_TYPES, sniffImageType } from "@/lib/image-type";
 
 // Quotas for the two actions below, the only two anyone can reach without a
 // login. Both are per share token and generous enough that a real client will
 // never meet them — a person sets their document once and changes their photo
 // occasionally. They exist to make a script pointless, not to police use.
 const DOCUMENT_ID_LIMIT = 5;
-const PROFILE_PICTURE_LIMIT = 10;
 const RATE_WINDOW_SECONDS = 60 * 60;
 
 // Returns true when the caller may proceed.
@@ -94,73 +92,24 @@ export type UploadProfilePictureState = { error: string | null; path: string | n
 // Unlike the document ID, this is repeatable: every upload replaces
 // whatever picture was there before (old file best-effort deleted after
 // the new one is confirmed saved).
-// The bucket's own ceiling. Next caps a server action body at 1 MB before this
-// runs, so in practice the body limit bites first — this is here so the rule
-// still holds if that limit is ever raised, rather than depending on it.
-const MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024;
-
-export async function uploadProfilePicture(token: string, formData: FormData): Promise<UploadProfilePictureState> {
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Selecciona una foto.", path: null };
-  }
-  if (file.size > MAX_PROFILE_PICTURE_BYTES) {
-    return { error: "La foto es muy pesada. Elige una de menos de 5 MB.", path: null };
-  }
-
-  // Before the upload, not after: the point is to avoid paying for the write.
-  if (!(await withinQuota(token, "profile_picture", PROFILE_PICTURE_LIMIT))) {
-    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde.", path: null };
-  }
-
-  const supabase = await createClient();
-  const { data: clientId, error: resolveError } = await supabase.rpc("resolve_shared_client", {
-    p_token: token,
-  });
-  if (resolveError || !clientId) {
-    return { error: "Link inválido.", path: null };
-  }
-
-  const serviceClient = createServiceClient();
-
-  const { data: existing } = await serviceClient
-    .from("clients")
-    .select("profile_picture_path")
-    .eq("id", clientId)
-    .single();
-
-  const arrayBuffer = await file.arrayBuffer();
-  const mimeType = sniffImageType(new Uint8Array(arrayBuffer.slice(0, 8)));
-  if (!mimeType) {
-    // Deliberately vague about why. An anonymous caller does not need to learn
-    // which byte signatures this accepts.
-    return { error: "Ese archivo no es una foto válida. Usa una imagen JPG o PNG.", path: null };
-  }
-
-  const path = `${clientId}/profile-${Date.now()}.${ALLOWED_IMAGE_TYPES[mimeType]}`;
-  const { error: uploadError } = await serviceClient.storage
-    .from("client-profile-pictures")
-    .upload(path, arrayBuffer, { contentType: mimeType });
-
-  if (uploadError) {
-    console.error("[uploadProfilePicture] storage upload failed:", uploadError.message);
-    return { error: "No pudimos subir tu foto. Intenta de nuevo.", path: null };
-  }
-
-  const { error: updateError } = await serviceClient
-    .from("clients")
-    .update({ profile_picture_path: path })
-    .eq("id", clientId);
-
-  if (updateError) {
-    console.error("[uploadProfilePicture] update failed:", updateError.message);
-    return { error: "No pudimos guardar tu foto. Intenta de nuevo.", path: null };
-  }
-
-  const previousPath = existing?.profile_picture_path as string | null;
-  if (previousPath) {
-    await serviceClient.storage.from("client-profile-pictures").remove([previousPath]);
-  }
-
-  return { error: null, path };
+export async function uploadProfilePicture(): Promise<UploadProfilePictureState> {
+  // Closed alongside /s/[token]/perfil, its only caller.
+  //
+  // A server action is a public HTTP endpoint in its own right: 404-ing the
+  // page that used it does not stop anyone invoking it directly, which is
+  // exactly the "otro método" this change exists to cover. It wrote to
+  // billable Storage on nothing more than a share token, so leaving it live
+  // behind a removed page would be the worst combination — invisible and
+  // reachable.
+  //
+  // The implementation is not reproduced here as dead code; unreachable code
+  // stops type-checking and rots unread. It is intact in git as of 076867c,
+  // with its byte sniffing, size ceiling and rate limit, and should be
+  // restored from there when clients can authenticate — not rewritten from
+  // memory, which is how hardening quietly gets lost. lib/image-type.ts is
+  // left in place for the same reason — it is tested and comes back with it.
+  //
+  // Takes no arguments now: nothing calls it, and a signature that promises to
+  // accept a file it will never read is a lie to the next reader.
+  return { error: "Esta opción no está disponible por ahora.", path: null };
 }
