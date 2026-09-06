@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles } from "lucide-react";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -227,18 +227,53 @@ export function ImportFlow({
       ) : (
         <Card>
           <CardContent className="flex flex-col gap-4 pt-6">
+            {/* Two inputs, not one with a toggle, because the difference is
+                the `capture` attribute and it cannot be changed per click
+                without re-rendering the input and losing the tap.
+
+                The old single input carried capture="environment", which sends
+                a phone straight to the rear camera and removes the photo
+                library from the picker altogether — so an owner who had
+                already photographed the libreta, or received it on WhatsApp,
+                had no way to reach that image. The label said "elegir o tomar"
+                while only "tomar" was possible. */}
             <label
               htmlFor="photos"
               className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground hover:bg-accent/50"
             >
               <Upload className="size-6" />
-              {`Toca para elegir o tomar fotos de la libreta (hasta ${MAX_IMPORT_PHOTOS})`}
+              {`Toca para elegir fotos de la libreta (hasta ${MAX_IMPORT_PHOTOS})`}
             </label>
             <input
               id="photos"
               type="file"
               accept="image/*"
               multiple
+              className="sr-only"
+              onChange={(e) => {
+                handleFilesSelected(e.target.files);
+                e.target.value = "";
+              }}
+            />
+
+            {/* Phones only: a desktop browser ignores `capture` and would open
+                the same ordinary file dialog as the button above, which reads
+                as broken. Hidden with CSS rather than by detecting the device,
+                so the server and the client render the same markup. */}
+            <Button asChild variant="outline" className="sm:hidden">
+              <label htmlFor="photos-camera" className="cursor-pointer">
+                <Camera className="size-4" />
+                Tomar foto
+              </label>
+            </Button>
+            {/* No `multiple`: a camera capture returns exactly one image, so
+                asking for several here would promise something the OS does not
+                deliver. Several photos still work — one capture at a time, or
+                the picker above. */}
+            <input
+              id="photos-camera"
+              type="file"
+              accept="image/*"
               capture="environment"
               className="sr-only"
               onChange={(e) => {
