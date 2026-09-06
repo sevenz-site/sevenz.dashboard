@@ -30,6 +30,7 @@ export function ImportReviewTable({
   onRemove,
   existingClients,
   showCurrency,
+  clientLocked,
 }: {
   rows: ReviewRow[];
   onUpdate: (index: number, patch: Partial<ExtractedMovement>) => void;
@@ -37,6 +38,10 @@ export function ImportReviewTable({
   existingClients: { id: string; name: string }[];
   // False for a CO owner, whose ledger has no currency dimension.
   showCurrency: boolean;
+  // True while "todas las filas son del mismo cliente" is ticked. Name and
+  // document then come from the shared fields above the table; editing them
+  // per row would silently contradict that, so the inputs become plain text.
+  clientLocked: boolean;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -62,22 +67,30 @@ export function ImportReviewTable({
           {rows.map((row, index) => (
             <TableRow key={row.rowId} className={row.needs_review ? "bg-amber-50 dark:bg-amber-950/20" : undefined}>
               <TableCell>
-                <Input
-                  list="known-clients"
-                  value={row.client_name}
-                  onChange={(e) => onUpdate(index, { client_name: e.target.value })}
-                />
+                {clientLocked ? (
+                  <span className="text-sm whitespace-nowrap text-muted-foreground">
+                    {row.client_name}
+                  </span>
+                ) : (
+                  <Input
+                    list="known-clients"
+                    value={row.client_name}
+                    onChange={(e) => onUpdate(index, { client_name: e.target.value })}
+                  />
+                )}
               </TableCell>
               <TableCell>
-                {row.needs_document_id ? (
+                {clientLocked || !row.needs_document_id ? (
+                  <span className="text-sm whitespace-nowrap text-muted-foreground">
+                    {row.document_id}
+                  </span>
+                ) : (
                   <Input
                     placeholder="Requerida"
                     className={row.document_id?.trim() ? undefined : "border-destructive"}
                     value={row.document_id ?? ""}
                     onChange={(e) => onUpdate(index, { document_id: e.target.value || null })}
                   />
-                ) : (
-                  <span className="text-sm text-muted-foreground">{row.document_id}</span>
                 )}
               </TableCell>
               <TableCell>

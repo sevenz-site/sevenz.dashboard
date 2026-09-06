@@ -72,10 +72,18 @@ export function reconcileMovements(
 
     return {
       ...movement,
-      // Deliberately not keyed on currency: changing the select would change
-      // the rowId, React would treat it as a different row, and the inputs
-      // would remount and lose focus mid-edit.
-      rowId: `${index}-${nameKey}`,
+      // Position only — not the name, and not the currency.
+      //
+      // This is a React key, so anything in it that the owner can edit turns
+      // an edit into a remount: the row is treated as a different element, its
+      // inputs are rebuilt, and focus is lost mid-keystroke. The name is now
+      // editable in bulk (the "mismo cliente" checkbox rewrites every row's
+      // name at once), which would have remounted the whole table on every
+      // character typed into that field.
+      //
+      // Rows are only ever removed, never reordered, so position is stable
+      // enough to identify a row between renders.
+      rowId: String(index),
       matched_client_id: matched?.id ?? null,
       computed_balance: computedBalance,
       needs_review: movement.confidence === "low" || movement.read_balance === null || !reconciles,
