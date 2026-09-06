@@ -4,6 +4,47 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ALLOWED_IMAGE_TYPES, sniffImageType } from "@/lib/image-type";
 
+// Quotas for the two actions below, the only two anyone can reach without a
+// login. Both are per share token and generous enough that a real client will
+// never meet them — a person sets their document once and changes their photo
+// occasionally. They exist to make a script pointless, not to police use.
+const DOCUMENT_ID_LIMIT = 5;
+const PROFILE_PICTURE_LIMIT = 10;
+const RATE_WINDOW_SECONDS = 60 * 60;
+
+// Returns true when the caller may proceed.
+//
+// Fails OPEN. If the limiter itself is unreachable, a client who is trying to
+// upload their photo should not be blocked by our infrastructure problem —
+// the limiter defends against abuse, and abuse is not what is happening when
+// the database is having a bad minute. The tradeoff is deliberate: a limiter
+// outage is a window with no limit, which is the state this endpoint has been
+// in permanently until now anyway.
+async function withinQuota(token: string, action: string, limit: number): Promise<boolean> {
+  try {
+    // Service client, not the anon one the caller already holds: otherwise the
+    // limiter is callable by anyone, which makes it both bypassable and a way
+    // to burn someone else's quota.
+    const service = createServiceClient();
+    const { data, error } = await service.rpc("claim_rate_limit_quota", {
+      p_key: `${action}:${token}`,
+      p_limit: limit,
+      p_window_seconds: RATE_WINDOW_SECONDS,
+    });
+    if (error) {
+      console.error(`[rateLimit] ${action} check failed:`, error.message);
+      return true;
+    }
+    return data !== false;
+  } catch (error) {
+    console.error(
+      `[rateLimit] ${action} check threw:`,
+      error instanceof Error ? error.message : error,
+    );
+    return true;
+  }
+}
+
 export type SubmitDocumentIdState = { error: string | null; documentId: string | null };
 
 // Public, unauthenticated action — reachable by anyone with a share link,
@@ -17,6 +58,10 @@ export async function submitDocumentId(token: string, documentId: string): Promi
   const trimmed = documentId.trim();
   if (!trimmed) {
     return { error: "Escribe tu número de documento.", documentId: null };
+  }
+
+  if (!(await withinQuota(token, "document_id", DOCUMENT_ID_LIMIT))) {
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde.", documentId: null };
   }
 
   const supabase = await createClient();
@@ -61,6 +106,11 @@ export async function uploadProfilePicture(token: string, formData: FormData): P
   }
   if (file.size > MAX_PROFILE_PICTURE_BYTES) {
     return { error: "La foto es muy pesada. Elige una de menos de 5 MB.", path: null };
+  }
+
+  // Before the upload, not after: the point is to avoid paying for the write.
+  if (!(await withinQuota(token, "profile_picture", PROFILE_PICTURE_LIMIT))) {
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde.", path: null };
   }
 
   const supabase = await createClient();
