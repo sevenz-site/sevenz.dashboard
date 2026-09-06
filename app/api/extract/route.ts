@@ -92,6 +92,11 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
       read_balance: typeof m.read_balance === "number" ? m.read_balance : null,
       confidence: m.confidence === "low" ? "low" : "high",
       document_id: null,
+      // Both filled in by the owner during review, never read from the photo.
+      // The review screen seeds this to USD for a VE owner and leaves it null
+      // for a CO owner, rather than guessing a currency from a handwritten
+      // page where the symbol is usually absent or ambiguous.
+      currency: null,
     }))
     .filter((m) => m.client_name && m.amount > 0);
 }

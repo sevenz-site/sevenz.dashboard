@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { EventContext } from "@/lib/mixpanel-context";
+
 // The one place that actually talks to api.mixpanel.com. Both callers are on
 // the server by design:
 //
@@ -57,6 +59,9 @@ export async function sendEvent(
   props: Record<string, unknown> | undefined,
   source: "server" | "browser",
   profile?: Record<string, unknown>,
+  // Device and geography, derived from the request headers rather than from
+  // anything the caller passed. See lib/mixpanel-context.ts.
+  context?: EventContext,
 ): Promise<void> {
   if (!MIXPANEL_TOKEN) return;
   await post(
@@ -65,6 +70,21 @@ export async function sendEvent(
       {
         event,
         properties: {
+          // props FIRST, and everything trustworthy after it.
+          //
+          // This spread used to come last, which quietly handed the browser
+          // control of every field above it. app/api/track/route.ts passes the
+          // request body's props straight through, so a signed-in owner could
+          // post props:{distinct_id:"<another owner's id>"} and write events
+          // onto that owner's profile — exactly what the route's comment
+          // promises cannot happen. token (redirecting events to another
+          // project) and source (poisoning the browser-vs-server diagnostic)
+          // were overridable the same way.
+          //
+          // Ordering is the fix rather than key-stripping: there is no list of
+          // reserved names to keep in sync, and a new trusted field is safe by
+          // virtue of being written below.
+          ...props,
           token: MIXPANEL_TOKEN,
           distinct_id: distinctId,
           time: Date.now(),
@@ -72,7 +92,7 @@ export async function sendEvent(
           // discards the duplicate instead of double-counting.
           $insert_id: crypto.randomUUID(),
           source,
-          ...props,
+          ...context,
           ...(profile ? { $set: profile } : {}),
         },
       },

@@ -265,4 +265,12 @@ export type ExtractedMovement = {
   // by the owner during review, only actually required for a client who
   // doesn't already have one on file (see ReviewRow.needs_document_id).
   document_id: string | null;
+  // Also not extracted: a handwritten page rarely marks its currency, and the
+  // owner is the one who knows. Set during review, per row, because one
+  // libreta can mix — which is why this is not resolved once for the batch.
+  //
+  // Only meaningful for a VE owner, who keeps independent USD and EUR ledgers.
+  // For a CO owner it stays null and the movement joins the currency-less COP
+  // chain, where null *is* the correct value.
+  currency: LedgerCurrency | null;
 };

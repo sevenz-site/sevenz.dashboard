@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles } from "lucide-react";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,11 +20,13 @@ import {
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
 import { reconcileMovements } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
-import type { ExtractedMovement } from "@/lib/types";
+import { DEFAULT_LEDGER_CURRENCY, type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 
-type ExistingClient = { id: string; name: string; balance: number; document_id: string | null };
+import type { ReconcileClient } from "@/lib/reconcile";
+
+type ExistingClient = ReconcileClient;
 
 const ATTACHMENT_STATE: Record<ImportJobStatus, "uploading" | "processing" | "done" | "error"> = {
   queued: "uploading",
@@ -40,8 +42,18 @@ const STATUS_LABEL: Record<ImportJobStatus, string> = {
   error: "Error",
 };
 
-export function ImportFlow({ existingClients }: { existingClients: ExistingClient[] }) {
+export function ImportFlow({
+  existingClients,
+  ownerCountry,
+}: {
+  existingClients: ExistingClient[];
+  ownerCountry: string | null;
+}) {
   const router = useRouter();
+  // Only a VE owner has a currency to choose. A CO owner's ledger has no
+  // currency dimension at all — null means COP — so showing them a selector
+  // would invent a decision they don't have.
+  const showCurrency = ownerCountry === "VE";
   const { jobs, isProcessing, usage, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
@@ -68,7 +80,21 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
   }
 
   function handleViewResults() {
-    setReviewMovements(doneJobs.flatMap((j) => j.movements));
+    // Seeded here rather than in the extraction: the photo doesn't say, and
+    // USD is what almost every owner's libreta is kept in. The per-row select
+    // and the "aplicar a todas" shortcut are what handle the rest.
+    setReviewMovements(
+      doneJobs
+        .flatMap((j) => j.movements)
+        .map((m) => ({ ...m, currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null })),
+    );
+  }
+
+  // A libreta is usually kept in one currency even though it can mix, so
+  // setting all rows at once is the common path and the per-row select is the
+  // exception — not the other way round.
+  function applyCurrencyToAll(currency: LedgerCurrency) {
+    setReviewMovements((prev) => (prev ? prev.map((m) => ({ ...m, currency })) : prev));
   }
 
   function updateMovement(index: number, patch: Partial<ExtractedMovement>) {
@@ -95,6 +121,7 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
         amount: r.amount,
         description: r.description,
         document_id: r.document_id,
+        currency: r.currency,
       }));
       const result = await confirmImport(rows);
       if (result.error) {
@@ -113,11 +140,28 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4">
+        {showCurrency ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+            <span className="text-sm font-medium">Moneda de toda la libreta</span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("USD")}>
+                Todo en USD
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("EUR")}>
+                Todo en EUR
+              </Button>
+            </div>
+            <p className="w-full text-xs text-muted-foreground">
+              Puedes cambiar filas sueltas después, si la libreta mezcla.
+            </p>
+          </div>
+        ) : null}
         <ImportReviewTable
           rows={reviewRows}
           onUpdate={updateMovement}
           onRemove={removeMovement}
           existingClients={existingClients}
+          showCurrency={showCurrency}
         />
         {missingDocumentId ? (
           <p className="text-sm text-destructive">
@@ -183,18 +227,53 @@ export function ImportFlow({ existingClients }: { existingClients: ExistingClien
       ) : (
         <Card>
           <CardContent className="flex flex-col gap-4 pt-6">
+            {/* Two inputs, not one with a toggle, because the difference is
+                the `capture` attribute and it cannot be changed per click
+                without re-rendering the input and losing the tap.
+
+                The old single input carried capture="environment", which sends
+                a phone straight to the rear camera and removes the photo
+                library from the picker altogether — so an owner who had
+                already photographed the libreta, or received it on WhatsApp,
+                had no way to reach that image. The label said "elegir o tomar"
+                while only "tomar" was possible. */}
             <label
               htmlFor="photos"
               className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground hover:bg-accent/50"
             >
               <Upload className="size-6" />
-              {`Toca para elegir o tomar fotos de la libreta (hasta ${MAX_IMPORT_PHOTOS})`}
+              {`Toca para elegir fotos de la libreta (hasta ${MAX_IMPORT_PHOTOS})`}
             </label>
             <input
               id="photos"
               type="file"
               accept="image/*"
               multiple
+              className="sr-only"
+              onChange={(e) => {
+                handleFilesSelected(e.target.files);
+                e.target.value = "";
+              }}
+            />
+
+            {/* Phones only: a desktop browser ignores `capture` and would open
+                the same ordinary file dialog as the button above, which reads
+                as broken. Hidden with CSS rather than by detecting the device,
+                so the server and the client render the same markup. */}
+            <Button asChild variant="outline" className="sm:hidden">
+              <label htmlFor="photos-camera" className="cursor-pointer">
+                <Camera className="size-4" />
+                Tomar foto
+              </label>
+            </Button>
+            {/* No `multiple`: a camera capture returns exactly one image, so
+                asking for several here would promise something the OS does not
+                deliver. Several photos still work — one capture at a time, or
+                the picker above. */}
+            <input
+              id="photos-camera"
+              type="file"
+              accept="image/*"
               capture="environment"
               className="sr-only"
               onChange={(e) => {

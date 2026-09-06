@@ -1,4 +1,6 @@
 import { after } from "next/server";
+import { headers } from "next/headers";
+import { eventContext } from "@/lib/mixpanel-context";
 import { mixpanelConfigured, sendEvent } from "@/lib/mixpanel-http";
 
 // Server-side counterpart to lib/mixpanel.ts. The browser version depends on
@@ -40,6 +42,15 @@ export function trackServer(
   if (!mixpanelConfigured()) return;
 
   try {
+    // Started here, awaited inside after(). headers() is async, and this
+    // function must stay synchronous — making it async would mean touching
+    // every money-path call site to avoid a floating promise, which is a poor
+    // trade for analytics metadata. Creating the promise while the request is
+    // still open is enough; the callback only has to await it.
+    const contextPromise = headers()
+      .then(eventContext)
+      .catch(() => undefined);
+
     after(async () => {
       await sendEvent(
         event,
@@ -47,6 +58,7 @@ export function trackServer(
         props,
         "server",
         ownerEmail ? { $email: ownerEmail } : undefined,
+        await contextPromise,
       );
     });
   } catch (error) {

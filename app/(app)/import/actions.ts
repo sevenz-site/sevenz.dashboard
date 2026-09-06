@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
-import type { MovementType } from "@/lib/types";
+import type { LedgerCurrency, MovementType } from "@/lib/types";
 
 export type ImportRow = {
   client_id: string | null;
@@ -17,6 +17,11 @@ export type ImportRow = {
   // file — see the "needs_document_id" review-table logic that decides
   // when the owner actually had to type this in.
   document_id: string | null;
+  // Chosen by the owner per row in the review table, because one libreta can
+  // mix currencies. null for a CO owner, and also the fallback if a VE owner's
+  // row somehow arrives without one — resolveMovementRateSnapshot turns that
+  // into the default rather than into a COP movement.
+  currency: LedgerCurrency | null;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -29,10 +34,22 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", imported: 0 };
   if (rows.length === 0) return { error: "No hay movimientos para importar.", imported: 0 };
 
-  // Same resolution every imported row gets — a photo import never collects
-  // a per-row currency, so this is either null (CO owner) or the owner's
-  // current ledger currency (VE owner), resolved once for the whole batch.
-  const resolved = await resolveMovementRateSnapshot(supabase, user.id, null);
+  // Resolved once per distinct currency in the batch, not once per row.
+  //
+  // getOwnerRateContext underneath makes three database round trips and can
+  // trigger a BCV refresh, so calling it per row would multiply that by the
+  // whole import. There are at most two distinct currencies (a VE owner's USD
+  // and EUR) or one (a CO owner's null), so this is one or two calls either
+  // way.
+  //
+  // This used to be a single call with a hardcoded null, which meant a VE
+  // owner importing a libreta kept in euros got every row filed as USD —
+  // their client's real debt, in the wrong ledger, with no currency shown
+  // anywhere in the review screen to catch it.
+  const snapshots = new Map<string, Awaited<ReturnType<typeof resolveMovementRateSnapshot>>>();
+  for (const currency of new Set(rows.map((r) => r.currency ?? null))) {
+    snapshots.set(currency ?? "COP", await resolveMovementRateSnapshot(supabase, user.id, currency));
+  }
 
   // The import review table collects no per-client document country, so a
   // client created here inherits the owner's own — right for the vast
@@ -161,6 +178,8 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     // No needs_review here: the owner already saw and could fix every
     // flagged row in the import review screen before confirming, so
     // confirming the import *is* the review — defaults to false in the DB.
+    const resolved = snapshots.get(row.currency ?? "COP")!;
+
     const { error: movementError } = await supabase.from("movements").insert({
       client_id: clientId,
       type: row.type,
