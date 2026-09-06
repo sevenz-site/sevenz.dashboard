@@ -10,8 +10,6 @@ import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { formatDocumentId } from "@/lib/format";
-import { renderFormattedText } from "@/lib/format-text";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -137,7 +135,14 @@ export default async function SharedBalancePage({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
-      <DocumentIdDialog token={token} clientName={shared.client_name} initialDocumentId={shared.document_id} />
+      {/* A boolean, not the value: this is a client component, so anything
+          passed here is serialised into the RSC payload and readable in
+          devtools. The dialog only ever needed to know whether to ask. */}
+      <DocumentIdDialog
+        token={token}
+        clientName={shared.client_name}
+        hasDocumentId={Boolean(shared.document_id)}
+      />
       {/* Not a card: no border, no padding of its own, so the logo and the
           business name start on the page's own inset, in line with
           "Pendiente" and the edges of the balance cards below. */}
@@ -152,10 +157,18 @@ export default async function SharedBalancePage({
         />
         <div className="flex min-w-0 flex-col">
           <h1 className="truncate text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
+          {/* The name is the only identity cue this page carries now. The
+              document used to sit here, and anyone holding the link could read
+              it — a share link travels through WhatsApp groups and forwarded
+              chats, so its real audience is wider than the one client it was
+              sent to. Name plus cédula is most of what someone needs to sound
+              convincing on a phone call pretending to be the shop.
+
+              This is a server component, so removing the render is enough:
+              shared.document_id stays in server memory and never enters the
+              HTML or the RSC payload. It will come back when a client can
+              authenticate and prove the page is theirs. */}
           <p className="truncate text-sm font-medium">{shared.client_name}</p>
-          <p className="truncate text-sm text-muted-foreground">
-            Documento: {formatDocumentId(shared.document_id)}
-          </p>
         </div>
       </div>
 
@@ -198,14 +211,15 @@ export default async function SharedBalancePage({
         </BalanceRowCard>
       )}
 
-      {/* Its own card now that the balances are two: how to pay applies to
-          both currencies, so hanging it off either one would be wrong. */}
-      {shared.payment_info ? (
-        <div className="rounded-xl border bg-card p-4">
-          <p className="mb-1 text-sm font-medium text-muted-foreground">Cómo pagar</p>
-          <p className="text-sm">{renderFormattedText(shared.payment_info)}</p>
-        </div>
-      ) : null}
+      {/* "Cómo pagar" used to sit here, showing the owner's Nequi or bank
+          details to anyone holding the link. That is the raw material for
+          impersonating the shop: a stranger who can quote the real payment
+          handle alongside a real balance is far more believable than one who
+          cannot. The client asks over WhatsApp instead, which also puts a real
+          conversation between them and any payment.
+
+          It returns behind authentication rather than being deleted — the RPC
+          still returns payment_info, this page simply stops rendering it. */}
 
       {ownerWhatsappDigits ? (
         <a

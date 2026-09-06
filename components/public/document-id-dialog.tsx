@@ -18,21 +18,25 @@ import { required } from "@/lib/form-validation";
 export function DocumentIdDialog({
   token,
   clientName,
-  initialDocumentId,
+  hasDocumentId,
 }: {
   token: string;
   clientName: string;
-  initialDocumentId: string | null;
+  // Whether one is already on file — never the value itself. This is a client
+  // component, so every prop is serialised into the RSC payload and readable
+  // by anyone who opens devtools on a link that travels through WhatsApp. The
+  // dialog only ever needed the yes/no.
+  hasDocumentId: boolean;
 }) {
   const router = useRouter();
-  const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
+  const [submitted, setSubmitted] = useState(hasDocumentId);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formRef, setFormRef] = useFormRef();
   const { errors, validate, recheck } = useFieldErrors({ document_id: required });
 
-  if (documentId) return null;
+  if (submitted) return null;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -44,10 +48,12 @@ export function DocumentIdDialog({
       setError(result.error);
       return;
     }
-    setDocumentId(result.documentId);
-    // The "Cédula/documento: —" line above is rendered by the parent
-    // Server Component from data fetched once at page load — without this,
-    // it keeps showing the old (missing) value until a manual reload.
+    // Only that one was accepted — the value it returned is deliberately not
+    // stored or shown. The client typed it; they do not need it read back.
+    setSubmitted(true);
+    // The parent Server Component decided whether to mount this dialog from
+    // data fetched once at page load, so without this the page would keep
+    // believing no document exists until a manual reload.
     router.refresh();
   }
 
