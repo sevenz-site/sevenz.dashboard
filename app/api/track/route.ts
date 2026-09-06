@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { eventContext } from "@/lib/mixpanel-context";
 import { sendEvent, setProfile } from "@/lib/mixpanel-http";
 
 export const runtime = "nodejs";
@@ -72,8 +73,14 @@ export async function POST(request: Request) {
 
   // after() sends the response first, so the page never waits on Mixpanel and
   // a slow or dead endpoint can't stall the interaction that raised the event.
+  // Read before after(): the callback runs once the response is gone, and the
+  // request that carried these headers with it. This is also the one place the
+  // owner's real User-Agent and IP exist — the browser sends them here like it
+  // does to any other route, so nothing has to be collected from the page.
+  const context = eventContext(request.headers);
+
   after(async () => {
-    if (event) await sendEvent(event, user.id, props, "browser", profile);
+    if (event) await sendEvent(event, user.id, props, "browser", profile, context);
     else if (profile) await setProfile(user.id, profile);
   });
 
