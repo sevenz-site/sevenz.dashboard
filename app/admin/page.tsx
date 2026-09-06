@@ -1,5 +1,6 @@
 import { MetricCharts } from "@/components/admin/metric-charts";
 import { MetricFilters } from "@/components/admin/metric-filters";
+import { ServiceHealth } from "@/components/admin/service-health";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import {
   getAverageCreditScore,
@@ -196,6 +197,10 @@ export default async function AdminMetricsPage({
           </table>
         </div>
       </div>
+
+      {/* Last, and inert until clicked. It is a tool you come looking for when
+          something seems wrong, not a number to read alongside the metrics. */}
+      <ServiceHealth />
     </div>
   );
 }
