@@ -130,6 +130,39 @@ previous code still works against them (see step 1). Undoing the database as
 well reintroduces whatever the migration fixed — on 2026-09-04 that would have
 restored the Colombian 404.
 
+## Always name the environment when handing over a script to run
+
+Every script, SQL query or command given to the user to run states **which
+environment it belongs to, and its project ref**, before the code block — not
+buried in a sentence after it, and never left to be inferred:
+
+- **dev branch** — `vzqppwrwnmlbrxizskdh`
+- **production** — `rabmiyqodnvnrwiartuj`
+
+This applies to **read-only diagnostics too**, not just migrations. A `select`
+run against the wrong database returns a perfectly plausible answer about the
+wrong system, and the whole diagnosis proceeds from it. That is worse than an
+error, because nothing looks wrong.
+
+When something must run in both, say so explicitly **and give the order** —
+production first for a fix to a live outage, dev first for anything being
+tried out. When it must run in only one, say why, so the choice is checkable
+rather than trusted.
+
+Real example, 2026-09-04: `/admin` was failing in production with
+`permission denied for table owners`. A grants query was handed over to
+diagnose it and run against dev, which answered "service_role has SELECT" —
+true of dev, unknown of production, and it sent the diagnosis down the wrong
+path entirely. The two databases are not interchangeable even though dev is a
+branch of production: `auth.users` triggers and Storage buckets have already
+failed to clone between them, so their permissions cannot be assumed identical
+either.
+
+The same rule covers `npm run` commands and any CLI: name the directory they
+run from. `npm run metrics` reads whichever project `.env.local` points at, so
+"run this" without naming the environment can silently report dev's numbers as
+if they were the business's.
+
 ## Record every dev SQL change in the migration ledger
 
 `public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)
