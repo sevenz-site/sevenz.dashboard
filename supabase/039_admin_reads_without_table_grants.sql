@@ -117,7 +117,7 @@ grant execute on function public.admin_credit_movements(text, uuid, timestamptz,
 insert into public.schema_migrations (key, description)
 values (
   '039_admin_reads_without_table_grants',
-  'Moves /admin''s direct table reads behind SECURITY DEFINER functions so they need no service_role table grants — production had SELECT revoked on owners, which dev had not.'
+  'Moves /admin reads behind SECURITY DEFINER functions so they need no service_role table grants.'
 )
 on conflict (key) do nothing;
 
