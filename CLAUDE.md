@@ -382,3 +382,54 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.
+
+## "Merge it" is not permission to skip the checklist
+
+**"Merge", "push to prod", "go to prod", "launch it", "deploy", "ship it"
+and every synonym mean: do the agreed process, then launch. They never
+mean: skip the agreed process.**
+
+The order is not negotiable and not reorderable:
+
+1. Run the checklist.
+2. Show the user the result.
+3. Ask.
+4. Launch only after they answer.
+
+A "merge" that arrives before step 2 is an instruction to start at step 1,
+not permission to jump to step 4. The user cannot be confirming a result
+they have not been shown, so treating their word as that confirmation
+puts words in their mouth.
+
+**Never decide on the user's behalf that a rule does not apply this time.**
+If a step looks unnecessary — the diff is narrow, the area is untouched,
+it was run an hour ago — that is a case to put to them in one sentence,
+not a conclusion to act on:
+
+> The rule says run `qa-regression-checklist` before merging. The diff only
+> touches `/admin`. Run it in full, scope it down, or skip it this time?
+
+Then wait. Any of those three answers is fine. Deciding it alone is not,
+even when the decision would have been right, because the user loses the
+chance to disagree and does not know they lost it.
+
+**Scoping happens inside the checklist, in front of the user, never
+instead of it.** The skill's own first step is *Scope the change* — that
+is where "this diff doesn't touch the money paths" gets said out loud and
+written into the report. Reaching that conclusion privately and using it
+to skip the whole skill inverts the tool: the skill exists precisely to
+make that judgement visible and reviewable.
+
+This rule was written on 2026-09-06 after seven consecutive merges to
+`main` went out with no checklist run. Each skip had a plausible reason.
+None of them was ever said out loud, and the summary report afterwards
+described the pattern as "a reasonable call made seven times in a row" —
+which is what a broken agreement looks like once it has been rationalised.
+The cost is not one missed test; it is that the user can no longer trust
+that an agreed step actually ran unless they ask.
+
+**The same applies to every rule in this file, not just the checklist.**
+Dev-only by default, explicit ownership checks, naming the environment,
+the migration ledger, testing before reporting delivered: if there is a
+reason to depart from one, the departure is proposed and approved before
+it happens, never explained afterwards.
