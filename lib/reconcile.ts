@@ -72,10 +72,21 @@ export function reconcileMovements(
 
     return {
       ...movement,
-      // Deliberately not keyed on currency: changing the select would change
-      // the rowId, React would treat it as a different row, and the inputs
-      // would remount and lose focus mid-edit.
-      rowId: `${index}-${nameKey}`,
+      // The uid assigned when the batch entered review, never the name and
+      // never the currency.
+      //
+      // This is a React key, so anything in it the owner can edit turns an edit
+      // into a remount: the row becomes a different element, its inputs are
+      // rebuilt and focus is lost mid-keystroke. The shared-client field
+      // rewrites every row's name on each keystroke, which by name would have
+      // remounted the whole table per character.
+      //
+      // Position would survive that but not deletion: removing a row shifts
+      // every index above it, so React would reuse the wrong element and the
+      // set of rows opted out of the shared client would move to their
+      // neighbours. Falls back to the index only for a caller that supplies no
+      // uid.
+      rowId: movement.uid ?? String(index),
       matched_client_id: matched?.id ?? null,
       computed_balance: computedBalance,
       needs_review: movement.confidence === "low" || movement.read_balance === null || !reconciles,

@@ -265,6 +265,12 @@ export type ExtractedMovement = {
   // by the owner during review, only actually required for a client who
   // doesn't already have one on file (see ReviewRow.needs_document_id).
   document_id: string | null;
+  // Assigned when the batch enters the review screen, never by the extraction.
+  // Identity that survives deleting a row: positions shift when one is removed,
+  // so anything remembered about a row by position (which rows opted out of the
+  // shared client, which React element this is) would silently move to a
+  // different row.
+  uid?: string;
   // Also not extracted: a handwritten page rarely marks its currency, and the
   // owner is the one who knows. Set during review, per row, because one
   // libreta can mix — which is why this is not resolved once for the batch.

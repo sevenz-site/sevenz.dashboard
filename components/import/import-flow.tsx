@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -58,21 +61,60 @@ export function ImportFlow({
   const [confirming, setConfirming] = useState(false);
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
 
+  // "Every row is the same person" — for an owner who photographs one client's
+  // pages rather than a page of many clients.
+  //
+  // It has to rewrite the NAME as well as the document, not just the document.
+  // confirmImport groups new clients by name and refuses a cédula that is
+  // already taken, so one document across two spellings of one person ("Ana
+  // Torres" on one page, "A. Torres" on the next) would create the first
+  // client and then fail on the second — halfway through, with movements
+  // already saved. One client means one name and one document.
+  const [sameClient, setSameClient] = useState(false);
+  const [sharedName, setSharedName] = useState("");
+  const [sharedDocument, setSharedDocument] = useState("");
+  // A page usually holds one client but can mix, so the shared value is a
+  // default rather than a rule: any row can opt out and keep its own client.
+  // Keyed by uid, not position — deleting a row would otherwise hand its
+  // opt-out to whichever row moved up into its place.
+  const [unlinked, setUnlinked] = useState<Set<string>>(new Set());
+
   const quotaExhausted = usage.plan === "free" && usage.remaining === 0;
 
   const doneJobs = jobs.filter((j) => j.status === "done");
   const errorJobs = jobs.filter((j) => j.status === "error");
   const hasJobs = jobs.length > 0;
 
+  // Applied on top of what was read, never written back into it, so unticking
+  // the box restores the original names and documents instead of losing them.
+  const effectiveMovements = useMemo(() => {
+    if (!reviewMovements) return null;
+    if (!sameClient) return reviewMovements;
+    return reviewMovements.map((m) =>
+      // An opted-out row keeps exactly what was read, because the override is
+      // applied here and never written back into reviewMovements. Re-linking it
+      // restores the shared value; unticking the box restores every original.
+      m.uid && unlinked.has(m.uid)
+        ? m
+        : { ...m, client_name: sharedName, document_id: sharedDocument.trim() || null },
+    );
+  }, [reviewMovements, sameClient, sharedName, sharedDocument, unlinked]);
+
   const reviewRows = useMemo(
-    () => (reviewMovements ? reconcileMovements(reviewMovements, existingClients) : []),
-    [reviewMovements, existingClients],
+    () => (effectiveMovements ? reconcileMovements(effectiveMovements, existingClients) : []),
+    [effectiveMovements, existingClients],
   );
 
   // A client without a cédula/documento on file must get one before the
   // import can be confirmed — same requirement as the manual "Registrar
   // cliente nuevo" form, just applied per row here.
   const missingDocumentId = reviewRows.some((r) => r.needs_document_id && !r.document_id?.trim());
+  // A blank shared name would create a nameless client, so it blocks the same
+  // way a missing cédula does — but only while at least one row still uses it.
+  // Opting every row out leaves the field unused, and blocking on an unused
+  // field is the kind of dead end that has no explanation on screen.
+  const someRowLinked = reviewRows.some((r) => !unlinked.has(r.rowId));
+  const missingSharedName = sameClient && someRowLinked && !sharedName.trim();
 
   function handleFilesSelected(fileList: FileList | null) {
     if (!fileList) return;
@@ -84,10 +126,13 @@ export function ImportFlow({
     // USD is what almost every owner's libreta is kept in. The per-row select
     // and the "aplicar a todas" shortcut are what handle the rest.
     setReviewMovements(
-      doneJobs
-        .flatMap((j) => j.movements)
-        .map((m) => ({ ...m, currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null })),
+      doneJobs.flatMap((j) => j.movements).map((m) => ({
+        ...m,
+        uid: crypto.randomUUID(),
+        currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null,
+      })),
     );
+    setUnlinked(new Set());
   }
 
   // A libreta is usually kept in one currency even though it can mix, so
@@ -102,6 +147,33 @@ export function ImportFlow({
       if (!prev) return prev;
       const next = [...prev];
       next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  }
+
+  // Seeded with the name Gemini read most often, so the common case is one
+  // tick and no typing. It stays editable, and the datalist of existing
+  // clients is still available through the table's own matching.
+  function toggleSameClient(next: boolean) {
+    setSameClient(next);
+    if (next && !sharedName && reviewMovements && reviewMovements.length > 0) {
+      const counts = new Map<string, number>();
+      for (const m of reviewMovements) {
+        const n = m.client_name.trim();
+        if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+      }
+      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (best) setSharedName(best[0]);
+      const withDoc = reviewMovements.find((m) => m.document_id?.trim());
+      if (withDoc?.document_id) setSharedDocument(withDoc.document_id);
+    }
+  }
+
+  function toggleLinked(rowId: string) {
+    setUnlinked((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
       return next;
     });
   }
@@ -140,6 +212,62 @@ export function ImportFlow({
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4">
+        <div className="flex flex-col gap-3 rounded-lg border p-3">
+          <div className="flex items-start gap-2.5">
+            <Checkbox
+              id="same-client"
+              checked={sameClient}
+              onCheckedChange={(v) => toggleSameClient(v === true)}
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="same-client" className="cursor-pointer">
+                Todas las filas son del mismo cliente
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Para cuando fotografías varias páginas de una sola persona. Se aplica el mismo
+                nombre y la misma cédula a todo el lote, aunque la IA haya leído el nombre distinto
+                en cada página.
+              </p>
+            </div>
+          </div>
+
+          {sameClient ? (
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="shared-name" className="text-xs">
+                  Cliente
+                </Label>
+                <Input
+                  id="shared-name"
+                  list="known-clients"
+                  value={sharedName}
+                  placeholder="Nombre del cliente"
+                  className={sharedName.trim() ? undefined : "border-destructive"}
+                  onChange={(e) => setSharedName(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="shared-document" className="text-xs">
+                  Cédula/documento
+                </Label>
+                <Input
+                  id="shared-document"
+                  value={sharedDocument}
+                  placeholder="Requerida para un cliente nuevo"
+                  onChange={(e) => setSharedDocument(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          {sameClient ? (
+            <p className="text-xs text-muted-foreground">
+              Si la página mezcla clientes, desmarca la casilla de esa fila en la tabla y recupera
+              su nombre y cédula propios.
+            </p>
+          ) : null}
+        </div>
+
         {showCurrency ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
             <span className="text-sm font-medium">Moneda de toda la libreta</span>
@@ -162,17 +290,26 @@ export function ImportFlow({
           onRemove={removeMovement}
           existingClients={existingClients}
           showCurrency={showCurrency}
+          sharedClientActive={sameClient}
+          isLinked={(rowId) => !unlinked.has(rowId)}
+          onToggleLinked={toggleLinked}
         />
-        {missingDocumentId ? (
+        {missingSharedName ? (
           <p className="text-sm text-destructive">
-            Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar.
+            Escribe el nombre del cliente antes de continuar.
+          </p>
+        ) : missingDocumentId ? (
+          <p className="text-sm text-destructive">
+            {sameClient
+              ? "Falta la cédula/documento del cliente — complétala antes de continuar."
+              : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."}
           </p>
         ) : null}
         <div className="flex items-center justify-between">
           <Button variant="outline" onClick={() => setReviewMovements(null)} disabled={confirming}>
             Volver
           </Button>
-          <Button onClick={handleConfirm} disabled={confirming || reviewRows.length === 0 || missingDocumentId}>
+          <Button onClick={handleConfirm} disabled={confirming || reviewRows.length === 0 || missingDocumentId || missingSharedName}>
             {confirming ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> Guardando...
