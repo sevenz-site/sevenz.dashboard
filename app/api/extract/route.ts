@@ -21,6 +21,17 @@ export const maxDuration = 90;
 // also means each request only has to budget time for a single Gemini call
 // instead of a whole batch.
 const RATE_LIMIT_KEY = "gemini_extract";
+
+// Retryable failures carry their status so the message the owner finally sees
+// can tell "we are over the free-tier quota" apart from "Google is having a
+// moment" — those call for different reactions, and one of them is not the
+// owner's fault in any way they can act on.
+class TransientGeminiError extends Error {
+  constructor(readonly status: number) {
+    super(`Gemini respondió ${status}`);
+    this.name = "TransientGeminiError";
+  }
+}
 const REQUEST_TIMEOUT_MS = 55_000;
 const SPACING_BETWEEN_CALLS_MS = 4_000;
 const MAX_RETRIES_ON_RATE_LIMIT = 2;
@@ -108,8 +119,22 @@ async function extractFromImageViaGemini(
   supabase: SupabaseServerClient,
   dataUrl: string,
 ): Promise<ExtractedMovement[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // trim() because a trailing newline survives a paste into Vercel's env
+  // editor and would previously have been interpolated straight into the URL.
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada.");
+
+  // A clipped paste is the failure this catches, and it cost a day: Google
+  // answers a truncated key with 401 "Expected OAuth 2 access token, login
+  // cookie or other valid authentication credential" — describing a mechanism
+  // this code does not use and never mentioning the API key at all. Checked as
+  // "implausibly short" rather than against an exact length, so a future change
+  // to Google's key format does not turn this into a false alarm.
+  if (apiKey.length < 30) {
+    throw new Error(
+      `GEMINI_API_KEY parece incompleta (${apiKey.length} caracteres). Suele ser un pegado truncado en las variables de entorno.`,
+    );
+  }
 
   const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!match) throw new Error("Formato de imagen inválido.");
@@ -124,10 +149,13 @@ async function extractFromImageViaGemini(
   let response: Response;
   try {
     response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      // Key in a header, not `?key=${apiKey}`. A query string is logged by
+      // Vercel, by Google and by anything in between, so the old form wrote a
+      // live credential into three sets of logs on every import.
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         signal: controller.signal,
         body: JSON.stringify({
           contents: [
@@ -154,14 +182,31 @@ async function extractFromImageViaGemini(
     clearTimeout(timeout);
   }
 
-  if (response.status === 429) {
-    const err = new Error("Gemini rate limit (429)");
-    err.name = "RateLimitError";
-    throw err;
+  // 5xx alongside 429. gemini-3-flash-preview is a preview model and returns
+  // 503 "high demand" with a perfectly valid key; before this it fell through
+  // as a permanent failure, so a transient overload was indistinguishable from
+  // a broken configuration — including to whoever had just fixed the key and
+  // was checking whether the fix worked.
+  if (response.status === 429 || response.status >= 500) {
+    throw new TransientGeminiError(response.status);
   }
 
   if (!response.ok) {
     const text = await response.text();
+
+    // Google's own wording for a rejected credential is actively misleading
+    // (see the length check above), and it reached the owner verbatim through
+    // import_notifications. The detail belongs in the server log, where it can
+    // be searched; the owner gets a short code that says "not your fault, not
+    // your photo".
+    if (response.status === 401 || response.status === 403) {
+      console.error(`[extract] Gemini rechazó la credencial (${response.status}):`, text);
+      throw new Error(
+        `Error de configuración del servicio de lectura (${response.status}). Revisa GEMINI_API_KEY.`,
+      );
+    }
+
+    console.error(`[extract] Gemini respondió ${response.status}:`, text);
     throw new Error(`Gemini respondió ${response.status}: ${text.slice(0, 300)}`);
   }
 
@@ -178,9 +223,17 @@ async function extractFromImageViaGeminiWithRetry(
     try {
       return await extractFromImageViaGemini(supabase, dataUrl);
     } catch (error) {
-      const isRateLimit = error instanceof Error && error.name === "RateLimitError";
-      if (!isRateLimit || attempt >= MAX_RETRIES_ON_RATE_LIMIT) {
-        throw isRateLimit ? new Error("Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto.") : error;
+      const transient = error instanceof TransientGeminiError ? error : null;
+      // A timeout is deliberately NOT retried. maxDuration is 90s and the
+      // per-call timeout is 55s, so a second attempt would be killed mid-flight
+      // and the owner would wait a minute and a half to be told nothing.
+      if (!transient || attempt >= MAX_RETRIES_ON_RATE_LIMIT) {
+        if (!transient) throw error;
+        throw new Error(
+          transient.status === 429
+            ? "Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto."
+            : "El servicio de lectura está sobrecargado ahora mismo. Intenta de nuevo en unos minutos.",
+        );
       }
       await sleep(RETRY_BACKOFF_MS[attempt] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
     }
