@@ -73,6 +73,11 @@ export function ImportFlow({
   const [sameClient, setSameClient] = useState(false);
   const [sharedName, setSharedName] = useState("");
   const [sharedDocument, setSharedDocument] = useState("");
+  // A page usually holds one client but can mix, so the shared value is a
+  // default rather than a rule: any row can opt out and keep its own client.
+  // Keyed by uid, not position — deleting a row would otherwise hand its
+  // opt-out to whichever row moved up into its place.
+  const [unlinked, setUnlinked] = useState<Set<string>>(new Set());
 
   const quotaExhausted = usage.plan === "free" && usage.remaining === 0;
 
@@ -85,12 +90,15 @@ export function ImportFlow({
   const effectiveMovements = useMemo(() => {
     if (!reviewMovements) return null;
     if (!sameClient) return reviewMovements;
-    return reviewMovements.map((m) => ({
-      ...m,
-      client_name: sharedName,
-      document_id: sharedDocument.trim() || null,
-    }));
-  }, [reviewMovements, sameClient, sharedName, sharedDocument]);
+    return reviewMovements.map((m) =>
+      // An opted-out row keeps exactly what was read, because the override is
+      // applied here and never written back into reviewMovements. Re-linking it
+      // restores the shared value; unticking the box restores every original.
+      m.uid && unlinked.has(m.uid)
+        ? m
+        : { ...m, client_name: sharedName, document_id: sharedDocument.trim() || null },
+    );
+  }, [reviewMovements, sameClient, sharedName, sharedDocument, unlinked]);
 
   const reviewRows = useMemo(
     () => (effectiveMovements ? reconcileMovements(effectiveMovements, existingClients) : []),
@@ -102,8 +110,11 @@ export function ImportFlow({
   // cliente nuevo" form, just applied per row here.
   const missingDocumentId = reviewRows.some((r) => r.needs_document_id && !r.document_id?.trim());
   // A blank shared name would create a nameless client, so it blocks the same
-  // way a missing cédula does.
-  const missingSharedName = sameClient && !sharedName.trim();
+  // way a missing cédula does — but only while at least one row still uses it.
+  // Opting every row out leaves the field unused, and blocking on an unused
+  // field is the kind of dead end that has no explanation on screen.
+  const someRowLinked = reviewRows.some((r) => !unlinked.has(r.rowId));
+  const missingSharedName = sameClient && someRowLinked && !sharedName.trim();
 
   function handleFilesSelected(fileList: FileList | null) {
     if (!fileList) return;
@@ -115,10 +126,13 @@ export function ImportFlow({
     // USD is what almost every owner's libreta is kept in. The per-row select
     // and the "aplicar a todas" shortcut are what handle the rest.
     setReviewMovements(
-      doneJobs
-        .flatMap((j) => j.movements)
-        .map((m) => ({ ...m, currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null })),
+      doneJobs.flatMap((j) => j.movements).map((m) => ({
+        ...m,
+        uid: crypto.randomUUID(),
+        currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null,
+      })),
     );
+    setUnlinked(new Set());
   }
 
   // A libreta is usually kept in one currency even though it can mix, so
@@ -153,6 +167,15 @@ export function ImportFlow({
       const withDoc = reviewMovements.find((m) => m.document_id?.trim());
       if (withDoc?.document_id) setSharedDocument(withDoc.document_id);
     }
+  }
+
+  function toggleLinked(rowId: string) {
+    setUnlinked((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
   }
 
   function removeMovement(index: number) {
@@ -237,6 +260,12 @@ export function ImportFlow({
               </div>
             </div>
           ) : null}
+          {sameClient ? (
+            <p className="text-xs text-muted-foreground">
+              Si la página mezcla clientes, desmarca la casilla de esa fila en la tabla y recupera
+              su nombre y cédula propios.
+            </p>
+          ) : null}
         </div>
 
         {showCurrency ? (
@@ -261,7 +290,9 @@ export function ImportFlow({
           onRemove={removeMovement}
           existingClients={existingClients}
           showCurrency={showCurrency}
-          clientLocked={sameClient}
+          sharedClientActive={sameClient}
+          isLinked={(rowId) => !unlinked.has(rowId)}
+          onToggleLinked={toggleLinked}
         />
         {missingSharedName ? (
           <p className="text-sm text-destructive">

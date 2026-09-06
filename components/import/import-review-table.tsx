@@ -3,6 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,7 +31,9 @@ export function ImportReviewTable({
   onRemove,
   existingClients,
   showCurrency,
-  clientLocked,
+  sharedClientActive,
+  isLinked,
+  onToggleLinked,
 }: {
   rows: ReviewRow[];
   onUpdate: (index: number, patch: Partial<ExtractedMovement>) => void;
@@ -38,10 +41,16 @@ export function ImportReviewTable({
   existingClients: { id: string; name: string }[];
   // False for a CO owner, whose ledger has no currency dimension.
   showCurrency: boolean;
-  // True while "todas las filas son del mismo cliente" is ticked. Name and
-  // document then come from the shared fields above the table; editing them
-  // per row would silently contradict that, so the inputs become plain text.
-  clientLocked: boolean;
+  // True while "todas las filas son del mismo cliente" is ticked, which adds a
+  // per-row checkbox: a page usually holds one client but can mix, so the
+  // shared value is a default any row can refuse.
+  sharedClientActive: boolean;
+  // Whether this row is still taking the shared client. A linked row shows the
+  // shared name and document as plain text — editing them per row would
+  // silently contradict the field above the table. An opted-out row gets its
+  // own inputs back, holding whatever was read from the photo.
+  isLinked: (rowId: string) => boolean;
+  onToggleLinked: (rowId: string) => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -53,6 +62,9 @@ export function ImportReviewTable({
       <Table>
         <TableHeader>
           <TableRow>
+            {sharedClientActive ? (
+              <TableHead className="w-[6.5rem] whitespace-nowrap">Mismo cliente</TableHead>
+            ) : null}
             <TableHead className="min-w-[10rem]">Cliente</TableHead>
             <TableHead>Cédula/documento</TableHead>
             <TableHead>Tipo</TableHead>
@@ -66,8 +78,17 @@ export function ImportReviewTable({
         <TableBody>
           {rows.map((row, index) => (
             <TableRow key={row.rowId} className={row.needs_review ? "bg-amber-50 dark:bg-amber-950/20" : undefined}>
+              {sharedClientActive ? (
+                <TableCell>
+                  <Checkbox
+                    checked={isLinked(row.rowId)}
+                    onCheckedChange={() => onToggleLinked(row.rowId)}
+                    aria-label={`Usar el cliente compartido para la fila de ${row.client_name}`}
+                  />
+                </TableCell>
+              ) : null}
               <TableCell>
-                {clientLocked ? (
+                {sharedClientActive && isLinked(row.rowId) ? (
                   <span className="text-sm whitespace-nowrap text-muted-foreground">
                     {row.client_name}
                   </span>
@@ -80,7 +101,7 @@ export function ImportReviewTable({
                 )}
               </TableCell>
               <TableCell>
-                {clientLocked || !row.needs_document_id ? (
+                {(sharedClientActive && isLinked(row.rowId)) || !row.needs_document_id ? (
                   <span className="text-sm whitespace-nowrap text-muted-foreground">
                     {row.document_id}
                   </span>
