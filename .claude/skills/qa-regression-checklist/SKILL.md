@@ -100,6 +100,29 @@ facts that only need re-checking if the diff actually touches that area).
   `with_check` and confirm it scopes to `owner_id = auth.uid()` (directly
   or via a join) — a policy existing isn't the same as a policy being
   correct.
+- **Table-grant parity, dev vs. prod.** RLS being identical says nothing
+  about grants being identical, and the absence of this check is what let
+  a 500 reach production on 2026-09-05: `/admin` read tables directly with
+  the service-role client, which works in dev and cannot work in
+  production, because production revokes `SELECT` from `service_role` on
+  the customer tables and the dev branch never did. Supabase branch
+  creation does **not** clone grants. Run in both and diff:
+  ```sql
+  select table_name, grantee,
+         string_agg(privilege_type, ', ' order by privilege_type) as privileges
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and grantee in ('anon', 'authenticated', 'service_role')
+  group by table_name, grantee
+  order by table_name, grantee;
+  ```
+  A difference is not automatically a bug — production being *stricter* is
+  the intended state. What it means is that **any code path using
+  `createServiceClient()` to read a table directly cannot be validated in
+  dev**. Either confirm the grant exists in production, or move the read
+  behind a `SECURITY DEFINER` function, which needs no table grant at all
+  (`supabase/039_admin_reads_without_table_grants.sql` is the worked
+  example). Bypassing RLS is not the same as holding privileges.
 - **`Confirm email` is ON in production** (Auth → Sign In / Providers) —
   this gets toggled off in dev-branch test-signup sprints; confirm it
   never leaked into prod before a launch.
