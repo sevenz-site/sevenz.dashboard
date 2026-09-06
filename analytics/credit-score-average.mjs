@@ -9,15 +9,24 @@
 //
 // So this reuses the real implementation instead of copying it.
 //
-// Usage, from the dashboard/ directory:
-//   node --experimental-strip-types analytics/credit-score-average.mjs
-//   node --experimental-strip-types analytics/credit-score-average.mjs --country VE
-//   node --experimental-strip-types analytics/credit-score-average.mjs --owner <uuid>
+// Usage — the --import path is resolved by the shell, so run this from the
+// dashboard/ directory (everything else here is cwd-independent):
+//   cd .../Sevenz/dashboard
+//   node --experimental-strip-types --import ./analytics/register-hooks.mjs analytics/credit-score-average.mjs
+//   ... --country VE
+//   ... --owner <uuid>
 //
 // Reads .env.local for the service-role key, so it sees every owner's clients.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { computeCreditScore } from "../lib/credit-score.ts";
+
+// Resolved from this file, not the shell's working directory. Running it from
+// the wrong folder otherwise fails on .env.local with an error that points at
+// modules rather than at the actual mistake.
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = process.argv.slice(2);
 const argOf = (name) => {
@@ -28,7 +37,7 @@ const filterCountry = argOf("country");
 const filterOwner = argOf("owner");
 
 const env = Object.fromEntries(
-  readFileSync(".env.local", "utf8")
+  readFileSync(path.join(projectRoot, ".env.local"), "utf8")
     .split(/\r?\n/)
     .filter((l) => l.includes("=") && !l.startsWith("#"))
     .map((l) => {
