@@ -57,7 +57,20 @@ if (ownersError) throw ownersError;
 
 // client_summary already carries the balance and payment recency the score
 // needs, so this reads the same inputs the app itself passes in.
-const { data: summaries } = await db.from("client_summary").select("*");
+// Paged: PostgREST returns at most 1,000 rows and says nothing about the rest,
+// so an unpaged read would quietly turn "every client" into "an arbitrary
+// thousand" once the platform passes that mark.
+async function allClientSummaries(db) {
+  const out = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await db.from("client_summary").select("*").range(page * 1000, page * 1000 + 999);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) return out;
+  }
+}
+
+const summaries = await allClientSummaries(db);
 const { data: flags } = await db.from("client_flags").select("client_id, unflagged_at");
 
 const lastUnflagged = new Map();
@@ -68,7 +81,7 @@ for (const f of flags ?? []) {
 }
 
 const ownerIds = new Set(owners.map((o) => o.id));
-const rows = (summaries ?? []).filter((r) => ownerIds.has(r.owner_id));
+const rows = summaries.filter((r) => ownerIds.has(r.owner_id));
 
 const scores = [];
 const byCountry = new Map();

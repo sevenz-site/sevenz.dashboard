@@ -158,7 +158,20 @@ line(`  Cargos con plazo            ${withPlazo.length} de ${charges.length}`);
 // Credit score: the real implementation from lib/credit-score.ts, never a
 // reimplementation — two copies of a scoring algorithm would drift, and the
 // number an investor sees would stop matching the one an owner sees.
-const { data: summaries } = await db.from("client_summary").select("*");
+// Paged: PostgREST returns at most 1,000 rows and says nothing about the rest,
+// so an unpaged read would quietly turn "every client" into "an arbitrary
+// thousand" once the platform passes that mark.
+async function allClientSummaries(db) {
+  const out = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await db.from("client_summary").select("*").range(page * 1000, page * 1000 + 999);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) return out;
+  }
+}
+
+const summaries = await allClientSummaries(db);
 const lastUnflagged = new Map();
 for (const f of flags) {
   if (!f.unflagged_at) continue;
@@ -172,7 +185,7 @@ for (const m of movements) {
 }
 const scopedIds = new Set(scopedClients.map((c) => c.id));
 const scores = [];
-for (const r of (summaries ?? []).filter((x) => scopedIds.has(x.client_id))) {
+for (const r of summaries.filter((x) => scopedIds.has(x.client_id))) {
   scores.push(
     computeCreditScore({
       movements: movesByClient.get(r.client_id) ?? [],
