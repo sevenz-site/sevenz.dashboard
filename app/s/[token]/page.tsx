@@ -32,9 +32,14 @@ type SharedBalance = {
   business_name: string;
   owner_whatsapp: string | null;
   owner_logo_path: string | null;
-  payment_info: string | null;
+  // Optional because migration 042 removes both from the payload. During the
+  // window where code and database disagree — in either direction — these are
+  // simply absent, and the page must cope rather than crash or mislead.
+  payment_info?: string | null;
   client_name: string;
-  document_id: string | null;
+  document_id?: string | null;
+  // What 042 adds in their place: the one bit the page actually needs.
+  has_document_id?: boolean;
   whatsapp_last4: string;
   // The COP ledger (country='CO'). A VE client's debt lives in the two
   // per-currency balances below instead.
@@ -141,7 +146,20 @@ export default async function SharedBalancePage({
       <DocumentIdDialog
         token={token}
         clientName={shared.client_name}
-        hasDocumentId={Boolean(shared.document_id)}
+        hasDocumentId={
+          // Deliberately tolerant of three payload shapes, because neither
+          // deploy order is safe otherwise. Migration first and the old code
+          // reads a field that has vanished; code first and the new field does
+          // not exist yet. Both collapse to Boolean(undefined) === false, which
+          // opens a dialog that cannot be closed — no close button, no Escape,
+          // no click-outside — over the balance every client came to read.
+          //
+          // So the fallback is `true`: when the page cannot tell, it does NOT
+          // ask. The cost of that is one client not being prompted for a
+          // cédula. The cost of the other default is every client locked out.
+          shared.has_document_id ??
+          (shared.document_id !== undefined ? Boolean(shared.document_id) : true)
+        }
       />
       {/* Not a card: no border, no padding of its own, so the logo and the
           business name start on the page's own inset, in line with
