@@ -135,17 +135,24 @@ export async function createClientWithMovement(
   // stored exactly as typed, with no fixed format.
   const normalizedDocumentId = normalizeDocumentId(documentId);
   const confirmDuplicate = formData.get("confirm_duplicate") === "true";
+  // Hidden clients are deliberately included here. Excluding them would let an
+  // owner re-create someone they had hidden and start their history over —
+  // which is the one thing keeping the identity (decision D1) is meant to
+  // prevent — and would leave one person split across two records.
   const { data: ownerClients } = await supabase
     .from("clients")
-    .select("id, name, document_id")
+    .select("id, name, document_id, trashed_at, deleted_at")
     .eq("owner_id", user.id)
     .not("document_id", "is", null);
   const duplicate = ownerClients?.find(
     (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
   );
   if (duplicate && !confirmDuplicate) {
+    const hidden = Boolean(duplicate.trashed_at || duplicate.deleted_at);
     return {
-      error: `Ya existe un cliente con esta cédula: ${duplicate.name}`,
+      error: hidden
+        ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera en vez de crearlo otra vez.`
+        : `Ya existe un cliente con esta cédula: ${duplicate.name}`,
       clientId: null,
       duplicate: { id: duplicate.id as string, name: duplicate.name as string },
     };
@@ -226,11 +233,18 @@ export async function addMovement(
   // already has one sees no change to this form at all.
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("whatsapp")
+    .select("whatsapp, trashed_at, deleted_at")
     .eq("id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
   if (!clientRow) return { error: "Cliente inválido.", clientId: null };
+  // A movement written to a hidden client lands somewhere no list shows and
+  // no total counts — the owner would see a success toast and nothing else.
+  // The client detail page already hides the form for a trashed client; this
+  // is the guard behind it, since the form is reachable by other routes.
+  if (clientRow.trashed_at || clientRow.deleted_at) {
+    return { error: "Este cliente está en la papelera. Restáuralo para registrar movimientos.", clientId: null };
+  }
 
   if (!clientRow.whatsapp) {
     const whatsapp = String(formData.get("whatsapp") ?? "").trim();

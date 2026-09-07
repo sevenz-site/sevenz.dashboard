@@ -75,8 +75,27 @@ create table if not exists public.clients (
   created_at timestamptz not null default now(),
   -- "Mala paga" flag: reversible, owner-scoped, requires a reason (see
   -- client_flags below for the audit trail of every flag/unflag cycle).
-  is_flagged boolean not null default false
+  is_flagged boolean not null default false,
+  -- Papelera (044). Two nullable timestamps rather than a status enum,
+  -- matching movements.deleted_at. Both are independent of is_flagged: a
+  -- client need not be mala paga to be trashed, and trashing never sets the
+  -- flag. deleted_at is NOT deletion — the row, its history and its share link
+  -- all survive; it only means "gone from the owner's UI".
+  trashed_at timestamptz,
+  deleted_at timestamptz,
+  -- What the client owed at the moment they were hidden, frozen per currency.
+  -- Hiding a debtor drops "Capital por cobrar" by this much, and this is the
+  -- only thing that can later explain the drop. Never summed across
+  -- currencies.
+  trashed_balance numeric(14, 4),
+  trashed_balance_usd numeric(14, 4),
+  trashed_balance_eur numeric(14, 4)
 );
+
+-- Every owner-facing list reads "this owner's visible clients".
+create index if not exists clients_owner_visible_idx
+  on public.clients (owner_id)
+  where trashed_at is null and deleted_at is null;
 
 create index if not exists clients_owner_id_idx on public.clients (owner_id);
 
@@ -448,7 +467,16 @@ grant execute on function public.get_oldest_unpaid_charge(uuid) to authenticated
 -- COP owners (country='CO') use the currency-less chain (`balance`); VE
 -- owners get one independent balance per currency (`balance_usd`,
 -- `balance_eur`) since a client can owe both at once.
-create or replace view public.client_summary
+--
+-- TWO views since 044, and which one a query uses is a real decision.
+-- client_summary_all is defined here and includes hidden clients;
+-- client_summary, defined just below it, is the same thing filtered and is
+-- what every list screen reads. Filtering here rather than in each caller
+-- makes the safe behaviour the default — a query nobody remembers to update
+-- shows too little, never too much. Only three readers may use the unfiltered
+-- one: the Papelera screen, the client detail page (reached by id, including
+-- from the Papelera), and get_shared_balance.
+create or replace view public.client_summary_all
 with (security_invoker = on) as
 select
   c.id as client_id,
@@ -466,7 +494,12 @@ select
   oldest_unpaid.charge_at as oldest_unpaid_charge_at,
   oldest_unpaid.plazo_dias as oldest_unpaid_charge_plazo_dias,
   c.document_id,
-  c.is_flagged
+  c.is_flagged,
+  c.trashed_at,
+  c.deleted_at,
+  c.trashed_balance,
+  c.trashed_balance_usd,
+  c.trashed_balance_eur
 from public.clients c
 left join lateral (
   select m.running_balance from public.movements m
@@ -496,6 +529,19 @@ left join lateral (
   limit 1
 ) last_payment on true
 left join lateral public.get_oldest_unpaid_charge(c.id) oldest_unpaid on true;
+
+grant select on public.client_summary_all to authenticated;
+
+-- The one every list screen reads. Recreated rather than replaced in 044:
+-- `create or replace view` can only append columns, never change the ones
+-- already there, so replacing this one in place would have failed or silently
+-- kept the old body.
+drop view if exists public.client_summary;
+
+create view public.client_summary
+with (security_invoker = on) as
+select * from public.client_summary_all
+where trashed_at is null and deleted_at is null;
 
 grant select on public.client_summary to authenticated;
 
@@ -574,6 +620,33 @@ create policy "owners manage own movement deletions" on public.movement_deletion
 
 grant select, insert, update on public.movement_deletions to authenticated;
 
+-- ── client hides: the Papelera's notification trail (044) ────────────────
+-- Same shape as movement_deletions, on purpose. To an owner, moving a client
+-- to the Papelera is the same gesture as deleting a movement at a different
+-- scale: it produces a notification they can undo from. One row per
+-- transition, never an updated status — the history of a client being
+-- trashed, restored and trashed again is the thing worth keeping, the same
+-- reason client_flags records every flag/unflag cycle rather than a boolean.
+create table if not exists public.client_hides (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients (id) on delete cascade,
+  owner_id uuid not null references public.owners (id) on delete cascade,
+  action text not null check (action in ('trashed', 'restored', 'hidden')),
+  occurred_at timestamptz not null default now(),
+  read_at timestamptz
+);
+
+create index if not exists client_hides_owner_id_idx
+  on public.client_hides (owner_id, occurred_at desc);
+
+alter table public.client_hides enable row level security;
+
+drop policy if exists "owners manage own client hides" on public.client_hides;
+create policy "owners manage own client hides" on public.client_hides
+  for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+grant select, insert, update on public.client_hides to authenticated;
+
 -- ── public read-only access for the client balance page (/s/[token]) ─────
 -- No table-level SELECT policy is granted to anon; access is only through
 -- this SECURITY DEFINER function, scoped to exactly one client's data.
@@ -582,6 +655,9 @@ grant select, insert, update on public.movement_deletions to authenticated;
 -- a trap rather than documentation, since copying it would have created a
 -- second overload instead of replacing anything AND reintroduced the bug where
 -- every country='CO' share link returned 404.
+--
+-- Current source of truth: 044_client_papelera.sql (which changed exactly one
+-- line of 043's version — the client_summary read below).
 --
 -- If you need to change this function, base it on the newest supabase/0NN file
 -- that defines it, and confirm against the database itself with:
@@ -672,7 +748,12 @@ begin
 
   select coalesce(balance, 0), coalesce(balance_usd, 0), coalesce(balance_eur, 0)
     into v_balance, v_balance_usd, v_balance_eur
-  from public.client_summary where client_id = v_client.id;
+  -- client_summary_all, not client_summary (044). Decision D3 in
+  -- PAPELERA-PLAN.md: the link belongs to the client, not the owner, and it is
+  -- the path by which a forgotten debt gets paid. Reading the filtered view
+  -- here would make a hidden client's balance silently render as zero, and
+  -- they would believe the debt was cancelled.
+  from public.client_summary_all where client_id = v_client.id;
 
   if v_owner_country = 'VE' then
     select * into v_settings from public.owner_exchange_settings where owner_id = v_client.owner_id;

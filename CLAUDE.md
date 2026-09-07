@@ -163,6 +163,49 @@ run from. `npm run metrics` reads whichever project `.env.local` points at, so
 "run this" without naming the environment can silently report dev's numbers as
 if they were the business's.
 
+### Every code block, every time — no back-references
+
+The user is not a developer and does not track which environment a
+conversation is "currently in". **Relative references are banned.** Each of
+these was used on 2026-09-07 and each caused a real mistake:
+
+- ❌ "confirm it landed, in the same project"
+- ❌ "run it wherever you just ran the migration"
+- ❌ "then these two, both read-only"
+- ❌ "and now the verification"
+- ❌ "run the identical block from my previous message"
+
+Every one of them makes the reader reconstruct which database was meant from
+earlier context. That is work being pushed onto the person least able to do it,
+and getting it wrong is silent.
+
+**The required form, on every single code block, including the second and
+third in the same message:**
+
+> Run this in **DEV** (`vzqppwrwnmlbrxizskdh`):
+> ```sql
+> ...
+> ```
+> Then run this in **DEV** (`vzqppwrwnmlbrxizskdh`) as well:
+> ```sql
+> ...
+> ```
+
+Repeating "dev" three times in one message is not clutter. It is the whole
+point: the label must be readable without scrolling up, and without holding the
+previous instruction in mind.
+
+**Never point at a block earlier in the conversation.** If the same SQL needs
+running again, paste it again in full, or send it as a file. A long thread with
+four near-identical blocks is exactly how the wrong one gets run.
+
+What this cost, 2026-09-07: migration `043` was handed over as "the identical
+SQL block from my previous message", followed by a verification "in the same
+project". It was run against dev — which already had it, so everything looked
+correct — and production stayed unpatched and still leaking for another four
+exchanges. Nothing errored. The only reason it surfaced was a count query that
+distinguished the two databases by their row counts.
+
 ## Record every dev SQL change in the migration ledger
 
 `public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)

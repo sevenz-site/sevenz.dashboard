@@ -78,6 +78,18 @@ export type NotificationItem =
       runningBalance: number;
       movementCreatedAt: string;
       restored: boolean;
+    }
+  | {
+      id: string;
+      kind: "client_hidden";
+      occurredAt: string;
+      clientId: string;
+      clientName: string;
+      action: "trashed" | "restored" | "hidden";
+      // Whether the Restaurar button belongs on this row. False once the
+      // client has been restored by some other route, and false for a
+      // permanent hide, which has nothing to undo.
+      canRestore: boolean;
     };
 
 const NOTIFICATION_PHOTO_SIGNED_URL_TTL_SECONDS = 300;
@@ -96,6 +108,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     { data: opens, error: opensError },
     { data: imports, error: importsError },
     { data: deletions, error: deletionsError },
+    { data: hides, error: hidesError },
   ] = await Promise.all([
     supabase
       .from("link_opens")
@@ -116,14 +129,28 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       .eq("owner_id", user.id)
       .order("deleted_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("client_hides")
+      .select("id, client_id, action, occurred_at, read_at")
+      .eq("owner_id", user.id)
+      .order("occurred_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (opensError) console.error("getNotifications: link_opens query failed", opensError);
   if (importsError) console.error("getNotifications: import_notifications query failed", importsError);
   if (deletionsError) console.error("getNotifications: movement_deletions query failed", deletionsError);
+  if (hidesError) console.error("getNotifications: client_hides query failed", hidesError);
 
   const openRows = opens ?? [];
   const importRows = imports ?? [];
+  const hideRows = (hides ?? []) as {
+    id: string;
+    client_id: string;
+    action: "trashed" | "restored" | "hidden";
+    occurred_at: string;
+    read_at: string | null;
+  }[];
   // Without generated DB types, supabase-js infers every embed as an array
   // regardless of actual cardinality — but movement_deletions.movement_id is
   // a plain FK to movements.id, so this comes back as a single object (or
@@ -146,12 +173,24 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     } | null;
   }[];
 
-  const clientIds = [...new Set([...openRows.map((r) => r.client_id), ...deletionRows.map((r) => r.client_id)])];
-  const clientById = new Map<string, { name: string; document_id: string | null }>();
+  const clientIds = [
+    ...new Set([
+      ...openRows.map((r) => r.client_id),
+      ...deletionRows.map((r) => r.client_id),
+      ...hideRows.map((r) => r.client_id),
+    ]),
+  ];
+  // Read from `clients`, not client_summary — a Papelera notification is about
+  // a client the filtered view no longer returns, and joining through it would
+  // leave every one of these rows saying "Cliente".
+  const clientById = new Map<
+    string,
+    { name: string; document_id: string | null; trashed_at: string | null; deleted_at: string | null }
+  >();
   if (clientIds.length > 0) {
     const { data: clients, error: clientsError } = await supabase
       .from("clients")
-      .select("id, name, document_id")
+      .select("id, name, document_id, trashed_at, deleted_at")
       .in("id", clientIds);
     if (clientsError) console.error("getNotifications: clients query failed", clientsError);
     for (const c of clients ?? []) clientById.set(c.id, c);
@@ -174,6 +213,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   const unreadOpenIds = openRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadImportIds = importRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadDeletionIds = deletionRows.filter((r) => !r.read_at).map((r) => r.id);
+  const unreadHideIds = hideRows.filter((r) => !r.read_at).map((r) => r.id);
   await Promise.all([
     unreadOpenIds.length > 0
       ? supabase.from("link_opens").update({ read_at: new Date().toISOString() }).in("id", unreadOpenIds)
@@ -189,6 +229,9 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           .from("movement_deletions")
           .update({ read_at: new Date().toISOString() })
           .in("id", unreadDeletionIds)
+      : null,
+    unreadHideIds.length > 0
+      ? supabase.from("client_hides").update({ read_at: new Date().toISOString() }).in("id", unreadHideIds)
       : null,
   ]);
 
@@ -238,6 +281,25 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           restored: r.restored_at !== null,
         };
       }),
+    // A hide whose client row is gone entirely (owner deleted, cascading) has
+    // nothing left to name — skipped, same as a deletion with no movement.
+    ...hideRows
+      .filter((r) => clientById.has(r.client_id))
+      .map((r): NotificationItem => {
+        const client = clientById.get(r.client_id)!;
+        return {
+          id: r.id,
+          kind: "client_hidden",
+          occurredAt: r.occurred_at,
+          clientId: r.client_id,
+          clientName: client.name,
+          action: r.action,
+          // Restaurar is offered against the client's state now, not against
+          // what this row recorded: an owner who already restored them from
+          // the Papelera should not see an undo button that does nothing.
+          canRestore: r.action === "trashed" && client.trashed_at !== null && client.deleted_at === null,
+        };
+      }),
   ];
 
   return items
@@ -264,6 +326,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
     { data: opens, error: openError },
     { data: imports, error: importError },
     { data: deletions, error: deletionError },
+    { data: hides, error: hideError },
   ] = await Promise.all([
     supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
     supabase
@@ -278,11 +341,13 @@ export async function getUnreadNotificationCount(): Promise<number> {
       .eq("owner_id", user.id)
       .is("read_at", null)
       .limit(CAP),
+    supabase.from("client_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
   ]);
 
   if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
   if (importError) console.error("getUnreadNotificationCount: import_notifications query failed", importError);
   if (deletionError) console.error("getUnreadNotificationCount: movement_deletions query failed", deletionError);
+  if (hideError) console.error("getUnreadNotificationCount: client_hides query failed", hideError);
 
-  return (opens?.length ?? 0) + (imports?.length ?? 0) + (deletions?.length ?? 0);
+  return (opens?.length ?? 0) + (imports?.length ?? 0) + (deletions?.length ?? 0) + (hides?.length ?? 0);
 }
