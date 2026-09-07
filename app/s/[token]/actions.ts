@@ -43,7 +43,11 @@ async function withinQuota(token: string, action: string, limit: number): Promis
   }
 }
 
-export type SubmitDocumentIdState = { error: string | null; documentId: string | null };
+// No documentId field. The action used to pass the RPC's returned document
+// straight back to the browser; migration 042 stops the function returning it,
+// and nothing consumed it — the dialog only checks `error`. Keeping a field
+// that is now always undefined would invite someone to start reading it again.
+export type SubmitDocumentIdState = { error: string | null };
 
 // Public, unauthenticated action — reachable by anyone with a share link,
 // same trust model as get_shared_balance() itself. All the actual scoping
@@ -55,11 +59,11 @@ export type SubmitDocumentIdState = { error: string | null; documentId: string |
 export async function submitDocumentId(token: string, documentId: string): Promise<SubmitDocumentIdState> {
   const trimmed = documentId.trim();
   if (!trimmed) {
-    return { error: "Escribe tu número de documento.", documentId: null };
+    return { error: "Escribe tu número de documento." };
   }
 
   if (!(await withinQuota(token, "document_id", DOCUMENT_ID_LIMIT))) {
-    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde.", documentId: null };
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde." };
   }
 
   const supabase = await createClient();
@@ -70,15 +74,15 @@ export async function submitDocumentId(token: string, documentId: string): Promi
 
   if (error) {
     console.error("[submitDocumentId] rpc failed:", error.message);
-    return { error: "No pudimos guardar tu documento. Intenta de nuevo.", documentId: null };
+    return { error: "No pudimos guardar tu documento. Intenta de nuevo." };
   }
 
-  const result = data as { error: string | null; document_id: string | null };
+  const result = data as { error: string | null };
   if (result.error) {
-    return { error: result.error, documentId: null };
+    return { error: result.error };
   }
 
-  return { error: null, documentId: result.document_id };
+  return { error: null };
 }
 
 export type UploadProfilePictureState = { error: string | null; path: string | null };
