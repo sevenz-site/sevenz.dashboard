@@ -67,7 +67,10 @@ export default async function AdminMetricsPage({
     country: sp.country === "CO" || sp.country === "VE" ? sp.country : null,
     currency:
       sp.currency === "COP" || sp.currency === "USD" || sp.currency === "EUR" ? sp.currency : null,
-    ownerId: sp.owner || null,
+    // Comma-separated, written by the multi-select. An empty list and a
+    // missing param are the same thing — no filter — so a cleared selector
+    // shows the whole platform rather than an empty report.
+    ownerIds: (sp.owner ?? "").split(",").filter(Boolean),
     // A date input gives YYYY-MM-DD. "to" is exclusive in every RPC, so the
     // day the user picks would otherwise be missing from their own range.
     from: sp.from || null,

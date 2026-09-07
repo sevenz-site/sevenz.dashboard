@@ -11,7 +11,15 @@ import type { Movement } from "@/lib/types";
 export type MetricFilters = {
   country?: "CO" | "VE" | null;
   currency?: "COP" | "USD" | "EUR" | null;
-  ownerId?: string | null;
+  // A list, not one id. Segmenting the platform — how do these four shops
+  // compare — was impossible with a single owner filter without running the
+  // report once per shop and adding it up by hand.
+  //
+  // Empty and undefined both mean "no filter", and the SQL agrees: deselecting
+  // the last business is a person clearing the filter, not asking for the
+  // metrics of no businesses. Answering that with zeros would look like data
+  // loss.
+  ownerIds?: string[] | null;
   from?: string | null;
   to?: string | null;
 };
@@ -68,7 +76,7 @@ function rpcArgs(f: MetricFilters) {
   return {
     p_country: nullable(f.country),
     p_currency: nullable(f.currency),
-    p_owner: nullable(f.ownerId),
+    p_owners: f.ownerIds && f.ownerIds.length > 0 ? f.ownerIds : null,
     p_from: nullable(f.from),
     p_to: nullable(f.to),
   };
@@ -83,8 +91,8 @@ export async function getCurrencySummary(f: MetricFilters): Promise<CurrencySumm
 
 export async function getTotals(f: MetricFilters): Promise<Totals> {
   const db = createServiceClient();
-  const { p_country, p_owner, p_from, p_to } = rpcArgs(f);
-  const { data, error } = await db.rpc("admin_metrics_totals", { p_country, p_owner, p_from, p_to });
+  const { p_country, p_owners, p_from, p_to } = rpcArgs(f);
+  const { data, error } = await db.rpc("admin_metrics_totals", { p_country, p_owners, p_from, p_to });
   if (error) throw new Error(`admin_metrics_totals: ${error.message}`);
   // The function returns a single row; supabase-js still wraps it in an array.
   const row = (Array.isArray(data) ? data[0] : data) as Totals | undefined;
@@ -100,8 +108,18 @@ export async function getTrend(f: MetricFilters, bucket: Bucket = "week"): Promi
 
 export async function getByOwner(f: MetricFilters): Promise<OwnerRow[]> {
   const db = createServiceClient();
-  const { p_country, p_currency, p_from, p_to } = rpcArgs(f);
-  const { data, error } = await db.rpc("admin_metrics_by_owner", { p_country, p_currency, p_from, p_to });
+  // This one now takes the owner list too, which it never did before. The
+  // breakdown is what a segmented view is FOR: pick three businesses and the
+  // table has to be those three, not all twenty with the headline figures
+  // filtered above it.
+  const { p_country, p_currency, p_owners, p_from, p_to } = rpcArgs(f);
+  const { data, error } = await db.rpc("admin_metrics_by_owner", {
+    p_country,
+    p_currency,
+    p_owners,
+    p_from,
+    p_to,
+  });
   if (error) throw new Error(`admin_metrics_by_owner: ${error.message}`);
   return (data ?? []) as OwnerRow[];
 }
@@ -160,8 +178,8 @@ export async function getAverageCreditScore(
   // Currency is deliberately not passed: a credit score is a property of a
   // client, not of one currency's movements, so filtering by it would produce
   // a score computed from a partial ledger.
-  const { p_country, p_owner, p_from, p_to } = rpcArgs(f);
-  const args = { p_country, p_owner, p_from, p_to };
+  const { p_country, p_owners, p_from, p_to } = rpcArgs(f);
+  const args = { p_country, p_owners, p_from, p_to };
 
   const scoped = await rpcAll<Record<string, unknown>>("admin_credit_inputs", args);
   if (scoped.length === 0) return { average: null, clients: 0 };

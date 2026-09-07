@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OwnerMultiSelect, type OwnerOption } from "@/components/admin/owner-multi-select";
 
 // Filters live in the URL, not in component state, so a filtered view is
 // bookmarkable and shareable — the same pattern as ?historial=todo and
@@ -19,7 +20,7 @@ import { Label } from "@/components/ui/label";
 export function MetricFilters({
   owners,
 }: {
-  owners: { id: string; business_name: string; country: string }[];
+  owners: OwnerOption[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -34,6 +35,11 @@ export function MetricFilters({
     else next.set(key, value);
     router.push(`/admin?${next.toString()}`, { scroll: false });
   }
+
+  // Comma-separated in the URL so a segment stays one bookmarkable link:
+  // ?owner=a,b,c. Empty entries are dropped, so a stray comma from a
+  // hand-edited URL is ignored rather than sent to the database as "".
+  const selectedOwners = (params.get("owner") ?? "").split(",").filter(Boolean);
 
   const hasFilters = ["country", "currency", "owner", "from", "to", "bucket"].some((k) => params.get(k));
 
@@ -67,17 +73,11 @@ export function MetricFilters({
 
         <div className="col-span-2 flex flex-col gap-1 sm:col-span-1">
           <Label className="text-xs text-muted-foreground">Negocio</Label>
-          <Select value={current("owner")} onValueChange={(v) => apply("owner", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {owners.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.business_name || "(sin nombre)"} · {o.country}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <OwnerMultiSelect
+            owners={owners}
+            selected={selectedOwners}
+            onChange={(ids) => apply("owner", ids.join(","))}
+          />
         </div>
 
         <div className="flex flex-col gap-1">
