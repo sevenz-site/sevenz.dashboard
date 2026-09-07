@@ -39,6 +39,7 @@ import { track } from "@/lib/mixpanel";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
+import { clientHref } from "@/lib/client-origin";
 import { formatDate, formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -127,7 +128,7 @@ export function ClientTable({
                     type="button"
                     onClick={() => {
                       track("Client Details Opened", { client_id: row.client_id, source });
-                      router.push(`/clients/${row.client_id}`);
+                      router.push(clientHref(row.client_id, source));
                     }}
                     className={cn(CLIENT_CARD_SHELL, CLIENT_CARD_ROW)}
                   >
@@ -243,7 +244,7 @@ export function ClientTable({
                         className="cursor-pointer"
                         onClick={() => {
                           track("Client Details Opened", { client_id: row.client_id, source });
-                          router.push(`/clients/${row.client_id}`);
+                          router.push(clientHref(row.client_id, source));
                         }}
                       >
                         <TableCell className="font-medium">
@@ -315,7 +316,7 @@ export function ClientTable({
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" asChild title="Ver más">
                               <Link
-                                href={`/clients/${row.client_id}`}
+                                href={clientHref(row.client_id, source)}
                                 onClick={() =>
                                   track("Client Details Opened", { client_id: row.client_id, source })
                                 }

@@ -26,6 +26,7 @@ import {
   useClientFilters,
 } from "@/components/dashboard/client-filters";
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
+import { clientHref } from "@/lib/client-origin";
 import { formatDate } from "@/lib/format";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -144,7 +145,7 @@ export function PapeleraTable({
               tabIndex={0}
               onClick={() => {
                 track("Client Details Opened", { client_id: row.client_id, source: "papelera" });
-                router.push(`/clients/${row.client_id}`);
+                router.push(clientHref(row.client_id, "papelera"));
               }}
               onKeyDown={(e) => {
                 // role="link" rather than a real anchor, because an anchor
@@ -153,7 +154,7 @@ export function PapeleraTable({
                 if (e.key !== "Enter" && e.key !== " ") return;
                 if (e.target !== e.currentTarget) return;
                 e.preventDefault();
-                router.push(`/clients/${row.client_id}`);
+                router.push(clientHref(row.client_id, "papelera"));
               }}
             >
               <div className={CLIENT_CARD_ROW}>

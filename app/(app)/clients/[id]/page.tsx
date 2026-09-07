@@ -14,6 +14,7 @@ import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radi
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { computeCreditScore } from "@/lib/credit-score";
+import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime, formatDocumentId } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
@@ -39,7 +40,7 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ movimiento?: string }>;
+  searchParams: Promise<{ movimiento?: string; from?: string }>;
 }) {
   const { id } = await params;
   // Which action the mobile bar asked for while this client is on screen. The
@@ -47,7 +48,7 @@ export default async function ClientDetailPage({
   // the URL rather than navigating. Passed to the mobile AddMovementDialog
   // only — the sm+ layout below renders a second instance, and both opening
   // would stack two dialogs.
-  const { movimiento } = await searchParams;
+  const { movimiento, from } = await searchParams;
   const autoOpenType =
     movimiento === "abono" ? ("payment" as const) : movimiento === "fiado" ? ("charge" as const) : undefined;
   const supabase = await createClient();
@@ -90,11 +91,21 @@ export default async function ClientDetailPage({
     : null;
   const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
 
-  // Where "back" goes, and what a screen reader calls it. Both the arrow in
-  // the phone header and the desktop breadcrumb read these.
+  // Where "back" goes, and what a screen reader calls it.
+  //
+  // Every list links here with `?from=`, so the arrow returns to the screen the
+  // owner actually came from — Clientes, Malas pagas, Papelera or Cartera —
+  // rather than always dumping them on Cartera. Without it, an owner working
+  // through Malas pagas lost their place on every single client they opened.
+  //
+  // The fallback covers the routes that arrive with no marker: a notification,
+  // a shared URL, the search dialog. A client in the Papelera defaults there,
+  // since that is the only list they are on; everyone else defaults to Cartera.
   const inPapelera = Boolean(client.trashed_at) && !client.deleted_at;
-  const backHref = inPapelera ? "/papelera" : "/dashboard";
-  const backLabel = inPapelera ? "Volver a Papelera" : "Volver a Cartera";
+  const back =
+    clientOriginFrom(from) ?? (inPapelera ? CLIENT_ORIGINS.papelera : CLIENT_ORIGINS.cartera);
+  const backHref = back.href;
+  const backLabel = back.label;
 
   const clientSummary = summary as ClientSummary | null;
   const balance = clientSummary?.balance ?? 0;
