@@ -316,7 +316,14 @@ function RateCalculator({
             value={putValue}
             onChange={editHandler("put")}
             onFocus={focusHandler("put")}
-            className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold shadow-none focus-visible:ring-0"
+            // md:text-2xl no es redundante. El Input de shadcn trae md:text-sm
+            // en su clase base, tailwind-merge no lo quita porque es otro
+            // grupo de variante, y Tailwind emite las responsive DESPUÉS de
+            // las utilidades base — así que desde 768px ganaba y el monto se
+            // renderizaba a 14px, el texto MÁS PEQUEÑO de la tarjeta. En móvil
+            // siempre midió 24, que es por lo que pasó desapercibido desde que
+            // se escribió esta calculadora.
+            className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold shadow-none focus-visible:ring-0 md:text-2xl"
           />
           <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
             {labelFor(putCurrency)}
@@ -358,7 +365,7 @@ function RateCalculator({
         <label htmlFor="calc-get" className="text-xs opacity-70">
           Tú cobras
         </label>
-        <div className="flex items-baseline gap-1.5">
+        <div className="flex items-center gap-2">
           <Input
             id="calc-get"
             type="text"
@@ -367,18 +374,15 @@ function RateCalculator({
             value={getValue}
             onChange={editHandler("get")}
             onFocus={focusHandler("get")}
-            // `size` makes the field hug its own text so the label can sit
-            // beside the number rather than being shoved to the far edge by a
-            // full-width input. w-auto is what lets size win over Input's own
-            // w-full; min-w-0 lets it give way before the label truncates.
-            size={Math.max((getValue || getPlaceholder).length, 1)}
-            className="h-auto w-auto min-w-0 border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums shadow-none placeholder:text-primary-foreground/50 focus-visible:ring-0"
+            className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums shadow-none placeholder:text-primary-foreground/50 focus-visible:ring-0 md:text-2xl"
           />
-          <span className="shrink-0 text-xs opacity-70">{labelFor(getCurrency)}</span>
-          {/* ml-auto rather than a spacer: the flag belongs at the card's edge
-              whatever the number's width, and the label stays glued to the
-              amount. */}
-          <span className="ml-auto shrink-0 self-center">
+          {/* Label y bandera juntos a la derecha, igual que en "Tú pones".
+              Estuvieron separados un rato — label pegado al monto, bandera al
+              borde — lo que exigía un input dimensionado con size para que
+              abrazara su texto, y truncaba el label a 375px. Agruparlos hace
+              que las dos tarjetas se lean igual y elimina todo ese truco. */}
+          <span className="flex shrink-0 items-center gap-1.5 text-xs opacity-70">
+            {labelFor(getCurrency)}
             <CurrencyFlagIcon currency={getCurrency} />
           </span>
         </div>

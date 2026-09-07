@@ -191,6 +191,25 @@ phone or address is itself visible rather than silently absent.
 
 ## Traps that have actually bitten this codebase
 
+**`Input` ignora tu tamaño de fuente desde 768px.** `components/ui/input.tsx`
+trae `md:text-sm` en su clase base. Si le pasas `text-2xl` por `className`,
+`tailwind-merge` sí elimina el `text-base` que choca —mismo grupo— pero **no
+toca `md:text-sm`**, porque una variante responsive es otro grupo. Y Tailwind
+emite las variantes responsive DESPUÉS de las utilidades base, así que a partir
+de 768px gana la del componente.
+
+Encontrado el 2026-09-07 en la calculadora: los montos, que debían ser lo más
+grande de la tarjeta, se renderizaban a **14px en escritorio** y a 24px en
+móvil. Llevaba así desde que se escribió. Pasó desapercibido porque toda la
+verificación de este proyecto se hace a 375px, donde el bug no existe.
+
+Regla: si le cambias el tamaño de fuente a un `Input`, pasa también la variante
+—`text-2xl md:text-2xl`— o no se lo cambias. Y **mide `getComputedStyle` en las
+dos anchuras**, no solo en la del teléfono: un tamaño puede estar correcto en
+una y perdido en la otra, y una captura de móvil nunca lo va a mostrar.
+
+
+
 **Never rely on `flex` and `hidden` in one class list.** Which wins is decided
 by stylesheet order, not class order. Render conditionally instead.
 
