@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ExchangeRateMode } from "@/lib/types";
 import { refreshBcvRateIfStale } from "@/lib/exchange-rate/ensure-fresh";
+import { rateStatusFor, todayInCaracas, type RateStatus } from "@/lib/exchange-rate/rate-status";
+
+export type { RateStatus };
 
 export type OwnerRateContext = {
   rateMode: ExchangeRateMode;
@@ -12,6 +15,7 @@ export type OwnerRateContext = {
   // The day the rate on screen belongs to, "YYYY-MM-DD". Null for a row stored
   // before migration 046, or one that came from the currency-api fallback.
   rateDate: string | null;
+  rateStatus: RateStatus;
   // Bs per USD / Bs per EUR, whichever is actually applied to a new
   // movement right now (the owner's CUSTOM numbers, or the live BCV_AUTO
   // fetch).
@@ -54,8 +58,16 @@ export async function getOwnerRateContext(
   // both the number on screen and the rate stamped onto a new fiado on the
   // same value, which is the whole point: an owner must never be shown one
   // rate and have another one recorded.
-  const refreshed = await refreshBcvRateIfStale(stored.fetched_at);
-  const officialRate = refreshed ?? { usd: stored.usd, eur: stored.eur, rateDate: stored.rate_date };
+  const refresh = await refreshBcvRateIfStale(stored.fetched_at);
+  const officialRate =
+    refresh.status === "refreshed"
+      ? { usd: refresh.usd, eur: refresh.eur, rateDate: refresh.rateDate }
+      : { usd: stored.usd, eur: stored.eur, rateDate: stored.rate_date };
+
+  // "fresh" counts as confirmed: it means the stored row was fetched inside
+  // MAX_AGE_MS, so the provider agreed with us minutes ago.
+  const confirmed = refresh.status !== "unconfirmed";
+  const rateStatus = rateStatusFor(officialRate.rateDate, todayInCaracas(), confirmed);
 
   const rateMode: ExchangeRateMode = settings?.rate_mode ?? "BCV_AUTO";
   const effectiveRate =
@@ -67,11 +79,12 @@ export async function getOwnerRateContext(
     rateMode,
     effectiveRate,
     officialRate: { usd: officialRate.usd, eur: officialRate.eur },
-    // If refreshBcvRateIfStale returned something, that fetch just happened,
-    // so the stored row's timestamp is already out of date by one refresh.
-    fetchedAt: refreshed ? new Date().toISOString() : stored.fetched_at,
+    // If the refresh produced a rate, that fetch just happened, so the stored
+    // row's timestamp is already out of date by one refresh.
+    fetchedAt: refresh.status === "refreshed" ? new Date().toISOString() : stored.fetched_at,
     // Comes from whichever rate is actually on screen — the refreshed one when
     // there is one, otherwise the stored row's.
     rateDate: officialRate.rateDate,
+    rateStatus,
   };
 }

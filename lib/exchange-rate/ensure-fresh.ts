@@ -31,19 +31,30 @@ function startFetch() {
   return work;
 }
 
-// Returns fresher rates when it can get them inside the deadline, or null to
-// mean "keep using what's stored". Never throws: a rate provider having a bad
-// day must not take the dashboard down with it.
-export async function refreshBcvRateIfStale(
-  fetchedAt: string | null,
-): Promise<{ usd: number; eur: number; rateDate: string | null } | null> {
-  if (fetchedAt && Date.now() - new Date(fetchedAt).getTime() < MAX_AGE_MS) return null;
+// Three outcomes, not two. The old signature returned null both for "the
+// stored rate is recent enough" and for "we tried and could not reach the
+// provider", which are opposite facts: the first means our copy is confirmed
+// current, the second means we have no idea. The calculator needs to tell them
+// apart before it can say whether a rate older than today is the BCV taking
+// the weekend off or our own fetch failing.
+//
+// Never throws: a rate provider having a bad day must not take the dashboard
+// down with it.
+export type RateRefresh =
+  | { status: "fresh" }
+  | { status: "refreshed"; usd: number; eur: number; rateDate: string | null }
+  | { status: "unconfirmed" };
+
+export async function refreshBcvRateIfStale(fetchedAt: string | null): Promise<RateRefresh> {
+  if (fetchedAt && Date.now() - new Date(fetchedAt).getTime() < MAX_AGE_MS) {
+    return { status: "fresh" };
+  }
 
   let work: ReturnType<typeof startFetch>;
   try {
     work = startFetch();
   } catch {
-    return null;
+    return { status: "unconfirmed" };
   }
 
   // Keeps the fetch alive past the response — on Vercel the function can be
@@ -75,8 +86,10 @@ export async function refreshBcvRateIfStale(
 
   // needs_review means the fetch jumped more than the anomaly threshold from
   // the last accepted rate. It's recorded for the audit trail but must never
-  // become the number a fiado is stamped with, so fall back to what's stored.
-  if (!settled || settled.needs_review) return null;
+  // become the number a fiado is stamped with, so fall back to what's stored —
+  // and report it as unconfirmed, because the provider did publish something
+  // we are deliberately not using.
+  if (!settled || settled.needs_review) return { status: "unconfirmed" };
 
-  return { usd: settled.usd, eur: settled.eur, rateDate: settled.rateDate };
+  return { status: "refreshed", usd: settled.usd, eur: settled.eur, rateDate: settled.rateDate };
 }

@@ -12,7 +12,8 @@
     "qa:papelera:fixture": "node qa/papelera-fixture.mjs",
     "qa:papelera": "node qa/papelera-verify.mjs",
     "qa:parity": "node qa/client-summary-parity.mjs",
-    "qa:grants": "node qa/grants-verify.mjs"
+    "qa:grants": "node qa/grants-verify.mjs",
+    "qa:rate-status": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/rate-status.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

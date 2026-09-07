@@ -65,6 +65,7 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       pair={pair}
       onPairChange={setPair}
       rateDate={rateContext.rateDate}
+      rateStatus={rateContext.rateStatus}
     />
   );
   const trigger = (
@@ -147,11 +148,13 @@ function RateCalculator({
   pair,
   onPairChange,
   rateDate,
+  rateStatus,
 }: {
   rate: { usd: number; eur: number };
   pair: LedgerCurrency;
   onPairChange: (next: LedgerCurrency) => void;
   rateDate?: string | null;
+  rateStatus?: "current" | "no_publication" | "unconfirmed";
 }) {
   // Digits-only "cents" mask — the same way a POS amount field works: typing
   // shifts digits in from the right, the last two are always the decimals.
@@ -227,6 +230,16 @@ function RateCalculator({
   // migration 046 or one from the currency-api fallback; the daily cron fills
   // it in, so this state clears itself within a day.
   const stampLabel = rateDate ? `Tasa BCV del ${formatRateDate(rateDate)}` : "Tasa BCV";
+  // Only when the rate is not today's. Two causes, two sentences, because
+  // telling an owner "the BCV doesn't publish on weekends" while the real
+  // problem is our own fetch would hide the failure precisely when it costs
+  // money — they would price a fiado against a rate they think is confirmed.
+  const stampNote =
+    rateStatus === "no_publication"
+      ? "El BCV no publica sábados, domingos ni festivos. Esta es la última tasa publicada."
+      : rateStatus === "unconfirmed"
+        ? "Puede haber una tasa más reciente. Estamos reintentando."
+        : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -305,6 +318,7 @@ function RateCalculator({
           {entry === "VES" ? ` ${pairPlural}` : ""}
         </span>
         <span className="text-xs opacity-70">{stampLabel}</span>
+        {stampNote ? <span className="text-xs opacity-70">{stampNote}</span> : null}
       </div>
 
       <Button type="button" variant="outline" onClick={handleShare}>

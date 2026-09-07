@@ -34,6 +34,9 @@ export type MovementRateContext = {
   // a Sunday-night fetch of Friday's rate came to be labelled "del 6 sept.",
   // a date on which the BCV published nothing at all.
   rateDate?: string | null;
+  // Whether that date being older than today is expected (the BCV did not
+  // publish) or a failure of ours. See RateStatus in owner-rate.ts.
+  rateStatus?: "current" | "no_publication" | "unconfirmed";
 };
 
 // ── Per-currency ledgers ────────────────────────────────────────────────
