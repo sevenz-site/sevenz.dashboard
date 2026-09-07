@@ -120,6 +120,11 @@ export type Client = {
   profile_picture_path: string | null;
   created_at: string;
   is_flagged: boolean;
+  // The two hiding states from PAPELERA-PLAN.md. Both nullable timestamps,
+  // matching movements.deleted_at. Independent of is_flagged: a client does
+  // not have to be mala paga to be trashed, and trashing never sets the flag.
+  trashed_at: string | null;
+  deleted_at: string | null;
 };
 
 export type ClientSummary = {
@@ -141,6 +146,21 @@ export type ClientSummary = {
   oldest_unpaid_charge_at: string | null;
   oldest_unpaid_charge_plazo_dias: number | null;
   is_flagged: boolean;
+};
+
+// client_summary_all — the same view without the "hide the hidden" filter.
+// Only three callers are allowed to read it: the Papelera screen, /admin
+// metrics, and get_shared_balance. Everything else reads client_summary, so
+// that forgetting to filter shows too little rather than too much.
+export type ClientSummaryAll = ClientSummary & {
+  trashed_at: string | null;
+  deleted_at: string | null;
+  // What the client owed at the moment they were hidden, frozen per currency.
+  // This is what lets a later report explain why a total dropped, instead of
+  // the total simply changing. Null while the client is visible.
+  trashed_balance: number | null;
+  trashed_balance_usd: number | null;
+  trashed_balance_eur: number | null;
 };
 
 export type ClientFlag = {

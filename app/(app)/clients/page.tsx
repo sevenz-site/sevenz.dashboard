@@ -21,10 +21,15 @@ export default async function ClientsPage() {
       .select("*")
       .eq("owner_id", user!.id)
       .order("days_since_payment", { ascending: false }),
+    // Feeds the "add a movement" search. Hidden clients are excluded outright
+    // (decision O2): the way back to one is Papelera → Restaurar, so that the
+    // word "oculto" means the same thing on every screen.
     supabase
       .from("clients")
       .select("id, name, document_id")
       .eq("owner_id", user!.id)
+      .is("trashed_at", null)
+      .is("deleted_at", null)
       .order("name"),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),

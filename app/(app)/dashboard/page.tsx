@@ -33,10 +33,14 @@ export default async function DashboardPage({
       .select("*")
       .eq("owner_id", user!.id)
       .order("days_since_payment", { ascending: false }),
+    // Feeds the "add a movement" search — hidden clients excluded (O2), same
+    // as Clientes and Malas pagas.
     supabase
       .from("clients")
       .select("id, name, document_id")
       .eq("owner_id", user!.id)
+      .is("trashed_at", null)
+      .is("deleted_at", null)
       .order("name"),
     supabase.from("owners").select("business_name, country, first_name").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),

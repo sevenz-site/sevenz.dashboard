@@ -71,16 +71,29 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // trusting the review table's own needs_document_id flag — that flag is
   // just what decided whether to show/require the input client-side.
   const existingDocumentIds = new Map<string, string | null>();
+  // A row can sit in the review table long enough for its client to be moved
+  // to the Papelera in another tab. Confirming it then would write movements
+  // onto a client no list shows and no total counts, which is the silent kind
+  // of wrong — so the whole batch stops and names the client.
+  const hiddenClientNames = new Map<string, string>();
   if (providedClientIds.length > 0) {
     const { data: ownedClients } = await supabase
       .from("clients")
-      .select("id, document_id")
+      .select("id, name, document_id, trashed_at, deleted_at")
       .eq("owner_id", user.id)
       .in("id", providedClientIds);
     for (const c of ownedClients ?? []) {
       ownedClientIds.add(c.id as string);
       existingDocumentIds.set(c.id as string, c.document_id as string | null);
+      if (c.trashed_at || c.deleted_at) hiddenClientNames.set(c.id as string, c.name as string);
     }
+  }
+  if (hiddenClientNames.size > 0) {
+    const names = [...hiddenClientNames.values()].join(", ");
+    return {
+      error: `${names} está en la papelera. Restáuralo desde Papelera para continuar con esta importación.`,
+      imported: 0,
+    };
   }
 
   // Nothing stops the same person being registered twice under one owner —
@@ -91,17 +104,23 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // either. There's no per-row picker in this batch flow, so a hit just
   // blocks the whole import with a clear message instead of silently
   // duplicating.
+  //
+  // Hidden clients are included here on purpose (decision O3): the import must
+  // match them rather than quietly create a second record, which would split
+  // one person's history across two clients with no way for the owner to merge
+  // them back.
   const { data: allOwnerClients } = await supabase
     .from("clients")
-    .select("id, name, document_id")
+    .select("id, name, document_id, trashed_at, deleted_at")
     .eq("owner_id", user.id)
     .not("document_id", "is", null);
-  const clientsByNormalizedDocumentId = new Map<string, { id: string; name: string }>();
+  const clientsByNormalizedDocumentId = new Map<string, { id: string; name: string; hidden: boolean }>();
   for (const c of allOwnerClients ?? []) {
     if (!c.document_id) continue;
     clientsByNormalizedDocumentId.set(normalizeDocumentId(c.document_id as string), {
       id: c.id as string,
       name: c.name as string,
+      hidden: Boolean(c.trashed_at || c.deleted_at),
     });
   }
 
@@ -148,7 +167,9 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       const duplicate = clientsByNormalizedDocumentId.get(normalizedDocumentId);
       if (duplicate) {
         return {
-          error: `Ya existe un cliente con esta cédula: ${duplicate.name}. Selecciónalo en la tabla en vez de crear uno nuevo.`,
+          error: duplicate.hidden
+            ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera y vuelve a seleccionarlo en la tabla.`
+            : `Ya existe un cliente con esta cédula: ${duplicate.name}. Selecciónalo en la tabla en vez de crear uno nuevo.`,
           imported,
         };
       }
@@ -172,7 +193,11 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       }
       clientId = newClient.id as string;
       clientIdByName.set(cacheKey, clientId);
-      clientsByNormalizedDocumentId.set(normalizedDocumentId, { id: clientId, name: row.client_name.trim() });
+      clientsByNormalizedDocumentId.set(normalizedDocumentId, {
+        id: clientId,
+        name: row.client_name.trim(),
+        hidden: false,
+      });
     }
 
     // No needs_review here: the owner already saw and could fix every
