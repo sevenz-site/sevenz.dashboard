@@ -13,6 +13,9 @@ const CASES = [
   ["2026-03-27", "2026-04-02", true, "no_publication", "Semana Santa: six days old and still correct"],
   [null, "2026-09-07", true, "unconfirmed", "row stored before 046, or currency-api — no date to trust"],
   [null, "2026-09-07", false, "unconfirmed", "no date and no confirmation"],
+  [undefined, "2026-09-07", true, "unconfirmed", "046 not run: the column does not exist and the value is undefined, not null"],
+  [undefined, "2026-09-07", false, "unconfirmed", "same, unconfirmed"],
+  ["", "2026-09-07", true, "unconfirmed", "empty string is not a date either"],
   ["2026-09-08", "2026-09-07", true, "current", "provider ahead of our clock never reads as stale"],
 ];
 

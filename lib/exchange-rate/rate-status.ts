@@ -18,11 +18,20 @@ export type RateStatus = "current" | "no_publication" | "unconfirmed";
 // refresh window. Without it an older date is ambiguous between the two cases
 // above, so it resolves to the one that admits we do not know.
 export function rateStatusFor(
-  rateDate: string | null,
+  // undefined as well as null, and the difference is not academic. If this code
+  // ever reaches an environment where migration 046 has not run,
+  // get_current_bcv_rate returns no rate_date column at all and the value
+  // arrives as undefined, not null. `undefined === null` is false, so a strict
+  // null check fell through to the date comparison, `undefined >= today` is
+  // false, and a perfectly current rate on a Tuesday was reported as
+  // "no_publication" — the app telling an owner the BCV was closed when it was
+  // not. Deploy order is supposed to prevent that state; this makes the
+  // failure harmless rather than confidently wrong if it ever happens anyway.
+  rateDate: string | null | undefined,
   today: string,
   confirmed: boolean,
 ): RateStatus {
-  if (rateDate === null) return "unconfirmed";
+  if (!rateDate) return "unconfirmed";
   // >= rather than ===: if the provider is ever a day ahead of our clock, that
   // is not staleness and must not be reported as any kind of problem.
   if (rateDate >= today) return "current";
