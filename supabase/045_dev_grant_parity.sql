@@ -32,14 +32,7 @@
 -- scripts now go through lib/admin/metrics.ts and work against production.
 --
 -- The rule that grant alignment was standing in for is enforced directly now:
--- 
-> dashboard@0.1.0 qa:service-role
-> node qa/service-role-reads.mjs
-
-172 archivos revisados · 4 usan createServiceClient
-tablas permitidas: bcv_exchange_rate_fetches
-
-PASS  ninguna lectura directa de tablas con service_role fails if anything under app/, lib/, components/ or
+-- "npm run qa:service-role" fails if anything under app/, lib/, components/ or
 -- hooks/ reads a table with the service-role client, allowing only
 -- bcv_exchange_rate_fetches — the one table production grants it. It runs in
 -- seconds, in every environment, and is in the qa-regression-checklist skill.
@@ -146,14 +139,7 @@ grant select, insert, update, delete on public.share_links to authenticated;
 -- wide in dev, so a table created by a future migration is still open to
 -- service_role there and strict in production. That is deliberate: it is what
 -- keeps the qa/ fixture scripts working, and the risk it used to stand for is
--- now caught by 
-> dashboard@0.1.0 qa:service-role
-> node qa/service-role-reads.mjs
-
-172 archivos revisados · 4 usan createServiceClient
-tablas permitidas: bcv_exchange_rate_fetches
-
-PASS  ninguna lectura directa de tablas con service_role instead.
+-- now caught by "npm run qa:service-role" instead.
 alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from anon;
 alter default privileges for role postgres in schema public
