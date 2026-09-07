@@ -577,7 +577,18 @@ grant select, insert, update on public.movement_deletions to authenticated;
 -- ── public read-only access for the client balance page (/s/[token]) ─────
 -- No table-level SELECT policy is granted to anon; access is only through
 -- this SECURITY DEFINER function, scoped to exactly one client's data.
-create or replace function public.get_shared_balance(p_token text)
+-- Kept in step with the live database on purpose. This block used to hold a
+-- one-argument, pre-036 version long after 036, 037 and 043 had superseded it —
+-- a trap rather than documentation, since copying it would have created a
+-- second overload instead of replacing anything AND reintroduced the bug where
+-- every country='CO' share link returned 404.
+--
+-- If you need to change this function, base it on the newest supabase/0NN file
+-- that defines it, and confirm against the database itself with:
+--   select pg_get_functiondef(p.oid) from pg_proc p
+--   join pg_namespace n on n.oid = p.pronamespace
+--   where n.nspname = 'public' and p.proname = 'get_shared_balance';
+create or replace function public.get_shared_balance(p_token text, p_limit int default 50)
 returns json
 language plpgsql
 security definer
@@ -590,12 +601,16 @@ declare
   v_owner_logo_path text;
   v_payment_info text;
   v_movements json;
+  v_movement_total int;
   v_balance numeric(14, 4);
   v_balance_usd numeric(14, 4);
   v_balance_eur numeric(14, 4);
   v_owner_country text;
   v_settings public.owner_exchange_settings%rowtype;
-  v_current_bcv record;
+  -- Scalars, not a record: these are read below whether or not the VE branch
+  -- ran, and a scalar that was never assigned is simply NULL. See 036.
+  v_bcv_usd numeric;
+  v_bcv_eur numeric;
 begin
   select c.* into v_client
   from public.share_links sl
@@ -606,14 +621,26 @@ begin
     return null;
   end if;
 
+  -- The only change from 036: a revisit now re-arms the notification and
+  -- refreshes the timestamp, instead of being discarded.
   insert into public.link_opens (client_id, opened_date)
   values (v_client.id, current_date)
-  on conflict (client_id, opened_date) do nothing;
+  on conflict (client_id, opened_date) do update
+    set read_at = null,
+        opened_at = now();
 
   select business_name, whatsapp, logo_path, payment_info, country
     into v_business, v_owner_whatsapp, v_owner_logo_path, v_payment_info, v_owner_country
   from public.owners where id = v_client.owner_id;
 
+  -- Total is counted before the limit is applied, so the page can say how many
+  -- are being withheld and whether to offer "ver todo" at all.
+  select count(*) into v_movement_total
+  from public.movements
+  where client_id = v_client.id and deleted_at is null;
+
+  -- Newest p_limit rows, then aggregated oldest-first — the order the page has
+  -- always received them in. p_limit null means "all of them".
   select json_agg(
     json_build_object(
       'id', m.id,
@@ -635,8 +662,13 @@ begin
     ) order by m.created_at asc
   )
   into v_movements
-  from public.movements m
-  where m.client_id = v_client.id and m.deleted_at is null;
+  from (
+    select *
+    from public.movements
+    where client_id = v_client.id and deleted_at is null
+    order by created_at desc
+    limit p_limit
+  ) m;
 
   select coalesce(balance, 0), coalesce(balance_usd, 0), coalesce(balance_eur, 0)
     into v_balance, v_balance_usd, v_balance_eur
@@ -644,25 +676,31 @@ begin
 
   if v_owner_country = 'VE' then
     select * into v_settings from public.owner_exchange_settings where owner_id = v_client.owner_id;
-    select * into v_current_bcv from public.get_current_bcv_rate();
+    select r.usd, r.eur into v_bcv_usd, v_bcv_eur from public.get_current_bcv_rate() r;
   end if;
 
   return json_build_object(
     'business_name', v_business,
     'owner_whatsapp', v_owner_whatsapp,
     'owner_logo_path', v_owner_logo_path,
-    'payment_info', v_payment_info,
+    -- 'payment_info' removed: the owner's Nequi or bank details are the raw
+    -- material for impersonating the shop to its own client.
     'client_name', v_client.name,
-    'document_id', v_client.document_id,
+    -- 'document_id' removed. What the page needs is whether one exists, not
+    -- what it is — and under the identity plan in 035 the (country, document)
+    -- pair is what future client accounts match on, so publishing it to anyone
+    -- with a forwarded link is exactly backwards.
+    'has_document_id', (v_client.document_id is not null and trim(v_client.document_id) <> ''),
     'whatsapp_last4', right(coalesce(v_client.whatsapp, ''), 4),
     'balance', coalesce(v_balance, 0),
     'balance_usd', coalesce(v_balance_usd, 0),
     'balance_eur', coalesce(v_balance_eur, 0),
     'movements', coalesce(v_movements, '[]'::json),
+    'movement_total', coalesce(v_movement_total, 0),
     'owner_country', v_owner_country,
     'rate_mode', v_settings.rate_mode,
-    'current_bcv_usd', v_current_bcv.usd,
-    'current_bcv_eur', v_current_bcv.eur,
+    'current_bcv_usd', v_bcv_usd,
+    'current_bcv_eur', v_bcv_eur,
     'custom_rate_usd', v_settings.custom_rate_usd,
     'custom_rate_eur', v_settings.custom_rate_eur
   );
