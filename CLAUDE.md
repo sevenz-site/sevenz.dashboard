@@ -232,6 +232,41 @@ dated slug (e.g. `2026-08-27_fix_stray_null_currency`). No exceptions for
 to prevent. When the same SQL is later run against production, insert the
 same key there too — that match is what the parity check compares.
 
+### Migraciones que solo existen en un entorno
+
+Casi todas las migraciones corren en los dos lados. Unas pocas no: existen
+para que un entorno se parezca al otro, y correrlas en el otro no tiene
+sentido. `045_dev_grant_parity` es la primera — alinea los permisos del branch
+dev con los que producción ya tiene, así que en producción sería un no-op en
+el mejor caso y una caída si las listas se hubieran separado.
+
+El problema es la parada dura del `qa-regression-checklist`: compara las claves
+de `schema_migrations` de los dos entornos y bloquea ante cualquier diferencia.
+Una migración que legítimamente vive en un solo lado la haría saltar **en todos
+los lanzamientos futuros**, y una alarma que suena siempre deja de leerse — que
+es peor que no tenerla, porque entrena a pasarla de largo.
+
+**Regla: cuando una migración es de un solo entorno, se registra en el otro
+como no-op**, con una descripción que diga exactamente eso y advierta que no
+debe ejecutarse:
+
+```sql
+insert into public.schema_migrations (key, description)
+values (
+  '<clave>',
+  'DEV-ONLY, registrada aquí como no-op para que la comparación de ledgers del checklist siga significando algo. NUNCA ejecutar este archivo contra producción: <razón en una línea>.'
+)
+on conflict (key) do nothing;
+```
+
+Los ledgers vuelven a coincidir, la parada dura recupera su sentido, y la fila
+dice la verdad: no es "esto corrió aquí", es "esto existe y deliberadamente no
+corre aquí". La alternativa —enseñarle al skill una lista de excepciones— exige
+mantener esa lista, y una lista desactualizada falla en silencio.
+
+Precedente: `033_client_document_id_unique` se registró así en producción el
+2026-09-06 y desde entonces la comparación vuelve a ser útil.
+
 ## Explicit ownership checks in server actions
 
 Any server action that reads or writes a row identified by an ID that comes
