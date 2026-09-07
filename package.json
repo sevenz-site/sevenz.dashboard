@@ -10,7 +10,8 @@
     "metrics:credit-score": "node --experimental-strip-types --import ./analytics/register-hooks.mjs analytics/credit-score-average.mjs",
     "metrics": "node --experimental-strip-types --import ./analytics/register-hooks.mjs analytics/report.mjs",
     "qa:papelera:fixture": "node qa/papelera-fixture.mjs",
-    "qa:papelera": "node qa/papelera-verify.mjs"
+    "qa:papelera": "node qa/papelera-verify.mjs",
+    "qa:parity": "node qa/client-summary-parity.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

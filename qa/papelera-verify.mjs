@@ -24,6 +24,22 @@ const env = Object.fromEntries(
     }),
 );
 
+// Hard stop. Both of these scripts hold the service-role key, and this one
+// trashes and restores a real client row. Production is rabmiyqodnvnrwiartuj;
+// if .env.local is ever pointed there — mid-debug, or on someone else's
+// machine — running this would write to live customer data. Refusing on the
+// project ref is cheap and the failure it prevents is not recoverable.
+const DEV_REF = "vzqppwrwnmlbrxizskdh";
+const projectRef = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
+if (projectRef !== DEV_REF) {
+  console.error(
+    `REFUSING TO RUN. .env.local points at "${projectRef}", not the dev branch (${DEV_REF}).
+` +
+      "This script writes with the service-role key and is for the dev branch only.",
+  );
+  process.exit(1);
+}
+
 const EMAIL = "qa-papelera@example.com";
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
