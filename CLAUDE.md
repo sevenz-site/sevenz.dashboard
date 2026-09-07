@@ -206,6 +206,33 @@ correct — and production stayed unpatched and still leaking for another four
 exchanges. Nothing errored. The only reason it surfaced was a count query that
 distinguished the two databases by their row counts.
 
+## A migration must survive being re-run
+
+Not a style preference. The moment you need to re-run a migration is right
+after correcting it — dev caught something, you fixed the file, you run it
+again. If the file only works on a virgin database, the correction is the
+run that fails, and in production that happens with the page already broken
+and waiting on it.
+
+The trap that is easy to miss is **changing a function's signature**. Postgres
+overloads on argument types, so:
+
+- `create or replace function` cannot change a parameter's type, its name, or
+  a `returns table(...)` column list. It creates a *second* overload instead
+  of replacing anything, and PostgREST then resolves calls to whichever one it
+  likes. Use `drop` + `create`.
+- A `drop function if exists` names one exact argument list. Dropping only the
+  **old** signature makes the file work exactly once: on the second run the
+  drop matches nothing and `create function` fails with
+  `42723: function "x" already exists with same argument types`.
+
+So drop **both** signatures — the one that exists before the migration and the
+one it creates. `supabase/047_admin_metrics_multi_owner.sql` is the worked
+example: twelve `drop function if exists` lines for six functions.
+
+This cost a round trip on 2026-09-07, in dev, which is where it was supposed
+to cost one.
+
 ## Record every dev SQL change in the migration ledger
 
 `public.schema_migrations` (created by `supabase/028_schema_migrations_ledger.sql`)
