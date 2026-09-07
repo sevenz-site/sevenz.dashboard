@@ -25,6 +25,12 @@ const money = (n: number | null) =>
     ? "—"
     : Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Spelled out in the country summary, where there are two rows and room for it.
+// The "Por negocio" table keeps the code, because it is one column among six.
+// Falls through to the raw value for anything unexpected rather than rendering
+// a blank cell.
+const COUNTRY_LABEL: Record<string, string> = { CO: "Colombia", VE: "Venezuela" };
+
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-lg border p-3">
@@ -87,6 +93,28 @@ export default async function AdminMetricsPage({
       ? plazoRows.reduce((s, r) => s + Number(r.plazo_average) * Number(r.charges_with_plazo), 0) /
         plazoRows.reduce((s, r) => s + Number(r.charges_with_plazo), 0)
       : null;
+
+  // Rolled up from byOwner, the same rows the "Por negocio" table prints, so a
+  // reader can add that table up by hand and get this. Costs no extra query:
+  // admin_metrics_by_owner LEFT JOINs from owners, so every business is already
+  // in there, including one with no clients yet.
+  const byCountry = [...byOwner
+    .reduce((acc, o) => {
+      const row = acc.get(o.country) ?? {
+        country: o.country,
+        owners: 0,
+        clients: 0,
+        movements: 0,
+        charge_total: 0,
+      };
+      row.owners += 1;
+      row.clients += Number(o.clients);
+      row.movements += Number(o.movements);
+      row.charge_total += Number(o.charge_total);
+      acc.set(o.country, row);
+      return acc;
+    }, new Map<string, { country: string; owners: number; clients: number; movements: number; charge_total: number }>())
+    .values()].sort((a, b) => a.country.localeCompare(b.country));
 
   return (
     <div className="flex flex-col gap-6">
@@ -161,6 +189,45 @@ export default async function AdminMetricsPage({
           </table>
         </div>
       </div>
+
+      {/* Summarises the table directly below it, from the same rows, so the two
+          cannot disagree. That is why it is built from byOwner rather than by
+          asking admin_metrics_totals once per country: `clients_created` there
+          counts clients created INSIDE the date window, while this column counts
+          every client the business has. Both are right; putting them side by
+          side under similar labels is what would be wrong.
+
+          Hidden when a country filter is on — every figure above is already
+          that country, so a one-row breakdown of it says nothing. */}
+      {byCountry.length > 1 ? (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-lg font-semibold">Por país</h2>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/30">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">País</th>
+                  <th className="px-3 py-2 text-right font-medium">Negocios</th>
+                  <th className="px-3 py-2 text-right font-medium">Clientes</th>
+                  <th className="px-3 py-2 text-right font-medium">Movimientos</th>
+                  <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Total fiado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byCountry.map((c) => (
+                  <tr key={c.country} className="border-b last:border-0">
+                    <td className="px-3 py-2">{COUNTRY_LABEL[c.country] ?? c.country}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{c.owners}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{c.clients}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{c.movements}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(c.charge_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <h2 className="text-lg font-semibold">Por negocio</h2>
