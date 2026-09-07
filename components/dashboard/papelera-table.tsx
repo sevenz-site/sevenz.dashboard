@@ -86,12 +86,27 @@ export function PapeleraTable({ rows, ledger }: { rows: ClientSummaryAll[]; ledg
           );
           const busy = busyId === row.client_id;
           return (
-            <li key={row.client_id} className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+            <li
+              key={row.client_id}
+              // The whole card opens the client, matching the rows in Cartera
+              // and Clientes — on a phone the name alone is a small target,
+              // and a card that looks like a row should behave like one.
+              className="flex cursor-pointer flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2 hover:bg-accent/40"
+              onClick={() => {
+                track("Client Details Opened", { client_id: row.client_id, source: "papelera" });
+                router.push(`/clients/${row.client_id}`);
+              }}
+            >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link
                     href={`/clients/${row.client_id}`}
                     className="font-medium underline-offset-4 hover:underline"
+                    // Kept as a real link so the card is reachable by keyboard
+                    // and openable in a new tab. Stopping propagation lets the
+                    // anchor navigate on its own instead of the card's handler
+                    // pushing the same route a second time.
+                    onClick={(e) => e.stopPropagation()}
                   >
                     {row.name}
                   </Link>
@@ -108,7 +123,12 @@ export function PapeleraTable({ rows, ledger }: { rows: ClientSummaryAll[]; ledg
                   ) : null}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              {/* Inside a clickable card, so every click here has to stop
+                  before it reaches the card's handler — otherwise Restaurar
+                  would also navigate away from the screen that was about to
+                  show the result, and Ocultar would open its confirmation on
+                  top of a page that is already leaving. */}
+              <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleRestore(row)}>
                   <RotateCcw className="size-4" />
                   Restaurar
