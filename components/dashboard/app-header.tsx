@@ -18,13 +18,19 @@ import { cn } from "@/lib/utils";
 export function AppHeader({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Screens that carry their own contextual bar on a phone: a client, the
-  // Clientes list, Malas pagas, Importar cartera, and Mi negocio. All of
-  // these replace this header below sm rather than stacking a second bar
-  // on top of it.
+  // Clientes list, Malas pagas, Papelera, Importar cartera, and Mi negocio.
+  // All of these replace this header below sm rather than stacking a second
+  // bar on top of it.
+  //
+  // Any new screen that copies the "-mx-4 -mt-4 … sm:hidden" back-arrow row
+  // belongs in this list too. /papelera shipped without it and rendered both
+  // bars on a phone — the copied comment says "replaces the app header", but
+  // nothing enforces it from that end.
   const hasOwnBar =
     pathname.startsWith("/clients/") ||
     pathname === "/clients" ||
     pathname.startsWith("/malas-pagas") ||
+    pathname.startsWith("/papelera") ||
     pathname.startsWith("/import") ||
     pathname.startsWith("/profile") ||
     pathname.startsWith("/notificaciones");
