@@ -102,17 +102,39 @@ grant select, insert, update, delete on public.share_links to authenticated;
 
 -- ── 3. stop the next migration from reopening everything ────────────────
 -- This is the half that is easy to forget and makes the other two pointless.
--- Dev's DEFAULT PRIVILEGES still grant everything on newly created tables,
--- which is why client_hides — created by 044 earlier today — came out fully
--- open to anon in dev while coming out correctly strict in production. Without
--- this block, migration 046 creates a table and the doors are open again.
 --
--- Scoped to the role that actually creates objects here. Run the diagnostic in
--- the comment at the bottom of this file FIRST and confirm production's
--- pg_default_acl matches what this leaves behind.
-alter default privileges in schema public
+-- MEASURED, not deduced. pg_default_acl in both environments on 2026-09-07:
+--
+--   granting role `postgres`, object type `tables`:
+--     production   anon / authenticated / service_role
+--                  -> MAINTAIN, REFERENCES, TRIGGER, TRUNCATE
+--     dev          anon / authenticated / service_role
+--                  -> the same PLUS DELETE, INSERT, SELECT, UPDATE
+--
+-- That is the whole explanation for client_hides being born wide open in dev
+-- and correctly strict in production on 2026-09-07, from the same migration.
+-- Someone tightened production's postgres defaults; the dev branch never got
+-- it, because branch creation does not clone this either.
+--
+-- `for role postgres` is explicit on purpose. ALTER DEFAULT PRIVILEGES without
+-- it silently targets the *current* role, so if the SQL editor ever ran as
+-- something else this would report success and change nothing — the same trap
+-- as 041, where `revoke ... from anon` ran clean and left the function fully
+-- callable because the real grant came from PUBLIC. Migrations here run as
+-- postgres, and the row above proves postgres is the role that governs.
+--
+-- The supabase_admin rows in pg_default_acl are identical in both environments
+-- and are deliberately left alone: they only apply to objects created by that
+-- role, and no migration in this project runs as it.
+--
+-- service_role is left out here too, matching section 2's scope. Its defaults
+-- stay wide in dev, so a table created by a future migration will still be
+-- open to service_role there and strict in production. That is a known,
+-- narrowed-but-not-closed gap, and it is what keeps the qa/ and analytics/
+-- scripts working until they are moved onto RPCs.
+alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from anon;
-alter default privileges in schema public
+alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from authenticated;
 
 insert into public.schema_migrations (key, description)

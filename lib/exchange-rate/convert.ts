@@ -23,10 +23,24 @@ export type MovementRateContext = {
   rateMode: ExchangeRateMode;
   effectiveRate: EffectiveRate;
   officialRateUsd: number;
-  // When the rate on screen was captured, for the calculator's stamp. Optional
-  // because only the dashboard (the one place that renders the calculator)
-  // has any use for it — the movement forms care what the rate IS, not when
-  // it was read.
+  // The day the rate on screen belongs to ("2026-09-04"), for the
+  // calculator's stamp. Optional because only the dashboard renders the
+  // calculator — the movement forms care what the rate IS, not which day it
+  // was published.
+  //
+  // This replaced rateFetchedAt, which was the moment our cron ran and is a
+  // different date every weekend. The stamp reads "Tasa BCV del …", so it has
+  // to carry the rate's date; filling that sentence with the fetch time is how
+  // a Sunday-night fetch of Friday's rate came to be labelled "del 6 sept.",
+  // a date on which the BCV published nothing at all.
+  rateDate?: string | null;
+  // Whether that date being older than today is expected (the BCV did not
+  // publish) or a failure of ours. See RateStatus in rate-status.ts.
+  rateStatus?: "current" | "no_publication" | "unconfirmed";
+  // When we last successfully stored a rate. Back after being removed with the
+  // old stamp, and safe now for the reason it was unsafe then: it is rendered
+  // under the words "Última actualización", which is exactly what it is. The
+  // bug was never this value — it was labelling it "Tasa BCV del …".
   rateFetchedAt?: string | null;
 };
 

@@ -64,7 +64,9 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       rate={rateContext.effectiveRate}
       pair={pair}
       onPairChange={setPair}
-      fetchedAt={rateContext.rateFetchedAt}
+      rateDate={rateContext.rateDate}
+      rateStatus={rateContext.rateStatus}
+      rateFetchedAt={rateContext.rateFetchedAt}
     />
   );
   const trigger = (
@@ -146,12 +148,16 @@ function RateCalculator({
   rate,
   pair,
   onPairChange,
-  fetchedAt,
+  rateDate,
+  rateStatus,
+  rateFetchedAt,
 }: {
   rate: { usd: number; eur: number };
   pair: LedgerCurrency;
   onPairChange: (next: LedgerCurrency) => void;
-  fetchedAt?: string | null;
+  rateDate?: string | null;
+  rateStatus?: "current" | "no_publication" | "unconfirmed";
+  rateFetchedAt?: string | null;
 }) {
   // Digits-only "cents" mask — the same way a POS amount field works: typing
   // shifts digits in from the right, the last two are always the decimals.
@@ -223,7 +229,25 @@ function RateCalculator({
     }
   }
 
-  const stampLabel = `Tasa BCV del ${formatRateStamp(fetchedAt)}`;
+  // No date rather than a wrong one. Null only for a rate stored before
+  // migration 046 or one from the currency-api fallback; the daily cron fills
+  // it in, so this state clears itself within a day.
+  const stampLabel = rateDate ? `Tasa BCV del ${formatRateDate(rateDate)}` : "Tasa BCV";
+  // Only when the rate is not today's. Two causes, two sentences, because
+  // telling an owner "the BCV doesn't publish on weekends" while the real
+  // problem is our own fetch would hide the failure precisely when it costs
+  // money — they would price a fiado against a rate they think is confirmed.
+  const stampNote =
+    rateStatus === "no_publication"
+      ? "El BCV no publica sábados, domingos ni festivos. Esta es la última tasa publicada."
+      : rateStatus === "unconfirmed"
+        ? // A fact, not a status. "Estamos reintentando" read like a spinner —
+          // it asked the owner to wait for something that may never change,
+          // and still did not tell them the one thing they needed: when this
+          // number was last checked. Safe to show fetch time here precisely
+          // because the sentence says it is the fetch time.
+          `Última actualización: ${formatFetchStamp(rateFetchedAt)}`
+        : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -302,6 +326,7 @@ function RateCalculator({
           {entry === "VES" ? ` ${pairPlural}` : ""}
         </span>
         <span className="text-xs opacity-70">{stampLabel}</span>
+        {stampNote ? <span className="text-xs opacity-70">{stampNote}</span> : null}
       </div>
 
       <Button type="button" variant="outline" onClick={handleShare}>
@@ -312,23 +337,37 @@ function RateCalculator({
   );
 }
 
-// "4 sept. - 3:14 p. m." in the owner's own timezone. Vercel runs in UTC, so
-// formatting without naming a zone would stamp a Venezuelan owner's rate four
-// hours ahead of when they actually saw it.
-function formatRateStamp(iso?: string | null): string {
-  if (!iso) return "hoy";
+const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+// "2026-09-04" -> "4 sep 2026", the same shape the 90-day table right below
+// prints, because the whole point of this stamp is that the two agree.
+//
+// Split on the string, never parsed into a Date. The value is already a
+// Venezuelan calendar day with no time in it; handing it to `new Date()` reads
+// it as UTC midnight and renders the day before for anyone west of Greenwich.
+// The previous version formatted a real timestamp and had to name
+// America/Caracas for that reason — with a plain date there is no instant to
+// place in a zone, so the safe move is not to try.
+// "7 sep 2026, 11:36 a. m." in Venezuela. This one IS a real instant, so it
+// has to name a zone: Vercel runs in UTC and would report a rate stored at
+// 11:36 p.m. Caracas as 3:36 a.m. the next day.
+function formatFetchStamp(iso?: string | null): string {
+  if (!iso) return "desconocida";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "hoy";
-  const date = new Intl.DateTimeFormat("es-VE", {
+  if (Number.isNaN(d.getTime())) return "desconocida";
+  return new Intl.DateTimeFormat("es-VE", {
     day: "numeric",
     month: "short",
-    timeZone: "America/Caracas",
-  }).format(d);
-  const time = new Intl.DateTimeFormat("es-VE", {
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
     timeZone: "America/Caracas",
   }).format(d);
-  return `${date} - ${time}`;
+}
+
+function formatRateDate(ymd: string): string {
+  const [year, month, day] = ymd.split("-").map(Number);
+  if (!year || !month || !day) return ymd;
+  return `${day} ${MONTH_ABBR[month - 1]} ${year}`;
 }

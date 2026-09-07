@@ -33,6 +33,9 @@ export class CurrencyApiProvider implements ExchangeRateProvider {
       usd,
       eur,
       source: "currency-api",
+      // This source publishes no date of its own, so there is none to record.
+      // The calculator shows no date rather than inventing one from the clock.
+      rateDate: null,
       fetchedAt: new Date(),
     };
   }
