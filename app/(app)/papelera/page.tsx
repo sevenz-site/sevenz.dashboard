@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummaryAll } from "@/lib/types";
 
 export default async function PapeleraPage() {
@@ -27,7 +26,6 @@ export default async function PapeleraPage() {
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
   const rows = (summaries ?? []) as ClientSummaryAll[];
 
   return (
@@ -51,7 +49,7 @@ export default async function PapeleraPage() {
         </p>
       </div>
       <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
-      <PapeleraTable rows={rows} ledger={ledger} />
+      <PapeleraTable rows={rows} rateContext={ownerRate} />
     </div>
   );
 }
