@@ -66,6 +66,7 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       onPairChange={setPair}
       rateDate={rateContext.rateDate}
       rateStatus={rateContext.rateStatus}
+      rateFetchedAt={rateContext.rateFetchedAt}
     />
   );
   const trigger = (
@@ -149,12 +150,14 @@ function RateCalculator({
   onPairChange,
   rateDate,
   rateStatus,
+  rateFetchedAt,
 }: {
   rate: { usd: number; eur: number };
   pair: LedgerCurrency;
   onPairChange: (next: LedgerCurrency) => void;
   rateDate?: string | null;
   rateStatus?: "current" | "no_publication" | "unconfirmed";
+  rateFetchedAt?: string | null;
 }) {
   // Digits-only "cents" mask — the same way a POS amount field works: typing
   // shifts digits in from the right, the last two are always the decimals.
@@ -238,7 +241,12 @@ function RateCalculator({
     rateStatus === "no_publication"
       ? "El BCV no publica sábados, domingos ni festivos. Esta es la última tasa publicada."
       : rateStatus === "unconfirmed"
-        ? "Puede haber una tasa más reciente. Estamos reintentando."
+        ? // A fact, not a status. "Estamos reintentando" read like a spinner —
+          // it asked the owner to wait for something that may never change,
+          // and still did not tell them the one thing they needed: when this
+          // number was last checked. Safe to show fetch time here precisely
+          // because the sentence says it is the fetch time.
+          `Última actualización: ${formatFetchStamp(rateFetchedAt)}`
         : null;
 
   return (
@@ -340,6 +348,24 @@ const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep
 // The previous version formatted a real timestamp and had to name
 // America/Caracas for that reason — with a plain date there is no instant to
 // place in a zone, so the safe move is not to try.
+// "7 sep 2026, 11:36 a. m." in Venezuela. This one IS a real instant, so it
+// has to name a zone: Vercel runs in UTC and would report a rate stored at
+// 11:36 p.m. Caracas as 3:36 a.m. the next day.
+function formatFetchStamp(iso?: string | null): string {
+  if (!iso) return "desconocida";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "desconocida";
+  return new Intl.DateTimeFormat("es-VE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Caracas",
+  }).format(d);
+}
+
 function formatRateDate(ymd: string): string {
   const [year, month, day] = ymd.split("-").map(Number);
   if (!year || !month || !day) return ymd;

@@ -35,8 +35,13 @@ export type MovementRateContext = {
   // a date on which the BCV published nothing at all.
   rateDate?: string | null;
   // Whether that date being older than today is expected (the BCV did not
-  // publish) or a failure of ours. See RateStatus in owner-rate.ts.
+  // publish) or a failure of ours. See RateStatus in rate-status.ts.
   rateStatus?: "current" | "no_publication" | "unconfirmed";
+  // When we last successfully stored a rate. Back after being removed with the
+  // old stamp, and safe now for the reason it was unsafe then: it is rendered
+  // under the words "Última actualización", which is exactly what it is. The
+  // bug was never this value — it was labelling it "Tasa BCV del …".
+  rateFetchedAt?: string | null;
 };
 
 // ── Per-currency ledgers ────────────────────────────────────────────────
