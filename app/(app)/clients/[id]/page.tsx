@@ -90,6 +90,12 @@ export default async function ClientDetailPage({
     : null;
   const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
 
+  // Where "back" goes, and what a screen reader calls it. Both the arrow in
+  // the phone header and the desktop breadcrumb read these.
+  const inPapelera = Boolean(client.trashed_at) && !client.deleted_at;
+  const backHref = inPapelera ? "/papelera" : "/dashboard";
+  const backLabel = inPapelera ? "Volver a Papelera" : "Volver a Cartera";
+
   const clientSummary = summary as ClientSummary | null;
   const balance = clientSummary?.balance ?? 0;
   const balanceUsd = clientSummary?.balance_usd ?? 0;
@@ -116,9 +122,14 @@ export default async function ClientDetailPage({
       <div className="-mx-4 -mt-4 flex items-center justify-between gap-4 border-b px-4 py-3 sm:mx-0 sm:mt-0 sm:border-0 sm:px-0 sm:py-0">
         {/* Icon only. The destination is named by the screen it returns to, and
             the label lives in aria-label rather than on screen — the bar is
-            the phone's header here, where width is scarcest. */}
+            the phone's header here, where width is scarcest.
+
+            A client in the Papelera came from the Papelera: sending them back
+            to Cartera would drop the owner on a list this client is not on,
+            with nothing saying why. A client hidden definitivamente is on
+            neither list, so Cartera is the only honest destination for them. */}
         <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Cartera">
+          <Link href={backHref} aria-label={backLabel}>
             <ChevronLeft className="size-5" />
           </Link>
         </Button>
