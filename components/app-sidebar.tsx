@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Wallet, Users, ShieldAlert, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
+import { Wallet, Users, ShieldAlert, Trash2, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,10 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: Wallet, dataTour: undefined },
   { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
+  // Directly below Malas pagas: the two screens answer the same question at
+  // different strengths, and an owner looking for a client they can no longer
+  // find will try both in order.
+  { href: "/papelera", label: "Papelera", icon: Trash2, dataTour: undefined },
   { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },
   { href: "/profile", label: "Mi negocio", icon: Building2, dataTour: undefined },
 ];

@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, ImageUp, CircleX, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
 import type { NotificationItem } from "@/app/(app)/actions";
+import { restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
 
 // The notification rows themselves, shared by the desktop header's popover
@@ -30,6 +33,21 @@ export function NotificationList({
   if (notifications !== lastGiven) {
     setLastGiven(notifications);
     setItems(notifications);
+  }
+
+  // Restoring from a notification is the undo an owner reaches for ten minutes
+  // later, so the row has to stop offering it once it has been taken — every
+  // row about the same client, not just the one that was clicked.
+  function handleClientRestored(clientId: string) {
+    setItems((prev) =>
+      prev
+        ? prev.map((item) =>
+            item.kind === "client_hidden" && item.clientId === clientId
+              ? { ...item, canRestore: false }
+              : item,
+          )
+        : prev,
+    );
   }
 
   const viewingNotification =
@@ -80,7 +98,7 @@ export function NotificationList({
                     </div>
                   </>
                 )
-              ) : (
+              ) : n.kind === "movement_deleted" ? (
                 <>
                   <RotateCcw className="mt-0.5 size-4 shrink-0 text-destructive" />
                   <div className="min-w-0 flex-1">
@@ -100,6 +118,8 @@ export function NotificationList({
                     </Button>
                   </div>
                 </>
+              ) : (
+                <ClientHideRow notification={n} onRestored={handleClientRestored} />
               )}
             </li>
           ))}
@@ -116,6 +136,70 @@ export function NotificationList({
           setItems((prev) => (prev ? prev.map((item) => (item.id === id ? { ...item, restored: true } : item)) : prev))
         }
       />
+    </>
+  );
+}
+
+// One row for each of the three Papelera transitions. The client is named in
+// all three (decision O4): an owner scanning this list needs to know which
+// person they hid, and a nameless "ocultaste un cliente" is a record nobody
+// can act on.
+function ClientHideRow({
+  notification: n,
+  onRestored,
+}: {
+  notification: Extract<NotificationItem, { kind: "client_hidden" }>;
+  onRestored: (clientId: string) => void;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const Icon = n.action === "restored" ? RotateCcw : n.action === "hidden" ? EyeOff : Trash2;
+  const label =
+    n.action === "restored"
+      ? `Restauraste a ${n.clientName}`
+      : n.action === "hidden"
+        ? `Ocultaste definitivamente a ${n.clientName}`
+        : `Moviste a ${n.clientName} a la papelera`;
+
+  async function handleRestore() {
+    setBusy(true);
+    const result = await restoreClient(n.clientId);
+    setBusy(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    onRestored(n.clientId);
+    toast.success(`${n.clientName} volvió a tu cartera`);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <Icon
+        className={
+          n.action === "restored"
+            ? "mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+            : "mt-0.5 size-4 shrink-0 text-muted-foreground"
+        }
+      />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{formatDateTime(n.occurredAt)}</p>
+        {n.canRestore ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-1.5 h-7"
+            disabled={busy}
+            onClick={() => void handleRestore()}
+          >
+            {busy ? "Restaurando…" : "Restaurar"}
+          </Button>
+        ) : null}
+      </div>
     </>
   );
 }

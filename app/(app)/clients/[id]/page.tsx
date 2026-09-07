@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ShareActions } from "@/components/dashboard/share-actions";
+import { ClientHeaderActions } from "@/components/dashboard/client-header-actions";
 import { AddMovementDialog } from "@/components/dashboard/add-movement-dialog";
 import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
@@ -55,14 +55,27 @@ export default async function ClientDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: summary }, ownerRate, { data: ownerRow }] = await Promise.all([
-    supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
-    supabase.from("client_summary").select("*").eq("client_id", id).maybeSingle(),
-    getOwnerRateContext(supabase, user!.id),
-    // getOwnerRateContext reads owners.country too, but discards it for a CO
-    // owner. Asking again here is cheaper than widening its contract.
-    supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
-  ]);
+  const [{ data: client }, { data: summary }, ownerRate, { data: ownerRow }, { count: movementCount }] =
+    await Promise.all([
+      supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
+      // client_summary_all, not client_summary: this page is reached by id,
+      // including from the Papelera, and a hidden client whose balance
+      // silently rendered as $0 here would be worse than not opening at all.
+      // The filtered view stays the default everywhere a client is *listed*.
+      supabase.from("client_summary_all").select("*").eq("client_id", id).maybeSingle(),
+      getOwnerRateContext(supabase, user!.id),
+      // getOwnerRateContext reads owners.country too, but discards it for a CO
+      // owner. Asking again here is cheaper than widening its contract.
+      supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+      // Only ever compared against zero — it decides which of the three
+      // "mover a papelera" confirmations the owner sees. head:true so Postgres
+      // returns the count without the rows.
+      supabase
+        .from("movements")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", id)
+        .is("deleted_at", null),
+    ]);
 
   if (!client) notFound();
 
@@ -109,13 +122,33 @@ export default async function ClientDetailPage({
             <ChevronLeft className="size-5" />
           </Link>
         </Button>
-        <ShareActions
+        <ClientHeaderActions
           clientId={client.id}
           clientName={client.name}
           whatsapp={client.whatsapp}
           balanceText={formatBalanceSummary(balance, balanceUsd, balanceEur, ledger)}
+          // A VE client owes money if either independent balance is positive.
+          // The two are never summed — that is what rateContext being non-null
+          // means on this page.
+          owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
+          hasMovements={(movementCount ?? 0) > 0}
+          trashedAt={client.trashed_at}
         />
       </div>
+
+      {/* A client reached from the Papelera looks identical to a live one
+          otherwise — same name, same balance, same history — and an owner who
+          records a payment here would be writing to a client no list shows.
+          The banner is the only thing on the page that says which it is. */}
+      {client.trashed_at ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+          <p className="font-medium">Este cliente está en la papelera</p>
+          <p className="text-muted-foreground">
+            No aparece en tu Cartera y su saldo no cuenta en los totales. Restáuralo desde el menú
+            &ldquo;Más&rdquo; para volver a trabajarlo.
+          </p>
+        </div>
+      ) : null}
 
       {/* Mobile (< sm): status badges, balance, the mala paga control, and a
           full-width "Agregar movimiento" stack vertically below the name.
@@ -176,20 +209,25 @@ export default async function ClientDetailPage({
             spread
           />
         </div>
-        <AddMovementDialog
-          clientId={client.id}
-          clientName={client.name}
-          clientWhatsapp={client.whatsapp}
-          ownerId={user!.id}
-          ownerCountry={ownerCountry}
-          currentDebtCop={balance}
-          currentDebtUsd={balanceUsd}
-          currentDebtEur={balanceEur}
-          isFlagged={client.is_flagged}
-          triggerClassName="w-full"
-          autoOpen={autoOpenType}
-          rateContext={rateContext}
-        />
+        {/* A trashed client takes no new movements — addMovement rejects them
+            server-side, and offering a button that always fails is worse than
+            not offering one. The banner above says how to get it back. */}
+        {client.trashed_at ? null : (
+          <AddMovementDialog
+            clientId={client.id}
+            clientName={client.name}
+            clientWhatsapp={client.whatsapp}
+            ownerId={user!.id}
+            ownerCountry={ownerCountry}
+            currentDebtCop={balance}
+            currentDebtUsd={balanceUsd}
+            currentDebtEur={balanceEur}
+            isFlagged={client.is_flagged}
+            triggerClassName="w-full"
+            autoOpen={autoOpenType}
+            rateContext={rateContext}
+          />
+        )}
       </div>
 
       <div className="hidden flex-col gap-3 sm:flex">
@@ -238,18 +276,21 @@ export default async function ClientDetailPage({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
-          <AddMovementDialog
-            clientId={client.id}
-            clientName={client.name}
-            clientWhatsapp={client.whatsapp}
-            ownerId={user!.id}
-            ownerCountry={ownerCountry}
-            currentDebtCop={balance}
-            currentDebtUsd={balanceUsd}
-            currentDebtEur={balanceEur}
-            isFlagged={client.is_flagged}
-            rateContext={rateContext}
-          />
+          {/* Same reason as the phone layout above. */}
+          {client.trashed_at ? null : (
+            <AddMovementDialog
+              clientId={client.id}
+              clientName={client.name}
+              clientWhatsapp={client.whatsapp}
+              ownerId={user!.id}
+              ownerCountry={ownerCountry}
+              currentDebtCop={balance}
+              currentDebtUsd={balanceUsd}
+              currentDebtEur={balanceEur}
+              isFlagged={client.is_flagged}
+              rateContext={rateContext}
+            />
+          )}
         </div>
       </div>
 
