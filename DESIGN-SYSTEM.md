@@ -133,6 +133,10 @@ same rows, the same filters and sorting above them, switched with CSS.
 
 ## Buttons
 
+**Estas reglas aplican a los DOS repos: `Sevenz/dashboard` y `Sevenz/Web`
+(sevenz.site y la calculadora).** Cada uno tiene su propia copia de
+`components/ui/button.tsx`, así que un cambio aquí se debe allá.
+
 - **Every labelled button is 40px tall** (`h-10`) — `default`, `sm` and `lg`
   differ only in padding and type size. A button is the same height in a
   dialog, a form, a page and the bottom bar.
@@ -140,6 +144,17 @@ same rows, the same filters and sorting above them, switched with CSS.
 - `icon-*` sizes stay square; they have no label to align to.
 - Primary action filled, secondary outlined. On a client's screen: "Agregar
   fiado" filled, "Agregar abono" outlined.
+- **Un botón abraza su contenido.** No se estira a `w-full` salvo que ocupe una
+  fila entera por diseño —el "Agregar movimiento" del teléfono, por ejemplo—.
+  Un botón de ancho completo debajo de una imagen se lee como una barra, no
+  como una acción.
+
+**Deriva encontrada el 2026-09-07:** la web nunca siguió la regla de los 40px.
+Su `button.tsx` tenía `default: h-8`, `sm: h-7` y `lg: h-9` — 32, 28 y 36px —
+mientras el dashboard llevaba 40 en los tres. Nadie lo notó porque las dos
+copias del componente viven en repos distintos y esta regla solo estaba escrita
+en uno. Corregido: los nueve botones de sevenz.site y de la calculadora miden
+40px, verificado en el navegador.
 
 **Known gap:** `Input` and `SelectTrigger` are still 32px, so a button beside a
 field in the same row is visibly taller. Most obvious on the signup WhatsApp
