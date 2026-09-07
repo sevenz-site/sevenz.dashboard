@@ -123,6 +123,16 @@ facts that only need re-checking if the diff actually touches that area).
   behind a `SECURITY DEFINER` function, which needs no table grant at all
   (`supabase/039_admin_reads_without_table_grants.sql` is the worked
   example). Bypassing RLS is not the same as holding privileges.
+
+  **Run `npm run qa:service-role` — it answers this in seconds and needs no
+  database.** It fails if any file under `app/`, `lib/`, `components/` or
+  `hooks/` reads a table directly with the service-role client, allowing only
+  `bcv_exchange_rate_fetches` (the one table production grants it). Added
+  2026-09-07 after the grant comparison kept catching this by hand; it was
+  verified by reintroducing the 2026-09-05 outage, which it reports with the
+  file and line. `qa/` and `analytics/` are excluded on purpose: `qa/` is
+  dev-only fixture tooling, and `analytics/` now goes through
+  `lib/admin/metrics.ts` like the dashboard does.
 - **`Confirm email` is ON in production** (Auth → Sign In / Providers) —
   this gets toggled off in dev-branch test-signup sprints; confirm it
   never leaked into prod before a launch.

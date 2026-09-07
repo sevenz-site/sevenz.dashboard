@@ -24,14 +24,22 @@
 --
 -- SCOPE: anon and authenticated only.
 --
--- service_role is deliberately LEFT ALONE. Aligning it is a separate piece of
--- work because it breaks tooling that reads tables directly with that key:
--- analytics/report.mjs, analytics/credit-score-average.mjs and all three qa/
--- scripts. (analytics/* already cannot run against production for this exact
--- reason — see the note at the bottom.) None of the application's four
--- service_role paths are affected either way: /s/[token] rate limiting,
--- lib/admin/metrics.ts, lib/admin/health.ts and the BCV fetch all go through
--- SECURITY DEFINER functions or a table production already grants.
+-- service_role is deliberately LEFT ALONE, and as of 2026-09-07 that is the
+-- final answer rather than a deferral. The qa/ scripts read and write tables
+-- with that key on purpose — they provision fixtures — and they only ever run
+-- against dev, so tightening dev would break the test harness in order to catch
+-- a mistake in application code. analytics/* no longer needs it either: both
+-- scripts now go through lib/admin/metrics.ts and work against production.
+--
+-- The rule that grant alignment was standing in for is enforced directly now:
+-- "npm run qa:service-role" fails if anything under app/, lib/, components/ or
+-- hooks/ reads a table with the service-role client, allowing only
+-- bcv_exchange_rate_fetches — the one table production grants it. It runs in
+-- seconds, in every environment, and is in the qa-regression-checklist skill.
+--
+-- None of the application four service_role paths were ever affected: /s/[token]
+-- rate limiting, lib/admin/metrics.ts, lib/admin/health.ts and the BCV fetch all
+-- go through SECURITY DEFINER functions or that one granted table.
 --
 -- SAFETY: every public surface reaches the database through a SECURITY DEFINER
 -- function, never a table — get_shared_balance, submit_shared_document_id,
@@ -127,11 +135,11 @@ grant select, insert, update, delete on public.share_links to authenticated;
 -- and are deliberately left alone: they only apply to objects created by that
 -- role, and no migration in this project runs as it.
 --
--- service_role is left out here too, matching section 2's scope. Its defaults
--- stay wide in dev, so a table created by a future migration will still be
--- open to service_role there and strict in production. That is a known,
--- narrowed-but-not-closed gap, and it is what keeps the qa/ and analytics/
--- scripts working until they are moved onto RPCs.
+-- service_role is left out here too, matching section 2 scope. Its defaults stay
+-- wide in dev, so a table created by a future migration is still open to
+-- service_role there and strict in production. That is deliberate: it is what
+-- keeps the qa/ fixture scripts working, and the risk it used to stand for is
+-- now caught by "npm run qa:service-role" instead.
 alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from anon;
 alter default privileges for role postgres in schema public

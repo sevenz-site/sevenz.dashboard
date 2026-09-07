@@ -14,7 +14,8 @@
     "qa:parity": "node qa/client-summary-parity.mjs",
     "qa:grants": "node qa/grants-verify.mjs",
     "qa:rate-status": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/rate-status.mjs",
-    "qa:rate-fetch": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/force-rate-fetch.mjs"
+    "qa:rate-fetch": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/force-rate-fetch.mjs",
+    "qa:service-role": "node qa/service-role-reads.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
