@@ -5,7 +5,13 @@ import { refreshBcvRateIfStale } from "@/lib/exchange-rate/ensure-fresh";
 
 export type OwnerRateContext = {
   rateMode: ExchangeRateMode;
+  // When we last fetched. Used only to decide whether to refetch — never to
+  // tell an owner which rate they are looking at, which is what rateDate is
+  // for. The two differ every weekend.
   fetchedAt: string;
+  // The day the rate on screen belongs to, "YYYY-MM-DD". Null for a row stored
+  // before migration 046, or one that came from the currency-api fallback.
+  rateDate: string | null;
   // Bs per USD / Bs per EUR, whichever is actually applied to a new
   // movement right now (the owner's CUSTOM numbers, or the live BCV_AUTO
   // fetch).
@@ -34,7 +40,12 @@ export async function getOwnerRateContext(
 
   if (owner?.country !== "VE") return null;
 
-  const stored = current as { usd: number; eur: number; fetched_at: string } | null;
+  const stored = current as {
+    usd: number;
+    eur: number;
+    fetched_at: string;
+    rate_date: string | null;
+  } | null;
   if (!stored) return null;
 
   // The Vercel cron fires once a day (Hobby plan), which left the dashboard
@@ -44,7 +55,7 @@ export async function getOwnerRateContext(
   // same value, which is the whole point: an owner must never be shown one
   // rate and have another one recorded.
   const refreshed = await refreshBcvRateIfStale(stored.fetched_at);
-  const officialRate = refreshed ?? { usd: stored.usd, eur: stored.eur };
+  const officialRate = refreshed ?? { usd: stored.usd, eur: stored.eur, rateDate: stored.rate_date };
 
   const rateMode: ExchangeRateMode = settings?.rate_mode ?? "BCV_AUTO";
   const effectiveRate =
@@ -59,5 +70,8 @@ export async function getOwnerRateContext(
     // If refreshBcvRateIfStale returned something, that fetch just happened,
     // so the stored row's timestamp is already out of date by one refresh.
     fetchedAt: refreshed ? new Date().toISOString() : stored.fetched_at,
+    // Comes from whichever rate is actually on screen — the refreshed one when
+    // there is one, otherwise the stored row's.
+    rateDate: officialRate.rateDate,
   };
 }

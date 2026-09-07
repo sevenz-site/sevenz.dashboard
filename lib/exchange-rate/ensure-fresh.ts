@@ -36,7 +36,7 @@ function startFetch() {
 // day must not take the dashboard down with it.
 export async function refreshBcvRateIfStale(
   fetchedAt: string | null,
-): Promise<{ usd: number; eur: number } | null> {
+): Promise<{ usd: number; eur: number; rateDate: string | null } | null> {
   if (fetchedAt && Date.now() - new Date(fetchedAt).getTime() < MAX_AGE_MS) return null;
 
   let work: ReturnType<typeof startFetch>;
@@ -78,5 +78,5 @@ export async function refreshBcvRateIfStale(
   // become the number a fiado is stamped with, so fall back to what's stored.
   if (!settled || settled.needs_review) return null;
 
-  return { usd: settled.usd, eur: settled.eur };
+  return { usd: settled.usd, eur: settled.eur, rateDate: settled.rateDate };
 }

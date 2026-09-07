@@ -46,10 +46,17 @@ export async function fetchAndStoreBcvRate() {
     usd: rates.usd,
     eur: rates.eur,
     source: rates.source,
+    rate_date: rates.rateDate,
     needs_review: needsReview,
   });
 
   if (error) throw new Error(`No pudimos guardar la tasa: ${error.message}`);
 
-  return { usd: rates.usd, eur: rates.eur, source: rates.source, needs_review: needsReview };
+  return {
+    usd: rates.usd,
+    eur: rates.eur,
+    source: rates.source,
+    rateDate: rates.rateDate,
+    needs_review: needsReview,
+  };
 }

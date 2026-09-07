@@ -23,11 +23,17 @@ export type MovementRateContext = {
   rateMode: ExchangeRateMode;
   effectiveRate: EffectiveRate;
   officialRateUsd: number;
-  // When the rate on screen was captured, for the calculator's stamp. Optional
-  // because only the dashboard (the one place that renders the calculator)
-  // has any use for it — the movement forms care what the rate IS, not when
-  // it was read.
-  rateFetchedAt?: string | null;
+  // The day the rate on screen belongs to ("2026-09-04"), for the
+  // calculator's stamp. Optional because only the dashboard renders the
+  // calculator — the movement forms care what the rate IS, not which day it
+  // was published.
+  //
+  // This replaced rateFetchedAt, which was the moment our cron ran and is a
+  // different date every weekend. The stamp reads "Tasa BCV del …", so it has
+  // to carry the rate's date; filling that sentence with the fetch time is how
+  // a Sunday-night fetch of Friday's rate came to be labelled "del 6 sept.",
+  // a date on which the BCV published nothing at all.
+  rateDate?: string | null;
 };
 
 // ── Per-currency ledgers ────────────────────────────────────────────────

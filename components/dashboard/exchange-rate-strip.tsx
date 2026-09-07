@@ -64,7 +64,7 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       rate={rateContext.effectiveRate}
       pair={pair}
       onPairChange={setPair}
-      fetchedAt={rateContext.rateFetchedAt}
+      rateDate={rateContext.rateDate}
     />
   );
   const trigger = (
@@ -146,12 +146,12 @@ function RateCalculator({
   rate,
   pair,
   onPairChange,
-  fetchedAt,
+  rateDate,
 }: {
   rate: { usd: number; eur: number };
   pair: LedgerCurrency;
   onPairChange: (next: LedgerCurrency) => void;
-  fetchedAt?: string | null;
+  rateDate?: string | null;
 }) {
   // Digits-only "cents" mask — the same way a POS amount field works: typing
   // shifts digits in from the right, the last two are always the decimals.
@@ -223,7 +223,10 @@ function RateCalculator({
     }
   }
 
-  const stampLabel = `Tasa BCV del ${formatRateStamp(fetchedAt)}`;
+  // No date rather than a wrong one. Null only for a rate stored before
+  // migration 046 or one from the currency-api fallback; the daily cron fills
+  // it in, so this state clears itself within a day.
+  const stampLabel = rateDate ? `Tasa BCV del ${formatRateDate(rateDate)}` : "Tasa BCV";
 
   return (
     <div className="flex flex-col gap-3">
@@ -312,23 +315,19 @@ function RateCalculator({
   );
 }
 
-// "4 sept. - 3:14 p. m." in the owner's own timezone. Vercel runs in UTC, so
-// formatting without naming a zone would stamp a Venezuelan owner's rate four
-// hours ahead of when they actually saw it.
-function formatRateStamp(iso?: string | null): string {
-  if (!iso) return "hoy";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "hoy";
-  const date = new Intl.DateTimeFormat("es-VE", {
-    day: "numeric",
-    month: "short",
-    timeZone: "America/Caracas",
-  }).format(d);
-  const time = new Intl.DateTimeFormat("es-VE", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "America/Caracas",
-  }).format(d);
-  return `${date} - ${time}`;
+const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+// "2026-09-04" -> "4 sep 2026", the same shape the 90-day table right below
+// prints, because the whole point of this stamp is that the two agree.
+//
+// Split on the string, never parsed into a Date. The value is already a
+// Venezuelan calendar day with no time in it; handing it to `new Date()` reads
+// it as UTC midnight and renders the day before for anyone west of Greenwich.
+// The previous version formatted a real timestamp and had to name
+// America/Caracas for that reason — with a plain date there is no instant to
+// place in a zone, so the safe move is not to try.
+function formatRateDate(ymd: string): string {
+  const [year, month, day] = ymd.split("-").map(Number);
+  if (!year || !month || !day) return ymd;
+  return `${day} ${MONTH_ABBR[month - 1]} ${year}`;
 }
