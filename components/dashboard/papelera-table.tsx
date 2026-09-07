@@ -20,6 +20,11 @@ import {
   CLIENT_CARD_ROW,
   CLIENT_CARD_SHELL,
 } from "@/components/dashboard/client-card";
+import {
+  ClientFilters,
+  ClientStatusLegend,
+  useClientFilters,
+} from "@/components/dashboard/client-filters";
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { formatDate } from "@/lib/format";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
@@ -43,6 +48,20 @@ export function PapeleraTable({
   const [hiding, setHiding] = useState<ClientSummaryAll | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
+
+  // The same search + "Más filtros" block as Cartera, Clientes and Malas
+  // pagas. balancesOf points it at the snapshot taken when each client was
+  // hidden, so "Monto desde", the status filter and the amount sorts all agree
+  // with the figures printed on these cards — filtering by an amount the card
+  // does not show is the kind of mismatch nobody reports and everybody
+  // distrusts.
+  const filters = useClientFilters(rows, rateContext, {
+    balancesOf: (row) => ({
+      cop: row.trashed_balance ?? 0,
+      usd: row.trashed_balance_usd ?? 0,
+      eur: row.trashed_balance_eur ?? 0,
+    }),
+  });
 
   async function handleRestore(row: ClientSummaryAll) {
     setBusyId(row.client_id);
@@ -82,13 +101,21 @@ export function PapeleraTable({
   }
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
+      <ClientFilters filters={filters} className="order-1" />
+
+      {filters.sortedRows.length === 0 ? (
+        <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
+          Ningún cliente coincide con estos filtros.
+        </p>
+      ) : null}
+
       {/* Same card as Cartera, Clientes and Malas pagas — ClientCardBody is
           shared, so the four cannot drift. The wrapper differs: those three
           are a <button>, and this one carries two action buttons inside the
           card, which a <button> cannot legally contain. */}
-      <div className="flex flex-col gap-3">
-        {rows.map((row) => {
+      <div className="order-2 flex flex-col gap-3">
+        {filters.sortedRows.map((row) => {
           // Everything here reads the snapshot taken when the client was
           // hidden, not today's ledger. Today's is the same number, but the
           // snapshot is what left the totals, and it is what a report will
@@ -165,6 +192,9 @@ export function PapeleraTable({
         })}
       </div>
 
+      {/* Phone only — above sm the legend rides inside the filter row. */}
+      <ClientStatusLegend className="order-3" />
+
       <AlertDialog open={hiding !== null} onOpenChange={(open) => (open ? null : setHiding(null))}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -196,6 +226,6 @@ export function PapeleraTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }

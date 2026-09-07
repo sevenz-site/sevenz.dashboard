@@ -1,13 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Broom, ChevronDown, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
@@ -15,13 +13,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -36,52 +27,27 @@ import {
   CLIENT_CARD_ROW,
   CLIENT_CARD_SHELL,
 } from "@/components/dashboard/client-card";
+import {
+  ClientFilters,
+  ClientStatusLegend,
+  useClientFilters,
+} from "@/components/dashboard/client-filters";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useTour } from "@/components/dashboard/tour-context";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/mixpanel";
 import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { formatDate, formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_DESCRIPTION,
   CLIENT_STATUS_LABEL,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
   getClientStatus,
-  type ClientStatus,
   type ClientSummary,
 } from "@/lib/types";
-
-const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
-  { value: "todos", label: "Todos los estados" },
-  { value: "sin_deuda", label: CLIENT_STATUS_LABEL.sin_deuda },
-  { value: "a_favor", label: CLIENT_STATUS_LABEL.a_favor },
-  { value: "dentro_del_plazo", label: CLIENT_STATUS_LABEL.dentro_del_plazo },
-  { value: "plazo_vencido", label: CLIENT_STATUS_LABEL.plazo_vencido },
-  { value: "sin_plazo", label: CLIENT_STATUS_LABEL.sin_plazo },
-  { value: "critico", label: CLIENT_STATUS_LABEL.critico },
-];
-
-// Alphabetical is the default: an owner looking for a specific person scans
-// by name, which is why the search box is the one filter always visible.
-// The two amount orders answer the other common question — "quién me debe
-// más" — without needing the Monto desde/hasta inputs. "atraso" reproduces
-// what this table used to render before any sort control existed (the page
-// query's own `order("days_since_payment", desc)`), so an owner who used
-// the top of the list as their "who to chase today" view doesn't lose it.
-type SortOption = "nombre" | "monto_desc" | "monto_asc" | "atraso";
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "nombre", label: "Orden alfabético" },
-  { value: "monto_desc", label: "Monto: mayor a menor" },
-  { value: "monto_asc", label: "Monto: menor a mayor" },
-  { value: "atraso", label: "Más atrasados primero" },
-];
 
 const PAGE_SIZE = 15;
 
@@ -105,95 +71,20 @@ export function ClientTable({
 }) {
   const router = useRouter();
   const tour = useTour();
-  const isMobile = useIsMobile();
   const tourDemoActive = tour.step === 2 || tour.step === 2.5;
-  const [nameQuery, setNameQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ClientStatus | "todos">("todos");
-  const [minAmount, setMinAmount] = useState("");
-  const [maxAmount, setMaxAmount] = useState("");
-  const [sortBy, setSortBy] = useState<SortOption>("nombre");
   const [page, setPage] = useState(1);
-  // Shared between the mobile and desktop legend triggers below — only one
-  // of the two ever renders at a time (isMobile picks the branch), so a
-  // single piece of state is enough for both.
-  const [legendOpen, setLegendOpen] = useState(false);
   const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
 
-  // Status and the amount filter need ONE number per client even though a VE
-  // owner may have two independent balances — combined to USD, matching the
-  // "uno solo, combinado" decision for status/mora/score.
-  const judgementBalance = (row: ClientSummary) =>
-    rateContext ? combinedBalanceUsd(row.balance_usd, row.balance_eur, rateContext.effectiveRate) : row.balance;
-
-  const filteredRows = useMemo(() => {
-    const query = nameQuery.trim().toLowerCase();
-    const min = minAmount.trim() ? Number(minAmount) : null;
-    const max = maxAmount.trim() ? Number(maxAmount) : null;
-
-    return rows.filter((row) => {
-      if (query) {
-        const matchesName = row.name.toLowerCase().includes(query);
-        const matchesDocument = row.document_id?.toLowerCase().includes(query) ?? false;
-        if (!matchesName && !matchesDocument) return false;
-      }
-      const balance = judgementBalance(row);
-      if (statusFilter !== "todos") {
-        const status = getClientStatus(
-          balance,
-          row.days_since_payment,
-          row.oldest_unpaid_charge_at,
-          row.oldest_unpaid_charge_plazo_dias,
-        );
-        if (status !== statusFilter) return false;
-      }
-      if (min !== null && !Number.isNaN(min) && balance < min) return false;
-      if (max !== null && !Number.isNaN(max) && balance > max) return false;
-      return true;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, nameQuery, statusFilter, minAmount, maxAmount, rateContext]);
-
-  const sortedRows = useMemo(() => {
-    const sorted = [...filteredRows];
-    if (sortBy === "nombre") {
-      // Spanish collation with sensitivity "base" so "Angélica" and
-      // "Angelica" land next to each other instead of the accented one
-      // being sorted away from its twin.
-      sorted.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
-    } else if (sortBy === "atraso") {
-      sorted.sort((a, b) => b.days_since_payment - a.days_since_payment);
-    } else {
-      // Same combined-to-USD figure the status and amount filters use, so a
-      // VE owner's two ledgers order as one number rather than by whichever
-      // currency happens to be bigger.
-      const direction = sortBy === "monto_asc" ? 1 : -1;
-      sorted.sort((a, b) => (judgementBalance(a) - judgementBalance(b)) * direction);
-    }
-    return sorted;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredRows, sortBy, rateContext]);
+  // Search, sort, status and the amount range all live in the shared filter
+  // block, so this screen, Malas pagas, Cartera and Papelera cannot drift.
+  // Any filter change invalidates the current page, so always jump back to
+  // page 1 rather than risk landing on an empty page of results.
+  const filters = useClientFilters(rows, rateContext, { onFilterChange: () => setPage(1) });
+  const { sortedRows, judgementBalance } = filters;
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const pagedRows = sortedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  // Any filter change invalidates the current page, so always jump back to
-  // page 1 rather than risk landing on an empty page of results.
-  function updateFilter<T>(setter: (value: T) => void, value: T) {
-    setter(value);
-    setPage(1);
-  }
-
-  const hasActiveFilters =
-    nameQuery.trim() !== "" || statusFilter !== "todos" || minAmount.trim() !== "" || maxAmount.trim() !== "";
-
-  function clearFilters() {
-    setNameQuery("");
-    setStatusFilter("todos");
-    setMinAmount("");
-    setMaxAmount("");
-    setPage(1);
-  }
 
   if (rows.length === 0 && !tourDemoActive) {
     return (
@@ -203,148 +94,11 @@ export function ClientTable({
     );
   }
 
-  const legendChips = (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-      {STATUS_OPTIONS.filter((opt) => opt.value !== "todos").map((opt) => {
-        const status = opt.value as ClientStatus;
-        return (
-          <Badge key={status} variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            <span className="font-semibold">{CLIENT_STATUS_LABEL[status]}</span>
-            <span className="font-normal">: {CLIENT_STATUS_DESCRIPTION[status]}</span>
-          </Badge>
-        );
-      })}
-    </div>
-  );
-
-  const searchInput = (
-    <Input
-      placeholder="Buscar por nombre o documento"
-      value={nameQuery}
-      onChange={(e) => updateFilter(setNameQuery, e.target.value)}
-      className="w-full sm:w-48"
-    />
-  );
-
-  const statusSelect = (
-    <Select
-      value={statusFilter}
-      onValueChange={(v) => updateFilter(setStatusFilter, v as ClientStatus | "todos")}
-    >
-      <SelectTrigger className="w-full sm:w-40">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
-            {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-
-  // Deliberately not part of hasActiveFilters / clearFilters: sorting is a
-  // view preference, not a filter that hides rows. "Limpiar filtros"
-  // shouldn't silently throw away the order the owner chose.
-  const sortSelect = (
-    <Select value={sortBy} onValueChange={(v) => updateFilter(setSortBy, v as SortOption)}>
-      <SelectTrigger className="w-full sm:w-52" aria-label="Ordenar por">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {SORT_OPTIONS.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
-            Ordenar por: {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-
-  const amountInputs = (
-    <>
-      <Input
-        type="number"
-        placeholder="Monto desde"
-        value={minAmount}
-        onChange={(e) => updateFilter(setMinAmount, e.target.value)}
-        className="w-full sm:w-32"
-      />
-      <Input
-        type="number"
-        placeholder="Monto hasta"
-        value={maxAmount}
-        onChange={(e) => updateFilter(setMaxAmount, e.target.value)}
-        className="w-full sm:w-32"
-      />
-    </>
-  );
-
-  // Only rendered once at least one filter has a non-default value — an
-  // owner with a clean/default table shouldn't see a button with nothing
-  // to clear.
-  const clearFiltersButton = hasActiveFilters ? (
-    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={clearFilters}>
-      <Broom className="size-4" />
-      Limpiar filtros
-    </Button>
-  ) : null;
-
   return (
     <div className="flex flex-col gap-3">
-      {/* Desktop: every filter stays in one row, always visible, with the
-          legend trigger right-aligned at the end of that same row — its
-          content still expands full-width below the whole row, not just
-          under the trigger. Mobile: only the name search shows by default;
-          the rest sit behind a "Más filtros" collapsible, and the legend
-          stays its own standalone trigger below the table (order-3). */}
-      {isMobile ? (
-        <>
-          <div className="order-1 flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">{searchInput}</div>
-              {clearFiltersButton}
-            </div>
-            <Collapsible>
-              <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
-                Más filtros
-                <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">
-                <div className="flex flex-wrap items-end gap-2">
-                  {sortSelect}
-                  {statusSelect}
-                  {amountInputs}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-          <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className="order-3">
-            <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium">
-              Qué significa cada estado
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2">{legendChips}</CollapsibleContent>
-          </Collapsible>
-        </>
-      ) : (
-        <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className="order-1">
-          <div className="flex flex-wrap items-end gap-2">
-            {searchInput}
-            {sortSelect}
-            {statusSelect}
-            {amountInputs}
-            {clearFiltersButton}
-            <CollapsibleTrigger className="group ml-auto flex items-center gap-1 text-sm font-medium text-muted-foreground">
-              Qué significa cada estado
-              <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
-            </CollapsibleTrigger>
-          </div>
-          <CollapsibleContent className="pt-2">{legendChips}</CollapsibleContent>
-        </Collapsible>
-      )}
-
+      {/* order-1 on both breakpoints; on a phone the status legend is split
+          off below the list (order-3) instead of riding with the filters. */}
+      <ClientFilters filters={filters} className="order-1" />
       <div className="order-2 flex flex-col gap-3 md:order-3">
         {sortedRows.length === 0 && !tourDemoActive ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
@@ -620,6 +374,10 @@ export function ClientTable({
           </>
         )}
       </div>
+
+      {/* Phone only — above sm the legend rides inside the filter row instead,
+          and this renders nothing. */}
+      <ClientStatusLegend className="order-3" />
     </div>
   );
 }
