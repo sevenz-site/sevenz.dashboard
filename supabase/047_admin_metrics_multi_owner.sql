@@ -47,6 +47,23 @@ drop function if exists public.admin_metrics_by_owner(text, text, timestamptz, t
 drop function if exists public.admin_credit_inputs(text, uuid, timestamptz, timestamptz);
 drop function if exists public.admin_credit_movements(text, uuid, timestamptz, timestamptz);
 
+-- And the NEW signatures, so this file can be re-run.
+--
+-- Learned the hard way on 2026-09-07: the six lines above name the signatures
+-- that existed BEFORE this migration. Once it has run once, they match nothing
+-- and `create function` fails with "already exists with same argument types" —
+-- which is precisely when you re-run a migration, after correcting it.
+--
+-- `drop` + `create` rather than `create or replace` throughout, because
+-- replace cannot change a RETURNS TABLE signature either, and a future
+-- correction to one of these column lists would hit the same wall.
+drop function if exists public.admin_metrics_summary(text, text, uuid[], timestamptz, timestamptz);
+drop function if exists public.admin_metrics_totals(text, uuid[], timestamptz, timestamptz);
+drop function if exists public.admin_metrics_timeseries(text, text, text, uuid[], timestamptz, timestamptz);
+drop function if exists public.admin_metrics_by_owner(text, text, uuid[], timestamptz, timestamptz);
+drop function if exists public.admin_credit_inputs(text, uuid[], timestamptz, timestamptz);
+drop function if exists public.admin_credit_movements(text, uuid[], timestamptz, timestamptz);
+
 -- ── 1. Money, per currency ──────────────────────────────────────────────
 create function public.admin_metrics_summary(
   p_country  text default null,
@@ -304,6 +321,17 @@ $$;
 -- Scoped by the identical filters rather than by a list of ids passed in, so
 -- the two functions cannot drift out of agreement about which clients are in
 -- scope, and no id array has to cross the wire.
+--
+-- The trashed/deleted clause below is the repair of a drift that 044 opened
+-- and nothing noticed until qa/admin-multi-owner.mjs looked: function 5 reads
+-- client_summary, which 044 turned into a FILTERED view, while this one reads
+-- `clients` directly and kept returning movements for clients in the Papelera.
+-- Measured in dev on 2026-09-07: 3 of the 31 clients in one segment.
+--
+-- No figure on /admin was wrong because of it — lib/admin/metrics.ts scores
+-- only the clients function 5 returns, so the extra movements were fetched and
+-- then never looked up. What it cost was rows against PostgREST's 1000-row
+-- page budget, and the truth of the paragraph directly above this one.
 create function public.admin_credit_movements(
   p_country text default null,
   p_owners  uuid[] default null,
@@ -328,6 +356,10 @@ as $$
   join public.clients c on c.id = m.client_id
   join public.owners  o on o.id = c.owner_id
   where m.deleted_at is null
+    -- Exactly client_summary's own filter, so function 5 and function 6 return
+    -- the same set of clients.
+    and c.trashed_at is null
+    and c.deleted_at is null
     and (p_country is null or o.country = p_country)
     and (p_owners  is null or cardinality(p_owners) = 0 or o.id = any(p_owners))
     and (p_from    is null or c.created_at >= p_from)
