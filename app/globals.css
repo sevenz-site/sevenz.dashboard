@@ -129,3 +129,36 @@
     @apply font-sans;
   }
 }
+
+/* Toast description — WCAG 2.2 SC 1.4.3 (Contrast, Minimum, AA).
+ *
+ * Sonner paints every part of a toast through the --normal-* variables that
+ * components/ui/sonner.tsx overrides with our tokens, with exactly one
+ * exception: the description. That one is a hardcoded literal chosen by
+ * sonner's own theme attribute —
+ *
+ *   [data-sonner-toast][data-styled=true] [data-description] { color: #3f3f3f }
+ *   [data-sonner-toaster][data-sonner-theme=dark] [data-description] { color: #e8e8e8 }
+ *
+ * — so it is the one element that can end up light-on-light. It did: measured
+ * at 1.23:1 on a dark-mode phone, against a title at 19.8:1 on the same card.
+ * sonner.tsx removes today's cause; this removes the possibility.
+ *
+ * Deriving the colour from the popover pair means the description is always
+ * stated relative to the surface it actually sits on. Whatever --popover
+ * becomes, the description moves with it and the contrast holds — there is no
+ * combination left where one follows the app and the other does not.
+ *
+ * 76% keeps the second-line hierarchy the design has today (the title is the
+ * full token at 500 weight) while landing well clear of the 4.5:1 floor —
+ * measured at 11.3:1 on white. Deliberately NOT --muted-foreground, which is
+ * 3.45:1 on white and would fail this same criterion.
+ *
+ * Not in @layer base: sonner injects its stylesheet into <head> at runtime and
+ * layered rules lose to unlayered ones regardless of order. The selector also
+ * carries one more attribute than sonner's (0,3,1 against 0,2,1), so this wins
+ * on specificity too rather than relying on which stylesheet lands last.
+ */
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-description] {
+  color: color-mix(in oklab, var(--popover-foreground) 76%, var(--popover));
+}

@@ -247,6 +247,40 @@ whatever you toggle stays toggled forever.
 `querySelector`, which returns the first match in the DOM — duplicate the
 marker and it can highlight a hidden element, stalling onboarding.
 
+**A third-party component painted one thing with a literal instead of a token,
+and only that thing broke.** Sonner routes every part of a toast through
+`--normal-bg` / `--normal-text`, which `components/ui/sonner.tsx` maps to our
+popover tokens — except the description, hardcoded `#3f3f3f` in light and
+`#e8e8e8` in a theme sonner resolves *itself*. `next-themes`' provider is
+mounted nowhere in this app, so sonner fell back to `system`, read the phone's
+OS preference and picked its dark literal while our tokens stayed light.
+Measured 2026-09-08 on the shipped build: title 19.8:1, description **1.23:1**
+on the same white card. When a colour and the surface behind it come from two
+different sources, they will eventually disagree; state both from the same
+token pair (`color-mix(in oklab, var(--popover-foreground) 76%, var(--popover))`)
+so the pair cannot come apart.
+
+## Contrast floor
+
+Text must clear **4.5:1** against the surface it actually sits on, and UI
+borders that carry meaning must clear 3:1 — WCAG 2.2 AA, criteria 1.4.3 and
+1.4.11. Measure it against the *computed* background, not the page background:
+a toast, a popover and a card can all be different surfaces.
+
+Measured on white (`#ffffff`) as of 2026-09-08:
+
+| Token | Colour | Ratio | |
+|---|---|---|---|
+| `--foreground` / `--popover-foreground` | `#0a0a0a` | 19.8:1 | pass |
+| toast description (after the fix) | `#3a3a3a` | 11.37:1 | pass |
+| `--muted-foreground` | `#737373` | 4.74:1 | pass, with no margin |
+| `--destructive` | `#e7000b` | 4.77:1 | pass, with no margin |
+| `--ring` | `#a1a1a1` | 2.58:1 | **fails 1.4.11** — focus rings need 3:1 |
+
+`--muted-foreground` clears the bar by 0.24. Do not darken the surface behind
+it or lighten the token without re-measuring; it is the one that will fail
+first.
+
 ## Before calling UI work done
 
 Render it and **measure at 375px**, not just at desktop width. Check
