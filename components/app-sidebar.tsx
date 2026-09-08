@@ -28,7 +28,12 @@ const NAV_ITEMS = [
   // Directly below Malas pagas: the two screens answer the same question at
   // different strengths, and an owner looking for a client they can no longer
   // find will try both in order.
-  { href: "/papelera", label: "Papelera", icon: Trash2, dataTour: undefined },
+  //
+  // gapBefore opens 20px above it. SidebarMenu is gap-0, so the items otherwise
+  // read as one undifferentiated run; the space marks where the three
+  // day-to-day screens end and the occasional ones begin, without a divider
+  // line that would claim more separation than there is.
+  { href: "/papelera", label: "Papelera", icon: Trash2, dataTour: undefined, gapBefore: true },
   { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },
   { href: "/profile", label: "Mi negocio", icon: Building2, dataTour: undefined },
 ];
@@ -62,7 +67,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
           <SidebarGroupContent>
             <SidebarMenu>
               {NAV_ITEMS.map((item) => (
-                <SidebarMenuItem key={item.href}>
+                <SidebarMenuItem key={item.href} className={item.gapBefore ? "mt-5" : undefined}>
                   <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)}>
                     <Link
                       href={item.href}
