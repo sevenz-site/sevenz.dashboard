@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { validatePasswordComplexity } from "@/lib/password";
+import { isReferralSource } from "@/lib/referral-source";
 
 export type SignupFieldValues = {
   business_name: string;
@@ -11,6 +12,7 @@ export type SignupFieldValues = {
   whatsapp: string;
   country: string;
   email: string;
+  referral_source: string;
 };
 
 export type SignupState = {
@@ -34,6 +36,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const country = String(formData.get("country") ?? "");
   const email = String(formData.get("email") ?? "").trim();
+  const referralSource = String(formData.get("referral_source") ?? "");
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
   const acceptedTerms = formData.get("accepted_terms") === "on";
@@ -45,6 +48,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     whatsapp,
     country,
     email,
+    referral_source: referralSource,
   };
 
   if (!businessName || !firstName || !lastName || !whatsapp || !email || !password) {
@@ -52,6 +56,14 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   }
   if (country !== "CO" && country !== "VE") {
     return { error: "Selecciona un país válido.", success: false, values };
+  }
+  // Re-checked here even though the form disables submit until it is answered
+  // — a raw POST to this action must not be able to skip it, same reason the
+  // terms checkbox is re-checked below. An unrecognised value is rejected
+  // rather than stored: the trigger would drop it to null anyway, and the
+  // owner would have "answered" a question the data never received.
+  if (!isReferralSource(referralSource)) {
+    return { error: "Dinos cómo conociste Sevenz.", success: false, values };
   }
   // Matches the password policy set in Supabase Auth (Sign In / Providers →
   // Email → "Password requirements") — checked here too so a mismatch is a
@@ -80,6 +92,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         last_name: lastName,
         whatsapp: whatsapp || null,
         country,
+        referral_source: referralSource,
       },
     },
   });

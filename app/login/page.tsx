@@ -5,11 +5,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { login, type AuthState } from "./actions";
+import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { InputWithIcon } from "@/components/ui/input-with-icon";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthBackLink } from "@/components/auth-back-link";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { email as emailRule, required } from "@/lib/form-validation";
 
@@ -31,10 +33,15 @@ export default function LoginPage() {
   const { errors, validate, recheck } = useFieldErrors({ email: emailRule, password: required });
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
+    <div className="flex flex-1 flex-col">
+      {/* Out to the marketing site, not history.back(): most owners arrive
+          from a WhatsApp link, where there is no history to go back to. */}
+      <AuthBackLink href="https://sevenz.site" label="Volver a sevenz.site" external />
+      <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
+          <CardTitle className="text-xl">Controla el fiado de tu bodega o comercio</CardTitle>
           <CardDescription>Entra a tu cuenta para ver tu cartera.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -51,7 +58,8 @@ export default function LoginPage() {
           >
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
-              <Input
+              <InputWithIcon
+                icon={Mail}
                 id="email"
                 name="email"
                 type="email"
@@ -85,7 +93,7 @@ export default function LoginPage() {
             </div>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Entrando..." : "Entrar"}
+              {pending ? "Entrando..." : "Iniciar sesión"}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
@@ -96,6 +104,7 @@ export default function LoginPage() {
           </p>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

@@ -4,8 +4,10 @@ import { useActionState, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { signup, type SignupState } from "./actions";
+import { Globe, Mail, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputWithIcon } from "@/components/ui/input-with-icon";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,9 +20,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { AuthBackLink } from "@/components/auth-back-link";
 import { PasswordCriteriaChecklist } from "@/components/password-criteria-checklist";
 import { getPasswordCriteria } from "@/lib/password";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { REFERRAL_SOURCES } from "@/lib/referral-source";
 import type { OwnerCountry } from "@/lib/types";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { required, email as emailRule, whatsapp as whatsappRule, confirmPassword } from "@/lib/form-validation";
@@ -47,6 +51,11 @@ export default function SignupPage() {
   );
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  // No default. A pre-selected answer would be answered by the form, not by
+  // the owner, and this field exists to be believed.
+  const [referralSource, setReferralSource] = useState(
+    () => (state.values?.referral_source as string) || "",
+  );
   const [formRef, setFormRef] = useFormRef();
   // Password itself isn't in here: the checklist above already shows exactly
   // what's unmet per-criterion, richer than one general message, and the
@@ -85,7 +94,11 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
+    <div className="flex flex-1 flex-col">
+      {/* Back one screen, not out to the website: whoever is here came from
+          login, or from a "Regístrate" link that login also offers. */}
+      <AuthBackLink href="/login" label="Volver a iniciar sesión" />
+      <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
@@ -103,7 +116,8 @@ export default function SignupPage() {
           >
             <div className="flex flex-col gap-2">
               <Label htmlFor="business_name">Nombre del negocio</Label>
-              <Input
+              <InputWithIcon
+                icon={Store}
                 id="business_name"
                 name="business_name"
                 defaultValue={state.values?.business_name ?? ""}
@@ -154,7 +168,17 @@ export default function SignupPage() {
                 value={country}
                 onValueChange={(v) => setCountry(v as OwnerCountry)}
               >
-                <SelectTrigger id="country" className="w-full">
+                {/* Leading icon, unlike the trailing ones on the text fields:
+                    this trigger already carries a chevron on its right.
+                    SelectTrigger is justify-between, which with a third child
+                    strands the value in the middle of the row. Fixed from the
+                    trigger, not the value: SelectValue is a Radix primitive
+                    that drops className, so styling it does nothing. */}
+                <SelectTrigger
+                  id="country"
+                  className="w-full justify-start gap-2 [&>svg:last-child]:ml-auto"
+                >
+                  <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -181,7 +205,8 @@ export default function SignupPage() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Correo</Label>
-              <Input
+              <InputWithIcon
+                icon={Mail}
                 id="email"
                 name="email"
                 type="email"
@@ -226,6 +251,25 @@ export default function SignupPage() {
                 <p className="text-xs text-destructive">{errors.confirm_password}</p>
               ) : null}
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="referral_source">¿Cómo conociste Sevenz?</Label>
+              <Select
+                name="referral_source"
+                value={referralSource}
+                onValueChange={setReferralSource}
+              >
+                <SelectTrigger id="referral_source" className="w-full">
+                  <SelectValue placeholder="Selecciona una opción" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REFERRAL_SOURCES.map((source) => (
+                    <SelectItem key={source.value} value={source.value}>
+                      {source.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-start gap-2">
               <Checkbox
                 id="accepted_terms"
@@ -256,7 +300,7 @@ export default function SignupPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={pending || !acceptedTerms || !passwordMeetsCriteria}
+              disabled={pending || !acceptedTerms || !passwordMeetsCriteria || !referralSource}
             >
               {pending ? "Creando..." : "Crear cuenta"}
             </Button>
@@ -264,11 +308,12 @@ export default function SignupPage() {
           <p className="mt-4 text-center text-sm text-muted-foreground">
             ¿Ya tienes cuenta?{" "}
             <Link href="/login" className="font-medium text-foreground underline underline-offset-4">
-              Entra
+              Inicia sesión
             </Link>
           </p>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
