@@ -63,6 +63,7 @@ export default function LoginPage() {
                 id="email"
                 name="email"
                 type="email"
+                placeholder="correo@ejemplo.com"
                 autoComplete="email"
                 defaultValue={state.email ?? ""}
                 required

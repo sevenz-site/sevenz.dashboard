@@ -120,6 +120,7 @@ export default function SignupPage() {
                 icon={Store}
                 id="business_name"
                 name="business_name"
+                placeholder="Mini abasto El chino"
                 defaultValue={state.values?.business_name ?? ""}
                 required
                 aria-invalid={Boolean(errors.business_name)}
@@ -135,6 +136,7 @@ export default function SignupPage() {
                 <Input
                   id="first_name"
                   name="first_name"
+                  placeholder="Pedro"
                   autoComplete="given-name"
                   defaultValue={state.values?.first_name ?? ""}
                   required
@@ -150,6 +152,7 @@ export default function SignupPage() {
                 <Input
                   id="last_name"
                   name="last_name"
+                  placeholder="Pérez"
                   autoComplete="family-name"
                   defaultValue={state.values?.last_name ?? ""}
                   required
@@ -210,6 +213,7 @@ export default function SignupPage() {
                 id="email"
                 name="email"
                 type="email"
+                placeholder="correo@ejemplo.com"
                 autoComplete="email"
                 defaultValue={state.values?.email ?? ""}
                 required
