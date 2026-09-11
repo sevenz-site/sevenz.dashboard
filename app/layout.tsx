@@ -15,13 +15,37 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const TITULO = "Sevenz — ¡Cuentas claras, mueven el negocio!";
+const DESCRIPCION = "Saldo compartido en tiempo real entre el negocio y sus clientes.";
+
 export const metadata: Metadata = {
-  title: "Sevenz — ¡Cuentas claras, mueven el negocio!",
-  description: "Saldo compartido en tiempo real entre el negocio y sus clientes.",
+  // Sin esto, Next emite rutas relativas en og:image y WhatsApp no las
+  // resuelve. La URL va escrita porque el enlace compartido se arma en el
+  // navegador con window.location.origin y no existe una constante que
+  // reutilizar.
+  metadataBase: new URL("https://app.sevenz.site"),
+  title: TITULO,
+  description: DESCRIPCION,
   manifest: "/manifest.json",
   icons: {
     icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  // Sin openGraph, WhatsApp caía al favicon y mostraba un cuadradito en vez de
+  // una tarjeta. Hasta el 2026-09-11 ese favicon era el de Vercel.
+  openGraph: {
+    title: TITULO,
+    description: DESCRIPCION,
+    siteName: "Sevenz",
+    locale: "es_VE",
+    type: "website",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Sevenz" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITULO,
+    description: DESCRIPCION,
+    images: ["/og.png"],
   },
 };
 

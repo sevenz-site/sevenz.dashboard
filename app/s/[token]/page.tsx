@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,6 +16,30 @@ import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/l
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { DocumentIdDialog } from "@/components/public/document-id-dialog";
+
+// La vista previa que ve quien recibe el enlace por WhatsApp.
+//
+// Deliberadamente sin datos: ni el nombre del negocio, ni el del cliente, ni el
+// saldo. Un mensaje reenviado a un grupo enseña su tarjeta sin que nadie abra
+// nada, así que lo que viaje ahí tiene que ser cierto para cualquier enlace y
+// no revelar de quién es la cuenta. El saldo solo se ve al abrirlo.
+//
+// noindex porque esta página es pública y muestra el saldo de una persona real.
+// Bastaría con que un enlace se publicara una vez en un sitio rastreable para
+// que acabara en un buscador. No había ninguna regla de indexación hasta hoy.
+export const metadata: Metadata = {
+  title: "Consulta tu saldo — Sevenz",
+  description: "Revisa lo que debes y lo que has abonado, actualizado al instante.",
+  robots: { index: false, follow: false },
+  openGraph: {
+    title: "Consulta tu saldo",
+    description: "Revisa lo que debes y lo que has abonado, actualizado al instante.",
+    siteName: "Sevenz",
+    locale: "es_VE",
+    type: "website",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Sevenz" }],
+  },
+};
 
 type SharedMovement = {
   id: string;
