@@ -42,7 +42,12 @@ export type OwnerRateContext = {
 export type OwnerRateContextResult =
   | { kind: "co" }
   | { kind: "ve"; context: OwnerRateContext }
-  | { kind: "ve_sin_tasa" };
+  | { kind: "ve_sin_tasa" }
+  // No se pudo leer el país. Es su propio caso y no se pliega a "co", porque
+  // plegarlo ahí es exactamente el fallo que esta función vino a arreglar: un
+  // `data` nulo por un error de red haría que un dueño venezolano escribiera
+  // en el libro colombiano. No saber no es lo mismo que saber que es CO.
+  | { kind: "pais_desconocido" };
 
 // Lo mismo que getOwnerRateContext, pero diciendo por qué. Lo usa la ruta de
 // escritura, que necesita distinguir; las pantallas se quedan con el envoltorio
@@ -52,13 +57,14 @@ export async function getOwnerRateContextResult(
   supabase: SupabaseClient<any, any, any>,
   ownerId: string,
 ): Promise<OwnerRateContextResult> {
-  const { data: owner } = await supabase
+  const { data: owner, error } = await supabase
     .from("owners")
     .select("country")
     .eq("id", ownerId)
     .single();
 
-  if (owner?.country !== "VE") return { kind: "co" };
+  if (error || !owner?.country) return { kind: "pais_desconocido" };
+  if (owner.country !== "VE") return { kind: "co" };
 
   const context = await getOwnerRateContext(supabase, ownerId);
   return context ? { kind: "ve", context } : { kind: "ve_sin_tasa" };

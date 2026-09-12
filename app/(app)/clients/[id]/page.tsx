@@ -80,6 +80,13 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
+  // El `?? "CO"` solo entra si no se pudo leer el dueño, que en la práctica es
+  // un error de red: el trigger de alta garantiza que la fila existe.
+  //
+  // Se deja porque desde que el selector de moneda se pinta por país, lo peor
+  // que puede hacer un país equivocado aquí es que el formulario no mande
+  // moneda y el servidor lo RECHACE — visible y recuperable reintentando.
+  // Antes, ese mismo camino archivaba el fiado en el libro que no era.
   const ownerCountry = (ownerRow?.country as OwnerCountry | undefined) ?? "CO";
 
   const rateContext: MovementRateContext | null = ownerRate

@@ -58,6 +58,16 @@ export async function resolveMovementRateSnapshot(
 ): Promise<MovementRateResolution> {
   const resultado = await getOwnerRateContextResult(supabase, ownerId);
 
+  // No sabemos el país, así que no sabemos el libro. Se rechaza en vez de
+  // suponer: suponer "es CO" aquí escribiría el fiado de un venezolano en el
+  // libro colombiano, que es el fallo entero que este archivo previene.
+  if (resultado.kind === "pais_desconocido") {
+    return {
+      ok: false,
+      error: "No pudimos leer los datos de tu negocio. Vuelve a intentarlo en un momento.",
+    };
+  }
+
   // Dueño colombiano: currency null es la respuesta, no una ausencia. Lo que
   // mande el formulario da igual — un negocio CO no tiene libro en dólares.
   if (resultado.kind === "co") {

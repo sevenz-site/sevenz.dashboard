@@ -77,6 +77,17 @@ for (const moneda of ["USD", "EUR"]) {
   );
 }
 
+// ── dueño que no se puede leer ──────────────────────────────────────────
+// Un uuid que no existe hace que la lectura de owners falle, que es lo mismo
+// que pasaría con un corte de red. Antes se plegaba a "es CO" y el movimiento
+// caía en el libro colombiano; ahora tiene que rechazar.
+const fantasma = await resolveMovementRateSnapshot(db, "00000000-0000-0000-0000-000000000000", "USD");
+check(
+  "dueño ilegible -> RECHAZA (no se pliega a CO)",
+  !fantasma.ok,
+  fantasma.ok ? `ACEPTÓ con currency=${fantasma.snapshot.currency}` : "rechazado",
+);
+
 // ── la invariante de fondo, sobre los datos que ya existen ──────────────
 const todas = async (tabla, sel) => {
   const filas = [];
