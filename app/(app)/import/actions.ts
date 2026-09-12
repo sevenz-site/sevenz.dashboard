@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
-import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 
@@ -46,9 +46,18 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // owner importing a libreta kept in euros got every row filed as USD —
   // their client's real debt, in the wrong ledger, with no currency shown
   // anywhere in the review screen to catch it.
-  const snapshots = new Map<string, Awaited<ReturnType<typeof resolveMovementRateSnapshot>>>();
+  //
+  // Y se resuelven TODAS antes de insertar la primera fila. Si alguna moneda de
+  // la tanda no se puede resolver, la importación aborta aquí, con cero filas
+  // escritas: media libreta importada es peor que ninguna, porque el dueño no
+  // sabe por dónde iba y reimportar duplica lo que ya entró.
+  const snapshots = new Map<string, MovementRateSnapshot>();
   for (const currency of new Set(rows.map((r) => r.currency ?? null))) {
-    snapshots.set(currency ?? "COP", await resolveMovementRateSnapshot(supabase, user.id, currency));
+    const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+    if (!resolucion.ok) {
+      return { error: resolucion.error, imported: 0 };
+    }
+    snapshots.set(currency ?? "COP", resolucion.snapshot);
   }
 
   // The import review table collects no per-client document country, so a
@@ -207,6 +216,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
 
     const { error: movementError } = await supabase.from("movements").insert({
       client_id: clientId,
+      created_by: user.id,
       type: row.type,
       amount: row.amount,
       currency: resolved.currency,

@@ -47,6 +47,17 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   path never setting currency at all) — treat this as high-risk on every
   release that touches `resolveMovementRateSnapshot`,
   `app/(app)/dashboard/actions.ts`, or `app/(app)/import/actions.ts`.
+
+  **Run `npm run qa:currency` — it asserts this invariant against real dev
+  owners in seconds, and writes nothing.** It checks that a CO owner always
+  resolves to a null currency whatever the form submits, that a VE owner
+  with no currency is **rejected** rather than defaulted, and that no
+  existing row sits in the wrong ledger. Added 2026-09-11 alongside the fix
+  for the latent bug that made this possible: `getOwnerRateContext` returned
+  the same `null` for "owner is CO" and "owner is VE but there is no stored
+  rate", so a transient failure to read the BCV rate would have filed a
+  Venezuelan owner's fiado in the COP ledger. Audited at the time in both
+  environments — zero rows affected, the trap was armed and had not fired.
 - Photo-import ("libreta") flow: imported movements for a VE owner also
   get a real currency, not null.
 - `client_summary.balance_usd` / `balance_eur` reflect the actual sum of

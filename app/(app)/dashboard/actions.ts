@@ -178,10 +178,18 @@ export async function createClientWithMovement(
     };
   }
 
-  const resolved = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  if (!resolucion.ok) {
+    // El cliente ya se creó arriba, y se queda: borrarlo por no poder escribir
+    // el primer movimiento perdería los datos de contacto que el dueño acaba
+    // de teclear. Vuelve a intentarlo eligiendo la moneda y el cliente ya está.
+    return { error: resolucion.error, clientId: newClient.id };
+  }
+  const resolved = resolucion.snapshot;
 
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: newClient.id,
+    created_by: user.id,
     type,
     amount,
     currency: resolved.currency,
@@ -265,7 +273,9 @@ export async function addMovement(
   if (fields.error !== null) return { error: fields.error, clientId: null };
   const { type, amount, currency, description, photoPath, plazoDias } = fields;
 
-  const resolved = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  if (!resolucion.ok) return { error: resolucion.error, clientId: null };
+  const resolved = resolucion.snapshot;
 
   // A payment can never exceed what the client currently owes in that SAME
   // currency — a dollar payment can't pay off a euro debt, since they're
@@ -307,6 +317,7 @@ export async function addMovement(
 
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: clientId,
+    created_by: user.id,
     type,
     amount,
     currency: resolved.currency,
