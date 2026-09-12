@@ -193,11 +193,20 @@ export default async function AdminMetricsPage({
           hint="no pudimos leer el negocio al abrir"
           alert={health.screen_warnings > 0}
         />
+        {/* Sin `alert`, y no por descuido. Producción arranca con 172: los
+            movimientos que la 025 marcó como dólares el 2026-08-24 sin poder
+            inventarles una tasa que ya nadie sabía. Ese número no baja nunca,
+            así que pintarlo en rojo dejaría el panel con una alarma encendida
+            desde el primer día y para siempre — y una alarma que suena siempre
+            deja de leerse, que es peor que no tenerla.
+
+            Es un número que se vigila, no uno que avisa; para verlo moverse
+            está el filtro de fechas. La tarjeta de rechazos sí conserva el rojo
+            porque esa arranca en cero: si se enciende, acaba de pasar algo. */}
         <Stat
           label="Fiados sin tasa sellada"
           value={String(health.movements_without_rate)}
-          hint="se registraron bien; sin respaldo de tasa BCV"
-          alert={health.movements_without_rate > 0}
+          hint="se registraron bien; 172 son anteriores al 24 ago 2026"
         />
       </div>
 
