@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ImportFlow } from "@/components/import/import-flow";
+import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 
 export default async function ImportPage() {
   const supabase = await createClient();
@@ -21,6 +22,12 @@ export default async function ImportPage() {
       .eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
   ]);
+
+  // Sin país no se puede importar: es lo que decide si las filas llevan moneda
+  // o no. Se comprueba aquí, antes de subir la foto, y no al confirmar — al
+  // confirmar ya se gastó la extracción y la revisión de las 25 líneas, y el
+  // servidor rechazaría la tanda entera sin escribir nada.
+  const ownerCountry = (owner?.country as string | undefined) ?? null;
 
   const existingClients = (clients ?? []).map((c) => ({
     id: c.client_id as string,
@@ -50,10 +57,11 @@ export default async function ImportPage() {
           Sube fotos de la libreta. Revisa cada línea antes de guardarla.
         </p>
       </div>
-      <ImportFlow
-        existingClients={existingClients}
-        ownerCountry={(owner?.country as string | null) ?? null}
-      />
+      {ownerCountry ? (
+        <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} />
+      ) : (
+        <OwnerUnavailableDialog />
+      )}
     </div>
   );
 }

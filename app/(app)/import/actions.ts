@@ -18,9 +18,16 @@ export type ImportRow = {
   // when the owner actually had to type this in.
   document_id: string | null;
   // Chosen by the owner per row in the review table, because one libreta can
-  // mix currencies. null for a CO owner, and also the fallback if a VE owner's
-  // row somehow arrives without one — resolveMovementRateSnapshot turns that
-  // into the default rather than into a COP movement.
+  // mix currencies.
+  //
+  // null significa dos cosas distintas según el país, y por eso no se puede
+  // tratar igual: en un negocio CO es la respuesta correcta — su libro no tiene
+  // dimensión de moneda —, y en uno VE es un dato que falta.
+  //
+  // Esto ya NO se rellena solo. Hasta 2026-09-11, un null de un dueño VE se
+  // convertía en USD por defecto: una apuesta sobre el dinero de alguien, hecha
+  // donde nadie la veía. Ahora resolveMovementRateSnapshot rechaza, y la tanda
+  // entera se detiene sin escribir ni una fila.
   currency: LedgerCurrency | null;
 };
 

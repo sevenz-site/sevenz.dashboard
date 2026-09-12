@@ -13,6 +13,7 @@ import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime, formatDocumentId } from "@/lib/format";
@@ -80,14 +81,17 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  // El `?? "CO"` solo entra si no se pudo leer el dueño, que en la práctica es
-  // un error de red: el trigger de alta garantiza que la fila existe.
+  // Aquí había un `?? "CO"`. Parecía inofensivo desde que el servidor rechaza
+  // en vez de adivinar, pero el efecto era peor de lo que decía su comentario:
+  // la pantalla se dibujaba como un negocio colombiano —sin selector de moneda,
+  // sin el equivalente en bolívares, con los saldos en formato COP— y el dueño
+  // venezolano solo se enteraba al pulsar Guardar, con un mensaje que le pedía
+  // elegir una moneda que no estaba en pantalla. Reintentar no lo arreglaba;
+  // solo recargar, y eso no se lo decíamos.
   //
-  // Se deja porque desde que el selector de moneda se pinta por país, lo peor
-  // que puede hacer un país equivocado aquí es que el formulario no mande
-  // moneda y el servidor lo RECHACE — visible y recuperable reintentando.
-  // Antes, ese mismo camino archivaba el fiado en el libro que no era.
-  const ownerCountry = (ownerRow?.country as OwnerCountry | undefined) ?? "CO";
+  // No saber el país no es saber que es CO. Sin él no se dibuja nada.
+  const ownerCountry = (ownerRow?.country as OwnerCountry | undefined) ?? null;
+  if (!ownerCountry) return <OwnerUnavailableDialog />;
 
   const rateContext: MovementRateContext | null = ownerRate
     ? {
