@@ -57,14 +57,20 @@ export async function getOwnerRateContextResult(
   supabase: SupabaseClient<any, any, any>,
   ownerId: string,
 ): Promise<OwnerRateContextResult> {
-  const { data: owner, error } = await supabase
-    .from("owners")
-    .select("country")
-    .eq("id", ownerId)
-    .single();
+  // Dos intentos, igual que readOwnerCountry, y por el mismo motivo: rechazar
+  // el fiado de alguien por un parpadeo de red es un precio alto para una
+  // lectura que cuesta nada repetir. Aquí no se anota nada — quien llama ya
+  // registra su propio rechazo, con el origen concreto.
+  let country: string | null = null;
+  for (let intento = 1; intento <= 2; intento++) {
+    const { data: owner } = await supabase.from("owners").select("country").eq("id", ownerId).single();
+    country = (owner?.country as string | undefined) ?? null;
+    if (country) break;
+    if (intento === 1) await new Promise((r) => setTimeout(r, 500));
+  }
 
-  if (error || !owner?.country) return { kind: "pais_desconocido" };
-  if (owner.country !== "VE") return { kind: "co" };
+  if (!country) return { kind: "pais_desconocido" };
+  if (country !== "VE") return { kind: "co" };
 
   const context = await getOwnerRateContext(supabase, ownerId);
   return context ? { kind: "ve", context } : { kind: "ve_sin_tasa" };

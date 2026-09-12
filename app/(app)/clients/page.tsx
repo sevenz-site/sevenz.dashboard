@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -41,7 +42,11 @@ export default async function ClientsPage() {
   // formulario sale sin selector de moneda para un negocio venezolano — que es
   // como el fiado acababa rechazado al guardar, sin nada que el dueño pudiera
   // corregir en pantalla.
-  const ownerCountry = (owner?.country as OwnerCountry | undefined) ?? null;
+  // Si la primera lectura no trajo país, readOwnerCountry lo reintenta antes de
+  // rendirse: un parpadeo de red no debería taparle la pantalla a nadie. Y si
+  // tampoco así, deja constancia de que este aviso apareció.
+  const ownerCountry =
+    (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
   if (!ownerCountry) return <OwnerUnavailableDialog />;
   const rateContext: MovementRateContext | null = ownerRate
     ? {

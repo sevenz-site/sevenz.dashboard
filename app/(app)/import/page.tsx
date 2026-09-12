@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { readOwnerCountry } from "@/lib/owner-country";
 
 export default async function ImportPage() {
   const supabase = await createClient();
@@ -27,7 +28,11 @@ export default async function ImportPage() {
   // o no. Se comprueba aquí, antes de subir la foto, y no al confirmar — al
   // confirmar ya se gastó la extracción y la revisión de las 25 líneas, y el
   // servidor rechazaría la tanda entera sin escribir nada.
-  const ownerCountry = (owner?.country as string | undefined) ?? null;
+  // Si la primera lectura no trajo país, readOwnerCountry lo reintenta antes de
+  // rendirse: un parpadeo de red no debería taparle la pantalla a nadie. Y si
+  // tampoco así, deja constancia de que este aviso apareció.
+  const ownerCountry =
+    (owner?.country as string | undefined) ?? (await readOwnerCountry(supabase, user!.id));
 
   const existingClients = (clients ?? []).map((c) => ({
     id: c.client_id as string,

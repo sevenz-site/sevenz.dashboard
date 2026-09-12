@@ -59,6 +59,10 @@ export type Health = {
   // sellada porque el BCV no respondió. Se permite a propósito; se vigila por
   // si deja de ser excepcional.
   movements_without_rate: number;
+  // Las veces que el aviso bloqueante apareció en pantalla, antes de que nadie
+  // intentara guardar nada. Aparte de los rechazos a propósito: un aviso es un
+  // susto, un rechazo es un fiado que no entró.
+  screen_warnings: number;
 };
 
 export type TrendPoint = {
@@ -129,6 +133,7 @@ export async function getHealth(f: MetricFilters): Promise<Health> {
       rejections_pais_desconocido: 0,
       rejected_rows: 0,
       movements_without_rate: 0,
+      screen_warnings: 0,
     }
   );
 }

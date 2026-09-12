@@ -182,6 +182,17 @@ export default async function AdminMetricsPage({
             tasa sellada porque el BCV no respondió — se permite a propósito,
             porque bloquear el fiado convertiría una caída del proveedor en una
             caja que no puede vender. Se vigila por si deja de ser excepcional. */}
+        {/* Un aviso no es una venta perdida: el dueño lo vio y pudo recargar.
+            Importa sobre todo para los negocios colombianos — hasta ahora, no
+            poder leer el país se resolvía asumiendo Colombia, que para ellos
+            acertaba siempre. Si este número se queda en cero, quitarlo les
+            salió gratis. */}
+        <Stat
+          label="Avisos en pantalla"
+          value={String(health.screen_warnings)}
+          hint="no pudimos leer el negocio al abrir"
+          alert={health.screen_warnings > 0}
+        />
         <Stat
           label="Fiados sin tasa sellada"
           value={String(health.movements_without_rate)}
