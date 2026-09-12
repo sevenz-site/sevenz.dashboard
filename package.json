@@ -16,7 +16,8 @@
     "qa:rate-status": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/rate-status.mjs",
     "qa:rate-fetch": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/force-rate-fetch.mjs",
     "qa:service-role": "node qa/service-role-reads.mjs",
-    "qa:multi-owner": "node qa/admin-multi-owner.mjs"
+    "qa:multi-owner": "node qa/admin-multi-owner.mjs",
+    "qa:currency": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/movement-currency.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

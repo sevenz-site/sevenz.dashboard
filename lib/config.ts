@@ -8,3 +8,8 @@ export const MAX_IMPORT_PHOTOS = 6;
 // successfully-processed photos count — a failed OCR read doesn't burn quota.
 // Pro has no limit.
 export const FREE_PLAN_MONTHLY_IMPORT_LIMIT = 5;
+
+// WhatsApp de soporte, sin "+" ni espacios: así lo quiere wa.me. Lo usa el
+// diálogo que aparece cuando no se pueden leer los datos del negocio, que sin
+// una segunda salida dejaría al dueño pulsando "Recargar" en bucle.
+export const SUPPORT_WHATSAPP = "573238130265";

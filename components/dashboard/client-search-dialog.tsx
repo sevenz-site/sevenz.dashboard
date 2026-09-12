@@ -494,7 +494,12 @@ function ClientSearchDialogBody({
 
         <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} />
 
-        {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+        {/* Por país, no por tasa: ver la nota larga en add-movement-dialog.
+            Un dueño venezolano lleva dólares y euros aunque el BCV no
+            responda, y sin este selector el formulario no manda moneda. */}
+        {ownerCountry === "VE" ? (
+          <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} />
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount">Monto</Label>

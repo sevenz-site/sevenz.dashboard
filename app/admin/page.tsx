@@ -7,6 +7,7 @@ import {
   getByOwner,
   getCurrencySummary,
   getOwnerOptions,
+  getHealth,
   getTotals,
   getTrend,
   type Bucket,
@@ -31,11 +32,26 @@ const money = (n: number | null) =>
 // a blank cell.
 const COUNTRY_LABEL: Record<string, string> = { CO: "Colombia", VE: "Venezuela" };
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+// `alert` no es decoración: estas dos tarjetas viven entre métricas de producto
+// pero no lo son, y en cero no dicen nada. Solo se tiñen cuando hay algo que
+// mirar, para que la diferencia se note sin necesidad de una sección aparte.
+function Stat({
+  label,
+  value,
+  hint,
+  alert = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  alert?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-lg border p-3">
+    <div className={`flex flex-col gap-0.5 rounded-lg border p-3 ${alert ? "border-destructive/40" : ""}`}>
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-2xl font-semibold tabular-nums">{value}</span>
+      <span className={`text-2xl font-semibold tabular-nums ${alert ? "text-destructive" : ""}`}>
+        {value}
+      </span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </div>
   );
@@ -78,13 +94,14 @@ export default async function AdminMetricsPage({
   };
   const bucket: Bucket = sp.bucket === "day" || sp.bucket === "month" ? sp.bucket : "week";
 
-  const [summary, totals, trend, byOwner, owners, credit] = await Promise.all([
+  const [summary, totals, trend, byOwner, owners, credit, health] = await Promise.all([
     getCurrencySummary(filters),
     getTotals(filters),
     getTrend(filters, bucket),
     getByOwner(filters),
     getOwnerOptions(),
     getAverageCreditScore(filters),
+    getHealth(filters),
   ]);
 
   const movementsTotal = summary.reduce((s, r) => s + Number(r.movements_total), 0);
@@ -146,6 +163,50 @@ export default async function AdminMetricsPage({
           label="Puntaje crediticio"
           value={credit.average === null ? "—" : String(credit.average)}
           hint={`de 1000 · ${credit.clients} clientes`}
+        />
+        {/* Movimientos que el dueño intentó registrar y no se escribieron. En
+            cero no significa "no pasa nada": significa que el guardarraíl no ha
+            tenido que actuar. Cualquier número distinto de cero es un dueño que
+            se quedó sin registrar una venta. */}
+        <Stat
+          label="Registros rechazados"
+          value={String(health.rejections_total)}
+          hint={
+            health.rejections_total === 0
+              ? "ningún dueño se quedó sin registrar"
+              : `${health.rejected_rows} movimientos perdidos · ${health.rejections_sin_moneda} sin moneda · ${health.rejections_pais_desconocido} sin leer el negocio`
+          }
+          alert={health.rejections_total > 0}
+        />
+        {/* Estos SÍ se escribieron, con su moneda correcta. Solo les falta la
+            tasa sellada porque el BCV no respondió — se permite a propósito,
+            porque bloquear el fiado convertiría una caída del proveedor en una
+            caja que no puede vender. Se vigila por si deja de ser excepcional. */}
+        {/* Un aviso no es una venta perdida: el dueño lo vio y pudo recargar.
+            Importa sobre todo para los negocios colombianos — hasta ahora, no
+            poder leer el país se resolvía asumiendo Colombia, que para ellos
+            acertaba siempre. Si este número se queda en cero, quitarlo les
+            salió gratis. */}
+        <Stat
+          label="Avisos en pantalla"
+          value={String(health.screen_warnings)}
+          hint="no pudimos leer el negocio al abrir"
+          alert={health.screen_warnings > 0}
+        />
+        {/* Sin `alert`, y no por descuido. Producción arranca con 172: los
+            movimientos que la 025 marcó como dólares el 2026-08-24 sin poder
+            inventarles una tasa que ya nadie sabía. Ese número no baja nunca,
+            así que pintarlo en rojo dejaría el panel con una alarma encendida
+            desde el primer día y para siempre — y una alarma que suena siempre
+            deja de leerse, que es peor que no tenerla.
+
+            Es un número que se vigila, no uno que avisa; para verlo moverse
+            está el filtro de fechas. La tarjeta de rechazos sí conserva el rojo
+            porque esa arranca en cero: si se enciende, acaba de pasar algo. */}
+        <Stat
+          label="Fiados sin tasa sellada"
+          value={String(health.movements_without_rate)}
+          hint="se registraron bien; 172 son anteriores al 24 ago 2026"
         />
       </div>
 

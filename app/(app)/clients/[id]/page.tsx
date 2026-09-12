@@ -13,6 +13,8 @@ import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime, formatDocumentId } from "@/lib/format";
@@ -80,7 +82,21 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  const ownerCountry = (ownerRow?.country as OwnerCountry | undefined) ?? "CO";
+  // Aquí había un `?? "CO"`. Parecía inofensivo desde que el servidor rechaza
+  // en vez de adivinar, pero el efecto era peor de lo que decía su comentario:
+  // la pantalla se dibujaba como un negocio colombiano —sin selector de moneda,
+  // sin el equivalente en bolívares, con los saldos en formato COP— y el dueño
+  // venezolano solo se enteraba al pulsar Guardar, con un mensaje que le pedía
+  // elegir una moneda que no estaba en pantalla. Reintentar no lo arreglaba;
+  // solo recargar, y eso no se lo decíamos.
+  //
+  // No saber el país no es saber que es CO. Sin él no se dibuja nada.
+  // Si la primera lectura no trajo país, readOwnerCountry lo reintenta antes de
+  // rendirse: un parpadeo de red no debería taparle la pantalla a nadie. Y si
+  // tampoco así, deja constancia de que este aviso apareció.
+  const ownerCountry =
+    (ownerRow?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
+  if (!ownerCountry) return <OwnerUnavailableDialog />;
 
   const rateContext: MovementRateContext | null = ownerRate
     ? {

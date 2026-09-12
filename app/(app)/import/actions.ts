@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
-import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
+import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 
 export type ImportRow = {
@@ -18,9 +19,16 @@ export type ImportRow = {
   // when the owner actually had to type this in.
   document_id: string | null;
   // Chosen by the owner per row in the review table, because one libreta can
-  // mix currencies. null for a CO owner, and also the fallback if a VE owner's
-  // row somehow arrives without one — resolveMovementRateSnapshot turns that
-  // into the default rather than into a COP movement.
+  // mix currencies.
+  //
+  // null significa dos cosas distintas según el país, y por eso no se puede
+  // tratar igual: en un negocio CO es la respuesta correcta — su libro no tiene
+  // dimensión de moneda —, y en uno VE es un dato que falta.
+  //
+  // Esto ya NO se rellena solo. Hasta 2026-09-11, un null de un dueño VE se
+  // convertía en USD por defecto: una apuesta sobre el dinero de alguien, hecha
+  // donde nadie la veía. Ahora resolveMovementRateSnapshot rechaza, y la tanda
+  // entera se detiene sin escribir ni una fila.
   currency: LedgerCurrency | null;
 };
 
@@ -46,9 +54,29 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // owner importing a libreta kept in euros got every row filed as USD —
   // their client's real debt, in the wrong ledger, with no currency shown
   // anywhere in the review screen to catch it.
-  const snapshots = new Map<string, Awaited<ReturnType<typeof resolveMovementRateSnapshot>>>();
+  //
+  // Y se resuelven TODAS antes de insertar la primera fila. Si alguna moneda de
+  // la tanda no se puede resolver, la importación aborta aquí, con cero filas
+  // escritas: media libreta importada es peor que ninguna, porque el dueño no
+  // sabe por dónde iba y reimportar duplica lo que ya entró.
+  const snapshots = new Map<string, MovementRateSnapshot>();
   for (const currency of new Set(rows.map((r) => r.currency ?? null))) {
-    snapshots.set(currency ?? "COP", await resolveMovementRateSnapshot(supabase, user.id, currency));
+    const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+    if (!resolucion.ok) {
+      // rows.length y no 1: aquí se pierde la tanda entera, y ese es el número
+      // que dice lo que costó. Sin él, un rechazo de import parece tan barato
+      // como uno de un fiado suelto.
+      await recordMovementRejection(supabase, {
+        reason: resolucion.reason,
+        source: "import",
+        userId: user.id,
+        userEmail: user.email,
+        attemptedCurrency: currency,
+        rowsAffected: rows.length,
+      });
+      return { error: resolucion.error, imported: 0 };
+    }
+    snapshots.set(currency ?? "COP", resolucion.snapshot);
   }
 
   // The import review table collects no per-client document country, so a
@@ -207,6 +235,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
 
     const { error: movementError } = await supabase.from("movements").insert({
       client_id: clientId,
+      created_by: user.id,
       type: row.type,
       amount: row.amount,
       currency: resolved.currency,

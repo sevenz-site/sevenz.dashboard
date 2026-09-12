@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -35,9 +37,17 @@ export default async function ClientsPage() {
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  // Same fallback as Cartera: every real owner has a country from signup, so
-  // this only covers a row that somehow predates it.
-  const ownerCountry = (owner?.country as OwnerCountry | undefined) ?? "CO";
+  // Mismo criterio que Cartera: no saber el país no es saber que es CO. Esta
+  // pantalla monta el alta de cliente con su primer movimiento, y sin país el
+  // formulario sale sin selector de moneda para un negocio venezolano — que es
+  // como el fiado acababa rechazado al guardar, sin nada que el dueño pudiera
+  // corregir en pantalla.
+  // Si la primera lectura no trajo país, readOwnerCountry lo reintenta antes de
+  // rendirse: un parpadeo de red no debería taparle la pantalla a nadie. Y si
+  // tampoco así, deja constancia de que este aviso apareció.
+  const ownerCountry =
+    (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
+  if (!ownerCountry) return <OwnerUnavailableDialog />;
   const rateContext: MovementRateContext | null = ownerRate
     ? {
         rateMode: ownerRate.rateMode,

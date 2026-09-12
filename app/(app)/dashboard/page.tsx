@@ -2,6 +2,8 @@ import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -46,9 +48,18 @@ export default async function DashboardPage({
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  // Falls back to CO only if the owners row is somehow missing — every real
-  // owner has a country, chosen at signup and not editable afterward.
-  const ownerCountry = (owner?.country as OwnerCountry | undefined) ?? "CO";
+  // No saber el país no es saber que es CO. Esta pantalla monta el alta de
+  // cliente con su primer movimiento, así que un país inventado aquí dibuja el
+  // formulario sin selector de moneda y el servidor rechaza el fiado después,
+  // pidiendo elegir algo que no está en pantalla. Y los totales de la cartera
+  // se pintarían en formato colombiano, que para un negocio venezolano es una
+  // cifra falsa. Sin país no se dibuja nada.
+  // Si la primera lectura no trajo país, readOwnerCountry lo reintenta antes de
+  // rendirse: un parpadeo de red no debería taparle la pantalla a nadie. Y si
+  // tampoco así, deja constancia de que este aviso apareció.
+  const ownerCountry =
+    (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
+  if (!ownerCountry) return <OwnerUnavailableDialog />;
 
   const rateContext: MovementRateContext | null = ownerRate
     ? {

@@ -44,6 +44,27 @@ export type Totals = {
   mala_paga_unlabelled: number;
 };
 
+// Salud de la escritura de dinero, no métrica de producto. Existe porque el
+// guardarrail de moneda del 2026-09-11 cambio un fallo silencioso —el fiado
+// archivado en el libro que no era, que al menos dejaba una fila buscable— por
+// uno visible para el dueño y ciego para nosotros: un rechazo no deja rastro.
+export type Health = {
+  rejections_total: number;
+  rejections_sin_moneda: number;
+  rejections_pais_desconocido: number;
+  // Filas perdidas, no rechazos. Un import rechazado cuenta como uno arriba y
+  // como la tanda entera aquí, que es lo que de verdad costó.
+  rejected_rows: number;
+  // Movimientos que SÍ se escribieron, con su moneda correcta, pero sin tasa
+  // sellada porque el BCV no respondió. Se permite a propósito; se vigila por
+  // si deja de ser excepcional.
+  movements_without_rate: number;
+  // Las veces que el aviso bloqueante apareció en pantalla, antes de que nadie
+  // intentara guardar nada. Aparte de los rechazos a propósito: un aviso es un
+  // susto, un rechazo es un fiado que no entró.
+  screen_warnings: number;
+};
+
 export type TrendPoint = {
   bucket: string;
   movements: number;
@@ -97,6 +118,24 @@ export async function getTotals(f: MetricFilters): Promise<Totals> {
   // The function returns a single row; supabase-js still wraps it in an array.
   const row = (Array.isArray(data) ? data[0] : data) as Totals | undefined;
   return row ?? { clients_created: 0, clients_flagged_now: 0, mala_paga_labelled: 0, mala_paga_unlabelled: 0 };
+}
+
+export async function getHealth(f: MetricFilters): Promise<Health> {
+  const db = createServiceClient();
+  const { p_country, p_owners, p_from, p_to } = rpcArgs(f);
+  const { data, error } = await db.rpc("admin_metrics_health", { p_country, p_owners, p_from, p_to });
+  if (error) throw new Error(`admin_metrics_health: ${error.message}`);
+  const row = (Array.isArray(data) ? data[0] : data) as Health | undefined;
+  return (
+    row ?? {
+      rejections_total: 0,
+      rejections_sin_moneda: 0,
+      rejections_pais_desconocido: 0,
+      rejected_rows: 0,
+      movements_without_rate: 0,
+      screen_warnings: 0,
+    }
+  );
 }
 
 export async function getTrend(f: MetricFilters, bucket: Bucket = "week"): Promise<TrendPoint[]> {

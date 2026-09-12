@@ -5,6 +5,17 @@ import { useRouter } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +34,7 @@ import {
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
 import { reconcileMovements } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
-import { DEFAULT_LEDGER_CURRENCY, type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
+import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 
@@ -50,7 +61,10 @@ export function ImportFlow({
   ownerCountry,
 }: {
   existingClients: ExistingClient[];
-  ownerCountry: string | null;
+  // Nunca null: la página no monta este componente si no pudo leer el país,
+  // porque sin él no se sabe si las filas llevan moneda. Tipado así a
+  // propósito, para que el valor por defecto silencioso no pueda volver.
+  ownerCountry: string;
 }) {
   const router = useRouter();
   // Only a VE owner has a currency to choose. A CO owner's ledger has no
@@ -115,6 +129,16 @@ export function ImportFlow({
   // field is the kind of dead end that has no explanation on screen.
   const someRowLinked = reviewRows.some((r) => !unlinked.has(r.rowId));
   const missingSharedName = sameClient && someRowLinked && !sharedName.trim();
+  // Antes las filas nacían en USD. Era el valor por defecto más común y estaba
+  // a la vista, pero nada obligaba a mirarlo: una libreta llevada en euros,
+  // confirmada de corrido, entraba entera en el libro de dólares — y un
+  // movimiento en el libro que no es no da error, se ve bien y cuadra consigo
+  // mismo hasta que el cliente reclama.
+  //
+  // Ahora nacen sin moneda y esto bloquea la confirmación. Un clic en "Todo en
+  // USD/EUR" lo resuelve para la tanda entera, que es el camino normal; el
+  // selector por fila sigue ahí para la libreta que mezcla.
+  const missingCurrency = showCurrency && reviewRows.some((r) => !r.currency);
 
   function handleFilesSelected(fileList: FileList | null) {
     if (!fileList) return;
@@ -122,14 +146,16 @@ export function ImportFlow({
   }
 
   function handleViewResults() {
-    // Seeded here rather than in the extraction: the photo doesn't say, and
-    // USD is what almost every owner's libreta is kept in. The per-row select
-    // and the "aplicar a todas" shortcut are what handle the rest.
+    // La moneda no sale de la extracción porque la foto no la dice. Tampoco se
+    // siembra ya con un valor por defecto: la elige el dueño antes de guardar.
     setReviewMovements(
       doneJobs.flatMap((j) => j.movements).map((m) => ({
         ...m,
         uid: crypto.randomUUID(),
-        currency: showCurrency ? DEFAULT_LEDGER_CURRENCY : null,
+        // null en los dos casos, con dos significados: en un negocio CO es la
+        // respuesta definitiva — su libro no tiene moneda —, y en uno VE es un
+        // dato que todavía falta y que missingCurrency exige antes de guardar.
+        currency: null,
       })),
     );
     setUnlinked(new Set());
@@ -270,7 +296,7 @@ export function ImportFlow({
 
         {showCurrency ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-            <span className="text-sm font-medium">Moneda de toda la libreta</span>
+            <span className="text-sm font-medium">¿En qué moneda está esta libreta?</span>
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("USD")}>
                 Todo en USD
@@ -280,7 +306,8 @@ export function ImportFlow({
               </Button>
             </div>
             <p className="w-full text-xs text-muted-foreground">
-              Puedes cambiar filas sueltas después, si la libreta mezcla.
+              Hay que elegir una para poder importar. Puedes cambiar filas sueltas después, si la
+              libreta mezcla.
             </p>
           </div>
         ) : null}
@@ -304,20 +331,56 @@ export function ImportFlow({
               ? "Falta la cédula/documento del cliente — complétala antes de continuar."
               : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."}
           </p>
+        ) : missingCurrency ? (
+          <p className="text-sm text-destructive">
+            Elige la moneda de la libreta antes de continuar.
+          </p>
         ) : null}
         <div className="flex items-center justify-between">
           <Button variant="outline" onClick={() => setReviewMovements(null)} disabled={confirming}>
             Volver
           </Button>
-          <Button onClick={handleConfirm} disabled={confirming || reviewRows.length === 0 || missingDocumentId || missingSharedName}>
-            {confirming ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Guardando...
-              </>
-            ) : (
-              `Confirmar e importar (${reviewRows.length})`
-            )}
-          </Button>
+          {/* La confirmación va en un diálogo y no directa en el botón porque
+              esta es la única escritura de la app que mete decenas de filas de
+              golpe: lo que se cuela aquí no se revisa fila a fila después. Es
+              una pregunta distinta de las de arriba — esas son datos que
+              faltan, esta es "¿lo miraste?". */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                disabled={
+                  confirming ||
+                  reviewRows.length === 0 ||
+                  missingDocumentId ||
+                  missingSharedName ||
+                  missingCurrency
+                }
+              >
+                {confirming ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> Guardando...
+                  </>
+                ) : (
+                  `Confirmar e importar (${reviewRows.length})`
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  ¿Importar {reviewRows.length} {reviewRows.length === 1 ? "movimiento" : "movimientos"}?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Asegúrate de haber verificado los datos importados del cliente, así como montos y
+                  moneda.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Volver a revisar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirm}>Confirmar importación</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     );

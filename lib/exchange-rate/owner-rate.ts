@@ -26,11 +26,66 @@ export type OwnerRateContext = {
   officialRate: EffectiveRate;
 };
 
+// Por qué no hay contexto de tasa. Son dos razones distintas que durante
+// meses se devolvieron como el mismo `null`:
+//
+//   "co"           el dueño es colombiano y no hay moneda que elegir.
+//                  currency = null es la respuesta correcta, no una ausencia.
+//   "ve_sin_tasa"  el dueño es venezolano, pero no hay ninguna tasa guardada
+//                  todavía o la consulta no la devolvió.
+//
+// Confundirlas es un fallo de dinero: quien escribe un movimiento leía el
+// `null` como "es CO" y archivaba el fiado de un venezolano en el libro COP,
+// en silencio y de forma permanente. Auditado el 2026-09-11 en dev y en
+// producción: cero filas afectadas, así que la trampa estaba armada y no
+// había disparado todavía.
+export type OwnerRateContextResult =
+  | { kind: "co" }
+  | { kind: "ve"; context: OwnerRateContext }
+  | { kind: "ve_sin_tasa" }
+  // No se pudo leer el país. Es su propio caso y no se pliega a "co", porque
+  // plegarlo ahí es exactamente el fallo que esta función vino a arreglar: un
+  // `data` nulo por un error de red haría que un dueño venezolano escribiera
+  // en el libro colombiano. No saber no es lo mismo que saber que es CO.
+  | { kind: "pais_desconocido" };
+
+// Lo mismo que getOwnerRateContext, pero diciendo por qué. Lo usa la ruta de
+// escritura, que necesita distinguir; las pantallas se quedan con el envoltorio
+// de abajo, al que le basta con "hay tasa o no".
+export async function getOwnerRateContextResult(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
+  ownerId: string,
+): Promise<OwnerRateContextResult> {
+  // Dos intentos, igual que readOwnerCountry, y por el mismo motivo: rechazar
+  // el fiado de alguien por un parpadeo de red es un precio alto para una
+  // lectura que cuesta nada repetir. Aquí no se anota nada — quien llama ya
+  // registra su propio rechazo, con el origen concreto.
+  let country: string | null = null;
+  for (let intento = 1; intento <= 2; intento++) {
+    const { data: owner } = await supabase.from("owners").select("country").eq("id", ownerId).single();
+    country = (owner?.country as string | undefined) ?? null;
+    if (country) break;
+    if (intento === 1) await new Promise((r) => setTimeout(r, 500));
+  }
+
+  if (!country) return { kind: "pais_desconocido" };
+  if (country !== "VE") return { kind: "co" };
+
+  const context = await getOwnerRateContext(supabase, ownerId);
+  return context ? { kind: "ve", context } : { kind: "ve_sin_tasa" };
+}
+
 // Loads what's needed to convert a movement into Bs and snapshot the audit
 // trail. Returns null for a country='CO' owner, or for a 'VE' owner before
 // any rate has ever been fetched — callers should skip all conversion/
 // currency-select/badge logic in that case, leaving existing COP behavior
 // completely untouched.
+//
+// Las seis pantallas que lo llaman solo quieren saber si pintan el selector de
+// moneda y la insignia de tasa, así que para ellas los dos casos sin tasa se
+// comportan igual y la firma no cambia. Quien escribe dinero usa
+// getOwnerRateContextResult.
 export async function getOwnerRateContext(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>,

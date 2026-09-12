@@ -47,6 +47,68 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   path never setting currency at all) — treat this as high-risk on every
   release that touches `resolveMovementRateSnapshot`,
   `app/(app)/dashboard/actions.ts`, or `app/(app)/import/actions.ts`.
+
+  **Run `npm run qa:currency` — it asserts this invariant against real dev
+  owners in seconds, and writes nothing.** It checks that a CO owner always
+  resolves to a null currency whatever the form submits, that a VE owner
+  with no currency is **rejected** rather than defaulted, and that no
+  existing row sits in the wrong ledger. Added 2026-09-11 alongside the fix
+  for the latent bug that made this possible: `getOwnerRateContext` returned
+  the same `null` for "owner is CO" and "owner is VE but there is no stored
+  rate", so a transient failure to read the BCV rate would have filed a
+  Venezuelan owner's fiado in the COP ledger. Audited at the time in both
+  environments — zero rows affected, the trap was armed and had not fired.
+- **Rejection telemetry — only when the diff touches it, and once in
+  production the first time `050_movement_rejections.sql` runs there.** Not
+  every release: this is the "don't run the checklist blindly" rule applied to
+  itself. Re-check whenever the diff touches
+  `lib/movement-rejection.ts`, `record_movement_rejection()`,
+  `admin_metrics_health()`, or either of the two rejection branches in
+  `resolveMovementRateSnapshot`.
+
+  `npm run qa:currency` CANNOT cover this. The function reads `auth.uid()`,
+  which is null under the service-role key every `qa/` script uses, so it
+  returns early without inserting and a broken function would look identical
+  to a working one. Worse, `recordMovementRejection()` swallows its own errors
+  on purpose — a failure to record a rejection must never break the owner's
+  registration — so nothing surfaces anywhere. **Telemetry that has never
+  fired is telemetry you don't know works**, and this is the one piece that
+  tells us whether the currency guard is refusing real owners.
+
+  Run this in the SQL editor of the environment being checked, with any real
+  owner's uuid. It impersonates that owner's session, writes both rejection
+  kinds, reads them back, and rolls the whole thing away:
+
+  ```sql
+  begin;
+  set local role authenticated;
+  set local request.jwt.claims = '{"sub":"<owner-uuid>","role":"authenticated"}';
+
+  select public.record_movement_rejection('ve_sin_moneda', 'movimiento', null, 50, null, 1);
+  select public.record_movement_rejection('pais_desconocido', 'import', null, null, 'USD', 23);
+
+  reset role;   -- imprescindible: un dueño no puede hacer SELECT en esta tabla
+
+  select owner_id, reason, source, amount, attempted_currency, rows_affected
+  from public.movement_rejections
+  order by created_at;
+
+  rollback;
+  ```
+
+  Two rows, both carrying the uuid you passed in the claims — which is the
+  point: `owner_id` comes from `auth.uid()` inside the function, never from a
+  parameter, so an owner cannot forge another's telemetry. Zero rows means the
+  chain is broken. And the `reset role` is not a detail: without it the SELECT
+  fails with `42501 permission denied`, which is itself the proof that the
+  table is unreachable to an owner — RLS on, zero policies, zero grants, both
+  doors are SECURITY DEFINER functions.
+
+  Verified this way in dev on 2026-09-11, alongside a full browser pass:
+  manual movement writes `created_by` from code (not the 049 backfill), and a
+  mixed libreta stamped USD rows at 832.4883 and the EUR row at 968.06734453 —
+  the per-currency snapshot loop in `confirmImport`, which until then had never
+  run with two entries.
 - Photo-import ("libreta") flow: imported movements for a VE owner also
   get a real currency, not null.
 - `client_summary.balance_usd` / `balance_eur` reflect the actual sum of

@@ -25,6 +25,12 @@ import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
 
+// Los mismos dos decimales que formatDisplayCurrency, sin símbolo de moneda.
+const SIN_MONEDA = new Intl.NumberFormat("es-VE", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function ImportReviewTable({
   rows,
   onUpdate,
@@ -141,13 +147,22 @@ export function ImportReviewTable({
                     value={row.amount}
                     onChange={(e) => onUpdate(index, { amount: Number(e.target.value) || 0 })}
                   />
+                  {/* Sin moneda no se muestra ninguna, en vez de enseñar USD
+                      sin haberlo guardado: la fila diría "USD" mientras el
+                      servidor responde que no sabe en qué moneda está. El
+                      selector se ensancha solo mientras está vacío, y vuelve a
+                      su tamaño en cuanto hay una elegida — que es lo normal
+                      tras pulsar "Todo en USD/EUR". */}
                   {showCurrency ? (
                     <Select
-                      value={row.currency ?? "USD"}
+                      value={row.currency ?? undefined}
                       onValueChange={(v) => onUpdate(index, { currency: v as LedgerCurrency })}
                     >
-                      <SelectTrigger className="w-[4.5rem]" aria-label={`Moneda de ${row.client_name}`}>
-                        <SelectValue />
+                      <SelectTrigger
+                        className={row.currency ? "w-[4.5rem]" : "w-[10.5rem]"}
+                        aria-label={`Moneda de ${row.client_name}`}
+                      >
+                        <SelectValue placeholder="Selecciona moneda" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="USD">USD</SelectItem>
@@ -169,10 +184,18 @@ export function ImportReviewTable({
                   "$ 20,00 EUR", a dollar sign contradicting a euro code. Same
                   helper the client table and the movement detail use, so a
                   euro reads "€20,00" here exactly as it does everywhere else. */}
+              {/* Y mientras un negocio venezolano no haya elegido moneda, el
+                  total va sin símbolo. formatCurrency está fijado a COP, así
+                  que usarlo aquí pintaría el saldo de una libreta venezolana
+                  con el signo colombiano — la misma mentira que acabamos de
+                  quitar del selector, en la columna de al lado. La cifra es
+                  cierta; lo que aún no se sabe es en qué moneda está. */}
               <TableCell className="tabular-nums whitespace-nowrap">
                 {row.currency
                   ? formatDisplayCurrency(row.computed_balance, row.currency)
-                  : formatCurrency(row.computed_balance)}
+                  : showCurrency
+                    ? SIN_MONEDA.format(row.computed_balance)
+                    : formatCurrency(row.computed_balance)}
               </TableCell>
               <TableCell>
                 {row.needs_review ? (

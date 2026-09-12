@@ -72,9 +72,9 @@ export function AddMovementDialog({
   // Same reason as in client-search-dialog: the picker must start on the
   // shop's country, not on Colombia.
   ownerCountry: OwnerCountry;
-  // COP debt — used when rateContext is null (a 'CO' owner).
+  // COP debt — used for a 'CO' owner.
   currentDebtCop: number;
-  // Independent per-currency debts — used when rateContext is present. A
+  // Independent per-currency debts — used for a 'VE' owner. A
   // client can owe in one currency, the other, both, or neither.
   currentDebtUsd: number;
   currentDebtEur: number;
@@ -116,9 +116,20 @@ export function AddMovementDialog({
   // The debt each currency owes is independent — no conversion, since the
   // cap is the currency the owner is actively typing in. Switching between
   // USD/EUR while "Abono" is open picks a different cap live.
-  const currentDebt = rateContext ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
+  // Qué libro lleva este negocio lo decide el PAÍS, que el dueño eligió al
+  // registrarse y no puede cambiar. rateContext solo dice si hay una tasa que
+  // enseñar, y eso es una pregunta distinta: un dueño venezolano sigue
+  // llevando dólares y euros aunque el BCV no responda ahorita.
+  //
+  // Mezclarlas fue el fallo: el selector de moneda se pintaba con rateContext,
+  // así que sin tasa no aparecía, el formulario no mandaba moneda y el
+  // servidor —que ahora rechaza en vez de adivinar— dejaba al bodeguero sin
+  // poder fiar. Antes de rechazar, archivaba el fiado en el libro COP.
+  const llevaDivisas = ownerCountry === "VE";
+
+  const currentDebt = llevaDivisas ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
   const canPay = currentDebt > 0;
-  const formattedMaxDebt = rateContext ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+  const formattedMaxDebt = llevaDivisas ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
 
   const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
     // Only a real field when the client has no number on file at all — see
@@ -144,7 +155,7 @@ export function AddMovementDialog({
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
   // selected (which defaults to USD before the dialog has ever opened).
-  const canPayAny = rateContext ? currentDebtUsd > 0 || currentDebtEur > 0 : currentDebtCop > 0;
+  const canPayAny = llevaDivisas ? currentDebtUsd > 0 || currentDebtEur > 0 : currentDebtCop > 0;
 
   function openForCharge() {
     setType("charge");
@@ -169,7 +180,7 @@ export function AddMovementDialog({
     // type === "payment" && !canPay guard below. Corrects in either
     // direction — currency may already be sitting on the wrong one from
     // a previous open (e.g. left on EUR while USD is what's now owed).
-    if (rateContext) {
+    if (llevaDivisas) {
       if (currentDebtUsd > 0) setCurrency("USD");
       else if (currentDebtEur > 0) setCurrency("EUR");
     }
@@ -208,7 +219,7 @@ export function AddMovementDialog({
       if (autoOpen === "payment" && canPayAny) {
         // Mirrors openForPayment(): land on a currency that actually has debt,
         // or the guard further down would bounce this straight back to charge.
-        if (rateContext) {
+        if (llevaDivisas) {
           if (currentDebtUsd > 0) setCurrency("USD");
           else if (currentDebtEur > 0) setCurrency("EUR");
         }
@@ -335,14 +346,14 @@ export function AddMovementDialog({
             </RadioGroup>
             {paymentBlocked ? (
               <p className="text-xs text-destructive">
-                {`${clientName} no debe nada${rateContext ? ` en ${currency === "EUR" ? "EUROS" : currency}` : ""}, por eso no se puede registrar un abono.`}
+                {`${clientName} no debe nada${llevaDivisas ? ` en ${currency === "EUR" ? "EUROS" : currency}` : ""}, por eso no se puede registrar un abono.`}
               </p>
             ) : null}
           </div>
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
 
-          {rateContext ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+          {llevaDivisas ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="amount">Monto</Label>
