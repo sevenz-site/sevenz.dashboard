@@ -99,5 +99,22 @@ const coConMoneda = movs.filter((m) => paisDe.get(duenoDe.get(m.client_id)) === 
 check("ningún movimiento VE en el libro COP", veEnLibroCop.length === 0, `${movs.length} movimientos revisados`);
 check("ningún movimiento CO con moneda", coConMoneda.length === 0);
 
+// ── autoría (migración 049) ─────────────────────────────────────────────
+// Se comprueba aquí y no en un script aparte porque es la otra invariante de
+// la misma escritura: todo movimiento tiene moneda correcta y autor conocido.
+const conAutor = await todas("movements", "id, client_id, created_by");
+const sinAutor = conAutor.filter((m) => !m.created_by);
+check("ningún movimiento sin autor", sinAutor.length === 0, `${conAutor.length} revisados`);
+
+// Mientras no exista membresía el autor solo puede ser el dueño del cliente.
+// El día que eso deje de ser cierto, esta afirmación falla — y esa es
+// justamente la señal de que hay que reescribirla, no de que algo se rompió.
+const autorAjeno = conAutor.filter((m) => m.created_by !== duenoDe.get(m.client_id));
+check(
+  "el autor coincide con el dueño del cliente",
+  autorAjeno.length === 0,
+  autorAjeno.length ? `${autorAjeno.length} con otro autor — ¿llegó la membresía?` : "un solo autor posible hoy",
+);
+
 console.log(`\n${fallos === 0 ? "TODO EN VERDE" : fallos + " FALLO(S)"}`);
 process.exit(fallos === 0 ? 0 : 1);
