@@ -6,6 +6,7 @@ import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
+import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = {
@@ -180,6 +181,15 @@ export async function createClientWithMovement(
 
   const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
   if (!resolucion.ok) {
+    await recordMovementRejection(supabase, {
+      reason: resolucion.reason,
+      source: "cliente_nuevo",
+      userId: user.id,
+      userEmail: user.email,
+      clientId: newClient.id,
+      amount,
+      attemptedCurrency: currency,
+    });
     // El cliente ya se creó arriba, y se queda: borrarlo por no poder escribir
     // el primer movimiento perdería los datos de contacto que el dueño acaba
     // de teclear. Vuelve a intentarlo eligiendo la moneda y el cliente ya está.
@@ -274,7 +284,18 @@ export async function addMovement(
   const { type, amount, currency, description, photoPath, plazoDias } = fields;
 
   const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
-  if (!resolucion.ok) return { error: resolucion.error, clientId: null };
+  if (!resolucion.ok) {
+    await recordMovementRejection(supabase, {
+      reason: resolucion.reason,
+      source: "movimiento",
+      userId: user.id,
+      userEmail: user.email,
+      clientId,
+      amount,
+      attemptedCurrency: currency,
+    });
+    return { error: resolucion.error, clientId: null };
+  }
   const resolved = resolucion.snapshot;
 
   // A payment can never exceed what the client currently owes in that SAME

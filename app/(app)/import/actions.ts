@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
+import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 
 export type ImportRow = {
@@ -62,6 +63,17 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   for (const currency of new Set(rows.map((r) => r.currency ?? null))) {
     const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
     if (!resolucion.ok) {
+      // rows.length y no 1: aquí se pierde la tanda entera, y ese es el número
+      // que dice lo que costó. Sin él, un rechazo de import parece tan barato
+      // como uno de un fiado suelto.
+      await recordMovementRejection(supabase, {
+        reason: resolucion.reason,
+        source: "import",
+        userId: user.id,
+        userEmail: user.email,
+        attemptedCurrency: currency,
+        rowsAffected: rows.length,
+      });
       return { error: resolucion.error, imported: 0 };
     }
     snapshots.set(currency ?? "COP", resolucion.snapshot);

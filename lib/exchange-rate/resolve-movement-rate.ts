@@ -18,9 +18,14 @@ export type MovementRateSnapshot = {
 // Falla en vez de acertar por casualidad. El único motivo de rechazo es que el
 // dueño sea venezolano y no venga moneda: ahí no hay respuesta correcta que
 // deducir, solo dos libros distintos entre los que elegir a ciegas.
+export type MovementRejectionReason = "ve_sin_moneda" | "pais_desconocido";
+
 export type MovementRateResolution =
   | { ok: true; snapshot: MovementRateSnapshot }
-  | { ok: false; error: string };
+  // `reason` va aparte del mensaje para que quien anota la telemetría no tenga
+  // que reconocer el rechazo por el texto: el mensaje está escrito para el
+  // dueño y cambiará cuando se lea mal, el motivo es para nosotros y no.
+  | { ok: false; reason: MovementRejectionReason; error: string };
 
 const SIN_TASA: MovementRateSnapshot = {
   currency: null,
@@ -64,6 +69,7 @@ export async function resolveMovementRateSnapshot(
   if (resultado.kind === "pais_desconocido") {
     return {
       ok: false,
+      reason: "pais_desconocido",
       error: "No pudimos leer los datos de tu negocio. Vuelve a intentarlo en un momento.",
     };
   }
@@ -78,6 +84,7 @@ export async function resolveMovementRateSnapshot(
   if (!currency) {
     return {
       ok: false,
+      reason: "ve_sin_moneda",
       error: "No pudimos saber si el movimiento es en dólares o en euros. Vuelve a intentarlo eligiendo la moneda.",
     };
   }
