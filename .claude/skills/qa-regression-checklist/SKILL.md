@@ -128,6 +128,37 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   matches what the page destructures (a function signature change here is
   a silent breakage, not a build error).
 
+## 4b. What this change makes false elsewhere
+
+Ask one question, every release: **does this make something we already wrote
+untrue?** Not "should we write a new page" — that is usually no, and it is a
+different check. Only the first one catches contradictions.
+
+Four surfaces, all in the `Web/` repo, which **deploys separately from the
+dashboard**:
+
+| Surface | Where | Re-read when the diff… |
+|---|---|---|
+| Preguntas frecuentes | `Web/components/landing/faq.tsx` | changes what the product does, costs, or requires |
+| Soporte | `Web/lib/soporte.ts` | changes a screen, a button name, or the steps to do something |
+| Términos y condiciones | `Web/app/terminos-y-condiciones/page.tsx` | changes limits, plans, prices, or what the owner may do |
+| Política de privacidad | `Web/app/politica-de-privacidad/page.tsx` | stores something new, shares it with anyone, or keeps it longer |
+
+The legal pair fails the most quietly and costs the most. Nothing in the
+codebase complains when a feature starts storing client photos in a public
+bucket, adds an analytics provider, or records who wrote each movement — but
+each of those is a paragraph in the privacy policy, or should be. Check it
+against what the feature actually does, not against what it was called.
+
+**Added 2026-09-13, after it happened.** The dashboard began asking owners to
+install Sevenz on their phone while the FAQ on the same product's home page
+answered *"No tienes que instalar nada"*. Both sentences were written in good
+faith, months apart, and the contradiction was caught by accident while adding
+an unrelated FAQ entry — not by any check. That is the gap this section closes.
+
+If a surface needs an edit, say so in the report and remember it is a **second
+merge**: a dashboard release does not publish the website.
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
