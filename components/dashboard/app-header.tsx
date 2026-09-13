@@ -38,7 +38,10 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
   return (
     <header
       className={cn(
-        "h-14 shrink-0 items-center gap-2 border-b px-4",
+        // sticky + bg-background: sin el fondo, el contenido se ve por
+        // debajo al hacer scroll. z-20 la pone sobre la página y por debajo
+        // de diálogos y sheets, que viven en z-50.
+        "sticky top-0 z-20 h-14 shrink-0 items-center gap-2 border-b bg-background px-4",
         hasOwnBar ? "hidden sm:flex" : "flex",
       )}
     >

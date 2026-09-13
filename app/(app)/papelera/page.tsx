@@ -34,7 +34,7 @@ export default async function PapeleraPage() {
           one: flush to the top, edge to edge. The negative margins cancel main's
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
           up, where the real header returns. */}
-      <div className="-mx-4 -mt-4 flex items-center border-b px-4 py-3 sm:hidden">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href="/dashboard" aria-label="Volver a Cartera">
             <ChevronLeft className="size-5" />

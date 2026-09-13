@@ -141,13 +141,17 @@ export default async function ClientDetailPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* On a phone this IS the header, so it has to behave like one: flush to
+      {/* Sticky solo por debajo de sm. Esta barra es la única de las siete que
+          sigue existiendo en escritorio, y ahí arriba ya está la cabecera de la
+          app: dos pegadas a top-0 se solaparían. Por eso sm:static.
+
+          On a phone this IS the header, so it has to behave like one: flush to
           the top and edge to edge. main wraps children in p-4, so the negative
           margins cancel that padding and px-4 puts the content back where it
           was — otherwise the rule stops 16px short of both edges and the bar
           floats below the top. Undone from sm up, where the real header is back
           above it and this is just a row inside the page. */}
-      <div className="-mx-4 -mt-4 flex items-center justify-between gap-4 border-b px-4 py-3 sm:mx-0 sm:mt-0 sm:border-0 sm:px-0 sm:py-0">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between gap-4 border-b bg-background px-4 py-3 sm:static sm:z-auto sm:mx-0 sm:mt-0 sm:border-0 sm:px-0 sm:py-0">
         {/* Icon only. The destination is named by the screen it returns to, and
             the label lives in aria-label rather than on screen — the bar is
             the phone's header here, where width is scarcest.
