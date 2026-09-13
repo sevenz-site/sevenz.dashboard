@@ -6,12 +6,16 @@
 // usuarios preguntan por la Play Store: no es que quieran la tienda, es que no
 // saben que ya se puede.
 
+// sessionStorage y no localStorage, y ese es todo el cambio: el aviso se queda
+// hasta que la app esté instalada. La ✕ lo calla en esta visita, no para
+// siempre — en la siguiente vuelve, y seguirá volviendo mientras siga sin
+// instalarse.
+//
+// Antes eran dos descartes y se acababa. Se cambió a petición: el aviso existe
+// porque nadie sabía que Sevenz se podía instalar, y un aviso que se rinde a la
+// segunda no resuelve eso. El precio es insistir; el freno es que instalarla lo
+// apaga de verdad y para siempre.
 const CLAVE = "sevenz:instalar-descartado";
-const DIAS = 7 * 24 * 60 * 60 * 1000;
-// Dos veces y se acabó. Insistir una vez cubre a quien lo cerró por estar
-// ocupado; insistir cinco convierte un aviso útil en algo que se cierra sin
-// leer, en una app que se abre todos los días.
-const MAX_DESCARTES = 2;
 
 // El evento que Chrome dispara cuando la app cumple los requisitos para
 // instalarse. No está en lib.dom: es de Chrome, no del estándar.
@@ -78,40 +82,25 @@ export function esIphone(): boolean {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
-type Descartes = { veces: number; cuando: number };
-
-function leerDescartes(): Descartes {
-  // localStorage puede lanzar, no solo devolver vacío: en una ventana privada o
-  // con las cookies bloqueadas, leerlo es una excepción. Y esto no puede
-  // romper Cartera.
-  try {
-    const crudo = window.localStorage.getItem(CLAVE);
-    if (!crudo) return { veces: 0, cuando: 0 };
-    const d = JSON.parse(crudo) as Descartes;
-    return { veces: Number(d.veces) || 0, cuando: Number(d.cuando) || 0 };
-  } catch {
-    return { veces: 0, cuando: 0 };
-  }
-}
-
 export function descartar() {
   try {
-    const previo = leerDescartes();
-    window.localStorage.setItem(
-      CLAVE,
-      JSON.stringify({ veces: previo.veces + 1, cuando: Date.now() } satisfies Descartes),
-    );
+    window.sessionStorage.setItem(CLAVE, "1");
   } catch {
-    // Sin memoria donde anotarlo, el aviso vuelve a salir. Molesto, no roto.
+    // Sin memoria donde anotarlo, el aviso vuelve a salir en la siguiente
+    // pantalla. Molesto, no roto.
   }
   avisar();
 }
 
 function tocaOfrecerlo(): boolean {
-  const { veces, cuando } = leerDescartes();
-  if (veces >= MAX_DESCARTES) return false;
-  if (veces === 0) return true;
-  return Date.now() - cuando > DIAS;
+  // sessionStorage puede lanzar, no solo devolver vacío: en una ventana privada
+  // o con las cookies bloqueadas, leerlo es una excepción. Y esto no puede
+  // romper Cartera, así que ante la duda se ofrece.
+  try {
+    return window.sessionStorage.getItem(CLAVE) !== "1";
+  } catch {
+    return true;
+  }
 }
 
 // Un solo valor primitivo que resume las tres preguntas: si ya está instalada,

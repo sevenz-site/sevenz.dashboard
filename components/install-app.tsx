@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Share, Smartphone, X } from "lucide-react";
+import Image from "next/image";
+import { Share, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -98,10 +99,14 @@ export function InstallAppDialog({
 
 // La tira que invita a instalar, arriba de Cartera.
 //
-// Solo en teléfono, solo si no está instalada ya, y solo si toca ofrecerlo —
-// dos descartes y no vuelve. Se decidió así porque el aviso compite con lo que
-// el tendero vino a hacer: una app que se abre todos los días no puede pedir lo
-// mismo todos los días.
+// Solo en teléfono, y se queda hasta que la app esté instalada. La ✕ la calla
+// en esta visita; en la siguiente vuelve.
+//
+// Nació con dos descartes y se acabó, y se cambió a petición. El argumento que
+// ganó: este aviso existe porque nadie sabía que Sevenz se podía instalar, y
+// uno que se rinde a la segunda no arregla eso. Insistir tiene un precio, pero
+// aquí hay una salida real y a un toque — instalarla lo apaga para siempre,
+// que es exactamente lo que queremos que pase.
 export function InstallAppBanner() {
   const isMobile = useIsMobile();
   // Todo lo que decide si esto se ve vive en el navegador —si ya está
@@ -130,42 +135,63 @@ export function InstallAppBanner() {
 
   return (
     <>
-      <div className="flex items-start gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-        <Smartphone className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex flex-col gap-0.5">
-            <p className="text-sm font-medium">Instala Sevenz en tu teléfono</p>
-            <p className="text-xs text-muted-foreground">
-              Ábrela desde tu pantalla de inicio, como cualquier otra app.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {estado === "un-toque" ? (
-              <Button size="sm" onClick={() => void handleInstalar()}>
-                Instalar
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setPasos(true);
-                  track("Install Prompt Accepted", { method: "steps" });
-                }}
-              >
-                Ver cómo
-              </Button>
-            )}
-          </div>
+      {/* Tarjeta oscura fija en los dos temas, no derivada de los tokens.
+          Es deliberado: esto no es una superficie más de la pantalla, es lo
+          único que la interrumpe, y en modo oscuro una tarjeta "invertida" se
+          volvería blanca y gritaría más de lo que toca.
+
+          El #272727 no es un color elegido al azar: es el fondo del propio
+          icon.svg. Por eso el icono se apoya sin recorte ni marco — su cuadrado
+          se funde con la tarjeta y solo queda la S.
+
+          Medido: naranja sobre este fondo da 5.0:1 y el gris 5.7:1, los dos por
+          encima del 4.5:1 que pide AA. El blanco del título, 14.9:1. */}
+      <div className="relative flex items-center gap-4 rounded-2xl bg-[#272727] p-4 pr-12">
+        <Image
+          src="/icon.svg"
+          alt=""
+          width={56}
+          height={56}
+          className="size-14 shrink-0"
+          aria-hidden="true"
+        />
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-lg leading-tight font-semibold text-white">
+            Instala Sevenz en tu teléfono
+          </p>
+          <p className="text-sm leading-snug text-[#a3a3a3]">
+            Ábrela desde tu pantalla de inicio, como cualquier otra app.
+          </p>
+          {/* El naranja de la marca, el mismo del icono. El design system dice
+              no inventar un color de acento y esto no lo inventa: lo toma del
+              único sitio donde Sevenz ya tenía uno.
+
+              Alto de 36px con margen negativo: se ve como un enlace pegado al
+              texto, pero el área que se toca es la de un botón. En un teléfono
+              la diferencia entre las dos cosas es fallar el toque o no. */}
+          <Button
+            variant="link"
+            className="-mx-2 mt-1 h-9 self-start px-2 text-lg font-medium text-[#f66b02] hover:text-[#f66b02]/80"
+            onClick={() => {
+              if (estado === "un-toque") {
+                void handleInstalar();
+                return;
+              }
+              setPasos(true);
+              track("Install Prompt Accepted", { method: "steps" });
+            }}
+          >
+            {estado === "un-toque" ? "Instalar" : "Ver cómo"}
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="ml-auto shrink-0"
+        <button
+          type="button"
           onClick={handleCerrar}
           aria-label="Cerrar el aviso de instalación"
+          className="absolute top-3 right-3 flex size-9 items-center justify-center rounded-md text-white/70 transition-colors hover:text-white focus-visible:ring-[3px] focus-visible:ring-white/40 focus-visible:outline-none"
         >
-          <X className="size-4" />
-        </Button>
+          <X className="size-5" />
+        </button>
       </div>
       <InstallAppDialog open={pasos} onOpenChange={setPasos} />
     </>
