@@ -1,11 +1,18 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { ArrowUpDown, Share2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { getRateHistory } from "@/lib/exchange-rate/rate-history";
+import {
+  etiquetaDePrevista,
+  tasaPrevistaDe,
+  type TasaPrevista,
+} from "@/lib/exchange-rate/tasa-prevista";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -183,8 +190,31 @@ function RateCalculator({
   // their number.
   const [pristine, setPristine] = useState(true);
   const [shared, setShared] = useState(false);
+  // La proxima tasa publicada, si toca ofrecerla. getRateHistory esta cacheado
+  // a nivel de modulo y la tabla de abajo lo llama tambien, asi que esto no
+  // añade una segunda peticion.
+  const [prevista, setPrevista] = useState<TasaPrevista | null>(null);
+  const [usarPrevista, setUsarPrevista] = useState(false);
 
-  const pairRate = pair === "USD" ? rate.usd : rate.eur;
+  useEffect(() => {
+    let cancelado = false;
+    getRateHistory()
+      .then((historial) => {
+        if (!cancelado) setPrevista(tasaPrevistaDe(historial));
+      })
+      // Sin tasa prevista no se ofrece nada y la calculadora funciona igual:
+      // esto es un extra, no una dependencia.
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  // La tasa con la que se calcula de verdad. Toda la conversion cuelga de aqui,
+  // asi que marcar la casilla cambia el numero grande y no solo una etiqueta.
+  const tasaEnUso = usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rate;
+
+  const pairRate = pair === "USD" ? tasaEnUso.usd : tasaEnUso.eur;
   const pairName = pair === "USD" ? "Dólar" : "Euro";
 
   const putCurrency: MovementCurrency = entry === "VES" ? "VES" : pair;
@@ -197,7 +227,7 @@ function RateCalculator({
   const hasAmount = typed > 0;
 
   const convertBetween = (amount: number, from: MovementCurrency, to: MovementCurrency) => {
-    const all = convertToAllCurrencies(amount, from, rate);
+    const all = convertToAllCurrencies(amount, from, tasaEnUso);
     return to === "VES" ? all.ves : to === "USD" ? all.usd : all.eur;
   };
   const putAmount = source === "put" ? typed : convertBetween(typed, getCurrency, putCurrency);
@@ -213,13 +243,18 @@ function RateCalculator({
   const putPlaceholder = money(0, putCurrency);
   const getPlaceholder = money(0, getCurrency);
 
-  const stampLabel = rateDate ? `Tasa BCV del ${formatRateDate(rateDate)}` : "Tasa BCV";
+  const stampLabel = usarPrevista && prevista
+    ? `Tasa BCV prevista para ${etiquetaDePrevista(prevista.fecha)}`
+    : rateDate
+      ? `Tasa BCV del ${formatRateDate(rateDate)}`
+      : "Tasa BCV";
   // Only when the rate is not today's. Two causes, two sentences, because
   // telling an owner "the BCV doesn't publish on weekends" while the real
   // problem is our own fetch would hide the failure precisely when it costs
   // money — they would price a fiado against a rate they think is confirmed.
-  const stampNote =
-    rateStatus === "no_publication"
+  const stampNote = usarPrevista
+    ? null
+    : rateStatus === "no_publication"
       ? "El BCV no publica sábados, domingos ni festivos. Esta es la última tasa publicada."
       : rateStatus === "unconfirmed"
         ? // A fact, not a status. "Estamos reintentando" read like a spinner —
@@ -389,6 +424,24 @@ function RateCalculator({
         <span className="text-xs opacity-70">{stampLabel}</span>
         {stampNote ? <span className="text-xs opacity-70">{stampNote}</span> : null}
       </div>
+
+      {/* Solo aparece cuando hay una tasa futura publicada y estamos en la
+          ventana del fin de semana. El resto del tiempo no existe: una casilla
+          que casi siempre esta apagada se vuelve parte del decorado y deja de
+          leerse justo el dia que importa.
+
+          Fuera de la tarjeta oscura, no dentro: es una decision del dueño sobre
+          el calculo, no un dato mas del resultado. */}
+      {prevista ? (
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <Checkbox
+            checked={usarPrevista}
+            onCheckedChange={(v) => setUsarPrevista(v === true)}
+            className="mt-0.5"
+          />
+          <span>Aplicar tasa BCV prevista para {etiquetaDePrevista(prevista.fecha)}</span>
+        </label>
+      ) : null}
 
       <Button type="button" variant="outline" onClick={handleShare}>
         {shared ? "Copiado" : "Compartir"}
