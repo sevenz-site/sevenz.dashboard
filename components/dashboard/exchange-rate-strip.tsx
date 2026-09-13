@@ -433,7 +433,7 @@ function RateCalculator({
           Fuera de la tarjeta oscura, no dentro: es una decision del dueño sobre
           el calculo, no un dato mas del resultado. */}
       {prevista ? (
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <label className="mb-1 flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox
             checked={usarPrevista}
             onCheckedChange={(v) => setUsarPrevista(v === true)}
