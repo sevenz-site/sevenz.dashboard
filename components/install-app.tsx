@@ -50,16 +50,34 @@ export function InstallAppDialog({
   // hidratación sin escribir estado desde un efecto.
   const iphone = useSyncExternalStore(suscribirseANada, esIphone, () => false);
   const samsung = useSyncExternalStore(suscribirseANada, esSamsungInternet, () => false);
+  const [sinChrome, setSinChrome] = useState(false);
 
-  const pasos = samsung
-    ? [
-        <>
-          Copia esta dirección: <b>app.sevenz.site</b>
-        </>,
-        <>Abre Chrome en este mismo teléfono y pégala.</>,
-        <>Entra a tu cuenta y toca &ldquo;Instalar&rdquo;.</>,
-      ]
-    : iphone
+  // Abrir Chrome desde otro navegador se pide con un enlace `intent://`, que es
+  // como Android deja que una página llame a una app concreta.
+  //
+  // Lo incómodo es que no avisa si falla: si Chrome no está instalado, no pasa
+  // nada y el tendero se queda mirando un botón muerto. Así que se mide al
+  // revés — si Chrome se abre, ESTA página pasa a segundo plano; si al segundo
+  // y medio seguimos visibles, es que no se abrió nada.
+  //
+  // Un falso positivo aquí no se ve: si Chrome SÍ abrió, el dueño ya no está
+  // mirando esta pantalla cuando aparece el mensaje.
+  function abrirEnChrome() {
+    const destino = `${window.location.host}${window.location.pathname}`;
+    let cambio = false;
+    const alOcultarse = () => {
+      cambio = true;
+    };
+    document.addEventListener("visibilitychange", alOcultarse, { once: true });
+    window.location.href = `intent://${destino}#Intent;scheme=https;package=com.android.chrome;end`;
+    window.setTimeout(() => {
+      document.removeEventListener("visibilitychange", alOcultarse);
+      if (!cambio && document.visibilityState === "visible") setSinChrome(true);
+    }, 1500);
+  }
+
+  // Sin rama para Samsung: ahí no se dan pasos, se da un botón que abre Chrome.
+  const pasos = iphone
     ? [
         <>
           Toca el botón de compartir <Share className="inline size-4 align-text-bottom" aria-hidden="true" />
@@ -88,18 +106,49 @@ export function InstallAppDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ol className="flex flex-col gap-3 text-sm">
-          {pasos.map((paso, i) => (
-            <li key={i} className="flex gap-3">
-              {/* El número sale del peso y del fondo, no de un color de acento:
-                  este producto no tiene paleta de marca a propósito. */}
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted font-medium tabular-nums">
-                {i + 1}
-              </span>
-              <span className="pt-0.5">{paso}</span>
-            </li>
-          ))}
-        </ol>
+        {samsung ? (
+          <div className="flex flex-col gap-3">
+            {sinChrome ? (
+              /* Sin Chrome no se manda a nadie a la tienda a descargar un
+                 navegador entero solo para poner un icono. Lo que importa
+                 decirle es que no está bloqueado: Sevenz funciona completa
+                 desde cualquier navegador, y lo único que se pierde es el
+                 acceso directo. */
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                <p className="font-medium">No encontramos Chrome en este teléfono</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  Puedes seguir usando Sevenz desde aquí sin ningún problema. Lo único que no
+                  podrás es dejar el ícono en tu pantalla de inicio.
+                </p>
+              </div>
+            ) : (
+              <>
+                <Button onClick={abrirEnChrome}>Abrir en Chrome</Button>
+                <p className="text-sm text-muted-foreground">
+                  Vas a tener que entrar a tu cuenta otra vez: cada navegador guarda su propia
+                  sesión. Tus datos no se mueven de sitio.
+                </p>
+              </>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Si prefieres, también funciona con Brave, Edge u Opera. El único que no logra
+              instalarla es este.
+            </p>
+          </div>
+        ) : (
+          <ol className="flex flex-col gap-3 text-sm">
+            {pasos.map((paso, i) => (
+              <li key={i} className="flex gap-3">
+                {/* El número sale del peso y del fondo, no de un color de acento:
+                    este producto no tiene paleta de marca a propósito. */}
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted font-medium tabular-nums">
+                  {i + 1}
+                </span>
+                <span className="pt-0.5">{paso}</span>
+              </li>
+            ))}
+          </ol>
+        )}
 
         <p className="text-xs text-muted-foreground">
           {samsung
