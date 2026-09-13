@@ -447,6 +447,41 @@ When a change is previewable, check it at iPhone width before reporting it
 done, and say in the QA table which viewport was actually tested — a row
 that doesn't name the viewport reads as if it were tested everywhere.
 
+## A change ships in four places, not one
+
+Every release asks one more question before it goes out: **does this make
+something we already wrote false?**
+
+Sevenz explains itself in four surfaces outside the app, and all four live in
+the `Web/` repo, which deploys separately from the dashboard:
+
+| Surface | Where |
+|---|---|
+| Preguntas frecuentes | `Web/components/landing/faq.tsx` |
+| Soporte | `Web/lib/soporte.ts` |
+| Términos y condiciones | `Web/app/terminos-y-condiciones/page.tsx` |
+| Política de privacidad | `Web/app/politica-de-privacidad/page.tsx` |
+
+The question is not "should we write a new page for this" — usually no. It is
+"is any sentence already published now wrong?" Those are different checks, and
+only the second one catches contradictions.
+
+**This is not hypothetical.** On 2026-09-13 the app started asking owners to
+install Sevenz on their phone, while the FAQ on the same product's home page
+answered *"No tienes que instalar nada"*. Both sentences were written in good
+faith, months apart. Nobody had lied; nobody had looked either. It was caught
+by accident while adding the new FAQ entry, not by any check.
+
+The legal pair earns its own attention because it fails quietly and costs more:
+a feature that starts storing something new, sharing something with a third
+party, or keeping data longer makes the Política de Privacidad inaccurate the
+day it ships, and nothing in the codebase will complain. Storing client photos
+in a public bucket, adding an analytics provider, recording who wrote each
+movement — each of those is a paragraph somewhere, or should be.
+
+Two surfaces, two deploys: a dashboard merge does not publish the website. A
+release that changes both has to merge both, and the checklist says which.
+
 ## Explain bugs in two languages: dev and plain
 
 Whenever explaining a bug, a fix, or a technical finding — by default,

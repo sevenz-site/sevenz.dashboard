@@ -82,6 +82,29 @@ export function esIphone(): boolean {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
+// Samsung Internet, el navegador de fábrica de los teléfonos Samsung — que en
+// Venezuela y Colombia es una parte enorme del parque.
+//
+// Importa porque su instalación está ROTA en Android 16, y de una forma que no
+// podemos arreglar. Al instalar una web, el navegador fabrica por detrás un
+// paquete de Android de verdad, en sus propios servidores; nosotros solo
+// decimos cómo nos llamamos y cuál es el icono. El paquete que fabrica Samsung
+// Internet apunta a una versión vieja de Android, y Android 16 se niega a
+// instalarlo: "Se bloqueó la app no segura... se diseñó para una versión
+// anterior de Android".
+//
+// Comprobado el 2026-09-13 en un Samsung con Android 16 y One UI 8.5: bloqueada
+// ahi, instalada sin problema desde Chrome y desde Brave en el mismo telefono.
+//
+// Así que aquí no se ofrece instalar. Se manda a Chrome, que es lo único que
+// funciona — y ofrecer un botón que termina en una alerta de seguridad de
+// Google es peor que no ofrecer ninguno: el tendero no concluye "este navegador
+// está viejo", concluye "esta app es peligrosa".
+export function esSamsungInternet(): boolean {
+  if (typeof window === "undefined") return false;
+  return /SamsungBrowser/i.test(window.navigator.userAgent);
+}
+
 export function descartar() {
   try {
     window.sessionStorage.setItem(CLAVE, "1");
@@ -113,6 +136,9 @@ export type EstadoAviso = "un-toque" | "pasos" | "oculto";
 export function estadoDelAviso(): EstadoAviso {
   if (yaEstaInstalada()) return "oculto";
   if (!tocaOfrecerlo()) return "oculto";
+  // Samsung Internet SÍ dispara el evento de instalación, así que sin esta
+  // línea le ofreceríamos un botón que acaba en la alerta de Google.
+  if (esSamsungInternet()) return "pasos";
   return diferido ? "un-toque" : "pasos";
 }
 
