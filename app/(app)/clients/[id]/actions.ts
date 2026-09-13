@@ -303,3 +303,47 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
   revalidateClientSurfaces(clientId);
   return { error: null };
 }
+
+// Guarda la ruta de la foto que el navegador acaba de subir al bucket.
+//
+// La subida en sí la hace el navegador con la sesión del dueño, igual que las
+// fotos de un movimiento: la política de la 052 solo le deja escribir dentro de
+// una carpeta que se llama como su propio id. Esta accion no toca el archivo,
+// solo apunta el cliente hacia él.
+//
+// El `.eq("owner_id", user.id)` no sobra por tener RLS detras: clientId llega
+// del navegador, y comprobar a quién pertenece antes de escribir es la regla
+// que este proyecto ya se saltó dos veces. Si el cliente no es suyo, la
+// actualización no encuentra fila y no pasa nada.
+export async function setClientProfilePicture(
+  clientId: string,
+  path: string | null,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!clientId) return { error: "Cliente inválido." };
+
+  // Una ruta que no empiece por la carpeta del dueño se rechaza aquí también, y
+  // no solo en Storage: sin esto, alguien podría apuntar a un cliente suyo
+  // hacia la foto de un cliente ajeno — el bucket es público, así que bastaría
+  // con saber la ruta. La política de Storage gobierna quién ESCRIBE archivos;
+  // esta comprobación gobierna a cuál se puede APUNTAR.
+  if (path && !path.startsWith(`${user.id}/`)) {
+    return { error: "No pudimos guardar la foto." };
+  }
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ profile_picture_path: path })
+    .eq("id", clientId)
+    .eq("owner_id", user.id);
+
+  if (error) return { error: `No pudimos guardar la foto: ${error.message}` };
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/dashboard");
+  return { error: null };
+}

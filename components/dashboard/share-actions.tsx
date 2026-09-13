@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { Share2, MessageCircle } from "lucide-react";
+import { Share2, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -12,6 +12,7 @@ export function ShareActions({
   clientName,
   whatsapp,
   balanceText,
+  variant = "icons",
 }: {
   clientId: string;
   clientName: string;
@@ -21,6 +22,12 @@ export function ShareActions({
   // this component currency-agnostic rather than re-deriving formatting
   // logic that already lives in formatLedgerAmount/formatCurrency.
   balanceText: string;
+  // "icons" es la pareja de botones redondos de la tabla de clientes.
+  // "whatsapp-button" es el botón ancho de la ficha: la misma acción de
+  // siempre —handleRemind—, solo que dicha con todas sus letras. Recordar el
+  // saldo por WhatsApp es lo que más hace un tendero aquí, y estaba escondido
+  // tras un icono sin etiqueta.
+  variant?: "icons" | "whatsapp-button";
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -76,6 +83,20 @@ export function ShareActions({
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(buildMessage(url))}`;
     window.open(wa, "_blank", "noopener,noreferrer");
     track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
+  }
+
+  if (variant === "whatsapp-button") {
+    return (
+      <Button
+        variant="outline"
+        className="w-full text-[#128C4A] dark:text-[#25D366]"
+        disabled={pending}
+        onClick={handleRemind}
+      >
+        Compartir saldo vía WhatsApp
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
+      </Button>
+    );
   }
 
   return (

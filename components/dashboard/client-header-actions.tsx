@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, MessageCircle, MoreVertical, RotateCcw, Share2, Trash2 } from "lucide-react";
+import { EyeOff, MessageCircle, MoreVertical, Pencil, RotateCcw, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,8 @@ import {
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { hideClientPermanently, restoreClient, trashClient } from "@/app/(app)/clients/[id]/actions";
 import { track } from "@/lib/mixpanel";
+import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
+import type { Client, OwnerCountry } from "@/lib/types";
 
 // Which confirmation is on screen. One state rather than a boolean per dialog:
 // two AlertDialogs can never be open at once, and modelling it as two booleans
@@ -43,6 +45,8 @@ export function ClientHeaderActions({
   owesMoney,
   hasMovements,
   trashedAt,
+  client,
+  ownerCountry,
 }: {
   clientId: string;
   clientName: string;
@@ -60,9 +64,14 @@ export function ClientHeaderActions({
   // Non-null means this client is already in the Papelera, and the menu offers
   // the way back out instead of the way in.
   trashedAt: string | null;
+  // Para "Editar" dentro del menú. Antes era un lápiz al lado del nombre; con
+  // el nombre centrado bajo la foto ya no cabe ahí sin romper el centro.
+  client: Client;
+  ownerCountry: OwnerCountry;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [editando, setEditando] = useState(false);
   // The confirmations live outside DropdownMenu on purpose. Selecting an item
   // closes the menu and unmounts its children, so an AlertDialog nested inside
   // one disappears in the same frame it was asked to open.
@@ -172,6 +181,14 @@ export function ClientHeaderActions({
 
   return (
     <div className="flex items-center gap-1">
+      {/* Fuera del menú a propósito: ver el comentario de modo controlado en
+          EditClientDialog. Aquí solo se monta; quien lo abre es el menú. */}
+      <EditClientDialog
+        client={client}
+        ownerCountry={ownerCountry}
+        open={editando}
+        onOpenChange={setEditando}
+      />
       <Button variant="ghost" size="icon" disabled={pending} onClick={handleChat} title="Chat">
         <MessageCircle className="size-5" />
         <span className="sr-only">Chat por WhatsApp</span>
@@ -185,6 +202,14 @@ export function ClientHeaderActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {/* Un cliente en la papelera no se edita: restaurarlo primero es la
+              única acción que tiene sentido, y está arriba en este mismo menú. */}
+          {isTrashed ? null : (
+            <DropdownMenuItem onSelect={() => setEditando(true)}>
+              <Pencil />
+              Editar cliente
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => void handleShare()}>
             <Share2 />
             Compartir enlace
