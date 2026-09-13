@@ -17,6 +17,7 @@ import {
   capturarEventoDeInstalacion,
   descartar,
   esIphone,
+  esSamsungInternet,
   estadoDelAviso,
   estadoEnElServidor,
   instalar,
@@ -48,8 +49,17 @@ export function InstallAppDialog({
   // useSyncExternalStore mantiene servidor y cliente de acuerdo durante la
   // hidratación sin escribir estado desde un efecto.
   const iphone = useSyncExternalStore(suscribirseANada, esIphone, () => false);
+  const samsung = useSyncExternalStore(suscribirseANada, esSamsungInternet, () => false);
 
-  const pasos = iphone
+  const pasos = samsung
+    ? [
+        <>
+          Copia esta dirección: <b>app.sevenz.site</b>
+        </>,
+        <>Abre Chrome en este mismo teléfono y pégala.</>,
+        <>Entra a tu cuenta y toca &ldquo;Instalar&rdquo;.</>,
+      ]
+    : iphone
     ? [
         <>
           Toca el botón de compartir <Share className="inline size-4 align-text-bottom" aria-hidden="true" />
@@ -68,10 +78,13 @@ export function InstallAppDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Instala Sevenz en tu teléfono</DialogTitle>
+          <DialogTitle>
+            {samsung ? "Instálala desde Chrome" : "Instala Sevenz en tu teléfono"}
+          </DialogTitle>
           <DialogDescription>
-            Queda con su ícono en tu pantalla de inicio y abre sin la barra del navegador. Es la
-            misma Sevenz de siempre, con tus mismos datos.
+            {samsung
+              ? "Este navegador no logra instalarla en las versiones nuevas de Android: muestra una alerta de seguridad que no tiene que ver con Sevenz. Desde Chrome funciona."
+              : "Queda con su ícono en tu pantalla de inicio y abre sin la barra del navegador. Es la misma Sevenz de siempre, con tus mismos datos."}
           </DialogDescription>
         </DialogHeader>
 
@@ -89,8 +102,9 @@ export function InstallAppDialog({
         </ol>
 
         <p className="text-xs text-muted-foreground">
-          No ocupa casi espacio y no reemplaza nada: puedes seguir entrando desde el navegador
-          cuando quieras.
+          {samsung
+            ? "Si te apareció un aviso de Google diciendo que la app no es segura, fue este navegador al empaquetarla, no Sevenz. Desde Chrome no aparece."
+            : "No ocupa casi espacio y no reemplaza nada: puedes seguir entrando desde el navegador cuando quieras."}
         </p>
       </DialogContent>
     </Dialog>
