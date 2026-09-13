@@ -2,6 +2,7 @@ import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
@@ -137,6 +138,12 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* Arriba del todo y solo en teléfono. Sevenz es instalable desde agosto
+          —manifest, service worker e iconos están puestos— y ningún tendero se
+          enteró: Android enseña su propio aviso, discreto y fácil de ignorar, y
+          en iPhone no aparece nunca. Por eso preguntan por la Play Store; no es
+          que quieran la tienda, es que no saben que ya se puede. */}
+      <InstallAppBanner />
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           {/* first_name is required by both the signup form and "Mi negocio",

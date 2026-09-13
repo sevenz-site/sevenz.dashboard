@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Wallet, Users, ShieldAlert, Trash2, Camera, Building2, LogOut, Loader2, CircleHelp } from "lucide-react";
+import { Wallet, Users, ShieldAlert, Trash2, Camera, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +21,7 @@ import { logout } from "@/app/(app)/actions";
 import { useImportJobs } from "@/components/import/import-context";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
+import { InstallAppDialog } from "@/components/install-app";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Cartera", icon: Wallet, dataTour: undefined },
@@ -42,6 +44,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const tour = useTour();
+  const [instalar, setInstalar] = useState(false);
   const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();
   const { guard } = useUnsavedChangesGuard();
@@ -117,6 +120,15 @@ export function AppSidebar({ businessName }: { businessName: string }) {
               <span>Ayuda</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          {/* Aquí está siempre, para quien cerró el aviso de Cartera y luego la
+              quiere, o para quien cambió de teléfono. El aviso insiste dos veces
+              y se calla; esta entrada no se va nunca. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => setInstalar(true)}>
+              <Smartphone />
+              <span>Instalar app</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => guard(() => logout())}>
               <LogOut />
@@ -125,6 +137,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <InstallAppDialog open={instalar} onOpenChange={setInstalar} />
     </Sidebar>
   );
 }
