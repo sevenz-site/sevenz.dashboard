@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
+import { todayInCaracas } from "@/lib/exchange-rate/rate-status";
 import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementLedger = { currency: LedgerCurrency | null; rate: { usd: number; eur: number } | null };
@@ -60,6 +61,14 @@ export async function resolveMovementRateSnapshot(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ownerId: string,
   currency: LedgerCurrency | null,
+  // El dueño marcó "aplicar la tasa prevista". Es una CASILLA, no una cifra: el
+  // navegador no manda ningún número, solo pide que se use la tasa que el
+  // servidor ya tiene guardada. Si mandara el número, una petición hecha a mano
+  // podría sellar cualquier cosa en el respaldo de un movimiento.
+  //
+  // Y se ignora sin ruido si no hay prevista o si ya entró en vigor: en ese caso
+  // la tasa correcta es la vigente, que es lo que se sella.
+  usarPrevista = false,
 ): Promise<MovementRateResolution> {
   const resultado = await getOwnerRateContextResult(supabase, ownerId);
 
@@ -106,13 +115,32 @@ export async function resolveMovementRateSnapshot(
 
   const { context } = resultado;
   const officialForCurrency = currency === "USD" ? context.officialRate.usd : context.officialRate.eur;
-  const effectiveForCurrency = currency === "USD" ? context.effectiveRate.usd : context.effectiveRate.eur;
+
+  // La prevista solo aplica mientras siga siendo futura. Se compara contra hoy
+  // en Caracas y no contra la hora del servidor: Vercel corre en UTC y a las
+  // ocho de la noche hora de Venezuela ya cree que es mañana, lo que apagaría
+  // la prevista media tarde antes de tiempo.
+  const prevista =
+    usarPrevista && context.prevista && context.prevista.fecha > todayInCaracas()
+      ? context.prevista
+      : null;
+
+  const effectiveForCurrency = prevista
+    ? currency === "USD"
+      ? prevista.usd
+      : prevista.eur
+    : currency === "USD"
+      ? context.effectiveRate.usd
+      : context.effectiveRate.eur;
 
   return {
     ok: true,
     snapshot: {
       currency,
-      rateModeUsed: context.rateMode,
+      // Su propio modo, ni BCV_AUTO ni CUSTOM. Dentro de un mes, mirando el
+      // respaldo de un movimiento, la diferencia entre "usó una tasa que aún no
+      // regía" y "se inventó un número" es toda la diferencia.
+      rateModeUsed: prevista ? "BCV_PREVISTA" : context.rateMode,
       exchangeRateUsed: effectiveForCurrency,
       officialBcvRateAtTime: officialForCurrency,
       // entry_currency/entry_amount mirror currency/amount now that nothing

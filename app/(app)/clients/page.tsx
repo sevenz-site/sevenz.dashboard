@@ -53,6 +53,7 @@ export default async function ClientsPage() {
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
+        prevista: ownerRate.prevista,
       }
     : null;
 

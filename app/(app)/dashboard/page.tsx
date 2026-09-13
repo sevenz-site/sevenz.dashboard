@@ -67,6 +67,7 @@ export default async function DashboardPage({
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
+        prevista: ownerRate.prevista,
         rateDate: ownerRate.rateDate,
         rateStatus: ownerRate.rateStatus,
         rateFetchedAt: ownerRate.fetchedAt,

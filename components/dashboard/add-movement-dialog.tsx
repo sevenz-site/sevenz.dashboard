@@ -30,7 +30,11 @@ import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
-import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
+import {
+  LedgerCurrencyRadio,
+  BsAmountPreview,
+  PrevistaCheckbox,
+} from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
@@ -104,6 +108,7 @@ export function AddMovementDialog({
   const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [usarPrevista, setUsarPrevista] = useState(false);
   // True right after the owner clicks "Abono (paga)" while it isn't actually
   // available — shows the red explanation below the radio group. Not the
   // same as canPay itself: this tracks a real click attempt, not just the
@@ -373,7 +378,19 @@ export function AddMovementDialog({
               aria-invalid={Boolean(errors.amount)}
             />
             {rateContext ? (
-              <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
+              <>
+                <BsAmountPreview
+                  amount={amountStr}
+                  currency={currency}
+                  rateContext={rateContext}
+                  usarPrevista={usarPrevista}
+                />
+                <PrevistaCheckbox
+                  rateContext={rateContext}
+                  checked={usarPrevista}
+                  onCheckedChange={setUsarPrevista}
+                />
+              </>
             ) : null}
             {type === "payment" ? (
               <p className="text-xs text-muted-foreground">

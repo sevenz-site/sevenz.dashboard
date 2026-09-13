@@ -179,7 +179,10 @@ export async function createClientWithMovement(
     };
   }
 
-  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  // La casilla "aplicar tasa BCV prevista". Llega como marca, no como cifra:
+  // resolveMovementRateSnapshot busca la tasa en lo que el servidor ya guardó.
+  const usarPrevista = formData.get("usar_tasa_prevista") === "1";
+  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency, usarPrevista);
   if (!resolucion.ok) {
     await recordMovementRejection(supabase, {
       reason: resolucion.reason,
@@ -283,7 +286,10 @@ export async function addMovement(
   if (fields.error !== null) return { error: fields.error, clientId: null };
   const { type, amount, currency, description, photoPath, plazoDias } = fields;
 
-  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency);
+  // La casilla "aplicar tasa BCV prevista". Llega como marca, no como cifra:
+  // resolveMovementRateSnapshot busca la tasa en lo que el servidor ya guardó.
+  const usarPrevista = formData.get("usar_tasa_prevista") === "1";
+  const resolucion = await resolveMovementRateSnapshot(supabase, user.id, currency, usarPrevista);
   if (!resolucion.ok) {
     await recordMovementRejection(supabase, {
       reason: resolucion.reason,

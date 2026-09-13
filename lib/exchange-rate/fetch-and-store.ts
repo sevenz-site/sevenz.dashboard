@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { DolarApiProvider } from "@/lib/exchange-rate/dolar-api-provider";
 import { CurrencyApiProvider } from "@/lib/exchange-rate/currency-api-provider";
+import { fetchPrevista } from "@/lib/exchange-rate/fetch-prevista";
 import type { OfficialRates } from "@/lib/exchange-rate/types";
 
 // A fetch that jumps more than this from the last accepted rate is stored
@@ -29,7 +30,14 @@ async function getOfficialRatesWithFallback(): Promise<OfficialRates> {
 }
 
 export async function fetchAndStoreBcvRate() {
-  const rates = await getOfficialRatesWithFallback();
+  // En paralelo a propósito: la tasa prevista es un extra y no puede alargar la
+  // consulta de la que sí rige. refreshBcvRateIfStale corre esto en la ruta de
+  // escritura con un límite de 2,5 s, así que encadenarlas sería sumar tiempo a
+  // un dueño que está esperando a que se guarde su fiado.
+  const [rates, prevista] = await Promise.all([
+    getOfficialRatesWithFallback(),
+    fetchPrevista(),
+  ]);
   const supabase = createServiceClient();
 
   const { data: last } = await supabase
@@ -47,6 +55,10 @@ export async function fetchAndStoreBcvRate() {
     eur: rates.eur,
     source: rates.source,
     rate_date: rates.rateDate,
+    // Null es lo normal entre semana: no hay ninguna tasa futura publicada.
+    prevista_usd: prevista?.usd ?? null,
+    prevista_eur: prevista?.eur ?? null,
+    prevista_date: prevista?.fecha ?? null,
     needs_review: needsReview,
   });
 
@@ -57,6 +69,7 @@ export async function fetchAndStoreBcvRate() {
     eur: rates.eur,
     source: rates.source,
     rateDate: rates.rateDate,
+    prevista,
     needs_review: needsReview,
   };
 }

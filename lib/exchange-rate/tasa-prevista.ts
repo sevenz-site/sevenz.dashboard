@@ -65,35 +65,55 @@ export function etiquetaDePrevista(fecha: string): string {
   return `el ${DIAS[d.getUTCDay()]} ${dia} ${MESES[mes - 1]}.`;
 }
 
-// Devuelve la próxima tasa si toca ofrecerla, y null si no.
+// LA REGLA, en un solo sitio. La usan las dos calculadoras (que tienen el
+// historial completo) y el formulario de fiado (que solo tiene la prevista y la
+// fecha de la vigente), así que vive aparte para que no se escriba dos veces y
+// se separen.
 //
 // La ventana va del viernes al mediodía hasta que esa tasa entra en vigor: el
-// viernes por la tarde, el sábado y el domingo. Se apaga sola el lunes, cuando
-// deja de ser futura y pasa a ser la tasa normal — no hay que acordarse de
-// apagarla.
+// viernes por la tarde, el sábado y el domingo. Se apaga sola cuando deja de ser
+// futura — no hay que acordarse de apagarla.
 //
 // La última condición, "hoy no tiene tasa propia", cubre el lunes feriado: ahí
 // el lunes tampoco publica, la entrada futura sigue siendo la del martes, y el
 // dueño sigue teniendo el mismo problema que el sábado.
+export function tocaOfrecerPrevista(
+  fechaPrevista: string | null | undefined,
+  // La fecha de la tasa que rige ahora. Si es de hoy, hoy hubo publicación.
+  fechaVigente: string | null | undefined,
+  ahora: Date = new Date(),
+): boolean {
+  if (!fechaPrevista) return false;
+  const { ymd, diaSemana, hora } = ahoraEnCaracas(ahora);
+  if (fechaPrevista <= ymd) return false;
+
+  const hoyTieneTasa = Boolean(fechaVigente && fechaVigente >= ymd);
+  const viernesPorLaTarde = diaSemana === 5 && hora >= 12;
+  const finDeSemana = diaSemana === 6 || diaSemana === 0;
+
+  return viernesPorLaTarde || finDeSemana || !hoyTieneTasa;
+}
+
+// La versión para quien tiene el historial entero: las calculadoras.
 export function tasaPrevistaDe(
   historial: PuntoDeHistorial[],
   ahora: Date = new Date(),
 ): TasaPrevista | null {
-  const { ymd, diaSemana, hora } = ahoraEnCaracas(ahora);
+  const { ymd } = ahoraEnCaracas(ahora);
 
   // La más cercana de las futuras, no la última de la lista: si el proveedor
   // llegara a traer dos, la que toca es la que entra en vigor primero.
-  const futuras = historial
+  const proxima = historial
     .filter((p) => p.date > ymd)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const proxima = futuras[0];
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
   if (!proxima) return null;
 
-  const hoyTieneTasa = historial.some((p) => p.date === ymd);
-  const viernesPorLaTarde = diaSemana === 5 && hora >= 12;
-  const finDeSemana = diaSemana === 6 || diaSemana === 0;
+  // La fecha de hoy si hoy hubo publicación; si no, la más reciente que haya.
+  const vigente = historial
+    .filter((p) => p.date <= ymd)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
 
-  if (!viernesPorLaTarde && !finDeSemana && hoyTieneTasa) return null;
+  if (!tocaOfrecerPrevista(proxima.date, vigente?.date ?? null, ahora)) return null;
 
   return { fecha: proxima.date, usd: proxima.usd, eur: proxima.eur };
 }

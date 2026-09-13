@@ -23,6 +23,11 @@ export type MovementRateContext = {
   rateMode: ExchangeRateMode;
   effectiveRate: EffectiveRate;
   officialRateUsd: number;
+  // La próxima tasa publicada, cuando la hay. Viaja hasta el formulario para
+  // que la casilla muestre EXACTAMENTE la tasa que el servidor va a sellar: si
+  // el navegador la calculara por su cuenta, podrían discrepar y el dueño vería
+  // un número distinto del que queda guardado.
+  prevista?: { fecha: string; usd: number; eur: number } | null;
   // The day the rate on screen belongs to ("2026-09-04"), for the
   // calculator's stamp. Optional because only the dashboard renders the
   // calculator — the movement forms care what the rate IS, not which day it
