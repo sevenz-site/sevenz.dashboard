@@ -224,6 +224,22 @@ export function BusinessSettingsForm({
           {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
         </div>
 
+        {/* El correo con el que entra, en gris y sin poder tocarlo.
+            Está por la misma razón que País: es un dato que el dueño necesita
+            ver —saber con cuál de sus correos entró— y que no puede cambiar
+            desde aquí. Cambiarlo mueve su forma de entrar y de recuperar la
+            contraseña, así que pasa por soporte.
+
+            Sin `name`, a propósito: un campo deshabilitado no se envía, y
+            listarlo solo invitaría a que alguien intentara guardarlo. */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email">Correo</Label>
+          <Input id="email" type="email" value={owner.email} disabled readOnly />
+          <p className="text-xs text-muted-foreground">
+            Es el correo con el que entras a Sevenz. Para cambiarlo, escríbenos.
+          </p>
+        </div>
+
         <div className="flex flex-col gap-2">
           <Label>País</Label>
           <Select disabled value={country}>

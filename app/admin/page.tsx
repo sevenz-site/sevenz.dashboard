@@ -1,3 +1,5 @@
+import { Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MetricCharts } from "@/components/admin/metric-charts";
 import { MetricFilters } from "@/components/admin/metric-filters";
 import { ServiceHealth } from "@/components/admin/service-health";
@@ -40,19 +42,43 @@ function Stat({
   value,
   hint,
   alert = false,
+  explica,
 }: {
   label: string;
   value: string;
   hint?: string;
   alert?: boolean;
+  // Qué cuenta esta cifra exactamente, y sobre todo qué NO cuenta.
+  //
+  // Una etiqueta de dos palabras no puede decir que "Movimientos" excluye los
+  // borrados, que "Malas pagas" sale del historial de marcas y no de quién
+  // está marcado hoy, o que el puntaje se calcula al mirarlo y no se guarda.
+  // Sin eso, dos personas leen el mismo número y entienden cosas distintas —
+  // y estos números se usan para decidir y para responderle a un inversor.
+  explica?: string;
 }) {
   return (
-    <div className={`flex flex-col gap-0.5 rounded-lg border p-3 ${alert ? "border-destructive/40" : ""}`}>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className={`relative flex flex-col gap-0.5 rounded-lg border p-3 ${alert ? "border-destructive/40" : ""}`}>
+      <span className="pr-5 text-xs text-muted-foreground">{label}</span>
       <span className={`text-2xl font-semibold tabular-nums ${alert ? "text-destructive" : ""}`}>
         {value}
       </span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+      {explica ? (
+        <Popover>
+          {/* size-4, apagado hasta el hover y con aria-label: la regla de
+              DESIGN-SYSTEM.md para los iconos-botón dentro de una card. */}
+          <PopoverTrigger
+            className="absolute top-2.5 right-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            aria-label={`Qué cuenta ${label}`}
+          >
+            <Info className="size-4" />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 text-sm leading-snug">
+            {explica}
+          </PopoverContent>
+        </Popover>
+      ) : null}
     </div>
   );
 }
@@ -148,21 +174,32 @@ export default async function AdminMetricsPage({
       <MetricFilters owners={owners} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Clientes creados" value={String(totals.clients_created)} />
-        <Stat label="Movimientos" value={String(movementsTotal)} />
+        <Stat
+          label="Clientes creados"
+          value={String(totals.clients_created)}
+          explica="Clientes que los negocios dieron de alta en el periodo filtrado. Cuenta por fecha de creación, así que un cliente creado en agosto no aparece aquí aunque siga activo hoy. Incluye los que después fueron a la papelera."
+        />
+        <Stat
+          label="Movimientos"
+          value={String(movementsTotal)}
+          explica="Fiados y abonos registrados, sumando todas las monedas. Los movimientos borrados no cuentan. Es la única cifra donde sí se suman monedas distintas, porque cuenta operaciones y no dinero."
+        />
         <Stat
           label="Malas pagas"
           value={String(totals.mala_paga_labelled)}
           hint={`${totals.mala_paga_unlabelled} desmarcadas · ${totals.clients_flagged_now} activas`}
+          explica="Veces que un dueño marcó a un cliente como mala paga en el periodo, no cuántos están marcados ahora. Sale del historial de marcas, así que un cliente marcado y desmarcado cuenta en los dos números. 'Activas' sí es el total marcado hoy, y ese no depende del periodo."
         />
         <Stat
           label="Plazo promedio"
           value={plazoWeighted === null ? "—" : `${plazoWeighted.toFixed(1)} d`}
+          explica="Días que los dueños dan de plazo al fiar, en promedio. Solo cuenta los fiados donde se puso un plazo; los que se dejaron en blanco no entran. Está ponderado por cantidad de fiados, así que una moneda con tres no pesa igual que una con trescientos."
         />
         <Stat
           label="Puntaje crediticio"
           value={credit.average === null ? "—" : String(credit.average)}
           hint={`de 1000 · ${credit.clients} clientes`}
+          explica="Promedio del puntaje de los clientes con historial suficiente para calcularlo; los demás quedan fuera y por eso el número de clientes es menor que el total. El puntaje no se guarda: se calcula al mirarlo, con los mismos datos que ve el dueño en la ficha."
         />
         {/* Movimientos que el dueño intentó registrar y no se escribieron. En
             cero no significa "no pasa nada": significa que el guardarraíl no ha
@@ -170,6 +207,7 @@ export default async function AdminMetricsPage({
             se quedó sin registrar una venta. */}
         <Stat
           label="Registros rechazados"
+          explica="Ventas que un dueño intentó anotar y no se pudieron guardar, porque faltaba saber la moneda o no se pudieron leer los datos de su negocio. Cada una es un fiado que no entró. Existe porque el guardarraíl de moneda prefiere rechazar antes que adivinar, y sin este contador esos rechazos serían invisibles para nosotros."
           value={String(health.rejections_total)}
           hint={
             health.rejections_total === 0
@@ -192,6 +230,7 @@ export default async function AdminMetricsPage({
           value={String(health.screen_warnings)}
           hint="no pudimos leer el negocio al abrir"
           alert={health.screen_warnings > 0}
+          explica="Veces que la app no pudo leer los datos de un negocio al abrir una pantalla y le tapó la vista con el aviso de recargar. Ya reintenta sola antes de rendirse, así que lo que se cuenta aquí es lo que el dueño llegó a ver. En cero significa que el reintento basta."
         />
         {/* Sin `alert`, y no por descuido. Producción arranca con 172: los
             movimientos que la 025 marcó como dólares el 2026-08-24 sin poder
@@ -207,6 +246,7 @@ export default async function AdminMetricsPage({
           label="Fiados sin tasa sellada"
           value={String(health.movements_without_rate)}
           hint="se registraron bien; 172 son anteriores al 24 ago 2026"
+          explica="Fiados correctos, en su moneda correcta, pero sin guardar a cuánto estaba el dólar ese día. Arranca en 172: son los de antes del 24 de agosto de 2026, que se marcaron como dólares sin poder inventarles una tasa. Ese número no baja nunca. Solo importa si empieza a subir, y eso querría decir que el BCV está fallando."
         />
       </div>
 
