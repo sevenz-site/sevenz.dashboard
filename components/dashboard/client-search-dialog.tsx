@@ -30,7 +30,11 @@ import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
-import { LedgerCurrencyRadio, BsAmountPreview } from "@/components/dashboard/movement-currency-field";
+import {
+  LedgerCurrencyRadio,
+  BsAmountPreview,
+  PrevistaCheckbox,
+} from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
 import { formatDocumentId } from "@/lib/format";
@@ -268,6 +272,7 @@ function ClientSearchDialogBody({
   // after the duplicate-document warning could silently blank out.
   const [descriptionValue, setDescriptionValue] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [usarPrevista, setUsarPrevista] = useState(false);
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,
@@ -518,7 +523,19 @@ function ClientSearchDialogBody({
             aria-invalid={Boolean(errors.amount)}
           />
           {rateContext ? (
-            <BsAmountPreview amount={amountStr} currency={currency} rateContext={rateContext} />
+            <>
+              <BsAmountPreview
+                amount={amountStr}
+                currency={currency}
+                rateContext={rateContext}
+                usarPrevista={usarPrevista}
+              />
+              <PrevistaCheckbox
+                rateContext={rateContext}
+                checked={usarPrevista}
+                onCheckedChange={setUsarPrevista}
+              />
+            </>
           ) : null}
           {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
         </div>

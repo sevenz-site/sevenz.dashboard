@@ -104,6 +104,7 @@ export default async function ClientDetailPage({
         rateMode: ownerRate.rateMode,
         effectiveRate: ownerRate.effectiveRate,
         officialRateUsd: ownerRate.officialRate.usd,
+        prevista: ownerRate.prevista,
       }
     : null;
   const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;

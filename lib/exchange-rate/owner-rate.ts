@@ -24,6 +24,10 @@ export type OwnerRateContext = {
   // what official_bcv_rate_at_time snapshots and what the CUSTOM badge
   // shows as "no es la tasa oficial BCV (X hoy)".
   officialRate: EffectiveRate;
+  // La próxima tasa publicada, si el proveedor ya la trae. Null entre semana,
+  // que es lo normal. Viaja hasta aquí para que el servidor pueda sellarla sin
+  // aceptar una cifra del navegador — ver supabase/053_tasa_prevista.sql.
+  prevista: { fecha: string; usd: number; eur: number } | null;
 };
 
 // Por qué no hay contexto de tasa. Son dos razones distintas que durante
@@ -104,6 +108,9 @@ export async function getOwnerRateContext(
     eur: number;
     fetched_at: string;
     rate_date: string | null;
+    prevista_usd: number | null;
+    prevista_eur: number | null;
+    prevista_date: string | null;
   } | null;
   if (!stored) return null;
 
@@ -141,5 +148,11 @@ export async function getOwnerRateContext(
     // there is one, otherwise the stored row's.
     rateDate: officialRate.rateDate,
     rateStatus,
+    // Las tres o ninguna: media prevista no sirve de nada y dejarla a medias
+    // haría que el servidor sellara una tasa sin fecha.
+    prevista:
+      stored.prevista_date && stored.prevista_usd != null && stored.prevista_eur != null
+        ? { fecha: stored.prevista_date, usd: stored.prevista_usd, eur: stored.prevista_eur }
+        : null,
   };
 }
