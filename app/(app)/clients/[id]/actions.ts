@@ -335,6 +335,17 @@ export async function setClientProfilePicture(
     return { error: "No pudimos guardar la foto." };
   }
 
+  // La ruta que había antes, para poder borrar ese archivo después. Se lee con
+  // el mismo filtro de dueño, así que si el cliente no es suyo no hay fila y no
+  // se toca nada.
+  const { data: actual } = await supabase
+    .from("clients")
+    .select("profile_picture_path")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!actual) return { error: "Cliente inválido." };
+
   const { error } = await supabase
     .from("clients")
     .update({ profile_picture_path: path })
@@ -342,6 +353,28 @@ export async function setClientProfilePicture(
     .eq("owner_id", user.id);
 
   if (error) return { error: `No pudimos guardar la foto: ${error.message}` };
+
+  // El archivo viejo se borra de verdad, y después de actualizar la fila, no
+  // antes: si el borrado falla queda un archivo huérfano ocupando espacio, que
+  // es molesto; al revés quedaría un cliente apuntando a una foto que ya no
+  // existe, que es un círculo roto en pantalla.
+  //
+  // Dos motivos para borrarlo y no solo desvincularlo. El espacio se paga y
+  // cada foto nueva dejaba la anterior guardada para siempre. Y el bucket es
+  // público: una foto "borrada" que sigue en su sitio sigue abierta a cualquiera
+  // que conozca el enlace, que es lo contrario de lo que el dueño acaba de
+  // pedir. El borrado va con la sesión del dueño, así que la política de la 052
+  // lo limita a su propia carpeta.
+  const anterior = actual.profile_picture_path as string | null;
+  if (anterior && anterior !== path) {
+    const { error: borrado } = await supabase.storage
+      .from("client-profile-pictures")
+      .remove([anterior]);
+    // No se le devuelve al dueño: para él la acción salió bien —su cliente ya
+    // tiene la foto que quería, o ninguna—. Un archivo que sobra es cosa
+    // nuestra, no suya.
+    if (borrado) console.error("[foto-cliente] no pudimos borrar la anterior:", borrado.message);
+  }
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/dashboard");

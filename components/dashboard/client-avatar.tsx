@@ -2,9 +2,19 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
 import { fileToResizedBlob } from "@/lib/image";
 import { getPublicClientProfilePictureUrl } from "@/lib/supabase/storage";
@@ -23,7 +33,7 @@ function initials(name: string): string {
     .join("");
 }
 
-// La foto del cliente, y el sitio donde se cambia.
+// La foto del cliente, y el panel donde se cambia.
 //
 // El campo y el bucket existen desde la 032, pero quien subía la foto era el
 // propio cliente desde el enlace público, y la 041 cerró esa página: un enlace
@@ -52,17 +62,21 @@ export function ClientAvatar({
   editable?: boolean;
 }) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [subiendo, setSubiendo] = useState(false);
+  const galeriaRef = useRef<HTMLInputElement>(null);
+  const camaraRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
+  const [abierto, setAbierto] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
-    setSubiendo(true);
+    setOcupado(true);
     try {
       const blob = await fileToResizedBlob(file);
       // Nombre nuevo en cada subida en vez de reescribir el mismo: el bucket es
       // público y los navegadores cachean con ganas, así que reusar la ruta
-      // dejaría al dueño mirando la foto vieja sin entender por qué.
+      // dejaría al dueño mirando la foto vieja sin entender por qué. La
+      // anterior no queda tirada: setClientProfilePicture la borra.
       const path = `${ownerId}/${clientId}-${crypto.randomUUID()}.jpg`;
       const supabase = createClient();
       const { error } = await supabase.storage
@@ -74,12 +88,29 @@ export function ClientAvatar({
       if (guardado.error) throw new Error(guardado.error);
 
       toast.success("Foto actualizada");
+      setAbierto(false);
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos subir la foto.");
     } finally {
-      setSubiendo(false);
-      if (inputRef.current) inputRef.current.value = "";
+      setOcupado(false);
+      if (galeriaRef.current) galeriaRef.current.value = "";
+      if (camaraRef.current) camaraRef.current.value = "";
+    }
+  }
+
+  async function handleDelete() {
+    setOcupado(true);
+    try {
+      const guardado = await setClientProfilePicture(clientId, null);
+      if (guardado.error) throw new Error(guardado.error);
+      toast.success("Foto eliminada");
+      setAbierto(false);
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos eliminar la foto.");
+    } finally {
+      setOcupado(false);
     }
   }
 
@@ -97,39 +128,109 @@ export function ClientAvatar({
   if (!editable) return avatar;
 
   return (
-    <div className="relative">
-      {/* Un botón de verdad y no un div con onClick: se llega con el teclado,
-          se lee en voz alta y dice qué hace, que es más de lo que se ve — el
-          círculo por sí solo no parece pulsable. */}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={subiendo}
-        className="group relative rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        aria-label={foto ? `Cambiar la foto de ${clientName}` : `Agregar una foto de ${clientName}`}
-      >
-        {avatar}
-        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          {subiendo ? (
-            <Loader2 className="size-6 animate-spin text-white" />
-          ) : (
-            <Camera className="size-6 text-white" />
-          )}
-        </span>
-        {/* En un teléfono no hay hover, así que la cámara vive siempre visible
-            en la esquina: sin ella el círculo no se anuncia como pulsable y la
-            función queda escondida para quien más la va a usar. */}
-        <span className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted sm:hidden">
-          {subiendo ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-        </span>
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png"
-        className="hidden"
-        onChange={(e) => void handleFile(e.target.files?.[0])}
-      />
-    </div>
+    <Sheet open={abierto} onOpenChange={setAbierto}>
+      <SheetTrigger asChild>
+        {/* Un botón de verdad y no un div con onClick: se llega con el teclado,
+            se lee en voz alta y dice qué hace, que es más de lo que se ve — el
+            círculo por sí solo no parece pulsable. */}
+        <button
+          type="button"
+          disabled={ocupado}
+          className="group relative rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label={foto ? `Cambiar la foto de ${clientName}` : `Agregar una foto de ${clientName}`}
+        >
+          {avatar}
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            {ocupado ? (
+              <Loader2 className="size-6 animate-spin text-white" />
+            ) : (
+              <Camera className="size-6 text-white" />
+            )}
+          </span>
+          {/* En un teléfono no hay hover, así que la cámara vive siempre visible
+              en la esquina: sin ella el círculo no se anuncia como pulsable y la
+              función queda escondida para quien más la va a usar. */}
+          <span className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted sm:hidden">
+            {ocupado ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+          </span>
+        </button>
+      </SheetTrigger>
+
+      {/* Desde abajo, no desde el lado: es donde llega el pulgar, y este panel
+          existe sobre todo para el teléfono. */}
+      <SheetContent side="bottom" className="gap-0">
+        <SheetHeader>
+          <SheetTitle>Foto de {clientName}</SheetTitle>
+          <SheetDescription>
+            {foto ? "Cambia o elimina la foto del cliente." : "Agrega una foto para reconocerlo de un vistazo."}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex flex-col gap-2 p-4">
+          {/* Solo en teléfono. En un computador "Tomar foto" y "Subir foto"
+              abren exactamente el mismo explorador de archivos, y ofrecer dos
+              botones que hacen lo mismo es una decisión falsa. */}
+          {isMobile ? (
+            <Button
+              variant="outline"
+              className="h-12 justify-start"
+              disabled={ocupado}
+              onClick={() => camaraRef.current?.click()}
+            >
+              <Camera className="size-5" />
+              Tomar foto
+            </Button>
+          ) : null}
+
+          <Button
+            variant="outline"
+            className="h-12 justify-start"
+            disabled={ocupado}
+            onClick={() => galeriaRef.current?.click()}
+          >
+            <ImageIcon className="size-5" />
+            Subir foto
+          </Button>
+
+          {/* Sin foto no hay nada que eliminar, así que la opción no se dibuja:
+              enseñar una acción imposible es peor que no ofrecerla.
+
+              Y sin confirmación, a propósito. Es una foto, no dinero: si se
+              borra por error se vuelve a subir en diez segundos. Un "¿seguro?"
+              en cada cosa acaba en que nadie los lee, y los que sí importan
+              —mover un cliente a la papelera— pierden fuerza. */}
+          {foto ? (
+            <Button
+              variant="outline"
+              className="h-12 justify-start text-destructive hover:text-destructive"
+              disabled={ocupado}
+              onClick={() => void handleDelete()}
+            >
+              {ocupado ? <Loader2 className="size-5 animate-spin" /> : <Trash2 className="size-5" />}
+              Eliminar foto
+            </Button>
+          ) : null}
+        </div>
+
+        {/* Dos inputs y no uno: `capture` le dice al teléfono que abra la cámara
+            en vez del carrete, y es un atributo del input, no del clic. Mismo
+            patrón que el import de libretas. */}
+        <input
+          ref={camaraRef}
+          type="file"
+          accept="image/jpeg,image/png"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+        />
+        <input
+          ref={galeriaRef}
+          type="file"
+          accept="image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+        />
+      </SheetContent>
+    </Sheet>
   );
 }
