@@ -32,12 +32,23 @@ const initialState: EditClientState = { error: null, success: false };
 export function EditClientDialog({
   client,
   ownerCountry,
+  open: openProp,
+  onOpenChange,
 }: {
   client: Client;
   ownerCountry: OwnerCountry;
+  // Modo controlado, para cuando "Editar" no es un lapiz al lado del nombre
+  // sino una opción del menú de tres puntos. Un diálogo no puede vivir DENTRO
+  // de ese menú —Radix lo desmonta al cerrarse y se lleva el diálogo con él—,
+  // así que el menú solo enciende este interruptor y el diálogo vive fuera.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openInterno, setOpenInterno] = useState(false);
+  const controlado = onOpenChange !== undefined;
+  const open = controlado ? Boolean(openProp) : openInterno;
+  const setOpen = controlado ? onOpenChange! : setOpenInterno;
   const [state, formAction, pending] = useActionState(updateClient, initialState);
   const [handledState, setHandledState] = useState(state);
   const [formRef, setFormRef] = useFormRef();
@@ -71,12 +82,14 @@ export function EditClientDialog({
         if (!next) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <Pencil className="size-4" />
-          Editar
-        </Button>
-      </DialogTrigger>
+      {controlado ? null : (
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm">
+            <Pencil className="size-4" />
+            Editar
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Editar cliente</DialogTitle>

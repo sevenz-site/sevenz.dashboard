@@ -1,14 +1,15 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, IdCard, MapPin, Phone } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClientHeaderActions } from "@/components/dashboard/client-header-actions";
 import { AddMovementDialog } from "@/components/dashboard/add-movement-dialog";
-import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
+import { ClientAvatar } from "@/components/dashboard/client-avatar";
+import { ShareActions } from "@/components/dashboard/share-actions";
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
@@ -171,6 +172,8 @@ export default async function ClientDetailPage({
           owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
           hasMovements={(movementCount ?? 0) > 0}
           trashedAt={client.trashed_at}
+          client={client as Client}
+          ownerCountry={ownerCountry}
         />
       </div>
 
@@ -188,17 +191,25 @@ export default async function ClientDetailPage({
         </div>
       ) : null}
 
-      {/* Mobile (< sm): status badges, balance, the mala paga control, and a
-          full-width "Agregar movimiento" stack vertically below the name.
-          Desktop keeps the side-by-side layout in the block after this one —
-          these two are mutually exclusive via hidden/sm:hidden, not a JS
-          breakpoint check, since this page is a server component. */}
-      <div className="flex flex-col gap-3 sm:hidden">
-        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-          <div className="flex w-full items-center justify-between gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-            <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
-          </div>
+      {/* Una sola maquetación para teléfono y computador.
+
+          Antes había dos bloques hermanos, cada uno oculto en el tamaño del
+          otro, con el nombre, los datos de contacto, los saldos y las insignias
+          duplicados en ambos: dos copias de lo mismo que había que acordarse de
+          cambiar a la vez. El diseño centrado funciona en los dos anchos, así
+          que ahora es una sola y esa clase de desincronización deja de ser
+          posible. */}
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 text-center">
+        <ClientAvatar
+          clientId={client.id}
+          clientName={client.name}
+          ownerId={user!.id}
+          picturePath={client.profile_picture_path}
+          editable={!client.trashed_at}
+        />
+
+        <div className="flex w-full flex-col gap-1">
+          <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
           <ClientInfoRows
             documentId={client.document_id}
             whatsapp={client.whatsapp}
@@ -206,50 +217,20 @@ export default async function ClientDetailPage({
           />
         </div>
 
-        {/* Status rides beside the section title rather than sitting inside
-            the balance card — it judges the whole account, not one currency,
-            and the card below is now one card per currency. */}
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold">Cartera pendiente</h2>
-          <div className="flex flex-wrap items-center gap-1">
-            <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-              {CLIENT_STATUS_LABEL[status]}
-            </Badge>
-            {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
-            {client.is_flagged ? (
-              <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
-                Mala paga
-              </Badge>
-            ) : null}
-          </div>
-        </div>
+        {/* El lápiz de "Editar" vivía aquí, al lado del nombre. Con el nombre
+            centrado bajo la foto ya no cabe sin romper el eje, así que se fue
+            al menú de tres puntos de la cabecera. */}
+        <ShareActions
+          clientId={client.id}
+          clientName={client.name}
+          whatsapp={client.whatsapp}
+          balanceText={formatBalanceSummary(balance, balanceUsd, balanceEur, ledger)}
+          variant="whatsapp-button"
+        />
 
-        {rateContext ? (
-          <>
-            <BalanceRowCard label="Por cobrar Dólares">
-              <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
-            </BalanceRowCard>
-            <BalanceRowCard label="Por cobrar Euros">
-              <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
-            </BalanceRowCard>
-          </>
-        ) : (
-          <BalanceRowCard label="Por cobrar">
-            <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
-          </BalanceRowCard>
-        )}
-
-        <div className="rounded-lg border bg-muted/30 px-3 py-2">
-          <ClientFlagControl
-            clientId={client.id}
-            clientName={client.name}
-            isFlagged={client.is_flagged}
-            spread
-          />
-        </div>
-        {/* A trashed client takes no new movements — addMovement rejects them
-            server-side, and offering a button that always fails is worse than
-            not offering one. The banner above says how to get it back. */}
+        {/* Un cliente en la papelera no acepta movimientos nuevos —addMovement
+            los rechaza en el servidor—, y ofrecer un botón que siempre falla es
+            peor que no ofrecerlo. El aviso de arriba dice cómo recuperarlo. */}
         {client.trashed_at ? null : (
           <AddMovementDialog
             clientId={client.id}
@@ -268,40 +249,11 @@ export default async function ClientDetailPage({
         )}
       </div>
 
-      <div className="hidden flex-col gap-3 sm:flex">
-        {/* Info and balances stay side by side here — the phone stacks them
-            into two cards instead. Same section rule either way. */}
-        <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2">
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-              <EditClientDialog client={client as Client} ownerCountry={ownerCountry} />
-            </div>
-            <ClientInfoRows
-              documentId={client.document_id}
-              whatsapp={client.whatsapp}
-              address={client.address}
-            />
-          </div>
-          {rateContext ? (
-            <div className="flex gap-4">
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Por cobrar Dólares</p>
-                <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Por cobrar Euros</p>
-                <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
-              </div>
-            </div>
-          ) : (
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Por cobrar</p>
-              <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+      {/* El estado va junto al título de la sección y no dentro de una tarjeta
+          de saldo: juzga la cuenta entera, y abajo hay una tarjeta por moneda. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+        <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
             {CLIENT_STATUS_LABEL[status]}
           </Badge>
@@ -312,24 +264,30 @@ export default async function ClientDetailPage({
             </Badge>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <ClientFlagControl clientId={client.id} clientName={client.name} isFlagged={client.is_flagged} />
-          {/* Same reason as the phone layout above. */}
-          {client.trashed_at ? null : (
-            <AddMovementDialog
-              clientId={client.id}
-              clientName={client.name}
-              clientWhatsapp={client.whatsapp}
-              ownerId={user!.id}
-              ownerCountry={ownerCountry}
-              currentDebtCop={balance}
-              currentDebtUsd={balanceUsd}
-              currentDebtEur={balanceEur}
-              isFlagged={client.is_flagged}
-              rateContext={rateContext}
-            />
-          )}
-        </div>
+      </div>
+
+      {rateContext ? (
+        <>
+          <BalanceRowCard label="Por cobrar Dólares">
+            <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
+          </BalanceRowCard>
+          <BalanceRowCard label="Por cobrar Euros">
+            <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
+          </BalanceRowCard>
+        </>
+      ) : (
+        <BalanceRowCard label="Por cobrar">
+          <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
+        </BalanceRowCard>
+      )}
+
+      <div className="rounded-lg border bg-muted/30 px-3 py-2">
+        <ClientFlagControl
+          clientId={client.id}
+          clientName={client.name}
+          isFlagged={client.is_flagged}
+          spread
+        />
       </div>
 
       <Suspense fallback={<CreditScoreSkeleton />}>
@@ -384,15 +342,16 @@ function ClientInfoRows({
   address: string | null;
 }) {
   const rows = [
-    { icon: IdCard, label: "Documento", value: formatDocumentId(documentId) },
-    { icon: Phone, label: "Teléfono", value: whatsapp || "—" },
-    { icon: MapPin, label: "Dirección", value: address || "—" },
+    { label: "Documento", value: formatDocumentId(documentId) },
+    { label: "Teléfono", value: whatsapp || "—" },
+    { label: "Dirección", value: address || "—" },
   ];
+  // Sin iconos: bajo un nombre centrado, tres iconos alineados a la izquierda
+  // rompen el eje y no aportan nada que la etiqueta no diga ya.
   return (
-    <dl className="flex flex-col gap-1 text-sm text-muted-foreground">
+    <dl className="flex flex-col gap-0.5 text-sm text-muted-foreground">
       {rows.map((row) => (
-        <div key={row.label} className="flex items-center gap-1.5">
-          <row.icon className="mr-0.5 size-4 shrink-0" aria-hidden="true" />
+        <div key={row.label} className="flex items-center justify-center gap-1.5">
           <dt>{row.label}:</dt>
           <dd className="min-w-0 truncate">{row.value}</dd>
         </div>

@@ -303,3 +303,80 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
   revalidateClientSurfaces(clientId);
   return { error: null };
 }
+
+// Guarda la ruta de la foto que el navegador acaba de subir al bucket.
+//
+// La subida en sí la hace el navegador con la sesión del dueño, igual que las
+// fotos de un movimiento: la política de la 052 solo le deja escribir dentro de
+// una carpeta que se llama como su propio id. Esta accion no toca el archivo,
+// solo apunta el cliente hacia él.
+//
+// El `.eq("owner_id", user.id)` no sobra por tener RLS detras: clientId llega
+// del navegador, y comprobar a quién pertenece antes de escribir es la regla
+// que este proyecto ya se saltó dos veces. Si el cliente no es suyo, la
+// actualización no encuentra fila y no pasa nada.
+export async function setClientProfilePicture(
+  clientId: string,
+  path: string | null,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!clientId) return { error: "Cliente inválido." };
+
+  // Una ruta que no empiece por la carpeta del dueño se rechaza aquí también, y
+  // no solo en Storage: sin esto, alguien podría apuntar a un cliente suyo
+  // hacia la foto de un cliente ajeno — el bucket es público, así que bastaría
+  // con saber la ruta. La política de Storage gobierna quién ESCRIBE archivos;
+  // esta comprobación gobierna a cuál se puede APUNTAR.
+  if (path && !path.startsWith(`${user.id}/`)) {
+    return { error: "No pudimos guardar la foto." };
+  }
+
+  // La ruta que había antes, para poder borrar ese archivo después. Se lee con
+  // el mismo filtro de dueño, así que si el cliente no es suyo no hay fila y no
+  // se toca nada.
+  const { data: actual } = await supabase
+    .from("clients")
+    .select("profile_picture_path")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!actual) return { error: "Cliente inválido." };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ profile_picture_path: path })
+    .eq("id", clientId)
+    .eq("owner_id", user.id);
+
+  if (error) return { error: `No pudimos guardar la foto: ${error.message}` };
+
+  // El archivo viejo se borra de verdad, y después de actualizar la fila, no
+  // antes: si el borrado falla queda un archivo huérfano ocupando espacio, que
+  // es molesto; al revés quedaría un cliente apuntando a una foto que ya no
+  // existe, que es un círculo roto en pantalla.
+  //
+  // Dos motivos para borrarlo y no solo desvincularlo. El espacio se paga y
+  // cada foto nueva dejaba la anterior guardada para siempre. Y el bucket es
+  // público: una foto "borrada" que sigue en su sitio sigue abierta a cualquiera
+  // que conozca el enlace, que es lo contrario de lo que el dueño acaba de
+  // pedir. El borrado va con la sesión del dueño, así que la política de la 052
+  // lo limita a su propia carpeta.
+  const anterior = actual.profile_picture_path as string | null;
+  if (anterior && anterior !== path) {
+    const { error: borrado } = await supabase.storage
+      .from("client-profile-pictures")
+      .remove([anterior]);
+    // No se le devuelve al dueño: para él la acción salió bien —su cliente ya
+    // tiene la foto que quería, o ninguna—. Un archivo que sobra es cosa
+    // nuestra, no suya.
+    if (borrado) console.error("[foto-cliente] no pudimos borrar la anterior:", borrado.message);
+  }
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/dashboard");
+  return { error: null };
+}

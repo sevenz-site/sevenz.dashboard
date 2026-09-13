@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { InstallAppCapture } from "@/components/install-app";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -81,6 +82,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <Toaster />
         <ServiceWorkerRegister />
+        {/* Chrome dispara su evento de instalación una sola vez y temprano; si
+            nadie lo guarda aquí, la pantalla que ofrece el botón llega tarde. */}
+        <InstallAppCapture />
         {CLARITY_PROJECT_ID ? (
           <Script id="clarity-analytics" strategy="afterInteractive">
             {`(function(c,l,a,r,i,t,y){
