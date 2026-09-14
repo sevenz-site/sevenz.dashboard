@@ -323,13 +323,17 @@ export function AddMovementDialog({
           <DialogTitle>Agregar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
+        {/* gap-8 y no gap-4: los bloques del formulario son cajas con su propio
+            borde —los botones de moneda, la tarjeta del monto, el resumen— y a
+            gap-4 quedaban demasiado juntas para distinguir dónde acaba una
+            pregunta y empieza la siguiente. */}
         <form
           ref={setFormRef}
           action={formAction}
           onSubmit={(e) => {
             if (!validate(e.currentTarget)) e.preventDefault();
           }}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-8"
         >
           <input type="hidden" name="client_id" value={clientId} />
 
