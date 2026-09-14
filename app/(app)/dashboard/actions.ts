@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
 import { recordMovementRejection } from "@/lib/movement-rejection";
@@ -27,12 +28,29 @@ type ParsedMovement =
       // at all) — validated against the owner's actual country below, not
       // trusted from the form alone.
       currency: LedgerCurrency | null;
+      // En qué moneda ESCRIBIÓ el dueño. "VES" significa que tecleo bolivares y
+      // que `amount` son bolívares que hay que convertir antes de guardar; en
+      // los otros dos casos `amount` ya está en la moneda del libro.
+      //
+      // Es distinto de `currency`, que es el LIBRO donde entra la deuda. Un
+      // fiado tecleado en bolívares que va al libro de dólares tiene
+      // moneda_tecleada = VES y currency = USD.
+      monedaTecleada: "VES" | LedgerCurrency | null;
       description: string | null;
       photoPath: string | null;
       plazoDias: number | null;
     };
 
-const ALLOWED_PLAZO_DIAS = [7, 15, 30, 45];
+// Un rango, no una lista. El desplegable ofrece 7, 15, 30 y 45 porque son los
+// plazos que se acuerdan de verdad, pero desde que existe "Otro plazo…" el
+// dueño puede escribir 20 o 60 — y una lista fija los rechazaría con un error
+// que no explica nada.
+//
+// Sigue habiendo límites: cero o negativo no es un plazo, y más de un año es
+// casi siempre un dedo de más al teclear. El plazo alimenta el puntaje del
+// cliente, así que un número absurdo no es inofensivo.
+const PLAZO_MIN_DIAS = 1;
+const PLAZO_MAX_DIAS = 365;
 const ALLOWED_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
@@ -59,17 +77,22 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   let plazoDias: number | null = null;
   if (type === "charge" && plazoRaw && plazoRaw !== "sin_especificar") {
     const parsed = Number(plazoRaw);
-    if (!ALLOWED_PLAZO_DIAS.includes(parsed)) {
-      return { error: "Plazo de pago inválido." };
+    if (!Number.isInteger(parsed) || parsed < PLAZO_MIN_DIAS || parsed > PLAZO_MAX_DIAS) {
+      return { error: `El plazo tiene que ser un número de días entre ${PLAZO_MIN_DIAS} y ${PLAZO_MAX_DIAS}.` };
     }
     plazoDias = parsed;
   }
+
+  const tecleadaRaw = String(formData.get("moneda_tecleada") ?? "");
+  const monedaTecleada =
+    tecleadaRaw === "VES" || tecleadaRaw === "USD" || tecleadaRaw === "EUR" ? tecleadaRaw : null;
 
   return {
     error: null,
     type,
     amount,
     currency,
+    monedaTecleada,
     description: description || null,
     photoPath: photoPath || null,
     plazoDias,
@@ -118,7 +141,8 @@ export async function createClientWithMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, amount, currency, description, photoPath, plazoDias } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias } = fields;
+  let amount = fields.amount;
 
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
   if (type === "payment") {
@@ -200,6 +224,19 @@ export async function createClientWithMovement(
   }
   const resolved = resolucion.snapshot;
 
+  // Bolívares tecleados: se convierten AQUÍ, con la misma tasa que se acaba de
+  // sellar —incluida la prevista si el dueño marco la casilla—, para que el
+  // respaldo y la cifra guardada no puedan discrepar.
+  let entryAmount: number | null = null;
+  let entryCurrency: "VES" | LedgerCurrency | null = resolved.entryCurrency;
+  if (monedaTecleada === "VES" && currency) {
+    const convertido = convertirDesdeBolivares(amount, currency, resolved);
+    if ("error" in convertido) return { error: convertido.error, clientId: null };
+    amount = convertido.monto;
+    entryAmount = convertido.entryAmount;
+    entryCurrency = "VES";
+  }
+
   const { error: movementError } = await supabase.from("movements").insert({
     client_id: newClient.id,
     created_by: user.id,
@@ -213,8 +250,10 @@ export async function createClientWithMovement(
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
-    entry_currency: resolved.entryCurrency,
-    entry_amount: resolved.entryCurrency ? amount : null,
+    entry_currency: entryCurrency,
+    // Los bolívares tal cual se escribieron cuando se tecleó en bolívares; si no,
+    // el mismo monto, que es lo que hacia antes.
+    entry_amount: entryAmount ?? (entryCurrency ? amount : null),
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
   });
@@ -284,7 +323,8 @@ export async function addMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, amount, currency, description, photoPath, plazoDias } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias } = fields;
+  let amount = fields.amount;
 
   // La casilla "aplicar tasa BCV prevista". Llega como marca, no como cifra:
   // resolveMovementRateSnapshot busca la tasa en lo que el servidor ya guardó.
@@ -303,6 +343,19 @@ export async function addMovement(
     return { error: resolucion.error, clientId: null };
   }
   const resolved = resolucion.snapshot;
+
+  // Bolívares tecleados: se convierten AQUÍ, con la misma tasa que se acaba de
+  // sellar —incluida la prevista si el dueño marco la casilla—, para que el
+  // respaldo y la cifra guardada no puedan discrepar.
+  let entryAmount: number | null = null;
+  let entryCurrency: "VES" | LedgerCurrency | null = resolved.entryCurrency;
+  if (monedaTecleada === "VES" && currency) {
+    const convertido = convertirDesdeBolivares(amount, currency, resolved);
+    if ("error" in convertido) return { error: convertido.error, clientId: null };
+    amount = convertido.monto;
+    entryAmount = convertido.entryAmount;
+    entryCurrency = "VES";
+  }
 
   // A payment can never exceed what the client currently owes in that SAME
   // currency — a dollar payment can't pay off a euro debt, since they're
@@ -355,8 +408,10 @@ export async function addMovement(
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
-    entry_currency: resolved.entryCurrency,
-    entry_amount: resolved.entryCurrency ? amount : null,
+    entry_currency: entryCurrency,
+    // Los bolívares tal cual se escribieron cuando se tecleó en bolívares; si no,
+    // el mismo monto, que es lo que hacia antes.
+    entry_amount: entryAmount ?? (entryCurrency ? amount : null),
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
   });

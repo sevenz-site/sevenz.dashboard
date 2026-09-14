@@ -31,7 +31,10 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
-  LedgerCurrencyRadio,
+  MonedaTecleadaButtons,
+  MontoARegistrarRow,
+  ResumenMonto,
+  montoConvertido,
   BsAmountPreview,
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
@@ -43,6 +46,7 @@ import {
   DEFAULT_LEDGER_CURRENCY,
   type LedgerCurrency,
   type OwnerCountry,
+  type MonedaTecleada,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -273,6 +277,10 @@ function ClientSearchDialogBody({
   const [descriptionValue, setDescriptionValue] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
+  // En que moneda escribe, que no es lo mismo que el libro donde entra la
+  // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
+  // no note ningun cambio.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>("USD");
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,
@@ -503,7 +511,13 @@ function ClientSearchDialogBody({
             Un dueño venezolano lleva dólares y euros aunque el BCV no
             responda, y sin este selector el formulario no manda moneda. */}
         {ownerCountry === "VE" ? (
-          <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} />
+          <MonedaTecleadaButtons
+            value={monedaTecleada}
+            onValueChange={(v) => {
+              setMonedaTecleada(v);
+              if (v !== "VES") setCurrency(v);
+            }}
+          />
         ) : null}
 
         <div className="flex flex-col gap-2">
@@ -522,14 +536,25 @@ function ClientSearchDialogBody({
             required
             aria-invalid={Boolean(errors.amount)}
           />
+          {ownerCountry === "VE" && monedaTecleada === "VES" && rateContext ? (
+            <MontoARegistrarRow
+              bolivares={amountStr}
+              destino={currency}
+              onDestinoChange={setCurrency}
+              rateContext={rateContext}
+              usarPrevista={usarPrevista}
+            />
+          ) : null}
           {rateContext ? (
             <>
+              {monedaTecleada === "VES" ? null : (
               <BsAmountPreview
                 amount={amountStr}
                 currency={currency}
                 rateContext={rateContext}
                 usarPrevista={usarPrevista}
               />
+              )}
               <PrevistaCheckbox
                 rateContext={rateContext}
                 checked={usarPrevista}
@@ -555,6 +580,30 @@ function ClientSearchDialogBody({
           <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
           <input type="hidden" name="photo_path" value={photoPath ?? ""} />
         </div>
+
+        {/* El resumen, justo antes del boton. Repite la cifra que se va a
+            anotar y no se toca: es lo último que el dueño lee antes de
+            pulsar, no otro sitio donde cambiar algo.
+
+            Tecleando dólares o euros repite lo escrito, que parece redundante
+            y no lo es: con el monto arriba y la foto en medio, en un teléfono
+            el número ya no se ve cuando el dedo llega al botón. */}
+        {/* Siempre un fiado: el primer movimiento de un cliente nuevo no puede
+            ser un abono, porque todavía no debe nada. */}
+        <ResumenMonto
+          type="charge"
+          monto={
+            monedaTecleada === "VES" && rateContext
+              ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
+              : Number(amountStr) || null
+          }
+          moneda={ownerCountry === "VE" ? currency : null}
+          rateContext={rateContext}
+          usarPrevista={usarPrevista}
+        />
+        {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
+            ahora sale de los botones o del desplegable, así que viaja aquí. */}
+        {ownerCountry === "VE" ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
         {state.error ? (
           <div className="flex flex-col gap-2">

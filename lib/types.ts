@@ -56,7 +56,22 @@ export const PLAZO_PAGO_OPTIONS: { value: string; label: string; days: number | 
   { value: "45", label: "45 días", days: 45 },
   { value: "sin_especificar", label: "Sin especificar", days: null },
 ];
+// En qué moneda escribe el dueño el monto de un movimiento. NO es el libro
+// donde entra la deuda: un fiado tecleado en bolívares se guarda en dólares o
+// en euros, porque el libro no tiene dimensión de bolívares y añadirle una
+// partiría en dos el saldo de cada cliente.
+export type MonedaTecleada = "VES" | LedgerCurrency;
+
+export const MONEDAS_TECLEABLES: { value: MonedaTecleada; label: string }[] = [
+  { value: "VES", label: "Bolívares" },
+  { value: "USD", label: "Dólares" },
+  { value: "EUR", label: "Euros" },
+];
+
 export const DEFAULT_PLAZO_PAGO = "7";
+// El valor del desplegable que abre el campo de días. Nunca llega al servidor:
+// en cuanto se elige, lo que viaja es el número tecleado.
+export const PLAZO_PAGO_OTRO = "otro";
 
 // Highest number the unread badge spells out; anything above renders as "9+".
 // Shared so the counting query and the badge agree — the query stops looking

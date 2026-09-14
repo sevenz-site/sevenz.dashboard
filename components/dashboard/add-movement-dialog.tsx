@@ -31,7 +31,10 @@ import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actio
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
-  LedgerCurrencyRadio,
+  MonedaTecleadaButtons,
+  MontoARegistrarRow,
+  ResumenMonto,
+  montoConvertido,
   BsAmountPreview,
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
@@ -45,6 +48,7 @@ import {
   DEFAULT_LEDGER_CURRENCY,
   type LedgerCurrency,
   type OwnerCountry,
+  type MonedaTecleada,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
@@ -109,6 +113,10 @@ export function AddMovementDialog({
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
+  // En que moneda escribe, que no es lo mismo que el libro donde entra la
+  // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
+  // no note ningun cambio.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>("USD");
   // True right after the owner clicks "Abono (paga)" while it isn't actually
   // available — shows the red explanation below the radio group. Not the
   // same as canPay itself: this tracks a real click attempt, not just the
@@ -358,7 +366,18 @@ export function AddMovementDialog({
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
 
-          {llevaDivisas ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+          {llevaDivisas ? (
+            <MonedaTecleadaButtons
+              value={monedaTecleada}
+              onValueChange={(v) => {
+                setMonedaTecleada(v);
+                // Tecleando dolares o euros, el libro es ese mismo. Tecleando
+                // bolivares, el libro lo decide el desplegable de abajo y se
+                // queda con el que hubiera.
+                if (v !== "VES") setCurrency(v);
+              }}
+            />
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="amount">Monto</Label>
@@ -377,14 +396,28 @@ export function AddMovementDialog({
               required
               aria-invalid={Boolean(errors.amount)}
             />
+            {/* Tecleando bolivares, la cifra que importa es la convertida:
+                la deuda no vive en bolivares. Tecleando dolares o euros no hace
+                falta, porque lo escrito ya es lo que se guarda. */}
+            {llevaDivisas && monedaTecleada === "VES" && rateContext ? (
+              <MontoARegistrarRow
+                bolivares={amountStr}
+                destino={currency}
+                onDestinoChange={setCurrency}
+                rateContext={rateContext}
+                usarPrevista={usarPrevista}
+              />
+            ) : null}
             {rateContext ? (
               <>
+                {monedaTecleada === "VES" ? null : (
                 <BsAmountPreview
                   amount={amountStr}
                   currency={currency}
                   rateContext={rateContext}
                   usarPrevista={usarPrevista}
                 />
+                )}
                 <PrevistaCheckbox
                   rateContext={rateContext}
                   checked={usarPrevista}
@@ -410,6 +443,28 @@ export function AddMovementDialog({
             <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
             <input type="hidden" name="photo_path" value={photoPath ?? ""} />
           </div>
+
+          {/* El resumen, justo antes del boton. Repite la cifra que se va a
+              anotar y no se toca: es lo último que el dueño lee antes de
+              pulsar, no otro sitio donde cambiar algo.
+
+              Tecleando dólares o euros repite lo escrito, que parece redundante
+              y no lo es: con el monto arriba y la foto en medio, en un teléfono
+              el número ya no se ve cuando el dedo llega al botón. */}
+          <ResumenMonto
+            type={type}
+            monto={
+              monedaTecleada === "VES" && rateContext
+                ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
+                : Number(amountStr) || null
+            }
+            moneda={llevaDivisas ? currency : null}
+            rateContext={rateContext}
+            usarPrevista={usarPrevista}
+          />
+          {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
+              ahora sale de los botones o del desplegable, así que viaja aquí. */}
+          {llevaDivisas ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
           {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
 
