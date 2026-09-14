@@ -3,6 +3,7 @@
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -269,7 +270,9 @@ export function ResumenMonto({
         : null;
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+    <div className="flex flex-col gap-2">
+      <Label>Resumen</Label>
+      <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
       <div className="flex min-w-0 flex-col">
         <span className="text-xs text-muted-foreground">Monto a registrar</span>
         <span
@@ -287,6 +290,7 @@ export function ResumenMonto({
           <CurrencyFlagIcon currency={moneda} />
         </span>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -354,8 +358,14 @@ export function MontoCard({
   );
 }
 
-// Los dos tipos, como botones. El punto de color repite lo que ya dice el
-// color del resumen: rojo el dinero que sale, verde el que entra.
+// Los dos tipos, con el control de siempre.
+//
+// Fueron botones un rato y se volvieron atrás a petición: dos opciones
+// excluyentes se leen mejor con el control que la gente ya reconoce como "elige
+// una", y los botones las hacían parecer dos acciones distintas.
+//
+// El punto de color se queda: repite lo que dice el resumen, rojo el dinero que
+// sale y verde el que entra.
 export function TipoButtons({
   value,
   onValueChange,
@@ -374,23 +384,25 @@ export function TipoButtons({
   return (
     <div className="flex flex-col gap-2">
       <Label>Tipo</Label>
-      <div className="flex flex-row flex-wrap gap-2">
+      <RadioGroup
+        name="type"
+        value={value}
+        onValueChange={(v) => onValueChange(v as "charge" | "payment")}
+        className="flex flex-row gap-4"
+      >
         {opciones.map((o) => (
-          <Button
+          <label
             key={o.value}
-            type="button"
-            variant={value === o.value ? "default" : "outline"}
-            size="sm"
-            onClick={() => onValueChange(o.value)}
-            aria-pressed={value === o.value}
-            className={o.value === "payment" && !canPay ? "opacity-50" : undefined}
+            className={`flex items-center gap-2 text-sm ${
+              o.value === "payment" && !canPay ? "cursor-not-allowed opacity-50" : ""
+            }`}
           >
+            <RadioGroupItem value={o.value} />
             {o.label}
             <span className={`size-2 rounded-full ${o.punto}`} aria-hidden="true" />
-          </Button>
+          </label>
         ))}
-      </div>
-      <input type="hidden" name="type" value={value} />
+      </RadioGroup>
     </div>
   );
 }

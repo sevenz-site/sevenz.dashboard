@@ -196,7 +196,14 @@ export function ClientSearchDialog({
             Agregar movimiento
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
+          del navegador estuviera escondida— así que en un teléfono con la barra
+          a la vista el 90% de esa medida es más alto que la pantalla, y el
+          diálogo se centra sobre un alto que no existe: el título queda por
+          encima del borde y no hay forma de subir hasta él. `svh` mide el
+          viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
+          100vh que CLAUDE.md ya nombra para iPhone. */}
+      <DialogContent className="max-h-[90svh] overflow-y-auto">
           <ClientSearchDialogBody
             key={instanceKey}
             clients={clients}
