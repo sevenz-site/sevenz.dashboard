@@ -1,6 +1,8 @@
 "use client";
 
+import type React from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -72,12 +74,18 @@ export function LibroDestinoSelect({
 }) {
   return (
     <Select value={value} onValueChange={(v) => onValueChange(v as LedgerCurrency)}>
-      <SelectTrigger className="w-[9.5rem]" aria-label="Moneda en la que se guarda">
+      {/* Sin borde: ya lo pone la tarjeta que lo contiene, y dos marcos
+          anidados hacen que parezca un campo dentro de otro campo. */}
+      <SelectTrigger
+        className="w-auto shrink-0 gap-1.5 border-0 bg-transparent px-1 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
+        aria-label="Moneda en la que se guarda"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {LEDGER_CURRENCIES.map((c) => (
           <SelectItem key={c} value={c}>
+            <CurrencyFlagIcon currency={c} />
             {c === "USD" ? "Dólares" : "Euros"}
           </SelectItem>
         ))}
@@ -171,38 +179,48 @@ export function montoConvertido(
   return Math.round((bs / porUnidad) * 100) / 100;
 }
 
-// La fila "Monto a registrar", con el desplegable del libro al lado. Solo
+// La tarjeta "Monto a registrar", con el desplegable del libro al lado. Solo
 // aparece cuando se tecleó en bolívares.
+//
+// Misma anatomía que las dos tarjetas de la calculadora —etiqueta pequeña
+// arriba, cifra grande, moneda a la derecha— porque es la misma pregunta:
+// "esto que escribí, ¿cuánto es en la otra moneda?". Un tendero que ya entendió
+// la calculadora no tiene que aprender nada nuevo aquí.
 export function MontoARegistrarRow({
   bolivares,
   destino,
   onDestinoChange,
   rateContext,
   usarPrevista,
+  type,
 }: {
   bolivares: string;
   destino: LedgerCurrency;
   onDestinoChange: (value: LedgerCurrency) => void;
   rateContext: MovementRateContext;
   usarPrevista: boolean;
+  type: "charge" | "payment";
 }) {
   const monto = montoConvertido(bolivares, destino, rateContext, usarPrevista);
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-col">
-          <span className="text-xs text-muted-foreground">Monto a registrar</span>
-          <span className="text-lg font-semibold tabular-nums">
+      <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-xs text-muted-foreground">Monto a registrar:</span>
+          <span
+            className={`text-2xl font-semibold tabular-nums ${
+              type === "payment" ? "text-money-in" : "text-destructive"
+            }`}
+          >
             {monto === null ? "—" : formatDisplayCurrency(monto, destino)}
           </span>
         </div>
         <LibroDestinoSelect value={destino} onValueChange={onDestinoChange} />
       </div>
       <p className="text-xs text-muted-foreground">
-        El {destino === "USD" ? "fiado o abono" : "fiado o abono"} queda guardado en{" "}
-        {destino === "USD" ? "dólares" : "euros"} a la tasa equivalente. Los bolívares que
-        escribiste quedan anotados en el respaldo.
+        El fiado o abono queda guardado en {destino === "USD" ? "dólares" : "euros"} a la tasa
+        equivalente. Los bolívares que escribiste quedan anotados en el respaldo.
       </p>
     </div>
   );
@@ -217,19 +235,38 @@ export function ResumenMonto({
   moneda,
   rateContext,
   usarPrevista,
+  bolivaresTecleados = null,
 }: {
   type: "charge" | "payment";
   monto: number | null;
   moneda: LedgerCurrency | null;
   rateContext: MovementRateContext | null;
   usarPrevista: boolean;
+  // Los bolívares que el dueño escribió, cuando escribió en bolívares.
+  //
+  // Está aquí por un fallo real: sin este dato, la línea de abajo hacía el
+  // VIAJE DE VUELTA —convertir los bolívares a dólares, redondear a céntimos y
+  // volver a convertirlos— y con Bs. 850 mostraba Bs. 849,14. El dueño teclea
+  // 850 y la app le responde 849,14: parece que perdió 86 céntimos.
+  //
+  // La diferencia es real (1,02 dólares valen 849,14 y no 850, porque los
+  // céntimos no dan para más), pero el resumen no es el sitio donde sacarla. Lo
+  // que el dueño necesita confirmar antes de pulsar es lo que escribió.
+  bolivaresTecleados?: string | null;
 }) {
   if (monto === null || monto <= 0) return null;
 
   const prevista = rateContext?.prevista;
   const tasa =
     usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext?.effectiveRate;
-  const bs = moneda && tasa ? toBs(monto, moneda, tasa) : null;
+  // Lo tecleado gana siempre sobre lo calculado.
+  const tecleados = Number(bolivaresTecleados);
+  const bs =
+    bolivaresTecleados && Number.isFinite(tecleados) && tecleados > 0
+      ? tecleados
+      : moneda && tasa
+        ? toBs(monto, moneda, tasa)
+        : null;
 
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
@@ -250,6 +287,110 @@ export function ResumenMonto({
           <CurrencyFlagIcon currency={moneda} />
         </span>
       ) : null}
+    </div>
+  );
+}
+
+// El campo del monto, como tarjeta: etiqueta pequeña arriba, cifra grande, y la
+// moneda con su bandera a la derecha.
+//
+// Misma anatomía que "Tú pones" en la calculadora, y por el mismo motivo: sin
+// la moneda AL LADO del número, un 850 no dice si son bolívares o dólares, y
+// esa confusión aquí cuesta dinero.
+export function MontoCard({
+  id,
+  name,
+  value,
+  onChange,
+  moneda,
+  max,
+  invalid,
+}: {
+  id: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  moneda: MonedaTecleada | null;
+  max?: number;
+  invalid?: boolean;
+}) {
+  const etiqueta =
+    moneda === "VES" ? "Bolívares" : moneda === "EUR" ? "Euros" : moneda === "USD" ? "Dólares" : null;
+
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
+        invalid ? "border-destructive" : ""
+      }`}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+          Escriba monto:
+        </Label>
+        <Input
+          id={id}
+          name={name}
+          type="number"
+          min="0"
+          max={max}
+          step="0.01"
+          value={value}
+          onChange={onChange}
+          required
+          aria-invalid={invalid}
+          placeholder="0,00"
+          // Sin borde ni fondo propios: el marco lo pone la tarjeta. Dos marcos
+          // anidados se leen como un campo dentro de otro campo.
+          className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums shadow-none focus-visible:ring-0 md:text-2xl"
+        />
+      </div>
+      {etiqueta ? (
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          {etiqueta}
+          <CurrencyFlagIcon currency={moneda === "VES" ? "VES" : (moneda as LedgerCurrency)} />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+// Los dos tipos, como botones. El punto de color repite lo que ya dice el
+// color del resumen: rojo el dinero que sale, verde el que entra.
+export function TipoButtons({
+  value,
+  onValueChange,
+  canPay,
+}: {
+  value: "charge" | "payment";
+  onValueChange: (value: "charge" | "payment") => void;
+  // Un abono imposible no se deshabilita: hacerlo significaría que pulsarlo no
+  // hace nada, y lo que hace falta es que EXPLIQUE por qué no se puede.
+  canPay: boolean;
+}) {
+  const opciones = [
+    { value: "charge" as const, label: "Cargo (fía algo)", punto: "bg-destructive" },
+    { value: "payment" as const, label: "Abono (paga)", punto: "bg-money-in" },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>Tipo</Label>
+      <div className="flex flex-row flex-wrap gap-2">
+        {opciones.map((o) => (
+          <Button
+            key={o.value}
+            type="button"
+            variant={value === o.value ? "default" : "outline"}
+            size="sm"
+            onClick={() => onValueChange(o.value)}
+            aria-pressed={value === o.value}
+            className={o.value === "payment" && !canPay ? "opacity-50" : undefined}
+          >
+            {o.label}
+            <span className={`size-2 rounded-full ${o.punto}`} aria-hidden="true" />
+          </Button>
+        ))}
+      </div>
+      <input type="hidden" name="type" value={value} />
     </div>
   );
 }

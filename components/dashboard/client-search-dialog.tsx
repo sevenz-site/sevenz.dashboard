@@ -31,6 +31,7 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
+  MontoCard,
   MonedaTecleadaButtons,
   MontoARegistrarRow,
   ResumenMonto,
@@ -522,19 +523,16 @@ function ClientSearchDialogBody({
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount">Monto</Label>
-          <Input
+          <MontoCard
             id="amount"
             name="amount"
-            type="number"
-            min="0"
-            step="0.01"
             value={amountStr}
             onChange={(e) => {
               setAmountStr(e.target.value);
               recheck("amount", formRef.current);
             }}
-            required
-            aria-invalid={Boolean(errors.amount)}
+            moneda={ownerCountry === "VE" ? monedaTecleada : null}
+            invalid={Boolean(errors.amount)}
           />
           {ownerCountry === "VE" && monedaTecleada === "VES" && rateContext ? (
             <MontoARegistrarRow
@@ -543,6 +541,7 @@ function ClientSearchDialogBody({
               onDestinoChange={setCurrency}
               rateContext={rateContext}
               usarPrevista={usarPrevista}
+              type="charge"
             />
           ) : null}
           {rateContext ? (
@@ -600,6 +599,7 @@ function ClientSearchDialogBody({
           moneda={ownerCountry === "VE" ? currency : null}
           rateContext={rateContext}
           usarPrevista={usarPrevista}
+          bolivaresTecleados={monedaTecleada === "VES" ? amountStr : null}
         />
         {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
             ahora sale de los botones o del desplegable, así que viaja aquí. */}

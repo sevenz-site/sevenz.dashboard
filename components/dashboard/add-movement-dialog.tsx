@@ -25,12 +25,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
+  MontoCard,
+  TipoButtons,
   MonedaTecleadaButtons,
   MontoARegistrarRow,
   ResumenMonto,
@@ -341,22 +342,7 @@ export function AddMovementDialog({
           ) : null}
 
           <div className="flex flex-col gap-2">
-            <Label>Tipo</Label>
-            <RadioGroup name="type" value={type} onValueChange={handleTypeChange} className="flex flex-row gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <RadioGroupItem value="charge" />
-                Cargo (fía algo)
-              </label>
-              <label
-                className={cn("flex items-center gap-2 text-sm", !canPay && "cursor-not-allowed opacity-50")}
-              >
-                {/* Not natively disabled — a disabled control never fires a
-                    click at all, and the whole point is that clicking this
-                    while blocked explains why instead of doing nothing. */}
-                <RadioGroupItem value="payment" />
-                Abono (paga)
-              </label>
-            </RadioGroup>
+            <TipoButtons value={type} onValueChange={handleTypeChange} canPay={canPay} />
             {paymentBlocked ? (
               <p className="text-xs text-destructive">
                 {`${clientName} no debe nada${llevaDivisas ? ` en ${currency === "EUR" ? "EUROS" : currency}` : ""}, por eso no se puede registrar un abono.`}
@@ -381,20 +367,17 @@ export function AddMovementDialog({
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="amount">Monto</Label>
-            <Input
+            <MontoCard
               id="amount"
               name="amount"
-              type="number"
-              min="0"
-              max={type === "payment" ? currentDebt : undefined}
-              step="0.01"
               value={amountStr}
               onChange={(e) => {
                 setAmountStr(e.target.value);
                 recheck("amount", formRef.current);
               }}
-              required
-              aria-invalid={Boolean(errors.amount)}
+              moneda={llevaDivisas ? monedaTecleada : null}
+              max={type === "payment" && monedaTecleada !== "VES" ? currentDebt : undefined}
+              invalid={Boolean(errors.amount)}
             />
             {/* Tecleando bolivares, la cifra que importa es la convertida:
                 la deuda no vive en bolivares. Tecleando dolares o euros no hace
@@ -406,6 +389,7 @@ export function AddMovementDialog({
                 onDestinoChange={setCurrency}
                 rateContext={rateContext}
                 usarPrevista={usarPrevista}
+                type={type}
               />
             ) : null}
             {rateContext ? (
@@ -461,6 +445,7 @@ export function AddMovementDialog({
             moneda={llevaDivisas ? currency : null}
             rateContext={rateContext}
             usarPrevista={usarPrevista}
+            bolivaresTecleados={monedaTecleada === "VES" ? amountStr : null}
           />
           {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
               ahora sale de los botones o del desplegable, así que viaja aquí. */}
