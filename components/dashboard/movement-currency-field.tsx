@@ -377,9 +377,12 @@ export function TipoButtons({
   // hace nada, y lo que hace falta es que EXPLIQUE por qué no se puede.
   canPay: boolean;
 }) {
+  // El color va en el paréntesis y no en un punto aparte. Un punto de color es
+  // una leyenda que hay que descifrar; "(fía algo)" en rojo ES la explicación, y
+  // ya coincide con el color del resumen de abajo.
   const opciones = [
-    { value: "charge" as const, label: "Cargo (fía algo)", punto: "bg-destructive" },
-    { value: "payment" as const, label: "Abono (paga)", punto: "bg-money-in" },
+    { value: "charge" as const, nombre: "Cargo", aclara: "(fía algo)", color: "text-destructive" },
+    { value: "payment" as const, nombre: "Abono", aclara: "(paga)", color: "text-money-in" },
   ];
   return (
     <div className="flex flex-col gap-2">
@@ -398,8 +401,7 @@ export function TipoButtons({
             }`}
           >
             <RadioGroupItem value={o.value} />
-            {o.label}
-            <span className={`size-2 rounded-full ${o.punto}`} aria-hidden="true" />
+            {o.nombre} <span className={o.color}>{o.aclara}</span>
           </label>
         ))}
       </RadioGroup>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Trash2 } from "lucide-react";
+import { formatBs, formatBsAmount } from "@/lib/exchange-rate/format";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -83,6 +84,20 @@ export function MovementDetailPopover({
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Lo que el dueño escribió, cuando lo escribió en bolívares.
+  //
+  // Sin esta fila, un fiado tecleado como Bs. 900 se veía como "$1,08 · Bs.
+  // 899,09 hoy" y no había rastro del 900. Los 91 céntimos de diferencia son el
+  // redondeo —$1,08 valen 899,09 y no 900, porque los céntimos no dan para más—
+  // pero sin ver la cifra tecleada al lado, esa diferencia parece un error de
+  // la app y no lo es.
+  //
+  // El dato estaba guardado desde el principio: entry_amount y entry_currency
+  // existen desde la 022 justo para esto, y su comentario dice que lo que el
+  // dueño tecleó "es el respaldo más defendible en una disputa que una cifra
+  // derivada después". Solo que nadie lo enseñaba.
+  const tecleadoEnBs = entryCurrency === "VES" && entryAmount != null ? entryAmount : null;
+
   // Only movements actually entered in a foreign currency carry a
   // conversion worth showing — a Bs-entered movement had no conversion at
   // all, so its rate rows stay hidden rather than showing a rate that was
@@ -140,6 +155,20 @@ export function MovementDetailPopover({
               <span className="block text-muted-foreground">{montoSecondary} hoy</span>
             ) : null}
           </dd>
+
+          {tecleadoEnBs !== null ? (
+            <>
+              <dt className="text-muted-foreground">Escribiste</dt>
+              <dd className="tabular-nums">
+                {formatBs(tecleadoEnBs)}
+                {exchangeRateUsed != null ? (
+                  <span className="block text-muted-foreground">
+                    a Bs. {formatBsAmount(exchangeRateUsed)} por {currency === "EUR" ? "euro" : "dólar"}
+                  </span>
+                ) : null}
+              </dd>
+            </>
+          ) : null}
 
           {conversion ? (
             <>
