@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
+import { toast } from "sonner";
 import { Ban, CalendarClock, CreditCard, Gift, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,11 @@ import {
   type AccionState,
 } from "@/app/admin/cuentas/actions";
 import type { Cuenta } from "@/lib/admin/subscriptions";
+import {
+  adjuntaComprobante,
+  ComprobanteInput,
+  useComprobante,
+} from "@/components/admin/comprobante-input";
 
 const inicial: AccionState = { error: null, ok: false };
 
@@ -57,6 +63,7 @@ export function CuentaAcciones({ cuenta }: { cuenta: Cuenta }) {
 function Bloquear({ cuenta }: { cuenta: Cuenta }) {
   const formId = useId();
   const [state, formAction, pending] = useActionState(accionBloquear, inicial);
+  const [comprobante, setComprobante] = useComprobante(state);
 
   return (
     <DialogoDeAccion
@@ -72,7 +79,11 @@ function Bloquear({ cuenta }: { cuenta: Cuenta }) {
       pending={pending}
       formId={formId}
     >
-      <form id={formId} action={formAction} className="flex flex-col gap-4">
+      <form
+        id={formId}
+        action={(fd) => formAction(adjuntaComprobante(fd, comprobante))}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
           <Label htmlFor={`motivo-${formId}`}>Por qué lo bloqueas</Label>
@@ -87,6 +98,11 @@ function Bloquear({ cuenta }: { cuenta: Cuenta }) {
             respuesta. Él no la ve.
           </p>
         </div>
+        <ComprobanteInput
+          value={comprobante}
+          onChange={setComprobante}
+          ayuda="La conversación, el recordatorio que le mandaste, lo que respalde el bloqueo. El tendero no lo ve."
+        />
         <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           Al tendero le saldrá: «Tu cuenta está pausada. Escríbenos por WhatsApp para reactivarla.»
           Sin el motivo.
@@ -114,6 +130,8 @@ function Desbloquear({ cuenta }: { cuenta: Cuenta }) {
       pending={pending}
       formId={formId}
     >
+      {/* Reactivar no lleva comprobante: no hay nada que probar. Lo que se
+          respalda es cobrar y bloquear, no levantar un bloqueo. */}
       <form id={formId} action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
@@ -163,6 +181,12 @@ function DialogoDeAccion({
   const [open, setOpen] = useState(false);
   const [visto, setVisto] = useState(state);
 
+  // El aviso no cabe en el dialogo: cuando llega, el dialogo ya se ha cerrado
+  // porque la accion SI se hizo. El toast es lo unico que sobrevive a eso.
+  useEffect(() => {
+    if (state.ok && state.aviso) toast.warning(state.aviso);
+  }, [state]);
+
   if (state !== visto) {
     setVisto(state);
     if (state.ok) setOpen(false);
@@ -191,6 +215,7 @@ function DialogoDeAccion({
 function DarDemo({ cuenta }: { cuenta: Cuenta }) {
   const formId = useId();
   const [state, formAction, pending] = useActionState(accionDarDemo, inicial);
+  const [comprobante, setComprobante] = useComprobante(state);
   // 60 días es el defecto acordado, pero se teclea: el trato real no cabe en
   // una lista de botones. Mismo razonamiento que "Otro plazo…" en el fiado.
   const [dias, setDias] = useState("60");
@@ -209,7 +234,11 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
       pending={pending}
       formId={formId}
     >
-      <form id={formId} action={formAction} className="flex flex-col gap-4">
+      <form
+        id={formId}
+        action={(fd) => formAction(adjuntaComprobante(fd, comprobante))}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
           <Label htmlFor="dias">Días de demo</Label>
@@ -281,6 +310,11 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
           <Label htmlFor="notas-demo">Nota (opcional)</Label>
           <Input id="notas-demo" name="notas" placeholder="Con quién se acordó, qué se prometió…" />
         </div>
+        <ComprobanteInput
+          value={comprobante}
+          onChange={setComprobante}
+          ayuda="El acuerdo por escrito, si lo hay."
+        />
       </form>
     </DialogoDeAccion>
   );
@@ -289,6 +323,7 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
 function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
   const formId = useId();
   const [state, formAction, pending] = useActionState(accionCambiarPlan, inicial);
+  const [comprobante, setComprobante] = useComprobante(state);
   const [plan, setPlan] = useState(cuenta.plan_code === "pro" ? "pro" : "free");
 
   return (
@@ -305,7 +340,11 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
       pending={pending}
       formId={formId}
     >
-      <form id={formId} action={formAction} className="flex flex-col gap-4">
+      <form
+        id={formId}
+        action={(fd) => formAction(adjuntaComprobante(fd, comprobante))}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <input type="hidden" name="plan" value={plan} />
         <div className="flex flex-col gap-2">
@@ -369,6 +408,11 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
           <Label htmlFor="notas-plan">Nota (opcional)</Label>
           <Input id="notas-plan" name="notas" placeholder="Por qué se le da este plan" />
         </div>
+        <ComprobanteInput
+          value={comprobante}
+          onChange={setComprobante}
+          ayuda="El acuerdo por escrito, si lo hay."
+        />
       </form>
     </DialogoDeAccion>
   );
@@ -377,6 +421,7 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
 function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
   const formId = useId();
   const [state, formAction, pending] = useActionState(accionRegistrarPago, inicial);
+  const [comprobante, setComprobante] = useComprobante(state);
 
   return (
     <DialogoDeAccion
@@ -392,7 +437,11 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
       pending={pending}
       formId={formId}
     >
-      <form id={formId} action={formAction} className="flex flex-col gap-4">
+      <form
+        id={formId}
+        action={(fd) => formAction(adjuntaComprobante(fd, comprobante))}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
           <Label htmlFor="monto">Monto (USD)</Label>
@@ -436,6 +485,11 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
           <Label htmlFor="notas-pago">Nota (opcional)</Label>
           <Input id="notas-pago" name="notas" placeholder="Referencia, quién lo confirmó…" />
         </div>
+        <ComprobanteInput
+          value={comprobante}
+          onChange={setComprobante}
+          ayuda="La captura del Zelle o del Pago Móvil, o el PDF de la transferencia."
+        />
       </form>
     </DialogoDeAccion>
   );

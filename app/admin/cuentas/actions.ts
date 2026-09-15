@@ -4,10 +4,13 @@ import { revalidatePath } from "next/cache";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import {
   bloquear,
+  borrarComprobante,
   cambiarPlan,
   darDemo,
   desbloquear,
+  guardarComprobante,
   registrarPago,
+  subirComprobante,
   type Periodicidad,
 } from "@/lib/admin/subscriptions";
 
@@ -22,7 +25,49 @@ import {
 // Es la misma regla de CLAUDE.md que ya mordió dos veces en getOrCreateShareLink
 // y confirmImport: comprobar en el servidor, no confiar en la pantalla.
 
-export type AccionState = { error: string | null; ok: boolean };
+export type AccionState = {
+  error: string | null;
+  ok: boolean;
+  // La accion SI se hizo, pero el comprobante no se pudo adjuntar. Es un
+  // estado real y merece su propia palabra: decir `error` seria mentir —la
+  // demo ya esta dada— y callarlo dejaria a alguien creyendo que el recibo
+  // quedo guardado.
+  aviso?: string | null;
+};
+
+// Sube el comprobante y lo pega a su asiento. Devuelve el aviso si algo falla,
+// null si fue bien o si no habia nada que adjuntar.
+//
+// SE HACE DESPUES, nunca antes. Subir primero y que luego falle la accion deja
+// un archivo huerfano en el bucket que ya no respalda nada; al reves, lo peor
+// que queda es un asiento sin foto, que se ve y se puede arreglar a mano.
+async function adjunta(
+  ownerId: string,
+  eventoId: string | null,
+  formData: FormData,
+): Promise<string | null> {
+  const archivo = formData.get("comprobante");
+  if (!(archivo instanceof File) || archivo.size === 0) return null;
+
+  if (!eventoId) {
+    return "Se guardo, pero no supimos a que asiento pegar el comprobante.";
+  }
+
+  const { path, error } = await subirComprobante(ownerId, archivo);
+  if (error || !path) {
+    return `Se guardo, pero el comprobante no subio: ${error ?? "error desconocido"}`;
+  }
+
+  const { error: errorAdjunto } = await guardarComprobante(eventoId, path);
+  if (errorAdjunto) {
+    // El archivo ya no le sirve a nadie: no hay asiento que lo nombre, asi que
+    // nadie lo va a encontrar nunca. Se borra en vez de dejarlo ocupando sitio.
+    await borrarComprobante(path);
+    return `Se guardo, pero no pudimos adjuntar el comprobante: ${errorAdjunto}`;
+  }
+
+  return null;
+}
 
 export async function accionDarDemo(
   _prev: AccionState,
@@ -51,11 +96,13 @@ export async function accionDarDemo(
       ? periodicidadRaw
       : null;
 
-  const { error } = await darDemo(ownerId, dias, email, notas, precio, periodicidad);
+  const { error, eventoId } = await darDemo(ownerId, dias, email, notas, precio, periodicidad);
   if (error) return { error, ok: false };
 
+  const aviso = await adjunta(ownerId, eventoId, formData);
+
   revalidatePath("/admin/cuentas");
-  return { error: null, ok: true };
+  return { error: null, ok: true, aviso };
 }
 
 export async function accionCambiarPlan(
@@ -84,11 +131,13 @@ export async function accionCambiarPlan(
     return { error: "El precio no es un número válido.", ok: false };
   }
 
-  const { error } = await cambiarPlan(ownerId, plan, email, periodicidad, precio, notas);
+  const { error, eventoId } = await cambiarPlan(ownerId, plan, email, periodicidad, precio, notas);
   if (error) return { error, ok: false };
 
+  const aviso = await adjunta(ownerId, eventoId, formData);
+
   revalidatePath("/admin/cuentas");
-  return { error: null, ok: true };
+  return { error: null, ok: true, aviso };
 }
 
 export async function accionRegistrarPago(
@@ -115,11 +164,13 @@ export async function accionRegistrarPago(
   // entero, no hasta las 00:00 de ese día.
   const hastaIso = new Date(`${hasta}T23:59:59-04:00`).toISOString();
 
-  const { error } = await registrarPago(ownerId, monto, metodo, hastaIso, email, notas);
+  const { error, eventoId } = await registrarPago(ownerId, monto, metodo, hastaIso, email, notas);
   if (error) return { error, ok: false };
 
+  const aviso = await adjunta(ownerId, eventoId, formData);
+
   revalidatePath("/admin/cuentas");
-  return { error: null, ok: true };
+  return { error: null, ok: true, aviso };
 }
 
 export async function accionBloquear(
@@ -138,11 +189,13 @@ export async function accionBloquear(
     return { error: "Escribe por qué lo bloqueas. Queda en el historial.", ok: false };
   }
 
-  const { error } = await bloquear(ownerId, motivo, email);
+  const { error, eventoId } = await bloquear(ownerId, motivo, email);
   if (error) return { error, ok: false };
 
+  const aviso = await adjunta(ownerId, eventoId, formData);
+
   revalidatePath("/admin/cuentas");
-  return { error: null, ok: true };
+  return { error: null, ok: true, aviso };
 }
 
 export async function accionDesbloquear(

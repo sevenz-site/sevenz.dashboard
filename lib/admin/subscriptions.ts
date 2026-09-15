@@ -53,6 +53,9 @@ export type EventoCuenta = {
   motivo: string | null;
   metodo_pago: string | null;
   monto_usd: number | null;
+  // Ruta dentro del bucket `comprobantes`. Nunca una URL: el bucket es
+  // privado y la URL se firma al dibujar la pantalla, con caducidad.
+  comprobante_path: string | null;
 };
 
 export async function getCuentas(): Promise<Cuenta[]> {
@@ -91,6 +94,17 @@ export async function getHistorial(ownerId: string): Promise<EventoCuenta[]> {
 //
 // Null en cualquiera de los dos significa "no lo hablamos", y la función los
 // deja como estaban — no los borra.
+// Las cuatro devuelven `eventoId`: es el asiento que acaban de escribir, y
+// es a ese al que se pega el comprobante. Adivinarlo por "el más reciente"
+// funciona hasta el día que no, y ese día pega el recibo de un pago al
+// asiento de un bloqueo.
+type Resultado = { error: string | null; eventoId: string | null };
+
+function leeEvento(data: unknown): string | null {
+  const id = (data as { evento_id?: unknown } | null)?.evento_id;
+  return typeof id === "string" ? id : null;
+}
+
 export async function darDemo(
   ownerId: string,
   dias: number,
@@ -98,9 +112,9 @@ export async function darDemo(
   notas: string | null,
   precioUsd: number | null,
   periodicidad: Periodicidad | null,
-): Promise<{ error: string | null }> {
+): Promise<Resultado> {
   const db = createServiceClient();
-  const { error } = await db.rpc("admin_dar_demo", {
+  const { data, error } = await db.rpc("admin_dar_demo", {
     p_owner: ownerId,
     p_dias: dias,
     p_actor_email: actorEmail,
@@ -108,7 +122,7 @@ export async function darDemo(
     p_precio_usd: precioUsd,
     p_periodicidad: periodicidad,
   });
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, eventoId: leeEvento(data) };
 }
 
 export async function cambiarPlan(
@@ -118,9 +132,9 @@ export async function cambiarPlan(
   periodicidad: Periodicidad | null,
   precioUsd: number | null,
   notas: string | null,
-): Promise<{ error: string | null }> {
+): Promise<Resultado> {
   const db = createServiceClient();
-  const { error } = await db.rpc("admin_cambiar_plan", {
+  const { data, error } = await db.rpc("admin_cambiar_plan", {
     p_owner: ownerId,
     p_plan: plan,
     p_actor_email: actorEmail,
@@ -128,7 +142,7 @@ export async function cambiarPlan(
     p_precio_usd: precioUsd,
     p_notas: notas,
   });
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, eventoId: leeEvento(data) };
 }
 
 export async function registrarPago(
@@ -138,9 +152,9 @@ export async function registrarPago(
   hasta: string,
   actorEmail: string,
   notas: string | null,
-): Promise<{ error: string | null }> {
+): Promise<Resultado> {
   const db = createServiceClient();
-  const { error } = await db.rpc("admin_registrar_pago", {
+  const { data, error } = await db.rpc("admin_registrar_pago", {
     p_owner: ownerId,
     p_monto_usd: montoUsd,
     p_metodo: metodo,
@@ -148,7 +162,7 @@ export async function registrarPago(
     p_actor_email: actorEmail,
     p_notas: notas,
   });
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, eventoId: leeEvento(data) };
 }
 
 // El motivo es OBLIGATORIO y la función lo exige también: el día que alguien
@@ -158,14 +172,14 @@ export async function bloquear(
   ownerId: string,
   motivo: string,
   actorEmail: string,
-): Promise<{ error: string | null }> {
+): Promise<Resultado> {
   const db = createServiceClient();
-  const { error } = await db.rpc("admin_bloquear", {
+  const { data, error } = await db.rpc("admin_bloquear", {
     p_owner: ownerId,
     p_motivo: motivo,
     p_actor_email: actorEmail,
   });
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, eventoId: leeEvento(data) };
 }
 
 export async function desbloquear(
@@ -208,4 +222,85 @@ export function repartirPorUrgencia(cuentas: Cuenta[]) {
   porVencer.sort((a, b) => (a.dias_restantes ?? 0) - (b.dias_restantes ?? 0));
 
   return { vencidas, porVencer, resto };
+}
+
+// ── El comprobante ──────────────────────────────────────────────────────
+//
+// Todo pasa por service_role, y no es una comodidad: el bucket `comprobantes`
+// no tiene ni una politica. Una sesion normal —incluida la del superadmin, que
+// para la base es un tendero mas— no puede ni subir ni leer. Quien es
+// superadmin lo dice SUPERADMIN_EMAILS, que es una variable de entorno, asi
+// que ninguna politica de storage podria comprobarlo aunque la escribieramos.
+
+const BUCKET = "comprobantes";
+
+// Extensiones por tipo, no por el nombre que traiga el archivo. Un
+// "recibo.pdf.exe" no deberia decidir como se guarda nada.
+const EXTENSION: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+};
+
+export async function subirComprobante(
+  ownerId: string,
+  archivo: File,
+): Promise<{ path: string | null; error: string | null }> {
+  const extension = EXTENSION[archivo.type];
+  if (!extension) {
+    return { path: null, error: "Solo aceptamos imagenes o PDF." };
+  }
+  // El bucket tambien lo limita, pero rechazarlo aqui ahorra subir 8 MB para
+  // que el otro extremo diga que no.
+  if (archivo.size > 5 * 1024 * 1024) {
+    return { path: null, error: "El archivo pasa de 5 MB." };
+  }
+
+  const db = createServiceClient();
+  const path = `${ownerId}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await db.storage.from(BUCKET).upload(path, archivo, {
+    contentType: archivo.type,
+    upsert: false,
+  });
+  if (error) return { path: null, error: error.message };
+  return { path, error: null };
+}
+
+export async function borrarComprobante(path: string): Promise<void> {
+  const db = createServiceClient();
+  await db.storage.from(BUCKET).remove([path]);
+}
+
+export async function guardarComprobante(
+  eventoId: string,
+  path: string,
+): Promise<{ error: string | null }> {
+  const db = createServiceClient();
+  const { error } = await db.rpc("admin_guarda_comprobante", {
+    p_evento: eventoId,
+    p_path: path,
+  });
+  return { error: error?.message ?? null };
+}
+
+// URL firmada y no publica. Caduca en una hora: lo que se comparte por error
+// —un pantallazo, un enlace pegado en un chat— deja de funcionar solo.
+//
+// Se firman todas de una vez al dibujar el historial, en vez de una por click:
+// una accion de servidor por cada comprobante seria un endpoint mas al que
+// llamar con una ruta cualquiera.
+export async function urlsDeComprobantes(
+  paths: string[],
+): Promise<Record<string, string>> {
+  if (paths.length === 0) return {};
+  const db = createServiceClient();
+  const { data, error } = await db.storage.from(BUCKET).createSignedUrls(paths, 3600);
+  if (error || !data) return {};
+
+  const porRuta: Record<string, string> = {};
+  for (const fila of data) {
+    if (fila.path && fila.signedUrl) porRuta[fila.path] = fila.signedUrl;
+  }
+  return porRuta;
 }

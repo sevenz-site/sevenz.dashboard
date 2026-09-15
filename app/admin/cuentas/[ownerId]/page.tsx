@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FileText, Paperclip } from "lucide-react";
 import { requireSuperadmin } from "@/lib/admin/guard";
-import { getCuentas, getHistorial, type Cuenta, type EventoCuenta } from "@/lib/admin/subscriptions";
+import {
+  getCuentas,
+  getHistorial,
+  urlsDeComprobantes,
+  type Cuenta,
+  type EventoCuenta,
+} from "@/lib/admin/subscriptions";
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
 import { EstadoChip } from "@/components/admin/estado-chip";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
@@ -86,6 +92,15 @@ export default async function CuentaDetallePage({
   const [cuentas, historial] = await Promise.all([getCuentas(), getHistorial(ownerId)]);
   const cuenta: Cuenta | undefined = cuentas.find((c) => c.owner_id === ownerId);
   if (!cuenta) notFound();
+
+  // Las URLs se firman aqui, todas de una vez, y caducan en una hora.
+  //
+  // El bucket es privado: sin firma no hay forma de ver un comprobante. Y
+  // firmarlas al dibujar, en vez de una accion de servidor por cada click,
+  // evita tener un endpoint al que se le pueda pedir cualquier ruta.
+  const comprobantes = await urlsDeComprobantes(
+    historial.map((e) => e.comprobante_path).filter((p): p is string => Boolean(p)),
+  );
 
   const dias = cuenta.dias_restantes;
   const cobroEmpieza =
@@ -188,6 +203,21 @@ export default async function CuentaDetallePage({
                   </span>
                 </div>
                 {e.motivo ? <span className="text-xs text-muted-foreground">{e.motivo}</span> : null}
+                {e.comprobante_path && comprobantes[e.comprobante_path] ? (
+                  <a
+                    href={comprobantes[e.comprobante_path]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex w-fit items-center gap-1.5 text-xs font-medium underline underline-offset-2"
+                  >
+                    {e.comprobante_path.endsWith(".pdf") ? (
+                      <FileText className="size-3.5" />
+                    ) : (
+                      <Paperclip className="size-3.5" />
+                    )}
+                    Ver comprobante
+                  </a>
+                ) : null}
                 <span className="text-xs text-muted-foreground">
                   {e.actor_email ?? "—"}
                   {e.desde_estado || e.hasta_estado
