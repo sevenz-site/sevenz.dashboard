@@ -1,35 +1,34 @@
+import { Badge } from "@/components/ui/badge";
+import { CUENTA_BADGE_CLASS } from "@/lib/types";
 import type { Cuenta } from "@/lib/admin/subscriptions";
 
-// El color dice el estado de un vistazo, sin leer.
+// El chip de estado de una cuenta.
 //
-// EL MAPA, y por qué es este:
+// USA Badge, no un <span> con clases a mano. La primera versión de esta
+// pantalla se dibujó su propio chip, y por eso no compartía ni el radio, ni la
+// altura, ni el tamaño de letra con los de la cartera — dos cosas que hacen lo
+// mismo y se ven distinto.
 //
-//   verde   está pagando, o es un regalo deliberado. Todo en orden.
-//   rojo    hace falta que hagas algo: la demo venció y sigue trabajando, o
-//           la cuenta está bloqueada.
-//   neutro  demo en curso. No es una alarma — es lo normal durante la prueba.
-//   apagado cancelada. Ya no es tuyo el problema.
+// Y los colores salen de CUENTA_BADGE_CLASS, en lib/types.ts, junto a los de
+// los clientes: es la misma paleta. Escritos aquí, el día que alguien ajuste
+// el ámbar de "plazo vencido" esta pantalla se quedaría con el viejo.
 //
-// SOLO DOS COLORES Y EL NEUTRO, a propósito. La paleta tiene `money-in` y
-// `destructive`, los dos medidos contra WCAG. No hay un ámbar, y no me lo
-// invento: ayer se arregló un color que llevaba meses fallando el contraste
-// justamente por haberse elegido a ojo. Si hace falta un tercer nivel —"esta
-// demo vence en tres días"— se añade el token midiéndolo, no antes.
-//
-// La urgencia de "por vencer" ya la lleva su propia sección, que es una señal
-// más fuerte que un matiz de color.
-export function EstadoChip({ cuenta }: { cuenta: Cuenta }) {
+// variant="outline" en todos porque las clases traen su propio fondo y borde;
+// lo que aporta la variante es la forma, no el color.
+function claseDe(cuenta: Cuenta): string {
   const vencida = cuenta.estado === "demo" && (cuenta.dias_restantes ?? 0) < 0;
+  if (vencida) return CUENTA_BADGE_CLASS.vencida;
+  if (cuenta.estado === "bloqueada") return CUENTA_BADGE_CLASS.bloqueada;
+  if (cuenta.estado === "cancelada") return CUENTA_BADGE_CLASS.cancelada;
+  if (cuenta.estado === "demo") return CUENTA_BADGE_CLASS.demo;
+  return cuenta.plan_code === "pro"
+    ? CUENTA_BADGE_CLASS.activa_pro
+    : CUENTA_BADGE_CLASS.activa_free;
+}
 
-  const color = vencida || cuenta.estado === "bloqueada"
-    ? "border-destructive/30 bg-destructive/10 text-destructive"
-    : cuenta.estado === "activa"
-      ? "border-money-in/30 bg-money-in/10 text-money-in"
-      : cuenta.estado === "cancelada"
-        ? "border-border bg-muted text-muted-foreground"
-        : "border-border bg-background text-foreground";
-
-  const nombre = vencida
+function nombreDe(cuenta: Cuenta): string {
+  const vencida = cuenta.estado === "demo" && (cuenta.dias_restantes ?? 0) < 0;
+  const estado = vencida
     ? "Demo vencida"
     : cuenta.estado === "demo"
       ? "Demo"
@@ -38,14 +37,13 @@ export function EstadoChip({ cuenta }: { cuenta: Cuenta }) {
         : cuenta.estado === "bloqueada"
           ? "Bloqueada"
           : "Cancelada";
+  return `${estado} · ${cuenta.plan_code === "pro" ? "Pro" : "Free"}`;
+}
 
+export function EstadoChip({ cuenta }: { cuenta: Cuenta }) {
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${color}`}
-    >
-      {nombre}
-      <span className="opacity-60">·</span>
-      <span className="font-normal">{cuenta.plan_code === "pro" ? "Pro" : "Free"}</span>
-    </span>
+    <Badge variant="outline" className={claseDe(cuenta)}>
+      {nombreDe(cuenta)}
+    </Badge>
   );
 }
