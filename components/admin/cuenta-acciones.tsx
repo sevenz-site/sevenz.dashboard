@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useId, useState } from "react";
 import { CalendarClock, CreditCard, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,7 @@ function DialogoDeAccion({
   state,
   children,
   pending,
+  formId,
 }: {
   titulo: string;
   descripcion: string;
@@ -64,6 +65,13 @@ function DialogoDeAccion({
   state: AccionState;
   children: React.ReactNode;
   pending: boolean;
+  // ÚNICO por diálogo, y esto era un fallo de verdad. El botón de enviar vive
+  // fuera del <form> —está en el pie del diálogo— así que los une el atributo
+  // form="...". Con un id fijo, los 24 negocios × 3 diálogos daban 72
+  // elementos con el MISMO id, y el navegador resuelve al primero del
+  // documento: pulsar "Confirmar" en la fila 20 habría enviado el formulario
+  // de la fila 1. Cambiarle el plan al negocio equivocado, en silencio.
+  formId: string;
 }) {
   const [open, setOpen] = useState(false);
   const [visto, setVisto] = useState(state);
@@ -84,7 +92,7 @@ function DialogoDeAccion({
         {children}
         {state.error ? <p className="text-xs text-destructive">{state.error}</p> : null}
         <DialogFooter>
-          <Button type="submit" form="form-accion" disabled={pending}>
+          <Button type="submit" form={formId} disabled={pending}>
             {pending ? "Guardando…" : "Confirmar"}
           </Button>
         </DialogFooter>
@@ -94,6 +102,7 @@ function DialogoDeAccion({
 }
 
 function DarDemo({ cuenta }: { cuenta: Cuenta }) {
+  const formId = useId();
   const [state, formAction, pending] = useActionState(accionDarDemo, inicial);
   // 60 días es el defecto acordado, pero se teclea: el trato real no cabe en
   // una lista de botones. Mismo razonamiento que "Otro plazo…" en el fiado.
@@ -111,8 +120,9 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
       }
       state={state}
       pending={pending}
+      formId={formId}
     >
-      <form id="form-accion" action={formAction} className="flex flex-col gap-4">
+      <form id={formId} action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
           <Label htmlFor="dias">Días de demo</Label>
@@ -190,6 +200,7 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
 }
 
 function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
+  const formId = useId();
   const [state, formAction, pending] = useActionState(accionCambiarPlan, inicial);
   const [plan, setPlan] = useState(cuenta.plan_code === "pro" ? "pro" : "free");
 
@@ -205,8 +216,9 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
       }
       state={state}
       pending={pending}
+      formId={formId}
     >
-      <form id="form-accion" action={formAction} className="flex flex-col gap-4">
+      <form id={formId} action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <input type="hidden" name="plan" value={plan} />
         <div className="flex flex-col gap-2">
@@ -276,6 +288,7 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
 }
 
 function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
+  const formId = useId();
   const [state, formAction, pending] = useActionState(accionRegistrarPago, inicial);
 
   return (
@@ -290,8 +303,9 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
       }
       state={state}
       pending={pending}
+      formId={formId}
     >
-      <form id="form-accion" action={formAction} className="flex flex-col gap-4">
+      <form id={formId} action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="owner_id" value={cuenta.owner_id} />
         <div className="flex flex-col gap-2">
           <Label htmlFor="monto">Monto (USD)</Label>
