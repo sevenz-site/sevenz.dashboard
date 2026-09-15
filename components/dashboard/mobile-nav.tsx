@@ -9,6 +9,7 @@ import { useUnreadNotifications } from "@/components/dashboard/unread-notificati
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 import { BADGE_MAX } from "@/lib/types";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 // The three places the bar navigates to, in order, before Agregar. Exact
 // pathname matching, not startsWith: a client's own screen replaces this
@@ -132,6 +133,10 @@ export function MobileNav() {
   // /clients/<id> loses it.
   const onClientDetail = pathname.startsWith("/clients/");
   const agregarHref = "/dashboard?nuevo=1";
+  // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
+  // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
+  // que nadie pidio.
+  const guardia = useGuardiaDeCuentaPausada();
 
   if (overlayOpen || keyboardOpen) return null;
 
@@ -230,14 +235,18 @@ export function MobileNav() {
           // in the DOM — two elements sharing a marker means it can highlight
           // the wrong one, or one that isn't on screen.
           data-tour="new-client-button-mobile"
-          onClick={(e) =>
+          onClick={(e) => {
+            if (guardia()) {
+              e.preventDefault();
+              return;
+            }
             navigate(e, agregarHref, () => {
               // Step 1's tooltip only renders on the dashboard. This code is
               // unreachable from a client's page now that the bar returns null
               // there, but the guard stays cheap and correct if that changes.
               if (tour.step === 1) tour.advance();
-            })
-          }
+            });
+          }}
           className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
         >
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">

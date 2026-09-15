@@ -34,6 +34,8 @@ import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/move
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { mensajeDeSaldo, type DatosParaCompartir } from "@/lib/share-balance";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 export function MovementDetailPopover({
   movementId,
@@ -94,6 +96,8 @@ export function MovementDetailPopover({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Cuenta pausada: borrar un movimiento cambia saldos.
+  const guardia = useGuardiaDeCuentaPausada();
 
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
   const balance = formatLedgerAmount(runningBalance, currency, ledger);
@@ -150,12 +154,13 @@ export function MovementDetailPopover({
     runningBalance > 0 ? "text-destructive" : runningBalance < 0 ? "text-money-in" : "";
 
   async function handleDelete() {
+    if (guardia()) return;
     if (!movementId) return;
     setDeleting(true);
     const result = await deleteMovement(movementId);
     setDeleting(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success("Movimiento eliminado");

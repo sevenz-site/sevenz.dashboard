@@ -9,7 +9,6 @@ import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
-import { puedeEscribir } from "@/lib/admin/subscriptions";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
@@ -33,7 +32,7 @@ export default async function DashboardPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual, puedeRegistrar] = await Promise.all([
+  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
@@ -52,9 +51,6 @@ export default async function DashboardPage({
     getOwnerRateContext(supabase, user!.id),
     // En que moneda escribio la ultima vez, para que el formulario abra ahi.
     getMonedaHabitual(supabase, user!.id),
-    // Si la cuenta esta pausada. Va aqui y no en un componente aparte para
-    // no anadir un viaje mas a la base en la pantalla mas visitada.
-    puedeEscribir(supabase, user!.id),
   ]);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de
@@ -186,8 +182,11 @@ export default async function DashboardPage({
 
       {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
           al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
-          habria escrito el monto. Aqui se entera al abrir. */}
-      {!puedeRegistrar ? <CuentaPausada /> : null}
+          habria escrito el monto. Aqui se entera al abrir.
+
+          Se dibuja siempre y decide el solo: lee del contexto del layout, que
+          es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
+      <CuentaPausada />
 
       {/* 20px of separation above a section title, measured on screen. The
           container is a flex column with gap-4, and a margin ADDS to a flex gap

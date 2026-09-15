@@ -56,6 +56,11 @@ import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
+import {
+  useErrorDeCuentaPausada,
+  useGuardiaAlAbrir,
+  useGuardiaDeCuentaPausada,
+} from "@/components/dashboard/cuenta-pausada";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -219,6 +224,7 @@ export function AddMovementDialog({
   const canPayAny = llevaDivisas ? currentDebtUsd > 0 || currentDebtEur > 0 : currentDebtCop > 0;
 
   function openForCharge() {
+    if (guardia()) return;
     setType("charge");
     setOpen(true);
   }
@@ -256,6 +262,7 @@ export function AddMovementDialog({
   }
 
   function openForPayment() {
+    if (guardia()) return;
     // Land on whichever currency actually has debt, so the in-dialog
     // Select isn't immediately reverted back to "charge" by the
     // type === "payment" && !canPay guard below. Corrects in either
@@ -286,10 +293,11 @@ export function AddMovementDialog({
   // the same reason: a one-shot latch fires once and never again, and seeding
   // from the prop means a fresh mount carrying the marker never opens at all.
   const wantsOpen = autoOpen === "charge" || autoOpen === "payment";
+  const abrirBloqueado = useGuardiaAlAbrir(wantsOpen);
   const [prevAutoOpen, setPrevAutoOpen] = useState(false);
   if (wantsOpen !== prevAutoOpen) {
     setPrevAutoOpen(wantsOpen);
-    if (wantsOpen) {
+    if (wantsOpen && !abrirBloqueado) {
       // Always set explicitly, never inherited. Closing this dialog does NOT
       // reset `type`, so an owner whose last action was "Agregar abono" would
       // find the bar opening on Abono — registering a payment when a charge was
@@ -341,6 +349,10 @@ export function AddMovementDialog({
     if (wantsOpen && !open) router.replace(pathname, { scroll: false });
   }, [wantsOpen, open, router, pathname]);
 
+  // Cuenta pausada: lo dice el dialogo, no un parrafo rojo aqui debajo.
+  const errorPausada = useErrorDeCuentaPausada(state.error);
+  const guardia = useGuardiaDeCuentaPausada();
+
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
@@ -371,7 +383,13 @@ export function AddMovementDialog({
           </Button>
         </div>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next && guardia()) return;
+          setOpen(next);
+        }}
+      >
       {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
           del navegador estuviera escondida— así que en un teléfono con la barra
           a la vista el 90% de esa medida es más alto que la pantalla, y el
@@ -531,7 +549,9 @@ export function AddMovementDialog({
               ahora sale de los botones o del desplegable, así que viaja aquí. */}
           {llevaDivisas ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
-          {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+          {state.error && !errorPausada ? (
+            <p className="text-sm text-destructive">{state.error}</p>
+          ) : null}
 
           <DialogFooter>
             {isFlagged && type === "charge" ? (

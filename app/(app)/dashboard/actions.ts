@@ -8,6 +8,8 @@ import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares"
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
 import { recordMovementRejection } from "@/lib/movement-rejection";
+import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
+import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import type { LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = {
@@ -109,6 +111,18 @@ export async function createClientWithMovement(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", clientId: null };
+
+  // La cuenta pausada se para AQUÍ, antes de tocar nada.
+  //
+  // La política de la 061 también lo para, pero de dos maneras distintas y
+  // ninguna sirve para enseñarla: un insert rechazado vuelve como "new row
+  // violates row-level security policy", y un update rechazado no vuelve como
+  // error en absoluto — afecta a cero filas y la pantalla diría que se guardó.
+  // Esa segunda es la peligrosa. Preguntando antes, los dos casos dicen lo
+  // mismo, y lo dicen en castellano.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { error: MENSAJE_CUENTA_PAUSADA, clientId: null };
+  }
 
   const name = String(formData.get("new_client_name") ?? "").trim();
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
@@ -282,6 +296,18 @@ export async function addMovement(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", clientId: null };
+
+  // La cuenta pausada se para AQUÍ, antes de tocar nada.
+  //
+  // La política de la 061 también lo para, pero de dos maneras distintas y
+  // ninguna sirve para enseñarla: un insert rechazado vuelve como "new row
+  // violates row-level security policy", y un update rechazado no vuelve como
+  // error en absoluto — afecta a cero filas y la pantalla diría que se guardó.
+  // Esa segunda es la peligrosa. Preguntando antes, los dos casos dicen lo
+  // mismo, y lo dicen en castellano.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { error: MENSAJE_CUENTA_PAUSADA, clientId: null };
+  }
 
   const clientId = String(formData.get("client_id") ?? "");
   if (!clientId) return { error: "Cliente inválido.", clientId: null };
@@ -471,6 +497,13 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
 
+  // Borrar un movimiento es un update — el borrado es blando — y un update
+  // que la política rechaza no da error: afecta a cero filas y se vería como
+  // un borrado que funcionó. Por eso se pregunta antes.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { error: MENSAJE_CUENTA_PAUSADA };
+  }
+
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
     .select("id, client_id")
@@ -520,6 +553,13 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  // Borrar un movimiento es un update — el borrado es blando — y un update
+  // que la política rechaza no da error: afecta a cero filas y se vería como
+  // un borrado que funcionó. Por eso se pregunta antes.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { error: MENSAJE_CUENTA_PAUSADA };
+  }
 
   const { data: movement, error: fetchError } = await supabase
     .from("movements")

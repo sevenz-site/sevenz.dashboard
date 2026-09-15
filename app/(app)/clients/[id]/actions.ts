@@ -2,6 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
+import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+
+// TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
+// la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
+// preguntando si puede escribir, justo despues de comprobar la sesion.
+//
+// No sobra con dejar que la politica haga su trabajo: un update rechazado no
+// devuelve error, afecta a cero filas. Marcar una mala paga o mandar un
+// cliente a la papelera se veria como que funciono, y no habria pasado nada.
 
 export type EditClientState = { error: string | null; success: boolean };
 
@@ -14,6 +24,8 @@ export async function updateClient(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", success: false };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA, success: false };
 
   const clientId = String(formData.get("client_id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -64,6 +76,8 @@ export async function flagClient(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", success: false };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA, success: false };
 
   const clientId = String(formData.get("client_id") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
@@ -102,6 +116,8 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA };
 
   const { error: closeError } = await supabase
     .from("client_flags")
@@ -154,6 +170,8 @@ export async function trashClient(clientId: string): Promise<HideClientState> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA };
   if (!clientId) return { error: "Cliente inválido." };
 
   // Ownership checked explicitly rather than left to RLS, per CLAUDE.md —
@@ -216,6 +234,8 @@ export async function restoreClient(clientId: string): Promise<HideClientState> 
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA };
   if (!clientId) return { error: "Cliente inválido." };
 
   const { data: client } = await supabase
@@ -263,6 +283,8 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA };
   if (!clientId) return { error: "Cliente inválido." };
 
   const { data: client } = await supabase
@@ -324,6 +346,8 @@ export async function setClientProfilePicture(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id)))
+    return { error: MENSAJE_CUENTA_PAUSADA };
   if (!clientId) return { error: "Cliente inválido." };
 
   // Una ruta que no empiece por la carpeta del dueño se rechaza aquí también, y
