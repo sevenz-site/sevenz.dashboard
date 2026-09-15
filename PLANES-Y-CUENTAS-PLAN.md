@@ -25,7 +25,7 @@ precio, forma de cobro, ni forma de bloquear a nadie.
 
 ---
 
-## Fase 0 — cerrar el agujero, antes que nada
+## Fase 0 — cerrar el agujero ✅ HECHO
 
 **Hoy un tendero puede ponerse `pro` él solo.** Esto no es una hipótesis sobre
 el futuro: es el estado actual de producción.
@@ -47,21 +47,40 @@ Hoy el premio es pequeño —fotos ilimitadas— y nadie lo ha hecho. Pero **tod
 lo que se construya encima de esa columna es decorativo mientras siga abierta**:
 bloqueas una cuenta y se desbloquea sola.
 
-**El arreglo.** Un trigger `BEFORE UPDATE` en `owners` que rechace cualquier
-cambio de las columnas de facturación viniendo de un rol que no sea
-`service_role`:
+**HECHO el 2026-09-15**, migración `055_plan_solo_lo_cambia_sevenz`, corrida en
+dev y en producción. Un trigger `BEFORE UPDATE` en `owners`:
 
 ```sql
-create or replace function public.owners_guard_billing_columns()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function public.owners_bloquea_cambio_de_plan()
+returns trigger
+language plpgsql
+-- SECURITY INVOKER a propósito. Ver abajo.
+set search_path = public
+as $$
 begin
-  if current_setting('role', true) = 'service_role' then return new; end if;
-  if new.plan is distinct from old.plan then
-    raise exception 'plan no se cambia desde la sesión del dueño';
+  if new.plan is distinct from old.plan
+     and current_user in ('authenticated', 'anon') then
+    raise exception
+      'El plan de una cuenta solo lo cambia Sevenz, no la sesión del dueño.'
+      using errcode = '42501';
   end if;
   return new;
-end $$;
+end;
+$$;
 ```
+
+**El primer borrador de este archivo lo escribió `security definer`, y así no
+habría funcionado.** Dentro de una función SECURITY DEFINER, `current_user`
+pasa a ser el dueño de la función —postgres—, no quien la llamó: la condición
+sería siempre falsa y el trigger dejaría pasar todo **aparentando estar
+puesto**, que es la peor forma de fallar. Va SECURITY INVOKER, el valor por
+defecto, y eso es lo que lo hace funcionar.
+
+**Comprobado, no deducido.** En dev se demostró primero el agujero —la sesión
+de un dueño puso su propia cuenta en `pro`— y después que el mismo `UPDATE`
+se rechaza con `42501`. En producción se comprobó lo mismo sobre Negocio Demo,
+más que `service_role` sí puede y que "Mi negocio" no se rompió. Todo dentro
+de transacciones con `rollback`: ningún negocio real cambió de plan.
 
 **Trigger y no una política con `WITH CHECK`**, porque una política no puede
 comparar el valor viejo con el nuevo en un `UPDATE` — `WITH CHECK` solo ve la
@@ -256,7 +275,7 @@ escrito. El dueño también tiene WhatsApp en `owners.whatsapp`, y el aviso a
 
 | Fase | Qué | Se puede desplegar sola |
 |---|---|---|
-| **0** | El trigger que protege `plan` | Sí, hoy, sin nada más |
+| **0** | El trigger que protege `plan` | ✅ **Hecho** — migración 055, en dev y producción |
 | **1** | Las tres tablas + migrar los 23 negocios actuales | Sí. Nada las lee todavía |
 | **2** | `/admin → Cuentas`: ver y cambiar a mano | Sí. Ya sirve para trabajar |
 | **3** | El bloqueo real en las políticas + los mensajes en la app | Sí |
@@ -272,7 +291,7 @@ negocies, cambiar planes y ver quién vence. La 3 añade el bloqueo.
 
 | # | Qué puede salir mal | Qué lo evita |
 |---|---|---|
-| 1 | **El tendero se pone `pro` él solo.** Está abierto hoy | Fase 0, el trigger. Y en la Fase 1 las columnas de facturación se van a otra tabla sin `grant` para `authenticated` |
+| 1 | ~~**El tendero se pone `pro` él solo**~~ — cerrado por la 055 | Fase 0, el trigger. Y en la Fase 1 las columnas de facturación se van a otra tabla sin `grant` para `authenticated` |
 | 2 | **Bloqueas a alguien que sí pagó.** La conversación más cara que existe | El historial dice quién, cuándo y por qué. Desbloquear es un clic. *Registrar pago* antes que *bloquear* en la ficha, para que el orden de los botones empuje al orden correcto |
 | 3 | **Se te olvida mirar la lista y regalas meses.** El riesgo que aceptaste al elegir que las demos no bajen solas | La lista separa "por vencer" de "ya vencidas y andando", el correo a `sevenz.mvp@gmail.com` llega aunque no entres, y /admin lleva el contador a la vista |
 | 4 | **Bloqueas al tendero y dejas tirado a su cliente** | El enlace del cliente no pasa por estas políticas. Escrito arriba para que nadie lo "arregle" |
