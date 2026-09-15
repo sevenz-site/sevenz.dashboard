@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent } from "react";
 import { ArrowUpDown, Share2 } from "lucide-react";
+import { puedeCompartirArchivos, tarjetaDeTasa } from "@/lib/share-card";
 import dynamic from "next/dynamic";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -298,7 +299,29 @@ function RateCalculator({
     const text = hasAmount
       ? `${money(putAmount, putCurrency)} ${labelFor(putCurrency)} = ${money(getAmount, getCurrency)} ${labelFor(getCurrency)} · ${stampLabel}`
       : `1 ${pairName} = ${formatBs(pairRate)} · ${stampLabel}`;
+
     try {
+      // La tarjeta primero. Lo que se comparte acaba en un WhatsApp, y ahi un
+      // texto plano no lo respalda nadie: cualquiera escribe "$1 = Bs. 832,49".
+      const tarjeta = await tarjetaDeTasa(datosDeLaTarjeta());
+      if (tarjeta && puedeCompartirArchivos([tarjeta])) {
+        // Sin `text` junto al archivo, a peticion: un mensaje reenviado con una
+        // URL dentro es la forma que copia un estafador cambiando el dominio
+        // por uno parecido. La tarjeta lleva "Sevenz.site" impreso — se lee, no
+        // se pulsa.
+        await navigator.share({ files: [tarjeta] });
+        return;
+      }
+    } catch (error) {
+      // Cerrar el menu de compartir rechaza la promesa, y eso NO es un fallo:
+      // el dueño cambio de idea. Solo entonces hay que parar aqui — en
+      // cualquier otro error se sigue al texto, que es mejor que nada.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+
+    try {
+      // El texto de siempre, para quien no puede mandar imagenes: Firefox no lo
+      // hace nunca y varios escritorios tienen share pero rechazan archivos.
       // The native sheet is what gets this into WhatsApp, which is where these
       // quotes actually go. Clipboard is the fallback for desktop, where
       // navigator.share often does not exist.
@@ -311,6 +334,28 @@ function RateCalculator({
     } catch {
       // A dismissed share sheet rejects; that is a normal outcome, not an error.
     }
+  }
+
+  // Lo mismo que se ve en pantalla, no una segunda version: los textos salen de
+  // `money` y `labelFor`, los mismos que dibujan las dos tarjetas de arriba. Si
+  // esto formateara por su cuenta, la imagen compartida y lo que el dueño esta
+  // mirando podrian decir cifras distintas.
+  function datosDeLaTarjeta() {
+    // Sin el nombre de la moneda en bolivares: "Bs." ya lo dice, y "Bs. 832,49
+    // Bolivares" lo repite. En dolares y euros si hace falta, porque el simbolo
+    // $ lo comparten varios paises de la region.
+    const lado = (amount: number, currency: MovementCurrency) => ({
+      texto:
+        currency === "VES"
+          ? money(amount, currency)
+          : `${money(amount, currency)} ${labelFor(currency)}`,
+      bandera: currency === "VES" ? "/flag-ves.svg" : currency === "USD" ? "/flag-usd.svg" : "/flag-eur.svg",
+    });
+    return {
+      izquierda: hasAmount ? lado(putAmount, putCurrency) : lado(1, pair),
+      derecha: hasAmount ? lado(getAmount, getCurrency) : lado(pairRate, "VES"),
+      pie: rateFetchedAt ? `${stampLabel} · consultada ${formatFetchStamp(rateFetchedAt)}` : stampLabel,
+    };
   }
 
   return (
