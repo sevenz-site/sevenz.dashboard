@@ -1,4 +1,5 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { requireSuperadmin } from "@/lib/admin/guard";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
@@ -27,18 +28,31 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { email } = await requireSuperadmin();
 
   return (
-    <SidebarProvider>
-      <AdminSidebar email={email} />
-      <SidebarInset>
-        {/* La cabecera se queda pegada arriba al desplazar. En una tabla de 24
-            filas que va a crecer, el botón del menú y el título son lo único
-            que orienta cuando ya no se ve el principio. */}
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
-          <SidebarTrigger className="-ml-1" />
-          <span className="text-sm font-medium">Panel de Sevenz</span>
-        </header>
-        <main className="flex flex-1 flex-col gap-6 p-4">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    // TooltipProvider ENVOLVIENDO, y no es decorativo: sin él la página no
+    // carga. Los botones del menú llevan `tooltip` para que se lean cuando la
+    // barra está colapsada a iconos, y en este repo `Tooltip` es un
+    // TooltipPrimitive.Root pelado —no trae su propio provider— y
+    // SidebarProvider tampoco lo incluye. Radix lanza una excepción si no
+    // encuentra uno por encima, y como esto vive en el layout, tumbaba
+    // /admin y /admin/cuentas a la vez.
+    //
+    // El sidebar del tendero nunca lo necesitó porque no usa `tooltip` en
+    // ningún botón. Va aquí y no dentro de SidebarProvider para no tocar un
+    // componente compartido con la app del tendero.
+    <TooltipProvider>
+      <SidebarProvider>
+        <AdminSidebar email={email} />
+        <SidebarInset>
+          {/* La cabecera se queda pegada arriba al desplazar. En una tabla que
+              va a crecer, el botón del menú y el título son lo único que
+              orienta cuando ya no se ve el principio. */}
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
+            <SidebarTrigger className="-ml-1" />
+            <span className="text-sm font-medium">Panel de Sevenz</span>
+          </header>
+          <main className="flex flex-1 flex-col gap-6 p-4">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
