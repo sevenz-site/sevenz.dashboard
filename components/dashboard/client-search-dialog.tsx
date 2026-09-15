@@ -31,7 +31,11 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
-  LedgerCurrencyRadio,
+  MontoCard,
+  MonedaTecleadaButtons,
+  MontoARegistrarRow,
+  ResumenMonto,
+  montoConvertido,
   BsAmountPreview,
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
@@ -43,10 +47,12 @@ import {
   DEFAULT_LEDGER_CURRENCY,
   type LedgerCurrency,
   type OwnerCountry,
+  type MonedaTecleada,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import type { MonedaHabitual } from "@/lib/moneda-habitual";
 import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -61,6 +67,7 @@ export function ClientSearchDialog({
   autoOpen,
   showTourTarget = true,
   rateContext,
+  monedaHabitual,
 }: {
   clients: ClientOption[];
   ownerId: string;
@@ -80,6 +87,8 @@ export function ClientSearchDialog({
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
+  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
+  monedaHabitual: MonedaHabitual | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -191,7 +200,14 @@ export function ClientSearchDialog({
             Agregar movimiento
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
+          del navegador estuviera escondida— así que en un teléfono con la barra
+          a la vista el 90% de esa medida es más alto que la pantalla, y el
+          diálogo se centra sobre un alto que no existe: el título queda por
+          encima del borde y no hay forma de subir hasta él. `svh` mide el
+          viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
+          100vh que CLAUDE.md ya nombra para iPhone. */}
+      <DialogContent className="max-h-[90svh] overflow-y-auto">
           <ClientSearchDialogBody
             key={instanceKey}
             clients={clients}
@@ -199,6 +215,7 @@ export function ClientSearchDialog({
             businessName={businessName}
             ownerCountry={ownerCountry}
             rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
             onDirtyChange={handleDirtyChange}
             onDone={closeAndReset}
           />
@@ -242,6 +259,7 @@ function ClientSearchDialogBody({
   businessName,
   ownerCountry,
   rateContext,
+  monedaHabitual,
   onDirtyChange,
   onDone,
 }: {
@@ -250,6 +268,8 @@ function ClientSearchDialogBody({
   businessName: string;
   ownerCountry: OwnerCountry;
   rateContext: MovementRateContext | null;
+  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
+  monedaHabitual: MonedaHabitual | null;
   onDirtyChange: (dirty: boolean) => void;
   // Called once this instance is done with the dialog — a client was
   // created, an existing one was picked, or the owner confirmed abandoning
@@ -265,7 +285,7 @@ function ClientSearchDialogBody({
   const [documentIdValue, setDocumentIdValue] = useState("");
   const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
+  const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   // Controlled like every other field in this form now — it used to be the
   // one plain uncontrolled input, which is exactly the field a resubmit
@@ -273,6 +293,13 @@ function ClientSearchDialogBody({
   const [descriptionValue, setDescriptionValue] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
+  // En que moneda escribe, que no es lo mismo que el libro donde entra la
+  // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
+  // no note ningun cambio.
+  // Arranca en la que uso la ultima vez. Aqui no hay choque posible con la
+  // deuda como en el abono: un cliente nuevo no debe nada todavia, y esto
+  // siempre es un fiado.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(monedaHabitual?.tecleada ?? "USD");
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,
@@ -492,7 +519,7 @@ function ClientSearchDialogBody({
           <Label>Tipo</Label>
           <input type="hidden" name="type" value="charge" />
           <p className="text-sm text-muted-foreground">
-            Cargo (fía algo) — un cliente nuevo siempre empieza debiendo. Para registrar un
+            Cargo (fía) — un cliente nuevo siempre empieza debiendo. Para registrar un
             abono, hazlo después desde el detalle del cliente.
           </p>
         </div>
@@ -503,33 +530,48 @@ function ClientSearchDialogBody({
             Un dueño venezolano lleva dólares y euros aunque el BCV no
             responda, y sin este selector el formulario no manda moneda. */}
         {ownerCountry === "VE" ? (
-          <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} />
+          <MonedaTecleadaButtons
+            value={monedaTecleada}
+            onValueChange={(v) => {
+              setMonedaTecleada(v);
+              if (v !== "VES") setCurrency(v);
+            }}
+          />
         ) : null}
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount">Monto</Label>
-          <Input
+          <MontoCard
             id="amount"
             name="amount"
-            type="number"
-            min="0"
-            step="0.01"
             value={amountStr}
             onChange={(e) => {
               setAmountStr(e.target.value);
               recheck("amount", formRef.current);
             }}
-            required
-            aria-invalid={Boolean(errors.amount)}
+            moneda={ownerCountry === "VE" ? monedaTecleada : null}
+            invalid={Boolean(errors.amount)}
           />
+          {ownerCountry === "VE" && monedaTecleada === "VES" && rateContext ? (
+            <MontoARegistrarRow
+              bolivares={amountStr}
+              destino={currency}
+              onDestinoChange={setCurrency}
+              rateContext={rateContext}
+              usarPrevista={usarPrevista}
+              type="charge"
+            />
+          ) : null}
           {rateContext ? (
             <>
+              {monedaTecleada === "VES" ? null : (
               <BsAmountPreview
                 amount={amountStr}
                 currency={currency}
                 rateContext={rateContext}
                 usarPrevista={usarPrevista}
               />
+              )}
               <PrevistaCheckbox
                 rateContext={rateContext}
                 checked={usarPrevista}
@@ -555,6 +597,31 @@ function ClientSearchDialogBody({
           <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
           <input type="hidden" name="photo_path" value={photoPath ?? ""} />
         </div>
+
+        {/* El resumen, justo antes del boton. Repite la cifra que se va a
+            anotar y no se toca: es lo último que el dueño lee antes de
+            pulsar, no otro sitio donde cambiar algo.
+
+            Tecleando dólares o euros repite lo escrito, que parece redundante
+            y no lo es: con el monto arriba y la foto en medio, en un teléfono
+            el número ya no se ve cuando el dedo llega al botón. */}
+        {/* Siempre un fiado: el primer movimiento de un cliente nuevo no puede
+            ser un abono, porque todavía no debe nada. */}
+        <ResumenMonto
+          type="charge"
+          monto={
+            monedaTecleada === "VES" && rateContext
+              ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
+              : Number(amountStr) || null
+          }
+          moneda={ownerCountry === "VE" ? currency : null}
+          rateContext={rateContext}
+          usarPrevista={usarPrevista}
+          bolivaresTecleados={monedaTecleada === "VES" ? amountStr : null}
+        />
+        {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
+            ahora sale de los botones o del desplegable, así que viaja aquí. */}
+        {ownerCountry === "VE" ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
         {state.error ? (
           <div className="flex flex-col gap-2">

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BADGE_MAX } from "@/lib/types";
+import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 export async function logout() {
   const supabase = await createClient();
@@ -69,6 +70,15 @@ export type NotificationItem =
       clientName: string;
       type: "charge" | "payment";
       amount: number;
+      // En que libro vive este movimiento. Null en un negocio colombiano.
+      // Sin este dato la ficha no puede formatear el monto y lo daba por
+      // pesos: un cargo de 45 euros aparecia como "$ 45,00".
+      currency: LedgerCurrency | null;
+      // Lo que el dueño tecleo y a que tasa, para que un movimiento escrito
+      // como Bs. 900 siga diciendo Bs. 900 aqui y no solo su equivalente.
+      entryCurrency: MovementCurrencyCode | null;
+      entryAmount: number | null;
+      exchangeRateUsed: number | null;
       description: string | null;
       plazoDias: number | null;
       photoUrl: string | null;
@@ -124,7 +134,10 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     supabase
       .from("movement_deletions")
       .select(
-        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, description, plazo_dias, photo_path, running_balance, created_at)",
+        // currency y el rastro de bolivares no estaban aqui, y esa ausencia era el
+        // fallo: sin currency, la ficha formateaba TODO como pesos colombianos y
+        // un movimiento de 45 euros se leia "$ 45,00".
+        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used)",
       )
       .eq("owner_id", user.id)
       .order("deleted_at", { ascending: false })
@@ -165,11 +178,15 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       id: string;
       type: "charge" | "payment";
       amount: number;
+      currency: LedgerCurrency | null;
       description: string | null;
       plazo_dias: number | null;
       photo_path: string | null;
       running_balance: number;
       created_at: string;
+      entry_currency: MovementCurrencyCode | null;
+      entry_amount: number | null;
+      exchange_rate_used: number | null;
     } | null;
   }[];
 
@@ -273,6 +290,10 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           clientName: client?.name ?? "Cliente",
           type: movement.type,
           amount: movement.amount,
+          currency: movement.currency,
+          entryCurrency: movement.entry_currency,
+          entryAmount: movement.entry_amount,
+          exchangeRateUsed: movement.exchange_rate_used,
           description: movement.description,
           plazoDias: movement.plazo_dias,
           photoUrl: movement.photo_path ? (deletionPhotoUrls.get(movement.photo_path) ?? null) : null,

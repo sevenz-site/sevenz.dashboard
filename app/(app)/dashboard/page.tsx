@@ -8,6 +8,7 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
@@ -30,7 +31,7 @@ export default async function DashboardPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate] = await Promise.all([
+  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
@@ -47,6 +48,8 @@ export default async function DashboardPage({
       .order("name"),
     supabase.from("owners").select("business_name, country, first_name").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
+    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
+    getMonedaHabitual(supabase, user!.id),
   ]);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de
@@ -193,6 +196,7 @@ export default async function DashboardPage({
             businessName={owner?.business_name || user!.email || "tu negocio"}
             ownerCountry={ownerCountry}
             rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
           />
         </div>
       </div>
@@ -245,6 +249,7 @@ export default async function DashboardPage({
           autoOpen={nuevo === "1"}
           showTourTarget={false}
           rateContext={rateContext}
+          monedaHabitual={monedaHabitual}
         />
       </div>
 

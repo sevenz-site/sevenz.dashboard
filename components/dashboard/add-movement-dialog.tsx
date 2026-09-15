@@ -25,28 +25,35 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import {
-  LedgerCurrencyRadio,
+  MontoCard,
+  TipoButtons,
+  MonedaTecleadaButtons,
+  MontoARegistrarRow,
+  ResumenMonto,
+  montoConvertido,
   BsAmountPreview,
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { formatCurrency } from "@/lib/format";
-import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_PLAZO_PAGO,
   DEFAULT_LEDGER_CURRENCY,
   type LedgerCurrency,
   type OwnerCountry,
+  type MonedaTecleada,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
 
@@ -66,6 +73,7 @@ export function AddMovementDialog({
   autoOpen,
   hideTriggers,
   rateContext,
+  monedaHabitual,
 }: {
   clientId: string;
   clientName: string;
@@ -98,6 +106,10 @@ export function AddMovementDialog({
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
+  // En que moneda escribio este negocio la ultima vez, deducida del ultimo
+  // movimiento guardado. Null mientras no haya ninguno: sin costumbre que
+  // recordar, el formulario abre como abria siempre.
+  monedaHabitual: MonedaHabitual | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -105,10 +117,15 @@ export function AddMovementDialog({
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
+  const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
+  // En que moneda escribe, que no es lo mismo que el libro donde entra la
+  // deuda. Arranca en la que uso la ultima vez: el bodeguero que cobra todo en
+  // bolivares tenia que pulsar "Bolivares" en cada movimiento, y son decenas al
+  // dia. Sin historial se queda en dolares, como siempre.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(monedaHabitual?.tecleada ?? "USD");
   // True right after the owner clicks "Abono (paga)" while it isn't actually
   // available — shows the red explanation below the radio group. Not the
   // same as canPay itself: this tracks a real click attempt, not just the
@@ -134,14 +151,49 @@ export function AddMovementDialog({
 
   const currentDebt = llevaDivisas ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
   const canPay = currentDebt > 0;
-  const formattedMaxDebt = llevaDivisas ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+
+  // La misma tasa que se usa para convertir el monto: la vigente, o la prevista
+  // si el dueño marcó la casilla. Si el tope usara una tasa y el monto otra, el
+  // formulario se contradiría solo.
+  const tasaActiva =
+    usarPrevista && rateContext?.prevista
+      ? { usd: rateContext.prevista.usd, eur: rateContext.prevista.eur }
+      : rateContext?.effectiveRate;
+
+  // El tope, EN LA MONEDA EN LA QUE SE ESTÁ ESCRIBIENDO.
+  //
+  // Esto era un fallo de verdad, no un detalle: la deuda vive en dólares y el
+  // tope se comparaba contra la cifra tecleada fuera cual fuera su moneda. Con
+  // una deuda de $55, escribir "Bs. 100" —doce céntimos— daba error, porque 100
+  // es mayor que 55. Un abono legítimo rechazado por comparar bolívares con
+  // dólares.
+  //
+  // Se redondea hacia ABAJO a céntimos para que el tope que se enseña se pueda
+  // teclear de verdad: hacia arriba, el dueño copia la cifra exacta, el
+  // servidor la vuelve a dólares y le sale un céntimo por encima de la deuda.
+  const topeTecleado: number | null =
+    monedaTecleada !== "VES"
+      ? currentDebt
+      : llevaDivisas
+        ? // Devuelve null sin tasa, y eso es lo correcto: sin tasa no hay tope
+          // que enseñar, y compararlo contra los dólares sería volver al fallo
+          // de arriba. El servidor rechaza igual.
+          topeEnBolivares(currentDebt, currency, tasaActiva)
+        : null;
+
+  const formattedMaxDebt =
+    monedaTecleada === "VES"
+      ? formatBs(topeTecleado ?? 0)
+      : llevaDivisas
+        ? formatDisplayCurrency(currentDebt, currency)
+        : formatCurrency(currentDebt);
 
   const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
     // Only a real field when the client has no number on file at all — see
     // clientWhatsapp above.
     ...(!clientWhatsapp ? { whatsapp: whatsappRule } : {}),
     amount: amountRule({
-      max: type === "payment" ? currentDebt : null,
+      max: type === "payment" ? topeTecleado : null,
       maxMessage: `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`,
     }),
   });
@@ -152,10 +204,14 @@ export function AddMovementDialog({
   // because it needs to run AFTER the render that rebuilds the rule above
   // with the new type/currentDebt; calling recheck synchronously inside
   // setType's own handler would still see the previous render's rule.
+  //
+  // topeTecleado y no currentDebt: el tope ya no es solo la deuda, también
+  // cambia al cambiar de moneda tecleada o al marcar la tasa prevista, y esos
+  // dos movimientos tienen que revalidar lo que ya esté escrito.
   useEffect(() => {
     recheck("amount", formRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, currentDebt]);
+  }, [type, topeTecleado]);
 
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
@@ -179,16 +235,33 @@ export function AddMovementDialog({
     setType(value as "charge" | "payment");
   }
 
+
+  // En un ABONO manda la deuda, no la costumbre.
+  //
+  // De nada sirve abrir en euros porque fue lo ultimo que uso si lo que este
+  // cliente debe son dolares: el dueño leeria "Maximo 0,00" y tendria que
+  // cambiar de moneda a mano, que es justo el toque que esto venia a ahorrar.
+  //
+  // La costumbre solo desempata: si debe en las dos, se abre en la que suele
+  // usar en vez de en dolares por orden alfabetico.
+  //
+  // Los bolivares no chocan nunca — son una forma de ESCRIBIR, no un libro—,
+  // asi que quien teclea en bolivares sigue tecleando en bolivares y lo unico
+  // que se corrige es a que libro va.
+  function abrirEnLaMonedaQueSeDebe() {
+    if (!llevaDivisas) return;
+    const libro = libroParaAbono(monedaHabitual?.libro ?? currency, currentDebtUsd, currentDebtEur);
+    setCurrency(libro);
+    if (monedaTecleada !== "VES") setMonedaTecleada(libro);
+  }
+
   function openForPayment() {
     // Land on whichever currency actually has debt, so the in-dialog
     // Select isn't immediately reverted back to "charge" by the
     // type === "payment" && !canPay guard below. Corrects in either
     // direction — currency may already be sitting on the wrong one from
     // a previous open (e.g. left on EUR while USD is what's now owed).
-    if (llevaDivisas) {
-      if (currentDebtUsd > 0) setCurrency("USD");
-      else if (currentDebtEur > 0) setCurrency("EUR");
-    }
+    abrirEnLaMonedaQueSeDebe();
     setType("payment");
     setOpen(true);
   }
@@ -224,10 +297,7 @@ export function AddMovementDialog({
       if (autoOpen === "payment" && canPayAny) {
         // Mirrors openForPayment(): land on a currency that actually has debt,
         // or the guard further down would bounce this straight back to charge.
-        if (llevaDivisas) {
-          if (currentDebtUsd > 0) setCurrency("USD");
-          else if (currentDebtEur > 0) setCurrency("EUR");
-        }
+        abrirEnLaMonedaQueSeDebe();
         setType("payment");
         setPaymentBlocked(false);
       } else if (autoOpen === "payment") {
@@ -302,18 +372,29 @@ export function AddMovementDialog({
         </div>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
+          del navegador estuviera escondida— así que en un teléfono con la barra
+          a la vista el 90% de esa medida es más alto que la pantalla, y el
+          diálogo se centra sobre un alto que no existe: el título queda por
+          encima del borde y no hay forma de subir hasta él. `svh` mide el
+          viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
+          100vh que CLAUDE.md ya nombra para iPhone. */}
+      <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Agregar movimiento</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
+        {/* gap-8 y no gap-4: los bloques del formulario son cajas con su propio
+            borde —los botones de moneda, la tarjeta del monto, el resumen— y a
+            gap-4 quedaban demasiado juntas para distinguir dónde acaba una
+            pregunta y empieza la siguiente. */}
         <form
           ref={setFormRef}
           action={formAction}
           onSubmit={(e) => {
             if (!validate(e.currentTarget)) e.preventDefault();
           }}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-8"
         >
           <input type="hidden" name="client_id" value={clientId} />
 
@@ -333,22 +414,7 @@ export function AddMovementDialog({
           ) : null}
 
           <div className="flex flex-col gap-2">
-            <Label>Tipo</Label>
-            <RadioGroup name="type" value={type} onValueChange={handleTypeChange} className="flex flex-row gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <RadioGroupItem value="charge" />
-                Cargo (fía algo)
-              </label>
-              <label
-                className={cn("flex items-center gap-2 text-sm", !canPay && "cursor-not-allowed opacity-50")}
-              >
-                {/* Not natively disabled — a disabled control never fires a
-                    click at all, and the whole point is that clicking this
-                    while blocked explains why instead of doing nothing. */}
-                <RadioGroupItem value="payment" />
-                Abono (paga)
-              </label>
-            </RadioGroup>
+            <TipoButtons value={type} onValueChange={handleTypeChange} canPay={canPay} />
             {paymentBlocked ? (
               <p className="text-xs text-destructive">
                 {`${clientName} no debe nada${llevaDivisas ? ` en ${currency === "EUR" ? "EUROS" : currency}` : ""}, por eso no se puede registrar un abono.`}
@@ -358,33 +424,70 @@ export function AddMovementDialog({
 
           {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
 
-          {llevaDivisas ? <LedgerCurrencyRadio currency={currency} onCurrencyChange={setCurrency} /> : null}
+          {llevaDivisas ? (
+            <MonedaTecleadaButtons
+              value={monedaTecleada}
+              onValueChange={(v) => {
+                setMonedaTecleada(v);
+                // Tecleando dolares o euros, el libro es ese mismo. Tecleando
+                // bolivares, el libro lo decide el desplegable de abajo y se
+                // queda con el que hubiera.
+                if (v !== "VES") setCurrency(v);
+              }}
+            />
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="amount">Monto</Label>
-            <Input
+            <MontoCard
               id="amount"
               name="amount"
-              type="number"
-              min="0"
-              max={type === "payment" ? currentDebt : undefined}
-              step="0.01"
               value={amountStr}
               onChange={(e) => {
                 setAmountStr(e.target.value);
                 recheck("amount", formRef.current);
               }}
-              required
-              aria-invalid={Boolean(errors.amount)}
+              moneda={llevaDivisas ? monedaTecleada : null}
+              max={type === "payment" && topeTecleado != null ? topeTecleado : undefined}
+              invalid={Boolean(errors.amount)}
+              // Un solo renglón debajo de la cifra, no dos. El tope en gris
+              // mientras va bien, y el error en rojo EN SU LUGAR cuando se
+              // pasa: antes se dibujaban los dos a la vez y el dueño leía el
+              // mismo aviso repetido, uno gris y otro rojo.
+              //
+              // Dentro de la tarjeta y no debajo del bloque porque es una
+              // propiedad de lo que se está escribiendo ahí, y a media pantalla
+              // de distancia no se relaciona con el campo.
+              ayuda={
+                errors.amount ??
+                (type === "payment" && topeTecleado != null
+                  ? `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`
+                  : null)
+              }
             />
+            {/* Tecleando bolivares, la cifra que importa es la convertida:
+                la deuda no vive en bolivares. Tecleando dolares o euros no hace
+                falta, porque lo escrito ya es lo que se guarda. */}
+            {llevaDivisas && monedaTecleada === "VES" && rateContext ? (
+              <MontoARegistrarRow
+                bolivares={amountStr}
+                destino={currency}
+                onDestinoChange={setCurrency}
+                rateContext={rateContext}
+                usarPrevista={usarPrevista}
+                type={type}
+              />
+            ) : null}
             {rateContext ? (
               <>
+                {monedaTecleada === "VES" ? null : (
                 <BsAmountPreview
                   amount={amountStr}
                   currency={currency}
                   rateContext={rateContext}
                   usarPrevista={usarPrevista}
                 />
+                )}
                 <PrevistaCheckbox
                   rateContext={rateContext}
                   checked={usarPrevista}
@@ -392,12 +495,6 @@ export function AddMovementDialog({
                 />
               </>
             ) : null}
-            {type === "payment" ? (
-              <p className="text-xs text-muted-foreground">
-                Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.
-              </p>
-            ) : null}
-            {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -410,6 +507,29 @@ export function AddMovementDialog({
             <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
             <input type="hidden" name="photo_path" value={photoPath ?? ""} />
           </div>
+
+          {/* El resumen, justo antes del boton. Repite la cifra que se va a
+              anotar y no se toca: es lo último que el dueño lee antes de
+              pulsar, no otro sitio donde cambiar algo.
+
+              Tecleando dólares o euros repite lo escrito, que parece redundante
+              y no lo es: con el monto arriba y la foto en medio, en un teléfono
+              el número ya no se ve cuando el dedo llega al botón. */}
+          <ResumenMonto
+            type={type}
+            monto={
+              monedaTecleada === "VES" && rateContext
+                ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
+                : Number(amountStr) || null
+            }
+            moneda={llevaDivisas ? currency : null}
+            rateContext={rateContext}
+            usarPrevista={usarPrevista}
+            bolivaresTecleados={monedaTecleada === "VES" ? amountStr : null}
+          />
+          {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
+              ahora sale de los botones o del desplegable, así que viaja aquí. */}
+          {llevaDivisas ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
           {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
 

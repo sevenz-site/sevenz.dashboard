@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Herramientas locales y temporales, no del proyecto
+.claude/launch.json
+supabase/.temp/
+zz-*.mjs
+zz-*.jpeg

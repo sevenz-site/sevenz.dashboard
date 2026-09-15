@@ -12,7 +12,9 @@ import {
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
 
@@ -20,9 +22,13 @@ export function MovementHistoryList({
   movements,
   photoUrls,
   ledger = null,
+  compartir = null,
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
+  // Con que comparte la ficha de cada movimiento — el mismo enlace y el mismo
+  // mensaje que "Compartir enlace" del perfil. Ver lib/share-balance.ts.
+  compartir?: DatosParaCompartir | null;
   // null = plain COP ledger — see MovementDetailPopover.
   ledger?: LedgerDisplay | null;
 }) {
@@ -41,6 +47,17 @@ export function MovementHistoryList({
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
+          // Si el movimiento se escribió en bolívares, la línea de abajo dice
+          // ESOS bolívares y no lo que vale hoy la deuda.
+          //
+          // Tenía el cálculo de hoy, y era defendible: esa columna responde
+          // "cuánto vale ahora" en todas las filas por igual. Pero el dueño
+          // tecleó 900 y leía 899,09 — los 91 céntimos del redondeo, correctos
+          // y sin explicación a la vista. La consistencia que yo protegía era
+          // de cómo se calcula el número, no de lo que significa, y para quien
+          // mira la lista lo segundo pesa mas.
+          const bsTecleados =
+            m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : null;
           const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
           return (
@@ -59,6 +76,7 @@ export function MovementHistoryList({
               entryAmount={m.entry_amount}
               exchangeRateUsed={m.exchange_rate_used}
               ledger={ledger}
+              compartir={compartir}
             >
               <button
                 type="button"
@@ -85,8 +103,10 @@ export function MovementHistoryList({
                       {m.type === "charge" ? "+" : "-"}
                       {amount.primary}
                     </span>
-                    {amount.secondary ? (
-                      <span className="font-normal text-muted-foreground">{amount.secondary}</span>
+                    {bsTecleados ?? amount.secondary ? (
+                      <span className="font-normal text-muted-foreground">
+                        {bsTecleados ?? amount.secondary}
+                      </span>
                     ) : null}
                   </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

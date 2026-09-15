@@ -12,7 +12,9 @@ import {
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { formatBs } from "@/lib/exchange-rate/format";
 import { getBalanceLabel } from "@/lib/types";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 type SharedMovement = {
@@ -39,9 +41,13 @@ const PAGE_SIZE = 10;
 export function MovementHistoryList({
   movements,
   ledger = null,
+  compartir = null,
 }: {
   movements: SharedMovement[];
   ledger?: LedgerDisplay | null;
+  // Aqui el enlace sale de la direccion que el cliente ya tiene abierta: pedir
+  // uno al servidor solo responde a un dueño con sesion.
+  compartir?: DatosParaCompartir | null;
 }) {
   const [page, setPage] = useState(1);
 
@@ -58,6 +64,12 @@ export function MovementHistoryList({
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
+          // Lo mismo que en la lista del dueño, y por un motivo que aqui pesa
+          // mas: el cliente y el comercio tienen que ver EL MISMO numero. Si el
+          // dueño anota Bs. 900 y el cliente abre su enlace y lee 899,09, eso
+          // es justo la discusion que esta app existe para evitar.
+          const bsTecleados =
+            m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : null;
           const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
 
           return (
@@ -75,6 +87,7 @@ export function MovementHistoryList({
               entryAmount={m.entry_amount}
               exchangeRateUsed={m.exchange_rate_used}
               ledger={ledger}
+              compartir={compartir}
             >
               <button
                 type="button"
@@ -100,8 +113,10 @@ export function MovementHistoryList({
                       {m.type === "charge" ? "+" : "-"}
                       {amount.primary}
                     </span>
-                    {amount.secondary ? (
-                      <span className="font-normal text-muted-foreground">{amount.secondary}</span>
+                    {bsTecleados ?? amount.secondary ? (
+                      <span className="font-normal text-muted-foreground">
+                        {bsTecleados ?? amount.secondary}
+                      </span>
                     ) : null}
                   </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

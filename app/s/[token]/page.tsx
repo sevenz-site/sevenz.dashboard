@@ -13,7 +13,8 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { DocumentIdDialog } from "@/components/public/document-id-dialog";
 
@@ -163,6 +164,17 @@ export default async function SharedBalancePage({
       : null;
   const ledger: LedgerDisplay | null = rateContext ? { rate: rateContext.effectiveRate } : null;
 
+  // El mismo mensaje que manda el dueño desde su lado, para que el cliente que
+  // reenvia un movimiento mande exactamente lo que habria mandado el.
+  //
+  // El enlace sale de la direccion que ya tiene abierta y no del servidor:
+  // crear un enlace solo responde a un dueño con sesion, y aqui no hay ninguna.
+  const compartir: DatosParaCompartir = {
+    clientName: shared.client_name,
+    balanceText: formatBalanceSummary(shared.balance, shared.balance_usd, shared.balance_eur, ledger),
+    enlace: { de: "cliente", token },
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
       {/* A boolean, not the value: this is a client component, so anything
@@ -280,7 +292,7 @@ export default async function SharedBalancePage({
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList movements={movements} ledger={ledger} />
+        <MovementHistoryList movements={movements} ledger={ledger} compartir={compartir} />
         {!showAll && shared.movement_total > movements.length ? (
           <div className="flex flex-col items-center gap-2 pt-1">
             <p className="text-xs text-muted-foreground">
