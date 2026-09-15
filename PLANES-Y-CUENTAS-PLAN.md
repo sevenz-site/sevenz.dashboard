@@ -3,9 +3,9 @@
 Estado: **borrador, sin empezar.** Escrito el 2026-09-15 contra producción:
 23 negocios, 199 clientes, 615 movimientos.
 
-El precio, el alcance del plan y la retención se decidieron el 2026-09-15 y
-están recogidos abajo. **Queda una pregunta abierta** —qué pasa con los 23
-negocios que ya usan Sevenz— y bloquea la Fase 1.
+Los planes, el precio, la retención y qué hacer con los 23 negocios actuales
+se decidieron el 2026-09-15 y están recogidos abajo. **No queda ninguna
+pregunta bloqueante**: la Fase 0 se puede empezar hoy.
 
 ---
 
@@ -284,61 +284,120 @@ negocies, cambiar planes y ver quién vence. La 3 añade el bloqueo.
 | 10 | **Alguien del equipo cambia un plan por error** | Motivo obligatorio para bloquear, historial de todo, y `requireSuperadmin()` en cada acción |
 | 11 | **Una cuenta bloqueada sigue escribiendo por un camino que nadie revisó** | Por eso el control está en las políticas de la base y no en los formularios |
 | 12 | **Los 23 negocios de hoy se quedan fuera el día del despliegue** | `coalesce(..., true)`: sin fila de suscripción, se escribe. La migración les crea su fila, pero el código no depende de que exista |
-| 13 | **Un registro nuevo cae en `free` y usa Sevenz gratis para siempre.** Es lo que pasa HOY: `plan` tiene `default 'free'` desde la 015 y no hay gratuito en el producto | La Fase 1 cambia el alta: quien se registra abre una demo de 2 meses con fecha de fin. Mientras tanto son cuentas que nadie está contando |
+| 13 | **Un registro nuevo cae en `free` sin que nadie lo decida.** Es lo que pasa HOY: `plan` tiene `default 'free'` desde la 015, y free ahora es un regalo, no un suelo | La Fase 1 cambia el alta: quien se registra abre una demo con fecha de fin. Free solo se llega por decisión tuya |
+| 15 | **Un dueño sube 500 fotos y deja el importador caído para los otros 22.** La cola compartida crece más que `maxDuration` y las peticiones de todos caducan | Tope por dueño y hora, más la guarda de cola profunda que rechaza al instante en vez de esperar a caducar |
+| 16 | **Gemini pasa a ser de pago y te enteras por la factura** | El contador por negocio y su coste estimado en /admin, antes de que la factura llegue |
 | 14 | **Negocias 15 USD con uno y 30 con otro, y alguien lo compara** | Nada técnico lo evita, pero el precio pactado vive en la suscripción y no en pantalla: el tendero nunca ve el precio de catálogo ni el de otro |
 
 ---
 
 ## Decisiones tomadas el 2026-09-15
 
-**No hay plan gratuito.** Para usar Sevenz se paga; la única excepción es la
-demo, de 2 meses por defecto o lo que se negocie. Eso **simplifica el modelo
-más de lo que parece**: el estado importa mucho más que el plan. Con un solo
-plan de pago y una demo, lo que decide todo es `estado` —demo, activa,
-bloqueada— y `plans` empieza con una o dos filas.
+**Tres planes, y el superadmin decide cuál tiene cada negocio.**
 
-Consecuencias directas:
+| | Qué es | Cuánto dura | Se revoca |
+|---|---|---|---|
+| **Demo** | Prueba del producto completo | X días, se negocia. 2 meses por defecto | Al vencer, tú decides |
+| **Free** | Regalo deliberado a quien merece trato especial | Indefinido | En cualquier momento |
+| **Pro** | Paga X cada X | Mensual, trimestral o anual | Al dejar de pagar |
 
-- **La demo da acceso completo.** Una prueba capada no vende, y el límite de 5
-  fotos existía para separar un gratuito de un pago que ya no existen. Durante
-  la demo, `subscriptions.limites` se copia de los límites del plan que se está
-  probando.
-- **Quien se registra hoy cae en `free` para siempre**, porque ese es el
-  `default` de la columna desde la 015. Al construir la Fase 1, un registro
-  nuevo tiene que abrir una demo de 2 meses, no quedarse en un gratuito que ya
-  no es parte del producto.
+La diferencia con lo que escribí antes: **`free` vuelve, pero como regalo, no
+como suelo.** Nadie *cae* en free; se le *da*. Hoy es al revés — la columna
+tiene `default 'free'` desde la 015, así que quien se registra aterriza en un
+gratuito indefinido que nadie decidió.
+
+**Por qué el plan y el estado siguen separados** aunque tú veas tres botones:
+"bloqueada" no puede ser un plan. Un negocio Pro que deja de pagar se bloquea,
+y hay que seguir sabiendo que era Pro y cuánto pagaba, para desbloquearlo sin
+volver a negociar. Y un Free regalado también se puede revocar. Así que:
+
+```
+plan_code   'free' | 'pro'                              -- qué tiene
+estado      'demo' | 'activa' | 'bloqueada' | 'cancelada'  -- cómo está
+periodicidad 'mensual' | 'trimestral' | 'anual' | null   -- solo Pro
+```
+
+Los tres botones de /admin son combinaciones de eso: *Dar demo* pone
+`estado='demo'` con fecha; *Regalar gratis* pone `plan_code='free'`,
+`estado='activa'`, sin fecha; *Poner en Pro* pide periodicidad y precio.
 
 **Precio: 20 USD de referencia, negociable entre 15 y 30.** Confirma el diseño:
 `plans.precio_usd` es la plantilla y `subscriptions.precio_pactado_usd` es lo
-que paga ESE negocio. Que el rango sea tan amplio es justamente el motivo de
-que el precio viva en la suscripción y no solo en el catálogo.
-
-**Qué incluye Pro: sin definir, y no bloquea.** Hoy lo único que separa `free`
-de `pro` es el límite de fotos, y ese límite pierde sentido si no hay
-gratuito. `limites` arranca con la única llave que hoy significa algo y crece
-cuando se decida. El esquema no necesita la respuesta; el argumento de venta
-sí.
+que paga ESE negocio.
 
 **Los datos se guardan indefinidamente.** Hecho: la política de privacidad ya
-lo dice (sección 7), con el motivo escrito — el historial de fiados es el
-registro del dinero que al comercio le deben, y borrarlo por dejar de pagar le
-quitaría algo suyo. Queda dicho también que se borra si lo pide.
+lo dice, con el motivo escrito.
 
-## La pregunta que queda, y bloquea la Fase 1
+---
 
-**¿Qué pasa con los 23 negocios que ya usan Sevenz?** Todos están en `free` y
-llevan meses trabajando. Si para usar la app hay que pagar, el día del
-despliegue hay que decidir qué son:
+## Las fotos: el límite de 5 al mes no protegía a Gemini
 
-- *Demo de 2 meses desde hoy* — el trato más justo y el que da margen para
-  hablar con cada uno. Pero pone 23 conversaciones de cobro en el mismo mes.
-- *Activos y gratis por tiempo indefinido* (grandfathering) — nadie se enfada,
-  pero nunca pagan y hay que decidirlo otra vez más adelante.
-- *Uno por uno* — lo que de verdad va a pasar, pero necesita que la Fase 2 esté
-  lista antes de migrar nada.
+Tu temor —que alguien se tire la API de Gemini— es el correcto, pero **el
+límite mensual nunca fue lo que lo evitaba**, y quitarlo no destapa nada.
 
-No la decido yo: es una decisión de negocio con tus clientes reales y con el
-dinero de por medio.
+**Lo que de verdad protege la API ya existe**, desde la migración 013:
+`claim_rate_limit_slot` es un reloj compartido en Postgres. Cada foto, de
+cualquier dueño y desde cualquier instancia del servidor, pide turno y espera
+**4 segundos** desde la anterior. El techo es de unas 15 fotos por minuto para
+toda la plataforma, haya 23 negocios o 2.300. Dos dueños importando a la vez no
+suman: se ponen en fila.
+
+O sea que la API está a salvo por diseño. Lo que el reloj compartido **no**
+resuelve es otra cosa, y es lo que hay que cubrir:
+
+**1. Que uno acapare la cola.** Un dueño subiendo 500 fotos mete 33 minutos de
+espera a todos los demás. No rompe a Gemini; rompe a los otros 22 tenderos.
+
+**2. Que la cola crezca más de lo que aguanta una petición.** Este es el fallo
+agudo y el menos obvio. Cada petición se queda abierta esperando su turno, y
+`maxDuration` son 90 segundos. Si la cola pasa de ahí, las peticiones empiezan
+a caducar — y no solo las del que abusa: **las de todo el mundo**. Un dueño
+subiendo fotos de más convierte el importador en un servicio caído para el
+resto.
+
+**3. El coste, cuando Gemini deje de ser gratis.** Hoy no cuesta dinero. El día
+que cueste, la pregunta deja de ser "aguanta la API" y pasa a ser "cuánto llevo
+gastado en este negocio".
+
+### Las tres precauciones, en vez de un cupo mensual
+
+**Por qué no un cupo mensual.** Es mala experiencia y mal control a la vez: el
+tendero que digitaliza un año de libretas en una sentada lo agota el primer
+día y se queda 30 días sin poder usar lo que paga; y quien quiera abusar
+simplemente espera al día 1, cuando se reinicia.
+
+| Precaución | Cómo | Reusa |
+|---|---|---|
+| **Tope por dueño y por hora** | `claim_rate_limit_quota` con clave `extract:<dueño>:<hora>`. Responde sí o no al instante, sin quedarse esperando | La 040, ya construida |
+| **Guarda de cola profunda** | Si el turno que devuelve el reloj está más lejos de lo que la función puede esperar, se rechaza al momento con "inténtalo en unos minutos" en vez de quedarse abierta hasta caducar | La 013, ya construida |
+| **Techo mensual blando** | No bloquea: **avisa en /admin**. Ves el abuso antes de que cueste dinero, y decides tú | Nada nuevo |
+
+Las dos primeras son las que importan, y las dos se montan sobre funciones que
+ya están en producción. La segunda es la que convierte un fallo en cascada
+—todos los importadores caídos— en un mensaje claro para una sola persona.
+
+**Cuando Gemini sea de pago**, se añade a /admin el contador de fotos por
+negocio y su coste estimado. Eso no es una precaución técnica, es el dato que
+te deja renegociar un precio con quien importa diez veces más que el resto.
+
+---
+
+## Los 23 negocios de hoy: uno por uno
+
+Resuelto, y resuelto por el propio diseño. Son early adopters y no hay una
+respuesta única: a algunos les quieres regalar el producto indefinidamente, a
+otros cobrarles después de su demo, y a otros bloquearlos.
+
+**Eso es exactamente lo que hacen los tres planes**, así que no hace falta
+decidir nada el día de la migración. La Fase 1 les crea a todos su fila en el
+estado en el que ya están —trabajando, sin límite— y la Fase 2 te da la
+pantalla para ir cambiándolos de uno en uno cuando hables con cada uno.
+
+La única regla que conviene fijar de antemano: **la migración no debe quitarle
+acceso a nadie**. Nacen todos como están hoy; el cambio lo haces tú, con nombre
+y apellido, y queda en el historial.
+
+---
 
 ## Lo que NO entra en v1
 
