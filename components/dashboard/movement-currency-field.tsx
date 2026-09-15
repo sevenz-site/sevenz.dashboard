@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -47,6 +48,10 @@ export function MonedaTecleadaButtons({
             type="button"
             variant={value === m.value ? "default" : "outline"}
             size="sm"
+            // Redondeadas del todo, igual que las pastillas de "Tipo": son la
+            // misma clase de pregunta —elige una de estas— y a esquinas
+            // distintas se leen como controles distintos.
+            className="rounded-full px-3.5"
             onClick={() => onValueChange(m.value)}
             aria-pressed={value === m.value}
           >
@@ -358,14 +363,21 @@ export function MontoCard({
   );
 }
 
-// Los dos tipos, con el control de siempre.
+// Los dos tipos, con el control de siempre dentro de una pastilla.
 //
 // Fueron botones un rato y se volvieron atrás a petición: dos opciones
 // excluyentes se leen mejor con el control que la gente ya reconoce como "elige
 // una", y los botones las hacían parecer dos acciones distintas.
 //
-// El punto de color se queda: repite lo que dice el resumen, rojo el dinero que
-// sale y verde el que entra.
+// El marco redondeado alrededor del radio es lo que devuelve el área de toque
+// que el botón tenía y el circulito de 16px no da: en un teléfono se pulsa la
+// pastilla entera, no el punto. Sigue siendo un radio —el punto relleno dice
+// cuál está elegida—, solo que con dónde apretar dibujado alrededor.
+//
+// El color se queda donde estaba, en el paréntesis, y ahora también en la
+// flecha: rojo y hacia fuera el dinero que sale, verde y hacia dentro el que
+// entra. La flecha dice la dirección aunque no se distinga el color, que es
+// justo el caso de un daltónico.
 export function TipoButtons({
   value,
   onValueChange,
@@ -377,12 +389,21 @@ export function TipoButtons({
   // hace nada, y lo que hace falta es que EXPLIQUE por qué no se puede.
   canPay: boolean;
 }) {
-  // El color va en el paréntesis y no en un punto aparte. Un punto de color es
-  // una leyenda que hay que descifrar; "(fía algo)" en rojo ES la explicación, y
-  // ya coincide con el color del resumen de abajo.
   const opciones = [
-    { value: "charge" as const, nombre: "Cargo", aclara: "(fía algo)", color: "text-destructive" },
-    { value: "payment" as const, nombre: "Abono", aclara: "(paga)", color: "text-money-in" },
+    {
+      value: "charge" as const,
+      nombre: "Cargo",
+      aclara: "(fía algo)",
+      color: "text-destructive",
+      Flecha: ArrowUpRight,
+    },
+    {
+      value: "payment" as const,
+      nombre: "Abono",
+      aclara: "(paga)",
+      color: "text-money-in",
+      Flecha: ArrowDownLeft,
+    },
   ];
   return (
     <div className="flex flex-col gap-2">
@@ -391,17 +412,20 @@ export function TipoButtons({
         name="type"
         value={value}
         onValueChange={(v) => onValueChange(v as "charge" | "payment")}
-        className="flex flex-row gap-4"
+        className="flex flex-row flex-wrap gap-2"
       >
         {opciones.map((o) => (
           <label
             key={o.value}
-            className={`flex items-center gap-2 text-sm ${
-              o.value === "payment" && !canPay ? "cursor-not-allowed opacity-50" : ""
+            className={`flex h-10 items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm ${
+              o.value === "payment" && !canPay ? "cursor-not-allowed opacity-50" : "cursor-pointer"
             }`}
           >
             <RadioGroupItem value={o.value} />
-            {o.nombre} <span className={o.color}>{o.aclara}</span>
+            <span className="whitespace-nowrap">
+              {o.nombre} <span className={o.color}>{o.aclara}</span>
+            </span>
+            <o.Flecha className={`size-4 ${o.color}`} aria-hidden />
           </label>
         ))}
       </RadioGroup>
