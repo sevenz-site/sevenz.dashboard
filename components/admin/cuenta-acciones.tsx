@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useState } from "react";
-import { CalendarClock, CreditCard, Gift } from "lucide-react";
+import { Ban, CalendarClock, CreditCard, Gift, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,8 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  accionBloquear,
   accionCambiarPlan,
   accionDarDemo,
+  accionDesbloquear,
   accionRegistrarPago,
   type AccionState,
 } from "@/app/admin/cuentas/actions";
@@ -43,7 +45,92 @@ export function CuentaAcciones({ cuenta }: { cuenta: Cuenta }) {
       <RegistrarPago cuenta={cuenta} />
       <DarDemo cuenta={cuenta} />
       <CambiarPlan cuenta={cuenta} />
+      {cuenta.estado === "bloqueada" ? (
+        <Desbloquear cuenta={cuenta} />
+      ) : (
+        <Bloquear cuenta={cuenta} />
+      )}
     </div>
+  );
+}
+
+function Bloquear({ cuenta }: { cuenta: Cuenta }) {
+  const formId = useId();
+  const [state, formAction, pending] = useActionState(accionBloquear, inicial);
+
+  return (
+    <DialogoDeAccion
+      titulo={`Bloquear a ${cuenta.business_name}`}
+      descripcion="Deja de poder fiar, abonar, crear clientes e importar. Sigue viendo su cartera y el enlace de sus clientes sigue funcionando."
+      disparador={
+        <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+          <Ban className="size-4" />
+          Bloquear
+        </Button>
+      }
+      state={state}
+      pending={pending}
+      formId={formId}
+    >
+      <form id={formId} action={formAction} className="flex flex-col gap-4">
+        <input type="hidden" name="owner_id" value={cuenta.owner_id} />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`motivo-${formId}`}>Por qué lo bloqueas</Label>
+          <Input
+            id={`motivo-${formId}`}
+            name="motivo"
+            placeholder="No paga desde julio; avisado dos veces"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            Obligatorio, y queda en el historial. El día que diga que sí pagó, esta nota es la
+            respuesta. Él no la ve.
+          </p>
+        </div>
+        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Al tendero le saldrá: «Tu cuenta está pausada. Escríbenos por WhatsApp para reactivarla.»
+          Sin el motivo.
+        </p>
+      </form>
+    </DialogoDeAccion>
+  );
+}
+
+function Desbloquear({ cuenta }: { cuenta: Cuenta }) {
+  const formId = useId();
+  const [state, formAction, pending] = useActionState(accionDesbloquear, inicial);
+
+  return (
+    <DialogoDeAccion
+      titulo={`Reactivar a ${cuenta.business_name}`}
+      descripcion="Vuelve a poder registrar movimientos. Queda como activa, no como demo."
+      disparador={
+        <Button type="button" variant="outline" size="sm">
+          <Undo2 className="size-4" />
+          Reactivar
+        </Button>
+      }
+      state={state}
+      pending={pending}
+      formId={formId}
+    >
+      <form id={formId} action={formAction} className="flex flex-col gap-4">
+        <input type="hidden" name="owner_id" value={cuenta.owner_id} />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`motivo-re-${formId}`}>Nota (opcional)</Label>
+          <Input id={`motivo-re-${formId}`} name="motivo" placeholder="Pagó lo pendiente" />
+        </div>
+        {/* Si volvía de una demo, no vuelve a demo: una prueba que se bloqueó y
+            se reactiva ya no es una prueba. Si hay que darle más días, se le da
+            una demo nueva y queda dicho en el historial. */}
+        {cuenta.demo_termina_el ? (
+          <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Estaba en demo. Al reactivar queda como activa, no vuelve a la prueba. Si quieres darle
+            más días, usa «Dar demo» después.
+          </p>
+        ) : null}
+      </form>
+    </DialogoDeAccion>
   );
 }
 

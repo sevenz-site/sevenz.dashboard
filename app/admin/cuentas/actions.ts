@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSuperadmin } from "@/lib/admin/guard";
-import { cambiarPlan, darDemo, registrarPago, type Periodicidad } from "@/lib/admin/subscriptions";
+import {
+  bloquear,
+  cambiarPlan,
+  darDemo,
+  desbloquear,
+  registrarPago,
+  type Periodicidad,
+} from "@/lib/admin/subscriptions";
 
 // Cada acción vuelve a pasar por requireSuperadmin(), aunque el layout ya lo
 // haga.
@@ -109,6 +116,46 @@ export async function accionRegistrarPago(
   const hastaIso = new Date(`${hasta}T23:59:59-04:00`).toISOString();
 
   const { error } = await registrarPago(ownerId, monto, metodo, hastaIso, email, notas);
+  if (error) return { error, ok: false };
+
+  revalidatePath("/admin/cuentas");
+  return { error: null, ok: true };
+}
+
+export async function accionBloquear(
+  _prev: AccionState,
+  formData: FormData,
+): Promise<AccionState> {
+  const { email } = await requireSuperadmin();
+
+  const ownerId = String(formData.get("owner_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim();
+
+  if (!ownerId) return { error: "Falta el negocio.", ok: false };
+  // Se exige aquí y otra vez en la función de Postgres. No es redundante: esta
+  // acción es un endpoint POST que se puede llamar sin pasar por el formulario.
+  if (motivo.length < 3) {
+    return { error: "Escribe por qué lo bloqueas. Queda en el historial.", ok: false };
+  }
+
+  const { error } = await bloquear(ownerId, motivo, email);
+  if (error) return { error, ok: false };
+
+  revalidatePath("/admin/cuentas");
+  return { error: null, ok: true };
+}
+
+export async function accionDesbloquear(
+  _prev: AccionState,
+  formData: FormData,
+): Promise<AccionState> {
+  const { email } = await requireSuperadmin();
+
+  const ownerId = String(formData.get("owner_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!ownerId) return { error: "Falta el negocio.", ok: false };
+
+  const { error } = await desbloquear(ownerId, email, motivo);
   if (error) return { error, ok: false };
 
   revalidatePath("/admin/cuentas");

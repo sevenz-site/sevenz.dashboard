@@ -1,4 +1,7 @@
+import type { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 // Las cuentas de la plataforma: qué plan tiene cada negocio, en qué estado
 // está y qué se le ha hecho.
@@ -151,6 +154,37 @@ export async function registrarPago(
   return { error: error?.message ?? null };
 }
 
+// El motivo es OBLIGATORIO y la función lo exige también: el día que alguien
+// diga "me bloqueaste y yo había pagado", la respuesta tiene que estar
+// escrita. Un historial con "bloqueada" y nada más no responde nada.
+export async function bloquear(
+  ownerId: string,
+  motivo: string,
+  actorEmail: string,
+): Promise<{ error: string | null }> {
+  const db = createServiceClient();
+  const { error } = await db.rpc("admin_bloquear", {
+    p_owner: ownerId,
+    p_motivo: motivo,
+    p_actor_email: actorEmail,
+  });
+  return { error: error?.message ?? null };
+}
+
+export async function desbloquear(
+  ownerId: string,
+  actorEmail: string,
+  motivo: string | null,
+): Promise<{ error: string | null }> {
+  const db = createServiceClient();
+  const { error } = await db.rpc("admin_desbloquear", {
+    p_owner: ownerId,
+    p_actor_email: actorEmail,
+    p_motivo: motivo,
+  });
+  return { error: error?.message ?? null };
+}
+
 // Las tres listas en las que se parte el panel. Se calcula aquí y no en la
 // pantalla porque es la regla del negocio, no una decisión de maquetación.
 //
@@ -177,4 +211,23 @@ export function repartirPorUrgencia(cuentas: Cuenta[]) {
   porVencer.sort((a, b) => (a.dias_restantes ?? 0) - (b.dias_restantes ?? 0));
 
   return { vencidas, porVencer, resto };
+}
+
+// ¿Puede escribir este negocio? Para la APP del tendero, no para /admin.
+//
+// Lee la misma función de Postgres que aplican las políticas de la 061, en vez
+// de consultar `subscriptions` por su cuenta. Dos lecturas de la misma regla se
+// separan: el día que el bloqueo signifique algo más, la pantalla seguiría
+// diciendo lo de antes y el tendero vería un formulario que no puede guardar.
+//
+// Ante cualquier fallo devuelve true. Un error de red no puede dejar a un
+// tendero al día sin poder anotar un fiado que ya hizo — y si de verdad está
+// bloqueado, la política lo para igual. Esto es el cartel, no la cerradura.
+export async function puedeEscribir(
+  supabase: SupabaseServerClient,
+  ownerId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("owner_puede_escribir", { p_owner: ownerId });
+  if (error) return true;
+  return data !== false;
 }
