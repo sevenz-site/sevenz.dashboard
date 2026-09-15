@@ -398,7 +398,7 @@ export function TipoButtons({
     {
       value: "charge" as const,
       nombre: "Cargo",
-      aclara: "(fía algo)",
+      aclara: "(fía)",
       color: "text-destructive",
       Flecha: ArrowUpRight,
     },

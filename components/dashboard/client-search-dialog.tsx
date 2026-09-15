@@ -508,7 +508,7 @@ function ClientSearchDialogBody({
           <Label>Tipo</Label>
           <input type="hidden" name="type" value="charge" />
           <p className="text-sm text-muted-foreground">
-            Cargo (fía algo) — un cliente nuevo siempre empieza debiendo. Para registrar un
+            Cargo (fía) — un cliente nuevo siempre empieza debiendo. Para registrar un
             abono, hazlo después desde el detalle del cliente.
           </p>
         </div>
