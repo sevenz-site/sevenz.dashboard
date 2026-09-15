@@ -44,9 +44,17 @@ const NOMBRE_DE_MONEDA: Record<MovementCurrencyCode, string> = {
 // El dato va alineado a la derecha y no pegado al nombre porque esta ficha se
 // lee en vertical: con todos los datos en el mismo margen, el ojo baja por una
 // columna en vez de ir saltando al final de cada etiqueta.
+//
+// leading-5 —20px de alto de linea— y no el 16px que trae text-xs por defecto.
+// El motivo no es el aire: es que las filas midan TODAS lo mismo. Las que
+// llevan bandera o flecha crecian hasta los 20px del icono y las de solo texto
+// se quedaban en 16, asi que la separacion entre filas cambiaba segun lo que
+// hubiera dentro y la columna de la derecha no caia a un ritmo constante. Con
+// 20px fijos el icono ya cabe sin empujar nada, y un dato que ocupe dos lineas
+// mide exactamente el doble en vez de una cifra intermedia.
 function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-xs">
+    <div className="flex items-start justify-between gap-4 text-xs leading-5">
       <dt className="shrink-0 text-muted-foreground">{nombre}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
@@ -281,7 +289,7 @@ export function MovementDetailPopover({
             </Fila>
             {photoUrl !== undefined ? (
               <>
-                <dt className="text-xs text-muted-foreground">Foto</dt>
+                <dt className="text-xs leading-5 text-muted-foreground">Foto</dt>
                 <dd>
                   {photoUrl ? (
                     <a href={photoUrl} target="_blank" rel="noopener noreferrer">
