@@ -41,8 +41,9 @@ import {
 } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { formatCurrency } from "@/lib/format";
-import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_PLAZO_PAGO,
@@ -143,14 +144,49 @@ export function AddMovementDialog({
 
   const currentDebt = llevaDivisas ? (currency === "USD" ? currentDebtUsd : currentDebtEur) : currentDebtCop;
   const canPay = currentDebt > 0;
-  const formattedMaxDebt = llevaDivisas ? formatDisplayCurrency(currentDebt, currency) : formatCurrency(currentDebt);
+
+  // La misma tasa que se usa para convertir el monto: la vigente, o la prevista
+  // si el dueño marcó la casilla. Si el tope usara una tasa y el monto otra, el
+  // formulario se contradiría solo.
+  const tasaActiva =
+    usarPrevista && rateContext?.prevista
+      ? { usd: rateContext.prevista.usd, eur: rateContext.prevista.eur }
+      : rateContext?.effectiveRate;
+
+  // El tope, EN LA MONEDA EN LA QUE SE ESTÁ ESCRIBIENDO.
+  //
+  // Esto era un fallo de verdad, no un detalle: la deuda vive en dólares y el
+  // tope se comparaba contra la cifra tecleada fuera cual fuera su moneda. Con
+  // una deuda de $55, escribir "Bs. 100" —doce céntimos— daba error, porque 100
+  // es mayor que 55. Un abono legítimo rechazado por comparar bolívares con
+  // dólares.
+  //
+  // Se redondea hacia ABAJO a céntimos para que el tope que se enseña se pueda
+  // teclear de verdad: hacia arriba, el dueño copia la cifra exacta, el
+  // servidor la vuelve a dólares y le sale un céntimo por encima de la deuda.
+  const topeTecleado: number | null =
+    monedaTecleada !== "VES"
+      ? currentDebt
+      : llevaDivisas
+        ? // Devuelve null sin tasa, y eso es lo correcto: sin tasa no hay tope
+          // que enseñar, y compararlo contra los dólares sería volver al fallo
+          // de arriba. El servidor rechaza igual.
+          topeEnBolivares(currentDebt, currency, tasaActiva)
+        : null;
+
+  const formattedMaxDebt =
+    monedaTecleada === "VES"
+      ? formatBs(topeTecleado ?? 0)
+      : llevaDivisas
+        ? formatDisplayCurrency(currentDebt, currency)
+        : formatCurrency(currentDebt);
 
   const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
     // Only a real field when the client has no number on file at all — see
     // clientWhatsapp above.
     ...(!clientWhatsapp ? { whatsapp: whatsappRule } : {}),
     amount: amountRule({
-      max: type === "payment" ? currentDebt : null,
+      max: type === "payment" ? topeTecleado : null,
       maxMessage: `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`,
     }),
   });
@@ -161,10 +197,14 @@ export function AddMovementDialog({
   // because it needs to run AFTER the render that rebuilds the rule above
   // with the new type/currentDebt; calling recheck synchronously inside
   // setType's own handler would still see the previous render's rule.
+  //
+  // topeTecleado y no currentDebt: el tope ya no es solo la deuda, también
+  // cambia al cambiar de moneda tecleada o al marcar la tasa prevista, y esos
+  // dos movimientos tienen que revalidar lo que ya esté escrito.
   useEffect(() => {
     recheck("amount", formRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, currentDebt]);
+  }, [type, topeTecleado]);
 
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
@@ -387,8 +427,22 @@ export function AddMovementDialog({
                 recheck("amount", formRef.current);
               }}
               moneda={llevaDivisas ? monedaTecleada : null}
-              max={type === "payment" && monedaTecleada !== "VES" ? currentDebt : undefined}
+              max={type === "payment" && topeTecleado != null ? topeTecleado : undefined}
               invalid={Boolean(errors.amount)}
+              // Un solo renglón debajo de la cifra, no dos. El tope en gris
+              // mientras va bien, y el error en rojo EN SU LUGAR cuando se
+              // pasa: antes se dibujaban los dos a la vez y el dueño leía el
+              // mismo aviso repetido, uno gris y otro rojo.
+              //
+              // Dentro de la tarjeta y no debajo del bloque porque es una
+              // propiedad de lo que se está escribiendo ahí, y a media pantalla
+              // de distancia no se relaciona con el campo.
+              ayuda={
+                errors.amount ??
+                (type === "payment" && topeTecleado != null
+                  ? `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`
+                  : null)
+              }
             />
             {/* Tecleando bolivares, la cifra que importa es la convertida:
                 la deuda no vive en bolivares. Tecleando dolares o euros no hace
@@ -420,12 +474,6 @@ export function AddMovementDialog({
                 />
               </>
             ) : null}
-            {type === "payment" ? (
-              <p className="text-xs text-muted-foreground">
-                Máximo {formattedMaxDebt} — lo que {clientName} debe hoy.
-              </p>
-            ) : null}
-            {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
           </div>
 
           <div className="flex flex-col gap-2">

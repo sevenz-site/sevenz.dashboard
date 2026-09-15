@@ -67,3 +67,27 @@ export function convertirDesdeBolivares(
 
   return { monto, entryAmount: bolivares, entryCurrency: "VES" };
 }
+
+// El tope de un abono, expresado en bolívares.
+//
+// POR QUÉ EXISTE, y es un fallo que estuvo en producción. La deuda vive en
+// dólares y el formulario comparaba el tope contra la cifra tecleada fuera cual
+// fuera su moneda: con una deuda de $55, escribir "Bs. 100" —doce céntimos—
+// daba error, porque 100 es mayor que 55. Un abono legítimo rechazado por
+// comparar bolívares con dólares.
+//
+// HACIA ABAJO, no al redondeo normal. El tope no es solo un número que se
+// enseña: es un número que el dueño COPIA cuando quiere saldar la deuda entera.
+// Redondeado hacia arriba, esos bolívares vuelven a dólares un céntimo por
+// encima de lo que se debe y el servidor los rechaza — el formulario habría
+// enseñado un tope que él mismo no acepta. Hacia abajo el peor caso es quedar
+// un céntimo corto, que es un saldo de $0,01 y no un abono rechazado.
+export function topeEnBolivares(
+  deuda: number,
+  destino: LedgerCurrency,
+  tasa: { usd: number; eur: number } | null | undefined,
+): number | null {
+  const porUnidad = destino === "USD" ? tasa?.usd : tasa?.eur;
+  if (!porUnidad || porUnidad <= 0) return null;
+  return Math.floor(deuda * porUnidad * 100) / 100;
+}

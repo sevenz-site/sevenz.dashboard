@@ -314,6 +314,7 @@ export function MontoCard({
   moneda,
   max,
   invalid,
+  ayuda = null,
 }: {
   id: string;
   name: string;
@@ -322,42 +323,65 @@ export function MontoCard({
   moneda: MonedaTecleada | null;
   max?: number;
   invalid?: boolean;
+  // El renglón de debajo de la cifra: el tope mientras va bien, el error
+  // cuando no. Es UNO, no dos — quien lo llama decide cuál toca, para que no
+  // puedan salir los dos a la vez diciendo lo mismo.
+  ayuda?: React.ReactNode;
 }) {
   const etiqueta =
     moneda === "VES" ? "Bolívares" : moneda === "EUR" ? "Euros" : moneda === "USD" ? "Dólares" : null;
 
   return (
     <div
-      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
+      className={`flex flex-col gap-1 rounded-lg border px-3 py-2 ${
         invalid ? "border-destructive" : ""
       }`}
     >
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
-          Escriba monto:
-        </Label>
-        <Input
-          id={id}
-          name={name}
-          type="number"
-          min="0"
-          max={max}
-          step="0.01"
-          value={value}
-          onChange={onChange}
-          required
-          aria-invalid={invalid}
-          placeholder="0,00"
-          // Sin borde ni fondo propios: el marco lo pone la tarjeta. Dos marcos
-          // anidados se leen como un campo dentro de otro campo.
-          className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums shadow-none focus-visible:ring-0 md:text-2xl"
-        />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+            Escriba monto:
+          </Label>
+          <Input
+            id={id}
+            name={name}
+            type="number"
+            min="0"
+            max={max}
+            step="0.01"
+            value={value}
+            onChange={onChange}
+            required
+            aria-invalid={invalid}
+            aria-describedby={ayuda ? `${id}-ayuda` : undefined}
+            placeholder="0,00"
+            // Sin borde ni fondo propios: el marco lo pone la tarjeta. Dos marcos
+            // anidados se leen como un campo dentro de otro campo.
+            className="h-auto border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums shadow-none focus-visible:ring-0 md:text-2xl"
+          />
+        </div>
+        {etiqueta ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {etiqueta}
+            <CurrencyFlagIcon currency={moneda === "VES" ? "VES" : (moneda as LedgerCurrency)} />
+          </span>
+        ) : null}
       </div>
-      {etiqueta ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-          {etiqueta}
-          <CurrencyFlagIcon currency={moneda === "VES" ? "VES" : (moneda as LedgerCurrency)} />
-        </span>
+      {/* Dentro de la tarjeta, debajo de la cifra: el tope es una propiedad de
+          lo que se escribe aquí, y colgado del bloque entero quedaba a media
+          pantalla del campo al que se refiere.
+
+          role="alert" solo cuando es un error, para que el lector de pantalla
+          lo anuncie al saltar; el tope en gris ya lo lee por aria-describedby
+          al entrar en el campo, y anunciarlo cada vez sería ruido. */}
+      {ayuda ? (
+        <p
+          id={`${id}-ayuda`}
+          role={invalid ? "alert" : undefined}
+          className={`text-xs ${invalid ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {ayuda}
+        </p>
       ) : null}
     </div>
   );
