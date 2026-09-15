@@ -25,7 +25,7 @@ precio, forma de cobro, ni forma de bloquear a nadie.
 
 ---
 
-## Fase 0 — cerrar el agujero ✅ HECHO
+## Fase 0 — cerrar el agujero ✅ HECHO (055 y 056)
 
 **Hoy un tendero puede ponerse `pro` él solo.** Esto no es una hipótesis sobre
 el futuro: es el estado actual de producción.
@@ -275,7 +275,7 @@ escrito. El dueño también tiene WhatsApp en `owners.whatsapp`, y el aviso a
 
 | Fase | Qué | Se puede desplegar sola |
 |---|---|---|
-| **0** | El trigger que protege `plan` | ✅ **Hecho** — migración 055, en dev y producción |
+| **0** | El trigger que protege `plan` y `country` | ✅ **Hecho** — migraciones 055 y 056, en dev y producción |
 | **1** | Las tres tablas + migrar los 23 negocios actuales | Sí. Nada las lee todavía |
 | **2** | `/admin → Cuentas`: ver y cambiar a mano | Sí. Ya sirve para trabajar |
 | **3** | El bloqueo real en las políticas + los mensajes en la app | Sí |
@@ -291,7 +291,7 @@ negocies, cambiar planes y ver quién vence. La 3 añade el bloqueo.
 
 | # | Qué puede salir mal | Qué lo evita |
 |---|---|---|
-| 1 | ~~**El tendero se pone `pro` él solo**~~ — cerrado por la 055 | Fase 0, el trigger. Y en la Fase 1 las columnas de facturación se van a otra tabla sin `grant` para `authenticated` |
+| 1 | ~~**El tendero se pone `pro` él solo**~~ — cerrado por la 055. Y ~~**se cambia el país y parte su libreta en dos**~~ — cerrado por la 056 | Fase 0, el trigger. Y en la Fase 1 las columnas de facturación se van a otra tabla sin `grant` para `authenticated` |
 | 2 | **Bloqueas a alguien que sí pagó.** La conversación más cara que existe | El historial dice quién, cuándo y por qué. Desbloquear es un clic. *Registrar pago* antes que *bloquear* en la ficha, para que el orden de los botones empuje al orden correcto |
 | 3 | **Se te olvida mirar la lista y regalas meses.** El riesgo que aceptaste al elegir que las demos no bajen solas | La lista separa "por vencer" de "ya vencidas y andando", el correo a `sevenz.mvp@gmail.com` llega aunque no entres, y /admin lleva el contador a la vista |
 | 4 | **Bloqueas al tendero y dejas tirado a su cliente** | El enlace del cliente no pasa por estas políticas. Escrito arriba para que nadie lo "arregle" |

@@ -6,6 +6,26 @@ import { validatePasswordComplexity } from "@/lib/password";
 
 export type ProfileState = { error: string | null; success: boolean };
 
+// Las columnas que solo cambia Sevenz —el plan de la cuenta y el país— están
+// protegidas por un trigger en la base (migraciones 055 y 056). Si alguna vez
+// salta, el texto que devuelve Postgres NO puede acabar en la pantalla del
+// tendero: es el fallo del plazo de pago de anteayer otra vez, cuando la 054
+// le devolvió "violates check constraint movements_plazo_dias_check" a alguien
+// que solo quería fiar.
+//
+// Hoy no salta nunca: este formulario manda el país que ya tiene, así que no
+// cambia nada. Está aquí para el día que alguien toque el formulario y sí
+// cambie — que es justo el día en que nadie se acordará de este trigger.
+const CODIGO_COLUMNA_PROTEGIDA = "42501";
+
+function mensajeDeGuardado(error: { code?: string; message: string }): string {
+  if (error.code === CODIGO_COLUMNA_PROTEGIDA) {
+    return "Ese dato solo lo puede cambiar Sevenz. Escríbenos y lo ajustamos.";
+  }
+  return `No pudimos guardar los cambios: ${error.message}`;
+}
+
+
 // Saves the logo path as soon as the file lands in storage, so uploading is
 // self-contained — otherwise the file exists but nothing points at it until
 // the whole profile form is submitted.
@@ -126,7 +146,7 @@ export async function updateBusinessSettings(
     .eq("id", user.id);
 
   if (error) {
-    return { error: `No pudimos guardar los cambios: ${error.message}`, success: false };
+    return { error: mensajeDeGuardado(error), success: false };
   }
 
   revalidatePath("/profile");
