@@ -374,10 +374,15 @@ export function MontoCard({
 // pastilla entera, no el punto. Sigue siendo un radio —el punto relleno dice
 // cuál está elegida—, solo que con dónde apretar dibujado alrededor.
 //
-// El color se queda donde estaba, en el paréntesis, y ahora también en la
-// flecha: rojo y hacia fuera el dinero que sale, verde y hacia dentro el que
-// entra. La flecha dice la dirección aunque no se distinga el color, que es
-// justo el caso de un daltónico.
+// Todo el texto en negro y el color solo en la flecha. El paréntesis estuvo
+// coloreado un rato y se quitó a petición: con la flecha al lado, pintar
+// también las palabras es decir lo mismo dos veces, y una frase de color dentro
+// de una frase negra se lee como un enlace o como un error.
+//
+// Con lo que el color no se pierde: sigue ahí, rojo hacia fuera el dinero que
+// sale y verde hacia dentro el que entra, en la flecha. Y la flecha lo dice por
+// la forma además de por el color, que es lo único que le sirve a quien no
+// distingue el rojo del verde.
 export function TipoButtons({
   value,
   onValueChange,
@@ -423,7 +428,7 @@ export function TipoButtons({
           >
             <RadioGroupItem value={o.value} />
             <span className="whitespace-nowrap">
-              {o.nombre} <span className={o.color}>{o.aclara}</span>
+              {o.nombre} {o.aclara}
             </span>
             <o.Flecha className={`size-4 ${o.color}`} aria-hidden />
           </label>
