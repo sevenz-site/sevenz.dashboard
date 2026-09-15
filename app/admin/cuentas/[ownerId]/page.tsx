@@ -134,15 +134,22 @@ export default async function CuentaDetallePage({
 
         <Grupo>
           <Fila nombre="Demo termina">
-            {cuenta.demo_termina_el
-              ? `${fecha(cuenta.demo_termina_el)}${
-                  dias !== null
-                    ? dias < 0
-                      ? ` · venció hace ${Math.abs(dias)} d.`
+            {cuenta.demo_termina_el ? (
+              // Rojo desde los 15 días, igual que en la tabla. Aquí importa
+              // más: esta es la pantalla que abres justo antes de llamar.
+              <span className={dias !== null && dias <= 15 ? "font-medium text-destructive" : ""}>
+                {fecha(cuenta.demo_termina_el)}
+                {dias !== null
+                  ? dias < 0
+                    ? ` · venció hace ${Math.abs(dias)} d.`
+                    : dias === 0
+                      ? " · vence hoy"
                       : ` · quedan ${dias} d.`
-                    : ""
-                }`
-              : "—"}
+                  : ""}
+              </span>
+            ) : (
+              "—"
+            )}
           </Fila>
           {/* Derivado del fin de la demo, no guardado aparte. Dos fechas
               podrían contradecirse; una sola no. */}

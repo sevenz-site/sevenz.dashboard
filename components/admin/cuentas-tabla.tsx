@@ -152,8 +152,19 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         cell: ({ row }) => {
           const d = row.original.dias_restantes;
           if (row.original.estado === "demo" && d !== null) {
+            // Rojo desde los 15 días, no solo al vencer. A petición, y tiene
+            // sentido: las demos no bajan solas, así que la única señal de que
+            // toca hablar con alguien es esta fecha. Cuando ya venció es tarde
+            // para negociar — dos semanas es el margen para llamar.
+            //
+            // El chip de al lado sigue azul hasta que vence y ahí pasa a ámbar:
+            // dicen cosas distintas. El chip dice EN QUÉ ESTADO está; la fecha
+            // dice CUÁNTA PRISA corre.
+            const correPrisa = d <= 15;
             return (
-              <span className={`text-xs tabular-nums ${d < 0 ? "text-destructive" : ""}`}>
+              <span
+                className={`text-xs tabular-nums ${correPrisa ? "font-medium text-destructive" : ""}`}
+              >
                 {d < 0 ? `venció hace ${Math.abs(d)} d.` : d === 0 ? "hoy" : `${d} d.`}
               </span>
             );
