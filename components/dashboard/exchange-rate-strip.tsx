@@ -348,7 +348,7 @@ function RateCalculator({
       texto:
         currency === "VES"
           ? money(amount, currency)
-          : `${money(amount, currency)} ${labelFor(currency)}`,
+          : `${money(amount, currency)} ${nombreDeMoneda(amount, labelFor(currency))}`,
       bandera: currency === "VES" ? "/flag-ves.svg" : currency === "USD" ? "/flag-usd.svg" : "/flag-eur.svg",
     });
     return {
@@ -530,4 +530,20 @@ function formatRateDate(ymd: string): string {
   const [year, month, day] = ymd.split("-").map(Number);
   if (!year || !month || !day) return ymd;
   return `${day} ${MONTH_ABBR[month - 1]} ${year}`;
+}
+
+// "1 Dólar", no "1 Dólares". El plural solo es plural cuando hay mas de uno, y
+// una tarjeta que dice "$1.00 Dolares" delata que el texto se pego con cinta.
+//
+// EXACTAMENTE uno: 0 son "Dolares" —el cero va en plural en espanol— y 1,50
+// tambien. Solo el 1 pelado cambia.
+function nombreDeMoneda(amount: number, nombrePlural: string): string {
+  if (amount !== 1) return nombrePlural;
+  return nombrePlural === "Dólares"
+    ? "Dólar"
+    : nombrePlural === "Euros"
+      ? "Euro"
+      : nombrePlural === "Bolívares"
+        ? "Bolívar"
+        : nombrePlural;
 }

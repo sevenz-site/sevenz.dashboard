@@ -202,11 +202,17 @@ export async function tarjetaDeTasa(datos: DatosDeLaTarjeta): Promise<File | nul
   ctx.fillText(datos.derecha.texto, x, y);
 
   // El pie: de cuándo es la tasa y cuándo la leímos.
+  //
+  // Alineado al margen izquierdo, no centrado. Centrado se movía con cada
+  // cifra: la línea de arriba va centrada y cambia de ancho, así que el pie
+  // caía en un sitio distinto según el número — y con el logo fijo a la
+  // izquierda, un pie que baila delata que nada está alineado con nada. Aquí
+  // arranca donde arranca el logo, y esa columna ya no se mueve.
   ctx.fillStyle = TINTA_TENUE;
   ctx.font = `400 15px ${familia}`;
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText(datos.pie, ANCHO / 2, ALTO - MARGEN - 2);
+  ctx.fillText(datos.pie, MARGEN, ALTO - MARGEN - 2);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) return null;
