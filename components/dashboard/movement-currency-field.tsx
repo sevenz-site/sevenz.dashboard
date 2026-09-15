@@ -185,8 +185,19 @@ export function montoConvertido(
   return Math.round((bs / porUnidad) * 100) / 100;
 }
 
-// La tarjeta "Monto a registrar", con el desplegable del libro al lado. Solo
-// aparece cuando se tecleó en bolívares.
+// Como se llama lo que se esta registrando, para que las dos tarjetas digan
+// "Fiado a registrar" o "Abono a registrar" en vez de un "Monto" que sirve
+// para las dos cosas.
+//
+// El boton de arriba dice "Cargo (fia)" y aqui se dice "Fiado" a proposito: no
+// son sinonimos sueltos, es que el boton de guardar de abajo ya dice "Guardar
+// fiado". La tarjeta queda entre esos dos y tiene que leerse con ellos.
+function nombreDelMovimiento(type: "charge" | "payment"): string {
+  return type === "charge" ? "Fiado" : "Abono";
+}
+
+// La tarjeta "Fiado a registrar" / "Abono a registrar", con el desplegable del
+// libro al lado. Solo aparece cuando se tecleó en bolívares.
 //
 // Misma anatomía que las dos tarjetas de la calculadora —etiqueta pequeña
 // arriba, cifra grande, moneda a la derecha— porque es la misma pregunta:
@@ -213,7 +224,9 @@ export function MontoARegistrarRow({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">Monto a registrar:</span>
+          <span className="text-xs text-muted-foreground">
+            {nombreDelMovimiento(type)} a registrar:
+          </span>
           <span
             className={`text-2xl font-semibold tabular-nums ${
               type === "payment" ? "text-money-in" : "text-destructive"
@@ -279,7 +292,7 @@ export function ResumenMonto({
       <Label>Resumen</Label>
       <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
       <div className="flex min-w-0 flex-col">
-        <span className="text-xs text-muted-foreground">Monto a registrar</span>
+        <span className="text-xs text-muted-foreground">{nombreDelMovimiento(type)} a registrar</span>
         <span
           className={`text-2xl font-semibold tabular-nums ${
             type === "payment" ? "text-money-in" : "text-destructive"
