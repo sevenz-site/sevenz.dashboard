@@ -21,7 +21,7 @@
     "qa:prevista": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/tasa-prevista.mjs",
     "qa:bolivares": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-bolivares.mjs",
     "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs",
-    "qa:compartir": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/movimiento-compartido.mjs"
+    "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

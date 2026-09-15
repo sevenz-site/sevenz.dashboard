@@ -14,6 +14,7 @@ import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { getBalanceLabel } from "@/lib/types";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 type SharedMovement = {
@@ -40,9 +41,13 @@ const PAGE_SIZE = 10;
 export function MovementHistoryList({
   movements,
   ledger = null,
+  compartir = null,
 }: {
   movements: SharedMovement[];
   ledger?: LedgerDisplay | null;
+  // Aqui el enlace sale de la direccion que el cliente ya tiene abierta: pedir
+  // uno al servidor solo responde a un dueño con sesion.
+  compartir?: DatosParaCompartir | null;
 }) {
   const [page, setPage] = useState(1);
 
@@ -82,6 +87,7 @@ export function MovementHistoryList({
               entryAmount={m.entry_amount}
               exchangeRateUsed={m.exchange_rate_used}
               ledger={ledger}
+              compartir={compartir}
             >
               <button
                 type="button"

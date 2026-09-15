@@ -31,7 +31,8 @@ import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { textoParaCompartir } from "@/lib/movement-share";
+import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
+import { mensajeDeSaldo, type DatosParaCompartir } from "@/lib/share-balance";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 export function MovementDetailPopover({
@@ -49,6 +50,7 @@ export function MovementDetailPopover({
   entryAmount = null,
   exchangeRateUsed = null,
   ledger = null,
+  compartir = null,
   children,
 }: {
   // Only the owner's dashboard passes this — it's what shows the "Eliminar
@@ -84,6 +86,9 @@ export function MovementDetailPopover({
   // null = plain COP ledger (every country='CO' owner), which formats
   // exactly as it always has.
   ledger?: LedgerDisplay | null;
+  // Con que se comparte. null esconde el boton — hoy no pasa, pero una ficha
+  // sin forma de conseguir el enlace no puede ofrecer compartirlo.
+  compartir?: DatosParaCompartir | null;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -162,35 +167,48 @@ export function MovementDetailPopover({
   // guardar en notas. No se elige por el dueño a qué app va — la lista de
   // "compartir por WhatsApp" que tantas apps ponen acaba siendo más corta que
   // la que el teléfono ya sabe.
+  //
+  // MANDA EL MISMO MENSAJE que "Compartir enlace" del perfil, a petición: el
+  // cliente recibe su enlace y su saldo al día, que es lo único que se
+  // actualiza solo. Un resumen del movimiento en texto —que es lo que este
+  // botón mandaba— envejece en cuanto hay otro movimiento, y no se puede
+  // comprobar contra nada.
   async function handleShare() {
-    const texto = textoParaCompartir({
-      tipo: type,
-      fecha: formatDate(createdAt),
-      monto,
-      equivalente: equivalente?.texto ?? null,
-      tasa,
-      plazo,
-      detalle: description,
-      saldoEtiqueta: balanceLabel,
-      saldo: balance.primary,
-    });
+    if (!compartir) return;
 
-    try {
-      // navigator.share no existe en el escritorio de casi nadie y en iPhone
-      // solo responde dentro de un gesto del usuario. Portapapeles como
-      // respaldo: el texto acaba igualmente donde el dueño lo quiera pegar.
-      if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({ text: texto });
+    // El dueño no tiene el enlace a mano y hay que pedirlo; el cliente lo tiene
+    // en la barra de direcciones —y además no podría pedirlo, porque crearlo
+    // solo responde a un dueño con sesión.
+    let url: string;
+    if (compartir.enlace.de === "cliente") {
+      url = `${window.location.origin}/s/${compartir.enlace.token}`;
+    } else {
+      const result = await getOrCreateShareLink(compartir.enlace.clientId);
+      if ("error" in result) {
+        toast.error(result.error);
         return;
       }
-      await navigator.clipboard.writeText(texto);
-      toast.success("Movimiento copiado. Pégalo donde quieras.");
+      url = `${window.location.origin}/s/${result.token}`;
+    }
+
+    const mensaje = mensajeDeSaldo(compartir.clientName, compartir.balanceText, url);
+
+    try {
+      // navigator.share no existe en el escritorio de casi nadie. Portapapeles
+      // como respaldo, con el mensaje entero y no solo el enlace: lo que se
+      // pega tiene que ser lo mismo que habría mandado el menú.
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ text: mensaje });
+        return;
+      }
+      await navigator.clipboard.writeText(mensaje);
+      toast.success("Mensaje copiado", { description: mensaje });
     } catch (error) {
       // Cerrar el menú de compartir cuenta como un error para el navegador, y
       // no lo es: el dueño cambió de idea. Avisarle de un fallo que no existe
       // es peor que callarse.
       if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.error("No pudimos compartir el movimiento. Inténtalo de nuevo.");
+      toast.error("No pudimos compartir el enlace. Inténtalo de nuevo.");
     }
   }
 
@@ -308,10 +326,12 @@ export function MovementDetailPopover({
         </div>
 
         <div className="flex flex-col gap-1">
-          <Button type="button" variant="outline" onClick={handleShare} className="w-full">
-            Compartir
-            <Share2 className="size-4" />
-          </Button>
+          {compartir ? (
+            <Button type="button" variant="outline" onClick={handleShare} className="w-full">
+              Compartir
+              <Share2 className="size-4" />
+            </Button>
+          ) : null}
 
           {movementId ? (
             <AlertDialog>

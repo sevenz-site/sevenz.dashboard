@@ -23,6 +23,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -143,6 +144,16 @@ export default async function ClientDetailPage({
   // Status/mora/score are one combined judgement per client even when a VE
   // owner tracks two independent balances — converted to USD so they're
   // comparable, per the "uno solo, combinado" decision.
+  // Un solo mensaje para los dos botones que lo mandan: "Compartir enlace" en
+  // el perfil y "Compartir" dentro de la ficha de cada movimiento. Lo calculaban
+  // dos sitios por su cuenta con la misma llamada repetida; ahora es uno.
+  const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
+  const compartir: DatosParaCompartir = {
+    clientName: client.name,
+    balanceText,
+    enlace: { de: "dueño", clientId: client.id },
+  };
+
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
   const status = getClientStatus(
     judgementBalance,
@@ -181,7 +192,7 @@ export default async function ClientDetailPage({
           clientId={client.id}
           clientName={client.name}
           whatsapp={client.whatsapp}
-          balanceText={formatBalanceSummary(balance, balanceUsd, balanceEur, ledger)}
+          balanceText={balanceText}
           // A VE client owes money if either independent balance is positive.
           // The two are never summed — that is what rateContext being non-null
           // means on this page.
@@ -240,7 +251,7 @@ export default async function ClientDetailPage({
           clientId={client.id}
           clientName={client.name}
           whatsapp={client.whatsapp}
-          balanceText={formatBalanceSummary(balance, balanceUsd, balanceEur, ledger)}
+          balanceText={balanceText}
           variant="whatsapp-button"
         />
 
@@ -320,7 +331,7 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} ledger={ledger} />
+        <MovementHistory clientId={id} ledger={ledger} compartir={compartir} />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -480,9 +491,14 @@ async function CreditScoreSection({
 async function MovementHistory({
   clientId,
   ledger,
+  compartir,
 }: {
   clientId: string;
   ledger: LedgerDisplay | null;
+  // El mismo mensaje y el mismo enlace que "Compartir enlace" del perfil. Se
+  // calcula arriba, donde ya estan el nombre y el saldo, y baja hasta aqui:
+  // este componente solo lee movimientos y no sabria construirlo.
+  compartir: DatosParaCompartir;
 }) {
   const supabase = await createClient();
 
@@ -513,6 +529,7 @@ async function MovementHistory({
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
+        compartir={compartir}
       />
     </div>
   );

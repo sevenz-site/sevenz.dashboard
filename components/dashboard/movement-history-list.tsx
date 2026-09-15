@@ -14,6 +14,7 @@ import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
 
@@ -21,9 +22,13 @@ export function MovementHistoryList({
   movements,
   photoUrls,
   ledger = null,
+  compartir = null,
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
+  // Con que comparte la ficha de cada movimiento — el mismo enlace y el mismo
+  // mensaje que "Compartir enlace" del perfil. Ver lib/share-balance.ts.
+  compartir?: DatosParaCompartir | null;
   // null = plain COP ledger — see MovementDetailPopover.
   ledger?: LedgerDisplay | null;
 }) {
@@ -71,6 +76,7 @@ export function MovementHistoryList({
               entryAmount={m.entry_amount}
               exchangeRateUsed={m.exchange_rate_used}
               ledger={ledger}
+              compartir={compartir}
             >
               <button
                 type="button"

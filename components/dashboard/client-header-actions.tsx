@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
+import { mensajeDeSaldo } from "@/lib/share-balance";
 import { hideClientPermanently, restoreClient, trashClient } from "@/app/(app)/clients/[id]/actions";
 import { track } from "@/lib/mixpanel";
 import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
@@ -96,8 +97,12 @@ export function ClientHeaderActions({
   // One message, both routes. They differ only in how it leaves the app —
   // WhatsApp with the client's own number prefilled, or the share sheet, which
   // has no recipient of its own.
+  //
+  // Y ahora tambien lo manda el "Compartir" de la ficha de un movimiento, asi
+  // que el texto se escribe en lib/share-balance.ts y no aqui: tres botones
+  // mandando lo mismo no pueden depender de que nadie retoque uno.
   function buildMessage(url: string) {
-    return `Hola ${clientName}, tu saldo actual es ${balanceText}. Puedes verlo aquí: ${url}`;
+    return mensajeDeSaldo(clientName, balanceText, url);
   }
 
   async function handleShare() {
