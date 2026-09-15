@@ -9,6 +9,7 @@ import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
+import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
@@ -178,6 +179,14 @@ export default async function DashboardPage({
           </p>
         ) : null}
       </div>
+
+      {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
+          al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
+          habria escrito el monto. Aqui se entera al abrir.
+
+          Se dibuja siempre y decide el solo: lee del contexto del layout, que
+          es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
+      <CuentaPausada />
 
       {/* 20px of separation above a section title, measured on screen. The
           container is a flex column with gap-4, and a margin ADDS to a flex gap

@@ -7,6 +7,8 @@ import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/ex
 import { trackServer } from "@/lib/mixpanel-server";
 import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
+import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
+import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 
 export type ImportRow = {
   client_id: string | null;
@@ -40,6 +42,13 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", imported: 0 };
+
+  // Una importacion son decenas de inserts en `clients` y `movements`. Con la
+  // cuenta pausada la politica los rechaza uno a uno, asi que el tendero
+  // acabaria con un resumen de cuarenta lineas en rojo. Se para entera y antes.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { error: MENSAJE_CUENTA_PAUSADA, imported: 0 };
+  }
   if (rows.length === 0) return { error: "No hay movimientos para importar.", imported: 0 };
 
   // Resolved once per distinct currency in the batch, not once per row.

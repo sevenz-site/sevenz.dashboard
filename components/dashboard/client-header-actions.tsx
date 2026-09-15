@@ -28,6 +28,8 @@ import { hideClientPermanently, restoreClient, trashClient } from "@/app/(app)/c
 import { track } from "@/lib/mixpanel";
 import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
 import type { Client, OwnerCountry } from "@/lib/types";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 // Which confirmation is on screen. One state rather than a boolean per dialog:
 // two AlertDialogs can never be open at once, and modelling it as two booleans
@@ -78,6 +80,8 @@ export function ClientHeaderActions({
   // one disappears in the same frame it was asked to open.
   const [confirming, setConfirming] = useState<Confirming>("none");
   const [busy, setBusy] = useState(false);
+  // Cuenta pausada: ni se abre la confirmacion.
+  const guardia = useGuardiaDeCuentaPausada();
   const isTrashed = trashedAt !== null;
 
   function resolveUrl(): Promise<string | null> {
@@ -143,7 +147,7 @@ export function ClientHeaderActions({
     const result = await trashClient(clientId);
     setBusy(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     setConfirming("none");
@@ -158,11 +162,12 @@ export function ClientHeaderActions({
   }
 
   async function handleRestore() {
+    if (guardia()) return;
     setBusy(true);
     const result = await restoreClient(clientId);
     setBusy(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success(`${clientName} volvió a tu cartera`);
@@ -175,7 +180,7 @@ export function ClientHeaderActions({
     const result = await hideClientPermanently(clientId);
     setBusy(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     setConfirming("none");
@@ -210,7 +215,10 @@ export function ClientHeaderActions({
           {/* Un cliente en la papelera no se edita: restaurarlo primero es la
               única acción que tiene sentido, y está arriba en este mismo menú. */}
           {isTrashed ? null : (
-            <DropdownMenuItem onSelect={() => setEditando(true)}>
+            <DropdownMenuItem onSelect={() => {
+              if (guardia()) return;
+              setEditando(true);
+            }}>
               <Pencil />
               Editar cliente
             </DropdownMenuItem>
@@ -226,7 +234,10 @@ export function ClientHeaderActions({
                 <RotateCcw />
                 Restaurar cliente
               </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirming("hide")}>
+              <DropdownMenuItem variant="destructive" onSelect={() => {
+                  if (guardia()) return;
+                  setConfirming("hide");
+                }}>
                 <EyeOff />
                 Ocultar definitivamente
               </DropdownMenuItem>
@@ -237,7 +248,10 @@ export function ClientHeaderActions({
               // Radix closes the menu on select and the dialog opens from the
               // state below, one frame later — which is what keeps the dialog
               // mounted after its trigger is gone.
-              onSelect={() => setConfirming("trash")}
+              onSelect={() => {
+                if (guardia()) return;
+                setConfirming("trash");
+              }}
             >
               <Trash2 />
               Mover a papelera

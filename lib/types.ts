@@ -275,6 +275,36 @@ export const CLIENT_STATUS_BADGE_CLASS: Record<ClientStatus, string> = {
 // as a different kind of thing (a "blacklist" mark, not a severity level).
 export const MALA_PAGA_BADGE_CLASS = "border-transparent bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900";
 
+// El chip de una cuenta en /admin. Vive aquí, junto a CLIENT_STATUS_BADGE_CLASS
+// y MALA_PAGA_BADGE_CLASS, porque es la misma paleta: si estos colores se
+// escribieran en el componente de /admin, el día que se ajuste el ámbar de
+// "plazo vencido" la pantalla de cuentas se quedaría con el viejo.
+//
+// EL MAPA, y por qué cada uno:
+//
+//   activa_pro    NEGRO, el mismo de "mala paga". Es el chip que más pesa de
+//                 la paleta, y un negocio que paga es la única fila que quieres
+//                 distinguir de un vistazo entre veinticuatro.
+//   activa_free   VERDE. Activa igual, pero es un regalo: se lee bien y no se
+//                 confunde con quien paga.
+//   demo          AZUL, el mismo de "dentro del plazo". Es literalmente eso:
+//                 un plazo corriendo que todavía no venció.
+//   vencida       ÁMBAR, el mismo de "plazo vencido". Mismo concepto otra vez —
+//                 se pasó la fecha y sigue ahí.
+//   bloqueada     ROJO.
+//   cancelada     NEUTRO. Ya no pide nada de ti.
+export const CUENTA_BADGE_CLASS = {
+  activa_pro: "border-transparent bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900",
+  activa_free:
+    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+  demo: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20",
+  vencida:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+  bloqueada:
+    "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+  cancelada: "bg-muted text-foreground border-transparent",
+} as const;
+
 // Keyed by the tier label computeCreditScore() returns (lib/credit-score.ts)
 // — kept here alongside the other badge-class maps rather than in that pure
 // module, consistent with how CLIENT_STATUS_BADGE_CLASS lives here too.

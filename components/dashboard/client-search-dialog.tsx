@@ -54,6 +54,11 @@ import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import type { MonedaHabitual } from "@/lib/moneda-habitual";
 import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
+import {
+  useErrorDeCuentaPausada,
+  useGuardiaAlAbrir,
+  useGuardiaDeCuentaPausada,
+} from "@/components/dashboard/cuenta-pausada";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -123,10 +128,12 @@ export function ClientSearchDialog({
   // Normalised once: the prop is optional, so undefined and false have to mean
   // the same thing to the comparison below.
   const wantsOpen = autoOpen === true;
+  const abrirBloqueado = useGuardiaAlAbrir(wantsOpen);
+  const guardia = useGuardiaDeCuentaPausada();
   const [prevAutoOpen, setPrevAutoOpen] = useState(false);
   if (wantsOpen !== prevAutoOpen) {
     setPrevAutoOpen(wantsOpen);
-    if (wantsOpen) setOpen(true);
+    if (wantsOpen && !abrirBloqueado) setOpen(true);
   }
 
   // Clears the marker only once the dialog is CLOSED, through the router rather
@@ -174,6 +181,7 @@ export function ClientSearchDialog({
         open={open}
         onOpenChange={(next) => {
           if (next) {
+            if (guardia()) return;
             setOpen(true);
             return;
           }
@@ -353,6 +361,9 @@ function ClientSearchDialogBody({
   useEffect(() => {
     if (handledState.clientId) onDone(true);
   }, [handledState, onDone]);
+
+  // Cuenta pausada: lo dice el dialogo, no un parrafo rojo aqui debajo.
+  const errorPausada = useErrorDeCuentaPausada(state.error);
 
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
@@ -623,7 +634,7 @@ function ClientSearchDialogBody({
             ahora sale de los botones o del desplegable, así que viaja aquí. */}
         {ownerCountry === "VE" ? <input type="hidden" name="movement_currency" value={currency} /> : null}
 
-        {state.error ? (
+        {state.error && !errorPausada ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-destructive">{state.error}</p>
             {state.duplicate ? (

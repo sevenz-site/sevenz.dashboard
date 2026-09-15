@@ -20,6 +20,8 @@ import type { NotificationItem } from "@/app/(app)/actions";
 import { formatCurrency, formatDateTime, formatPlazoDias } from "@/lib/format";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import type { MovementCurrencyCode } from "@/lib/types";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 type MovementDeletedNotification = Extract<NotificationItem, { kind: "movement_deleted" }>;
 
@@ -36,6 +38,8 @@ export function MovementDeletionDialog({
 }) {
   const router = useRouter();
   const [restoring, setRestoring] = useState(false);
+  // Cuenta pausada: restaurar un movimiento cambia saldos.
+  const guardia = useGuardiaDeCuentaPausada();
 
   if (!notification) return null;
 
@@ -96,11 +100,12 @@ export function MovementDeletionDialog({
         : "";
 
   async function handleRestore() {
+    if (guardia()) return;
     setRestoring(true);
     const result = await restoreMovement(notification!.movementId);
     setRestoring(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success("Movimiento restaurado");

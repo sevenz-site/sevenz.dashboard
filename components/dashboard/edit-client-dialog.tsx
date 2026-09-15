@@ -22,6 +22,10 @@ import type { Client, OwnerCountry } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
+import {
+  useErrorDeCuentaPausada,
+  useGuardiaDeCuentaPausada,
+} from "@/components/dashboard/cuenta-pausada";
 
 const initialState: EditClientState = { error: null, success: false };
 
@@ -50,6 +54,10 @@ export function EditClientDialog({
   const open = controlado ? Boolean(openProp) : openInterno;
   const setOpen = controlado ? onOpenChange! : setOpenInterno;
   const [state, formAction, pending] = useActionState(updateClient, initialState);
+  // Cuenta pausada: lo dice el dialogo, no un parrafo rojo aqui debajo.
+  const errorPausada = useErrorDeCuentaPausada(state.error);
+  // Cuenta pausada: no se abre el formulario, sale el dialogo.
+  const guardia = useGuardiaDeCuentaPausada();
   const [handledState, setHandledState] = useState(state);
   const [formRef, setFormRef] = useFormRef();
   const { errors, validate, recheck, reset } = useFieldErrors({
@@ -75,6 +83,7 @@ export function EditClientDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (next && guardia()) return;
         setOpen(next);
         // Radix doesn't guarantee this content unmounts on close, so without
         // this a validation error from a previous open could still be
@@ -149,7 +158,11 @@ export function EditClientDialog({
             <Input id="edit_address" name="address" defaultValue={client.address ?? ""} />
           </div>
 
-          {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+          {state.error && !errorPausada ? (
+
+            <p className="text-sm text-destructive">{state.error}</p>
+
+          ) : null}
 
           <DialogFooter>
             <Button type="submit" disabled={pending}>

@@ -29,6 +29,11 @@ import { flagClient, unflagClient, type FlagClientState } from "@/app/(app)/clie
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { cn } from "@/lib/utils";
 import { required } from "@/lib/form-validation";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import {
+  useErrorDeCuentaPausada,
+  useGuardiaDeCuentaPausada,
+} from "@/components/dashboard/cuenta-pausada";
 
 const initialState: FlagClientState = { error: null, success: false };
 
@@ -52,6 +57,9 @@ export function ClientFlagControl({
   const [markOpen, setMarkOpen] = useState(false);
   const [confirmUnmarkOpen, setConfirmUnmarkOpen] = useState(false);
   const [state, formAction, pending] = useActionState(flagClient, initialState);
+  // Cuenta pausada: lo dice el dialogo, no un parrafo rojo aqui debajo.
+  const errorPausada = useErrorDeCuentaPausada(state.error);
+  const guardia = useGuardiaDeCuentaPausada();
   const [unflagging, setUnflagging] = useState(false);
   const [formRef, setFormRef] = useFormRef();
   const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({ reason: required });
@@ -71,6 +79,8 @@ export function ClientFlagControl({
   }, [state, pending, router, clientName]);
 
   function handleCheckedChange(checked: boolean) {
+    // Marcar y desmarcar pasan las dos por aqui.
+    if (guardia()) return;
     if (checked) setMarkOpen(true);
     else setConfirmUnmarkOpen(true);
   }
@@ -80,7 +90,7 @@ export function ClientFlagControl({
     const result = await unflagClient(clientId);
     setUnflagging(false);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success("Marca quitada");
@@ -149,7 +159,9 @@ export function ClientFlagControl({
               />
               {errors.reason ? <p className="text-xs text-destructive">{errors.reason}</p> : null}
             </div>
-            {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+            {state.error && !errorPausada ? (
+              <p className="text-sm text-destructive">{state.error}</p>
+            ) : null}
             <DialogFooter>
               <Button type="submit" variant="destructive" disabled={pending}>
                 {pending ? "Marcando..." : "Marcar como mala paga"}

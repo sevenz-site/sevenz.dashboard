@@ -39,6 +39,8 @@ import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 
 import type { ReconcileClient } from "@/lib/reconcile";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 type ExistingClient = ReconcileClient;
 
@@ -73,6 +75,9 @@ export function ImportFlow({
   const showCurrency = ownerCountry === "VE";
   const { jobs, isProcessing, usage, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
+  // Cuenta pausada: se para ANTES de la foto. Escanearla gasta cuota de
+  // Gemini y veinte minutos de revision para nada.
+  const guardia = useGuardiaDeCuentaPausada();
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
 
   // "Every row is the same person" — for an owner who photographs one client's
@@ -141,6 +146,7 @@ export function ImportFlow({
   const missingCurrency = showCurrency && reviewRows.some((r) => !r.currency);
 
   function handleFilesSelected(fileList: FileList | null) {
+    if (guardia()) return;
     if (!fileList) return;
     startImport(Array.from(fileList));
   }
@@ -209,6 +215,7 @@ export function ImportFlow({
   }
 
   async function handleConfirm() {
+    if (guardia()) return;
     if (reviewRows.length === 0) return;
     setConfirming(true);
     try {
@@ -223,7 +230,11 @@ export function ImportFlow({
       }));
       const result = await confirmImport(rows);
       if (result.error) {
-        toast.error(result.error, { description: `${result.imported} movimientos ya se guardaron.` });
+        // La cuenta pausada se para antes de guardar nada, asi que aqui el
+        // "ya se guardaron N" seria mentira. Lo dice el dialogo y ya.
+        if (!avisarCuentaPausada(result.error)) {
+          toast.error(result.error, { description: `${result.imported} movimientos ya se guardaron.` });
+        }
       } else {
         toast.success(`${result.imported} movimientos importados.`);
         setReviewMovements(null);

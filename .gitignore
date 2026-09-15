@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# El ejemplo SÍ se versiona: no lleva ni un valor, y es lo único que documenta
+# qué variables hacen falta y en qué entorno. Vivía solo en una máquina, así
+# que no había nada que recordara que SUPERADMIN_EMAILS hace falta también en
+# Preview — y por eso /admin fue imposible de abrir en dev desde que se
+# construyó. Un ejemplo que no viaja con el código no documenta nada.
+!.env.local.example
 
 # vercel
 .vercel

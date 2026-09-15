@@ -34,6 +34,8 @@ import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
 import { getClientStatus, type ClientSummaryAll } from "@/lib/types";
 import { track } from "@/lib/mixpanel";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 export function PapeleraTable({
   rows,
@@ -48,6 +50,8 @@ export function PapeleraTable({
   // without a second lookup.
   const [hiding, setHiding] = useState<ClientSummaryAll | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Cuenta pausada: restaurar y eliminar sacan el dialogo.
+  const guardia = useGuardiaDeCuentaPausada();
   const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
 
   // The same search + "Más filtros" block as Cartera, Clientes and Malas
@@ -65,11 +69,12 @@ export function PapeleraTable({
   });
 
   async function handleRestore(row: ClientSummaryAll) {
+    if (guardia()) return;
     setBusyId(row.client_id);
     const result = await restoreClient(row.client_id);
     setBusyId(null);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success(`${row.name} volvió a tu cartera`);
@@ -84,7 +89,7 @@ export function PapeleraTable({
     const result = await hideClientPermanently(row.client_id);
     setBusyId(null);
     if (result.error) {
-      toast.error(result.error);
+      if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     setHiding(null);
@@ -183,7 +188,10 @@ export function PapeleraTable({
                   <RotateCcw className="size-4" />
                   Restaurar
                 </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setHiding(row)}>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => {
+                    if (guardia()) return;
+                    setHiding(row);
+                  }}>
                   <EyeOff className="size-4" />
                   Ocultar definitivamente
                 </Button>

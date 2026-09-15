@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fileToResizedBlob } from "@/lib/image";
 import { getPublicClientProfilePictureUrl } from "@/lib/supabase/storage";
 import { setClientProfilePicture } from "@/app/(app)/clients/[id]/actions";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 
 // Las iniciales que se ven mientras no hay foto. Dos como mucho: "María
 // Delgado" da MD, "Juanito" da J. Se parte por espacios y se descartan los
@@ -91,7 +92,8 @@ export function ClientAvatar({
       setAbierto(false);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos subir la foto.");
+      const texto = error instanceof Error ? error.message : "No pudimos subir la foto.";
+      if (!avisarCuentaPausada(texto)) toast.error(texto);
     } finally {
       setOcupado(false);
       if (galeriaRef.current) galeriaRef.current.value = "";
@@ -108,7 +110,8 @@ export function ClientAvatar({
       setAbierto(false);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos eliminar la foto.");
+      const texto = error instanceof Error ? error.message : "No pudimos eliminar la foto.";
+      if (!avisarCuentaPausada(texto)) toast.error(texto);
     } finally {
       setOcupado(false);
     }
