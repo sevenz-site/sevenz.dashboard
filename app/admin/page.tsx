@@ -69,7 +69,7 @@ function Stat({
           {/* size-4, apagado hasta el hover y con aria-label: la regla de
               DESIGN-SYSTEM.md para los iconos-botón dentro de una card. */}
           <PopoverTrigger
-            className="absolute top-2.5 right-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="absolute top-2.5 right-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
             aria-label={`Qué cuenta ${label}`}
           >
             <Info className="size-4" />

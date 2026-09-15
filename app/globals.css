@@ -75,7 +75,12 @@
   --money-in: oklch(0.527 0.154 150.069);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* 0.62 y no 0.708. El anillo de foco necesita 3:1 contra el fondo (WCAG
+     1.4.11) y 0.708 daba 2,59:1 — y eso midiendo el token: dibujado al 50% de
+     opacidad, como estaba en los 12 sitios que lo usan, quedaba en 1,54:1.
+     Gris clarito sobre blanco, invisible con el telefono al sol.
+     0.62 = #868686 = 3,64:1, con margen. */
+  --ring: oklch(0.62 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -112,7 +117,10 @@
   --money-in: oklch(0.792 0.209 151.711);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Mas CLARO que el del tema claro, no mas oscuro. Estaba al reves —0.556
+     contra 0.708— y sobre un fondo oscuro un anillo oscuro es justo el que no
+     se ve. 0.708 = 7,63:1 sobre el fondo y 6,91:1 sobre una tarjeta. */
+  --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

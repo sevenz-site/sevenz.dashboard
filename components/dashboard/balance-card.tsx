@@ -68,7 +68,7 @@ export function BalanceCard({
   const [chartOpen, setChartOpen] = useState(false);
 
   const iconButton =
-    "shrink-0 rounded outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
+    "shrink-0 rounded outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring";
 
   return (
     <div className="flex w-full flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">

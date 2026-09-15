@@ -275,11 +275,24 @@ Measured on white (`#ffffff`) as of 2026-09-08:
 | toast description (after the fix) | `#3a3a3a` | 11.37:1 | pass |
 | `--muted-foreground` | `#737373` | 4.74:1 | pass, with no margin |
 | `--destructive` | `#e7000b` | 4.77:1 | pass, with no margin |
-| `--ring` | `#a1a1a1` | 2.58:1 | **fails 1.4.11** — focus rings need 3:1 |
+| `--ring` (light) | `#868686` | 3.64:1 | pass — was `#a1a1a1` at 2.59:1 |
+| `--ring` (dark) | `#a1a1a1` | 7.63:1 | pass — was `#737373`, darker than the light one |
 
 `--muted-foreground` clears the bar by 0.24. Do not darken the surface behind
 it or lighten the token without re-measuring; it is the one that will fail
 first.
+
+**Measure the colour that gets DRAWN, not the token.** The ring row above said
+2.58:1 and failed for months, and the real number was worse: every one of the
+twelve components applied it as `focus-visible:ring-ring/50`, at half opacity,
+so what a person actually saw was **1.54:1 in light and 1.87:1 in dark** — the
+dark theme passed on the token and failed on the screen. Fixed 2026-09-14 by
+dropping the `/50` everywhere and re-picking both tokens. A token measured
+without its opacity is not a measurement.
+
+The focus ring is also the one token whose failure nobody reports: it is
+`focus-visible`, so it only appears when navigating by keyboard, and everyone
+testing with a finger never sees it at all.
 
 ## Before calling UI work done
 

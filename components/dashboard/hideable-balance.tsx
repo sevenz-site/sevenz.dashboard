@@ -49,7 +49,7 @@ export function HideableBalance({
           onClick={toggle}
           aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
           aria-pressed={!hidden}
-          className="mt-1 shrink-0 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="mt-1 shrink-0 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
         >
           {hidden ? (
             <Eye className="size-4" aria-hidden="true" />

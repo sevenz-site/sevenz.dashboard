@@ -136,7 +136,7 @@ export function ClientAvatar({
         <button
           type="button"
           disabled={ocupado}
-          className="group relative rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="group relative rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
           aria-label={foto ? `Cambiar la foto de ${clientName}` : `Agregar una foto de ${clientName}`}
         >
           {avatar}
