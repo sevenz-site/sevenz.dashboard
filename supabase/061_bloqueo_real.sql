@@ -90,7 +90,15 @@ $$;
 grant execute on function public.owner_puede_escribir(uuid) to authenticated;
 
 -- ── clients ─────────────────────────────────────────────────────────────
+-- Se tiran las cinco: la vieja y las cuatro nuevas. Las nuevas porque
+-- `create policy` no tiene `or replace`, asi que sin esto el archivo solo
+-- funciona una vez — y la vez que hace falta volver a correrlo es justo
+-- despues de revertirlo, con la cartera de 24 negocios esperando.
 drop policy if exists "owners manage own clients" on public.clients;
+drop policy if exists "owners read own clients" on public.clients;
+drop policy if exists "owners insert own clients" on public.clients;
+drop policy if exists "owners update own clients" on public.clients;
+drop policy if exists "owners delete own clients" on public.clients;
 
 -- Leer: la condición de hoy, sin tocar. Primero, a propósito.
 create policy "owners read own clients" on public.clients
@@ -115,6 +123,10 @@ create policy "owners delete own clients" on public.clients
 
 -- ── movements ───────────────────────────────────────────────────────────
 drop policy if exists "owners manage own movements" on public.movements;
+drop policy if exists "owners read own movements" on public.movements;
+drop policy if exists "owners insert own movements" on public.movements;
+drop policy if exists "owners update own movements" on public.movements;
+drop policy if exists "owners delete own movements" on public.movements;
 
 create policy "owners read own movements" on public.movements
   for select using (
