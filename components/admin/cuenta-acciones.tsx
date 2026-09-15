@@ -102,7 +102,7 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
   return (
     <DialogoDeAccion
       titulo={`Dar demo a ${cuenta.business_name}`}
-      descripcion="Acceso completo durante los días que acuerden. Al vencer NO se baja sola: aparece en la lista de vencidas para que decidas."
+      descripcion="Acceso completo durante los días que acuerden, y el precio que pagará después. Al vencer NO se baja sola: aparece en la lista de vencidas para que decidas."
       disparador={
         <Button type="button" variant="outline" size="sm">
           <Gift className="size-4" />
@@ -142,8 +142,43 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
             className="w-32"
           />
           <p className="text-xs text-muted-foreground">
-            Termina al final de ese día, hora de Caracas.
+            Termina al final de ese día, hora de Caracas. Se le empezaría a cobrar al día
+            siguiente.
           </p>
+        </div>
+        {/* El precio se acuerda en la MISMA conversación que los días. Antes
+            había que acordarse de abrir "Cambiar plan" semanas después, justo
+            cuando ya nadie recuerda qué se dijo. */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="precio-demo">Qué pagará al terminar (USD)</Label>
+          <Input
+            id="precio-demo"
+            name="precio"
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="20"
+            defaultValue={cuenta.precio_pactado_usd ?? ""}
+            className="w-32"
+          />
+          <p className="text-xs text-muted-foreground">
+            Déjalo vacío si todavía no hablaron de precio. Vacío no es gratis — para eso está el
+            plan Free.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="periodicidad-demo">Cada cuánto pagará</Label>
+          <Select name="periodicidad" defaultValue={cuenta.periodicidad ?? "mensual"}>
+            <SelectTrigger id="periodicidad-demo" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mensual">Mensual</SelectItem>
+              <SelectItem value="trimestral">Trimestral</SelectItem>
+              <SelectItem value="anual">Anual</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="notas-demo">Nota (opcional)</Label>

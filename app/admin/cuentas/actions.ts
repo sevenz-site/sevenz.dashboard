@@ -26,13 +26,25 @@ export async function accionDarDemo(
   const ownerId = String(formData.get("owner_id") ?? "");
   const dias = Number(formData.get("dias") ?? 0);
   const notas = String(formData.get("notas") ?? "").trim() || null;
+  const precioRaw = String(formData.get("precio") ?? "").trim();
+  const periodicidadRaw = String(formData.get("periodicidad") ?? "");
 
   if (!ownerId) return { error: "Falta el negocio.", ok: false };
   if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
     return { error: "Los días de la demo tienen que ir de 1 a 365.", ok: false };
   }
 
-  const { error } = await darDemo(ownerId, dias, email, notas);
+  // Vacío = todavía no se habló de precio, que es distinto de gratis.
+  const precio = precioRaw === "" ? null : Number(precioRaw);
+  if (precio !== null && (!Number.isFinite(precio) || precio < 0)) {
+    return { error: "El precio no es un número válido.", ok: false };
+  }
+  const periodicidad: Periodicidad | null =
+    periodicidadRaw === "mensual" || periodicidadRaw === "trimestral" || periodicidadRaw === "anual"
+      ? periodicidadRaw
+      : null;
+
+  const { error } = await darDemo(ownerId, dias, email, notas, precio, periodicidad);
   if (error) return { error, ok: false };
 
   revalidatePath("/admin/cuentas");

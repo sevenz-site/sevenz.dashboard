@@ -62,6 +62,17 @@ export async function getCuentas(): Promise<Cuenta[]> {
   return (data ?? []) as Cuenta[];
 }
 
+export type IngresoMes = { mes: string; total_usd: number; pagos: number };
+
+// Sale de subscription_events y no de subscriptions: los asientos son
+// inmutables, así que subir un precio no reescribe el pasado. Ver la 060.
+export async function getIngresosPorMes(meses = 12): Promise<IngresoMes[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_ingresos_por_mes", { p_meses: meses });
+  if (error) throw new Error(`admin_ingresos_por_mes: ${error.message}`);
+  return (data ?? []) as IngresoMes[];
+}
+
 export async function getHistorial(ownerId: string): Promise<EventoCuenta[]> {
   const db = createServiceClient();
   const { data, error } = await db.rpc("admin_cuenta_historial", { p_owner: ownerId });
@@ -74,11 +85,19 @@ export async function getHistorial(ownerId: string): Promise<EventoCuenta[]> {
 // Postgres es información útil, no una fuga. La regla de enmascarar errores
 // aplica a lo que puede tocar alguien sin sesión.
 
+// El precio y la periodicidad se acuerdan en la MISMA conversación que los
+// días de prueba, así que se guardan aquí. Antes había que acordarse de abrir
+// "Cambiar plan" semanas después, justo cuando ya nadie recuerda qué se dijo.
+//
+// Null en cualquiera de los dos significa "no lo hablamos", y la función los
+// deja como estaban — no los borra.
 export async function darDemo(
   ownerId: string,
   dias: number,
   actorEmail: string,
   notas: string | null,
+  precioUsd: number | null,
+  periodicidad: Periodicidad | null,
 ): Promise<{ error: string | null }> {
   const db = createServiceClient();
   const { error } = await db.rpc("admin_dar_demo", {
@@ -86,6 +105,8 @@ export async function darDemo(
     p_dias: dias,
     p_actor_email: actorEmail,
     p_notas: notas,
+    p_precio_usd: precioUsd,
+    p_periodicidad: periodicidad,
   });
   return { error: error?.message ?? null };
 }

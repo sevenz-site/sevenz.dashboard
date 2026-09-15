@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 import { requireSuperadmin } from "@/lib/admin/guard";
+import { AdminSidebar } from "@/components/admin/admin-sidebar";
 
 // Never prerendered, never cached. This page reads a session to decide who may
 // see it and then shows every owner's data, so a cached copy is a copy that
@@ -19,33 +20,25 @@ export const revalidate = 0;
 // owner-facing shell — no sidebar, no bottom bar, no notifications — because
 // none of it applies to a platform view, and pulling it in would mean the
 // owner's own navigation appearing on a screen that shows every owner's data.
+//
+// El menú lateral es SUYO (AdminSidebar), no el del tendero. Misma razón: uno
+// navega un negocio y el otro la plataforma entera.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { email } = await requireSuperadmin();
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <Link href="/admin" className="text-sm font-semibold">
-              Sevenz
-            </Link>
-            <Link href="/admin" className="text-sm text-muted-foreground hover:text-foreground">
-              Métricas
-            </Link>
-            <Link href="/admin/cuentas" className="text-sm text-muted-foreground hover:text-foreground">
-              Cuentas
-            </Link>
-          </div>
-          {/* Whose session is open. On a screen showing every owner's numbers,
-              that is the one piece of state worth keeping visible. */}
-          <span className="text-xs text-muted-foreground">{email}</span>
-        </div>
-        <Link href="/dashboard" className="text-xs text-muted-foreground underline underline-offset-4">
-          Ir a mi cartera
-        </Link>
-      </header>
-      <main className="flex flex-1 flex-col gap-6 p-4">{children}</main>
-    </div>
+    <SidebarProvider>
+      <AdminSidebar email={email} />
+      <SidebarInset>
+        {/* La cabecera se queda pegada arriba al desplazar. En una tabla de 24
+            filas que va a crecer, el botón del menú y el título son lo único
+            que orienta cuando ya no se ve el principio. */}
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1" />
+          <span className="text-sm font-medium">Panel de Sevenz</span>
+        </header>
+        <main className="flex flex-1 flex-col gap-6 p-4">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
