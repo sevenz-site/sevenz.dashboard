@@ -162,12 +162,36 @@ export default async function AdminMetricsPage({
     }, new Map<string, { country: string; owners: number; clients: number; movements: number; charge_total: number }>())
     .values()].sort((a, b) => a.country.localeCompare(b.country));
 
+  // Qué parte de la plataforma se está mirando, en una frase. Se arma de los
+  // filtros que de verdad recortan el conjunto: país, moneda y negocio. Las
+  // fechas quedan fuera a propósito — acotan CUÁNDO, no A QUIÉN, y meterlas
+  // aquí haría una frase larguísima para la pregunta que esta línea responde.
+  const recortes: string[] = [];
+  const negociosElegidos = filters.ownerIds ?? [];
+  if (negociosElegidos.length > 0) {
+    recortes.push(
+      negociosElegidos.length === 1
+        ? (owners.find((o) => o.id === negociosElegidos[0])?.business_name ?? "1 negocio")
+        : `${negociosElegidos.length} negocios`,
+    );
+  }
+  if (filters.country) recortes.push(filters.country === "VE" ? "Venezuela" : "Colombia");
+  if (filters.currency) recortes.push(filters.currency);
+  const alcance = recortes.length === 0 ? "Todos los negocios" : `Filtrado: ${recortes.join(" · ")}`;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Métricas de producto</h1>
+        {/* Dice lo que hay en pantalla, no lo que suele haber.
+            Ponía "Todos los negocios" siempre, también con tres seleccionados,
+            así que el encabezado afirmaba una cosa y las cifras eran otra — y
+            "Registros rechazados: 0" con un filtro puesto no quiere decir que
+            nadie se quedó sin registrar, solo que ninguno de esos tres. Un
+            número filtrado bajo un título que dice "todos" es como se lee mal
+            un panel. */}
         <p className="text-sm text-muted-foreground">
-          Todos los negocios. Los montos nunca se suman entre monedas.
+          {alcance}. Los montos nunca se suman entre monedas.
         </p>
       </div>
 
@@ -245,7 +269,16 @@ export default async function AdminMetricsPage({
         <Stat
           label="Fiados sin tasa sellada"
           value={String(health.movements_without_rate)}
-          hint="se registraron bien; 172 son anteriores al 24 ago 2026"
+          // La base son 172 y no baja nunca — pero eso solo es cierto mirando
+          // la plataforma entera. Con un filtro puesto la cifra es un trozo de
+          // esos 172, y la pista decía "172 son anteriores" al lado de un 141:
+          // el número que no puede bajar, bajando. Ahora la pista se calla
+          // cuando no está hablando del conjunto completo.
+          hint={
+            recortes.length === 0
+              ? "se registraron bien; 172 son anteriores al 24 ago 2026"
+              : "se registraron bien, sin guardar la tasa del día"
+          }
           explica="Fiados correctos, en su moneda correcta, pero sin guardar a cuánto estaba el dólar ese día. Arranca en 172: son los de antes del 24 de agosto de 2026, que se marcaron como dólares sin poder inventarles una tasa. Ese número no baja nunca. Solo importa si empieza a subir, y eso querría decir que el BCV está fallando."
         />
       </div>
