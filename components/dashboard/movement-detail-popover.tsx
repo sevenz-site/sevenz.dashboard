@@ -26,48 +26,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { textoParaCompartir } from "@/lib/movement-share";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
-
-const NOMBRE_DE_MONEDA: Record<MovementCurrencyCode, string> = {
-  VES: "Bolívares",
-  USD: "Dólares",
-  EUR: "Euros",
-};
-
-// Una fila de la ficha: nombre a la izquierda, dato a la derecha.
-//
-// El dato va alineado a la derecha y no pegado al nombre porque esta ficha se
-// lee en vertical: con todos los datos en el mismo margen, el ojo baja por una
-// columna en vez de ir saltando al final de cada etiqueta.
-//
-// leading-5 —20px de alto de linea— y no el 16px que trae text-xs por defecto.
-// El motivo no es el aire: es que las filas midan TODAS lo mismo. Las que
-// llevan bandera o flecha crecian hasta los 20px del icono y las de solo texto
-// se quedaban en 16, asi que la separacion entre filas cambiaba segun lo que
-// hubiera dentro y la columna de la derecha no caia a un ritmo constante. Con
-// 20px fijos el icono ya cabe sin empujar nada, y un dato que ocupe dos lineas
-// mide exactamente el doble en vez de una cifra intermedia.
-function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 text-xs leading-5">
-      <dt className="shrink-0 text-muted-foreground">{nombre}</dt>
-      <dd className="min-w-0 text-right">{children}</dd>
-    </div>
-  );
-}
-
-// Un grupo de filas. Los grupos van separados por aire y no por una raya: son
-// tres respuestas a tres preguntas distintas —cuándo y qué fue, cuánto dinero,
-// y qué se acordó alrededor—, y una raya entre ellos convertiría la ficha en
-// una tabla de tres tablas.
-function Grupo({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col gap-1.5">{children}</div>;
-}
 
 export function MovementDetailPopover({
   movementId,

@@ -17,6 +17,16 @@ export type LedgerDisplay = {
 // the client table, both movement lists, the detail dialog and the public
 // client screen can't drift apart. `secondary` is the floating Bs figure;
 // null for a COP owner, who has no second line at all.
+//
+// CUIDADO con llamarlo sin `ledger`. El fallback de abajo es formatCurrency,
+// que son PESOS COLOMBIANOS: pasar ledger=null con currency='EUR' devuelve
+// "$ 45,00" para 45 euros, sin avisar de nada. Es un atajo razonable mientras
+// null signifique "negocio colombiano", que es para lo que se escribio, pero
+// deja de serlo en cualquier pantalla que simplemente no tenga a mano la tasa
+// de hoy — y eso es exactamente lo que le paso a la ficha de un movimiento
+// eliminado. Si lo unico que hace falta es formatear en la moneda del
+// movimiento, sin equivalente en bolivares, usa formatDisplayCurrency
+// directamente.
 export function formatLedgerAmount(
   amount: number,
   currency: LedgerCurrency | null,
