@@ -276,7 +276,7 @@ escrito. El dueño también tiene WhatsApp en `owners.whatsapp`, y el aviso a
 | Fase | Qué | Se puede desplegar sola |
 |---|---|---|
 | **0** | El trigger que protege `plan` y `country` | ✅ **Hecho** — migraciones 055 y 056, en dev y producción |
-| **1** | Las tres tablas + migrar los 23 negocios actuales | Sí. Nada las lee todavía |
+| **1** | Las tres tablas + migrar los negocios actuales | ✅ **Hecho** — migración 057, en dev y producción. 24 negocios migrados, cero discrepancias |
 | **2** | `/admin → Cuentas`: ver y cambiar a mano | Sí. Ya sirve para trabajar |
 | **3** | El bloqueo real en las políticas + los mensajes en la app | Sí |
 | **4** | Correos de aviso colgados del cron | Necesita elegir proveedor |
@@ -401,7 +401,7 @@ te deja renegociar un precio con quien importa diez veces más que el resto.
 
 ---
 
-## Los 23 negocios de hoy: uno por uno
+## Los negocios de hoy: uno por uno ✅ MIGRADOS
 
 Resuelto, y resuelto por el propio diseño. Son early adopters y no hay una
 respuesta única: a algunos les quieres regalar el producto indefinidamente, a
@@ -412,9 +412,20 @@ decidir nada el día de la migración. La Fase 1 les crea a todos su fila en el
 estado en el que ya están —trabajando, sin límite— y la Fase 2 te da la
 pantalla para ir cambiándolos de uno en uno cuando hables con cada uno.
 
-La única regla que conviene fijar de antemano: **la migración no debe quitarle
+La única regla que convenía fijar de antemano: **la migración no debe quitarle
 acceso a nadie**. Nacen todos como están hoy; el cambio lo haces tú, con nombre
 y apellido, y queda en el historial.
+
+**Hecho el 2026-09-15 con la 057.** Resultaron ser 24, no 23 — se registró uno
+más por el camino. Los 24 nacieron en `activa` con su plan actual y cero
+discrepancias contra `owners.plan`.
+
+**Hueco conocido:** `handle_new_user` NO crea la suscripción, así que a partir
+de ahora cada registro nuevo tiene su negocio pero no su fila. No se metió en
+la 057 a propósito — tocar el alta de usuarios es tocar el camino más crítico
+de la app, y si ese insert fallara nadie podría registrarse. **La Fase 2 tiene
+que crear la fila si falta**, y conviene que sus funciones hagan upsert en vez
+de dar por hecho que existe.
 
 ---
 
