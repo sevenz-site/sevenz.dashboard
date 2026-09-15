@@ -145,7 +145,14 @@ export async function tarjetaDeTasa(datos: DatosDeLaTarjeta): Promise<File | nul
   ctx.textBaseline = "top";
   ctx.fillText("Sevenz.site", ANCHO - MARGEN, MARGEN + 8);
 
-  // La línea de la conversión. Se mide pieza a pieza para centrarla de verdad:
+  // La línea de la conversión, pegada al margen izquierdo como todo lo demás.
+  //
+  // Estuvo centrada y se cambió: con el logo arriba a la izquierda y el pie
+  // abajo a la izquierda, una línea centrada en medio era el único elemento
+  // fuera de la columna, y encima se movía con cada cifra. Tres cosas alineadas
+  // se leen como una tarjeta; dos alineadas y una flotando, como un error.
+  //
+  // Se sigue midiendo pieza a pieza porque hace falta para encogerla si no cabe:
   // con las banderas dentro, el ancho no es el del texto.
   const DIAMETRO = 30;
   const HUECO = 10;
@@ -172,15 +179,8 @@ export async function tarjetaDeTasa(datos: DatosDeLaTarjeta): Promise<File | nul
     ctx.font = `600 ${tamaño}px ${familia}`;
   }
 
-  const anchoFinal =
-    (banderaIzq ? DIAMETRO + HUECO : 0) +
-    ctx.measureText(datos.izquierda.texto).width +
-    ctx.measureText(" = ").width +
-    (banderaDer ? DIAMETRO + HUECO : 0) +
-    ctx.measureText(datos.derecha.texto).width;
-
   const y = 132;
-  let x = (ANCHO - anchoFinal) / 2;
+  let x = MARGEN;
 
   if (banderaIzq) {
     dibujarBandera(ctx, banderaIzq, x, y - DIAMETRO / 2, DIAMETRO);

@@ -341,14 +341,12 @@ function RateCalculator({
   // esto formateara por su cuenta, la imagen compartida y lo que el dueño esta
   // mirando podrian decir cifras distintas.
   function datosDeLaTarjeta() {
-    // Sin el nombre de la moneda en bolivares: "Bs." ya lo dice, y "Bs. 832,49
-    // Bolivares" lo repite. En dolares y euros si hace falta, porque el simbolo
-    // $ lo comparten varios paises de la region.
+    // Sin el nombre de la moneda, ni en singular ni en plural. La bandera ya dice
+    // de que pais es y el simbolo ya dice que moneda es: "$1.00 Dolar" con una
+    // bandera de Estados Unidos al lado dice lo mismo tres veces. Y lo que
+    // sobra en una tarjeta es justo lo que le quita autoridad.
     const lado = (amount: number, currency: MovementCurrency) => ({
-      texto:
-        currency === "VES"
-          ? money(amount, currency)
-          : `${money(amount, currency)} ${nombreDeMoneda(amount, labelFor(currency))}`,
+      texto: money(amount, currency),
       bandera: currency === "VES" ? "/flag-ves.svg" : currency === "USD" ? "/flag-usd.svg" : "/flag-eur.svg",
     });
     return {
@@ -530,20 +528,4 @@ function formatRateDate(ymd: string): string {
   const [year, month, day] = ymd.split("-").map(Number);
   if (!year || !month || !day) return ymd;
   return `${day} ${MONTH_ABBR[month - 1]} ${year}`;
-}
-
-// "1 Dólar", no "1 Dólares". El plural solo es plural cuando hay mas de uno, y
-// una tarjeta que dice "$1.00 Dolares" delata que el texto se pego con cinta.
-//
-// EXACTAMENTE uno: 0 son "Dolares" —el cero va en plural en espanol— y 1,50
-// tambien. Solo el 1 pelado cambia.
-function nombreDeMoneda(amount: number, nombrePlural: string): string {
-  if (amount !== 1) return nombrePlural;
-  return nombrePlural === "Dólares"
-    ? "Dólar"
-    : nombrePlural === "Euros"
-      ? "Euro"
-      : nombrePlural === "Bolívares"
-        ? "Bolívar"
-        : nombrePlural;
 }
