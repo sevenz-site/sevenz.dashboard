@@ -277,7 +277,7 @@ escrito. El dueño también tiene WhatsApp en `owners.whatsapp`, y el aviso a
 |---|---|---|
 | **0** | El trigger que protege `plan` y `country` | ✅ **Hecho** — migraciones 055 y 056, en dev y producción |
 | **1** | Las tres tablas + migrar los negocios actuales | ✅ **Hecho** — migración 057, en dev y producción. 24 negocios migrados, cero discrepancias |
-| **2** | `/admin → Cuentas`: ver y cambiar a mano | Sí. Ya sirve para trabajar |
+| **2** | `/admin → Cuentas`: ver y cambiar a mano | ✅ **Hecho** — migración 058 y la pantalla. Sin botón de bloquear, a propósito |
 | **3** | El bloqueo real en las políticas + los mensajes en la app | Sí |
 | **4** | Correos de aviso colgados del cron | Necesita elegir proveedor |
 | **5** | Pasarela de pago | Muy después. Los huecos ya están hechos |

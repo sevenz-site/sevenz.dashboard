@@ -26,9 +26,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-full flex-col">
       <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex flex-col">
-          <Link href="/admin" className="text-sm font-semibold">
-            Sevenz · Métricas
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/admin" className="text-sm font-semibold">
+              Sevenz
+            </Link>
+            <Link href="/admin" className="text-sm text-muted-foreground hover:text-foreground">
+              Métricas
+            </Link>
+            <Link href="/admin/cuentas" className="text-sm text-muted-foreground hover:text-foreground">
+              Cuentas
+            </Link>
+          </div>
           {/* Whose session is open. On a screen showing every owner's numbers,
               that is the one piece of state worth keeping visible. */}
           <span className="text-xs text-muted-foreground">{email}</span>
