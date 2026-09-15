@@ -52,6 +52,7 @@ import {
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import type { MonedaHabitual } from "@/lib/moneda-habitual";
 import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
 
 const initialState: MovementFormState = { error: null, clientId: null };
@@ -66,6 +67,7 @@ export function ClientSearchDialog({
   autoOpen,
   showTourTarget = true,
   rateContext,
+  monedaHabitual,
 }: {
   clients: ClientOption[];
   ownerId: string;
@@ -85,6 +87,8 @@ export function ClientSearchDialog({
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
+  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
+  monedaHabitual: MonedaHabitual | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -211,6 +215,7 @@ export function ClientSearchDialog({
             businessName={businessName}
             ownerCountry={ownerCountry}
             rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
             onDirtyChange={handleDirtyChange}
             onDone={closeAndReset}
           />
@@ -254,6 +259,7 @@ function ClientSearchDialogBody({
   businessName,
   ownerCountry,
   rateContext,
+  monedaHabitual,
   onDirtyChange,
   onDone,
 }: {
@@ -262,6 +268,8 @@ function ClientSearchDialogBody({
   businessName: string;
   ownerCountry: OwnerCountry;
   rateContext: MovementRateContext | null;
+  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
+  monedaHabitual: MonedaHabitual | null;
   onDirtyChange: (dirty: boolean) => void;
   // Called once this instance is done with the dialog — a client was
   // created, an existing one was picked, or the owner confirmed abandoning
@@ -277,7 +285,7 @@ function ClientSearchDialogBody({
   const [documentIdValue, setDocumentIdValue] = useState("");
   const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
+  const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   // Controlled like every other field in this form now — it used to be the
   // one plain uncontrolled input, which is exactly the field a resubmit
@@ -288,7 +296,10 @@ function ClientSearchDialogBody({
   // En que moneda escribe, que no es lo mismo que el libro donde entra la
   // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
   // no note ningun cambio.
-  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>("USD");
+  // Arranca en la que uso la ultima vez. Aqui no hay choque posible con la
+  // deuda como en el abono: un cliente nuevo no debe nada todavia, y esto
+  // siempre es un fiado.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(monedaHabitual?.tecleada ?? "USD");
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,

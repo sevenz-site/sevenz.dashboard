@@ -8,6 +8,7 @@ import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
@@ -17,7 +18,7 @@ export default async function ClientsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate] = await Promise.all([
+  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
@@ -35,6 +36,8 @@ export default async function ClientsPage() {
       .order("name"),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
+    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
+    getMonedaHabitual(supabase, user!.id),
   ]);
 
   // Mismo criterio que Cartera: no saber el país no es saber que es CO. Esta
@@ -92,6 +95,7 @@ export default async function ClientsPage() {
             businessName={owner?.business_name || user!.email || "tu negocio"}
             ownerCountry={ownerCountry}
             rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
           />
         </div>
       </div>

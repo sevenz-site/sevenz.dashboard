@@ -20,6 +20,7 @@ import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime, formatDocumentId } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -59,7 +60,14 @@ export default async function ClientDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: summary }, ownerRate, { data: ownerRow }, { count: movementCount }] =
+  const [
+    { data: client },
+    { data: summary },
+    ownerRate,
+    { data: ownerRow },
+    { count: movementCount },
+    monedaHabitual,
+  ] =
     await Promise.all([
       supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
       // client_summary_all, not client_summary: this page is reached by id,
@@ -79,6 +87,9 @@ export default async function ClientDetailPage({
         .select("id", { count: "exact", head: true })
         .eq("client_id", id)
         .is("deleted_at", null),
+      // En que moneda escribio la ultima vez, para que el formulario abra ahi.
+      // Va la ultima: el orden de este array es el de la linea de arriba.
+      getMonedaHabitual(supabase, user!.id),
     ]);
 
   if (!client) notFound();
@@ -250,6 +261,7 @@ export default async function ClientDetailPage({
             triggerClassName="w-full"
             autoOpen={autoOpenType}
             rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
           />
         )}
       </div>

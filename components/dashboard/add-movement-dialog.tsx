@@ -53,6 +53,7 @@ import {
   type MonedaTecleada,
 } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
+import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
 
@@ -72,6 +73,7 @@ export function AddMovementDialog({
   autoOpen,
   hideTriggers,
   rateContext,
+  monedaHabitual,
 }: {
   clientId: string;
   clientName: string;
@@ -104,6 +106,10 @@ export function AddMovementDialog({
   // Only present for a country='VE' owner with a rate already fetched —
   // null means "behave exactly like today's COP flow", no currency select.
   rateContext: MovementRateContext | null;
+  // En que moneda escribio este negocio la ultima vez, deducida del ultimo
+  // movimiento guardado. Null mientras no haya ninguno: sin costumbre que
+  // recordar, el formulario abre como abria siempre.
+  monedaHabitual: MonedaHabitual | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -111,14 +117,15 @@ export function AddMovementDialog({
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  const [currency, setCurrency] = useState<LedgerCurrency>(DEFAULT_LEDGER_CURRENCY);
+  const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
   // En que moneda escribe, que no es lo mismo que el libro donde entra la
-  // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
-  // no note ningun cambio.
-  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>("USD");
+  // deuda. Arranca en la que uso la ultima vez: el bodeguero que cobra todo en
+  // bolivares tenia que pulsar "Bolivares" en cada movimiento, y son decenas al
+  // dia. Sin historial se queda en dolares, como siempre.
+  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(monedaHabitual?.tecleada ?? "USD");
   // True right after the owner clicks "Abono (paga)" while it isn't actually
   // available — shows the red explanation below the radio group. Not the
   // same as canPay itself: this tracks a real click attempt, not just the
@@ -228,16 +235,33 @@ export function AddMovementDialog({
     setType(value as "charge" | "payment");
   }
 
+
+  // En un ABONO manda la deuda, no la costumbre.
+  //
+  // De nada sirve abrir en euros porque fue lo ultimo que uso si lo que este
+  // cliente debe son dolares: el dueño leeria "Maximo 0,00" y tendria que
+  // cambiar de moneda a mano, que es justo el toque que esto venia a ahorrar.
+  //
+  // La costumbre solo desempata: si debe en las dos, se abre en la que suele
+  // usar en vez de en dolares por orden alfabetico.
+  //
+  // Los bolivares no chocan nunca — son una forma de ESCRIBIR, no un libro—,
+  // asi que quien teclea en bolivares sigue tecleando en bolivares y lo unico
+  // que se corrige es a que libro va.
+  function abrirEnLaMonedaQueSeDebe() {
+    if (!llevaDivisas) return;
+    const libro = libroParaAbono(monedaHabitual?.libro ?? currency, currentDebtUsd, currentDebtEur);
+    setCurrency(libro);
+    if (monedaTecleada !== "VES") setMonedaTecleada(libro);
+  }
+
   function openForPayment() {
     // Land on whichever currency actually has debt, so the in-dialog
     // Select isn't immediately reverted back to "charge" by the
     // type === "payment" && !canPay guard below. Corrects in either
     // direction — currency may already be sitting on the wrong one from
     // a previous open (e.g. left on EUR while USD is what's now owed).
-    if (llevaDivisas) {
-      if (currentDebtUsd > 0) setCurrency("USD");
-      else if (currentDebtEur > 0) setCurrency("EUR");
-    }
+    abrirEnLaMonedaQueSeDebe();
     setType("payment");
     setOpen(true);
   }
@@ -273,10 +297,7 @@ export function AddMovementDialog({
       if (autoOpen === "payment" && canPayAny) {
         // Mirrors openForPayment(): land on a currency that actually has debt,
         // or the guard further down would bounce this straight back to charge.
-        if (llevaDivisas) {
-          if (currentDebtUsd > 0) setCurrency("USD");
-          else if (currentDebtEur > 0) setCurrency("EUR");
-        }
+        abrirEnLaMonedaQueSeDebe();
         setType("payment");
         setPaymentBlocked(false);
       } else if (autoOpen === "payment") {

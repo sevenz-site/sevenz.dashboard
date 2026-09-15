@@ -19,7 +19,8 @@
     "qa:multi-owner": "node qa/admin-multi-owner.mjs",
     "qa:currency": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/movement-currency.mjs",
     "qa:prevista": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/tasa-prevista.mjs",
-    "qa:bolivares": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-bolivares.mjs"
+    "qa:bolivares": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-bolivares.mjs",
+    "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
