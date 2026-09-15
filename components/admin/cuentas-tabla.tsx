@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   flexRender,
   getCoreRowModel,
@@ -11,7 +11,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,6 +47,7 @@ function fecha(iso: string | null): string {
 // viaje de ida y vuelta por cada clic en una cabecera. Cuando sean miles, el
 // cambio es mover el ordenamiento a la función y paginar — no reescribir esto.
 export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
+  const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [busqueda, setBusqueda] = useState("");
   const [estado, setEstado] = useState<string>("todos");
@@ -70,12 +71,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         ),
         cell: ({ row }) => (
           <div className="flex min-w-0 flex-col">
-            <Link
-              href={`/admin/cuentas/${row.original.owner_id}`}
-              className="font-medium underline-offset-4 hover:underline"
-            >
-              {row.original.business_name || "(sin nombre)"}
-            </Link>
+            <span className="font-medium">{row.original.business_name || "(sin nombre)"}</span>
             <span className="truncate text-xs text-muted-foreground">
               {row.original.email ?? "sin correo"}
             </span>
@@ -172,7 +168,22 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
       {
         id: "acciones",
         header: "",
-        cell: ({ row }) => <CuentaAcciones cuenta={row.original} />,
+        cell: ({ row }) => (
+          // stopPropagation: sin esto, pulsar "Dar demo" abriría ADEMÁS la
+          // ficha, y el diálogo se montaría sobre una página que ya se está
+          // yendo. Mismo patrón y mismo motivo que en papelera-table.
+          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+            <CuentaAcciones cuenta={row.original} />
+          </div>
+        ),
+      },
+      {
+        id: "abrir",
+        header: "",
+        // La flecha no navega por su cuenta: la fila entera ya lo hace. Está
+        // para que se vea QUE se puede abrir, que es lo que faltaba cuando el
+        // enlace vivía escondido en el nombre.
+        cell: () => <ChevronRight className="size-4 text-muted-foreground" />,
       },
     ],
     [],
@@ -278,7 +289,23 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer"
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => router.push(`/admin/cuentas/${row.original.owner_id}`)}
+                  onKeyDown={(e) => {
+                    // Enter y espacio, como cualquier enlace. Una fila que solo
+                    // responde al ratón deja fuera a quien navega con teclado —
+                    // y el anillo de foco que arreglamos ayer existe justo para
+                    // que se vea dónde está.
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/admin/cuentas/${row.original.owner_id}`);
+                    }
+                  }}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="align-top">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
