@@ -9,6 +9,7 @@ import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { DOCUMENT_SOURCE } from "@/lib/types";
 
 export type ImportRow = {
   client_id: string | null;
@@ -183,7 +184,9 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
         }
         const { error: updateError } = await supabase
           .from("clients")
-          .update({ document_id: documentId })
+          // Reached only when the record had NO document, so the shopkeeper is
+          // the one supplying it. See supabase/063_document_source.sql.
+          .update({ document_id: documentId, document_source: DOCUMENT_SOURCE.OWNER })
           .eq("id", clientId);
         if (updateError) {
           return {
@@ -217,6 +220,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
           owner_id: user.id,
           name: row.client_name.trim(),
           document_id: documentId,
+          document_source: DOCUMENT_SOURCE.OWNER,
           document_country: ownerCountry,
         })
         .select("id")
