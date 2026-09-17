@@ -204,6 +204,34 @@ phone or address is itself visible rather than silently absent.
 - On a client's screen below `sm`, the app header is replaced by a contextual
   bar. Ayuda and Notificaciones are then only reachable from Cartera.
 
+## The document field carries its country's prefix
+
+Every place that asks for a client's cédula uses `DocumentIdInput`, never a
+bare `Input`. There are three: registering a client, editing one, and the
+import review table.
+
+| Owner's country | What is shown | What is stored |
+|---|---|---|
+| VE | A fixed `V-` in front of a digits-only box | `V-12345678` |
+| CO | A digits-only box, no prefix | `12345678` |
+
+**Venezuela gets `V-` and nothing else — not a V/E picker.** Decided
+2026-09-17 with the consequence accepted: a foreign resident's cédula, written
+`E-`, is stored as `V-`.
+
+**Colombia gets no prefix at all.** A Colombian cédula is plain digits, and
+half the businesses on Sevenz are Colombian. Forcing `V-` on them would write a
+false fact into every new record.
+
+**A stored value that does not fit the shape is left alone.** The field falls
+back to free text with a note. Rewriting it on open would turn an `E-12345678`
+into `V-12345678` because someone opened a dialog — changing a person's
+nationality by accident. The documents stored before this rule stay as they
+are; they only take the new shape if a shopkeeper retypes one on purpose.
+
+**Comparison still goes through `normalizeDocumentId`.** The prefix makes
+storage consistent; it is not what makes two records match.
+
 ## Traps that have actually bitten this codebase
 
 **`Input` ignora tu tamaño de fuente desde 768px.** `components/ui/input.tsx`

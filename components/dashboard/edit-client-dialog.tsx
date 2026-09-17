@@ -26,6 +26,7 @@ import {
   useErrorDeCuentaPausada,
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 
 const initialState: EditClientState = { error: null, success: false };
 
@@ -60,6 +61,17 @@ export function EditClientDialog({
   const guardia = useGuardiaDeCuentaPausada();
   const [handledState, setHandledState] = useState(state);
   const [formRef, setFormRef] = useFormRef();
+  // The document field is controlled now that it carries a prefix, so it needs
+  // its own state — defaultValue cannot express "V-" plus digits. Radix does
+  // not guarantee this content unmounts, so the value is re-seeded whenever the
+  // dialog is opened for a DIFFERENT client; without that, opening the second
+  // client's dialog would show the first one's document.
+  const [documentIdValue, setDocumentIdValue] = useState(client.document_id ?? "");
+  const [seenClientId, setSeenClientId] = useState(client.id);
+  if (client.id !== seenClientId) {
+    setSeenClientId(client.id);
+    setDocumentIdValue(client.document_id ?? "");
+  }
   const { errors, validate, recheck, reset } = useFieldErrors({
     name: required,
     whatsapp: whatsappRule,
@@ -88,7 +100,12 @@ export function EditClientDialog({
         // Radix doesn't guarantee this content unmounts on close, so without
         // this a validation error from a previous open could still be
         // showing red the next time this dialog opens.
-        if (!next) reset();
+        if (!next) {
+          reset();
+          // Same reason: a half-typed document must not survive into the next
+          // time this dialog opens.
+          setDocumentIdValue(client.document_id ?? "");
+        }
       }}
     >
       {controlado ? null : (
@@ -141,13 +158,16 @@ export function EditClientDialog({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_document_id">Cédula/documento</Label>
-            <Input
+            <DocumentIdInput
               id="edit_document_id"
-              name="document_id"
-              defaultValue={client.document_id ?? ""}
+              country={ownerCountry}
+              value={documentIdValue}
+              onChange={(next) => {
+                setDocumentIdValue(next);
+                recheck("document_id", formRef.current);
+              }}
               required
-              aria-invalid={Boolean(errors.document_id)}
-              onChange={() => recheck("document_id", formRef.current)}
+              invalid={Boolean(errors.document_id)}
             />
             {errors.document_id ? (
               <p className="text-xs text-destructive">{errors.document_id}</p>

@@ -40,8 +40,17 @@ export function formatPlazoDias(days: number | null): string {
 // exactly as stored rather than guessed at.
 export function formatDocumentId(documentId: string | null): string {
   if (!documentId) return "—";
+  // "V-12345678" -> "V-12.345.678". Since 2026-09-17 a Venezuelan document is
+  // stored with its prefix, so grouping only pure digits would have quietly
+  // stopped grouping every new Venezuelan record.
+  const prefixed = /^([A-Za-z]-)(\d+)$/.exec(documentId);
+  if (prefixed) return `${prefixed[1].toUpperCase()}${group(prefixed[2])}`;
   if (!/^\d+$/.test(documentId)) return documentId;
-  return documentId.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return group(documentId);
+}
+
+function group(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 // Strips punctuation/spacing so "555.111.222" and "555 111 222" compare equal
