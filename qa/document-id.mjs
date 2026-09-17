@@ -11,7 +11,7 @@
 // the rules; the rendering was checked by driving React's own change events.
 
 import { composeDocumentId, parseDocumentId } from "../lib/document-id.ts";
-import { formatDocumentId } from "../lib/format.ts";
+import { formatDocumentId, normalizeDocumentId } from "../lib/format.ts";
 
 let passed = 0;
 let failed = 0;
@@ -57,6 +57,26 @@ check("format VE groups after the prefix", formatDocumentId("V-12345678"), "V-12
 check("format CO groups", formatDocumentId("12345678"), "12.345.678");
 check("format leaves a legacy value alone", formatDocumentId("12.345.678"), "12.345.678");
 check("format leaves junk alone", formatDocumentId("pendiente"), "pendiente");
+
+// ── Duplicate detection across the format change ────────────────────────
+//
+// The prefix broke this once. A client already on file as bare digits and a
+// new registration typed with "V-" must still be caught as the same person,
+// or the shopkeeper gets two records for one client.
+const same = (a, b) => normalizeDocumentId(a) === normalizeDocumentId(b);
+
+check("old bare digits matches a new V- entry", same("12345678", "V-12345678"), true);
+check("old dotted matches a new V- entry", same("12.345.678", "V-12345678"), true);
+check("dash or no dash is the same", same("V-12345678", "V12345678"), true);
+check("two Colombian records still match", same("12345678", "12345678"), true);
+check("different people still differ", same("12345678", "87654321"), false);
+
+// Accepted collision: a legacy "E-" now matches a "V-". A duplicate is a
+// warning the shopkeeper can override, so a false one costs a question.
+check("legacy E- collides with V-, on purpose", same("E-12345678", "V-12345678"), true);
+
+// Junk must not be mangled into a different string.
+check("junk compares as itself", normalizeDocumentId("pendiente"), "pendiente");
 
 console.log("");
 console.log(failed === 0 ? `ALL GREEN (${passed}/${passed + failed})` : `FAILURES: ${failed}`);

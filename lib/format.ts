@@ -56,8 +56,26 @@ function group(digits: string): string {
 // Strips punctuation/spacing so "555.111.222" and "555 111 222" compare equal
 // to "555111222" — document_id is stored exactly as typed with no fixed
 // format, so duplicate detection has to normalize before comparing.
+//
+// AND STRIPS A LEADING COUNTRY LETTER, since 2026-09-17. Without that, the
+// prefixed field silently broke duplicate detection: a client already on file
+// as "12345678" and a new registration typed as "V-12345678" stopped matching,
+// so the shopkeeper would end up with two records for the same person — the
+// exact thing this guard exists to prevent.
+//
+// The consequence, accepted on purpose: a legacy "E-12345678" now collides
+// with "V-12345678". That is tolerable because a duplicate here is a WARNING,
+// not a merge — the shopkeeper is shown the existing client and can still
+// choose "Crear cuenta separada". Missing a real duplicate is silent; a false
+// one is a question on screen.
+//
+// Only a single letter, and only when digits follow it, so "pendiente" still
+// compares as itself rather than collapsing into "endiente".
 export function normalizeDocumentId(documentId: string): string {
-  return documentId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  return documentId
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase()
+    .replace(/^[a-z](?=\d)/, "");
 }
 
 // CSS truncate alone isn't enough on the movement-history rows: the title
