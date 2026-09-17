@@ -2,8 +2,12 @@
 
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
-import { composeDocumentId, DOCUMENT_PREFIX, parseDocumentId } from "@/lib/document-id";
-import type { OwnerCountry } from "@/lib/types";
+import {
+  composeDocumentId,
+  DOCUMENT_PREFIX,
+  parseDocumentId,
+  type DocumentCountry,
+} from "@/lib/document-id";
 
 // The document field, with the country's prefix fixed in front of it.
 //
@@ -30,7 +34,7 @@ export function DocumentIdInput({
   required,
 }: {
   id: string;
-  country: OwnerCountry;
+  country: DocumentCountry;
   // The full stored value — "V-12345678", "12345678", or a legacy one.
   value: string;
   onChange: (next: string) => void;
@@ -65,7 +69,7 @@ export function DocumentIdInput({
 
   const onDigits = (raw: string) => onChange(composeDocumentId(raw.replace(/\D/g, ""), country));
 
-  if (country === "CO") {
+  if (country !== "VE") {
     return (
       <>
         {hidden}

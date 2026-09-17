@@ -16,7 +16,13 @@ import type { OwnerCountry } from "@/lib/types";
 // and half the businesses on Sevenz are Colombian.
 export const DOCUMENT_PREFIX: Record<OwnerCountry, string> = { VE: "V-", CO: "" };
 
-function shapeFor(country: OwnerCountry): RegExp {
+// The country can be unknown on the public share page, where it arrives from
+// get_shared_balance and is typed as nullable. Unknown means NO PREFIX and
+// digits only: it still keeps "pendiente" out, and it does not invent a
+// nationality for someone whose country we could not read.
+export type DocumentCountry = OwnerCountry | null;
+
+function shapeFor(country: DocumentCountry): RegExp {
   return country === "VE" ? /^V-?(\d*)$/i : /^(\d*)$/;
 }
 
@@ -30,7 +36,7 @@ export type ParsedDocumentId = { digits: string; legacy: boolean };
 // are (decided 2026-09-17), and silently reshaping one on open would turn an
 // "E-12345678" into "V-12345678" just because someone opened a dialog. That is
 // changing a person's nationality by accident.
-export function parseDocumentId(stored: string, country: OwnerCountry): ParsedDocumentId {
+export function parseDocumentId(stored: string, country: DocumentCountry): ParsedDocumentId {
   const value = (stored ?? "").trim();
   if (value === "") return { digits: "", legacy: false };
   const match = shapeFor(country).exec(value);
@@ -38,7 +44,7 @@ export function parseDocumentId(stored: string, country: OwnerCountry): ParsedDo
   return { digits: match[1] ?? "", legacy: false };
 }
 
-export function composeDocumentId(digits: string, country: OwnerCountry): string {
+export function composeDocumentId(digits: string, country: DocumentCountry): string {
   if (digits === "") return "";
-  return `${DOCUMENT_PREFIX[country]}${digits}`;
+  return `${country ? DOCUMENT_PREFIX[country] : ""}${digits}`;
 }

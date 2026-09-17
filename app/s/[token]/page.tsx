@@ -183,6 +183,7 @@ export default async function SharedBalancePage({
       <DocumentIdDialog
         token={token}
         clientName={shared.client_name}
+        ownerCountry={shared.owner_country ?? null}
         hasDocumentId={
           // Deliberately tolerant of three payload shapes, because neither
           // deploy order is safe otherwise. Migration first and the old code
