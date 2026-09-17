@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE } from "@/lib/types";
+import { normalizeDocumentId } from "@/lib/format";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
 // la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
@@ -57,7 +58,15 @@ export async function updateClient(
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  const documentChanged = (previous?.document_id ?? "").trim() !== documentId;
+  // COMPARED NORMALIZED, not as raw text, and that matters more than it looks.
+  // Since the field carries a prefix, a record stored as "12345678" comes back
+  // from the form as "V-12345678" without anybody having touched it. A raw
+  // comparison would call that a change and downgrade the origin to 'owner' —
+  // erasing a document the client had declared themselves, just because the
+  // shopkeeper opened the dialog and saved. 154 of the 158 documents in
+  // production are in exactly that shape.
+  const documentChanged =
+    normalizeDocumentId(previous?.document_id ?? "") !== normalizeDocumentId(documentId);
 
   // document_country is deliberately absent from this update: it's inherited
   // from the owner at creation and no longer editable in the UI, so listing

@@ -36,12 +36,14 @@ check("VE no dash", parseDocumentId("V12345678", "VE"), { digits: "12345678", le
 
 // Legacy, on purpose: a VE record stored as bare digits predates the rule, and
 // adding the prefix on open would be a silent rewrite of a real person's data.
-check("VE bare digits is legacy", parseDocumentId("12345678", "VE"), { digits: "", legacy: true });
+// 154 of the 158 documents in production are exactly this. If they were
+// treated as malformed, 97% of records would carry a warning.
+check("VE bare digits are shown, not flagged", parseDocumentId("12345678", "VE"), { digits: "12345678", legacy: false });
 
 // The one this suite exists for.
 check("VE foreigner E- is legacy", parseDocumentId("E-12345678", "VE"), { digits: "", legacy: true });
 
-check("VE dotted is legacy", parseDocumentId("12.345.678", "VE"), { digits: "", legacy: true });
+check("VE dotted is shown", parseDocumentId("12.345.678", "VE"), { digits: "12345678", legacy: false });
 check("VE junk is legacy", parseDocumentId("pendiente", "VE"), { digits: "", legacy: true });
 check("VE compose", composeDocumentId("12345678", "VE"), "V-12345678");
 check("VE compose empty stays empty", composeDocumentId("", "VE"), "");
@@ -49,7 +51,8 @@ check("VE compose empty stays empty", composeDocumentId("", "VE"), "");
 // ── Colombia ────────────────────────────────────────────────────────────
 check("CO digits", parseDocumentId("12345678", "CO"), { digits: "12345678", legacy: false });
 check("CO never takes V-", parseDocumentId("V-12345678", "CO"), { digits: "", legacy: true });
-check("CO dotted is legacy", parseDocumentId("12.345.678", "CO"), { digits: "", legacy: true });
+check("VE junk with digits is legacy", parseDocumentId("pendiente 123", "VE"), { digits: "", legacy: true });
+check("CO dotted is shown", parseDocumentId("12.345.678", "CO"), { digits: "12345678", legacy: false });
 check("CO compose has no prefix", composeDocumentId("12345678", "CO"), "12345678");
 
 // ── How it reads on screen ──────────────────────────────────────────────
@@ -77,6 +80,20 @@ check("legacy E- collides with V-, on purpose", same("E-12345678", "V-12345678")
 
 // Junk must not be mangled into a different string.
 check("junk compares as itself", normalizeDocumentId("pendiente"), "pendiente");
+
+// ── Reformatting is not an edit ─────────────────────────────────────────
+//
+// updateClient only touches document_source when the document really changed.
+// Since the field carries a prefix, a record stored as "12345678" comes back
+// from the form as "V-12345678" untouched. If that counted as a change, the
+// origin would be downgraded to 'owner' — erasing a client's own declaration
+// because the shopkeeper opened the dialog and saved.
+const changed = (stored, submitted) =>
+  normalizeDocumentId(stored) !== normalizeDocumentId(submitted);
+
+check("adding the prefix is NOT a change", changed("12345678", "V-12345678"), false);
+check("dots to prefix is NOT a change", changed("12.345.678", "V-12345678"), false);
+check("a real edit IS a change", changed("12345678", "V-87654321"), true);
 
 console.log("");
 console.log(failed === 0 ? `ALL GREEN (${passed}/${passed + failed})` : `FAILURES: ${failed}`);
