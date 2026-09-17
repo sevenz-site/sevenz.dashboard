@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
+import { composeDocumentId, DOCUMENT_PREFIX, parseDocumentId } from "@/lib/document-id";
 import type { OwnerCountry } from "@/lib/types";
 
 // The document field, with the country's prefix fixed in front of it.
@@ -20,36 +21,6 @@ import type { OwnerCountry } from "@/lib/types";
 // COLOMBIA GETS NO PREFIX. A Colombian cédula is plain digits. Forcing "V-" on
 // a Cúcuta shopkeeper's clients would write a false fact into every new record,
 // and half the businesses on Sevenz are Colombian.
-const PREFIX: Record<OwnerCountry, string> = { VE: "V-", CO: "" };
-
-// What the field can represent: the country's prefix, then digits.
-function shapeFor(country: OwnerCountry): RegExp {
-  return country === "VE" ? /^V-?(\d*)$/i : /^(\d*)$/;
-}
-
-export type ParsedDocumentId = { digits: string; legacy: boolean };
-
-// Splits a stored value into what the digits box should show.
-//
-// `legacy` means "this does not fit the shape" — "12.345.678" from before the
-// rule, or "pendiente" from a shopkeeper filling the form to get past it. Those
-// are NOT rewritten: the 156 documents already in production stay exactly as
-// they are (decided 2026-09-17), and silently reshaping one on open would turn
-// an "E-12345678" into "V-12345678" just because someone opened a dialog. That
-// is changing a person's nationality by accident.
-export function parseDocumentId(stored: string, country: OwnerCountry): ParsedDocumentId {
-  const value = (stored ?? "").trim();
-  if (value === "") return { digits: "", legacy: false };
-  const match = shapeFor(country).exec(value);
-  if (!match) return { digits: "", legacy: true };
-  return { digits: match[1] ?? "", legacy: false };
-}
-
-export function composeDocumentId(digits: string, country: OwnerCountry): string {
-  if (digits === "") return "";
-  return `${PREFIX[country]}${digits}`;
-}
-
 export function DocumentIdInput({
   id,
   country,
@@ -118,7 +89,7 @@ export function DocumentIdInput({
         {/* aria-hidden: a screen reader gets the prefix from the input's own
             label, and announcing "V dash" before every digit is noise. */}
         <InputGroupAddon>
-          <InputGroupText aria-hidden>{PREFIX.VE}</InputGroupText>
+          <InputGroupText aria-hidden>{DOCUMENT_PREFIX.VE}</InputGroupText>
         </InputGroupAddon>
         <InputGroupInput
           id={id}
