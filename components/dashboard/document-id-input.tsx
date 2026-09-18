@@ -1,30 +1,24 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
-import {
-  composeDocumentId,
-  DOCUMENT_PREFIX,
-  parseDocumentId,
-  type DocumentCountry,
-} from "@/lib/document-id";
+import { parseDocumentId } from "@/lib/document-id";
+import type { OwnerCountry } from "@/lib/types";
 
-// The document field, with the country's prefix fixed in front of it.
+// The document field: digits only, with a cue beside it in Venezuela.
 //
-// WHY A FIXED PREFIX AT ALL. The field used to take anything, so the same
-// person could be "V-12345678" in one record and "12345678" in another, and
-// "pendiente" in a third. normalizeDocumentId already makes the first two
-// compare equal, but it cannot rescue the third — and the day a person has to
-// be matched to a record, junk in this field is what breaks it.
+// WHAT THIS IS FOR. The field used to take anything, so a shopkeeper in a hurry
+// could type "pendiente" or "no tiene" to get past a required field — the owner
+// has seen exactly that with WhatsApp numbers. Junk in this column is what
+// breaks matching a person to a record later. Digits only closes that door.
 //
-// VENEZUELA GETS "V-" AND NOTHING ELSE. Not a V/E picker: decided 2026-09-17,
-// with the consequence stated and accepted — a foreign resident's cédula, which
-// is written "E-", will be stored as "V-". If that ever has to change, this is
-// the file, and the stored values from before the change are the migration.
+// THE "V-" IS A CUE, NOT PART OF THE VALUE. It sits outside the box and never
+// reaches the database. An earlier version stored it and was dropped before
+// release: every Venezuelan record would have carried the same letter, the
+// country already lives in `clients.document_country`, and the comparison used
+// for duplicate detection had to strip the letter again anyway.
 //
-// COLOMBIA GETS NO PREFIX. A Colombian cédula is plain digits. Forcing "V-" on
-// a Cúcuta shopkeeper's clients would write a false fact into every new record,
-// and half the businesses on Sevenz are Colombian.
+// COLOMBIA GETS NOTHING BESIDE THE BOX. A Colombian cédula is plain digits and
+// half the businesses on Sevenz are Colombian.
 export function DocumentIdInput({
   id,
   country,
@@ -34,77 +28,62 @@ export function DocumentIdInput({
   required,
 }: {
   id: string;
-  country: DocumentCountry;
-  // The full stored value — "V-12345678", "12345678", or a legacy one.
+  country: OwnerCountry | null;
+  // The stored value: digits, or a legacy value with letters in it.
   value: string;
   onChange: (next: string) => void;
   invalid?: boolean;
   required?: boolean;
 }) {
-  const { digits, legacy } = parseDocumentId(value, country);
+  const { digits, legacy } = parseDocumentId(value);
 
-  // The form still submits ONE field called document_id holding the whole
-  // value, so every server action keeps reading it exactly as before. The
-  // visible box only ever holds the digits.
-  const hidden = <input type="hidden" name="document_id" value={value} />;
-
+  // A value with letters in it stays exactly as it is, in a plain box. Putting
+  // an "E-12345678" into a digits box would drop the E the next time anyone
+  // saved, and that is losing a real fact about a person by accident.
   if (legacy) {
     return (
       <>
-        {hidden}
         <Input
           id={id}
+          name="document_id"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={invalid}
           required={required}
         />
         <p className="text-xs text-muted-foreground">
-          Documento guardado con otro formato. Se queda como está; si lo reescribes, toma el formato
-          nuevo.
+          Documento guardado con otro formato. Se queda como está; si lo reescribes, admite solo
+          números.
         </p>
       </>
     );
   }
 
-  const onDigits = (raw: string) => onChange(composeDocumentId(raw.replace(/\D/g, ""), country));
+  const field = (
+    <Input
+      id={id}
+      name="document_id"
+      value={digits}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+      inputMode="numeric"
+      autoComplete="off"
+      aria-invalid={invalid}
+      required={required}
+    />
+  );
 
-  if (country !== "VE") {
-    return (
-      <>
-        {hidden}
-        <Input
-          id={id}
-          value={digits}
-          onChange={(e) => onDigits(e.target.value)}
-          inputMode="numeric"
-          autoComplete="off"
-          aria-invalid={invalid}
-          required={required}
-        />
-      </>
-    );
-  }
+  if (country !== "VE") return field;
 
   return (
-    <>
-      {hidden}
-      <InputGroup data-invalid={invalid ? "" : undefined}>
-        {/* aria-hidden: a screen reader gets the prefix from the input's own
-            label, and announcing "V dash" before every digit is noise. */}
-        <InputGroupAddon>
-          <InputGroupText aria-hidden>{DOCUMENT_PREFIX.VE}</InputGroupText>
-        </InputGroupAddon>
-        <InputGroupInput
-          id={id}
-          value={digits}
-          onChange={(e) => onDigits(e.target.value)}
-          inputMode="numeric"
-          autoComplete="off"
-          aria-invalid={invalid}
-          required={required}
-        />
-      </InputGroup>
-    </>
+    <div className="flex items-center gap-2">
+      {/* aria-hidden: the input has its own label, and reading "V dash" before
+          every digit is noise. This is decoration for the eye, and the value it
+          decorates is not stored. */}
+      <span aria-hidden className="shrink-0 text-sm text-muted-foreground">
+        V-
+      </span>
+      {/* min-w-0 so the box shrinks instead of pushing the cue off a phone. */}
+      <div className="min-w-0 flex-1">{field}</div>
+    </div>
   );
 }

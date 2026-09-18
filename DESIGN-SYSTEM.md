@@ -204,33 +204,35 @@ phone or address is itself visible rather than silently absent.
 - On a client's screen below `sm`, the app header is replaced by a contextual
   bar. Ayuda and Notificaciones are then only reachable from Cartera.
 
-## The document field carries its country's prefix
+## The document field takes digits and nothing else
 
 Every place that asks for a client's cédula uses `DocumentIdInput`, never a
-bare `Input`. There are three: registering a client, editing one, and the
-import review table.
+bare `Input`. There are four: registering a client, editing one, the import
+review table, and the modal on the public share link.
 
-| Owner's country | What is shown | What is stored |
-|---|---|---|
-| VE | A fixed `V-` in front of a digits-only box | `V-12345678` |
-| CO | A digits-only box, no prefix | `12345678` |
+**The stored value is digits.** No prefix, no dots, no letters. That is what
+keeps "pendiente" and "no tiene" out of the column — a shopkeeper in a hurry
+will type anything to get past a required field, and junk there is what breaks
+matching a person to a record later.
 
-**Venezuela gets `V-` and nothing else — not a V/E picker.** Decided
-2026-09-17 with the consequence accepted: a foreign resident's cédula, written
-`E-`, is stored as `V-`.
+**Venezuela shows a "V-" cue beside the box.** Outside the input, never part of
+the value. Colombia shows nothing: a Colombian cédula is plain digits, and half
+the businesses on Sevenz are Colombian.
 
-**Colombia gets no prefix at all.** A Colombian cédula is plain digits, and
-half the businesses on Sevenz are Colombian. Forcing `V-` on them would write a
-false fact into every new record.
+A first version stored the prefix and was dropped before release, on
+2026-09-17. Worth knowing why, so nobody rebuilds it:
 
-**A stored value that does not fit the shape is left alone.** The field falls
-back to free text with a note. Rewriting it on open would turn an `E-12345678`
-into `V-12345678` because someone opened a dialog — changing a person's
-nationality by accident. The documents stored before this rule stay as they
-are; they only take the new shape if a shopkeeper retypes one on purpose.
+- Every Venezuelan record carried the same letter, so the field said nothing.
+- The country already lives in `clients.document_country`, since migration 035.
+- `normalizeDocumentId` had to strip the letter again to compare two records,
+  so it was written only to be ignored — and it broke duplicate detection on
+  the way in, silently, until a test caught it.
 
-**Comparison still goes through `normalizeDocumentId`.** The prefix makes
-storage consistent; it is not what makes two records match.
+**A value with letters is left exactly as it is.** The field falls back to a
+plain box with a note. Showing a foreign "E-12345678" in a digits box would
+drop the E the next time anyone saved the form, which is losing a real fact
+about a person by accident. Of the 158 documents in production, 154 are already
+bare digits and 4 are something else.
 
 ## Traps that have actually bitten this codebase
 

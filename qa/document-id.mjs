@@ -1,16 +1,14 @@
 // The document field's shape rules, pinned down.
 //
 // Needs no database and no browser: these are pure functions, and they decide
-// something that is expensive to get wrong. A document typed as "E-12345678"
-// must NOT be quietly reshaped into "V-12345678" — that is changing a person's
-// nationality because someone opened a dialog — and a Colombian record must
-// never grow a "V-" it does not have.
+// something that is expensive to get wrong. A value with letters in it — a
+// foreign "E-12345678", or a shopkeeper's "pendiente" — must never be reshaped
+// into digits, because saving the form would then drop what it says.
 //
-// Added 2026-09-17 alongside the prefixed field. The browser automation could
-// not deliver real keystrokes to that input, so this is what actually covers
-// the rules; the rendering was checked by driving React's own change events.
+// Added 2026-09-17. The stored value is digits and nothing else — the "V-" a
+// Venezuelan shopkeeper sees is printed beside the box and never saved.
 
-import { composeDocumentId, parseDocumentId } from "../lib/document-id.ts";
+import { parseDocumentId } from "../lib/document-id.ts";
 import { formatDocumentId, normalizeDocumentId } from "../lib/format.ts";
 
 let passed = 0;
@@ -28,72 +26,42 @@ function check(name, actual, expected) {
   }
 }
 
-// ── Venezuela ───────────────────────────────────────────────────────────
-check("VE empty", parseDocumentId("", "VE"), { digits: "", legacy: false });
-check("VE prefixed", parseDocumentId("V-12345678", "VE"), { digits: "12345678", legacy: false });
-check("VE lowercase prefix", parseDocumentId("v-12345678", "VE"), { digits: "12345678", legacy: false });
-check("VE no dash", parseDocumentId("V12345678", "VE"), { digits: "12345678", legacy: false });
+// ── What the digits box shows ───────────────────────────────────────────
+check("empty", parseDocumentId(""), { digits: "", legacy: false });
 
-// Legacy, on purpose: a VE record stored as bare digits predates the rule, and
-// adding the prefix on open would be a silent rewrite of a real person's data.
-// 154 of the 158 documents in production are exactly this. If they were
-// treated as malformed, 97% of records would carry a warning.
-check("VE bare digits are shown, not flagged", parseDocumentId("12345678", "VE"), { digits: "12345678", legacy: false });
+// 154 of the 158 documents in production are exactly this, and they are
+// already in the right shape: the field stores digits and nothing else.
+check("bare digits", parseDocumentId("12345678"), { digits: "12345678", legacy: false });
 
-// The one this suite exists for.
-check("VE foreigner E- is legacy", parseDocumentId("E-12345678", "VE"), { digits: "", legacy: true });
+// Punctuation is how someone typed it, not a defect.
+check("dotted", parseDocumentId("12.345.678"), { digits: "12345678", legacy: false });
+check("spaced", parseDocumentId("12 345 678"), { digits: "12345678", legacy: false });
 
-check("VE dotted is shown", parseDocumentId("12.345.678", "VE"), { digits: "12345678", legacy: false });
-check("VE junk is legacy", parseDocumentId("pendiente", "VE"), { digits: "", legacy: true });
-check("VE compose", composeDocumentId("12345678", "VE"), "V-12345678");
-check("VE compose empty stays empty", composeDocumentId("", "VE"), "");
-
-// ── Colombia ────────────────────────────────────────────────────────────
-check("CO digits", parseDocumentId("12345678", "CO"), { digits: "12345678", legacy: false });
-check("CO never takes V-", parseDocumentId("V-12345678", "CO"), { digits: "", legacy: true });
-check("VE junk with digits is legacy", parseDocumentId("pendiente 123", "VE"), { digits: "", legacy: true });
-check("CO dotted is shown", parseDocumentId("12.345.678", "CO"), { digits: "12345678", legacy: false });
-check("CO compose has no prefix", composeDocumentId("12345678", "CO"), "12345678");
+// The two this suite exists for. A value with letters is never reshaped:
+// dropping the E from "E-12345678" on a save loses a real fact about a person.
+check("foreigner E- is legacy", parseDocumentId("E-12345678"), { digits: "", legacy: true });
+check("a stored V- is legacy", parseDocumentId("V-12345678"), { digits: "", legacy: true });
+check("junk is legacy", parseDocumentId("pendiente"), { digits: "", legacy: true });
+check("junk with digits is legacy", parseDocumentId("pendiente 123"), { digits: "", legacy: true });
 
 // ── How it reads on screen ──────────────────────────────────────────────
-check("format VE groups after the prefix", formatDocumentId("V-12345678"), "V-12.345.678");
-check("format CO groups", formatDocumentId("12345678"), "12.345.678");
-check("format leaves a legacy value alone", formatDocumentId("12.345.678"), "12.345.678");
-check("format leaves junk alone", formatDocumentId("pendiente"), "pendiente");
+check("groups digits", formatDocumentId("12345678"), "12.345.678");
+check("leaves a dotted value alone", formatDocumentId("12.345.678"), "12.345.678");
+check("leaves junk alone", formatDocumentId("pendiente"), "pendiente");
 
-// ── Duplicate detection across the format change ────────────────────────
+// ── Duplicate detection ─────────────────────────────────────────────────
 //
-// The prefix broke this once. A client already on file as bare digits and a
-// new registration typed with "V-" must still be caught as the same person,
-// or the shopkeeper gets two records for one client.
+// New records are digits, so they compare directly. This still has to reach
+// the ones stored before the rule, which carry dots and spaces.
 const same = (a, b) => normalizeDocumentId(a) === normalizeDocumentId(b);
 
-check("old bare digits matches a new V- entry", same("12345678", "V-12345678"), true);
-check("old dotted matches a new V- entry", same("12.345.678", "V-12345678"), true);
-check("dash or no dash is the same", same("V-12345678", "V12345678"), true);
-check("two Colombian records still match", same("12345678", "12345678"), true);
-check("different people still differ", same("12345678", "87654321"), false);
+check("dotted matches bare digits", same("12.345.678", "12345678"), true);
+check("spaced matches bare digits", same("12 345 678", "12345678"), true);
+check("two identical records match", same("12345678", "12345678"), true);
+check("different people differ", same("12345678", "87654321"), false);
 
-// Accepted collision: a legacy "E-" now matches a "V-". A duplicate is a
-// warning the shopkeeper can override, so a false one costs a question.
-check("legacy E- collides with V-, on purpose", same("E-12345678", "V-12345678"), true);
-
-// Junk must not be mangled into a different string.
-check("junk compares as itself", normalizeDocumentId("pendiente"), "pendiente");
-
-// ── Reformatting is not an edit ─────────────────────────────────────────
-//
-// updateClient only touches document_source when the document really changed.
-// Since the field carries a prefix, a record stored as "12345678" comes back
-// from the form as "V-12345678" untouched. If that counted as a change, the
-// origin would be downgraded to 'owner' — erasing a client's own declaration
-// because the shopkeeper opened the dialog and saved.
-const changed = (stored, submitted) =>
-  normalizeDocumentId(stored) !== normalizeDocumentId(submitted);
-
-check("adding the prefix is NOT a change", changed("12345678", "V-12345678"), false);
-check("dots to prefix is NOT a change", changed("12.345.678", "V-12345678"), false);
-check("a real edit IS a change", changed("12345678", "V-87654321"), true);
+// A letter still counts, so a legacy "E-" is NOT mistaken for the bare number.
+check("E- does not collide with bare digits", same("E-12345678", "12345678"), false);
 
 console.log("");
 console.log(failed === 0 ? `ALL GREEN (${passed}/${passed + failed})` : `FAILURES: ${failed}`);
