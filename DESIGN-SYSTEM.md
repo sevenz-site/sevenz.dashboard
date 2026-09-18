@@ -204,6 +204,36 @@ phone or address is itself visible rather than silently absent.
 - On a client's screen below `sm`, the app header is replaced by a contextual
   bar. Ayuda and Notificaciones are then only reachable from Cartera.
 
+## The document field takes digits and nothing else
+
+Every place that asks for a client's cédula uses `DocumentIdInput`, never a
+bare `Input`. There are four: registering a client, editing one, the import
+review table, and the modal on the public share link.
+
+**The stored value is digits.** No prefix, no dots, no letters. That is what
+keeps "pendiente" and "no tiene" out of the column — a shopkeeper in a hurry
+will type anything to get past a required field, and junk there is what breaks
+matching a person to a record later.
+
+**Venezuela shows a "V-" cue beside the box.** Outside the input, never part of
+the value. Colombia shows nothing: a Colombian cédula is plain digits, and half
+the businesses on Sevenz are Colombian.
+
+A first version stored the prefix and was dropped before release, on
+2026-09-17. Worth knowing why, so nobody rebuilds it:
+
+- Every Venezuelan record carried the same letter, so the field said nothing.
+- The country already lives in `clients.document_country`, since migration 035.
+- `normalizeDocumentId` had to strip the letter again to compare two records,
+  so it was written only to be ignored — and it broke duplicate detection on
+  the way in, silently, until a test caught it.
+
+**A value with letters is left exactly as it is.** The field falls back to a
+plain box with a note. Showing a foreign "E-12345678" in a digits box would
+drop the E the next time anyone saved the form, which is losing a real fact
+about a person by accident. Of the 158 documents in production, 154 are already
+bare digits and 4 are something else.
+
 ## Traps that have actually bitten this codebase
 
 **`Input` ignora tu tamaño de fuente desde 768px.** `components/ui/input.tsx`

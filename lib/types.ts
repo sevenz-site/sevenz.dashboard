@@ -345,3 +345,13 @@ export type ExtractedMovement = {
   // chain, where null *is* the correct value.
   currency: LedgerCurrency | null;
 };
+
+// Who typed a client's document. See supabase/063_document_source.sql.
+//
+// ONE PLACE, TYPED, and that is not ceremony: the database has a CHECK on this
+// column, so a typo does not produce odd data — it produces a rejected INSERT.
+// And the insert being rejected is the one that registers a client. A typo here
+// turns into "the shopkeeper cannot register anyone", which is a money-path
+// outage.
+export const DOCUMENT_SOURCE = { OWNER: "owner", CLIENT: "client" } as const;
+export type DocumentSource = (typeof DOCUMENT_SOURCE)[keyof typeof DOCUMENT_SOURCE];

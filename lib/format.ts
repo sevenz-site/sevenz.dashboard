@@ -45,17 +45,15 @@ export function formatDocumentId(documentId: string | null): string {
 }
 
 // Strips punctuation/spacing so "555.111.222" and "555 111 222" compare equal
-// to "555111222" — document_id is stored exactly as typed with no fixed
+// to "555111222" — older records were stored exactly as typed with no fixed
 // format, so duplicate detection has to normalize before comparing.
+//
+// The document field only accepts digits since 2026-09-17, so new records need
+// no normalising at all. This still matters for the ones stored before that.
 export function normalizeDocumentId(documentId: string): string {
   return documentId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 
-// CSS truncate alone isn't enough on the movement-history rows: the title
-// wraps to a second line before the browser gets a chance to ellipsize it,
-// which pushes the row taller and breaks the amount's right alignment. A hard
-// character cap keeps every row the same height regardless of description
-// length.
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;

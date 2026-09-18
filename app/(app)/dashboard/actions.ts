@@ -10,7 +10,7 @@ import { trackServer } from "@/lib/mixpanel-server";
 import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
-import type { LedgerCurrency } from "@/lib/types";
+import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 
 export type MovementFormState = {
   error: string | null;
@@ -205,6 +205,8 @@ export async function createClientWithMovement(
       whatsapp: whatsapp || null,
       address: address || null,
       document_id: documentId || null,
+      // Always typed by the shopkeeper at registration. See supabase/063.
+      document_source: documentId ? DOCUMENT_SOURCE.OWNER : null,
       document_country: documentCountry,
     })
     .select("id")

@@ -11,6 +11,15 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+// ⚠ v8, y la v9 ya está publicada. NO añadas más sitios que usen esta librería
+// sin leer antes la sección "Dependencias de las que ya sabemos que hay que
+// salir" de CLAUDE.md.
+//
+// Lo corto: la v9 es una reescritura —`useReactTable` pasa a `useTable`, los
+// row models se declaran en `tableFeatures()`— y existe porque LA V8 SE ROMPE
+// CON EL REACT COMPILER. `next.config.ts` no lo tiene encendido, así que hoy
+// esto funciona. El día que alguien lo encienda, esta pantalla es la que hay
+// que migrar primero, y el síntoma va a parecer un bug de maquetación.
 import { ArrowUpDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { submitDocumentId } from "@/app/s/[token]/actions";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { required } from "@/lib/form-validation";
@@ -19,9 +19,15 @@ export function DocumentIdDialog({
   token,
   clientName,
   hasDocumentId,
+  ownerCountry,
 }: {
   token: string;
   clientName: string;
+  // Decides the prefix the client types behind: "V-" in Venezuela, none in
+  // Colombia. Nullable because get_shared_balance types it that way, and an
+  // unknown country means no prefix rather than a guessed one — this is the
+  // person's OWN document, the one record we most want to be true.
+  ownerCountry: "CO" | "VE" | null;
   // Whether one is already on file — never the value itself. This is a client
   // component, so every prop is serialised into the RSC payload and readable
   // by anyone who opens devtools on a link that travels through WhatsApp. The
@@ -75,17 +81,16 @@ export function DocumentIdDialog({
         <form ref={setFormRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
             <Label htmlFor="shared_document_id">Número de cédula</Label>
-            <Input
+            <DocumentIdInput
               id="shared_document_id"
-              name="document_id"
-              autoFocus
+              country={ownerCountry}
               required
               value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
+              onChange={(next) => {
+                setValue(next);
                 recheck("document_id", formRef.current);
               }}
-              aria-invalid={Boolean(errors.document_id)}
+              invalid={Boolean(errors.document_id)}
             />
             {errors.document_id ? (
               <p className="text-xs text-destructive">{errors.document_id}</p>

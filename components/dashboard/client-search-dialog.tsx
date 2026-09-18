@@ -59,6 +59,7 @@ import {
   useGuardiaAlAbrir,
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -501,16 +502,16 @@ function ClientSearchDialogBody({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="document_id">Cédula/documento</Label>
-          <Input
+          <DocumentIdInput
             id="document_id"
-            name="document_id"
+            country={ownerCountry}
             value={documentIdValue}
-            onChange={(e) => {
-              setDocumentIdValue(e.target.value);
+            onChange={(next) => {
+              setDocumentIdValue(next);
               recheck("document_id", formRef.current);
             }}
             required
-            aria-invalid={Boolean(errors.document_id)}
+            invalid={Boolean(errors.document_id)}
           />
           {errors.document_id ? (
             <p className="text-xs text-destructive">{errors.document_id}</p>

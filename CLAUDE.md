@@ -523,6 +523,85 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.
 
+## Code is written in English. Always.
+
+**Identifiers, filenames, function names, table and column names, and code
+comments are in English — no matter what language the conversation is in.**
+The user writes in Spanish; that is a conversation preference and says nothing
+about the code.
+
+This rule exists because it was broken. Spanish naming entered the codebase on
+2026-09-13 — `tasa-prevista.ts`, then `monto-en-bolivares.ts`,
+`moneda-habitual.ts`, `cuenta-pausada.tsx`, `comprobante-input.tsx` — four days
+BEFORE the conversation switched to Spanish. It was drift, not translation, and
+nobody noticed until the codebase read as Spanglish.
+
+### What stays Spanish, deliberately
+
+- **Anything the user reads**: UI copy, error messages shown to a shopkeeper or
+  a client, toasts, dialog titles.
+- **Routes**, because a URL is user-facing: `/malas-pagas`, `/papelera`,
+  `/clients/[id]`. Do not rename these.
+- **Domain words already in the product's vocabulary** when quoted inside an
+  English sentence in a comment — fiado, abono, mala paga, bodega.
+
+### The boundary, because the codebase is now mixed
+
+Existing Spanish names are NOT renamed. The cost of touching
+`owner_puede_escribir` or `MENSAJE_CUENTA_PAUSADA` — both live in production —
+is far higher than the inconsistency. Decided 2026-09-17.
+
+So new code will call old Spanish names, and that is fine:
+
+```ts
+// Correct: an English name calling the existing Spanish one.
+const canWrite = await puedeEscribir(supabase, user.id);
+```
+
+What is NOT fine is adding a new Spanish name because the ones around it are
+Spanish. That is how the drift happened in the first place.
+
+### The one place to be careful
+
+**Values stored in the database outlive the code.** A string like `'dueno'` in a
+column with a check constraint is far more expensive to rename after it reaches
+production than a variable is. New enum-like values go into the database in
+English from the start.
+
+## Dependencias de las que ya sabemos que hay que salir
+
+Una dependencia no se juzga solo al entrar. Cuando una reseña deja algo
+pendiente, se escribe aquí, porque el que la instaló no va a ser el que se
+encuentre el problema.
+
+### `@tanstack/react-table` v8 — NO añadir más sitios que la usen
+
+Hoy la usa **un solo archivo**, `components/admin/cuentas-tabla.tsx`, al que
+solo llega `/admin/cuentas`. Ninguna pantalla del tendero la carga.
+
+La v9 ya está publicada y es una **reescritura**: `useReactTable` pasa a
+`useTable`, los row models se declaran en `tableFeatures()`, el estado sale de
+`getState()`. Todo lo que importamos cambia. Y la v9 existe justamente porque
+**la v8 se rompe con el React Compiler**, que `next.config.ts` todavía no tiene
+encendido.
+
+Las dos consecuencias, y ninguna es urgente:
+
+- **Si hace falta otra tabla, no se añade un segundo sitio a la v8.** Ese es el
+  momento de decidir entre migrar a la v9 o hacerla a mano — no de atar una
+  pantalla más a una versión que ya se quedó atrás.
+- **Encender el React Compiler obliga a migrar `/admin/cuentas` primero.** Si no,
+  el síntoma será una tabla portándose raro y la causa parecerá un bug de
+  maquetación.
+
+Se dejó a propósito: quitarla cuesta un día y no compra nada, y el radio del
+daño es una pantalla interna de 24 filas que solo ve el dueño de Sevenz.
+
+Esto salió de correr `new-api-risk-review` **después** de instalarla, el
+2026-09-15 — al revés de como lo pide la regla de arriba. La lección no es que
+la librería fuera mala: es que la reseña sí tenía algo que decir, y saltársela
+fue decidir de antemano que no lo tendría.
+
 ## "Merge it" is not permission to skip the checklist
 
 **"Merge", "push to prod", "go to prod", "launch it", "deploy", "ship it"

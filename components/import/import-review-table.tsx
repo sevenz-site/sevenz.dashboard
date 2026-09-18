@@ -24,6 +24,8 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import type { OwnerCountry } from "@/lib/types";
 
 // Los mismos dos decimales que formatDisplayCurrency, sin símbolo de moneda.
 const SIN_MONEDA = new Intl.NumberFormat("es-VE", {
@@ -33,6 +35,7 @@ const SIN_MONEDA = new Intl.NumberFormat("es-VE", {
 
 export function ImportReviewTable({
   rows,
+  country,
   onUpdate,
   onRemove,
   existingClients,
@@ -42,6 +45,8 @@ export function ImportReviewTable({
   onToggleLinked,
 }: {
   rows: ReviewRow[];
+  // Decides the document prefix: "V-" in Venezuela, none in Colombia.
+  country: OwnerCountry;
   onUpdate: (index: number, patch: Partial<ExtractedMovement>) => void;
   onRemove: (index: number) => void;
   existingClients: { id: string; name: string }[];
@@ -112,11 +117,12 @@ export function ImportReviewTable({
                     {row.document_id}
                   </span>
                 ) : (
-                  <Input
-                    placeholder="Requerida"
-                    className={row.document_id?.trim() ? undefined : "border-destructive"}
+                  <DocumentIdInput
+                    id={`import-document-${index}`}
+                    country={country}
                     value={row.document_id ?? ""}
-                    onChange={(e) => onUpdate(index, { document_id: e.target.value || null })}
+                    onChange={(next) => onUpdate(index, { document_id: next || null })}
+                    invalid={!row.document_id?.trim()}
                   />
                 )}
               </TableCell>

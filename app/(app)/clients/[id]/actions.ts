@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { DOCUMENT_SOURCE } from "@/lib/types";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
 // la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
@@ -40,6 +41,29 @@ export async function updateClient(
   if (!whatsapp) return { error: "Escribe el WhatsApp del cliente.", success: false };
   if (!documentId) return { error: "Escribe la cédula o documento del cliente.", success: false };
 
+  // THE ORIGIN IS ONLY TOUCHED WHEN THE DOCUMENT ACTUALLY CHANGES.
+  //
+  // This update rewrites `document_id` on every save, changed or not. Setting
+  // the origin here without looking would downgrade to 'owner' a document the
+  // client declared themselves, just because the shopkeeper edited the address
+  // — silently, erasing the very thing the column exists to hold.
+  //
+  // It is the same failure the document_country comment warns about three lines
+  // below. This file already learned it once.
+  const { data: previous } = await supabase
+    .from("clients")
+    .select("document_id")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  // Compared as text, which is enough now that the field only accepts digits:
+  // a record comes back from the form exactly as it went in unless someone
+  // retyped it. Marking the origin unconditionally would downgrade to 'owner' a
+  // document the client declared themselves, just because the shopkeeper edited
+  // the address — silently erasing the very thing the column exists to hold.
+  const documentChanged = (previous?.document_id ?? "").trim() !== documentId;
+
   // document_country is deliberately absent from this update: it's inherited
   // from the owner at creation and no longer editable in the UI, so listing
   // it here would wipe the stored value to null on every save.
@@ -49,6 +73,7 @@ export async function updateClient(
       name,
       whatsapp,
       document_id: documentId,
+      ...(documentChanged ? { document_source: DOCUMENT_SOURCE.OWNER } : {}),
       address: address || null,
     })
     .eq("id", clientId)

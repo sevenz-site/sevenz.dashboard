@@ -41,6 +41,8 @@ import { ImportReviewTable } from "@/components/import/import-review-table";
 import type { ReconcileClient } from "@/lib/reconcile";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import type { OwnerCountry } from "@/lib/types";
 
 type ExistingClient = ReconcileClient;
 
@@ -73,6 +75,8 @@ export function ImportFlow({
   // currency dimension at all — null means COP — so showing them a selector
   // would invent a decision they don't have.
   const showCurrency = ownerCountry === "VE";
+  // Narrowed once here: the page hands this down as a plain string.
+  const country: OwnerCountry = ownerCountry === "VE" ? "VE" : "CO";
   const { jobs, isProcessing, usage, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
   // Cuenta pausada: se para ANTES de la foto. Escanearla gasta cuota de
@@ -288,11 +292,11 @@ export function ImportFlow({
                 <Label htmlFor="shared-document" className="text-xs">
                   Cédula/documento
                 </Label>
-                <Input
+                <DocumentIdInput
                   id="shared-document"
+                  country={country}
                   value={sharedDocument}
-                  placeholder="Requerida para un cliente nuevo"
-                  onChange={(e) => setSharedDocument(e.target.value)}
+                  onChange={setSharedDocument}
                 />
               </div>
             </div>
@@ -323,6 +327,7 @@ export function ImportFlow({
           </div>
         ) : null}
         <ImportReviewTable
+              country={country}
           rows={reviewRows}
           onUpdate={updateMovement}
           onRemove={removeMovement}
