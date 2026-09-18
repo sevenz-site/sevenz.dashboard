@@ -3,6 +3,20 @@
 Borrador del 2026-09-17. **Nada construido.** Escrito después de medir el repo
 y la base de dev, no de estimar.
 
+**Actualizado el 2026-09-17, misma noche**, con el diseño de emparejamiento ya
+decidido y medido contra producción. En una frase: **un mecanismo (KYC), tres
+puertas (enlace, QR, por decisión propia), un rescate (presencia + confirmación
+del dueño), y una pieza pendiente de medir (la consulta al CNE en el registro).**
+El emparejamiento por posesión del enlace se diseñó y se descartó — está en la
+sección 5 con el porqué, para que no se vuelva a proponer. Lo que queda por
+decidir está al final.
+
+**2026-09-18**: Didit confirma **validación también contra la Registraduría
+colombiana** y que **la verificación es reutilizable** entre comercios. Lo primero
+completa la cobertura de la fase B y sube su costo; lo segundo cierra la última
+incógnita técnica del QR genérico. Construir un KYC propio se evaluó y se
+descartó — está en la sección 5.
+
 ---
 
 ## 1. Dónde estamos
@@ -180,11 +194,24 @@ Una identidad ve N fichas, de N tenderos distintos. Hace falta:
 
 ```
 client_identity_links
-  identity_id    -> client_identities.id
-  client_id      -> clients.id          (única: una ficha, una identidad)
-  confirmado_por 'enlace' | 'tendero' | 'documento'
-  confirmado_el
+  identity_id   -> client_identities.id
+  client_id     -> clients.id           (ÚNICA: una ficha, una identidad)
+  confirmed_by  'kyc' | 'owner'         -- el mecanismo
+  entry_door    'link' | 'qr' | 'direct'  -- por qué puerta entró (informativo)
+  confirmed_at
 ```
+
+**Los valores van en inglés desde el principio.** No es estética: un valor
+guardado sobrevive al código. Renombrarlo después no es un `alter`, son cuatro
+pasos y **dos despliegues** — ensanchar la constraint para aceptar ambos,
+desplegar el código nuevo, actualizar las filas viejas, apretar la constraint —
+porque entre el `update` y el despliegue el código viejo sigue escribiendo el
+valor antiguo y esas filas violarían la constraint nueva. Hoy la tabla no existe,
+así que cuesta cero. Y `'owner'` es **la misma cadena** que ya usa
+`document_source` para el mismo concepto.
+
+`confirmed_by` y `entry_door` son lo que el dueño ve como "quién, cuándo y cómo",
+y lo que le dice cuánta confianza merece cada vínculo.
 
 `client_id` **único** es la regla que impide que dos personas reclamen la misma
 ficha. Sin eso, dos primos con la cédula mal escrita ven la deuda del otro.
@@ -219,30 +246,311 @@ conexión con ninguna ficha**. Las fichas las escribieron los tenderos, con el
 nombre y el documento que a ellos les dio la gana teclear. En dev, **17% no
 tiene documento**.
 
-### Tres caminos para emparejar, en orden de fuerza
+### Cómo se empareja — DECIDIDO el 2026-09-17
 
-| # | Camino | Evidencia | Confirma |
-|---|---|---|---|
-| 1 | **Por enlace** | El tendero mandó ese enlace a ese teléfono. No es un número tecleado: es un acto | Automático |
-| 2 | **Documento autodeclarado** | Lo escribió el propio cliente en el modal, para ver su deuda. Mentir ahí solo le perjudica | **El tendero** |
-| 3 | **Documento tecleado por el dueño** | Puede ser relleno, igual que el WhatsApp | **El tendero**, siempre |
-| 4 | **WhatsApp** | 88% lo tiene y el dueño avisa que muchos son de relleno | **Nunca es prueba.** Solo señal de apoyo |
+**Un mecanismo, tres puertas.**
 
-**Hace falta una columna de procedencia.** Hoy los niveles 2 y 3 son
-indistinguibles: misma columna, sin rastro de quién la escribió. Una columna en
-`clients` que diga si el documento vino del modal público o del formulario del
-dueño hace que el dato nazca con su origen. Hacia atrás no se reconstruye: esos
-156 quedan como "origen desconocido", que es la verdad.
+El mecanismo es **KYC**: el cliente se autentica, escanea su documento y pasa una
+prueba de vida. Sevenz busca después las fichas que coincidan con el documento
+**que acaba de demostrar que es suyo**. El cliente nunca teclea un documento para
+buscar.
 
-Es barata y vale la pena **aunque el login se retrase**.
+Ese orden —**verificar primero, buscar después**— es lo que cierra el sondeo. Sin
+campo de entrada no hay oráculo, y solo puedes encontrar tu propia ficha porque no
+puedes falsificar la cara de otro. Es también lo que hace viable un QR genérico,
+que sin KYC sería un buscador nacional de deudas por cédula.
 
-**Regla que no se negocia: NUNCA emparejar solo por documento.** El documento lo
-tecleó el tendero, puede estar mal, puede repetirse entre países, y emparejar mal
-significa enseñarle a alguien la deuda de otro. Y eso no es un error de pantalla:
-es contarle a un desconocido cuánto debe tu vecino.
+| Puerta | Qué trae consigo | Qué permite diagnosticar |
+|---|---|---|
+| **Enlace compartido** (`/s/[token]`) | Un `client_id` concreto | Si el documento verificado no coincide, sabemos **qué ficha** está mal y se lo decimos al dueño |
+| **QR del negocio** (en "Mi negocio") | Un `owner_id` | En qué negocio buscar, y a quién avisar |
+| **Por decisión propia** (sin contexto de negocio) | Nada | El fallo es mudo. De ahí la salida del silencio, más abajo |
 
-El único emparejamiento automático es el del enlace, porque ahí la evidencia no
-es un número tecleado: es que el tendero mandó ese enlace a ese teléfono.
+Las tres desembocan en el mismo flujo. No son equivalentes: las dos primeras
+llevan contexto, y ese contexto es lo que convierte un fallo en un aviso
+accionable en vez de en un silencio.
+
+### El QR genérico entra por la puerta 3, no es una cuarta
+
+Un QR genérico —en un volante, un afiche, una publicación— **no lleva `owner_id`**,
+así que no aporta contexto. Es una forma física de llegar a la misma página a la
+que llegas escribiendo la dirección. **No es una puerta nueva: es un atajo a la
+tercera.**
+
+Por eso añadirlo cuesta casi nada: ni flujo nuevo, ni código de emparejamiento
+nuevo, ni análisis de seguridad aparte del que la puerta 3 ya tiene.
+
+**Y por eso deja de ser peligroso.** Se descartó antes, cuando emparejar
+significaba *teclear una cédula* — ahí un QR genérico era un buscador nacional de
+deudas por documento. Con KYC nadie teclea nada: la objeción murió con el diseño
+que la causaba.
+
+**Precisión que importa**: empareja con **fichas** cuyo documento guardado
+coincida con el verificado, no con negocios. Quien deba en tres tiendas pero
+tenga el documento bien anotado en dos, **verá dos** — y no sabrá que falta una.
+
+#### Lo que se pierde con el genérico
+
+| | QR por negocio | QR genérico |
+|---|---|---|
+| Lleva `owner_id` | ✅ | ❌ |
+| Si un documento está mal, **se le puede avisar al dueño** | ✅ | ❌ El fallo es mudo |
+| Sirve para el camino de presencia (el dueño confirma mirando) | ✅ | ❌ No identifica negocio |
+| Se puede rotar si se filtra | ✅ | ❌ Está impreso en todas partes |
+| Sirve de superficie de marketing | ❌ | ✅ |
+
+**No son sustitutos, son complementos.** El de negocio es el único que habilita el
+diagnóstico y el rescate por presencia. El genérico es distribución.
+
+#### Tres condiciones para añadirlo
+
+1. **Que no lleve token, o que el token no conceda nada.** Como no da ninguna
+   capacidad —solo lleva a una página pública— lo limpio es una URL fija tipo
+   `sevenz.site/soy-cliente`: nada que revocar porque no hay nada que robar. Si
+   hace falta medir de qué campaña vienen los escaneos, un parámetro de
+   atribución, **nunca una credencial**.
+2. **Tope de consumo.** Es el **único punto de entrada cuyo volumen no está
+   acotado**: los enlaces están acotados a 171, los QR de negocio a 24 negocios,
+   y un volante no está acotado por nada. Es el único sitio donde una campaña
+   puede disparar el gasto de verificaciones.
+3. **Dejar autoseleccionarse antes de la fricción.** En un volante lo escanea
+   quien pasaba por ahí; hace el KYC y no encuentra nada. La página tiene que
+   decir de entrada *"Si una tienda te fía y usa Sevenz, aquí puedes ver tu
+   saldo"*, para que quien no está en ese caso se vaya antes de sacar la cédula.
+
+**Depende de la puerta 3.** Si se decide no abrir la puerta fría, el QR genérico
+no tiene adónde llevar; si se abre, viene gratis con ella. Ver la decisión 2 de
+las abiertas.
+
+**La incógnita técnica se cerró el 2026-09-18.** Quedaba por saber si una persona
+verificada una vez podía emparejarse después con varios comercios sin repetir la
+verificación — sin eso, el genérico obligaría a un KYC por tienda y no tendría
+sentido. **Didit confirma que la verificación es reutilizable.** Lo que queda es
+solo la decisión de producto sobre la puerta fría.
+
+### Por qué NO se empareja por posesión del enlace
+
+Se diseñó, se atacó y se descartó el mismo día. `share_links.token` se crea una
+vez y **no caduca, no rota, no se revoca y no cuenta usos**: nació para *ver*, no
+para *reclamar*. Convertirlo en credencial de emparejamiento lo volvía
+irreversible y exclusivo —`client_id` es único, así que **el primero que reclama
+deja fuera al real para siempre**— sobre un valor que viaja por WhatsApp y se
+reenvía con dos toques.
+
+Los parches que lo sostenían eran cuatro (vale de un solo uso, ventana, "¿eres
+tú?" contra los últimos 4 dígitos, botón de reenvío), y el tercero **filtraba a
+los honestos, no a los mentirosos**: si el dueño tecleó mal el número, el cliente
+real contesta la verdad y se queda fuera de su propia ficha.
+
+**El enlace recupera su único trabajo: mostrar el saldo y ser la entrada de PLG.**
+Eso es la decisión 1, intacta. El KYC no blinda una credencial reutilizada — le
+quita el trabajo que no le tocaba.
+
+### Esto deroga la regla "NUNCA emparejar solo por documento"
+
+La regla se escribió cuando *por documento* significaba **que alguien teclee un
+número que puede saberse**. Con KYC significa **que alguien demuestre, con su cara
+y su documento, que ese número es suyo**. Son cosas distintas, y la regla tal como
+estaba ya no aplica.
+
+Lo que sí sobrevive de ella, y es lo que no arregla ninguna tecnología:
+**el KYC verifica a la persona, no al registro.** Si el dueño tecleó mal, el
+cliente pasa la verificación impecablemente y no aparece su tienda — o peor, ese
+número equivocado es la cédula real de otro, y a ese otro le aparece una bodega
+donde nunca compró. De ahí la consulta al CNE, más abajo.
+
+### Para quien ninguna puerta sirve: presencia + confirmación del dueño
+
+No es una cuarta puerta. Es el mecanismo de rescate, y hace falta porque las tres
+puertas emparejan por documento y hay gente que no tiene ninguno contra el que
+emparejar:
+
+- **56 clientes sin documento**, de las 144 altas de agosto (medido 2026-09-17).
+- Quien falle el KYC.
+- Quien no tenga un teléfono capaz de escanear y hacer prueba de vida.
+- Los 43 que nunca recibieron enlace, que se solapan con los anteriores.
+
+El cliente está en el local, escanea el QR, el dueño lo mira y confirma. Con tres
+salvaguardas que no son adorno: **tope de solicitudes vivas por identidad** (~3),
+**caducidad en minutos** —lo que prueba es la presencia, y una petición de hace
+tres días ya no prueba nada—, y una pantalla que **compara** (nombre y documento
+que el dueño tecleó, junto a la petición) en lugar de preguntar sí/no. Un dueño
+que recibe peticiones de gente que no conoce aprende a confirmar sin mirar, y ahí
+se acaba la seguridad de este camino.
+
+**Aviso honesto: el QR impreso no prueba presencia.** Se fotografía y se comparte,
+y entonces "presencia" es una suposición. Lo compensan la caducidad corta y la
+pregunta explícita al dueño ("¿está esta persona frente a ti ahora?"). Se arregla
+de verdad con un QR rotativo en la pantalla del dueño, si el abuso aparece.
+
+**Limitación conocida**: con un empleado en el mostrador esto no funciona bien —
+la presencia existe pero la autoridad está en otro teléfono. Se acepta hasta que
+exista el papel de empleado.
+
+### El lado del dueño: quién reclamó, cuándo, cómo, y desvincular
+
+En cada ficha, una línea: **quién** se vinculó, **cuándo** y **por qué puerta**.
+Y un botón de **desvincular**.
+
+El "cómo" es lo que decide cuánta confianza merece: no es lo mismo *"lo confirmé
+yo con la persona delante"* que *"verificó su cédula desde su casa"*.
+
+Desvincular no borra al cliente ni la deuda: **corta la conexión entre esa cuenta
+y esa ficha**. Es la lista de dispositivos conectados de WhatsApp, aplicada a
+fichas — ves quién está dentro y puedes sacarlo.
+
+**Es la única defensa que queda en un caso concreto**: si el dueño anotó mal un
+dígito y ese número resulta ser el de una persona real, esa persona se empareja de
+buena fe con la ficha de otro. Nadie hizo trampa. El único que puede notarlo es el
+dueño, porque es el único que sabe quiénes son sus clientes — y solo si la app se
+lo cuenta.
+
+**Transferir no; solo desvincular.** Transferir obligaría al dueño a elegir una
+identidad de una lista, y eso significa enseñarle personas que no son sus
+clientes. Se desvincula, y el correcto reclama por su cuenta.
+
+### La salida del silencio
+
+Quien verifica su identidad y **no ve aparecer ninguna tienda** hizo el paso caro
+en fricción y se fue con las manos vacías. Y quien ve dos de sus tres tiendas ni
+siquiera sabe que falta una: **el silencio es peor que un error visible.**
+
+Dos salidas, las dos gratis:
+
+- **"¿Falta alguna tienda?"** → petición al dueño de ese negocio, por el mecanismo
+  de presencia.
+- **"Esta no es mía"** → un toque para rechazar una ficha mal vinculada, que avisa
+  al dueño.
+
+**El cliente sabe en qué tiendas compra. Es el mejor detector que vamos a tener de
+los dos tipos de error, y no cobra nada.**
+
+### La procedencia del documento: hecha
+
+`clients.document_source` (`'owner'` | `'client'` | `null`) está en **dev y en
+producción** desde el 2026-09-17, migración `063_document_source`. Ya no hace
+falta pedirla: existe.
+
+Con KYC como mecanismo deja de decidir emparejamientos, pero sigue sirviendo para
+lo que de verdad importa — **decirle al dueño cuánto vale el número** en la
+pantalla de confirmación del camino de presencia: `'client'` lo escribió el
+cliente mismo; `'owner'` o `null` lo escribiste tú, verifica que sea él.
+
+### PENDIENTE DE DECIDIR: validar la cédula contra el CNE al registrar
+
+Es la única pieza que ataca el problema **donde nace**: que el dato contra el que
+emparejan las tres puertas sea bueno. No necesita identidades, ni login, ni
+emparejamiento — se puede construir sin nada del resto de este plan.
+
+Cuando el dueño teclea la cédula, se consulta contra el CNE/SAIME (Didit
+`ven_cedula`, **$0,20**, no entra en la capa gratuita) y se le devuelve el nombre
+registrado.
+
+**El diseño que evita la alarma.** No comparar nombres: hay fichas llamadas
+"Chancho", "Don Pedro" y "Señora María", y una comparación automática gritaría en
+falso casi siempre, hasta que nadie la lea. En vez de eso, **ofrecer** el nombre:
+
+> *"El CNE dice María González. ¿Lo guardamos?"*
+
+Deja de ser un policía y pasa a ser autocompletado — y así **vale la pena aunque
+la tasa de error sea cero**, porque ahorra teclear y estandariza el dato. La
+contrapartida es que guardaríamos el nombre que devuelve el registro, que es
+justo el dato que en otro contexto habría que descartar. Es un cambio de postura
+consciente.
+
+**Peores escenarios de añadirla**
+
+| Escenario | Solución |
+|---|---|
+| Latencia en el formulario, con un cliente delante del mostrador | **Nunca bloqueante.** El registro se guarda siempre; si Didit está caído se registra igual |
+| El hueco de cobertura (90-95%) se lee como fraude y **el tendero le niega el fiado a un cliente real** | Redacción: *"No pudimos confirmarla"*, nunca *"no existe"*. Informativo, jamás acusatorio |
+| ~~Colombia se queda fuera~~ | **Resuelto el 2026-09-18**: Didit valida también contra la Registraduría colombiana. No hace falta un segundo proveedor. Sube el costo porque ahora se valida todo, pero la cobertura es completa |
+| Flujo de datos nuevo sin beneficio visible para el cliente, que ni está presente | Línea en la política de privacidad. Interés legítimo (mantener el dato exacto es una obligación), pero se decide a propósito |
+| El costo se dispara **por implementación**: enganchado a cada guardado en vez de a cada cambio, o a cada fila del importador en vez de a cada cliente | El patrón ya está escrito en `app/(app)/clients/[id]/actions.ts`: comparar el documento anterior antes de escribir |
+
+**Peores escenarios de no añadirla**
+
+1. Las tres puertas heredan el dato malo, y nadie se entera.
+2. El fallo llega en el peor momento: el cliente hace el KYC —el paso caro en
+   fricción— y no aparece nada.
+3. Los duplicados siguen acumulándose. Ya hay 4 dentro de una misma bodega.
+4. Seguimos sin saber la tasa de error, así que cada decisión de arquitectura se
+   queda en intuición.
+
+**Cómo se decide: midiendo, no opinando**
+
+1. **Gratis**: contar cuántos de los ~158 nombres son nombres reales y cuántos
+   apodos. Si dominan los apodos, la comparación automática no es interpretable y
+   el autocompletado es el único diseño viable.
+2. **$32, una vez**: pasar los documentos venezolanos por `ven_cedula` y contar
+   los desajustes.
+3. **Error alto** → entra en el registro, ~$27/mes bien gastados.
+   **Error bajo** → se salta, coste recurrente **$0**, y se reconsidera al crecer.
+
+### Costos medidos (2026-09-17)
+
+Altas reales: **144 en agosto**, **77 en los primeros 17 días de septiembre** —
+un ritmo plano de ~4,5 al día, **~136 al mes**. El 100% de las altas de
+septiembre traen documento, contra el 61% de agosto: **la regla de documento
+obligatorio funciona**, y está medida.
+
+| Concepto | Coste |
+|---|---|
+| **KYC** (las tres puertas) | **$0** — 500/mes gratis, para siempre. Aunque los 221 clientes existentes **y** las 136 altas nuevas verificaran el mismo mes, son 357 < 500 |
+| **Consulta al registro** al dar de alta | **≥ $27,20/mes** — 136 altas × $0,20. Pendiente el precio de la consulta colombiana |
+| **Auditoría** única | **~$32**, y ahora cubre los 158 documentos, no solo los venezolanos |
+| **Liveness activo**, si se usa | **+$0,15 por verificación**. Estructura de cobro por confirmar |
+
+**Actualizado el 2026-09-18 con la respuesta de Didit.** Antes este cuadro decía
+$14–27/mes porque se asumía que la mitad colombiana no se podía validar. **Sí se
+puede** — Didit cubre también la Registraduría — así que la cobertura se completa
+y el costo sube al techo del rango. Cuánto exactamente depende del precio de la
+consulta colombiana, que no está publicado.
+
+El gasto real de esta decisión no es el dinero: es el capítulo nuevo de la
+política de privacidad, el segundo despliegue en `Web/`, y una dependencia
+externa que mantener.
+
+### Proyecciones, para no decidir con el número de hoy
+
+Las altas van a ~136/mes y planas en dos meses. La consulta al registro es lo
+único que escala; el KYC no se mueve hasta rebasar 500 verificaciones mensuales.
+
+| Altas/mes | Consulta al registro | ¿KYC sigue gratis? |
+|---|---|---|
+| 136 (hoy) | **$27** | Sí, con muchísimo margen |
+| 250 | $50 | Sí |
+| 500 | $100 | Sí, justo en el límite si **todas** verifican |
+| 1.000 | $200 | **No**: ~500 de las verificaciones se pagarían a $0,33 ≈ +$165 |
+
+**El punto de inflexión está en 500 emparejamientos al mes, no en 500 altas.** Y
+solo una fracción de las altas acaba emparejándose, así que el techo real queda
+bastante más lejos de lo que sugiere la tabla.
+
+**Proveedor: Didit.** Descartados con datos el 2026-09-17: Truora (no cubre
+Venezuela), Sumsub ($149/mes de mínimo ≈ $15 efectivos por verificación a este
+volumen), Cleardil (no declara cobertura ni precios), Persona (gratis atado a un
+plan de $250/mes, cobertura VE sin confirmar), Verifik (sin precios públicos).
+**KYC propio: evaluado y descartado el 2026-09-18.** Son cuatro problemas
+distintos y solo uno es abordable. La comparación facial 1:1 es fácil y gratis
+(InsightFace y similares); el OCR es fastidioso pero posible —las cédulas
+venezolanas no tienen MRZ, así que serían parsers por formato, y hay décadas de
+formatos—; **la autenticidad del documento no es viable** sin un corpus grande de
+documentos reales y falsos que solo tienen los proveedores; y **la prueba de vida
+es una carrera armamentística** con ataques por inyección de cámara y deepfakes
+que Didit señala como activos en Venezuela. La única pieza construible —la
+comparación facial— no sirve de nada sin la que no se puede construir. A eso se
+suma recibir y almacenar biometría (dato sensible bajo la Ley 1581 en Colombia),
+asumir la responsabilidad entera, y montar inferencia fuera de Vercel. Y el
+argumento que cierra: **el KYC de Didit cuesta $0 a este volumen**, así que serían
+meses del único desarrollador para sustituir algo gratuito. El riesgo de
+proveedor ya está cubierto por la integración fina y sustituible. Se reconsidera
+si el volumen llega a miles al mes o si aparece una exigencia regulatoria de
+mantener los datos en el país.
+
+También descartados los scrapers del CNE de GitHub: uno sin licencia usable, otro
+sin tocar desde 2017, el tercero es un sitio web completo con pasarela de pagos —
+y los tres cuelgan de un portal que el CNE cambió en 2026.
 
 ### Qué pasa con los que ya existen
 
@@ -370,14 +678,22 @@ real con cartera de verdad, antes y después.
 **Qué pasa:** Pedro se autentica, el tendero le revoca el acceso, y Pedro sigue
 entrando por el enlace de WhatsApp de hace seis meses.
 
-**Solución:** revocar la identidad **tiene que** matar el token. Si no, la fase B
-no revoca nada. Esto obliga a que `get_shared_balance` consulte el estado del
-enlace — lo cual toca la única ruta pública del producto, con la regla de
-enmascarar errores de `CLAUDE.md` encima.
+**RESUELTO el 2026-09-17, y se disolvió solo.** Este escenario existía porque el
+enlace hacía dos trabajos: enseñar el saldo **y** dar acceso. Separarlos lo
+deshace.
 
-**Decisión pendiente:** ¿el enlace anónimo desaparece para las fichas
-emparejadas, o conviven? Conviven es más amable y deja la puerta trasera
-abierta. Yo mataría el token al emparejar.
+Hoy el enlace **solo enseña el saldo**, sin cuenta y para siempre — decisión 1. Lo
+que se revoca al desvincular es **el emparejamiento**, no la vista. Que Pedro siga
+abriendo su enlace de hace seis meses no revoca nada porque no concedía nada: ve
+su propio saldo, que es exactamente lo que podía ver antes de autenticarse.
+
+`get_shared_balance` **no** tiene que consultar el estado del enlace, y la única
+ruta pública del producto se queda como está.
+
+**Lo que sigue pendiente, y es otra cosa**: poder **rotar el token** cuando el
+enlace fue a parar a quien no debía — un dígito mal en el WhatsApp, un reenvío a
+un grupo. Eso ya está en el backlog como "revocar enlace compartido" y no depende
+de nada de este plan.
 
 ### 8.5 La cara de cliente crece y frena la del tendero
 
@@ -413,38 +729,106 @@ funcionando durante toda la fase A**: si nadie se registra, nadie se queda fuera
 
 | | Qué | Depende de |
 |---|---|---|
-| **1** | ✅ Esquema base — `035`, ya corrida en los dos ambientes | — |
-| **2** | ✅ Medir producción — hecho el 2026-09-17, arriba | — |
-| **3** | Columna de procedencia del documento. Barata, independiente, útil aunque todo lo demás se pare | — |
+| **1** | ✅ Esquema base — `035`, en los dos ambientes | — |
+| **2** | ✅ Medir producción — 2026-09-17 | — |
+| **3** | ✅ `document_source` — `063`, en dev **y producción**, 2026-09-17 | — |
 | **4** | Limpiar las 4 fichas duplicadas dentro de una misma bodega | — |
-| **5** | Recordarle al tendero los **43 clientes sin enlace**. Es el arreglo más grande y más barato que salió de la medición, y no necesita login | — |
+| **5** | Recordarle al tendero los **43 clientes sin enlace**. El arreglo más grande y más barato que salió de la medición, y no necesita login | — |
+| **5b** | **QR por negocio**, generado en "Mi negocio", que el dueño expande o imprime. En esta fase es solo **canal de entrega** para los 43: lleva al enlace, sin identidad ninguna | — |
+| **A** | **Auditoría de documentos** contra el CNE, $32 una vez. Decide la fase B | — |
+| **B** | **Consulta CNE al registrar** un cliente, como autocompletado del nombre. Solo si A lo justifica | A |
 | **6** | `client_identity_links` + el papel activo en el JWT | 3 |
-| **7** | Registro y login del cliente, `app/(cliente)`, emparejamiento por enlace | 6 |
-| **8** | Avisar que pagó + comprobante — **la razón para entrar** | 7 |
-| **9** | Revocar, y matar el token al revocar | 7 |
-| **10** | Emparejamiento por documento y por petición, con confirmación del tendero | 8 |
-| **11** | Ver todos los saldos · Puntaje visible al cliente | 10 |
+| **7** | Integración de **Didit KYC**, fina y sustituible · `app/(cliente)` con su layout y su guardián | 6 |
+| **8** | **Las tres puertas**: enlace, QR del negocio y por decisión propia. Verificar primero, buscar después | 7 |
+| **8b** | **QR genérico** — atajo físico a la puerta 3, sin token. Viene casi gratis con la 8, pero **solo si se abre la puerta fría** | 8 |
+| **9** | **Presencia + confirmación del dueño**, para quien ninguna puerta sirve — los 56 sin documento y los que fallen el KYC | 8 |
+| **10** | **El lado del dueño**: quién reclamó, cuándo, por qué puerta, y desvincular | 8 |
+| **11** | **La salida del silencio**: "¿falta alguna tienda?" y "esta no es mía" | 8 |
+| **12** | Avisar que pagó + comprobante — **la razón para entrar** | 8 |
+| **13** | Ver todos los saldos · Puntaje visible al cliente | 12 |
 
-**Las fases 3, 4 y 5 no necesitan nada de lo demás.** Se pueden hacer esta
+**Las fases 4, 5, 5b y A no necesitan nada de lo demás.** Se pueden hacer esta
 semana, arreglan cosas medidas, y la 5 —43 clientes que nunca recibieron su
 enlace, de 214— probablemente valga más hoy que todo el proyecto de identidad.
 
+**Las fases 10 y 11 no son opcionales si se hace la 8.** La 10 es la única
+defensa contra un emparejamiento de buena fe con la ficha equivocada; la 11 es lo
+que impide que un error del dueño se vuelva invisible para todos. Construir las
+puertas sin ellas es construir la parte que se ve y dejarse la que avisa.
+
 ## Lo que queda por decidir
 
+### Resueltas el 2026-09-17
+
+- ~~**¿El enlace anónimo muere al emparejar la ficha?**~~ **No.** Sigue vivo y
+  sigue mostrando el saldo sin cuenta. No expone datos sensibles del cliente ni
+  del dueño, tampoco en el payload que llega al navegador — la migración `042` ya
+  sacó de ahí el documento y el `payment_info`. Lleva cues de PLG para invitar a
+  autenticarse. *Excepción deliberada a confirmar: el WhatsApp completo del dueño
+  sí viaja, porque lo necesita el botón de "Escribir a…".*
+- ~~**¿Quién confirma un emparejamiento por documento?**~~ **Nadie: lo confirma el
+  KYC.** Y cuando el KYC no es posible o falla, el dueño, en persona, con la
+  pantalla de comparación.
+
+### Abiertas
+
 0. **¿Vale la pena el proyecto de identidad ahora mismo?** Con cero personas
-   debiendo a dos negocios y cero documentos conseguidos por la fuerza, la
-   respuesta honesta es "no todavía, y sí las fases 3, 4 y 5". Esa es una
-   decisión de producto, no técnica.
-1. **¿El enlace anónimo muere al emparejar la ficha?** (8.4)
-2. **¿Quién confirma un emparejamiento por documento** — el tendero siempre, o
-   automático cuando coinciden documento *y* WhatsApp?
-3. **¿El cliente ve su puntaje tal cual**, o una versión suya? El mismo número
+   debiendo a dos negocios —número medido cruzando documentos, así que es un piso
+   y no un techo— la respuesta honesta sigue siendo "no todavía, y sí las fases
+   4, 5, 5b y A". Es una decisión de producto, no técnica.
+1. **¿Entra la consulta al CNE en el registro?** Depende de la auditoría de $32.
+   Ver la sección 5.
+2. **¿Se permite la puerta fría** (sin contexto de negocio)? Es la que hace
+   valioso el KYC, pero también la única donde un error del dueño se vuelve mudo.
+   Se puede arrancar solo con las dos puertas con contexto. **De esta decisión
+   cuelga el QR genérico**: es un atajo físico a esta puerta, así que si no se
+   abre, no tiene adónde llevar.
+3. **Menores de edad.** Nunca se ha hablado, y el KYC obliga a tener postura.
+4. **¿El cliente ve su puntaje tal cual**, o una versión suya? El mismo número
    que usa el tendero para decidir si le fía, enseñado al que lo sufre, cambia
    de significado.
-4. **¿Qué pasa con los avisos de pago que el tendero nunca responde?**
-5. **Política de privacidad y Términos**: el cliente pasa de ser alguien cuyos
+5. **¿Qué pasa con los avisos de pago que el tendero nunca responde?**
+6. **Política de privacidad y Términos**: el cliente pasa de ser alguien cuyos
    datos mete un tercero a ser usuario con cuenta propia. Eso es un capítulo
-   nuevo, no un párrafo. Y son **dos despliegues** — `Web/` va aparte.
+   nuevo, no un párrafo — y con KYC crece otra vez, porque la biometría es **dato
+   sensible** bajo la Ley 1581 de 2012 en Colombia. Son **dos despliegues**:
+   `Web/` va aparte.
+7. **¿Quién paga pasadas las 500 verificaciones gratuitas al mes?** Hoy sobran de
+   largo; conviene decidirlo antes de necesitarlo, no después.
+
+### Didit: lo confirmado y lo que falta (2026-09-18)
+
+**Respondido:**
+
+- **Las 500 gratuitas cubren** documento + **liveness pasivo** + face match +
+  análisis de IP. Todo lo demás se factura.
+- **`ven_cedula` se factura siempre**, nunca entra en la capa gratuita.
+- ✅ **Sí hay validación contra la Registraduría colombiana**, y "también
+  migración". La fase B cubre las dos mitades de la plataforma.
+- ✅ **La verificación es reutilizable**: una persona verificada se empareja
+  después con varios comercios sin repetirla. **Cierra la incógnita del QR
+  genérico.**
+
+**Se deduce, pero conviene confirmarlo por escrito**: el **liveness activo** queda
+fuera de la capa gratuita. No está claro si suma $0,15 al bundle gratuito o si
+usarlo saca toda la verificación de la capa gratuita — son dos facturas muy
+distintas. *Decisión provisional: empezar con el pasivo. En la fase 1 lo que está
+en juego es ver un saldo, y pasar a activo es configuración, no reconstrucción.*
+
+**Aplazado por Didit a un segundo correo:** cobro por consulta o por consulta
+exitosa · cédulas E- y laminadas · precio y detalle del registro colombiano ·
+detección de sintéticas · límites por lotes para la auditoría · retención
+configurable.
+
+**Se cayó de las dos listas y hay que volver a preguntarlo:**
+
+1. **¿Las sesiones de KYC abandonadas o fallidas cuentan contra las 500?** Pesa
+   más que antes: el KYC es el mecanismo principal, y un 50% de abandono duplica
+   el consumo.
+2. **¿Restricciones por sanciones** para atender usuarios finales venezolanos?
+3. **Menores de edad**: ¿soportados, excluidos, prohibidos?
+4. Aclarar qué significa **"también tenemos migración"** — si son registros
+   migratorios, cubriría las cédulas **E-** de extranjeros.
 
 
 ---
@@ -491,7 +875,7 @@ de 0, el predicado está mal y se para aquí.
 **1.3 — Contra el escenario 1.** Probar el modal público a mano en dev:
 
 - Abrir el enlace de un cliente **sin** documento → sale el diálogo, se escribe
-  una cédula, se guarda, y la ficha queda con `document_source = 'cliente'`.
+  una cédula, se guarda, y la ficha queda con `document_source = 'client'`.
 - Abrir el enlace de un cliente **con** documento → NO sale el diálogo.
 - Abrir un enlace inválido → "Link inválido.", sin rastro de error interno.
 
@@ -527,7 +911,7 @@ no exista.
 | `app/(app)/import/actions.ts` (×2) | Importar: rellenar ficha existente y crear nueva |
 
 Regla incómoda pero correcta: **si el dueño sobrescribe un documento que había
-declarado el cliente, la procedencia baja a `'dueno'`.** Es un dato peor y hay
+declarado el cliente, la procedencia baja a `'owner'`.** Es un dato peor y hay
 que decirlo.
 
 **2.3 — Contra el escenario 2, otra vez.** Probar **los cuatro** caminos en dev,
@@ -566,7 +950,7 @@ hay una ventana en la que las fichas nuevas nacen sin etiqueta. Desplegar los
 dos el mismo día la reduce a minutos. Si se alarga, **volver a correr el bloque
 `update` de la `063`**: es re-ejecutable y solo toca lo que está en null.
 
-**4.2** Comprobar a los pocos días que aparecen filas con `'cliente'`. Si a las
+**4.2** Comprobar a los pocos días que aparecen filas con `'client'`. Si a las
 dos semanas siguen siendo cero, no es que el código falle: es que ningún cliente
 está pasando por el modal — que es exactamente lo que midió la sección 1.
 
@@ -585,3 +969,158 @@ cédula — que es mejor evidencia que cualquier reconstrucción de hoy.
 
 **No construye identidad, ni login, ni emparejamiento.** Eso sigue esperando a
 la decisión 0 de la sección "Lo que queda por decidir".
+
+---
+
+# Anexo — El flujo de KYC, paso a paso
+
+Decidido el 2026-09-17/18. **Sin construir** — es `CA-7` en
+[`PENDIENTES.md`](PENDIENTES.md).
+
+Esto es el último recurso dentro del mecanismo: si el cliente está en el local,
+manda el camino de presencia; el KYC es para lo remoto.
+
+**Paso 0 — De dónde viene.** *Entrada tibia*: abrió un enlace, sabemos el
+`client_id`. *Entrada fría*: QR genérico o web, no sabemos nada.
+
+**Paso 1 — Se autentica** en Sevenz. El KYC se ata a una identidad; sin identidad
+no hay a qué atarlo.
+
+**Paso 2 — Comprobaciones gratis.** ¿La ficha tiene documento? ¿Es legacy, con
+letras? Si no hay contra qué comparar, se va al camino de presencia. Descarta un
+porcentaje alto sin gastar nada: **82 fichas no tienen origen conocido y 56 no
+tienen documento**.
+
+**Paso 3 — Validar el REGISTRO antes que a la PERSONA.** Consulta al registro
+(CNE/SAIME o Registraduría) con el documento de la ficha, ~$0,20.
+
+**Este orden es el corazón del diseño.** Si verificas primero a la persona y el
+registro está mal, has pagado un KYC para certificar un emparejamiento
+equivocado — con más confianza que antes, que es exactamente el riesgo de falsa
+confianza que tiene una herramienta fuerte.
+
+| Resultado | Qué significa | Qué hace la app |
+|---|---|---|
+| Coincide con el nombre de la ficha | El registro es bueno | Sigue al paso 4 |
+| Devuelve **otro nombre** | El dueño tecleó mal | **Para.** Avisa al dueño; no se manda al cliente al selfie |
+| No encontrado | Hueco de cobertura (5-10%) o dato basura | Sigue, **marcado**. Ver paso 7 |
+
+**Paso 4 — Sesión de KYC alojada en Didit.** Sevenz **nunca toca las imágenes**:
+no pasan por nuestro servidor, no se guardan, no existen para nosotros. No es
+opcional — es lo que mantiene manejable el capítulo de privacidad. Liveness
+**pasivo** en v1; el activo cuesta $0,15 y se sube solo si aparece abuso.
+
+**Paso 5 — El webhook.** Dos reglas: **verificar la firma**, y **no fiarse del
+cuerpo** — reconsultar la sesión contra la API de Didit. El webhook es un aviso,
+no una fuente de verdad. Se guarda id de sesión, estado y documento verificado.
+Nada más.
+
+**Paso 6 — El cruce.** *Entrada tibia*: ¿el documento verificado es el de la
+ficha? *Entrada fría*: **primero verificas, después buscas** — la persona no
+teclea ningún documento; el sistema busca fichas que coincidan con el que acaba de
+demostrar que es suyo. **Sin campo de entrada no hay oráculo**: solo puedes
+encontrar tu propia ficha, porque no puedes falsificar la cara de otro.
+
+**Paso 7 — La decisión.**
+
+| Registro | KYC | Qué pasa |
+|---|---|---|
+| Coincide | Coincide | **Emparejamiento automático.** `confirmed_by = 'kyc'` |
+| No encontrado | Coincide | **No empareja solo.** Va al dueño *con la verificación como prueba*: "esta persona verificó su identidad como María González. ¿Es tu clienta?" |
+| Cualquiera | **No** coincide | No empareja. Y no se le dice de quién es la ficha |
+
+La fila del medio es la que importa: cuando algo no cuadra, **el KYC no decide —
+le hace la decisión fácil al dueño.** El sistema degrada bien en vez de romperse.
+
+**Paso 8 — Siempre.** El dueño ve quién reclamó, cuándo y por qué puerta, y puede
+desvincular.
+
+**Minimización de datos**: si el KYC no coincide, se descarta todo menos "no
+coincide". No se guarda el número real de esa persona — aprender un dato que no
+necesitábamos es un coste, no un beneficio.
+
+## Los topes, que no son adorno
+
+- **Tope por identidad y por día** de sesiones de KYC: cada una cuesta dinero.
+- **Tope duro en nuestro código** sobre las 500 gratuitas, no en el panel de
+  Didit. Nunca se deja correr el contador de un tercero.
+- **La caducidad se evalúa en Postgres**, dentro de la función `security definer`,
+  comparando `timestamptz`. Nunca en el navegador — si se calcula en JavaScript
+  hereda el bug de zona horaria de `PL-1`.
+
+---
+
+# Anexo — Didit, el proveedor
+
+Elegido tras correr `new-api-risk-review` el 2026-09-17. **Nada integrado.**
+Aprobada la **integración fina y sustituible**: un módulo con interfaz propia,
+ningún tipo de Didit filtrándose al resto de la app, resultados guardados en
+formato nuestro. Cambiar de proveedor = tocar un archivo.
+
+- Panel: `business.didit.me` — **la cuenta la crea el usuario, no Claude**
+- Precios: https://didit.me/pricing/
+- Venezuela: https://didit.me/solutions/countries/venezuela/
+- Cédula VE contra CNE: https://docs.didit.me/api-reference/database-validation/venezuela/cedula
+
+## Precios
+
+Bundle KYC completo **$0,33** · documento $0,15 · liveness pasivo $0,10 · liveness
+**activo $0,15** · face match $0,05 · `ven_cedula` (CNE/SAIME) **$0,20**.
+
+**Capa gratuita: 500 verificaciones al mes, para siempre**, sin tarjeta. Cubren
+documento + **liveness pasivo** + face match + análisis de IP. Todo lo demás se
+factura, incluido `ven_cedula`, que **nunca** entra en la capa gratuita.
+
+## Confirmado por Didit el 2026-09-18
+
+- ✅ **Validan también contra la Registraduría colombiana**, y "también
+  migración". Completa la cobertura de la plataforma y sube el costo de la fase B,
+  porque ahora se valida todo.
+- ✅ **La verificación es reutilizable**: una persona verificada se empareja
+  después con varios comercios sin repetirla. Era la condición del QR genérico.
+
+## Sin aclarar
+
+El **liveness activo** queda fuera de la capa gratuita, pero no se sabe si suma
+$0,15 al bundle gratuito o si usarlo saca la verificación entera de la capa. Son
+dos facturas muy distintas. *Decisión provisional: empezar con el pasivo.*
+
+Y el **precio de la consulta colombiana** no está publicado — su documentación
+avisa de que la validación contra bases de datos varía por país.
+
+## Descartados, con datos
+
+| Proveedor | Por qué |
+|---|---|
+| **Truora** | No cubre Venezuela |
+| **Sumsub** | $149/mes de mínimo ≈ **$15 efectivos por verificación** a este volumen |
+| **Cleardil** | No declara cobertura ni precios |
+| **Persona** | Gratis atado a un plan de $250/mes; cobertura VE sin confirmar |
+| **Verifik** | Sin precios públicos |
+| **Scrapers del CNE** (3 repos de GitHub) | Uno sin licencia usable, otro sin tocar desde 2017, el tercero es un sitio web completo con pasarela de pagos — y **los tres cuelgan de un portal que el CNE cambió en 2026** |
+
+## KYC propio: evaluado y descartado el 2026-09-18
+
+Son cuatro problemas distintos y solo uno es abordable:
+
+| Pieza | Viabilidad |
+|---|---|
+| Comparación facial 1:1 | ✅ Fácil y gratis (InsightFace y similares) |
+| OCR del documento | ⚠️ Fastidioso: las cédulas VE no tienen MRZ, serían parsers por formato, y hay décadas de formatos |
+| **Autenticidad del documento** | ❌ **No viable** sin un corpus grande de documentos reales *y falsos* que solo tienen los proveedores |
+| **Prueba de vida** | ❌ **Carrera armamentística**: inyección de cámara y deepfakes, que Didit señala como activos en Venezuela |
+
+**La única pieza construible no sirve sin la que no se puede construir**: face
+match sin liveness se derrota sosteniendo una foto.
+
+A eso se suma recibir y almacenar biometría —dato sensible bajo la Ley 1581 en
+Colombia—, asumir la responsabilidad entera sin nadie con quien compartirla, y
+montar inferencia fuera de Vercel. Y el argumento que cierra: **el KYC de Didit
+cuesta $0 a este volumen**, así que serían meses del único desarrollador para
+sustituir algo gratuito. El riesgo de proveedor ya está cubierto por la
+integración fina y sustituible.
+
+**Se reconsidera** si el volumen llega a miles de verificaciones al mes, o si
+aparece una exigencia regulatoria de mantener los datos en el país. Y si Sevenz
+llega a tocar dinero y entrar en regulación financiera, una verificación casera
+difícilmente satisfaría a un regulador: sería trabajo para tirar.

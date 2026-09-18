@@ -514,6 +514,31 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
 
+## Los pendientes viven en `PENDIENTES.md`
+
+**Lista única. Si un pendiente no está ahí, no existe.** No en la memoria de
+Claude, no en un hilo de conversación, no en la cabeza de nadie: en el repo,
+versionado, para que `git log -p PENDIENTES.md` cuente cuándo cambió cada cosa y
+por qué.
+
+Está agrupado por **vertical** (la iniciativa a la que pertenece), cada pendiente
+en **una sola**, con un ID estable que no se reutiliza.
+
+Tres obligaciones, y ninguna cuesta nada:
+
+1. **Consultarlo** cuando se planifique trabajo, y **antes de cada despliegue a
+   producción**, junto al `qa-regression-checklist`.
+2. **Añadir** ahí cualquier pendiente que salga — de una prueba, de una reseña, de
+   una conversación. Con su vertical y su fecha. Sin vertical no entra.
+3. **Cerrar** moviendo la fila a la sección *Hecho* con la fecha y una línea de
+   qué pasó. **Nunca borrar**: un pendiente cerrado explica por qué el código es
+   como es, y esa es justo la información que se pierde primero.
+
+El porqué: hasta el 2026-09-18 esta lista vivía solo en conversaciones. Se
+escribió después de comprobar que la memoria del proyecto estaba **vacía** y que
+pendientes dados por guardados no lo estaban. Un backlog que solo existe en un
+hilo desaparece cuando el hilo desaparece, y nadie se entera hasta que hace falta.
+
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production
