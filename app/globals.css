@@ -29,6 +29,7 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-money-in: var(--money-in);
+  --color-brand: var(--brand);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -53,6 +54,13 @@
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  /* El naranja de la marca, el mismo de logo.svg e icon.svg. Un solo valor en
+     los dos temas a propósito: hasta ahora solo se usa sobre superficies
+     oscuras, que se ven igual en claro y en oscuro. Si algún día va sobre
+     fondo claro, hay que oscurecerlo aquí antes — sobre blanco no pasa el
+     piso de contraste. No confundir con amber, que en este código ya
+     significa "plazo vencido". */
+  --brand: #f66b02;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -102,6 +110,7 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
+  --brand: #f66b02;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);

@@ -270,6 +270,22 @@ them directly.
 
 ## 6. Migration hygiene
 
+- **Run `npm run qa:migrations` first — it takes a second and needs no
+  database.** It asserts that every `.sql` file under `supabase/` still
+  contains SQL: at least 100 bytes and at least one statement. It exists
+  because on 2026-09-18 `064_client_feedback.sql` went from 5994 bytes to 5 —
+  the word "listo", typed into an open editor instead of a chat box, and saved.
+  Git still held the real file, but it survived several commits that way and
+  any `git add -A` would have replaced the migration in history with one word.
+  The dangerous part is what comes next: that file is exactly the one someone
+  opens to paste into the Supabase SQL editor, so the failure would have
+  surfaced as a migration that ran and "did nothing" in production.
+
+  It deliberately does **not** check for the `schema_migrations` insert. 29 of
+  the 66 numbered migrations predate `028`, which is what created that ledger,
+  so the check would fire 29 false alarms on day one — and an alarm that always
+  rings stops being read.
+
 - **Hard blocking check — ledger parity.** Ask the user to run
   `select key from public.schema_migrations order by key;` in both the dev
   branch's SQL editor and production's, and paste both results. Diff the

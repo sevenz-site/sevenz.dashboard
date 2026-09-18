@@ -514,6 +514,72 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
 
+## Los pendientes y los planes viven en `../docs`
+
+**Este repo es público. Los documentos con cifras del negocio no están aquí.**
+
+Viven en el repositorio **privado** `sevenz-site/sevenz.docs`, clonado como
+carpeta hermana:
+
+```
+Sevenz/
+├── dashboard/   ← este repo, público
+├── Web/         ← público
+└── docs/        ← privado
+```
+
+| Archivo | Ruta desde aquí |
+|---|---|
+| **`PENDIENTES.md`** — la lista única | `../docs/PENDIENTES.md` |
+| `CLIENTES-AUTENTICADOS-PLAN.md` | `../docs/CLIENTES-AUTENTICADOS-PLAN.md` |
+| `PLANES-Y-CUENTAS-PLAN.md` | `../docs/PLANES-Y-CUENTAS-PLAN.md` |
+| `REPORTES-PLAN.md` | `../docs/REPORTES-PLAN.md` |
+| `PAPELERA-PLAN.md` | `../docs/PAPELERA-PLAN.md` |
+
+**Hay que abrirlos a propósito.** Ya no están en el working directory, así que no
+aparecen solos: leer `../docs/PENDIENTES.md` es el primer paso de cualquier
+planificación, no algo que se hace si sobra tiempo.
+
+### Sobre `PENDIENTES.md`
+
+**Lista única. Si un pendiente no está ahí, no existe.** No en la memoria de
+Claude, no en un hilo de conversación, no en la cabeza de nadie. Está agrupado por
+**vertical** (la iniciativa a la que pertenece), cada pendiente en **una sola**,
+con un ID estable que no se reutiliza.
+
+Tres obligaciones, y ninguna cuesta nada:
+
+1. **Consultarlo** al planificar trabajo, y **antes de cada despliegue a
+   producción**, junto al `qa-regression-checklist`.
+2. **Añadir** ahí cualquier pendiente que salga — de una prueba, de una reseña, de
+   una conversación. Con su vertical y su fecha. Sin vertical no entra.
+3. **Cerrar** moviendo la fila a la sección *Hecho* con la fecha y una línea de
+   qué pasó. **Nunca borrar**: un pendiente cerrado explica por qué el código es
+   como es, y esa es justo la información que se pierde primero.
+
+### La regla que impide que los dos repos diverjan
+
+**Dos repositorios no pueden commitear atómicamente.** Un cambio que toca el
+código y su documento se commitea **en los dos, en la misma sesión** — nunca "lo
+apunto luego". Es el costo conocido de la separación y la única defensa es el
+hábito: si una migración sale y la tabla de fases del plan sigue diciendo
+"pendiente", el plan miente a partir de ese día.
+
+Los cinco nombres están en el `.gitignore` de este repo, así que si alguno se
+recrea aquí por costumbre, git lo ignora y no se puede subir por accidente.
+
+### El porqué de todo esto
+
+Hasta el 2026-09-18 la lista vivía solo en conversaciones. Se escribió al
+comprobar que la memoria del proyecto estaba **vacía** y que pendientes dados por
+guardados no lo estaban.
+
+Y se separó en un repo aparte el mismo día: poner los repos de código en privado
+bloqueó **todos los despliegues de Vercel en segundos** —el plan Hobby no admite
+repos privados— así que volvieron a público, y las cifras se mudaron a un repo que
+no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
+`../docs/PENDIENTES.md`.
+
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production

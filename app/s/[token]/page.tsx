@@ -16,6 +16,7 @@ import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/l
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
+import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { DocumentIdDialog } from "@/components/public/document-id-dialog";
 
 // La vista previa que ve quien recibe el enlace por WhatsApp.
@@ -285,9 +286,13 @@ export default async function SharedBalancePage({
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
         >
           <MessageCircle className="size-4" />
-          Escribir a {shared.business_name} por WhatsApp
+          {/* El nombre del negocio está en el encabezado, justo encima. El
+              botón lo repetía y en un nombre largo se partía en dos líneas. */}
+          Contactar vía WhatsApp
         </a>
       ) : null}
+
+      <FeedbackBanner token={token} />
 
       {shared.whatsapp_last4 ? <VerifyBadge expectedLast4={shared.whatsapp_last4} /> : null}
 

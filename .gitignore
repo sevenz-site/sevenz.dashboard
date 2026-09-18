@@ -51,3 +51,13 @@ next-env.d.ts
 supabase/.temp/
 zz-*.mjs
 zz-*.jpeg
+
+# La documentacion con cifras del negocio vive en el repo privado sevenz.docs,
+# como carpeta hermana en ../docs. Estos nombres quedan ignorados a proposito:
+# si alguno se recrea aqui por costumbre, git lo ignora y no se puede subir por
+# accidente. Es una barrera mecanica, no una regla que haya que recordar.
+PENDIENTES.md
+CLIENTES-AUTENTICADOS-PLAN.md
+PAPELERA-PLAN.md
+PLANES-Y-CUENTAS-PLAN.md
+REPORTES-PLAN.md

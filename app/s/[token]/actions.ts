@@ -8,7 +8,15 @@ import { createServiceClient } from "@/lib/supabase/service";
 // never meet them — a person sets their document once and changes their photo
 // occasionally. They exist to make a script pointless, not to police use.
 const DOCUMENT_ID_LIMIT = 5;
+// Lower than the document's: a person answering "what would you like to do in
+// Sevenz?" says it once, maybe twice. Anything past that is not a client
+// changing their mind.
+const FEEDBACK_LIMIT = 3;
 const RATE_WINDOW_SECONDS = 60 * 60;
+
+// Matches the ceiling inside submit_shared_feedback(). Enforced in both places
+// on purpose: this action is one caller, the function is the door.
+const FEEDBACK_MAX_LENGTH = 1000;
 
 // Returns true when the caller may proceed.
 //
@@ -75,6 +83,45 @@ export async function submitDocumentId(token: string, documentId: string): Promi
   if (error) {
     console.error("[submitDocumentId] rpc failed:", error.message);
     return { error: "No pudimos guardar tu documento. Intenta de nuevo." };
+  }
+
+  const result = data as { error: string | null };
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return { error: null };
+}
+
+export type SubmitFeedbackState = { error: string | null };
+
+// Public, unauthenticated action — same trust model as submitDocumentId above.
+// The token resolves to a client inside submit_shared_feedback(), never from
+// anything the caller names, and the table it writes to has RLS on with zero
+// policies and no grants: that function is its only door.
+//
+// Errors are generic by design (mask-raw-errors rule). Someone who cannot save
+// a suggestion loses a suggestion; they should not also learn what our database
+// is called.
+export async function submitFeedback(token: string, message: string): Promise<SubmitFeedbackState> {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return { error: "Escribe tu respuesta." };
+  }
+
+  if (!(await withinQuota(token, "feedback", FEEDBACK_LIMIT))) {
+    return { error: "Ya recibimos tu respuesta. ¡Gracias!" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("submit_shared_feedback", {
+    p_token: token,
+    p_message: trimmed.slice(0, FEEDBACK_MAX_LENGTH),
+  });
+
+  if (error) {
+    console.error("[submitFeedback] rpc failed:", error.message);
+    return { error: "No pudimos guardar tu respuesta. Intenta de nuevo." };
   }
 
   const result = data as { error: string | null };
