@@ -27,7 +27,10 @@
 --      SECURITY DEFINER function — same shape as movement_rejections.
 --   3. A length ceiling here, not only in the server action. The action is one
 --      caller; this function is the door.
---   4. Rate limiting lives in the action, via claim_rate_limit_quota.
+--   4. A LIFETIME CAP of 20 rows per ficha, here, for the same reason. The
+--      action's 3-per-hour quota is the friendly limit a real client meets; it
+--      is code, and code can be undeployed or bypassed by calling the RPC
+--      directly. This one cannot be.
 
 begin;
 
@@ -68,6 +71,7 @@ declare
   v_client_id uuid;
   v_country text;
   v_message text;
+  v_count integer;
 begin
   -- The token decides the client. A caller cannot name one.
   select c.id, o.country into v_client_id, v_country
@@ -84,6 +88,32 @@ begin
 
   if v_message = '' then
     return json_build_object('error', 'Escribe tu respuesta.');
+  end if;
+
+  -- ── The ceiling lives HERE, not only in the server action ─────────────
+  --
+  -- This function is granted to anon, so anyone holding a valid share token
+  -- can call the RPC directly and never touch the action that rate-limits it.
+  -- An action is code: it can be undeployed, rolled back, or simply bypassed.
+  --
+  -- submit_shared_document_id is bounded the same way, by its own "never
+  -- overwrite an existing document" guard — a direct caller can write once and
+  -- no more. Without this block, submit_shared_feedback would have been the
+  -- first public write in this product whose only limit lived outside the
+  -- database, and that is the kind of exception the next function copies.
+  --
+  -- A LIFETIME CAP, NOT A RATE. A window per hour still lets one token produce
+  -- hundreds of rows a day; twenty per ficha, forever, is a hard bound. A real
+  -- person answers once, maybe twice — the action stops them at three with a
+  -- friendlier message long before this is reached.
+  select count(*) into v_count
+  from public.client_feedback
+  where client_id = v_client_id;
+
+  if v_count >= 20 then
+    -- Same wording the action uses when its own quota is spent: true, and it
+    -- tells someone probing the endpoint nothing they can act on.
+    return json_build_object('error', 'Ya recibimos tu respuesta. ¡Gracias!');
   end if;
 
   -- Truncate rather than reject: someone who wrote four pages should not lose
