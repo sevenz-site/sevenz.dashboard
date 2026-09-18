@@ -28,7 +28,6 @@ Diseño completo en [`CLIENTES-AUTENTICADOS-PLAN.md`](CLIENTES-AUTENTICADOS-PLAN
 
 | ID | Pendiente | Desde | Objetivo | Costo | Nota |
 |---|---|---|---|---|---|
-| CA-1 | Commit del plan en `dev` | 2026-09-18 | — | — | 438 líneas sin commitear |
 | CA-2 | Verificación 4.2 de la migración 063 | 2026-09-17 | **~2026-10-01** | $0 | Si `document_source = 'client'` sigue en cero no es un bug: es que nadie pasa por el modal público |
 | CA-3 | Segundo correo de Didit | 2026-09-18 | — | — | Precio de la consulta colombiana, cédulas E- y laminadas, cobro por consulta o por éxito, sintéticas, lotes, retención |
 | CA-4 | Pre-chequeo de apodos | 2026-09-18 | — | **$0** | Contar cuántos de los 158 nombres son reales. Si dominan los apodos, CA-5 no es interpretable |
@@ -65,6 +64,7 @@ El producto del tendero. **Nada de aquí necesita identidad ni login.**
 |---|---|---|---|---|---|
 | PL-1 | 🐛 **Bug de zona horaria en las fechas** | 2026-09-17 | — | — | Confirmado en producción. Detalle abajo |
 | PL-2 | `@tanstack/react-table` v8 | 2026-09-15 | — | — | No añadir más sitios que la usen. Bloquea encender el React Compiler. Ver `CLAUDE.md` |
+| PL-3 | **El plan de Vercel no da para repos privados** | 2026-09-18 | — | ~$20/mes si se sube a Pro | Detalle abajo. Los dos repos están públicos por esto |
 
 ---
 
@@ -112,6 +112,43 @@ corrección no rompa el bucketing de `lending-charts.ts` ni las consultas con
 
 ---
 
+### PL-3 — El plan de Vercel no da para repos privados
+
+El 2026-09-18 se pusieron los dos repositorios en privado y **los despliegues se
+bloquearon en el acto**:
+
+> *The deployment was blocked because the commit author did not have contributing
+> access to the project on Vercel. The Hobby Plan does not support collaboration
+> for private repositories.*
+
+El autor del commit era el de siempre —`JesusDelgadoProductDesign`, el mismo de
+los commits que desplegaron bien el día anterior—, así que no era configuración de
+git: era la visibilidad. **Se revirtió a público para recuperar los despliegues.**
+
+**Por qué sigue abierto**: el motivo para cerrarlos no era el código, eran las
+cifras que viven en los `.md` — 24 negocios, 214 clientes, el ritmo de altas, los
+precios de Didit, la estrategia entera. Eso sigue expuesto.
+
+**Y hay algo que conviene confirmar de todos modos**: el plan Hobby de Vercel es
+para **uso no comercial**, y Sevenz cobra planes. Visto así la pregunta no es
+"¿pago $20 por tener el repo privado?", es "¿estoy en el plan que corresponde?".
+
+**Dos salidas:**
+
+1. **Vercel Pro**, ~$20/mes. Desbloquea repos privados y alinea el plan con lo que
+   Sevenz es.
+2. **Separar la documentación a un repo privado aparte** (`sevenz.docs` o
+   similar), que **no despliega nada**, así que el plan Hobby ni se entera de que
+   es privado. Se llevaría `PENDIENTES.md` y los cuatro `*-PLAN.md`; se quedarían
+   públicos `README.md`, `AGENTS.md`, `DESIGN-SYSTEM.md` y `CLAUDE.md`, que son
+   reglas de ingeniería y no números. **Coste cero.**
+
+**Lo que ninguna de las dos arregla**: los planes llevan desde el 2026-09-17 en el
+historial público. Cerrar ahora limita lo que se expone en adelante; no recupera
+lo que ya salió. Para eso haría falta reescribir el historial, que rompe clones.
+
+---
+
 ## Hecho
 
 | Cerrado | Qué | Nota |
@@ -122,3 +159,4 @@ corrección no rompa el bucketing de `lending-charts.ts` ni las consultas con
 | 2026-09-17 | **Campo de documento: solo dígitos**, con la señal `V-` fuera del input | Release `f49846a`. Verificado vivo en producción |
 | 2026-09-17 | **Prueba de regresión en producción** de la ruta del dinero | 17 comprobaciones: fiado, abono, mala paga, enlace, importación, papelera. Una falló y abrió PL-1 |
 | 2026-09-18 | **Decidido el diseño de emparejamiento** | Un mecanismo (KYC), tres puertas, un rescate. Descartado emparejar por posesión del enlace, y descartado construir KYC propio |
+| 2026-09-18 | `CA-1` — **Esta lista existe** | Commit `da81daf`. Se escribió al descubrir que la memoria del proyecto estaba vacía y que pendientes dados por guardados no lo estaban |
