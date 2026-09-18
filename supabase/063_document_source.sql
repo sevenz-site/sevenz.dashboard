@@ -186,5 +186,16 @@ commit;
 --
 --   select count(*) from public.clients
 --   where document_source is not null
---     and nullif(regexp_replace(coalesce(document_id, ''), '\D', '', 'g'), '') is null;
+--     and nullif(btrim(coalesce(document_id, '')), '') is null;
 --   -- EXPECTED: 0. Recording the origin of a document that does not exist means nothing.
+--
+--   EMPTINESS IS MEASURED THE WAY THE CODE MEASURES IT: non-blank text, not
+--   "has digits". An earlier version of this check counted digits, and the two
+--   disagree on a document with letters and no numbers — "sin cedula" typed
+--   into the free-text box that appears for a value already stored with
+--   letters. The code marks it, the digit version would report it as an error,
+--   and it is not one: the data would be right and the alarm wrong.
+--
+--   It has never fired — 0 in both environments on 2026-09-17 — so this is a
+--   trap defused, not a bug fixed. An alarm that one day cries wolf is worse
+--   than no alarm, because it teaches everyone to walk past it.
