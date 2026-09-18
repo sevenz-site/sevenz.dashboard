@@ -290,6 +290,26 @@ different sources, they will eventually disagree; state both from the same
 token pair (`color-mix(in oklab, var(--popover-foreground) 76%, var(--popover))`)
 so the pair cannot come apart.
 
+## El naranja de la marca es `--brand`, y no es `amber`
+
+`#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
+`--brand`, así que en clases se usa `text-brand`, `bg-brand`, `ring-brand`.
+
+**Nunca se incrusta el hex suelto en un componente.** Estuvo sin token hasta el
+2026-09-18 —solo había grises— y la primera pieza que lo necesitó fue el banner
+de feedback de `/s/[token]`. Un hex suelto en un archivo es cómo empieza la
+deriva: al segundo sitio ya nadie sabe cuál es el bueno.
+
+**Y no se sustituye por `amber`.** En este código `amber-500/600` ya significa
+**"plazo vencido"** — `client-card.tsx`, `balance-card.tsx`,
+`credit-score-radial-chart.tsx`. Usarlo para un acento de marca haría que un
+aviso de cobro y una invitación se vieran igual.
+
+**Hoy solo va sobre superficies oscuras**, que se ven igual en claro y en
+oscuro; por eso `--brand` tiene el mismo valor en los dos temas. Sobre fondo
+blanco **no pasa el piso de contraste de abajo**: si algún día hace falta ahí,
+hay que oscurecerlo en `globals.css` primero, no en el componente.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
