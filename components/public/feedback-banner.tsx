@@ -134,10 +134,7 @@ export function FeedbackBanner({ token }: { token: string }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>¿Qué te gustaría hacer en Sevenz?</DialogTitle>
-            <DialogDescription>
-              Leemos todas las respuestas. No podemos contestar una por una, pero nos ayudan a
-              decidir qué construir primero.
-            </DialogDescription>
+            <DialogDescription>Leemos todas las respuestas, nos ayudan a mejorar.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
