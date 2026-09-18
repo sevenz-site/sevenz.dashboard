@@ -2,6 +2,12 @@
 
 MVP: el dueño y el cliente ven el mismo saldo en tiempo real. Next.js (App Router) + Supabase + OpenRouter (Gemini) para OCR de libreta.
 
+> **Este repositorio es público y no contiene la documentación de producto.**
+> Los pendientes (`PENDIENTES.md`) y los planes viven en el repositorio privado
+> [`sevenz-site/sevenz.docs`](https://github.com/sevenz-site/sevenz.docs), que se
+> clona como carpeta hermana en `../docs`. Si acabas de clonar esto y te falta
+> contexto, es porque está ahí.
+
 ## Setup
 
 1. **Supabase**: crea un proyecto en [supabase.com](https://supabase.com), abre el SQL editor y corre [`supabase/schema.sql`](supabase/schema.sql) completo. Esto crea las tablas (`owners`, `clients`, `movements`, `share_links`), las políticas RLS, el trigger que calcula `running_balance`, la vista `client_summary` y la función pública `get_shared_balance`.
