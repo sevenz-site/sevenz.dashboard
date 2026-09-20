@@ -290,6 +290,52 @@ different sources, they will eventually disagree; state both from the same
 token pair (`color-mix(in oklab, var(--popover-foreground) 76%, var(--popover))`)
 so the pair cannot come apart.
 
+### Un Server Component no puede pasar una función como `children`
+
+Encontrado el 2026-09-20 construyendo el buscador de Cartera. `ClientSearchSheet`
+recibía `children` como render prop —`(close) => <Lista onNavigate={close} />`—
+para que la vista previa pudiera cerrar la hoja al abrir un cliente. Compila,
+pasa el typecheck, y revienta en ejecución con un **500 en la pantalla
+principal**:
+
+```
+Error: Functions are not valid as a child of Client Component
+```
+
+`app/(app)/dashboard/page.tsx` es un Server Component, y React no puede
+serializar una función a través de esa frontera. El typecheck no lo ve porque
+no es un error de tipos: el tipo es correcto y el transporte no.
+
+La regla, entonces: **un componente cliente que quiera dar algo a sus hijos
+—cerrarse, su estado, lo que sea— lo pasa por contexto, no como prop**, en
+cuanto exista la posibilidad de que quien lo monte sea una página. El patrón
+render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
+`client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
+la página.
+
+### Un solo buscador de clientes: `ClientSearchSheet`
+
+Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan
+`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. Hoja abajo
+en teléfono, popover en escritorio, el mismo patrón que la calculadora.
+
+El bloque `<ClientFilters>` que vivía sobre cada lista se **borró** el
+2026-09-20 al migrar la última pantalla, en vez de dejarlo sin usar: dos
+bloques de filtros sobre el mismo estado es exactamente como vuelven a
+separarse, que es el problema que el componente compartido existía para
+resolver.
+
+Dos detalles que ya costaron una pasada:
+
+- El disparador **no es un `<input>` de verdad**. Un input real abre el teclado
+  del teléfono *antes* de que exista la hoja, y el navegador recoloca las dos
+  cosas a destiempo. Es una caja que lo parece; el input vive dentro, con
+  `autoFocus`.
+- Los chips van en una fila con `overflow-x-auto` y cada chip lleva
+  `shrink-0`. Sin `shrink-0`, flex comprime los chips para que quepan y recorta
+  justo la etiqueta que lleva el valor activo (`Desde 1000`), que es la única
+  señal de que la lista está filtrada.
+
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como

@@ -27,11 +27,8 @@ import {
   CLIENT_CARD_ROW,
   CLIENT_CARD_SHELL,
 } from "@/components/dashboard/client-card";
-import {
-  ClientFilters,
-  ClientStatusLegend,
-  useClientFilters,
-} from "@/components/dashboard/client-filters";
+import { ClientStatusLegend, useClientFilters } from "@/components/dashboard/client-filters";
+import { ClientSearchSheet, useSharedClientFilters } from "@/components/dashboard/client-search-sheet";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useTour } from "@/components/dashboard/tour-context";
 import { cn } from "@/lib/utils";
@@ -80,8 +77,35 @@ export function ClientTable({
   // block, so this screen, Malas pagas, Cartera and Papelera cannot drift.
   // Any filter change invalidates the current page, so always jump back to
   // page 1 rather than risk landing on an empty page of results.
-  const filters = useClientFilters(rows, rateContext, { onFilterChange: () => setPage(1) });
+  const ownFilters = useClientFilters(rows, rateContext, { onFilterChange: () => setPage(1) });
+  // Cuando la pantalla ya sostiene el estado —porque su buscador está en otro
+  // punto del documento, como en Cartera— la tabla lo toma del contexto en vez
+  // de crear el suyo, y no pinta ningún control: el disparador vive arriba.
+  // Sin esto habría dos estados y la lista diría una cosa mientras el buscador
+  // dice otra.
+  const sharedFilters = useSharedClientFilters();
+  const filters = sharedFilters ?? ownFilters;
   const { sortedRows, judgementBalance } = filters;
+
+  // El reinicio de página del estado propio llega por `onFilterChange`, que el
+  // proveedor compartido no puede pasar: lo crea antes de que esta tabla
+  // exista. Así que cuando el estado viene de fuera se reinicia aquí. Sin
+  // esto, filtrar desde la página 3 deja al dueño mirando una lista vacía que
+  // parece decir "no hay nadie".
+  //
+  // Se ajusta EN RENDER, no en un efecto: es el patrón que React documenta
+  // para "reiniciar estado cuando cambia algo de fuera", y un efecto aquí
+  // pinta primero la página equivocada y la corrige después — además de que
+  // el lint lo rechaza por encadenar renders.
+  const sc = sharedFilters?.controls;
+  const sharedFilterKey = sc
+    ? JSON.stringify([sc.nameQuery, sc.statusFilter, sc.minAmount, sc.maxAmount, sc.sortBy])
+    : null;
+  const [prevFilterKey, setPrevFilterKey] = useState(sharedFilterKey);
+  if (sharedFilterKey !== prevFilterKey) {
+    setPrevFilterKey(sharedFilterKey);
+    setPage(1);
+  }
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -99,7 +123,7 @@ export function ClientTable({
     <div className="flex flex-col gap-3">
       {/* order-1 on both breakpoints; on a phone the status legend is split
           off below the list (order-3) instead of riding with the filters. */}
-      <ClientFilters filters={filters} className="order-1" />
+      {sharedFilters ? null : <ClientSearchSheet filters={filters} />}
       <div className="order-2 flex flex-col gap-3 md:order-3">
         {sortedRows.length === 0 && !tourDemoActive ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">

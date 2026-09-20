@@ -6,13 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -25,10 +19,16 @@ import {
   type ClientSummary,
 } from "@/lib/types";
 
-// The search + "Más filtros" block used above every list of clients —
-// Cartera, Clientes, Malas pagas and Papelera. Extracted from
-// client-table.tsx so the four cannot drift: an owner who learns the filters
-// on one screen should find the same ones, in the same order, on the next.
+// El estado de filtros y los chips que lo tocan, compartidos por las cuatro
+// listas de clientes — Cartera, Clientes, Malas pagas y Papelera — para que no
+// se separen: quien aprende los filtros en una pantalla los encuentra iguales
+// en la siguiente.
+//
+// El bloque "Más filtros" que vivía aquí se retiró el 2026-09-20: los mismos
+// controles viven ahora dentro de la hoja de búsqueda
+// (`client-search-sheet.tsx`), que es el único buscador de la app. Se borró en
+// vez de dejarlo sin usar porque dos bloques de filtros sobre el mismo estado
+// es exactamente como vuelven a separarse.
 
 const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
   { value: "todos", label: "Todos los estados" },
@@ -202,138 +202,6 @@ export function useClientFilters<T extends ClientSummary>(
   };
 }
 
-export function ClientFilters({
-  filters,
-  className,
-}: {
-  filters: ClientFilterState;
-  className?: string;
-}) {
-  const isMobile = useIsMobile();
-  // Shared between the mobile and desktop legend triggers below — only one of
-  // the two ever renders at a time (isMobile picks the branch), so a single
-  // piece of state is enough for both.
-  const [legendOpen, setLegendOpen] = useState(false);
-  const c = filters.controls;
-
-  const searchInput = (
-    <Input
-      placeholder="Buscar por nombre o documento"
-      value={c.nameQuery}
-      onChange={(e) => c.setNameQuery(e.target.value)}
-      className="w-full sm:w-48"
-    />
-  );
-
-  const statusSelect = (
-    <Select value={c.statusFilter} onValueChange={(v) => c.setStatusFilter(v as ClientStatus | "todos")}>
-      <SelectTrigger className="w-full sm:w-40">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
-            {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-
-  const sortSelect = (
-    <Select value={c.sortBy} onValueChange={(v) => c.setSortBy(v as SortOption)}>
-      <SelectTrigger className="w-full sm:w-52" aria-label="Ordenar por">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {SORT_OPTIONS.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
-            Ordenar por: {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-
-  const amountInputs = (
-    <>
-      <Input
-        type="number"
-        placeholder="Monto desde"
-        value={c.minAmount}
-        onChange={(e) => c.setMinAmount(e.target.value)}
-        className="w-full sm:w-32"
-      />
-      <Input
-        type="number"
-        placeholder="Monto hasta"
-        value={c.maxAmount}
-        onChange={(e) => c.setMaxAmount(e.target.value)}
-        className="w-full sm:w-32"
-      />
-    </>
-  );
-
-  // Only rendered once at least one filter has a non-default value — an owner
-  // with a clean list shouldn't see a button with nothing to clear.
-  const clearFiltersButton = filters.hasActiveFilters ? (
-    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={filters.clearFilters}>
-      <Broom className="size-4" />
-      Limpiar filtros
-    </Button>
-  ) : null;
-
-  // Desktop: every filter stays in one row, always visible, with the legend
-  // trigger right-aligned at the end of that same row — its content still
-  // expands full-width below the whole row, not just under the trigger.
-  // Mobile: only the name search shows by default; the rest sit behind a
-  // "Más filtros" collapsible, and the legend is its own standalone trigger.
-  if (isMobile) {
-    return (
-      <div className={className}>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">{searchInput}</div>
-            {clearFiltersButton}
-          </div>
-          <Collapsible>
-            <CollapsibleTrigger className="group flex items-center gap-1 self-start text-sm font-medium text-muted-foreground">
-              Más filtros
-              <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2">
-              <div className="flex flex-wrap items-end gap-2">
-                {sortSelect}
-                {statusSelect}
-                {amountInputs}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Collapsible open={legendOpen} onOpenChange={setLegendOpen} className={className}>
-      <div className="flex flex-wrap items-end gap-2">
-        {searchInput}
-        {sortSelect}
-        {statusSelect}
-        {amountInputs}
-        {clearFiltersButton}
-        <CollapsibleTrigger className="group ml-auto flex items-center gap-1 text-sm font-medium text-muted-foreground">
-          Qué significa cada estado
-          <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
-        </CollapsibleTrigger>
-      </div>
-      <CollapsibleContent className="pt-2">
-        <LegendChips />
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
 function LegendChips() {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
@@ -369,5 +237,172 @@ export function ClientStatusLegend({ className }: { className?: string }) {
         <LegendChips />
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The same three filters as chips, for ClientSearchSheet.
+//
+// WHY THEY LIVE HERE and not in their own file: they read STATUS_OPTIONS and
+// SORT_OPTIONS, and drive the exact same ClientFilterState as <ClientFilters>
+// above. Two files would be two lists of statuses, and the day someone adds a
+// status to one the other keeps filtering by the old set — silently, because
+// nothing would fail.
+//
+// Only the presentation is new. No filtering logic is duplicated: everything
+// still goes through useClientFilters, which is already proven on four
+// screens.
+function FilterChip({
+  label,
+  active,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  // A function when picking an option should dismiss the popover — the chip
+  // hands it `close`. A plain node when it should stay open: "Monto" holds two
+  // inputs, and closing on the first keystroke would make the second
+  // unreachable.
+  children: React.ReactNode | ((close: () => void) => React.ReactNode);
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {/* Not `size="sm"`: a chip is a filter control, not a labelled action,
+            so the 40px button rule does not apply — same escape hatch the
+            design system already grants to `xs`.
+
+            shrink-0 because the row scrolls horizontally: without it flex
+            squeezes every chip to fit and the labels — which are the whole
+            point, since they carry the active value — get clipped instead. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          // The active state carries in colour AND in the label below, never
+          // colour alone: on a phone in sunlight a subtle border change is
+          // invisible, and the label is what tells you the list is filtered.
+          className={`shrink-0 ${active ? "border-foreground font-medium" : ""}`}
+        >
+          {label}
+          <ChevronDown className="size-4 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64">
+        {typeof children === "function" ? children(() => setOpen(false)) : children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export function ClientFilterChips({
+  filters,
+  className,
+}: {
+  filters: ClientFilterState;
+  className?: string;
+}) {
+  const c = filters.controls;
+
+  const sortLabel = SORT_OPTIONS.find((o) => o.value === c.sortBy)?.label;
+  const statusLabel = STATUS_OPTIONS.find((o) => o.value === c.statusFilter)?.label;
+
+  // "Monto" says what it is filtering by, not just that it is filtering.
+  // "1.000–5.000" answers the question the owner actually has; a coloured
+  // border does not.
+  const amountActive = Boolean(c.minAmount || c.maxAmount);
+  const amountLabel = !amountActive
+    ? "Monto"
+    : c.minAmount && c.maxAmount
+      ? `${c.minAmount}–${c.maxAmount}`
+      : c.minAmount
+        ? `Desde ${c.minAmount}`
+        : `Hasta ${c.maxAmount}`;
+
+  return (
+    // overflow-x-auto so four chips never push the sheet sideways on a narrow
+    // phone; they scroll within their own row instead.
+    <div className={`flex items-center gap-2 overflow-x-auto pb-1 ${className ?? ""}`}>
+      <FilterChip label={c.sortBy === "nombre" ? "Ordenar por" : (sortLabel ?? "Ordenar por")} active={c.sortBy !== "nombre"}>
+        {(close) => (
+          <div className="flex flex-col gap-1">
+            {SORT_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={c.sortBy === opt.value ? "secondary" : "ghost"}
+                size="sm"
+                className="justify-start"
+                onClick={() => {
+                  c.setSortBy(opt.value);
+                  close();
+                }}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </FilterChip>
+
+      <FilterChip
+        label={c.statusFilter === "todos" ? "Estado" : (statusLabel ?? "Estado")}
+        active={c.statusFilter !== "todos"}
+      >
+        {(close) => (
+          <div className="flex flex-col gap-1">
+            {STATUS_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={c.statusFilter === opt.value ? "secondary" : "ghost"}
+                size="sm"
+                className="justify-start"
+                onClick={() => {
+                  c.setStatusFilter(opt.value);
+                  close();
+                }}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </FilterChip>
+
+      <FilterChip label={amountLabel} active={amountActive}>
+        <div className="flex flex-col gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Monto desde"
+            value={c.minAmount}
+            onChange={(e) => c.setMinAmount(e.target.value)}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Monto hasta"
+            value={c.maxAmount}
+            onChange={(e) => c.setMaxAmount(e.target.value)}
+          />
+        </div>
+      </FilterChip>
+
+      {filters.hasActiveFilters ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-muted-foreground"
+          onClick={filters.clearFilters}
+        >
+          <Broom className="size-4" />
+          Limpiar
+        </Button>
+      ) : null}
+    </div>
   );
 }

@@ -1,7 +1,12 @@
+import Link from "next/link";
 import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { ClientFilterProvider, ClientSearchSheet } from "@/components/dashboard/client-search-sheet";
+import { ClientSearchResults } from "@/components/dashboard/client-search-results";
+import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -180,95 +185,130 @@ export default async function DashboardPage({
         ) : null}
       </div>
 
-      {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
-          al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
-          habria escrito el monto. Aqui se entera al abrir.
+      {/* Un solo estado de filtros para toda la pantalla: el buscador va
+          justo aquí arriba y la lista que filtra está al final, detrás de las
+          tarjetas de capital. Dos estados separados dejarían al dueño con una
+          lista filtrada de una manera y un buscador diciendo otra. */}
+      <ClientFilterProvider rows={visibleRows} rateContext={ownerRate}>
+        {/* Debajo del nombre y del negocio, antes que nada más. Buscar a una
+            persona es lo que el tendero viene a hacer la mayoría de las veces,
+            y hasta ahora exigía bajar toda la pantalla hasta la lista. */}
+        <ClientSearchSheet verTodosHref="/clients">
+          <ClientSearchResults ledger={ledger} />
+        </ClientSearchSheet>
 
-          Se dibuja siempre y decide el solo: lee del contexto del layout, que
-          es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
-      <CuentaPausada />
+        {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
+            al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
+            habria escrito el monto. Aqui se entera al abrir.
 
-      {/* 20px of separation above a section title, measured on screen. The
-          container is a flex column with gap-4, and a margin ADDS to a flex gap
-          rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
-          the 20px. Changing the container's gap changes this too. */}
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Cartera pendiente</h2>
-        {/* Desktop only: beside the title, hugging its own width. The phone
-            keeps it full width below the rate card, which is a different place
-            in the document — so it is rendered in both spots and each is shown
-            at one breakpoint. */}
-        <div className="hidden sm:block">
+            Se dibuja siempre y decide el solo: lee del contexto del layout, que
+            es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
+        <CuentaPausada />
+
+        {/* 20px of separation above a section title, measured on screen. The
+            container is a flex column with gap-4, and a margin ADDS to a flex gap
+            rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
+            the 20px. Changing the container's gap changes this too. */}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Importar vive aquí, no solo en el menú lateral: es la forma de
+                cargar una cartera entera, y estaba escondida detrás de una
+                navegación que muchos dueños no abren nunca. */}
+            <ImportarCartera />
+            {/* Desktop only: beside the title, hugging its own width. The phone
+                keeps it full width below, which is a different place in the
+                document — so it is rendered in both spots and each is shown at
+                one breakpoint. */}
+            <div className="hidden sm:block">
+              <ClientSearchDialog
+                clients={clients ?? []}
+                ownerId={user!.id}
+                businessName={owner?.business_name || user!.email || "tu negocio"}
+                ownerCountry={ownerCountry}
+                rateContext={rateContext}
+                monedaHabitual={monedaHabitual}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
+            autoOpen lives here; the desktop one must not also receive it or both
+            would open and stack.
+
+            Sube por delante de las tarjetas de capital: registrar un movimiento
+            es la acción, mirar el total es el resumen, y la acción no debería
+            quedar debajo de dos tarjetas y una tira de tasas. */}
+        <div className="sm:hidden">
           <ClientSearchDialog
             clients={clients ?? []}
             ownerId={user!.id}
             businessName={owner?.business_name || user!.email || "tu negocio"}
             ownerCountry={ownerCountry}
+            autoOpen={nuevo === "1"}
+            showTourTarget={false}
             rateContext={rateContext}
             monedaHabitual={monedaHabitual}
           />
         </div>
-      </div>
 
-      {/* Stacked on a phone, side by side once there is room — the cards are
-          two independent ledgers, not a sequence, so they read better abreast
-          than stacked on a wide screen. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        {rateContext ? (
-          <>
+        {/* La tasa va ANTES de las tarjetas, no después: las tarjetas de un
+            negocio venezolano muestran el equivalente en bolívares, y ese
+            número solo se puede leer sabiendo a qué tasa está convertido.
+            Debajo, el dueño ya había leído la cifra sin el dato que la
+            explica. */}
+        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+
+        {/* Stacked on a phone, side by side once there is room — the cards are
+            two independent ledgers, not a sequence, so they read better abreast
+            than stacked on a wide screen. */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          {rateContext ? (
+            <>
+              <BalanceCard
+                label="Capital por cobrar en USD"
+                balance={totalUsd}
+                currency="USD"
+                ledger={ledger}
+                chartData={weeklyLendingUsd}
+                chartTitle="Fiado vs. Abono (USD)"
+              />
+              <BalanceCard
+                label="Capital por cobrar en Euro"
+                balance={totalEur}
+                currency="EUR"
+                ledger={ledger}
+                chartData={weeklyLendingEur}
+                chartTitle="Fiado vs. Abono (EUR)"
+              />
+            </>
+          ) : (
             <BalanceCard
-              label="Capital por cobrar en USD"
-              balance={totalUsd}
-              currency="USD"
-              ledger={ledger}
-              chartData={weeklyLendingUsd}
-              chartTitle="Fiado vs. Abono (USD)"
+              label="Capital por cobrar"
+              balance={totalCop}
+              currency={null}
+              ledger={null}
+              chartData={weeklyLendingCop}
             />
-            <BalanceCard
-              label="Capital por cobrar en Euro"
-              balance={totalEur}
-              currency="EUR"
-              ledger={ledger}
-              chartData={weeklyLendingEur}
-              chartTitle="Fiado vs. Abono (EUR)"
-            />
-          </>
-        ) : (
-          <BalanceCard
-            label="Capital por cobrar"
-            balance={totalCop}
-            currency={null}
-            ledger={null}
-            chartData={weeklyLendingCop}
-          />
-        )}
-      </div>
+          )}
+        </div>
 
-      {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+        {/* Named for what is actually underneath: a list of clients and their
+            balances. "Historial de movimientos" already means a different screen
+            — the movement list inside one client — and reusing it here would
+            promise movements and deliver people. */}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Clientes</h2>
+          {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
+              en 15—, así que hace falta una salida explícita a la completa. */}
+          <Button variant="ghost" size="sm" asChild className="shrink-0">
+            <Link href="/clients">Ver todos</Link>
+          </Button>
+        </div>
 
-      {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
-          autoOpen lives here; the desktop one must not also receive it or both
-          would open and stack. */}
-      <div className="sm:hidden">
-        <ClientSearchDialog
-          clients={clients ?? []}
-          ownerId={user!.id}
-          businessName={owner?.business_name || user!.email || "tu negocio"}
-          ownerCountry={ownerCountry}
-          autoOpen={nuevo === "1"}
-          showTourTarget={false}
-          rateContext={rateContext}
-          monedaHabitual={monedaHabitual}
-        />
-      </div>
-
-      {/* Named for what is actually underneath: a list of clients and their
-          balances. "Historial de movimientos" already means a different screen
-          — the movement list inside one client — and reusing it here would
-          promise movements and deliver people. */}
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
-
-      <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
+        <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
+      </ClientFilterProvider>
 
       {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
     </div>
