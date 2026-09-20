@@ -130,10 +130,25 @@ export function ClientSearchSheet({
 
   const c = filters.controls;
 
+  // QUÉ HACE SCROLL Y QUÉ NO, que es lo único delicado de este bloque.
+  //
+  // El contenedor NO hace scroll y sus tres primeras filas llevan `shrink-0`.
+  // Scroll lo hace únicamente la lista de resultados.
+  //
+  // Sin eso, con el teclado del teléfono arriba la altura disponible se queda
+  // en unos 300px y flex reparte el recorte entre TODOS los hijos: el campo de
+  // búsqueda se aplasta por debajo de sus 40px, la fila de chips se corta por
+  // la mitad y "Clientes / Ver todos" se le monta encima. Lo que se comprime
+  // es justo lo que el dueño está usando —acaba de tocar el campo, por eso
+  // subió el teclado— para dejarle sitio a una lista que además ya podía
+  // desplazarse. Visto en un iPhone real el 2026-09-20.
+  //
+  // `shrink-0` en un hijo de flex es la parte que se olvida: `h-10` fija la
+  // altura *preferida*, no la mínima, y un contenedor apretado la ignora.
   const body = (
     <CloseContext.Provider value={() => setOpen(false)}>
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
-      <div className="relative">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
+      <div className="relative shrink-0">
         <Input
           autoFocus
           value={c.nameQuery}
@@ -155,11 +170,11 @@ export function ClientSearchSheet({
         )}
       </div>
 
-      <ClientFilterChips filters={filters} />
+      <ClientFilterChips filters={filters} className="shrink-0" />
 
       {children ? (
         <>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">Clientes</h3>
             {verTodosHref ? (
               <Link
@@ -171,7 +186,10 @@ export function ClientSearchSheet({
               </Link>
             ) : null}
           </div>
-          {children}
+          {/* La única parte que se desplaza. `min-h-0` porque un hijo de flex
+              tiene `min-height: auto` por defecto y crecería con su contenido
+              en vez de hacer scroll dentro de su caja. */}
+          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
         </>
       ) : null}
     </div>

@@ -98,7 +98,14 @@ function Controles({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 pb-4 sm:px-0 sm:pb-0">
+    // `overflow-y-auto` y `[&>*]:shrink-0`, las dos cosas y por motivos
+    // distintos. Sin el scroll, en una pantalla baja —un teléfono apaisado, o
+    // uno pequeño con el teclado del sistema encima— el contenido medía 368px
+    // dentro de una caja de 269 y "Tomar foto" caía 54px por debajo del borde,
+    // sin manera de alcanzarlo. Sin el `shrink-0`, la alternativa es igual de
+    // mala: flex encoge los hijos para que quepan y la zona de soltar la foto
+    // se aplasta hasta dejar de parecer un sitio donde tocar.
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 [&>*]:shrink-0 sm:px-0 sm:pb-0">
       {/* Dos inputs y no uno con interruptor, por lo mismo que en /import: la
           diferencia es el atributo `capture` y no se puede cambiar por clic sin
           volver a montar el input, lo que se come el toque. */}
