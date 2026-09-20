@@ -232,6 +232,23 @@ export const COUNTRIES: Country[] = [
 
 export const DEFAULT_COUNTRY_ISO2 = "CO";
 
+// Los dos países que el selector OFRECE. Sevenz solo opera en Colombia y
+// Venezuela: `owners.country` no admite otra cosa, y una lista de 230 países
+// obliga al tendero a buscar el suyo entre Afganistán y Zimbabue para elegir
+// uno de dos.
+//
+// OJO, NO SUSTITUYE A `COUNTRIES`. Esa lista sigue completa a propósito,
+// porque no es el menú: es la tabla con la que `splitPhoneNumber` parte un
+// teléfono ya guardado en prefijo + número. Recortarla haría que un número
+// con cualquier otro prefijo se leyera entero como local y se mostrara mal.
+// Una cosa es lo que se puede elegir de aquí en adelante y otra lo que ya
+// está escrito en la base.
+export const SELECTABLE_COUNTRY_ISO2 = ["CO", "VE"] as const;
+
+export const SELECTABLE_COUNTRIES: Country[] = SELECTABLE_COUNTRY_ISO2.map(
+  (iso2) => COUNTRIES.find((c) => c.iso2 === iso2)!,
+);
+
 export function countryFlagEmoji(iso2: string): string {
   return iso2
     .toUpperCase()

@@ -322,19 +322,15 @@ render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
 `client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
 la página.
 
-### Un popup de Base UI dentro de un Dialog de Radix no recibe toques
-
-**Hay un parche en `components/ui/combobox.tsx` que NO viene del registro de
-shadcn y que no se debe perder al actualizarlo.**
+### Un popup en portal dentro de un Dialog de Radix no recibe toques
 
 Un Dialog modal de Radix pone `pointer-events: none` en el `<body>` y solo lo
-reactiva dentro de su propio contenido. El popup de un Combobox de Base UI se
-monta en un portal **hermano**, así que hereda ese `none` y los toques lo
-atraviesan. El arreglo es `pointer-events-auto` en el `Positioner`, el mismo
-recurso que usa la propia `DismissableLayer` de Radix.
+reactiva dentro de su propio contenido. Un popup montado en un portal
+**hermano** —de otra librería, o de Radix pero fuera de su árbol de capas—
+hereda ese `none`, y los toques lo atraviesan.
 
-Medido en el buscador de Cartera —que vive dentro de un `Sheet`, y `Sheet` es
-Radix Dialog— el 2026-09-20, antes del parche:
+Medido el 2026-09-20 con el Combobox de Base UI dentro del buscador de
+Cartera, que vive en un `Sheet`, y `Sheet` es Radix Dialog:
 
 ```js
 getComputedStyle(document.body).pointerEvents  // "none"
@@ -347,10 +343,20 @@ error en consola, y con teclado funciona —las flechas y Enter no pasan por el
 puntero—. Falla solo al tocar con el dedo, es decir en el teléfono, que es
 donde trabajan los tenderos. Una revisión en escritorio lo da por bueno.
 
-La regla general, más allá de este componente: **al meter un componente de una
-librería headless dentro de otra, lo primero que se prueba es un toque real**
-—`elementFromPoint` sobre el elemento, no una captura—, no que se vea bien.
+**Qué hacer.** Un `Popover` de Radix no lo sufre: es una `DismissableLayer`, y
+Radix le devuelve `pointer-events: auto` a sus propias capas. Comprobado en el
+selector de país, que es Popover + cmdk dentro del diálogo de nuevo cliente y
+funciona sin parche alguno. Un popup que no monta en portal tampoco lo sufre,
+porque nunca sale del árbol al que Radix sí enciende los eventos — es lo que
+hace hoy el buscador de clientes.
 
+La regla, más allá del componente: **al meter un popup de una librería dentro
+de otra, lo primero que se prueba es un toque real** —`elementFromPoint` sobre
+el elemento, no una captura—, no que se vea bien.
+
+Base UI se instaló y se quitó el mismo día por esto. La alternativa no fue
+"otra librería mejor": fue quitar el portal, que es lo que hacía posible el
+fallo.
 ### Un solo buscador de clientes, en dos formas
 
 Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan
@@ -389,6 +395,15 @@ Dos detalles que ya costaron una pasada:
   justo la etiqueta que lleva el valor activo (`Desde 1000`), que es la única
   señal de que la lista está filtrada.
 
+
+Los resultados salen en una lista debajo del campo, con **nombre + documento**
+—el nombre solo no basta cuando en el barrio hay tres Marías— y elegir uno
+abre su ficha. Está hecha con `cmdk`, la misma librería del selector de país,
+y **sin portal**: input y lista comparten raíz del DOM. Las dos cosas importan.
+Sin portal no puede repetirse el fallo de los toques de la sección anterior; y
+juntos, cmdk encuentra sus propios items, que es lo que hace funcionar las
+flechas, Enter y el "sin resultados". Partirlos con un `PopoverContent` —que
+monta en portal— rompe lo segundo.
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
