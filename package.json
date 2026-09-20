@@ -26,6 +26,7 @@
     "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "^1.8.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "@tanstack/react-table": "^8.21.3",

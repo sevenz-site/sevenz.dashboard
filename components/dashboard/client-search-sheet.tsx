@@ -1,19 +1,22 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Search, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import {
   ClientFilterChips,
-  useClientFilters,
   type ClientFilterState,
 } from "@/components/dashboard/client-filters";
-import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import {
+  SearchSheetCloseProvider,
+  useSharedClientFilters,
+  type SharedClientFilters,
+} from "@/components/dashboard/client-filter-context";
+import { ClientSearchCombobox } from "@/components/dashboard/client-search-combobox";
 import type { ClientSummary } from "@/lib/types";
 
 // El buscador de clientes de toda la app, en dos formas.
@@ -40,111 +43,24 @@ import type { ClientSummary } from "@/lib/types";
 // usan las cuatro pantallas. Aquí no se filtra nada nuevo; solo cambia dónde
 // se toca.
 
-// El estado completo, no solo la parte que pinta los controles: la tabla y la
-// vista previa necesitan además `sortedRows` y `judgementBalance`.
-export type SharedClientFilters = ReturnType<typeof useClientFilters<ClientSummary>>;
-
-const FilterContext = createContext<SharedClientFilters | null>(null);
-
-export function useSharedClientFilters() {
-  return useContext(FilterContext);
-}
-
-// Cerrar la hoja viaja por contexto, NO como prop.
-//
-// La versión anterior pasaba `children` como funcion `(close) => ...` para que
-// la vista previa pudiera cerrarse al abrir un cliente. Compila y revienta en
-// ejecución: Cartera es un Server Component y React no puede serializar una
-// función a través de esa frontera — "Functions are not valid as a child of
-// Client Component", un 500 en la pantalla principal. El typecheck no lo ve
-// porque no es un error de tipos.
-const CloseContext = createContext<() => void>(() => {});
-
-export function useCloseSearchSheet() {
-  return useContext(CloseContext);
-}
-
-// El proveedor llama al hook él mismo, no lo recibe hecho. Cartera es un
-// Server Component: no puede sostener estado, así que si el hook viviera
-// fuera no habría dónde ponerlo. Envolviendo la pantalla entera, el buscador
-// de arriba y la lista del final comparten uno solo.
-export function ClientFilterProvider({
-  rows,
-  rateContext,
-  children,
-}: {
-  rows: ClientSummary[];
-  rateContext: OwnerRateContext | null;
-  children: React.ReactNode;
-}) {
-  const filters = useClientFilters(rows, rateContext);
-  return <FilterContext.Provider value={filters}>{children}</FilterContext.Provider>;
-}
-
-// El campo de verdad, con su aspa para borrar. Lo usan la forma inline y el
-// interior de la hoja, para que escribir se sienta igual en las cuatro
-// pantallas.
-function SearchField({
-  value,
-  onChange,
-  placeholder,
-  autoFocus,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  autoFocus?: boolean;
-}) {
-  return (
-    <div className="relative shrink-0">
-      {/* h-10, no los 32px que trae `Input` por defecto. El buscador se lee
-          como un control principal y comparte fila o vecindad con botones, que
-          miden 40 por regla; con 32 se ve hundido al lado de ellos. Además el
-          disparador de Cartera ya medía 40, así que sin esto el mismo buscador
-          tenía dos alturas según la pantalla.
-
-          Va aquí y no en `components/ui/input.tsx`: cambiar la base movería
-          todos los formularios de la app —alta de cliente, movimientos,
-          signup— en un cambio que se pidió para el buscador. Eso es el hueco
-          que DESIGN-SYSTEM.md tiene anotado y merece su propia pasada. */}
-      <Input
-        autoFocus={autoFocus}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-10 pr-9"
-      />
-      {value ? (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label="Borrar búsqueda"
-          className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      ) : (
-        <Search
-          aria-hidden="true"
-          className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
-        />
-      )}
-    </div>
-  );
-}
-
 // La forma por defecto: Clientes, Malas pagas y Papelera.
 //
-// Campo real —no un disparador— porque no hay nada que abrir: la lista está
-// debajo y se filtra mientras se escribe. Los chips van justo debajo del
-// campo, que es donde el dueño los busca después de escribir un nombre y ver
-// demasiados resultados.
+// Campo real en la propia pantalla —no un disparador— porque no hay nada que
+// abrir: la lista está debajo y se filtra mientras se escribe. Los chips van
+// justo debajo del campo, que es donde el dueño los busca después de escribir
+// un nombre y ver demasiados resultados.
 export function ClientSearchInline({
   filters: filtersProp,
+  source,
   placeholder = "Buscar cliente",
   className,
 }: {
-  filters?: ClientFilterState;
+  // Lo mínimo que el buscador necesita, NO `SharedClientFilters`. Ese tipo
+  // fija las filas a `ClientSummary` y Papelera pasa `ClientSummaryAll`, que
+  // lleva además el saldo del día en que se ocultó. Pedir de más aquí
+  // dejaría fuera a la única pantalla con filas propias.
+  filters?: ClientFilterState & { sortedRows: ClientSummary[] };
+  source: "malas_pagas" | "clientes" | "papelera";
   placeholder?: string;
   className?: string;
 }) {
@@ -152,11 +68,9 @@ export function ClientSearchInline({
   const filters = filtersProp ?? fromContext;
   if (!filters) return null;
 
-  const c = filters.controls;
-
   return (
     <div className={`flex flex-col gap-2 ${className ?? ""}`}>
-      <SearchField value={c.nameQuery} onChange={c.setNameQuery} placeholder={placeholder} />
+      <ClientSearchCombobox filters={filters} source={source} placeholder={placeholder} />
       <ClientFilterChips filters={filters} />
     </div>
   );
@@ -238,12 +152,12 @@ export function ClientSearchSheet({
   // `shrink-0` en un hijo de flex es la parte que se olvida: `h-10` fija la
   // altura *preferida*, no la mínima, y un contenedor apretado la ignora.
   const body = (
-    <CloseContext.Provider value={() => setOpen(false)}>
+    <SearchSheetCloseProvider close={() => setOpen(false)}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
-      <SearchField
+      <ClientSearchCombobox
         autoFocus
-        value={c.nameQuery}
-        onChange={c.setNameQuery}
+        filters={filters as SharedClientFilters}
+        source="cartera"
         placeholder="Escribe nombre o documento"
       />
 
@@ -270,7 +184,7 @@ export function ClientSearchSheet({
         </>
       ) : null}
     </div>
-    </CloseContext.Provider>
+    </SearchSheetCloseProvider>
   );
 
   if (isMobile) {

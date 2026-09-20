@@ -322,6 +322,35 @@ render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
 `client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
 la página.
 
+### Un popup de Base UI dentro de un Dialog de Radix no recibe toques
+
+**Hay un parche en `components/ui/combobox.tsx` que NO viene del registro de
+shadcn y que no se debe perder al actualizarlo.**
+
+Un Dialog modal de Radix pone `pointer-events: none` en el `<body>` y solo lo
+reactiva dentro de su propio contenido. El popup de un Combobox de Base UI se
+monta en un portal **hermano**, así que hereda ese `none` y los toques lo
+atraviesan. El arreglo es `pointer-events-auto` en el `Positioner`, el mismo
+recurso que usa la propia `DismissableLayer` de Radix.
+
+Medido en el buscador de Cartera —que vive dentro de un `Sheet`, y `Sheet` es
+Radix Dialog— el 2026-09-20, antes del parche:
+
+```js
+getComputedStyle(document.body).pointerEvents  // "none"
+getComputedStyle(item).pointerEvents           // "none"
+document.elementFromPoint(x, y)                // el chip "Estado", de detrás
+```
+
+**Por qué esto es peor que un fallo normal:** la lista se ve perfecta, no hay
+error en consola, y con teclado funciona —las flechas y Enter no pasan por el
+puntero—. Falla solo al tocar con el dedo, es decir en el teléfono, que es
+donde trabajan los tenderos. Una revisión en escritorio lo da por bueno.
+
+La regla general, más allá de este componente: **al meter un componente de una
+librería headless dentro de otra, lo primero que se prueba es un toque real**
+—`elementFromPoint` sobre el elemento, no una captura—, no que se vea bien.
+
 ### Un solo buscador de clientes, en dos formas
 
 Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan

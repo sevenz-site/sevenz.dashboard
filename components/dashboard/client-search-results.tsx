@@ -9,7 +9,7 @@ import {
 import {
   useCloseSearchSheet,
   useSharedClientFilters,
-} from "@/components/dashboard/client-search-sheet";
+} from "@/components/dashboard/client-filter-context";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/mixpanel";
 import { clientHref } from "@/lib/client-origin";
