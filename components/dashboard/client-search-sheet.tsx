@@ -97,12 +97,22 @@ function SearchField({
 }) {
   return (
     <div className="relative shrink-0">
+      {/* h-10, no los 32px que trae `Input` por defecto. El buscador se lee
+          como un control principal y comparte fila o vecindad con botones, que
+          miden 40 por regla; con 32 se ve hundido al lado de ellos. Además el
+          disparador de Cartera ya medía 40, así que sin esto el mismo buscador
+          tenía dos alturas según la pantalla.
+
+          Va aquí y no en `components/ui/input.tsx`: cambiar la base movería
+          todos los formularios de la app —alta de cliente, movimientos,
+          signup— en un cambio que se pidió para el buscador. Eso es el hueco
+          que DESIGN-SYSTEM.md tiene anotado y merece su propia pasada. */}
       <Input
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="pr-9"
+        className="h-10 pr-9"
       />
       {value ? (
         <button

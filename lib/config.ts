@@ -4,6 +4,14 @@
 // batch would just make imports take proportionally longer.
 export const MAX_IMPORT_PHOTOS = 6;
 
+// La misma frase en los dos sitios que describen la importación: la hoja
+// "Importar" de Cartera y la cabecera de /import. Vive aquí, en un módulo
+// neutral, y no en el componente: /import es un Server Component, y sacar
+// una constante de un módulo "use client" lo obliga a cruzar esa frontera
+// para leer un string.
+export const DESCRIPCION_IMPORTAR =
+  "Toma o adjunta las fotos de las cuentas del fiado desde tu libreta, cuaderno o Excel para importarlas masivamente a la aplicación sin tener que pasar las cuentas una por una.";
+
 // Free plan: photos are capped per calendar month (resets on the 1st). Only
 // successfully-processed photos count — a failed OCR read doesn't burn quota.
 // Pro has no limit.

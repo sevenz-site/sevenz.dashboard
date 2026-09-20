@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImportJobs } from "@/components/import/import-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
-import { MAX_IMPORT_PHOTOS } from "@/lib/config";
+import { DESCRIPCION_IMPORTAR, MAX_IMPORT_PHOTOS } from "@/lib/config";
 
 // "Importar", al lado del título de Cartera.
 //
@@ -23,9 +23,6 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 // Puede hacerlo porque ImportProvider vive en el layout de (app), no en la
 // página: el trabajo arranca aquí y sigue vivo al navegar. Por eso el dueño
 // llega a /import con las fotos ya leyéndose en vez de esperando a empezar.
-
-const DESCRIPCION =
-  "Fotografía las páginas de tu libreta y Sevenz lee los nombres y los montos por ti. Una libreta que a mano son horas de tecleo entra en minutos, y tú solo revisas.";
 
 export function ImportarCartera() {
   const isMobile = useIsMobile();
@@ -42,7 +39,7 @@ export function ImportarCartera() {
       <SheetContent side="bottom" className="max-h-[90dvh] rounded-t-xl">
         <SheetHeader>
           <SheetTitle>Importar cartera</SheetTitle>
-          <SheetDescription>{DESCRIPCION}</SheetDescription>
+          <SheetDescription>{DESCRIPCION_IMPORTAR}</SheetDescription>
         </SheetHeader>
         <Controles onDone={() => setOpen(false)} />
       </SheetContent>
@@ -58,7 +55,7 @@ export function ImportarCartera() {
       <PopoverContent align="end" className="flex w-80 flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h3 className="font-semibold">Importar cartera</h3>
-          <p className="text-sm text-muted-foreground">{DESCRIPCION}</p>
+          <p className="text-sm text-muted-foreground">{DESCRIPCION_IMPORTAR}</p>
         </div>
         <Controles onDone={() => setOpen(false)} />
       </PopoverContent>

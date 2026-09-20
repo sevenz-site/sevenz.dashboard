@@ -156,9 +156,18 @@ copias del componente viven en repos distintos y esta regla solo estaba escrita
 en uno. Corregido: los nueve botones de sevenz.site y de la calculadora miden
 40px, verificado en el navegador.
 
-**Known gap:** `Input` and `SelectTrigger` are still 32px, so a button beside a
-field in the same row is visibly taller. Most obvious on the signup WhatsApp
-row. Worth unifying, not yet done.
+**Los buscadores de clientes miden 40px** (`h-10` sobre el `Input`), decidido
+el 2026-09-20: comparten vecindad con botones y con 32 se veían hundidos al
+lado de ellos, y el disparador de Cartera ya medía 40 — el mismo buscador
+tenía dos alturas según la pantalla.
+
+**Known gap:** el resto de los `Input` y los `SelectTrigger` siguen en 32px,
+así que un botón junto a un campo en la misma fila se ve más alto. Lo más
+visible, la fila de WhatsApp del signup. La altura del buscador se subió en su
+propio componente y NO en `components/ui/input.tsx` a propósito: tocar la base
+mueve el alta de cliente, los movimientos y el signup a la vez, y eso merece
+una pasada con sus propias pruebas, no ir de polizón en un cambio del
+buscador.
 
 ## Icon buttons inside cards
 
