@@ -16,17 +16,25 @@ import {
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummary } from "@/lib/types";
 
-// El buscador de clientes de toda la app.
+// El buscador de clientes de toda la app, en dos formas.
 //
-// POR QUÉ HAY UN CONTEXTO Y NO SOLO UN COMPONENTE. En Cartera el campo de
-// búsqueda va arriba del todo y la lista que filtra está al final de la
-// pantalla, con las tarjetas de capital y la tira de tasas en medio. Son dos
-// puntos lejanos del documento que tienen que compartir un mismo estado, y la
-// página es un Server Component: no puede sostener un hook.
+// `ClientSearchInline` — Clientes, Malas pagas y Papelera. Campo de verdad y
+// chips debajo, en la propia pantalla; la lista está justo debajo y se filtra
+// a la vista. Es la forma por defecto: no hay nada que abrir ni que cerrar.
 //
-// La alternativa —dos buscadores independientes— deja al dueño mirando una
-// lista filtrada de una manera y un buscador que dice otra. Un solo estado en
-// contexto es lo que impide esa contradicción.
+// `ClientSearchSheet` — SOLO Cartera. Ahí el campo va arriba del todo y la
+// lista que filtra está al final, detrás de las tarjetas de capital y la tira
+// de tasas. Escribir y no ver nada cambiar, porque lo que cambia está a una
+// pantalla de distancia, se lee como que el buscador no funciona. Por eso
+// Cartera abre una hoja que trae el resultado consigo.
+//
+// La diferencia es la distancia entre el campo y su lista, no el gusto: donde
+// la lista se ve, un modal sobra.
+//
+// POR QUÉ HAY UN CONTEXTO. Esos dos puntos lejanos de Cartera tienen que
+// compartir un mismo estado, y la página es un Server Component: no puede
+// sostener un hook. Dos buscadores independientes dejarían al dueño con una
+// lista filtrada de una manera y un buscador diciendo otra.
 //
 // EL ESTADO SIGUE SIENDO EL DE SIEMPRE: `useClientFilters`, el mismo que ya
 // usan las cuatro pantallas. Aquí no se filtra nada nuevo; solo cambia dónde
@@ -73,12 +81,86 @@ export function ClientFilterProvider({
   return <FilterContext.Provider value={filters}>{children}</FilterContext.Provider>;
 }
 
-// Lo que el dueño ve cerrado: una caja que parece un campo y no lo es.
+// El campo de verdad, con su aspa para borrar. Lo usan la forma inline y el
+// interior de la hoja, para que escribir se sienta igual en las cuatro
+// pantallas.
+function SearchField({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="relative shrink-0">
+      <Input
+        autoFocus={autoFocus}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pr-9"
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Borrar búsqueda"
+          className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
+      ) : (
+        <Search
+          aria-hidden="true"
+          className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
+        />
+      )}
+    </div>
+  );
+}
+
+// La forma por defecto: Clientes, Malas pagas y Papelera.
+//
+// Campo real —no un disparador— porque no hay nada que abrir: la lista está
+// debajo y se filtra mientras se escribe. Los chips van justo debajo del
+// campo, que es donde el dueño los busca después de escribir un nombre y ver
+// demasiados resultados.
+export function ClientSearchInline({
+  filters: filtersProp,
+  placeholder = "Buscar cliente",
+  className,
+}: {
+  filters?: ClientFilterState;
+  placeholder?: string;
+  className?: string;
+}) {
+  const fromContext = useSharedClientFilters();
+  const filters = filtersProp ?? fromContext;
+  if (!filters) return null;
+
+  const c = filters.controls;
+
+  return (
+    <div className={`flex flex-col gap-2 ${className ?? ""}`}>
+      <SearchField value={c.nameQuery} onChange={c.setNameQuery} placeholder={placeholder} />
+      <ClientFilterChips filters={filters} />
+    </div>
+  );
+}
+
+// Lo que el dueño ve cerrado en Cartera: una caja que parece un campo y no lo
+// es.
 //
 // No es un <Input> real a propósito. Un input de verdad aquí abriría el
 // teclado del teléfono ANTES de que exista la hoja, y el navegador acabaría
 // recolocando las dos cosas a destiempo — el mismo problema que la calculadora
-// ya resolvió y que su comentario documenta.
+// ya resolvió y que su comentario documenta. Esta es también la razón de que
+// las otras tres pantallas NO usen este disparador: ahí no hay hoja, así que
+// un campo de verdad es lo correcto y lo más simple.
 function TriggerBox({ value, placeholder }: { value: string; placeholder: string }) {
   return (
     <div className="flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border bg-background px-3 text-sm">
@@ -148,27 +230,12 @@ export function ClientSearchSheet({
   const body = (
     <CloseContext.Provider value={() => setOpen(false)}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
-      <div className="relative shrink-0">
-        <Input
-          autoFocus
-          value={c.nameQuery}
-          onChange={(e) => c.setNameQuery(e.target.value)}
-          placeholder="Escribe nombre o documento"
-          className="pr-9"
-        />
-        {c.nameQuery ? (
-          <button
-            type="button"
-            onClick={() => c.setNameQuery("")}
-            aria-label="Borrar búsqueda"
-            className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
-        ) : (
-          <Search className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground" />
-        )}
-      </div>
+      <SearchField
+        autoFocus
+        value={c.nameQuery}
+        onChange={c.setNameQuery}
+        placeholder="Escribe nombre o documento"
+      />
 
       <ClientFilterChips filters={filters} className="shrink-0" />
 

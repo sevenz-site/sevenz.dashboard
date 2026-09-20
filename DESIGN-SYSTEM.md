@@ -313,11 +313,26 @@ render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
 `client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
 la página.
 
-### Un solo buscador de clientes: `ClientSearchSheet`
+### Un solo buscador de clientes, en dos formas
 
 Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan
-`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. Hoja abajo
-en teléfono, popover en escritorio, el mismo patrón que la calculadora.
+`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. El archivo
+exporta dos formas, y cuál toca lo decide **la distancia entre el campo y la
+lista que filtra**, no el gusto:
+
+- **`ClientSearchInline`** — Clientes, Malas pagas, Papelera. Campo de verdad y
+  chips justo debajo, en la propia pantalla. La lista está a continuación, así
+  que se filtra a la vista y no hay nada que abrir ni que cerrar. Es la forma
+  por defecto.
+- **`ClientSearchSheet`** — solo Cartera. Ahí el campo va arriba del todo y la
+  lista queda al final, detrás de las tarjetas de capital y la tira de tasas.
+  Escribir y no ver nada cambiar, porque lo que cambia está a una pantalla de
+  distancia, se lee como que el buscador está roto; por eso Cartera abre una
+  hoja que trae el resultado consigo.
+
+**Donde la lista se ve, un modal sobra.** Las tres primeras pantallas nacieron
+con la hoja el 2026-09-20 y se corrigieron el mismo día: obligaban a abrir algo
+para filtrar una lista que ya estaba delante.
 
 El bloque `<ClientFilters>` que vivía sobre cada lista se **borró** el
 2026-09-20 al migrar la última pantalla, en vez de dejarlo sin usar: dos

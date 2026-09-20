@@ -24,7 +24,7 @@ import {
   ClientStatusLegend,
   useClientFilters,
 } from "@/components/dashboard/client-filters";
-import { ClientSearchSheet } from "@/components/dashboard/client-search-sheet";
+import { ClientSearchInline } from "@/components/dashboard/client-search-sheet";
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate } from "@/lib/format";
@@ -107,7 +107,7 @@ export function PapeleraTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ClientSearchSheet filters={filters} />
+      <ClientSearchInline filters={filters} className="order-1" />
 
       {filters.sortedRows.length === 0 ? (
         <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">

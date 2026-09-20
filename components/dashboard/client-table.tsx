@@ -28,7 +28,7 @@ import {
   CLIENT_CARD_SHELL,
 } from "@/components/dashboard/client-card";
 import { ClientStatusLegend, useClientFilters } from "@/components/dashboard/client-filters";
-import { ClientSearchSheet, useSharedClientFilters } from "@/components/dashboard/client-search-sheet";
+import { ClientSearchInline, useSharedClientFilters } from "@/components/dashboard/client-search-sheet";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useTour } from "@/components/dashboard/tour-context";
 import { cn } from "@/lib/utils";
@@ -121,9 +121,14 @@ export function ClientTable({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* order-1 on both breakpoints; on a phone the status legend is split
+      {/* Campo y chips en la propia pantalla: la lista está justo debajo, así
+          que no hay nada que abrir. Cartera es la excepción —su lista queda al
+          final de la pantalla— y monta su propia hoja arriba del todo; aquí se
+          reconoce porque el estado le llega por contexto.
+
+          order-1 on both breakpoints; on a phone the status legend is split
           off below the list (order-3) instead of riding with the filters. */}
-      {sharedFilters ? null : <ClientSearchSheet filters={filters} />}
+      {sharedFilters ? null : <ClientSearchInline filters={filters} className="order-1" />}
       <div className="order-2 flex flex-col gap-3 md:order-3">
         {sortedRows.length === 0 && !tourDemoActive ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
