@@ -505,6 +505,35 @@ que cae: vuelve a medirlo antes de tocarlo.
 general: para una ayuda contextual normal está el popover del sistema, que sí
 sigue el tema.
 
+## Un icono de marca entra con `currentColor`, no con su color
+
+`components/icons/whatsapp.tsx` es el patrón. Un SVG que llega de diseño trae
+su color escrito dentro (`fill="#126400"` en este caso). Al meterlo en la app
+ese color se cambia por `currentColor` y el archivo original se guarda tal cual
+en `public/icons/`, con un comentario en el componente diciendo que los dos
+tienen que moverse juntos.
+
+**Por qué, y no es purismo.** El mismo icono sale hoy en cinco sitios con
+cuatro colores distintos: verde esmeralda en "Contactar vía WhatsApp" del
+enlace público, el verde de marca `#128C4A` en "Compartir saldo", y el color
+del texto en el botón de la cabecera del cliente y en "Escríbenos para
+reactivarla". Con el color clavado, los cinco serían el mismo verde oscuro —
+y en tema oscuro ese verde cae sobre un fondo casi negro, que es justo el sitio
+donde nadie lo habría mirado. Medido el 2026-09-20: con `currentColor`, el
+icono del enlace público pasa solo de `emerald-700` a `emerald-400` al cambiar
+de tema, exactamente igual que el texto al que acompaña.
+
+**El `viewBox` no se cuadra.** El de WhatsApp es 21×24. Con `size-4` la caja
+mide 16×16 y el dibujo entra centrado a 14×14, porque `preserveAspectRatio`
+vale `xMidYMid meet` por defecto: se comprobó que `escalaX === escalaY`. Pasarlo
+a `0 0 24 24` para que llene la caja lo deformaría, y recortarlo a mano es
+reescribir el trazado que mandó diseño.
+
+**El icono va al lado que ya tenga su pareja.** "Contactar vía WhatsApp" en
+`/s/[token]` lo lleva detrás del texto porque "Compartir saldo vía WhatsApp"
+en la ficha del cliente ya lo llevaba así: son los dos lados del mismo trato y
+espejados se leían como dos cosas distintas.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

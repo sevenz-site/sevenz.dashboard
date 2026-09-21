@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +52,7 @@ export function OwnerUnavailableDialog() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              <MessageCircle className="size-4" />
+              <WhatsappIcon className="size-4" />
               Escríbenos por WhatsApp
             </a>
           </Button>

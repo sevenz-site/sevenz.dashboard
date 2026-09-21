@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { MessageCircle, PauseCircle } from "lucide-react";
+import { PauseCircle } from "lucide-react";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,7 +129,7 @@ export function CuentaPausadaProvider({
             {/* WhatsApp primero: es la única de las dos que arregla algo. */}
             <Button variant="outline" asChild>
               <a href={enlaceDeWhatsapp(correo)} target="_blank" rel="noopener noreferrer">
-                <MessageCircle className="size-4" />
+                <WhatsappIcon className="size-4" />
                 Escríbenos para reactivarla
               </a>
             </Button>
@@ -215,7 +216,7 @@ export function CuentaPausada() {
       </div>
       <Button asChild variant="outline" className="w-fit">
         <a href={enlaceDeWhatsapp(correo)} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
+          <WhatsappIcon className="size-4" />
           Escríbenos para reactivarla
         </a>
       </Button>

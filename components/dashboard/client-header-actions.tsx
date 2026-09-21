@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, MessageCircle, MoreVertical, Pencil, RotateCcw, Share2, Trash2 } from "lucide-react";
+import { EyeOff, MoreVertical, Pencil, RotateCcw, Share2, Trash2 } from "lucide-react";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -200,7 +201,7 @@ export function ClientHeaderActions({
         onOpenChange={setEditando}
       />
       <Button variant="ghost" size="icon" disabled={pending} onClick={handleChat} title="Chat">
-        <MessageCircle className="size-5" />
+        <WhatsappIcon className="size-5" />
         <span className="sr-only">Chat por WhatsApp</span>
       </Button>
 
