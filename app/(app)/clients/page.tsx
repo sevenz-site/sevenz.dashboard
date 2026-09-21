@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { ScreenHeader } from "@/components/dashboard/search-focus-context";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -80,12 +81,12 @@ export default async function ClientsPage() {
         </Button>
       </div>
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <ScreenHeader>
           <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
           <p className="text-sm text-muted-foreground">
             Todos tus clientes registrados, con su saldo actual.
           </p>
-        </div>
+        </ScreenHeader>
         {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
             action in the bottom bar's "Agregar" instead. */}
         <div className="hidden sm:block">

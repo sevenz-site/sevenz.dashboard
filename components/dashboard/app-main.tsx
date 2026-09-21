@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 
 // Wraps <main> purely so the bottom padding can follow whether MobileNav
 // actually renders. That reservation is unconditional by design — the bar
@@ -14,7 +15,13 @@ import { cn } from "@/lib/utils";
 // keeps its bar, only /clients/<id> loses it. If one changes the other has to.
 export function AppMain({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hasBar = !pathname.startsWith("/clients/");
+  // La excepción a la reserva constante que explica el comentario de
+  // arriba, y es deliberada: mientras se busca la barra se aparta Y el
+  // título también, así que el contenido ya se está recolocando. Mantener
+  // los 4rem de hueco ahí abajo devolvería con una mano el sitio que
+  // acabamos de ganar con la otra.
+  const { focused: searchFocused } = useSearchFocus();
+  const hasBar = !pathname.startsWith("/clients/") && !searchFocused;
 
   return (
     <main

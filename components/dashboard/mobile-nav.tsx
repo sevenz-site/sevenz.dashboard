@@ -10,6 +10,7 @@ import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 import { BADGE_MAX } from "@/lib/types";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 
 // The three places the bar navigates to, in order, before Agregar. Exact
 // pathname matching, not startsWith: a client's own screen replaces this
@@ -121,6 +122,10 @@ export function MobileNav() {
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
+  // Dos señales para lo mismo, y hacen falta las dos: `useKeyboardOpen` mira
+  // si el viewport encogió —cierto en un teléfono, falso con teclado físico o
+  // en escritorio— y esta es el foco del buscador, que es directo.
+  const { focused: searchFocused } = useSearchFocus();
 
   // Drives the spinner. useLinkStatus can't be used here: this link calls
   // preventDefault so the unsaved-changes guard runs first, and a link whose
@@ -138,7 +143,7 @@ export function MobileNav() {
   // que nadie pidio.
   const guardia = useGuardiaDeCuentaPausada();
 
-  if (overlayOpen || keyboardOpen) return null;
+  if (overlayOpen || keyboardOpen || searchFocused) return null;
 
   // Mirrors the sidebar's own link behaviour exactly, including the guard.
   // Without it the bar walked straight out of "Mi negocio" with unsaved edits

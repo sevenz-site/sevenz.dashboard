@@ -17,6 +17,7 @@ import {
   type SharedClientFilters,
 } from "@/components/dashboard/client-filter-context";
 import { ClientSearchCombobox } from "@/components/dashboard/client-search-combobox";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import type { ClientSummary } from "@/lib/types";
 
 // El buscador de clientes de toda la app, en dos formas.
@@ -68,6 +69,10 @@ function SearchField({
   onChange: (v: string) => void;
   placeholder: string;
 }) {
+  // Mientras se escribe, el título y la barra de abajo se apartan para
+  // dejar sitio a la lista. Ver search-focus-context.tsx.
+  const { setFocused } = useSearchFocus();
+
   return (
     <div className="relative">
       <input
@@ -76,6 +81,8 @@ function SearchField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
       />
       {value ? (

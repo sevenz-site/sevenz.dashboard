@@ -15,6 +15,7 @@ import { MobileNav } from "@/components/dashboard/mobile-nav";
 import { AppMain } from "@/components/dashboard/app-main";
 import { AppHeader } from "@/components/dashboard/app-header";
 import { ImportProvider } from "@/components/import/import-provider";
+import { SearchFocusProvider } from "@/components/dashboard/search-focus-context";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { CuentaPausadaProvider } from "@/components/dashboard/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <CuentaPausadaProvider pausada={!puedeRegistrar} correo={user.email ?? null}>
     <ImportProvider initialUsage={importUsage}>
+    <SearchFocusProvider>
       <MixpanelIdentify ownerId={user.id} email={user.email ?? ""} plan={owner?.plan ?? "free"} />
       <TourProvider active={!owner?.onboarding_completed_at}>
         <UnsavedChangesProvider>
@@ -96,6 +98,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </UnreadNotificationsProvider>
         </UnsavedChangesProvider>
       </TourProvider>
+    </SearchFocusProvider>
     </ImportProvider>
     </CuentaPausadaProvider>
   );

@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
+import { ScreenHeader } from "@/components/dashboard/search-focus-context";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummaryAll } from "@/lib/types";
 
@@ -41,14 +42,16 @@ export default async function PapeleraPage() {
           </Link>
         </Button>
       </div>
-      <div>
+      <ScreenHeader>
         <h1 className="text-2xl font-semibold tracking-tight">Papelera</h1>
         <p className="text-sm text-muted-foreground">
           Clientes que ocultaste. No aparecen en tu Cartera y su saldo no cuenta en los totales, pero su
           historial se conserva y su enlace de saldo sigue funcionando.
         </p>
-      </div>
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
+      </ScreenHeader>
+      <ScreenHeader>
+        <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
+      </ScreenHeader>
       <PapeleraTable rows={rows} rateContext={ownerRate} />
     </div>
   );

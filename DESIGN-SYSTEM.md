@@ -384,6 +384,36 @@ las tarjetas que acababa de filtrar.
 Consecuencia buscada: en esas tres no hay cmdk, no hay popup y no hay portal,
 así que tampoco el fallo de la sección anterior. El único desplegable de
 clientes vivo está dentro de la hoja de Cartera.
+### Al buscar, la pantalla se aparta
+
+En Clientes, Malas pagas y Papelera, mientras el campo de búsqueda tiene el
+foco **y solo en teléfono**: se ocultan el título, el subtítulo y el epígrafe
+"Clientes", desaparece la barra inferior, y `<main>` deja de reservar el hueco
+de esa barra. El contenido queda pegado arriba. Todo lo gobierna
+`search-focus-context.tsx`, porque el campo vive en la lista y la barra en el
+layout.
+
+El motivo es de espacio real: entre título, subtítulo, barra y teclado, al
+dueño le quedaban unos 250px para leer los clientes que acababa de buscar. Y
+el título dice "Clientes" en la pantalla de clientes — cuando estás buscando
+es lo que menos falta hace.
+
+**El retardo de 180ms al salir no es cosmético, y es la única parte delicada.**
+El dueño toca la tarjeta de un cliente; eso quita el foco del campo. Si el
+título y la barra volvieran en ese instante, el contenido baja unos 70px ENTRE
+que el dedo toca y que el navegador decide sobre qué elemento fue el clic —
+y abre la ficha del cliente de arriba. Devolver la cabecera solo después de
+que el clic se resuelva lo evita. Al entrar no hay retardo: apartarse tiene
+que sentirse inmediato.
+
+Lo que hace este fallo peligroso es que **con ratón no aparece**: un clic de
+ratón es instantáneo y gana la carrera. Solo se ve tocando con el dedo. La
+prueba, entonces, es tocar la SEGUNDA tarjeta de la lista y comprobar que
+abre esa y no la primera.
+
+De md hacia arriba no se oculta nada: sobra sitio, y una pantalla sin título
+no se sabe qué es.
+
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
