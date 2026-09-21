@@ -22,11 +22,26 @@ type SaveFn = () => Promise<boolean>;
 // never went through the dialog at all).
 type BeforeLeaveFn = () => Promise<void> | void;
 
+// Lo que dice el diálogo. Estaba fijo a "Mi negocio", que era el único que lo
+// usaba; la revisión de una libreta importada pierde otra cosa y tiene que
+// decirlo con sus palabras.
+export type TextoDeSalida = { titulo: string; cuerpo: string };
+
+const TEXTO_POR_DEFECTO: TextoDeSalida = {
+  titulo: "¿Salir sin guardar los cambios?",
+  cuerpo: 'Hiciste cambios en "Mi negocio" que todavía no se han guardado.',
+};
+
 type UnsavedChangesContextValue = {
   // A form with unsaved changes registers itself here so any exit attempt
   // (sidebar nav, logout, browser back/refresh/close) can offer to save
   // before leaving instead of just blocking or silently discarding.
-  setDirty: (dirty: boolean, onSave?: SaveFn, onBeforeLeave?: BeforeLeaveFn) => void;
+  setDirty: (
+    dirty: boolean,
+    onSave?: SaveFn,
+    onBeforeLeave?: BeforeLeaveFn,
+    texto?: TextoDeSalida,
+  ) => void;
   // Anything that would navigate away calls this instead of navigating
   // directly — it runs `proceed` immediately when nothing is dirty, or
   // opens the confirm dialog and runs it only if the user allows the exit.
@@ -45,18 +60,29 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
   // that ends up being.
   const beforeLeaveRef = useRef<BeforeLeaveFn | null>(null);
   const pendingRef = useRef<(() => void) | null>(null);
+  const textoRef = useRef<TextoDeSalida>(TEXTO_POR_DEFECTO);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Se copian del ref al estado al ABRIR, no se leen del ref al pintar: un ref
+  // no provoca render, así que el diálogo se habría quedado con el texto y los
+  // botones de la vez anterior.
+  const [texto, setTexto] = useState<TextoDeSalida>(TEXTO_POR_DEFECTO);
+  const [sePuedeGuardar, setSePuedeGuardar] = useState(false);
 
-  const setDirty = useCallback((dirty: boolean, onSave?: SaveFn, onBeforeLeave?: BeforeLeaveFn) => {
-    isDirtyRef.current = dirty;
-    if (dirty) {
-      if (onSave) saveRef.current = onSave;
-      if (onBeforeLeave) beforeLeaveRef.current = onBeforeLeave;
-    } else {
-      saveRef.current = null;
-    }
-  }, []);
+  const setDirty = useCallback(
+    (dirty: boolean, onSave?: SaveFn, onBeforeLeave?: BeforeLeaveFn, texto?: TextoDeSalida) => {
+      isDirtyRef.current = dirty;
+      if (dirty) {
+        if (onSave) saveRef.current = onSave;
+        if (onBeforeLeave) beforeLeaveRef.current = onBeforeLeave;
+        textoRef.current = texto ?? TEXTO_POR_DEFECTO;
+      } else {
+        saveRef.current = null;
+        textoRef.current = TEXTO_POR_DEFECTO;
+      }
+    },
+    [],
+  );
 
   const guard = useCallback((proceed: () => void) => {
     if (!isDirtyRef.current) {
@@ -64,6 +90,13 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
       return;
     }
     pendingRef.current = proceed;
+    setTexto(textoRef.current);
+    // "Guardar y salir" solo si hay algo que guardar de un toque. Importar una
+    // libreta NO lo es: guardar ahí significa escribir veintitantos
+    // movimientos, y eso tiene su propia confirmación con sus propios
+    // requisitos. Un botón que se saltara esa revisión sería justo el error
+    // que la revisión existe para evitar.
+    setSePuedeGuardar(saveRef.current !== null);
     setOpen(true);
   }, []);
 
@@ -97,25 +130,37 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
       <AlertDialog open={open} onOpenChange={(next) => !saving && setOpen(next)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Salir sin guardar los cambios?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Hiciste cambios en &quot;Mi negocio&quot; que todavía no se han guardado.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{texto.titulo}</AlertDialogTitle>
+            <AlertDialogDescription>{texto.cuerpo}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
-            <Button variant="outline" disabled={saving} onClick={handleLeaveWithoutSaving}>
-              Salir sin guardar
-            </Button>
-            <AlertDialogAction
-              disabled={saving}
-              onClick={(e) => {
-                e.preventDefault();
-                handleSaveAndLeave();
-              }}
-            >
-              {saving ? "Guardando..." : "Guardar y salir"}
-            </AlertDialogAction>
+            {sePuedeGuardar ? (
+              <>
+                <Button variant="outline" disabled={saving} onClick={handleLeaveWithoutSaving}>
+                  Salir sin guardar
+                </Button>
+                <AlertDialogAction
+                  disabled={saving}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSaveAndLeave();
+                  }}
+                >
+                  {saving ? "Guardando..." : "Guardar y salir"}
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction
+                disabled={saving}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleLeaveWithoutSaving();
+                }}
+              >
+                Salir sin guardar
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

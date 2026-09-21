@@ -1,7 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
@@ -64,11 +62,13 @@ export default async function ImportPage() {
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
           up, where the real header returns. */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Cartera">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
+        {/* CarteraBackButton y no un Link pelado: mientras hay una libreta
+            leída sin guardar, esta es LA ÚNICA salida de la pantalla —la barra
+            de abajo se esconde— y tiene que preguntar. Un Link normal aquí
+            sería la puerta por la que se pierden veintitantos movimientos
+            corregidos a mano, sin un aviso. Es el mismo componente y el mismo
+            guard que usa "Mi negocio". */}
+        <CarteraBackButton />
         {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
             manda aquí su botón de "Confirmar e importar" por portal — ver
             components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la

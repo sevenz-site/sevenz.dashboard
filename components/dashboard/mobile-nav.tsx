@@ -7,6 +7,7 @@ import { Bell, Loader2, Plus, Users, Wallet } from "lucide-react";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
+import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { cn } from "@/lib/utils";
 import { BADGE_MAX } from "@/lib/types";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
@@ -121,6 +122,7 @@ export function MobileNav() {
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
+  const { revisando } = useRevisionEnCurso();
 
   // Drives the spinner. useLinkStatus can't be used here: this link calls
   // preventDefault so the unsaved-changes guard runs first, and a link whose
@@ -138,7 +140,12 @@ export function MobileNav() {
   // que nadie pidio.
   const guardia = useGuardiaDeCuentaPausada();
 
-  if (overlayOpen || keyboardOpen) return null;
+  // Mientras una libreta leída espera confirmación, la barra se va: son
+  // cuatro salidas de un toque junto al pulgar con veintitantos movimientos
+  // sin guardar detrás. Todas preguntan antes de salir —van por el mismo
+  // guard—, pero un diálogo que salta cuatro veces por error es peor que no
+  // tener el atajo. Queda una sola salida, el chevron, y esa sí pregunta.
+  if (overlayOpen || keyboardOpen || revisando) return null;
 
   // Mirrors the sidebar's own link behaviour exactly, including the guard.
   // Without it the bar walked straight out of "Mi negocio" with unsaved edits

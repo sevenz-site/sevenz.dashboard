@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 
 // Wraps <main> purely so the bottom padding can follow whether MobileNav
 // actually renders. That reservation is unconditional by design — the bar
@@ -14,7 +15,12 @@ import { cn } from "@/lib/utils";
 // keeps its bar, only /clients/<id> loses it. If one changes the other has to.
 export function AppMain({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hasBar = !pathname.startsWith("/clients/");
+  // Revisando una libreta la barra no está, así que su franja reservada sería
+  // aire muerto — y aquí sí puede seguir al estado sin que la página salte
+  // debajo del dueño: entrar y salir de la revisión ya cambia la pantalla
+  // entera, no es el parpadeo de un diálogo abriéndose.
+  const { revisando } = useRevisionEnCurso();
+  const hasBar = !pathname.startsWith("/clients/") && !revisando;
 
   return (
     <main

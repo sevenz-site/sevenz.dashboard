@@ -28,6 +28,19 @@ import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
+import { useTrampaDeAtras } from "@/hooks/use-trampa-de-atras";
+import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
+
+// Lo que dice el diálogo al intentar salir con una libreta a medias. No
+// menciona "guardar" porque aquí guardar es importar veintitantos movimientos,
+// y eso tiene su propia confirmación: el diálogo de salida solo ofrece
+// quedarse o irse.
+const TEXTO_SALIR_DE_LA_REVISION = {
+  titulo: "¿Salir sin importar la libreta?",
+  cuerpo:
+    "Tienes movimientos leídos que todavía no se han guardado. Si sales ahora se pierden, junto con las correcciones que hayas hecho.",
+};
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -83,6 +96,27 @@ export function ImportFlow({
   // Gemini y veinte minutos de revision para nada.
   const guardia = useGuardiaDeCuentaPausada();
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
+  const { setDirty, guard } = useUnsavedChangesGuard();
+  const { setRevisando } = useRevisionEnCurso();
+  // El botón atrás del teléfono y el gesto de deslizar: la salida más probable
+  // en un móvil, y la única que no pasa por ningún onClick nuestro.
+  const consumirCentinela = useTrampaDeAtras(reviewMovements !== null, guard);
+
+  // Entrar y salir de la revisión, en un solo sitio. Los tres estados van
+  // juntos siempre —hay filas, hay que avisar al salir, la barra se esconde—
+  // y separarlos es cómo uno se queda desincronizado: una barra escondida sin
+  // nada que revisar, o un aviso de "sin guardar" cuando ya se guardó.
+  function abrirRevision(movimientos: ExtractedMovement[]) {
+    setReviewMovements(movimientos);
+    setRevisando(true);
+    setDirty(true, undefined, consumirCentinela, TEXTO_SALIR_DE_LA_REVISION);
+  }
+
+  function cerrarRevision() {
+    setReviewMovements(null);
+    setRevisando(false);
+    setDirty(false);
+  }
 
   // "Every row is the same person" — for an owner who photographs one client's
   // pages rather than a page of many clients.
@@ -186,7 +220,7 @@ export function ImportFlow({
   function handleViewResults() {
     // La moneda no sale de la extracción porque la foto no la dice. Tampoco se
     // siembra ya con un valor por defecto: la elige el dueño antes de guardar.
-    setReviewMovements(
+    abrirRevision(
       doneJobs.flatMap((j) => j.movements).map((m) => ({
         ...m,
         uid: crypto.randomUUID(),
@@ -269,7 +303,9 @@ export function ImportFlow({
         }
       } else {
         toast.success(`${result.imported} movimientos importados.`);
-        setReviewMovements(null);
+        // Antes de navegar: si el aviso siguiera armado, el router.push de
+        // abajo abriría "¿salir sin importar?" justo después de importar.
+        cerrarRevision();
         clearJobs();
         router.push("/dashboard");
       }
@@ -404,7 +440,14 @@ export function ImportFlow({
           </p>
         ) : null}
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => setReviewMovements(null)} disabled={confirming}>
+          {/* "Volver" no sale de la app, pero sí tira la revisión: las fotos
+              se conservan y las correcciones hechas a mano no. Duele lo mismo
+              que salir, así que pregunta lo mismo. */}
+          <Button
+            variant="outline"
+            onClick={() => guard(() => cerrarRevision())}
+            disabled={confirming}
+          >
             Volver
           </Button>
           <ConfirmarImportacion
