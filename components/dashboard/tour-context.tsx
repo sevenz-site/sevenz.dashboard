@@ -12,7 +12,11 @@ import { createContext, useContext } from "react";
 // STEP_ORDER, no el valor. Si algún día hay que tocarlos de verdad, lo que
 // toca es cambiarlos por nombres ("importar", "agregar"...), no seguir
 // buscando huecos entre enteros.
-export type TourStep = 0 | 1 | 2 | 2.5 | 3;
+// El recorrido son tres pasos: importar, agregar un cliente y abrir una
+// ficha. El 2.5 (registrar un movimiento dentro de la ficha) y el 3
+// (Importar desde el menú lateral) se retiraron el 2026-09-20 — el 3 decía
+// lo mismo que el 0 desde que este existe.
+export type TourStep = 0 | 1 | 2;
 
 export type TourContextValue = {
   step: TourStep | null;

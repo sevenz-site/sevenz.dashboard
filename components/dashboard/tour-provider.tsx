@@ -7,10 +7,10 @@ import { completeOnboarding } from "@/app/(app)/actions";
 import { TourContext, type TourStep } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const STEP_ORDER: TourStep[] = [0, 1, 2, 2.5, 3];
-// On mobile the client-list and add-movement steps (2, 2.5) render on top of
-// each other and are unreadable on a small screen. Quedan los dos que sí se
-// pueden señalar en un teléfono: importar la libreta y agregar un cliente.
+const STEP_ORDER: TourStep[] = [0, 1, 2];
+// El paso 2 señala una fila de ejemplo de la tabla, que solo existe de md
+// hacia arriba: en un teléfono la lista son tarjetas y no hay fila que
+// resaltar. Quedan los dos que sí se pueden señalar ahí.
 const MOBILE_STEP_ORDER: TourStep[] = [0, 1];
 
 const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: string }> = {
@@ -28,16 +28,6 @@ const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: st
     selector: '[data-tour="demo-client-row"]',
     title: "Abre el detalle de un cliente",
     body: "Toca cualquier cliente de la lista para ver su saldo completo. Prueba con este de ejemplo.",
-  },
-  2.5: {
-    selector: '[data-tour="demo-add-movement-button"]',
-    title: "Registra un abono o un fiado",
-    body: "Dentro del detalle de cada cliente, este botón registra cada movimiento nuevo.",
-  },
-  3: {
-    selector: '[data-tour="import-sidebar-link"]',
-    title: "Importa tu libreta",
-    body: "¿Ya llevas cuentas en papel? Sube fotos aquí y las convertimos en movimientos.",
   },
 };
 

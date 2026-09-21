@@ -70,7 +70,7 @@ export function ClientTable({
 }) {
   const router = useRouter();
   const tour = useTour();
-  const tourDemoActive = tour.step === 2 || tour.step === 2.5;
+  const tourDemoActive = tour.step === 2;
   const [page, setPage] = useState(1);
   const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
 
@@ -239,25 +239,6 @@ export function ClientTable({
                         <TableCell className="hidden text-muted-foreground md:table-cell">—</TableCell>
                         <TableCell className="hidden md:table-cell" />
                       </TableRow>
-                      {tour.step === 2.5 ? (
-                        <TableRow className="bg-accent/20">
-                          <TableCell colSpan={rateContext ? 7 : 6}>
-                            <div className="flex items-center justify-between py-1">
-                              <span className="text-sm text-muted-foreground">
-                                Detalle de Cliente de ejemplo
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                data-tour="demo-add-movement-button"
-                                onClick={() => tour.advance()}
-                              >
-                                + Agregar movimiento
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : null}
                     </>
                   ) : null}
                   {pagedRows.map((row) => {
