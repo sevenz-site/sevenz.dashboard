@@ -1,7 +1,16 @@
+import Link from "next/link";
 import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
+import {
+  ClientFilterProvider,
+  ClientFilterChipsRow,
+  HideWhileResults,
+} from "@/components/dashboard/client-filter-context";
+import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -180,95 +189,182 @@ export default async function DashboardPage({
         ) : null}
       </div>
 
-      {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
-          al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
-          habria escrito el monto. Aqui se entera al abrir.
+      {/* Un solo estado de filtros para toda la pantalla: el buscador va
+          justo aquí arriba y la lista que filtra está al final, detrás de las
+          tarjetas de capital. Dos estados separados dejarían al dueño con una
+          lista filtrada de una manera y un buscador diciendo otra. */}
+      <ClientFilterProvider rows={visibleRows} rateContext={ownerRate}>
+        {/* Debajo del nombre y del negocio, antes que nada más. Buscar a una
+            persona es lo que el tendero viene a hacer la mayoría de las veces,
+            y hasta ahora exigía bajar toda la pantalla hasta la lista. */}
+        <ClientSearchCartera />
 
-          Se dibuja siempre y decide el solo: lee del contexto del layout, que
-          es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
-      <CuentaPausada />
+        {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
+            al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
+            habria escrito el monto. Aqui se entera al abrir.
 
-      {/* 20px of separation above a section title, measured on screen. The
-          container is a flex column with gap-4, and a margin ADDS to a flex gap
-          rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
-          the 20px. Changing the container's gap changes this too. */}
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Cartera pendiente</h2>
-        {/* Desktop only: beside the title, hugging its own width. The phone
-            keeps it full width below the rate card, which is a different place
-            in the document — so it is rendered in both spots and each is shown
-            at one breakpoint. */}
-        <div className="hidden sm:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+            Se dibuja siempre y decide el solo: lee del contexto del layout, que
+            es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
+        <CuentaPausada />
+
+        {/* 20px of separation above a section title, measured on screen. The
+            container is a flex column with gap-4, and a margin ADDS to a flex gap
+            rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
+            the 20px. Changing the container's gap changes this too. */}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Importar vive aquí, no solo en el menú lateral: es la forma de
+                cargar una cartera entera, y estaba escondida detrás de una
+                navegación que muchos dueños no abren nunca. */}
+            <ImportarCartera />
+            {/* Desktop only: beside the title, hugging its own width. The phone
+                keeps it full width below, which is a different place in the
+                document — so it is rendered in both spots and each is shown at
+                one breakpoint. */}
+            <HideWhileResults>
+              <div className="hidden sm:block">
+                <ClientSearchDialog
+                  clients={clients ?? []}
+                  ownerId={user!.id}
+                  businessName={owner?.business_name || user!.email || "tu negocio"}
+                  ownerCountry={ownerCountry}
+                  rateContext={rateContext}
+                  monedaHabitual={monedaHabitual}
+                />
+              </div>
+            </HideWhileResults>
+          </div>
         </div>
-      </div>
 
-      {/* Stacked on a phone, side by side once there is room — the cards are
-          two independent ledgers, not a sequence, so they read better abreast
-          than stacked on a wide screen. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        {rateContext ? (
-          <>
-            <BalanceCard
-              label="Capital por cobrar en USD"
-              balance={totalUsd}
-              currency="USD"
-              ledger={ledger}
-              chartData={weeklyLendingUsd}
-              chartTitle="Fiado vs. Abono (USD)"
+
+        {/* Se apartan con "Agregar movimiento", bajo la misma condición: la
+            lista de coincidencias cae justo encima de ellas.
+
+            Se va el bloque entero, también la tarjeta única de un negocio
+            colombiano. El encargo nombró las dos de un negocio venezolano
+            —USD y Euro—, pero la colombiana ocupa el mismo sitio y la lista la
+            tapa igual: dejarla puesta sería arreglar el estorbo en Venezuela y
+            conservarlo en Colombia.
+
+            Stacked on a phone, side by side once there is room — the cards are
+            two independent ledgers, not a sequence, so they read better abreast
+            than stacked on a wide screen. */}
+        <HideWhileResults>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            {rateContext ? (
+              <>
+                <BalanceCard
+                  label="Capital por cobrar en USD"
+                  balance={totalUsd}
+                  currency="USD"
+                  ledger={ledger}
+                  chartData={weeklyLendingUsd}
+                  chartTitle="Fiado vs. Abono (USD)"
+                />
+                <BalanceCard
+                  label="Capital por cobrar en Euro"
+                  balance={totalEur}
+                  currency="EUR"
+                  ledger={ledger}
+                  chartData={weeklyLendingEur}
+                  chartTitle="Fiado vs. Abono (EUR)"
+                />
+              </>
+            ) : (
+              <BalanceCard
+                label="Capital por cobrar"
+                balance={totalCop}
+                currency={null}
+                ledger={null}
+                chartData={weeklyLendingCop}
+              />
+            )}
+          </div>
+        </HideWhileResults>
+
+        {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición
+            del dueño. Antes iba delante, con el argumento de que el
+            equivalente en bolívares de una tarjeta no se puede leer sin saber
+            a qué tasa está convertido; la tasa sigue en la misma pantalla y a
+            un dedo de distancia, así que el argumento pesa menos que el orden
+            que el dueño quiere leer. Si vuelve a moverse, esta es la razón que
+            había. */}
+        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+
+        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
+            autoOpen lives here; the desktop one must not also receive it or both
+            would open and stack.
+
+            Cierra la sección, debajo de las tarjetas y de la tasa. Estuvo
+            arriba, por delante de ellas; se bajó el 2026-09-20 a petición del
+            dueño. En el teléfono lo tiene igual de a mano en la barra de abajo
+            ("Agregar"), así que aquí no es el atajo sino el cierre de lo que
+            acaba de leer.
+
+            Se aparta mientras la lista de coincidencias está abierta, igual
+            que las tarjetas: un toque que se pase unos píxeles abriría el alta
+            de un movimiento en vez de la ficha del cliente. */}
+        <HideWhileResults>
+          <div className="sm:hidden">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              autoOpen={nuevo === "1"}
+              showTourTarget={false}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
             />
-            <BalanceCard
-              label="Capital por cobrar en Euro"
-              balance={totalEur}
-              currency="EUR"
-              ledger={ledger}
-              chartData={weeklyLendingEur}
-              chartTitle="Fiado vs. Abono (EUR)"
-            />
-          </>
-        ) : (
-          <BalanceCard
-            label="Capital por cobrar"
-            balance={totalCop}
-            currency={null}
-            ledger={null}
-            chartData={weeklyLendingCop}
-          />
-        )}
-      </div>
+          </div>
+        </HideWhileResults>
 
-      {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+        {/* Sin rótulo "Clientes" desde el 2026-09-20: lo que hay debajo son
+            tarjetas con nombre y saldo, y ninguna otra pantalla lo lleva ya.
+            Lo que sí hace falta es la salida, porque esta lista está
+            recortada —oculta las malas pagas y pagina de 15 en 15— y sin
+            ella el dueño no tiene forma de saber que hay más.
 
-      {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
-          autoOpen lives here; the desktop one must not also receive it or both
-          would open and stack. */}
-      <div className="sm:hidden">
-        <ClientSearchDialog
-          clients={clients ?? []}
-          ownerId={user!.id}
-          businessName={owner?.business_name || user!.email || "tu negocio"}
-          ownerCountry={ownerCountry}
-          autoOpen={nuevo === "1"}
-          showTourTarget={false}
-          rateContext={rateContext}
-          monedaHabitual={monedaHabitual}
-        />
-      </div>
+            Queda sola y alineada a la derecha, en la misma fila y el mismo
+            sitio donde ya estaba. Moverla al final de la lista habría sido
+            más natural de leer, pero ahí abajo ya vive la paginación y dos
+            controles de "ir a más clientes" pegados se estorban. */}
+        {/* La cabecera de la sección: qué es y cómo salir de ella. Nada más.
+            Los chips estuvieron un rato en esta misma fila, en el sitio del
+            título, y se leía como si "Ordenar por" fuese el nombre de la
+            sección. */}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Clientes</h2>
+          {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
+              en 15—, así que hace falta una salida explícita a la completa. */}
+          {/* Subrayado: es lo único de esta fila que lleva a otra pantalla, y
+              un "ghost" sin subrayar no se distingue de una etiqueta. Va en el
+              <Link> y no en el botón, para que siga al texto en vez de dibujar
+              una raya del ancho de la caja.
 
-      {/* Named for what is actually underneath: a list of clients and their
-          balances. "Historial de movimientos" already means a different screen
-          — the movement list inside one client — and reusing it here would
-          promise movements and deliver people. */}
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
+              `decoration-1` y `underline-offset-2` no son gusto. Este botón es
+              `size="sm"`, o sea `text-[0.8rem]` — 12,8px. A ese tamaño el
+              grosor `auto` del navegador sale por debajo de 1px y se pinta como
+              una línea gris lavada: el subrayado estaba puesto y no se veía. Y
+              un offset de 4px, que va bien en texto de 14px, aquí separa tanto
+              la raya de la palabra que deja de leerse como suya. Mismo
+              tratamiento que el enlace pequeño de /admin/cuentas. */}
+          <Button variant="ghost" size="sm" asChild className="shrink-0">
+            <Link href="/clients" className="underline decoration-1 underline-offset-2">
+              Ver todos
+            </Link>
+          </Button>
+        </div>
 
-      <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
+        {/* En su propia fila, debajo de la cabecera y pegados a la lista que
+            ordenan. Vivían dentro de la hoja del buscador, arriba del todo, a
+            una pantalla de distancia de lo que tocaban: elegir "Plazo vencido"
+            no enseñaba ningún cambio. */}
+        <ClientFilterChipsRow />
+
+        <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
+      </ClientFilterProvider>
 
       {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
     </div>

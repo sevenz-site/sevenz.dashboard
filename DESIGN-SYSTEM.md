@@ -156,9 +156,18 @@ copias del componente viven en repos distintos y esta regla solo estaba escrita
 en uno. Corregido: los nueve botones de sevenz.site y de la calculadora miden
 40px, verificado en el navegador.
 
-**Known gap:** `Input` and `SelectTrigger` are still 32px, so a button beside a
-field in the same row is visibly taller. Most obvious on the signup WhatsApp
-row. Worth unifying, not yet done.
+**Los buscadores de clientes miden 40px** (`h-10` sobre el `Input`), decidido
+el 2026-09-20: comparten vecindad con botones y con 32 se veían hundidos al
+lado de ellos, y el disparador de Cartera ya medía 40 — el mismo buscador
+tenía dos alturas según la pantalla.
+
+**Known gap:** el resto de los `Input` y los `SelectTrigger` siguen en 32px,
+así que un botón junto a un campo en la misma fila se ve más alto. Lo más
+visible, la fila de WhatsApp del signup. La altura del buscador se subió en su
+propio componente y NO en `components/ui/input.tsx` a propósito: tocar la base
+mueve el alta de cliente, los movimientos y el signup a la vez, y eso merece
+una pasada con sus propias pruebas, no ir de polizón en un cambio del
+buscador.
 
 ## Icon buttons inside cards
 
@@ -290,6 +299,160 @@ different sources, they will eventually disagree; state both from the same
 token pair (`color-mix(in oklab, var(--popover-foreground) 76%, var(--popover))`)
 so the pair cannot come apart.
 
+### Un Server Component no puede pasar una función como `children`
+
+Encontrado el 2026-09-20 construyendo el buscador de Cartera. `ClientSearchSheet`
+recibía `children` como render prop —`(close) => <Lista onNavigate={close} />`—
+para que la vista previa pudiera cerrar la hoja al abrir un cliente. Compila,
+pasa el typecheck, y revienta en ejecución con un **500 en la pantalla
+principal**:
+
+```
+Error: Functions are not valid as a child of Client Component
+```
+
+`app/(app)/dashboard/page.tsx` es un Server Component, y React no puede
+serializar una función a través de esa frontera. El typecheck no lo ve porque
+no es un error de tipos: el tipo es correcto y el transporte no.
+
+La regla, entonces: **un componente cliente que quiera dar algo a sus hijos
+—cerrarse, su estado, lo que sea— lo pasa por contexto, no como prop**, en
+cuanto exista la posibilidad de que quien lo monte sea una página. El patrón
+render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
+`client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
+la página.
+
+### Un popup en portal dentro de un Dialog de Radix no recibe toques
+
+Un Dialog modal de Radix pone `pointer-events: none` en el `<body>` y solo lo
+reactiva dentro de su propio contenido. Un popup montado en un portal
+**hermano** —de otra librería, o de Radix pero fuera de su árbol de capas—
+hereda ese `none`, y los toques lo atraviesan.
+
+Medido el 2026-09-20 con el Combobox de Base UI dentro del buscador de
+Cartera, que vive en un `Sheet`, y `Sheet` es Radix Dialog:
+
+```js
+getComputedStyle(document.body).pointerEvents  // "none"
+getComputedStyle(item).pointerEvents           // "none"
+document.elementFromPoint(x, y)                // el chip "Estado", de detrás
+```
+
+**Por qué esto es peor que un fallo normal:** la lista se ve perfecta, no hay
+error en consola, y con teclado funciona —las flechas y Enter no pasan por el
+puntero—. Falla solo al tocar con el dedo, es decir en el teléfono, que es
+donde trabajan los tenderos. Una revisión en escritorio lo da por bueno.
+
+**Qué hacer.** Un `Popover` de Radix no lo sufre: es una `DismissableLayer`, y
+Radix le devuelve `pointer-events: auto` a sus propias capas. Comprobado en el
+selector de país, que es Popover + cmdk dentro del diálogo de nuevo cliente y
+funciona sin parche alguno. Un popup que no monta en portal tampoco lo sufre,
+porque nunca sale del árbol al que Radix sí enciende los eventos — es lo que
+hace hoy el buscador de clientes.
+
+La regla, más allá del componente: **al meter un popup de una librería dentro
+de otra, lo primero que se prueba es un toque real** —`elementFromPoint` sobre
+el elemento, no una captura—, no que se vea bien.
+
+Base UI se instaló y se quitó el mismo día por esto. La alternativa no fue
+"otra librería mejor": fue quitar el portal, que es lo que hacía posible el
+fallo.
+### Un solo buscador de clientes, en dos formas
+
+La forma la decide **si el resultado se ve desde donde estás escribiendo**, no
+el gusto:
+
+- **`ClientSearchInline`** (`client-search-sheet.tsx`) — Clientes, Malas pagas,
+  Papelera. Campo y chips en la pantalla, y nada que se despliegue: el
+  resultado son las tarjetas de abajo, a dos centímetros del campo. Un
+  desplegable ahí enseñaría lo mismo dos veces y taparía justo lo que acaba de
+  filtrar.
+- **`ClientSearchCartera`** (`client-search-cartera.tsx`) — solo Cartera. Ahí
+  la lista queda al final del documento, detrás de las tarjetas de capital y
+  la tira de tasas: escribir y no ver nada cambiar se lee como que el buscador
+  está roto. Las coincidencias salen justo debajo del campo, flotando sobre la
+  pantalla en vez de empujarla.
+
+**Las coincidencias son siempre `ClientResultList`** (`client-result-list.tsx`):
+nombre + documento, la misma en Cartera y en el diálogo de "Agregar
+movimiento". Vivía como marcado suelto dentro del diálogo y se extrajo el
+2026-09-20 al llevarla a Cartera — dos copias de una lista de personas y
+cédulas se separan en cuanto alguien retoca una, y el documento es lo que
+distingue a tres Marías del mismo barrio.
+
+**Cartera busca Y filtra**, que es lo que la diferencia del diálogo. El diálogo
+solo encuentra y abre; en Cartera el texto va al estado compartido, así que la
+cartera del final queda recortada al mismo criterio. El efecto secundario que
+conviene conocer: hay que vaciar el campo para recuperar la cartera entera, y
+por eso el aspa está siempre a mano.
+
+**Mientras la lista está abierta se apartan "Agregar movimiento" y las
+tarjetas de capital**
+(`HideWhileResults`). La lista flota justo encima de ellos: un toque en el
+último resultado que se pase unos píxeles abriría el alta de un movimiento en
+vez de la ficha del cliente, y el dueño acabaría escribiendo un fiado cuando
+lo que quería era mirar una cuenta.
+
+Se aparta el bloque entero de tarjetas, también la única de un negocio
+colombiano: ocupa el mismo sitio que las dos de uno venezolano y la lista la
+tapa igual.
+
+Ese "está abierta" se calcula **en el proveedor, una sola vez**, y lo leen el
+buscador y el botón. Si cada uno lo dedujera por su cuenta, bastaría que uno
+cambiara de criterio para dejar el botón visible bajo una lista abierta — es
+decir, para reintroducir justo el error que esto evita. Y el apagado va con
+retardo por lo de siempre: el toque desenfoca el campo, y un botón que
+reaparece en ese instante vuelve a ocupar el sitio donde el dedo ya está
+bajando.
+
+Los chips van **pegados a la lista que ordenan**, nunca junto al campo cuando
+los dos están lejos. En Cartera vivieron un rato arriba del todo, a una
+pantalla de distancia de lo que tocaban: elegir "Plazo vencido" no enseñaba
+ningún cambio.
+### Al buscar se aparta el subtítulo, nunca el título
+
+En Clientes, Malas pagas y Papelera, mientras el campo de búsqueda tiene el
+foco **y solo en teléfono**, se oculta el subtítulo de la pantalla. El título
+se queda, y la barra inferior también. Lo gobierna
+`search-focus-context.tsx` (`HideWhileSearching`), porque el campo vive en la
+lista y el título lo pinta cada página, que es un Server Component.
+
+**El título nunca se va.** Es lo que dice en qué pantalla estás, y perderlo al
+escribir desorienta más de lo que las dos líneas que ocupa llegan a estorbar.
+Se probó ocultándolo el 2026-09-20 y se revirtió el mismo día.
+
+Lo que se gana depende de la pantalla: en Papelera el subtítulo son tres
+líneas y se nota; en Clientes es una sola y casi no. Se aplica igual en las
+tres, porque un comportamiento que cambia de pantalla en pantalla se aprende
+peor que uno que siempre hace lo mismo.
+
+**El rótulo "Clientes" solo lo lleva Cartera.** En Malas pagas y Papelera se
+borró el 2026-09-20: el título de la pantalla ya dice de qué lista se trata, y
+debajo hay tarjetas con nombre y saldo que no necesitan que se las presente.
+Cartera sí lo conserva, porque ahí la lista es una sección más entre otras
+—capital, tasas— y sin rótulo quedaría pegada a los totales.
+
+Esa cabecera de Cartera es **solo título y salida**: `Clientes` a la izquierda
+y "Ver todos" a la derecha. **Los chips van en su propia fila, debajo.**
+Estuvieron un rato compartiendo fila con "Ver todos", en el sitio del título,
+y se leía como si "Ordenar por" fuese el nombre de la sección.
+
+**El retardo de 180ms al salir no es cosmético, y es la única parte delicada.**
+El dueño toca la tarjeta de un cliente; eso quita el foco del campo. Si el
+subtítulo volviera en ese instante, el contenido baja ENTRE que el dedo toca y
+que el navegador decide sobre qué elemento fue el clic — y abre la ficha del
+cliente de arriba. Devolver la cabecera solo después de que el clic se
+resuelva lo evita. Al entrar no hay retardo: apartarse tiene que sentirse
+inmediato.
+
+Lo que hace este fallo peligroso es que **con ratón no aparece**: un clic de
+ratón es instantáneo y gana la carrera. Solo se ve tocando con el dedo. La
+prueba, entonces, es tocar la SEGUNDA tarjeta de la lista y comprobar que
+abre esa y no la primera. Y sigue haciendo falta aunque ahora se mueva menos:
+en Papelera el subtítulo son tres líneas, más que de sobra.
+
+De md hacia arriba no se oculta nada: sobra sitio y no hay teclado que se coma
+media pantalla.
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
@@ -309,6 +472,67 @@ aviso de cobro y una invitación se vieran igual.
 oscuro; por eso `--brand` tiene el mismo valor en los dos temas. Sobre fondo
 blanco **no pasa el piso de contraste de abajo**: si algún día hace falta ahí,
 hay que oscurecerlo en `globals.css` primero, no en el componente.
+
+## Las tarjetas oscuras son oscuras en los dos temas
+
+Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
+teléfono" (`components/install-app.tsx`) y el globo del recorrido de
+bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
+`bg-[#272727]` literal y colores de texto `white/N`, no tokens.
+
+No es descuido. Una pieza oscura en medio de una pantalla clara está diciendo
+"esto de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
+que la rodea. Con `bg-popover` el globo sería blanco sobre blanco en tema
+claro y dejaría de hacer lo único que tiene que hacer.
+
+Y por eso el texto tampoco puede ir en tokens: **sobre un fondo fijo, un token
+que cambia con el tema es exactamente lo que rompe el contraste sin que nadie
+se entere.**
+
+Medido sobre `#272727` el 2026-09-20:
+
+| Color | Ratio | |
+|---|---|---|
+| blanco (título) | 14,94:1 | pass |
+| `white/70` (cuerpo) | 8,04:1 | pass |
+| `white/60` (paso, Saltar) | 6,36:1 | pass |
+| `--brand` `#F66B02` (acción) | 5,00:1 | pass |
+
+El naranja es el que va más justo. Si alguien aclara ese fondo, es el primero
+que cae: vuelve a medirlo antes de tocarlo.
+
+**El globo del recorrido es solo para onboarding.** No es un tooltip de uso
+general: para una ayuda contextual normal está el popover del sistema, que sí
+sigue el tema.
+
+## Un icono de marca entra con `currentColor`, no con su color
+
+`components/icons/whatsapp.tsx` es el patrón. Un SVG que llega de diseño trae
+su color escrito dentro (`fill="#126400"` en este caso). Al meterlo en la app
+ese color se cambia por `currentColor` y el archivo original se guarda tal cual
+en `public/icons/`, con un comentario en el componente diciendo que los dos
+tienen que moverse juntos.
+
+**Por qué, y no es purismo.** El mismo icono sale hoy en cinco sitios con
+cuatro colores distintos: verde esmeralda en "Contactar vía WhatsApp" del
+enlace público, el verde de marca `#128C4A` en "Compartir saldo", y el color
+del texto en el botón de la cabecera del cliente y en "Escríbenos para
+reactivarla". Con el color clavado, los cinco serían el mismo verde oscuro —
+y en tema oscuro ese verde cae sobre un fondo casi negro, que es justo el sitio
+donde nadie lo habría mirado. Medido el 2026-09-20: con `currentColor`, el
+icono del enlace público pasa solo de `emerald-700` a `emerald-400` al cambiar
+de tema, exactamente igual que el texto al que acompaña.
+
+**El `viewBox` no se cuadra.** El de WhatsApp es 21×24. Con `size-4` la caja
+mide 16×16 y el dibujo entra centrado a 14×14, porque `preserveAspectRatio`
+vale `xMidYMid meet` por defecto: se comprobó que `escalaX === escalaY`. Pasarlo
+a `0 0 24 24` para que llene la caja lo deformaría, y recortarlo a mano es
+reescribir el trazado que mandó diseño.
+
+**El icono va al lado que ya tenga su pareja.** "Contactar vía WhatsApp" en
+`/s/[token]` lo lleva detrás del texto porque "Compartir saldo vía WhatsApp"
+en la ficha del cliente ya lo llevaba así: son los dos lados del mismo trato y
+espejados se leían como dos cosas distintas.
 
 ## Contrast floor
 

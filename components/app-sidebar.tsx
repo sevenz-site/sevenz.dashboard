@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Wallet, Users, ShieldAlert, Trash2, Camera, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
+import { Wallet, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -36,7 +36,10 @@ const NAV_ITEMS = [
   // day-to-day screens end and the occasional ones begin, without a divider
   // line that would claim more separation than there is.
   { href: "/papelera", label: "Papelera", icon: Trash2, dataTour: undefined, gapBefore: true },
-  { href: "/import", label: "Importar cartera", icon: Camera, dataTour: "import-sidebar-link" },
+  // Upload y no Camera: el mismo icono que el botón "Importar" de Cartera,
+  // que es desde donde el dueño llega aquí la primera vez. Dos iconos
+  // distintos para la misma función se leen como dos funciones.
+  { href: "/import", label: "Importar cartera", icon: Upload, dataTour: undefined },
   { href: "/profile", label: "Mi negocio", icon: Building2, dataTour: undefined },
 ];
 
@@ -81,7 +84,6 @@ export function AppSidebar({ businessName }: { businessName: string }) {
                         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                         e.preventDefault();
                         guard(() => {
-                          if (item.href === "/import" && tour.step === 3) tour.advance();
                           setOpenMobile(false);
                           // Cartera is the app's home screen — replacing (not
                           // pushing) its entry means it never sits stacked

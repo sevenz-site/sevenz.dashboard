@@ -3,6 +3,8 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { ImportarCartera } from "@/components/dashboard/importar-cartera";
+import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -82,21 +84,31 @@ export default async function ClientsPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
-          <p className="text-sm text-muted-foreground">
-            Todos tus clientes registrados, con su saldo actual.
-          </p>
+          <HideWhileSearching>
+            <p className="text-sm text-muted-foreground">
+              Todos tus clientes registrados, con su saldo actual.
+            </p>
+          </HideWhileSearching>
         </div>
-        {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
-            action in the bottom bar's "Agregar" instead. */}
-        <div className="hidden sm:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+        {/* A la derecha de la cabecera. `ghost`: aquí importar es una salida
+            secundaria, no la acción de la pantalla, y un recuadro la haría
+            pesar más que el título que tiene al lado. Se ve en las dos
+            anchuras — a diferencia de "Agregar movimiento", que en teléfono
+            vive en la barra de abajo. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <ImportarCartera variant="responsive" />
+          {/* Desktop only, same as Cartera and Malas pagas: the phone keeps
+              this action in the bottom bar's "Agregar" instead. */}
+          <div className="hidden sm:block">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
+          </div>
         </div>
       </div>
       {/* No second "Clientes" heading here: the h1 above already names what

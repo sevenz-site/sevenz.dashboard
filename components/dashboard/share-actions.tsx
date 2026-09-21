@@ -1,7 +1,8 @@
 "use client";
 
 import { useTransition } from "react";
-import { Share2, MessageCircle, Loader2 } from "lucide-react";
+import { Share2, Loader2 } from "lucide-react";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -94,7 +95,7 @@ export function ShareActions({
         onClick={handleRemind}
       >
         Compartir saldo vía WhatsApp
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <WhatsappIcon className="size-4" />}
       </Button>
     );
   }
@@ -105,7 +106,7 @@ export function ShareActions({
         <Share2 className="size-4" />
       </Button>
       <Button variant="ghost" size="icon" disabled={pending} onClick={handleRemind} title="Recordar por WhatsApp">
-        <MessageCircle className="size-4" />
+        <WhatsappIcon className="size-4" />
       </Button>
     </div>
   );

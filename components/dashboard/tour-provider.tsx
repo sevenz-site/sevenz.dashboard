@@ -2,38 +2,32 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { TourTooltip } from "@/components/dashboard/tour-tooltip";
 import { completeOnboarding } from "@/app/(app)/actions";
 import { TourContext, type TourStep } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const STEP_ORDER: TourStep[] = [1, 2, 2.5, 3];
-// On mobile the client-list and add-movement steps (2, 2.5) render on top of
-// each other and are unreadable on a small screen — only the first step
-// ("Agrega un cliente") is worth showing there.
-const MOBILE_STEP_ORDER: TourStep[] = [1];
+const STEP_ORDER: TourStep[] = [0, 1, 2];
+// El paso 2 señala una fila de ejemplo de la tabla, que solo existe de md
+// hacia arriba: en un teléfono la lista son tarjetas y no hay fila que
+// resaltar. Quedan los dos que sí se pueden señalar ahí.
+const MOBILE_STEP_ORDER: TourStep[] = [0, 1];
 
 const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: string }> = {
+  0: {
+    selector: '[data-tour="import-button"]',
+    title: "Importa tus cuentas del fiado",
+    body: "Toma una foto de las cuentas de tu fiado y selecciona esta opción para subirlas de manera masiva.",
+  },
   1: {
     selector: '[data-tour="new-client-button"]',
     title: "Agrega un cliente",
-    body: "Toca aquí para buscar un cliente existente o registrar uno nuevo.",
+    body: "Toca aquí para buscar un cliente o agregar uno nuevo.",
   },
   2: {
     selector: '[data-tour="demo-client-row"]',
     title: "Abre el detalle de un cliente",
     body: "Toca cualquier cliente de la lista para ver su saldo completo. Prueba con este de ejemplo.",
-  },
-  2.5: {
-    selector: '[data-tour="demo-add-movement-button"]',
-    title: "Registra un abono o un fiado",
-    body: "Dentro del detalle de cada cliente, este botón registra cada movimiento nuevo.",
-  },
-  3: {
-    selector: '[data-tour="import-sidebar-link"]',
-    title: "Importa tu libreta",
-    body: "¿Ya llevas cuentas en papel? Sube fotos aquí y las convertimos en movimientos.",
   },
 };
 
@@ -59,7 +53,10 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   const isMobile = useIsMobile();
   const onDashboard = pathname === "/dashboard";
   const stepOrder = isMobile ? MOBILE_STEP_ORDER : STEP_ORDER;
-  const [step, setStep] = useState<TourStep | null>(active ? 1 : null);
+  // 0 y no `stepOrder[0]`: `useIsMobile()` resuelve después de hidratar, así
+  // que el orden todavía no es de fiar en el primer render. Da igual porque 0
+  // encabeza los dos.
+  const [step, setStep] = useState<TourStep | null>(active ? 0 : null);
   const [dismissed, setDismissed] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const highlightedEl = useRef<Element | null>(null);
@@ -168,7 +165,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   function restart() {
     if (!onDashboard) router.push("/dashboard");
     setDismissed(false);
-    setStep(1);
+    setStep(0);
   }
 
   const content = showing && step !== null ? STEP_CONTENT[step] : null;
@@ -178,44 +175,18 @@ export function TourProvider({ active, children }: { active: boolean; children: 
     <TourContext.Provider value={{ step, advance: goNext, restart }}>
       {children}
       {content ? (
-        <div
+        <TourTooltip
           ref={tooltipRef}
-          className="fixed z-[60] w-72 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
           style={pos ?? { top: 16, right: 16 }}
-        >
-          <button
-            type="button"
-            onClick={finish}
-            className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-            aria-label="Cerrar recorrido"
-          >
-            <X className="size-4" />
-          </button>
-          <p className="text-xs text-muted-foreground">
-            Paso {stepIndex + 1} de {stepOrder.length}
-          </p>
-          <p className="mt-1 font-medium">{content.title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{content.body}</p>
-          <div className="mt-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={finish}
-              className="text-xs text-muted-foreground underline underline-offset-4"
-            >
-              Saltar
-            </button>
-            <div className="flex gap-2">
-              {stepIndex > 0 ? (
-                <Button type="button" size="sm" variant="outline" onClick={goPrev}>
-                  Atrás
-                </Button>
-              ) : null}
-              <Button type="button" size="sm" onClick={goNext}>
-                {stepIndex === stepOrder.length - 1 ? "Entendido" : "Siguiente"}
-              </Button>
-            </div>
-          </div>
-        </div>
+          stepLabel={`Paso ${stepIndex + 1} de ${stepOrder.length}`}
+          title={content.title}
+          body={content.body}
+          nextLabel={stepIndex === stepOrder.length - 1 ? "Entendido" : "Siguiente"}
+          onNext={goNext}
+          onBack={stepIndex > 0 ? goPrev : undefined}
+          onSkip={finish}
+          onClose={finish}
+        />
       ) : null}
     </TourContext.Provider>
   );

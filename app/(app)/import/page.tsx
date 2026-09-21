@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { PasosImportar } from "@/components/dashboard/pasos-importar";
 import { readOwnerCountry } from "@/lib/owner-country";
 
 export default async function ImportPage() {
@@ -58,9 +59,7 @@ export default async function ImportPage() {
       </div>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
-        <p className="text-sm text-muted-foreground">
-          Sube fotos de la libreta. Revisa cada línea antes de guardarla.
-        </p>
+        <PasosImportar className="mt-2" />
       </div>
       {ownerCountry ? (
         <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} />

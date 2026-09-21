@@ -3,6 +3,8 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
+import { ImportarCartera } from "@/components/dashboard/importar-cartera";
+import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummaryAll } from "@/lib/types";
 
@@ -41,14 +43,22 @@ export default async function PapeleraPage() {
           </Link>
         </Button>
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Papelera</h1>
-        <p className="text-sm text-muted-foreground">
-          Clientes que ocultaste. No aparecen en tu Cartera y su saldo no cuenta en los totales, pero su
-          historial se conserva y su enlace de saldo sigue funcionando.
-        </p>
+      {/* Fila, no bloque suelto: la cabecera pasa a llevar una acción a la
+          derecha, igual que Clientes y Malas pagas. */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Papelera</h1>
+          <HideWhileSearching>
+            <p className="text-sm text-muted-foreground">
+              Clientes que ocultaste. No aparecen en tu Cartera y su saldo no cuenta en los totales, pero su
+              historial se conserva y su enlace de saldo sigue funcionando.
+            </p>
+          </HideWhileSearching>
+        </div>
+        {/* `ghost`: aquí importar es una salida secundaria, no la acción de
+            la pantalla, y un recuadro pesaría más que el título de al lado. */}
+        <ImportarCartera variant="responsive" />
       </div>
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
       <PapeleraTable rows={rows} rateContext={ownerRate} />
     </div>
   );

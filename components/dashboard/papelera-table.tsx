@@ -21,10 +21,10 @@ import {
   CLIENT_CARD_SHELL,
 } from "@/components/dashboard/client-card";
 import {
-  ClientFilters,
   ClientStatusLegend,
   useClientFilters,
 } from "@/components/dashboard/client-filters";
+import { ClientSearchInline } from "@/components/dashboard/client-search-sheet";
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate } from "@/lib/format";
@@ -54,8 +54,7 @@ export function PapeleraTable({
   const guardia = useGuardiaDeCuentaPausada();
   const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
 
-  // The same search + "Más filtros" block as Cartera, Clientes and Malas
-  // pagas. balancesOf points it at the snapshot taken when each client was
+  // The same search sheet as Cartera, Clientes and Malas pagas. balancesOf points it at the snapshot taken when each client was
   // hidden, so "Monto desde", the status filter and the amount sorts all agree
   // with the figures printed on these cards — filtering by an amount the card
   // does not show is the kind of mismatch nobody reports and everybody
@@ -108,7 +107,7 @@ export function PapeleraTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ClientFilters filters={filters} className="order-1" />
+      <ClientSearchInline filters={filters} className="order-1" />
 
       {filters.sortedRows.length === 0 ? (
         <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
