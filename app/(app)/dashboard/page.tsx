@@ -237,38 +237,6 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
-            autoOpen lives here; the desktop one must not also receive it or both
-            would open and stack.
-
-            Sube por delante de las tarjetas de capital: registrar un movimiento
-            es la acción, mirar el total es el resumen, y la acción no debería
-            quedar debajo de dos tarjetas y una tira de tasas. */}
-        {/* Se aparta mientras la lista de coincidencias está abierta: flota
-            justo encima de este botón, y un toque en el último resultado que
-            se pase unos píxeles abriría el alta de un movimiento en vez de la
-            ficha del cliente. */}
-        <HideWhileResults>
-          <div className="sm:hidden">
-            <ClientSearchDialog
-              clients={clients ?? []}
-              ownerId={user!.id}
-              businessName={owner?.business_name || user!.email || "tu negocio"}
-              ownerCountry={ownerCountry}
-              autoOpen={nuevo === "1"}
-              showTourTarget={false}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
-            />
-          </div>
-        </HideWhileResults>
-
-        {/* La tasa va ANTES de las tarjetas, no después: las tarjetas de un
-            negocio venezolano muestran el equivalente en bolívares, y ese
-            número solo se puede leer sabiendo a qué tasa está convertido.
-            Debajo, el dueño ya había leído la cifra sin el dato que la
-            explica. */}
-        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
         {/* Se apartan con "Agregar movimiento", bajo la misma condición: la
             lista de coincidencias cae justo encima de ellas.
@@ -312,6 +280,43 @@ export default async function DashboardPage({
                 chartData={weeklyLendingCop}
               />
             )}
+          </div>
+        </HideWhileResults>
+
+        {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición
+            del dueño. Antes iba delante, con el argumento de que el
+            equivalente en bolívares de una tarjeta no se puede leer sin saber
+            a qué tasa está convertido; la tasa sigue en la misma pantalla y a
+            un dedo de distancia, así que el argumento pesa menos que el orden
+            que el dueño quiere leer. Si vuelve a moverse, esta es la razón que
+            había. */}
+        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+
+        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
+            autoOpen lives here; the desktop one must not also receive it or both
+            would open and stack.
+
+            Cierra la sección, debajo de las tarjetas y de la tasa. Estuvo
+            arriba, por delante de ellas; se bajó el 2026-09-20 a petición del
+            dueño. En el teléfono lo tiene igual de a mano en la barra de abajo
+            ("Agregar"), así que aquí no es el atajo sino el cierre de lo que
+            acaba de leer.
+
+            Se aparta mientras la lista de coincidencias está abierta, igual
+            que las tarjetas: un toque que se pase unos píxeles abriría el alta
+            de un movimiento en vez de la ficha del cliente. */}
+        <HideWhileResults>
+          <div className="sm:hidden">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              autoOpen={nuevo === "1"}
+              showTourTarget={false}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
           </div>
         </HideWhileResults>
 
