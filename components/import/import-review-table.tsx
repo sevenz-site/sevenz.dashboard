@@ -1,6 +1,8 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Fragment } from "react";
+
+import { Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -21,8 +23,38 @@ import {
 } from "@/components/ui/table";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
+import { formatCurrency } from "@/lib/format";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import type { OwnerCountry } from "@/lib/types";
+
+// El porqué de cada fila marcada, en una frase. Se pinta debajo de la fila y
+// no en una columna: una columna más es más scroll horizontal, y esto es texto
+// corrido que necesita ancho, no una celda de 100px.
+//
+// SOLO "no_cuadra" VA EN ROJO. Es la única que significa "esta cuenta está
+// mal". Las otras dos son un aviso: la libreta no traía saldo en esa línea, o
+// la IA dudó. Pintarlas del mismo rojo dejaba una libreta normal —sin totales
+// escritos, que es como son casi todas— con todas las filas en rojo, y un
+// aviso que sale siempre deja de leerse.
+function avisoDeLaFila(row: ReviewRow): { texto: string; rojo: boolean } | null {
+  const importe = (n: number) =>
+    row.currency ? formatDisplayCurrency(n, row.currency) : formatCurrency(n);
+
+  if (row.review_reason === "no_cuadra") {
+    return {
+      rojo: true,
+      texto: `No cuadra: tu libreta dice ${importe(row.read_balance!)} y con estos montos da ${importe(row.computed_balance)}.`,
+    };
+  }
+  if (row.review_reason === "lectura_dudosa") {
+    return { rojo: false, texto: "La IA no leyó esta línea con seguridad — revisa el monto y el nombre." };
+  }
+  if (row.review_reason === "sin_saldo") {
+    return { rojo: false, texto: "Esta línea no traía un saldo escrito con el que comparar." };
+  }
+  return null;
+}
 
 export function ImportReviewTable({
   rows,
@@ -54,6 +86,12 @@ export function ImportReviewTable({
   isLinked: (rowId: string) => boolean;
   onToggleLinked: (rowId: string) => void;
 }) {
+  // Cliente, Documento, Tipo, Monto, Detalle y la de la papelera, más
+  // "Vincular" cuando el cliente compartido está activo. Se calcula y no se
+  // escribe a mano: una columna nueva y un colSpan viejo dejan la fila del
+  // aviso corta, con un hueco al final que parece un fallo de maquetación.
+  const columnas = sharedClientActive ? 7 : 6;
+
   return (
     <div className="overflow-x-auto rounded-lg border">
       <datalist id="known-clients">
@@ -81,8 +119,19 @@ export function ImportReviewTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => (
-            <TableRow key={row.rowId} className={row.needs_review ? "bg-amber-50 dark:bg-amber-950/20" : undefined}>
+          {rows.map((row, index) => {
+            const aviso = avisoDeLaFila(row);
+            return (
+            <Fragment key={row.rowId}>
+            <TableRow
+              className={
+                row.review_reason === "no_cuadra"
+                  ? "bg-destructive/10 dark:bg-destructive/20"
+                  : row.needs_review
+                    ? "bg-amber-50 dark:bg-amber-950/20"
+                    : undefined
+              }
+            >
               {sharedClientActive ? (
                 <TableCell>
                   <Checkbox
@@ -184,7 +233,56 @@ export function ImportReviewTable({
                 </Button>
               </TableCell>
             </TableRow>
-          ))}
+            {/* El porqué, en su propia fila a todo lo ancho. Así la frase cabe
+                sin ensanchar ninguna columna: la tabla ya se desplaza de lado
+                y una columna de texto la habría empeorado. `border-0` porque
+                pertenece a la fila de arriba, no es una fila más. */}
+            {aviso ? (
+              <TableRow
+                className={
+                  aviso.rojo
+                    ? "bg-destructive/10 hover:bg-destructive/10 dark:bg-destructive/20"
+                    : "bg-amber-50 hover:bg-amber-50 dark:bg-amber-950/20"
+                }
+              >
+                {/* `whitespace-normal` deshace el `whitespace-nowrap` que TableCell
+                    trae de serie (components/ui/table.tsx:86). Tiene sentido
+                    en una celda de datos —un monto partido en dos líneas es
+                    ilegible— y ninguno en una frase, que sin esto se quedaba
+                    en una sola línea de 353px dentro de 299 y se cortaba
+                    justo antes de la cifra. */}
+                <TableCell colSpan={columnas} className="border-0 pt-0 pb-2 whitespace-normal">
+                  {/* `sticky left-0`, y esto no es un detalle: la celda ocupa
+                      el ancho ENTERO de la tabla (~700px) y la pantalla de un
+                      teléfono enseña 340. Sin anclarla, la frase empezaba
+                      visible y terminaba fuera —"...y con estos montos da $"—
+                      y había que desplazarse de lado para leer el número que
+                      es justo el motivo del aviso. Anclada, se queda a la
+                      vista esté donde esté el scroll horizontal.
+
+                      El ancho se limita al hueco de la pantalla menos los
+                      márgenes de la página; de `sm:` en adelante la tabla ya
+                      cabe entera y el tope deja de morder. */}
+                  <span
+                    className={`sticky left-0 flex max-w-[calc(100vw-3.5rem)] items-start gap-1.5 text-xs sm:max-w-none ${
+                      aviso.rojo ? "text-destructive" : "text-amber-700 dark:text-amber-500"
+                    }`}
+                  >
+                    <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                    {/* `min-w-0` en el texto, y hace falta: un ítem de flex no
+                        baja de la anchura de su contenido salvo que se le diga,
+                        así que la frase se quedaba en una línea de 373px dentro
+                        de una caja de 319 y se cortaba en "...da $" — justo
+                        antes de la cifra por la que existe el aviso. Con esto
+                        pasa a dos líneas y se lee entera. */}
+                    <span className="min-w-0">{aviso.texto}</span>
+                  </span>
+                </TableCell>
+              </TableRow>
+            ) : null}
+            </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

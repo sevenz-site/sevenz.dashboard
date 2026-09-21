@@ -26,8 +26,8 @@ import type { ReviewRow } from "@/lib/reconcile";
 //   2. Cómo queda cada cliente. El saldo final, que es lo que la columna decía.
 //
 // Y EL AVISO DE LO QUE NO CUADRA. Gemini también lee el saldo escrito a mano
-// en la libreta; cuando no coincide con el que calcula Sevenz, la fila sale
-// ámbar. Mientras existió la columna, el dueño podía ver por qué. Sin ella el
+// en la libreta; cuando no coincide con el que calcula Sevenz, la fila sale en
+// rojo. Mientras existió la columna, el dueño podía ver por qué. Sin ella el
 // color no explica nada, así que la cuenta se dice aquí con palabras, en el
 // único momento en que todavía se puede volver atrás.
 
@@ -78,7 +78,8 @@ export function ResumenImportacion({
 }) {
   const netos = netoPorMoneda(rows);
   const porCliente = saldoFinalPorCliente(rows);
-  const sinCuadrar = rows.filter((r) => r.needs_review).length;
+  const noCuadran = rows.filter((r) => r.review_reason === "no_cuadra").length;
+  const porRevisar = rows.filter((r) => r.needs_review && r.review_reason !== "no_cuadra").length;
   const tasa = rateContext?.effectiveRate;
 
   return (
@@ -137,15 +138,36 @@ export function ResumenImportacion({
         </ul>
       </div>
 
-      {sinCuadrar > 0 ? (
-        <p className="flex items-start gap-1.5 text-left text-sm text-amber-700 dark:text-amber-500">
+      {/* Dos avisos y no uno, con el mismo reparto que la tabla. El mensaje
+          anterior decía "no cuadran con el saldo escrito en tu libreta" para
+          los tres motivos, y en dos de ellos era falso: no es que no cuadre,
+          es que no había saldo escrito con el que comparar, o que la IA dudó
+          de la lectura. Una libreta normal salía con "23 filas no cuadran"
+          sobre 23 movimientos, que no es un aviso: es ruido. */}
+      {noCuadran > 0 ? (
+        <p className="flex items-start gap-1.5 text-left text-sm text-destructive">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <span>
-            {sinCuadrar === 1
-              ? "1 fila no cuadra con el saldo escrito en tu libreta."
-              : `${sinCuadrar} filas no cuadran con el saldo escrito en tu libreta.`}{" "}
-            Están marcadas en la tabla. Puedes guardar igual y corregirlas después.
+            {noCuadran === 1
+              ? "1 fila no cuadra con el saldo escrito en tu libreta. Está en rojo en la tabla, con la diferencia. Puedes guardar igual y corregirla después."
+              : `${noCuadran} filas no cuadran con el saldo escrito en tu libreta. Están en rojo en la tabla, con la diferencia. Puedes guardar igual y corregirlas después.`}
           </span>
+        </p>
+      ) : null}
+
+      {porRevisar > 0 ? (
+        <p className="text-left text-xs text-muted-foreground">
+          {/* "Otras" solo cuando hay rojas de las que distinguirse. Sin
+              ninguna, "Otras 3 filas" hace pensar que hubo un aviso antes que
+              no se vio. */}
+          {noCuadran > 0
+            ? porRevisar === 1
+              ? "Otra fila está marcada"
+              : `Otras ${porRevisar} filas están marcadas`
+            : porRevisar === 1
+              ? "1 fila está marcada"
+              : `${porRevisar} filas están marcadas`}{" "}
+          en ámbar: la libreta no traía saldo en esa línea, o la IA no la leyó con seguridad.
         </p>
       ) : null}
     </div>
