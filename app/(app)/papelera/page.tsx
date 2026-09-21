@@ -57,7 +57,7 @@ export default async function PapeleraPage() {
         </div>
         {/* `ghost`: aquí importar es una salida secundaria, no la acción de
             la pantalla, y un recuadro pesaría más que el título de al lado. */}
-        <ImportarCartera variant="ghost" />
+        <ImportarCartera variant="responsive" />
       </div>
       <PapeleraTable rows={rows} rateContext={ownerRate} />
     </div>

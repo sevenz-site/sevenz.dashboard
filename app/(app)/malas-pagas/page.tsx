@@ -93,7 +93,7 @@ export default async function MalasPagasPage() {
             anchuras — a diferencia de "Agregar movimiento", que en teléfono
             vive en la barra de abajo. */}
         <div className="flex shrink-0 items-center gap-1">
-          <ImportarCartera variant="ghost" />
+          <ImportarCartera variant="responsive" />
         {/* Desktop only, same as Cartera: the phone keeps this action in the
             bottom bar's "Agregar" instead, which is why there is no sm:hidden
             counterpart of this trigger the way Cartera has one. */}

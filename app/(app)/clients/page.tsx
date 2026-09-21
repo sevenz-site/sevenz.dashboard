@@ -96,7 +96,7 @@ export default async function ClientsPage() {
             anchuras — a diferencia de "Agregar movimiento", que en teléfono
             vive en la barra de abajo. */}
         <div className="flex shrink-0 items-center gap-1">
-          <ImportarCartera variant="ghost" />
+          <ImportarCartera variant="responsive" />
         {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
             action in the bottom bar's "Agregar" instead. */}
         <div className="hidden sm:block">

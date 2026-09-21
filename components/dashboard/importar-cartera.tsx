@@ -11,6 +11,7 @@ import { useImportJobs } from "@/components/import/import-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { useTour } from "@/components/dashboard/tour-context";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
+import { cn } from "@/lib/utils";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 // "Importar", al lado del título de Cartera.
@@ -30,11 +31,27 @@ export function ImportarCartera({
   variant = "outline",
 }: {
   // "outline" en Cartera, donde importar es una de las dos acciones de la
-  // sección y compite con "Agregar movimiento". "ghost" en Clientes, Malas
-  // pagas y Papelera, donde es una salida secundaria en la cabecera y un
-  // recuadro la haría pesar más que el título que tiene al lado.
-  variant?: "outline" | "ghost";
+  // sección y compite con "Agregar movimiento".
+  //
+  // "responsive" en las cabeceras de Clientes, Malas pagas y Papelera: sin
+  // recuadro en teléfono, donde es una salida secundaria y un recuadro pesaría
+  // más que el título de al lado; CON recuadro de `sm:` en adelante, que es la
+  // versión web y ahí sí lo lleva en todas partes.
+  variant?: "outline" | "responsive";
 } = {}) {
+  // El recuadro se pone con clases y no cambiando `variant` según
+  // `useIsMobile()`, aunque este componente ya use ese hook para elegir entre
+  // hoja y popover. El hook resuelve DESPUÉS de hidratar: el botón se pintaría
+  // sin recuadro y se lo pondría un instante más tarde, a la vista. Con CSS ya
+  // está resuelto en el primer fotograma. Es la regla de DESIGN-SYSTEM.md.
+  //
+  // `border-transparent` ya viene en la base del botón, así que añadir el color
+  // del borde no mueve nada de sitio: no hay salto de layout al cruzar 640px.
+  const claseBoton = cn(
+    "shrink-0",
+    variant === "responsive" &&
+      "sm:border-border sm:bg-background sm:dark:border-input sm:dark:bg-input/30",
+  );
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   // Primer paso del recorrido de bienvenida. Un solo marcador aunque abajo se
@@ -47,9 +64,9 @@ export function ImportarCartera({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
-          variant={variant}
+          variant={variant === "responsive" ? "ghost" : "outline"}
           size="sm"
-          className="shrink-0"
+          className={claseBoton}
           data-tour="import-button"
           onClick={() => {
             if (tour.step === 0) tour.advance();
@@ -77,9 +94,9 @@ export function ImportarCartera({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={variant}
+          variant={variant === "responsive" ? "ghost" : "outline"}
           size="sm"
-          className="shrink-0"
+          className={claseBoton}
           data-tour="import-button"
           onClick={() => {
             if (tour.step === 0) tour.advance();
