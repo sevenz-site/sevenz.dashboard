@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 
 // ¿Hay una libreta leída esperando confirmación?
 //
@@ -35,8 +36,24 @@ export function useRevisionEnCurso() {
 }
 
 export function RevisionEnCursoProvider({ children }: { children: React.ReactNode }) {
-  const [revisando, setRevisandoState] = useState(false);
-  const setRevisando = useCallback((v: boolean) => setRevisandoState(v), []);
+  const [marcado, setMarcado] = useState(false);
+  const pathname = usePathname();
+  const setRevisando = useCallback((v: boolean) => setMarcado(v), []);
+
+  // LA RUTA MANDA, y no es una comprobación de más.
+  //
+  // Sin esto la bandera se quedaba encendida: al salir por el guard, quien
+  // navega es `router.replace` y ImportFlow se DESMONTA sin pasar por
+  // `cerrarRevision`. Resultado medido el 2026-09-21 con la libreta real —
+  // 23 filas, salir por el chevron, y la barra inferior desaparecida de TODA
+  // la app hasta recargar la página. El dueño se queda sin navegación y sin
+  // nada que explique por qué.
+  //
+  // Acordarse de apagarla en cada salida es justo lo que ya falló una vez, y
+  // habría que volver a acordarse en cada salida nueva. Derivándola de la
+  // ruta, quedarse encendida fuera de /import es imposible por construcción.
+  const revisando = marcado && pathname === "/import";
+
   const valor = useMemo(() => ({ revisando, setRevisando }), [revisando, setRevisando]);
   return <RevisionContext.Provider value={valor}>{children}</RevisionContext.Provider>;
 }
