@@ -162,12 +162,24 @@ lado de ellos, y el disparador de Cartera ya medía 40 — el mismo buscador
 tenía dos alturas según la pantalla.
 
 **Known gap:** el resto de los `Input` y los `SelectTrigger` siguen en 32px,
-así que un botón junto a un campo en la misma fila se ve más alto. Lo más
-visible, la fila de WhatsApp del signup. La altura del buscador se subió en su
-propio componente y NO en `components/ui/input.tsx` a propósito: tocar la base
-mueve el alta de cliente, los movimientos y el signup a la vez, y eso merece
-una pasada con sus propias pruebas, no ir de polizón en un cambio del
-buscador.
+así que un botón junto a un campo en la misma fila se ve más alto. La altura
+del buscador se subió en su propio componente y NO en
+`components/ui/input.tsx` a propósito: tocar la base mueve el alta de cliente,
+los movimientos y el signup a la vez, y eso merece una pasada con sus propias
+pruebas, no ir de polizón en un cambio del buscador.
+
+**La fila de WhatsApp ya no es el ejemplo de ese hueco** (2026-09-21). El
+disparador de `CountryCodeSelect` llevaba los 40px por defecto de `Button` al
+lado de un `Input` de 32, y se veía en las cinco pantallas que lo montan:
+signup, Mi negocio, alta de cliente, editar cliente e importar. Se bajó a
+`h-8` **en el propio selector**, no en `button.tsx`.
+
+La regla que resuelve el caso general, y que es la que hay que aplicar la
+próxima vez: **la regla de los 40px habla de botones etiquetados, que se
+alinean entre sí. Un control que es la mitad de un campo se alinea con su
+campo, no con los botones.** Un `PopoverTrigger` que hace de select es un
+campo. Y se baja el control, nunca se sube el `Input`: subirlo arreglaría esa
+fila y desalinearía el formulario entero, que va a 32.
 
 ## Icon buttons inside cards
 

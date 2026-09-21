@@ -70,8 +70,14 @@ export function CountryCodeSelect({
           // su prefijo pasan al nombre accesible: quien navegue con lector de
           // pantalla oye lo mismo que antes leía.
           aria-label={compact ? `País del número: ${selected.name} +${selected.dialCode}` : undefined}
+          // `h-8` contra los 40px por defecto de Button: esto no es un botón de
+          // acción, es la mitad izquierda de un campo, y su pareja —el Input
+          // del número— mide 32. Los 40px de DESIGN-SYSTEM.md hablan de
+          // botones etiquetados que se alinean entre sí; aquí lo que tiene que
+          // alinear es la fila. Subir el Input a 40 arreglaría esta fila y
+          // desalinearía el formulario entero, que va a 32.
           className={cn(
-            "shrink-0 justify-between px-2 font-normal",
+            "h-8 shrink-0 justify-between px-2 font-normal",
             compact ? "w-11" : "w-28",
           )}
         >
