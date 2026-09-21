@@ -386,6 +386,20 @@ cartera del final queda recortada al mismo criterio. El efecto secundario que
 conviene conocer: hay que vaciar el campo para recuperar la cartera entera, y
 por eso el aspa está siempre a mano.
 
+**Mientras la lista está abierta, "Agregar movimiento" se aparta**
+(`HideWhileResults`). La lista flota justo encima de ese botón: un toque en el
+último resultado que se pase unos píxeles abriría el alta de un movimiento en
+vez de la ficha del cliente, y el dueño acabaría escribiendo un fiado cuando
+lo que quería era mirar una cuenta.
+
+Ese "está abierta" se calcula **en el proveedor, una sola vez**, y lo leen el
+buscador y el botón. Si cada uno lo dedujera por su cuenta, bastaría que uno
+cambiara de criterio para dejar el botón visible bajo una lista abierta — es
+decir, para reintroducir justo el error que esto evita. Y el apagado va con
+retardo por lo de siempre: el toque desenfoca el campo, y un botón que
+reaparece en ese instante vuelve a ocupar el sitio donde el dedo ya está
+bajando.
+
 Los chips van **pegados a la lista que ordenan**, nunca junto al campo cuando
 los dos están lejos. En Cartera vivieron un rato arriba del todo, a una
 pantalla de distancia de lo que tocaban: elegir "Plazo vencido" no enseñaba

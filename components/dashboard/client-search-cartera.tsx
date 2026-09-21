@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import {
   ClientResultList,
   CLIENT_RESULT_LIMIT,
 } from "@/components/dashboard/client-result-list";
-import { useSharedClientFilters } from "@/components/dashboard/client-filter-context";
+import {
+  useSearchResultsOpen,
+  useSharedClientFilters,
+} from "@/components/dashboard/client-filter-context";
 import { track } from "@/lib/mixpanel";
 import { clientHref } from "@/lib/client-origin";
 
@@ -38,15 +40,13 @@ import { clientHref } from "@/lib/client-origin";
 export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeholder?: string }) {
   const router = useRouter();
   const filters = useSharedClientFilters();
-  const [focused, setFocused] = useState(false);
+  // El estado vive en el proveedor, no aquí: "Agregar movimiento" se aparta
+  // con el mismo valor, y dos cálculos separados acabarían discrepando.
+  const { open: abierta, setFocused } = useSearchResultsOpen();
   if (!filters) return null;
 
   const c = filters.controls;
   const query = c.nameQuery.trim();
-
-  // Solo con algo escrito. Abrirla al enfocar, vacía, taparía la pantalla con
-  // la cartera entera antes de que el dueño haya pedido nada.
-  const abierta = focused && query !== "";
 
   const results = filters.sortedRows.slice(0, CLIENT_RESULT_LIMIT).map((row) => ({
     id: row.client_id,
@@ -67,10 +67,11 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           placeholder={placeholder}
           aria-label={placeholder}
           onFocus={() => setFocused(true)}
-          // El retardo deja que el clic sobre un resultado se resuelva antes
-          // de desmontar la lista. Los resultados además evitan robar el foco
-          // en mousedown, pero un toque en el borde de la lista sí lo quita.
-          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          // El proveedor retrasa el apagado: deja que el clic sobre un
+          // resultado se resuelva antes de desmontar la lista. Los resultados
+          // además evitan robar el foco en mousedown, pero un toque en el
+          // borde de la lista sí lo quita.
+          onBlur={() => setFocused(false)}
           className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
         />
         {c.nameQuery ? (
@@ -100,7 +101,6 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
             results={results}
             onSelect={(id) => {
               track("Client Details Opened", { client_id: id, source: "cartera" });
-              setFocused(false);
               router.push(clientHref(id, "cartera"));
             }}
           />

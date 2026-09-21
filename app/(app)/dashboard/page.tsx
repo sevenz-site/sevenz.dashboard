@@ -8,6 +8,7 @@ import { ClientSearchCartera } from "@/components/dashboard/client-search-carter
 import {
   ClientFilterProvider,
   ClientFilterChipsRow,
+  HideWhileResults,
 } from "@/components/dashboard/client-filter-context";
 import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
@@ -221,16 +222,18 @@ export default async function DashboardPage({
                 keeps it full width below, which is a different place in the
                 document — so it is rendered in both spots and each is shown at
                 one breakpoint. */}
-            <div className="hidden sm:block">
-              <ClientSearchDialog
-                clients={clients ?? []}
-                ownerId={user!.id}
-                businessName={owner?.business_name || user!.email || "tu negocio"}
-                ownerCountry={ownerCountry}
-                rateContext={rateContext}
-                monedaHabitual={monedaHabitual}
-              />
-            </div>
+            <HideWhileResults>
+              <div className="hidden sm:block">
+                <ClientSearchDialog
+                  clients={clients ?? []}
+                  ownerId={user!.id}
+                  businessName={owner?.business_name || user!.email || "tu negocio"}
+                  ownerCountry={ownerCountry}
+                  rateContext={rateContext}
+                  monedaHabitual={monedaHabitual}
+                />
+              </div>
+            </HideWhileResults>
           </div>
         </div>
 
@@ -241,18 +244,24 @@ export default async function DashboardPage({
             Sube por delante de las tarjetas de capital: registrar un movimiento
             es la acción, mirar el total es el resumen, y la acción no debería
             quedar debajo de dos tarjetas y una tira de tasas. */}
-        <div className="sm:hidden">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            autoOpen={nuevo === "1"}
-            showTourTarget={false}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
-        </div>
+        {/* Se aparta mientras la lista de coincidencias está abierta: flota
+            justo encima de este botón, y un toque en el último resultado que
+            se pase unos píxeles abriría el alta de un movimiento en vez de la
+            ficha del cliente. */}
+        <HideWhileResults>
+          <div className="sm:hidden">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              autoOpen={nuevo === "1"}
+              showTourTarget={false}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
+          </div>
+        </HideWhileResults>
 
         {/* La tasa va ANTES de las tarjetas, no después: las tarjetas de un
             negocio venezolano muestran el equivalente en bolívares, y ese

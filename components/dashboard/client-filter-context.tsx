@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { ClientFilterChips, useClientFilters } from "@/components/dashboard/client-filters";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummary } from "@/lib/types";
@@ -37,7 +37,61 @@ export function ClientFilterProvider({
   children: React.ReactNode;
 }) {
   const filters = useClientFilters(rows, rateContext);
-  return <FilterContext.Provider value={filters}>{children}</FilterContext.Provider>;
+  const [focused, setFocusedState] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // El retardo al salir, otra vez, y por la misma razón de siempre: el dueño
+  // toca un resultado, eso desenfoca el campo, y si el botón reapareciera en
+  // ese instante volvería a ocupar el sitio donde el dedo ya está bajando.
+  // Justo el error que este cambio existe para evitar.
+  const setFocused = useCallback((value: boolean) => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (value) {
+      setFocusedState(true);
+      return;
+    }
+    timer.current = setTimeout(() => setFocusedState(false), 150);
+  }, []);
+
+  // UNA SOLA VERDAD, y es lo importante de este bloque.
+  //
+  // `open` se calcula aquí, no en cada consumidor. El buscador lo usa para
+  // saber si pinta la lista y "Agregar movimiento" para saber si se aparta:
+  // si cada uno lo dedujera por su cuenta, bastaría que uno cambiara de
+  // criterio para acabar con el botón visible bajo una lista abierta, que es
+  // exactamente el toque por error que queremos impedir.
+  const open = focused && filters.controls.nameQuery.trim() !== "";
+  const searchOpen = useMemo(() => ({ open, setFocused }), [open, setFocused]);
+
+  return (
+    <FilterContext.Provider value={filters}>
+      <SearchOpenContext.Provider value={searchOpen}>{children}</SearchOpenContext.Provider>
+    </FilterContext.Provider>
+  );
+}
+
+// ¿Hay una lista de coincidencias abierta sobre la pantalla de Cartera?
+const SearchOpenContext = createContext<{ open: boolean; setFocused: (v: boolean) => void }>({
+  open: false,
+  setFocused: () => {},
+});
+
+export function useSearchResultsOpen() {
+  return useContext(SearchOpenContext);
+}
+
+// Lo que se aparta mientras la lista de coincidencias tapa la pantalla.
+//
+// Hoy, "Agregar movimiento". La lista flota justo encima de él, así que un
+// toque en el último resultado que se pase unos píxeles abre el alta de un
+// movimiento en vez de la ficha del cliente — y el dueño se encuentra
+// escribiendo un fiado cuando lo que quería era mirar una cuenta.
+export function HideWhileResults({ children }: { children: React.ReactNode }) {
+  const { open } = useSearchResultsOpen();
+  return open ? null : <>{children}</>;
 }
 
 // Los chips, leyendo el estado del contexto.
