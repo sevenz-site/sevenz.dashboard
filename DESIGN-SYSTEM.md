@@ -505,6 +505,26 @@ que cae: vuelve a medirlo antes de tocarlo.
 general: para una ayuda contextual normal está el popover del sistema, que sí
 sigue el tema.
 
+## Una elección se marca; una acción se pulsa
+
+Si dos botones representan **un valor elegido** —no dos acciones distintas—,
+son un `RadioGroup`, no dos `Button variant="outline"`. La píldora de
+`TipoButtons` (`movement-currency-field.tsx`) es la forma: `h-10`,
+`rounded-full`, borde, y el `RadioGroupItem` dentro del `<label>`.
+
+**Por qué, con el caso que lo provocó.** "¿En qué moneda está esta libreta?"
+en `/import` tenía dos botones sueltos, "Todo en USD" y "Todo en EUR". Pulsar
+uno aplicaba la moneda a las veinticinco filas y **no dejaba ninguna marca**:
+la pantalla se veía exactamente igual antes y después, y la única prueba de
+que había funcionado estaba en la columna de moneda, a un scroll largo de
+distancia. Con un radio, el punto relleno responde la pregunta que el título
+acaba de hacer.
+
+**El valor se deduce del dato, no se guarda aparte.** En ese caso sale de las
+filas: si todas coinciden, esa es la elegida; si la libreta mezcla —se
+permite, cambiando filas sueltas—, **no se marca ninguna**. Marcar una sería
+mentir sobre las demás, y un radio que miente es peor que dos botones mudos.
+
 ## Un icono de marca entra con `currentColor`, no con su color
 
 `components/icons/whatsapp.tsx` es el patrón. Un SVG que llega de diseño trae

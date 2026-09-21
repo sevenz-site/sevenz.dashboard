@@ -1,7 +1,6 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -81,8 +80,7 @@ export function ImportReviewTable({
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead className="min-w-[10rem]">Detalle</TableHead>
-            <TableHead>Saldo calculado</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableHead>Saldo</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -202,13 +200,6 @@ export function ImportReviewTable({
                   : showCurrency
                     ? SIN_MONEDA.format(row.computed_balance)
                     : formatCurrency(row.computed_balance)}
-              </TableCell>
-              <TableCell>
-                {row.needs_review ? (
-                  <Badge variant="destructive">Revisar</Badge>
-                ) : (
-                  <Badge variant="secondary">OK</Badge>
-                )}
               </TableCell>
               <TableCell>
                 <Button variant="ghost" size="icon" onClick={() => onRemove(index)}>

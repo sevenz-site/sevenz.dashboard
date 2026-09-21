@@ -1,21 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +27,10 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
+import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
+import { PasosImportar } from "@/components/dashboard/pasos-importar";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 
 import type { ReconcileClient } from "@/lib/reconcile";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -149,6 +143,34 @@ export function ImportFlow({
   // selector por fila sigue ahí para la libreta que mezcla.
   const missingCurrency = showCurrency && reviewRows.some((r) => !r.currency);
 
+  // Cuál de las dos monedas marca el radio. Sale de las filas y no de un
+  // estado aparte: las filas son la verdad y se pueden cambiar de una en una.
+  // Si todas coinciden, esa; si la libreta mezcla —o si todavía no se ha
+  // elegido, que es todas en null—, ninguna.
+  const monedasEnUso = new Set(reviewRows.map((r) => r.currency));
+  const monedaDeLaLibreta = monedasEnUso.size === 1 ? [...monedasEnUso][0] : null;
+
+  // Una sola definición de "no se puede guardar todavía", porque ahora hay DOS
+  // botones que la preguntan —el del pie y el de la cabecera— y que discrepen
+  // sería un botón que guarda una tanda que el otro considera incompleta.
+  const noSePuedeConfirmar =
+    confirming ||
+    reviewRows.length === 0 ||
+    missingDocumentId ||
+    missingSharedName ||
+    missingCurrency;
+
+  // Si estamos en el navegador. `useSyncExternalStore` y no un efecto: el
+  // portal necesita un nodo que solo existe tras montar, y poner ese
+  // `setState` en un `useEffect` es justo lo que rechaza
+  // `react-hooks/set-state-in-effect`. Mismo recurso que `useIsMobile()`.
+  const montado = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const ranuraCabecera = montado ? document.getElementById(RANURA_ACCION_CABECERA) : null;
+
   function handleFilesSelected(fileList: FileList | null) {
     if (guardia()) return;
     if (!fileList) return;
@@ -253,6 +275,22 @@ export function ImportFlow({
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4">
+        {/* El mismo botón, arriba. Con veinticinco filas revisadas, el único
+            que guardaba quedaba a una pantalla y media de scroll del sitio
+            donde el dueño acababa de corregir la última. Ver
+            ranura-cabecera.tsx para por qué viaja por portal. */}
+        {ranuraCabecera
+          ? createPortal(
+              <ConfirmarImportacion
+                cuantas={reviewRows.length}
+                deshabilitado={noSePuedeConfirmar}
+                guardando={confirming}
+                onConfirm={handleConfirm}
+                size="sm"
+              />,
+              ranuraCabecera,
+            )
+          : null}
         <div className="flex flex-col gap-3 rounded-lg border p-3">
           <div className="flex items-start gap-2.5">
             <Checkbox
@@ -261,16 +299,9 @@ export function ImportFlow({
               onCheckedChange={(v) => toggleSameClient(v === true)}
               className="mt-0.5"
             />
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="same-client" className="cursor-pointer">
-                Todas las filas son del mismo cliente
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Para cuando fotografías varias páginas de una sola persona. Se aplica el mismo
-                nombre y la misma cédula a todo el lote, aunque la IA haya leído el nombre distinto
-                en cada página.
-              </p>
-            </div>
+            <Label htmlFor="same-client" className="cursor-pointer">
+              Todas las filas son del mismo cliente
+            </Label>
           </div>
 
           {sameClient ? (
@@ -301,25 +332,37 @@ export function ImportFlow({
               </div>
             </div>
           ) : null}
-          {sameClient ? (
-            <p className="text-xs text-muted-foreground">
-              Si la página mezcla clientes, desmarca la casilla de esa fila en la tabla y recupera
-              su nombre y cédula propios.
-            </p>
-          ) : null}
         </div>
 
         {showCurrency ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
             <span className="text-sm font-medium">¿En qué moneda está esta libreta?</span>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("USD")}>
-                Todo en USD
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => applyCurrencyToAll("EUR")}>
-                Todo en EUR
-              </Button>
-            </div>
+            {/* Radio y no dos botones sueltos, con la misma píldora que
+                "Cargo / Abono" del alta de movimiento (TipoButtons). Dos
+                botones `outline` no dejaban NINGUNA marca de cuál se había
+                pulsado: el dueño elegía USD, la pantalla no cambiaba de
+                aspecto, y la única prueba de que había funcionado estaba
+                veinticinco filas más abajo, en la columna de la moneda.
+
+                El valor no se guarda aparte: se deduce de las filas, que son
+                la verdad. Si todas coinciden, esa es la elegida; si la libreta
+                mezcla —se permite, cambiando filas sueltas— no se marca
+                ninguna, porque marcar una sería mentir sobre las otras. */}
+            <RadioGroup
+              value={monedaDeLaLibreta ?? ""}
+              onValueChange={(v) => applyCurrencyToAll(v as LedgerCurrency)}
+              className="flex flex-row flex-wrap gap-2"
+            >
+              {(["USD", "EUR"] as const).map((moneda) => (
+                <label
+                  key={moneda}
+                  className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
+                >
+                  <RadioGroupItem value={moneda} />
+                  <span className="whitespace-nowrap">Todo en {moneda}</span>
+                </label>
+              ))}
+            </RadioGroup>
             <p className="w-full text-xs text-muted-foreground">
               Hay que elegir una para poder importar. Puedes cambiar filas sueltas después, si la
               libreta mezcla.
@@ -356,47 +399,12 @@ export function ImportFlow({
           <Button variant="outline" onClick={() => setReviewMovements(null)} disabled={confirming}>
             Volver
           </Button>
-          {/* La confirmación va en un diálogo y no directa en el botón porque
-              esta es la única escritura de la app que mete decenas de filas de
-              golpe: lo que se cuela aquí no se revisa fila a fila después. Es
-              una pregunta distinta de las de arriba — esas son datos que
-              faltan, esta es "¿lo miraste?". */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                disabled={
-                  confirming ||
-                  reviewRows.length === 0 ||
-                  missingDocumentId ||
-                  missingSharedName ||
-                  missingCurrency
-                }
-              >
-                {confirming ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" /> Guardando...
-                  </>
-                ) : (
-                  `Confirmar e importar (${reviewRows.length})`
-                )}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  ¿Importar {reviewRows.length} {reviewRows.length === 1 ? "movimiento" : "movimientos"}?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Asegúrate de haber verificado los datos importados del cliente, así como montos y
-                  moneda.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Volver a revisar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleConfirm}>Confirmar importación</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <ConfirmarImportacion
+            cuantas={reviewRows.length}
+            deshabilitado={noSePuedeConfirmar}
+            guardando={confirming}
+            onConfirm={handleConfirm}
+          />
         </div>
       </div>
     );
@@ -404,6 +412,13 @@ export function ImportFlow({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* Los tres pasos viven aquí y no en la página porque solo valen para
+          este momento: explican cómo se importa, y una vez la libreta está
+          leída y el dueño está corrigiendo montos, describen algo que ya
+          hizo. En un teléfono son cuatro renglones de los que se come antes
+          de llegar a la primera fila. */}
+      <PasosImportar className="-mt-2" />
+
       {usage.plan === "free" && usage.limit !== null ? (
         <Card>
           <CardContent className="flex flex-col gap-1.5 pt-6">

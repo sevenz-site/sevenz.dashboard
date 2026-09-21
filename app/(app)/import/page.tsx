@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
-import { PasosImportar } from "@/components/dashboard/pasos-importar";
+import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 import { readOwnerCountry } from "@/lib/owner-country";
 
 export default async function ImportPage() {
@@ -56,11 +56,13 @@ export default async function ImportPage() {
             <ChevronLeft className="size-5" />
           </Link>
         </Button>
+        {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
+            manda aquí su botón de "Confirmar e importar" por portal — ver
+            components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la
+            derecha; con la ranura vacía no ocupa nada. */}
+        <div id={RANURA_ACCION_CABECERA} className="ml-auto flex items-center" />
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
-        <PasosImportar className="mt-2" />
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
       {ownerCountry ? (
         <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} />
       ) : (
