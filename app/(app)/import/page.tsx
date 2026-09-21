@@ -1,11 +1,11 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
-import { PasosImportar } from "@/components/dashboard/pasos-importar";
+import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 import { readOwnerCountry } from "@/lib/owner-country";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
 export default async function ImportPage() {
   const supabase = await createClient();
@@ -17,13 +17,24 @@ export default async function ImportPage() {
   // total is per currency, so it needs the right starting point for each one.
   // A VE owner's `balance` is not the sum of the other two and must not be
   // used as a stand-in.
-  const [{ data: clients }, { data: owner }] = await Promise.all([
+  const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
       .select("client_id, name, balance, balance_usd, balance_eur, document_id")
       .eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+    // Para la línea de bolívares del resumen de confirmación, nada más.
+    getOwnerRateContext(supabase, user!.id),
   ]);
+
+  const rateContext: MovementRateContext | null = ownerRate
+    ? {
+        rateMode: ownerRate.rateMode,
+        effectiveRate: ownerRate.effectiveRate,
+        officialRateUsd: ownerRate.officialRate.usd,
+        prevista: ownerRate.prevista,
+      }
+    : null;
 
   // Sin país no se puede importar: es lo que decide si las filas llevan moneda
   // o no. Se comprueba aquí, antes de subir la foto, y no al confirmar — al
@@ -51,18 +62,22 @@ export default async function ImportPage() {
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
           up, where the real header returns. */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Cartera">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
+        {/* CarteraBackButton y no un Link pelado: mientras hay una libreta
+            leída sin guardar, esta es LA ÚNICA salida de la pantalla —la barra
+            de abajo se esconde— y tiene que preguntar. Un Link normal aquí
+            sería la puerta por la que se pierden veintitantos movimientos
+            corregidos a mano, sin un aviso. Es el mismo componente y el mismo
+            guard que usa "Mi negocio". */}
+        <CarteraBackButton />
+        {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
+            manda aquí su botón de "Confirmar e importar" por portal — ver
+            components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la
+            derecha; con la ranura vacía no ocupa nada. */}
+        <div id={RANURA_ACCION_CABECERA} className="ml-auto flex items-center" />
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
-        <PasosImportar className="mt-2" />
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
       {ownerCountry ? (
-        <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} />
+        <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} rateContext={rateContext} />
       ) : (
         <OwnerUnavailableDialog />
       )}

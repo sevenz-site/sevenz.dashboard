@@ -1,10 +1,29 @@
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 
+// Por qué una fila pide una segunda mirada. Eran tres cosas muy distintas
+// metidas en el mismo booleano, y la pantalla las explicaba todas con la misma
+// frase — "no cuadra con el saldo escrito en tu libreta" —, que es falsa en dos
+// de los tres casos.
+//
+//   "no_cuadra"       el saldo escrito a mano NO coincide con el calculado.
+//                     La única que de verdad significa "revisa esta cuenta", y
+//                     la única que se pinta en rojo.
+//   "sin_saldo"       esa línea no traía ningún saldo escrito. No es que no
+//                     cuadre: es que no había nada con qué comparar, y en un
+//                     cuaderno a mano es lo NORMAL — casi nadie apunta el total
+//                     corrido en cada renglón. Marcar esto en rojo pintaba una
+//                     libreta entera de rojo y no distinguía nada.
+//   "lectura_dudosa"  la IA no se fio de lo que leyó en esa línea.
+export type ReviewReason = "no_cuadra" | "lectura_dudosa" | "sin_saldo";
+
 export type ReviewRow = ExtractedMovement & {
   rowId: string;
   matched_client_id: string | null;
   computed_balance: number;
   needs_review: boolean;
+  // Null cuando la fila está bien. Cuando no, el motivo concreto, para que la
+  // tabla pueda decir cuál es en vez de un color sin explicación.
+  review_reason: ReviewReason | null;
   // True when there's no existing client on file with a document_id for
   // this row — either it's a brand-new client, or it matched an existing
   // one that's never had a cédula/documento recorded. False (no need to
@@ -90,6 +109,18 @@ export function reconcileMovements(
       matched_client_id: matched?.id ?? null,
       computed_balance: computedBalance,
       needs_review: movement.confidence === "low" || movement.read_balance === null || !reconciles,
+      // El orden importa: se queda con el motivo MÁS accionable. Un desajuste
+      // real trae dos cifras que el dueño puede comparar con el cuaderno
+      // delante; "no me fie de la lectura" solo le dice que mire. Si se dan
+      // los dos, gana el que se puede resolver.
+      review_reason:
+        movement.read_balance !== null && !reconciles
+          ? "no_cuadra"
+          : movement.confidence === "low"
+            ? "lectura_dudosa"
+            : movement.read_balance === null
+              ? "sin_saldo"
+              : null,
       needs_document_id: !matched?.document_id,
     };
   });

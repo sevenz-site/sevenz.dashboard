@@ -55,6 +55,7 @@ import {
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
 import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
 import {
   useErrorDeCuentaPausada,
@@ -552,6 +553,15 @@ export function AddMovementDialog({
           {state.error && !errorPausada ? (
             <p className="text-sm text-destructive">{state.error}</p>
           ) : null}
+
+          {/* Pegado al botón, que es donde está mirando el dueño cuando pulsa
+              y no pasa nada. Los campos ya están marcados en rojo más arriba,
+              pero con el teclado abierto "más arriba" puede estar fuera de la
+              pantalla. */}
+          <FaltaPorCompletar
+            errors={errors}
+            etiquetas={{ amount: "Monto", whatsapp: "WhatsApp" }}
+          />
 
           <DialogFooter>
             {isFlagged && type === "charge" ? (

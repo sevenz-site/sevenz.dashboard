@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { FormattedTextarea } from "@/components/dashboard/formatted-textarea";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { updateBusinessSettings, type ProfileState } from "@/app/(app)/profile/actions";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
+import { useTrampaDeAtras } from "@/hooks/use-trampa-de-atras";
 import type { Owner } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
@@ -101,57 +102,11 @@ export function BusinessSettingsForm({
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
-  // Whether the sentinel entry pushed below is still sitting, unconsumed,
-  // in the browser's history stack. Bug this fixes: leaving via the
-  // sidebar (a forward router.push, not a real back-press) never fired
-  // this popstate handler at all, so the sentinel was silently left
-  // behind under whatever page came next — pressing physical back from
-  // there landed back on "Mi negocio" instead of leaving it. Idempotent by
-  // design, since it can now run from two places (see onBeforeLeave below
-  // and the popstate handler's own "leave" branch) without double-
-  // consuming.
-  const hasSentinelRef = useRef(false);
-  const popstateHandlerRef = useRef<(() => void) | null>(null);
-
-  function consumeSentinelIfAny() {
-    if (!hasSentinelRef.current) return;
-    hasSentinelRef.current = false;
-    if (popstateHandlerRef.current) {
-      window.removeEventListener("popstate", popstateHandlerRef.current);
-      popstateHandlerRef.current = null;
-    }
-    return new Promise<void>((resolve) => {
-      function onPop() {
-        window.removeEventListener("popstate", onPop);
-        resolve();
-      }
-      window.addEventListener("popstate", onPop);
-      history.back();
-    });
-  }
-
-  // Browser Back/Forward inside the app: Next never fully unloads the page
-  // for these, so beforeunload can't catch them. Trap the back navigation
-  // with a sentinel history entry, then run it through the same guard.
-  useEffect(() => {
-    if (!isDirty) return;
-    history.pushState(null, "", location.href);
-    hasSentinelRef.current = true;
-    function onPopState() {
-      history.pushState(null, "", location.href);
-      hasSentinelRef.current = true;
-      guard(() => {
-        popstateHandlerRef.current = null;
-        consumeSentinelIfAny();
-      });
-    }
-    popstateHandlerRef.current = onPopState;
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      popstateHandlerRef.current = null;
-    };
-  }, [isDirty, guard]);
+  // La trampa del botón atrás vive ahora en useTrampaDeAtras: la necesita
+  // también la revisión de una libreta importada, y el fallo del centinela
+  // abandonado —el que documenta ese hook— no debe poder repetirse en dos
+  // sitios por separado. Se sacó tal cual, sin cambiar la lógica.
+  const consumeSentinelIfAny = useTrampaDeAtras(isDirty, guard);
 
   return (
     <form ref={setFormRef} onSubmit={handleSubmit} onChange={markDirty} className="flex max-w-lg flex-col gap-8">

@@ -51,6 +51,7 @@ import {
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
+import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
 import type { MonedaHabitual } from "@/lib/moneda-habitual";
 import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
 import {
@@ -640,6 +641,20 @@ function ClientSearchDialogBody({
             ) : null}
           </div>
         ) : null}
+
+        {/* Mismo botón "Guardar fiado" que el alta de movimiento, y el mismo
+            problema: aquí el formulario es aún más largo —nombre, cédula,
+            WhatsApp, tipo, plazo, monto— así que con el teclado abierto el
+            campo que falta está casi siempre fuera de la pantalla. */}
+        <FaltaPorCompletar
+          errors={errors}
+          etiquetas={{
+            new_client_name: "Nombre",
+            document_id: "Cédula/documento",
+            whatsapp: "WhatsApp",
+            amount: "Monto",
+          }}
+        />
 
         <DialogFooter>
           {state.duplicate ? (
