@@ -9,7 +9,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImportJobs } from "@/components/import/import-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
-import { DESCRIPCION_IMPORTAR, MAX_IMPORT_PHOTOS } from "@/lib/config";
+import { MAX_IMPORT_PHOTOS } from "@/lib/config";
+import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 // "Importar", al lado del título de Cartera.
 //
@@ -39,7 +40,13 @@ export function ImportarCartera() {
       <SheetContent side="bottom" className="max-h-[90dvh] rounded-t-xl">
         <SheetHeader>
           <SheetTitle>Importar cartera</SheetTitle>
-          <SheetDescription>{DESCRIPCION_IMPORTAR}</SheetDescription>
+          {/* asChild: SheetDescription monta un <p>, y un <ol> dentro de un
+              <p> es HTML inválido — el navegador cierra el párrafo por su
+              cuenta y React se queja en hidratación. Así el <ol> ES la
+              descripción, y el diálogo conserva su aria-describedby. */}
+          <SheetDescription asChild>
+            <PasosImportar />
+          </SheetDescription>
         </SheetHeader>
         <Controles onDone={() => setOpen(false)} />
       </SheetContent>
@@ -55,7 +62,7 @@ export function ImportarCartera() {
       <PopoverContent align="end" className="flex w-80 flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h3 className="font-semibold">Importar cartera</h3>
-          <p className="text-sm text-muted-foreground">{DESCRIPCION_IMPORTAR}</p>
+          <PasosImportar />
         </div>
         <Controles onDone={() => setOpen(false)} />
       </PopoverContent>
