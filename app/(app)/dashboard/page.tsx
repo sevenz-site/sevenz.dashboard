@@ -325,16 +325,24 @@ export default async function DashboardPage({
             sitio donde ya estaba. Moverla al final de la lista habría sido
             más natural de leer, pero ahí abajo ya vive la paginación y dos
             controles de "ir a más clientes" pegados se estorban. */}
-        {/* Los chips bajan aquí, pegados a la lista que ordenan y filtran.
-            Vivían dentro de la hoja del buscador, arriba del todo, a una
-            pantalla de distancia de lo que tocaban: elegir "Plazo vencido" no
-            enseñaba ningún cambio. */}
+        {/* La cabecera de la sección: qué es y cómo salir de ella. Nada más.
+            Los chips estuvieron un rato en esta misma fila, en el sitio del
+            título, y se leía como si "Ordenar por" fuese el nombre de la
+            sección. */}
         <div className="mt-1 flex items-center justify-between gap-3">
-          <ClientFilterChipsRow />
+          <h2 className="text-xl font-semibold">Clientes</h2>
+          {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
+              en 15—, así que hace falta una salida explícita a la completa. */}
           <Button variant="ghost" size="sm" asChild className="shrink-0">
             <Link href="/clients">Ver todos</Link>
           </Button>
         </div>
+
+        {/* En su propia fila, debajo de la cabecera y pegados a la lista que
+            ordenan. Vivían dentro de la hoja del buscador, arriba del todo, a
+            una pantalla de distancia de lo que tocaban: elegir "Plazo vencido"
+            no enseñaba ningún cambio. */}
+        <ClientFilterChipsRow />
 
         <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
       </ClientFilterProvider>

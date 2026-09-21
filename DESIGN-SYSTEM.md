@@ -426,12 +426,16 @@ líneas y se nota; en Clientes es una sola y casi no. Se aplica igual en las
 tres, porque un comportamiento que cambia de pantalla en pantalla se aprende
 peor que uno que siempre hace lo mismo.
 
-**No hay rótulo "Clientes" sobre ninguna lista.** Malas pagas, Papelera y
-Cartera lo tenían; se borró el 2026-09-20. Debajo hay tarjetas con nombre y
-saldo, que no necesitan que se las presente. En Cartera eso dejó sola la
-salida "Ver todos", que se queda alineada a la derecha en la misma fila: abajo
-ya vive la paginación y dos controles de "ir a más clientes" pegados se
-estorban.
+**El rótulo "Clientes" solo lo lleva Cartera.** En Malas pagas y Papelera se
+borró el 2026-09-20: el título de la pantalla ya dice de qué lista se trata, y
+debajo hay tarjetas con nombre y saldo que no necesitan que se las presente.
+Cartera sí lo conserva, porque ahí la lista es una sección más entre otras
+—capital, tasas— y sin rótulo quedaría pegada a los totales.
+
+Esa cabecera de Cartera es **solo título y salida**: `Clientes` a la izquierda
+y "Ver todos" a la derecha. **Los chips van en su propia fila, debajo.**
+Estuvieron un rato compartiendo fila con "Ver todos", en el sitio del título,
+y se leía como si "Ordenar por" fuese el nombre de la sección.
 
 **El retardo de 180ms al salir no es cosmético, y es la única parte delicada.**
 El dueño toca la tarjeta de un cliente; eso quita el foco del campo. Si el
