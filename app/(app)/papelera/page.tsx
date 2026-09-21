@@ -49,9 +49,7 @@ export default async function PapeleraPage() {
           historial se conserva y su enlace de saldo sigue funcionando.
         </p>
       </ScreenHeader>
-      <ScreenHeader>
-        <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
-      </ScreenHeader>
+      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
       <PapeleraTable rows={rows} rateContext={ownerRate} />
     </div>
   );

@@ -384,27 +384,32 @@ las tarjetas que acababa de filtrar.
 Consecuencia buscada: en esas tres no hay cmdk, no hay popup y no hay portal,
 así que tampoco el fallo de la sección anterior. El único desplegable de
 clientes vivo está dentro de la hoja de Cartera.
-### Al buscar, la pantalla se aparta
+### Al buscar, el título se aparta
 
 En Clientes, Malas pagas y Papelera, mientras el campo de búsqueda tiene el
-foco **y solo en teléfono**: se ocultan el título, el subtítulo y el epígrafe
-"Clientes", desaparece la barra inferior, y `<main>` deja de reservar el hueco
-de esa barra. El contenido queda pegado arriba. Todo lo gobierna
-`search-focus-context.tsx`, porque el campo vive en la lista y la barra en el
-layout.
+foco **y solo en teléfono**, se ocultan el título y el subtítulo de la
+pantalla. Nada más: la barra inferior se queda, y con ella la reserva de
+espacio de `AppMain`. Lo gobierna `search-focus-context.tsx`, porque el campo
+vive en la lista y el título lo pinta cada página, que es un Server Component.
 
 El motivo es de espacio real: entre título, subtítulo, barra y teclado, al
 dueño le quedaban unos 250px para leer los clientes que acababa de buscar. Y
 el título dice "Clientes" en la pantalla de clientes — cuando estás buscando
 es lo que menos falta hace.
 
+**La barra inferior no se toca**, probado en las dos versiones el 2026-09-20.
+Quitarla gana 64px más y deja al dueño sin navegación justo cuando es más
+probable que quiera salir de donde está. (Aun así desaparece sola cuando sube
+el teclado del teléfono: de eso se encarga `useKeyboardOpen` en
+`mobile-nav.tsx`, y es anterior a esto.)
+
 **El retardo de 180ms al salir no es cosmético, y es la única parte delicada.**
 El dueño toca la tarjeta de un cliente; eso quita el foco del campo. Si el
-título y la barra volvieran en ese instante, el contenido baja unos 70px ENTRE
-que el dedo toca y que el navegador decide sobre qué elemento fue el clic —
-y abre la ficha del cliente de arriba. Devolver la cabecera solo después de
-que el clic se resuelva lo evita. Al entrar no hay retardo: apartarse tiene
-que sentirse inmediato.
+título volviera en ese instante, el contenido baja unos 70px ENTRE que el dedo
+toca y que el navegador decide sobre qué elemento fue el clic — y abre la
+ficha del cliente de arriba. Devolver la cabecera solo después de que el clic
+se resuelva lo evita. Al entrar no hay retardo: apartarse tiene que sentirse
+inmediato.
 
 Lo que hace este fallo peligroso es que **con ratón no aparece**: un clic de
 ratón es instantáneo y gana la carrera. Solo se ve tocando con el dedo. La
@@ -413,7 +418,6 @@ abre esa y no la primera.
 
 De md hacia arriba no se oculta nada: sobra sitio, y una pantalla sin título
 no se sabe qué es.
-
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como

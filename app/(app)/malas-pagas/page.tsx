@@ -100,12 +100,7 @@ export default async function MalasPagasPage() {
       </div>
       {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
           16px gap), text-xl, and named for what is actually underneath it. */}
-      {/* Se aparta con el título: dejarlo solo arriba del buscador, sin la
-          cabecera que lo enmarca, se lee como si la pantalla se hubiera
-          quedado a medio cargar. */}
-      <ScreenHeader>
-        <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
-      </ScreenHeader>
+      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
       <ClientTable
         rows={rows}
         scores={scores}

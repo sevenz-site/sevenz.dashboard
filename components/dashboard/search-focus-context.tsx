@@ -4,22 +4,22 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 
 // ¿Está el dueño escribiendo en el buscador de clientes?
 //
-// Tres sitios lejanos del árbol tienen que saberlo a la vez: el campo, que lo
-// produce; el título de la pantalla y la barra inferior, que se apartan; y
-// `<main>`, que deja de reservar el hueco de esa barra. El campo vive dentro
-// de la lista y la barra vive en el layout, así que no hay prop que los una.
+// Lo produce el campo y lo consume el título de la pantalla, que se aparta
+// mientras se busca. Son dos puntos lejanos: el campo vive dentro de la lista
+// y el título lo pinta cada página, que además es un Server Component. De ahí
+// el contexto y no una prop.
 //
-// POR QUÉ SE APARTAN. En un teléfono, entre el título, el subtítulo, la barra
+// POR QUÉ SE APARTA. En un teléfono, entre el título, el subtítulo, la barra
 // de abajo y el teclado, al dueño le quedaban unos 250px para leer los
 // clientes que acababa de buscar. El título dice "Clientes" en la pantalla de
 // clientes: cuando estás buscando, es lo que menos falta hace.
 //
-// LA BARRA YA SE ESCONDÍA, pero por otro motivo: `useKeyboardOpen` mira si el
-// viewport visual encogió. Eso funciona en un teléfono de verdad y no funciona
-// con teclado físico, ni en un navegador de escritorio, ni si el sistema
-// decide no encoger nada. El foco es la señal directa; la otra se queda como
-// está, y la barra se aparta con cualquiera de las dos.
-
+// LA BARRA INFERIOR NO SE TOCA, decidido el 2026-09-20 después de probarlo en
+// ambas versiones. Quitarla gana 64px más, pero deja al dueño sin navegación
+// justo cuando más probable es que quiera salir de donde está. Se queda, y con
+// ella la reserva de espacio de `AppMain`, que por eso vuelve a ser constante.
+// (Aun así desaparece sola cuando sube el teclado del teléfono; de eso se
+// encarga `useKeyboardOpen` en mobile-nav.tsx, y es anterior a esto.)
 type SearchFocusValue = {
   focused: boolean;
   setFocused: (value: boolean) => void;

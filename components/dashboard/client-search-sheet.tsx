@@ -69,8 +69,8 @@ function SearchField({
   onChange: (v: string) => void;
   placeholder: string;
 }) {
-  // Mientras se escribe, el título y la barra de abajo se apartan para
-  // dejar sitio a la lista. Ver search-focus-context.tsx.
+  // Mientras se escribe, el título de la pantalla se aparta para dejar
+  // sitio a la lista. Ver search-focus-context.tsx.
   const { setFocused } = useSearchFocus();
 
   return (
