@@ -3,7 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
-import { ScreenHeader } from "@/components/dashboard/search-focus-context";
+import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -78,12 +78,14 @@ export default async function MalasPagasPage() {
         </Button>
       </div>
       <div className="flex items-start justify-between gap-3">
-        <ScreenHeader>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
-          <p className="text-sm text-muted-foreground">
-            Clientes marcados como mala paga — no aparecen en la Cartera principal.
-          </p>
-        </ScreenHeader>
+          <HideWhileSearching>
+            <p className="text-sm text-muted-foreground">
+              Clientes marcados como mala paga — no aparecen en la Cartera principal.
+            </p>
+          </HideWhileSearching>
+        </div>
         {/* Desktop only, same as Cartera: the phone keeps this action in the
             bottom bar's "Agregar" instead, which is why there is no sm:hidden
             counterpart of this trigger the way Cartera has one. */}
@@ -100,7 +102,6 @@ export default async function MalasPagasPage() {
       </div>
       {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
           16px gap), text-xl, and named for what is actually underneath it. */}
-      <h2 className="mt-1 text-xl font-semibold">Clientes</h2>
       <ClientTable
         rows={rows}
         scores={scores}

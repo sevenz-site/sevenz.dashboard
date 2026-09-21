@@ -66,20 +66,24 @@ export function SearchFocusProvider({ children }: { children: React.ReactNode })
   return <SearchFocusContext.Provider value={value}>{children}</SearchFocusContext.Provider>;
 }
 
-// El título y el subtítulo de una pantalla de lista, que se apartan mientras
-// se busca.
+// Lo que se aparta mientras se busca.
+//
+// Hoy es solo el subtítulo. El título se queda: es lo que dice en qué
+// pantalla estás, y perderlo al escribir desorienta más de lo que el par de
+// líneas que ocupa llega a estorbar. En Papelera son tres líneas y se nota;
+// en Clientes es una sola y casi no, pero se aplica igual en las tres para
+// que las tres se comporten igual.
 //
 // Envuelve en vez de que cada página se apañe sola porque las tres son Server
-// Components y no pueden leer el contexto. Además así las tres se comportan
-// igual por construcción, que es lo que fallaba cuando cada lista tenía su
-// propio bloque de filtros.
+// Components y no pueden leer el contexto.
 //
-// `hidden` y no una altura animada: animar la salida del título desplaza la
-// lista mientras el dueño ya está leyendo, y en un teléfono barato esa
-// animación se ve a trompicones. Desaparecer de golpe es más honesto.
-export function ScreenHeader({ children }: { children: React.ReactNode }) {
+// `hidden` y no una altura animada: animar la salida desplaza la lista
+// mientras el dueño ya está leyendo, y en un teléfono barato esa animación se
+// ve a trompicones. Desaparecer de golpe es más honesto.
+export function HideWhileSearching({ children }: { children: React.ReactNode }) {
   const { focused } = useSearchFocus();
-  // Solo en teléfono. De md hacia arriba sobra sitio y quitar el título haría
-  // que la pantalla se quedara sin saber qué es.
+  // Solo en teléfono. De md hacia arriba sobra sitio y no hay teclado que se
+  // coma media pantalla, así que apartar algo solo movería la página sin
+  // ganar nada.
   return <div className={focused ? "hidden md:block" : undefined}>{children}</div>;
 }

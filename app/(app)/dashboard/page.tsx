@@ -295,14 +295,17 @@ export default async function DashboardPage({
           )}
         </div>
 
-        {/* Named for what is actually underneath: a list of clients and their
-            balances. "Historial de movimientos" already means a different screen
-            — the movement list inside one client — and reusing it here would
-            promise movements and deliver people. */}
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Clientes</h2>
-          {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
-              en 15—, así que hace falta una salida explícita a la completa. */}
+        {/* Sin rótulo "Clientes" desde el 2026-09-20: lo que hay debajo son
+            tarjetas con nombre y saldo, y ninguna otra pantalla lo lleva ya.
+            Lo que sí hace falta es la salida, porque esta lista está
+            recortada —oculta las malas pagas y pagina de 15 en 15— y sin
+            ella el dueño no tiene forma de saber que hay más.
+
+            Queda sola y alineada a la derecha, en la misma fila y el mismo
+            sitio donde ya estaba. Moverla al final de la lista habría sido
+            más natural de leer, pero ahí abajo ya vive la paginación y dos
+            controles de "ir a más clientes" pegados se estorban. */}
+        <div className="mt-1 flex items-center justify-end">
           <Button variant="ghost" size="sm" asChild className="shrink-0">
             <Link href="/clients">Ver todos</Link>
           </Button>

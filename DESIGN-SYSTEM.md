@@ -384,40 +384,46 @@ las tarjetas que acababa de filtrar.
 Consecuencia buscada: en esas tres no hay cmdk, no hay popup y no hay portal,
 así que tampoco el fallo de la sección anterior. El único desplegable de
 clientes vivo está dentro de la hoja de Cartera.
-### Al buscar, el título se aparta
+### Al buscar se aparta el subtítulo, nunca el título
 
 En Clientes, Malas pagas y Papelera, mientras el campo de búsqueda tiene el
-foco **y solo en teléfono**, se ocultan el título y el subtítulo de la
-pantalla. Nada más: la barra inferior se queda, y con ella la reserva de
-espacio de `AppMain`. Lo gobierna `search-focus-context.tsx`, porque el campo
-vive en la lista y el título lo pinta cada página, que es un Server Component.
+foco **y solo en teléfono**, se oculta el subtítulo de la pantalla. El título
+se queda, y la barra inferior también. Lo gobierna
+`search-focus-context.tsx` (`HideWhileSearching`), porque el campo vive en la
+lista y el título lo pinta cada página, que es un Server Component.
 
-El motivo es de espacio real: entre título, subtítulo, barra y teclado, al
-dueño le quedaban unos 250px para leer los clientes que acababa de buscar. Y
-el título dice "Clientes" en la pantalla de clientes — cuando estás buscando
-es lo que menos falta hace.
+**El título nunca se va.** Es lo que dice en qué pantalla estás, y perderlo al
+escribir desorienta más de lo que las dos líneas que ocupa llegan a estorbar.
+Se probó ocultándolo el 2026-09-20 y se revirtió el mismo día.
 
-**La barra inferior no se toca**, probado en las dos versiones el 2026-09-20.
-Quitarla gana 64px más y deja al dueño sin navegación justo cuando es más
-probable que quiera salir de donde está. (Aun así desaparece sola cuando sube
-el teclado del teléfono: de eso se encarga `useKeyboardOpen` en
-`mobile-nav.tsx`, y es anterior a esto.)
+Lo que se gana depende de la pantalla: en Papelera el subtítulo son tres
+líneas y se nota; en Clientes es una sola y casi no. Se aplica igual en las
+tres, porque un comportamiento que cambia de pantalla en pantalla se aprende
+peor que uno que siempre hace lo mismo.
+
+**No hay rótulo "Clientes" sobre ninguna lista.** Malas pagas, Papelera y
+Cartera lo tenían; se borró el 2026-09-20. Debajo hay tarjetas con nombre y
+saldo, que no necesitan que se las presente. En Cartera eso dejó sola la
+salida "Ver todos", que se queda alineada a la derecha en la misma fila: abajo
+ya vive la paginación y dos controles de "ir a más clientes" pegados se
+estorban.
 
 **El retardo de 180ms al salir no es cosmético, y es la única parte delicada.**
 El dueño toca la tarjeta de un cliente; eso quita el foco del campo. Si el
-título volviera en ese instante, el contenido baja unos 70px ENTRE que el dedo
-toca y que el navegador decide sobre qué elemento fue el clic — y abre la
-ficha del cliente de arriba. Devolver la cabecera solo después de que el clic
-se resuelva lo evita. Al entrar no hay retardo: apartarse tiene que sentirse
+subtítulo volviera en ese instante, el contenido baja ENTRE que el dedo toca y
+que el navegador decide sobre qué elemento fue el clic — y abre la ficha del
+cliente de arriba. Devolver la cabecera solo después de que el clic se
+resuelva lo evita. Al entrar no hay retardo: apartarse tiene que sentirse
 inmediato.
 
 Lo que hace este fallo peligroso es que **con ratón no aparece**: un clic de
 ratón es instantáneo y gana la carrera. Solo se ve tocando con el dedo. La
 prueba, entonces, es tocar la SEGUNDA tarjeta de la lista y comprobar que
-abre esa y no la primera.
+abre esa y no la primera. Y sigue haciendo falta aunque ahora se mueva menos:
+en Papelera el subtítulo son tres líneas, más que de sobra.
 
-De md hacia arriba no se oculta nada: sobra sitio, y una pantalla sin título
-no se sabe qué es.
+De md hacia arriba no se oculta nada: sobra sitio y no hay teclado que se coma
+media pantalla.
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
