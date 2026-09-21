@@ -242,8 +242,9 @@ export function ClientStatusLegend({ className }: { className?: string }) {
 
 // ─────────────────────────────────────────────────────────────────────────
 // The same three filters as chips. Los usan las dos formas del buscador:
-// ClientSearchInline en Clientes, Malas pagas y Papelera, y ClientSearchSheet
-// en Cartera.
+// ClientSearchInline en Clientes, Malas pagas y Papelera, y ClientFilterChipsRow
+// en Cartera, que los saca del contexto porque allí el campo y los chips viven
+// en sitios distintos del documento.
 //
 // WHY THEY LIVE HERE and not in their own file: they read STATUS_OPTIONS and
 // SORT_OPTIONS, and drive the exact same ClientFilterState as <ClientFilters>

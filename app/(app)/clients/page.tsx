@@ -97,17 +97,17 @@ export default async function ClientsPage() {
             vive en la barra de abajo. */}
         <div className="flex shrink-0 items-center gap-1">
           <ImportarCartera variant="responsive" />
-        {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
-            action in the bottom bar's "Agregar" instead. */}
-        <div className="hidden sm:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+          {/* Desktop only, same as Cartera and Malas pagas: the phone keeps
+              this action in the bottom bar's "Agregar" instead. */}
+          <div className="hidden sm:block">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
           </div>
         </div>
       </div>

@@ -94,23 +94,21 @@ export default async function MalasPagasPage() {
             vive en la barra de abajo. */}
         <div className="flex shrink-0 items-center gap-1">
           <ImportarCartera variant="responsive" />
-        {/* Desktop only, same as Cartera: the phone keeps this action in the
-            bottom bar's "Agregar" instead, which is why there is no sm:hidden
-            counterpart of this trigger the way Cartera has one. */}
-        <div className="hidden sm:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+          {/* Desktop only, same as Cartera: the phone keeps this action in the
+              bottom bar's "Agregar" instead, which is why there is no
+              sm:hidden counterpart of this trigger the way Cartera has one. */}
+          <div className="hidden sm:block">
+            <ClientSearchDialog
+              clients={clients ?? []}
+              ownerId={user!.id}
+              businessName={owner?.business_name || user!.email || "tu negocio"}
+              ownerCountry={ownerCountry}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
           </div>
         </div>
       </div>
-      {/* Same section rule as Cartera: 20px above (mt-1 plus the container's
-          16px gap), text-xl, and named for what is actually underneath it. */}
       <ClientTable
         rows={rows}
         scores={scores}

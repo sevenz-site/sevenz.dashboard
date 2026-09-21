@@ -25,6 +25,7 @@ import type { ClientSummary } from "@/lib/types";
 //
 // EL ESTADO ES EL DE SIEMPRE: `useClientFilters`, el mismo que usan las cuatro
 // pantallas. Aquí no se filtra nada nuevo; solo cambia dónde se toca.
+
 // El campo llano de las tres pantallas con la lista a la vista.
 //
 // Un <input> de toda la vida, sin cmdk: no hay ninguna lista que recorrer con
