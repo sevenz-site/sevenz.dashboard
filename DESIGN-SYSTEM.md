@@ -386,11 +386,16 @@ cartera del final queda recortada al mismo criterio. El efecto secundario que
 conviene conocer: hay que vaciar el campo para recuperar la cartera entera, y
 por eso el aspa está siempre a mano.
 
-**Mientras la lista está abierta, "Agregar movimiento" se aparta**
-(`HideWhileResults`). La lista flota justo encima de ese botón: un toque en el
+**Mientras la lista está abierta se apartan "Agregar movimiento" y las
+tarjetas de capital**
+(`HideWhileResults`). La lista flota justo encima de ellos: un toque en el
 último resultado que se pase unos píxeles abriría el alta de un movimiento en
 vez de la ficha del cliente, y el dueño acabaría escribiendo un fiado cuando
 lo que quería era mirar una cuenta.
+
+Se aparta el bloque entero de tarjetas, también la única de un negocio
+colombiano: ocupa el mismo sitio que las dos de uno venezolano y la lista la
+tapa igual.
 
 Ese "está abierta" se calcula **en el proveedor, una sola vez**, y lo leen el
 buscador y el botón. Si cada uno lo dedujera por su cuenta, bastaría que uno

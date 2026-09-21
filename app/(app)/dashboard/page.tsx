@@ -270,39 +270,50 @@ export default async function DashboardPage({
             explica. */}
         {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
-        {/* Stacked on a phone, side by side once there is room — the cards are
+        {/* Se apartan con "Agregar movimiento", bajo la misma condición: la
+            lista de coincidencias cae justo encima de ellas.
+
+            Se va el bloque entero, también la tarjeta única de un negocio
+            colombiano. El encargo nombró las dos de un negocio venezolano
+            —USD y Euro—, pero la colombiana ocupa el mismo sitio y la lista la
+            tapa igual: dejarla puesta sería arreglar el estorbo en Venezuela y
+            conservarlo en Colombia.
+
+            Stacked on a phone, side by side once there is room — the cards are
             two independent ledgers, not a sequence, so they read better abreast
             than stacked on a wide screen. */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          {rateContext ? (
-            <>
+        <HideWhileResults>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            {rateContext ? (
+              <>
+                <BalanceCard
+                  label="Capital por cobrar en USD"
+                  balance={totalUsd}
+                  currency="USD"
+                  ledger={ledger}
+                  chartData={weeklyLendingUsd}
+                  chartTitle="Fiado vs. Abono (USD)"
+                />
+                <BalanceCard
+                  label="Capital por cobrar en Euro"
+                  balance={totalEur}
+                  currency="EUR"
+                  ledger={ledger}
+                  chartData={weeklyLendingEur}
+                  chartTitle="Fiado vs. Abono (EUR)"
+                />
+              </>
+            ) : (
               <BalanceCard
-                label="Capital por cobrar en USD"
-                balance={totalUsd}
-                currency="USD"
-                ledger={ledger}
-                chartData={weeklyLendingUsd}
-                chartTitle="Fiado vs. Abono (USD)"
+                label="Capital por cobrar"
+                balance={totalCop}
+                currency={null}
+                ledger={null}
+                chartData={weeklyLendingCop}
               />
-              <BalanceCard
-                label="Capital por cobrar en Euro"
-                balance={totalEur}
-                currency="EUR"
-                ledger={ledger}
-                chartData={weeklyLendingEur}
-                chartTitle="Fiado vs. Abono (EUR)"
-              />
-            </>
-          ) : (
-            <BalanceCard
-              label="Capital por cobrar"
-              balance={totalCop}
-              currency={null}
-              ledger={null}
-              chartData={weeklyLendingCop}
-            />
-          )}
-        </div>
+            )}
+          </div>
+        </HideWhileResults>
 
         {/* Sin rótulo "Clientes" desde el 2026-09-20: lo que hay debajo son
             tarjetas con nombre y saldo, y ninguna otra pantalla lo lleva ya.
