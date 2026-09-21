@@ -360,50 +360,30 @@ fallo.
 ### Un solo buscador de clientes, en dos formas
 
 Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan
-`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. El archivo
-exporta dos formas, y cuál toca lo decide **la distancia entre el campo y la
-lista que filtra**, no el gusto:
+`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. Cuál de
+las dos formas toca lo decide **la distancia entre el campo y la lista que
+filtra**, no el gusto:
 
-- **`ClientSearchInline`** — Clientes, Malas pagas, Papelera. Campo de verdad y
-  chips justo debajo, en la propia pantalla. La lista está a continuación, así
-  que se filtra a la vista y no hay nada que abrir ni que cerrar. Es la forma
-  por defecto.
+- **`ClientSearchInline`** — Clientes, Malas pagas, Papelera. Un `<input>`
+  llano y los chips debajo, y **nada que se despliegue**: el resultado son las
+  tarjetas de la propia pantalla, que se filtran mientras se escribe. Es la
+  forma por defecto.
 - **`ClientSearchSheet`** — solo Cartera. Ahí el campo va arriba del todo y la
   lista queda al final, detrás de las tarjetas de capital y la tira de tasas.
   Escribir y no ver nada cambiar, porque lo que cambia está a una pantalla de
   distancia, se lee como que el buscador está roto; por eso Cartera abre una
-  hoja que trae el resultado consigo.
+  hoja que trae el resultado consigo, con las coincidencias en un desplegable
+  de `cmdk` (nombre + documento).
 
-**Donde la lista se ve, un modal sobra.** Las tres primeras pantallas nacieron
-con la hoja el 2026-09-20 y se corrigieron el mismo día: obligaban a abrir algo
-para filtrar una lista que ya estaba delante.
+**Donde la lista se ve, no hay nada que desplegar.** Las tres primeras
+pantallas tuvieron desplegable durante unas horas el 2026-09-20 y se quitó el
+mismo día: proponía la misma lista que ya estaba a la vista dos centímetros
+más abajo, así que enseñaba dos veces lo mismo y además el popup tapaba justo
+las tarjetas que acababa de filtrar.
 
-El bloque `<ClientFilters>` que vivía sobre cada lista se **borró** el
-2026-09-20 al migrar la última pantalla, en vez de dejarlo sin usar: dos
-bloques de filtros sobre el mismo estado es exactamente como vuelven a
-separarse, que es el problema que el componente compartido existía para
-resolver.
-
-Dos detalles que ya costaron una pasada:
-
-- El disparador **no es un `<input>` de verdad**. Un input real abre el teclado
-  del teléfono *antes* de que exista la hoja, y el navegador recoloca las dos
-  cosas a destiempo. Es una caja que lo parece; el input vive dentro, con
-  `autoFocus`.
-- Los chips van en una fila con `overflow-x-auto` y cada chip lleva
-  `shrink-0`. Sin `shrink-0`, flex comprime los chips para que quepan y recorta
-  justo la etiqueta que lleva el valor activo (`Desde 1000`), que es la única
-  señal de que la lista está filtrada.
-
-
-Los resultados salen en una lista debajo del campo, con **nombre + documento**
-—el nombre solo no basta cuando en el barrio hay tres Marías— y elegir uno
-abre su ficha. Está hecha con `cmdk`, la misma librería del selector de país,
-y **sin portal**: input y lista comparten raíz del DOM. Las dos cosas importan.
-Sin portal no puede repetirse el fallo de los toques de la sección anterior; y
-juntos, cmdk encuentra sus propios items, que es lo que hace funcionar las
-flechas, Enter y el "sin resultados". Partirlos con un `PopoverContent` —que
-monta en portal— rompe lo segundo.
+Consecuencia buscada: en esas tres no hay cmdk, no hay popup y no hay portal,
+así que tampoco el fallo de la sección anterior. El único desplegable de
+clientes vivo está dentro de la hoja de Cartera.
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como

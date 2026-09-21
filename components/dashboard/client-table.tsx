@@ -129,7 +129,7 @@ export function ClientTable({
 
           order-1 on both breakpoints; on a phone the status legend is split
           off below the list (order-3) instead of riding with the filters. */}
-      {sharedFilters ? null : <ClientSearchInline filters={filters} source={source === "cartera" ? "clientes" : source} className="order-1" />}
+      {sharedFilters ? null : <ClientSearchInline filters={filters} className="order-1" />}
       <div className="order-2 flex flex-col gap-3 md:order-3">
         {sortedRows.length === 0 && !tourDemoActive ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">

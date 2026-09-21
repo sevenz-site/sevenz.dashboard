@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -21,9 +21,14 @@ import type { ClientSummary } from "@/lib/types";
 
 // El buscador de clientes de toda la app, en dos formas.
 //
-// `ClientSearchInline` — Clientes, Malas pagas y Papelera. Campo de verdad y
-// chips debajo, en la propia pantalla; la lista está justo debajo y se filtra
-// a la vista. Es la forma por defecto: no hay nada que abrir ni que cerrar.
+// `ClientSearchInline` — Clientes, Malas pagas y Papelera. Campo y chips en la
+// propia pantalla, y NADA que se despliegue: el resultado son las tarjetas de
+// abajo, que se filtran mientras se escribe. Es la forma por defecto.
+//
+// Sin desplegable a propósito, decidido el 2026-09-20. Lo tuvo un rato y
+// sobraba: la lista que proponía era la misma que ya estaba a la vista dos
+// centímetros más abajo, así que enseñaba dos veces lo mismo y además tapaba
+// con el popup justo las tarjetas que acababa de filtrar.
 //
 // `ClientSearchSheet` — SOLO Cartera. Ahí el campo va arriba del todo y la
 // lista que filtra está al final, detrás de las tarjetas de capital y la tira
@@ -43,15 +48,58 @@ import type { ClientSummary } from "@/lib/types";
 // usan las cuatro pantallas. Aquí no se filtra nada nuevo; solo cambia dónde
 // se toca.
 
-// La forma por defecto: Clientes, Malas pagas y Papelera.
+// El campo llano de las tres pantallas con la lista a la vista.
 //
-// Campo real en la propia pantalla —no un disparador— porque no hay nada que
-// abrir: la lista está debajo y se filtra mientras se escribe. Los chips van
-// justo debajo del campo, que es donde el dueño los busca después de escribir
-// un nombre y ver demasiados resultados.
+// Un <input> de toda la vida, sin cmdk: no hay ninguna lista que recorrer con
+// las flechas, porque el resultado son las tarjetas de la pantalla. La única
+// consecuencia es que Enter aquí no hace nada, que es lo correcto cuando no
+// hay nada resaltado que abrir.
+//
+// Las clases se escriben aquí en vez de usar <Input>, que mide 32px: el
+// buscador va a 40 por la regla del sistema de diseño. `text-base` en teléfono
+// no es cosmético — iOS Safari hace zoom al enfocar un campo por debajo de
+// 16px.
+function SearchField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Borrar búsqueda"
+          className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
+      ) : (
+        <Search
+          aria-hidden="true"
+          className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
+        />
+      )}
+    </div>
+  );
+}
+
+// La forma por defecto: Clientes, Malas pagas y Papelera.
 export function ClientSearchInline({
   filters: filtersProp,
-  source,
   placeholder = "Buscar cliente",
   className,
 }: {
@@ -60,7 +108,6 @@ export function ClientSearchInline({
   // lleva además el saldo del día en que se ocultó. Pedir de más aquí
   // dejaría fuera a la única pantalla con filas propias.
   filters?: ClientFilterState & { sortedRows: ClientSummary[] };
-  source: "malas_pagas" | "clientes" | "papelera";
   placeholder?: string;
   className?: string;
 }) {
@@ -70,7 +117,11 @@ export function ClientSearchInline({
 
   return (
     <div className={`flex flex-col gap-2 ${className ?? ""}`}>
-      <ClientSearchCombobox filters={filters} source={source} placeholder={placeholder} />
+      <SearchField
+        value={filters.controls.nameQuery}
+        onChange={filters.controls.setNameQuery}
+        placeholder={placeholder}
+      />
       <ClientFilterChips filters={filters} />
     </div>
   );

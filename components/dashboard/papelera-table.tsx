@@ -107,7 +107,7 @@ export function PapeleraTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ClientSearchInline filters={filters} source="papelera" className="order-1" />
+      <ClientSearchInline filters={filters} className="order-1" />
 
       {filters.sortedRows.length === 0 ? (
         <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
