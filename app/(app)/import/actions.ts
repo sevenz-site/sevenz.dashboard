@@ -21,6 +21,10 @@ export type ImportRow = {
   // file — see the "needs_document_id" review-table logic that decides
   // when the owner actually had to type this in.
   document_id: string | null;
+  // Opcional siempre. Solo se escribe cuando viene con algo y el cliente no
+  // tenía número: nunca pisa uno ya guardado, porque el de la libreta puede
+  // ser más viejo que el que el dueño corrigió a mano en la ficha.
+  whatsapp: string | null;
   // Chosen by the owner per row in the review table, because one libreta can
   // mix currencies.
   //
@@ -220,6 +224,9 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
           owner_id: user.id,
           name: row.client_name.trim(),
           document_id: documentId,
+          // Opcional: `null` si el dueño no lo escribió en la revisión, que es
+          // lo normal. La columna admite nulos desde siempre.
+          whatsapp: row.whatsapp?.trim() || null,
           document_source: DOCUMENT_SOURCE.OWNER,
           document_country: ownerCountry,
         })
@@ -239,6 +246,27 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
         name: row.client_name.trim(),
         hidden: false,
       });
+    }
+
+    // El WhatsApp, si el dueño lo escribió y el cliente no tenía.
+    //
+    // `.is("whatsapp", null)` en vez de leer primero y decidir: así el update
+    // NO PUEDE pisar un número ya guardado, ni siquiera si dos filas de la
+    // misma tanda traen números distintos para el mismo cliente. El de la
+    // libreta puede ser más viejo que el que el dueño corrigió a mano en la
+    // ficha, y en esa duda gana siempre lo que ya estaba.
+    //
+    // `.eq("owner_id", user.id)` aunque `clientId` ya venga validado arriba:
+    // es la regla de comprobaciones explícitas de CLAUDE.md — RLS es el
+    // respaldo, no la única línea.
+    const numero = row.whatsapp?.trim();
+    if (numero) {
+      await supabase
+        .from("clients")
+        .update({ whatsapp: numero })
+        .eq("id", clientId)
+        .eq("owner_id", user.id)
+        .is("whatsapp", null);
     }
 
     // No needs_review here: the owner already saw and could fix every

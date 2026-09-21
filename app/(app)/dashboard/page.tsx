@@ -363,7 +363,13 @@ export default async function DashboardPage({
             no enseñaba ningún cambio. */}
         <ClientFilterChipsRow />
 
-        <ClientTable rows={visibleRows} scores={scores} rateContext={ownerRate} source="cartera" />
+        <ClientTable
+          rows={visibleRows}
+          scores={scores}
+          rateContext={ownerRate}
+          ownerCountry={ownerCountry}
+          source="cartera"
+        />
       </ClientFilterProvider>
 
       {rateContext ? <ExchangeRateLegalDisclaimer /> : null}

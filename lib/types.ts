@@ -330,6 +330,11 @@ export type ExtractedMovement = {
   // by the owner during review, only actually required for a client who
   // doesn't already have one on file (see ReviewRow.needs_document_id).
   document_id: string | null;
+  // Tampoco sale de la foto, y a diferencia del documento NUNCA bloquea: es
+  // opcional en todas partes desde el 2026-09-21. Está aquí para que el dueño
+  // pueda aprovechar la revisión y añadirlo, no para exigirlo — una libreta
+  // suele tener el teléfono apuntado arriba, junto al nombre.
+  whatsapp: string | null;
   // Assigned when the batch enters the review screen, never by the extraction.
   // Identity that survives deleting a row: positions shift when one is removed,
   // so anything remembered about a row by position (which rows opted out of the

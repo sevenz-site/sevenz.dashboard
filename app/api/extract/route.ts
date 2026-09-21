@@ -96,6 +96,12 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
     .filter((m): m is Record<string, unknown> => typeof m === "object" && m !== null)
     .map((m): ExtractedMovement => ({
       client_name: String(m.client_name ?? "").trim(),
+      // La IA no lo pide y por tanto no lo devuelve. Muchas libretas llevan el
+      // teléfono escrito arriba, junto al nombre, así que se podría extraer —
+      // pero cada campo que se le pide es una oportunidad más de inventar, y
+      // un número inventado es justo el dato que este cambio existe para
+      // evitar. Lo escribe el dueño en la revisión, o no lo escribe nadie.
+      whatsapp: null,
       date: typeof m.date === "string" ? m.date : null,
       type: m.type === "payment" ? "payment" : "charge",
       amount: Number(m.amount) || 0,

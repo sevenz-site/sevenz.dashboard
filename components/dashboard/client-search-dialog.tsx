@@ -53,7 +53,7 @@ import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
 import type { MonedaHabitual } from "@/lib/moneda-habitual";
-import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
+import { required, amount as amountRule } from "@/lib/form-validation";
 import {
   useErrorDeCuentaPausada,
   useGuardiaAlAbrir,
@@ -316,7 +316,6 @@ function ClientSearchDialogBody({
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,
-    whatsapp: whatsappRule,
     document_id: required,
     amount: amountRule(),
   });
@@ -480,11 +479,10 @@ function ClientSearchDialogBody({
           ) : null}
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="whatsapp">WhatsApp</Label>
+          <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
           <WhatsappInput
             id="whatsapp"
             name="whatsapp"
-            required
             preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
             invalid={Boolean(errors.whatsapp)}
             onValueChange={() => recheck("whatsapp", formRef.current)}

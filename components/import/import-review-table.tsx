@@ -26,6 +26,8 @@ import type { ReviewRow } from "@/lib/reconcile";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import { WhatsappInput } from "@/components/whatsapp-input";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { OwnerCountry } from "@/lib/types";
 
 // El porqué de cada fila marcada, en una frase. Se pinta debajo de la fila y
@@ -86,11 +88,12 @@ export function ImportReviewTable({
   isLinked: (rowId: string) => boolean;
   onToggleLinked: (rowId: string) => void;
 }) {
-  // Cliente, Documento, Tipo, Monto, Detalle y la de la papelera, más
-  // "Vincular" cuando el cliente compartido está activo. Se calcula y no se
-  // escribe a mano: una columna nueva y un colSpan viejo dejan la fila del
-  // aviso corta, con un hueco al final que parece un fallo de maquetación.
-  const columnas = sharedClientActive ? 7 : 6;
+  // Siete en los dos casos, y que coincidan es casualidad, no una
+  // simplificación: con cliente compartido son Vincular, Cliente, Documento,
+  // Tipo, Monto, Detalle y la papelera; sin él, Vincular se va y entra
+  // WhatsApp. Se deja escrito como dos ramas para que añadir una columna a
+  // una sola no deje la fila del aviso corta sin que nadie lo note.
+  const columnas = sharedClientActive ? 7 : 7;
 
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -122,6 +125,19 @@ export function ImportReviewTable({
                 ahorraría 16px y está descartado — iOS Safari hace zoom al
                 enfocar cualquier campo por debajo de 16px. */}
             <TableHead className="min-w-[9.5rem]">Documento</TableHead>
+            {/* WhatsApp solo cuando NO hay cliente compartido. Con la casilla
+                marcada el número se escribe una vez arriba, igual que el
+                nombre y la cédula, y repetirlo por fila serían veintitrés
+                copias del mismo dato — más 176px de scroll para nada.
+
+                176px y `compact`, las dos cosas juntas, medidas: el selector
+                de país entero mide 112 y dejaba al número 22px de ancho —dos
+                dígitos de diez, ilegible—, porque en un flex el input sí
+                encoge y el botón no. Con solo la bandera el selector baja a
+                44 y el número se queda con 116, que muestra los diez. */}
+            {sharedClientActive ? null : (
+              <TableHead className="min-w-[11rem]">WhatsApp</TableHead>
+            )}
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead className="min-w-[7.5rem]">Detalle</TableHead>
@@ -179,6 +195,18 @@ export function ImportReviewTable({
                   />
                 )}
               </TableCell>
+              {sharedClientActive ? null : (
+                <TableCell>
+                  <WhatsappInput
+                    id={`import-whatsapp-${index}`}
+                    name={`import-whatsapp-${index}`}
+                    preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
+                    defaultValue={row.whatsapp}
+                    compact
+                    onValueChange={(v) => onUpdate(index, { whatsapp: v.trim() || null })}
+                  />
+                </TableCell>
+              )}
               <TableCell>
                 <Select
                   value={row.type}
