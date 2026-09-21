@@ -111,7 +111,17 @@ export function ImportReviewTable({
               <TableHead className="w-20 whitespace-nowrap">Vincular</TableHead>
             ) : null}
             <TableHead className="min-w-[7.5rem]">Cliente</TableHead>
-            <TableHead className="w-[8.5rem]">Documento</TableHead>
+            {/* `min-w` y no `w`: con `table-layout: auto` un `width` es una
+                sugerencia que el navegador reparte como quiere, y esta columna
+                acababa en 88px con el input a 52 — tres dígitos de una cédula
+                de nueve. Un mínimo sí se respeta.
+
+                150px salen de medir, no de tantear: nueve dígitos anchos en
+                Geist de 16px ocupan 87, el relleno del input 22, el "V-" 18,
+                el hueco 8 y los márgenes de celda 12. Bajar la fuente a 14px
+                ahorraría 16px y está descartado — iOS Safari hace zoom al
+                enfocar cualquier campo por debajo de 16px. */}
+            <TableHead className="min-w-[9.5rem]">Documento</TableHead>
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead className="min-w-[7.5rem]">Detalle</TableHead>
