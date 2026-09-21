@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { TourTooltip } from "@/components/dashboard/tour-tooltip";
 import { completeOnboarding } from "@/app/(app)/actions";
 import { TourContext, type TourStep } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -186,44 +185,18 @@ export function TourProvider({ active, children }: { active: boolean; children: 
     <TourContext.Provider value={{ step, advance: goNext, restart }}>
       {children}
       {content ? (
-        <div
+        <TourTooltip
           ref={tooltipRef}
-          className="fixed z-[60] w-72 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
           style={pos ?? { top: 16, right: 16 }}
-        >
-          <button
-            type="button"
-            onClick={finish}
-            className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-            aria-label="Cerrar recorrido"
-          >
-            <X className="size-4" />
-          </button>
-          <p className="text-xs text-muted-foreground">
-            Paso {stepIndex + 1} de {stepOrder.length}
-          </p>
-          <p className="mt-1 font-medium">{content.title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{content.body}</p>
-          <div className="mt-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={finish}
-              className="text-xs text-muted-foreground underline underline-offset-4"
-            >
-              Saltar
-            </button>
-            <div className="flex gap-2">
-              {stepIndex > 0 ? (
-                <Button type="button" size="sm" variant="outline" onClick={goPrev}>
-                  Atrás
-                </Button>
-              ) : null}
-              <Button type="button" size="sm" onClick={goNext}>
-                {stepIndex === stepOrder.length - 1 ? "Entendido" : "Siguiente"}
-              </Button>
-            </div>
-          </div>
-        </div>
+          stepLabel={`Paso ${stepIndex + 1} de ${stepOrder.length}`}
+          title={content.title}
+          body={content.body}
+          nextLabel={stepIndex === stepOrder.length - 1 ? "Entendido" : "Siguiente"}
+          onNext={goNext}
+          onBack={stepIndex > 0 ? goPrev : undefined}
+          onSkip={finish}
+          onClose={finish}
+        />
       ) : null}
     </TourContext.Provider>
   );

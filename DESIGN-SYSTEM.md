@@ -473,6 +473,38 @@ oscuro; por eso `--brand` tiene el mismo valor en los dos temas. Sobre fondo
 blanco **no pasa el piso de contraste de abajo**: si algún día hace falta ahí,
 hay que oscurecerlo en `globals.css` primero, no en el componente.
 
+## Las tarjetas oscuras son oscuras en los dos temas
+
+Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
+teléfono" (`components/install-app.tsx`) y el globo del recorrido de
+bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
+`bg-[#272727]` literal y colores de texto `white/N`, no tokens.
+
+No es descuido. Una pieza oscura en medio de una pantalla clara está diciendo
+"esto de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
+que la rodea. Con `bg-popover` el globo sería blanco sobre blanco en tema
+claro y dejaría de hacer lo único que tiene que hacer.
+
+Y por eso el texto tampoco puede ir en tokens: **sobre un fondo fijo, un token
+que cambia con el tema es exactamente lo que rompe el contraste sin que nadie
+se entere.**
+
+Medido sobre `#272727` el 2026-09-20:
+
+| Color | Ratio | |
+|---|---|---|
+| blanco (título) | 14,94:1 | pass |
+| `white/70` (cuerpo) | 8,04:1 | pass |
+| `white/60` (paso, Saltar) | 6,36:1 | pass |
+| `--brand` `#F66B02` (acción) | 5,00:1 | pass |
+
+El naranja es el que va más justo. Si alguien aclara ese fondo, es el primero
+que cae: vuelve a medirlo antes de tocarlo.
+
+**El globo del recorrido es solo para onboarding.** No es un tooltip de uso
+general: para una ayuda contextual normal está el popover del sistema, que sí
+sigue el tema.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
