@@ -27,6 +27,7 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -57,8 +58,13 @@ const STATUS_LABEL: Record<ImportJobStatus, string> = {
 export function ImportFlow({
   existingClients,
   ownerCountry,
+  rateContext,
 }: {
   existingClients: ExistingClient[];
+  // Solo para la línea de bolívares del resumen de confirmación. Null en un
+  // negocio colombiano, y también en uno venezolano sin tasa todavía: entonces
+  // el resumen no pinta esa línea, nunca se inventa una tasa.
+  rateContext: MovementRateContext | null;
   // Nunca null: la página no monta este componente si no pudo leer el país,
   // porque sin él no se sabe si las filas llevan moneda. Tipado así a
   // propósito, para que el valor por defecto silencioso no pueda volver.
@@ -283,6 +289,8 @@ export function ImportFlow({
           ? createPortal(
               <ConfirmarImportacion
                 cuantas={reviewRows.length}
+                filas={reviewRows}
+                rateContext={rateContext}
                 deshabilitado={noSePuedeConfirmar}
                 guardando={confirming}
                 onConfirm={handleConfirm}
@@ -401,6 +409,8 @@ export function ImportFlow({
           </Button>
           <ConfirmarImportacion
             cuantas={reviewRows.length}
+            filas={reviewRows}
+            rateContext={rateContext}
             deshabilitado={noSePuedeConfirmar}
             guardando={confirming}
             onConfirm={handleConfirm}

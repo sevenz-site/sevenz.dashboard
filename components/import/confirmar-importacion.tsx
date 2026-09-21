@@ -1,6 +1,9 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { ResumenImportacion } from "@/components/import/resumen-importacion";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import type { ReviewRow } from "@/lib/reconcile";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -32,6 +35,8 @@ import {
 
 export function ConfirmarImportacion({
   cuantas,
+  filas,
+  rateContext,
   deshabilitado,
   guardando,
   onConfirm,
@@ -39,6 +44,11 @@ export function ConfirmarImportacion({
   size,
 }: {
   cuantas: number;
+  // Las filas tal cual, no un resumen ya masticado: el resumen se calcula
+  // dentro, para que las dos instancias del botón —la del pie y la de la
+  // cabecera— no puedan enseñar cuentas distintas.
+  filas: ReviewRow[];
+  rateContext: MovementRateContext | null;
   deshabilitado: boolean;
   guardando: boolean;
   onConfirm: () => void;
@@ -69,6 +79,12 @@ export function ConfirmarImportacion({
             moneda.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {/* El resumen va FUERA de AlertDialogDescription: ese componente monta
+            un <p>, y estas son tarjetas y una lista. Un <div> dentro de un <p>
+            es HTML inválido — el navegador cierra el párrafo por su cuenta y
+            React se queja en hidratación. Mismo caso que los tres pasos en la
+            hoja de importar. */}
+        <ResumenImportacion rows={filas} rateContext={rateContext} />
         <AlertDialogFooter>
           <AlertDialogCancel>Volver a revisar</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm}>Confirmar importación</AlertDialogAction>

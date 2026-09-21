@@ -19,18 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCurrency } from "@/lib/format";
-import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import type { OwnerCountry } from "@/lib/types";
-
-// Los mismos dos decimales que formatDisplayCurrency, sin símbolo de moneda.
-const SIN_MONEDA = new Intl.NumberFormat("es-VE", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
 
 export function ImportReviewTable({
   rows,
@@ -85,7 +77,6 @@ export function ImportReviewTable({
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead className="min-w-[7.5rem]">Detalle</TableHead>
-            <TableHead>Saldo</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -186,25 +177,6 @@ export function ImportReviewTable({
                   value={row.description ?? ""}
                   onChange={(e) => onUpdate(index, { description: e.target.value || null })}
                 />
-              </TableCell>
-              {/* The running total is per currency, so on a mixed libreta a
-                  bare number would be ambiguous. formatCurrency is hardcoded to
-                  COP and renders "$" — appending "EUR" to it produced
-                  "$ 20,00 EUR", a dollar sign contradicting a euro code. Same
-                  helper the client table and the movement detail use, so a
-                  euro reads "€20,00" here exactly as it does everywhere else. */}
-              {/* Y mientras un negocio venezolano no haya elegido moneda, el
-                  total va sin símbolo. formatCurrency está fijado a COP, así
-                  que usarlo aquí pintaría el saldo de una libreta venezolana
-                  con el signo colombiano — la misma mentira que acabamos de
-                  quitar del selector, en la columna de al lado. La cifra es
-                  cierta; lo que aún no se sabe es en qué moneda está. */}
-              <TableCell className="tabular-nums whitespace-nowrap">
-                {row.currency
-                  ? formatDisplayCurrency(row.computed_balance, row.currency)
-                  : showCurrency
-                    ? SIN_MONEDA.format(row.computed_balance)
-                    : formatCurrency(row.computed_balance)}
               </TableCell>
               <TableCell>
                 <Button variant="ghost" size="icon" onClick={() => onRemove(index)}>
