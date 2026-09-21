@@ -333,8 +333,14 @@ export default async function DashboardPage({
           <h2 className="text-xl font-semibold">Clientes</h2>
           {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
               en 15—, así que hace falta una salida explícita a la completa. */}
+          {/* Subrayado: es lo único de esta fila que lleva a otra pantalla, y
+              un "ghost" sin subrayar no se distingue de una etiqueta. El
+              subrayado va en el <Link>, no en el botón, para que siga al texto
+              y no dibuje una raya del ancho de la caja. */}
           <Button variant="ghost" size="sm" asChild className="shrink-0">
-            <Link href="/clients">Ver todos</Link>
+            <Link href="/clients" className="underline underline-offset-4">
+              Ver todos
+            </Link>
           </Button>
         </div>
 
