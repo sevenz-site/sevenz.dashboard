@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImportJobs } from "@/components/import/import-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { useTour } from "@/components/dashboard/tour-context";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
@@ -28,11 +29,24 @@ import { PasosImportar } from "@/components/dashboard/pasos-importar";
 export function ImportarCartera() {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  // Primer paso del recorrido de bienvenida. Un solo marcador aunque abajo se
+  // escriba dos veces: solo una de las dos ramas está montada a la vez, y
+  // `document.querySelector` se quedaría con la primera que encontrara si
+  // coexistieran.
+  const tour = useTour();
 
   return isMobile ? (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          data-tour="import-button"
+          onClick={() => {
+            if (tour.step === 0) tour.advance();
+          }}
+        >
           Importar
           <Upload className="size-4" />
         </Button>
@@ -54,7 +68,15 @@ export function ImportarCartera() {
   ) : (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          data-tour="import-button"
+          onClick={() => {
+            if (tour.step === 0) tour.advance();
+          }}
+        >
           Importar
           <Upload className="size-4" />
         </Button>

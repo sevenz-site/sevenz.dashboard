@@ -8,17 +8,22 @@ import { completeOnboarding } from "@/app/(app)/actions";
 import { TourContext, type TourStep } from "@/components/dashboard/tour-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const STEP_ORDER: TourStep[] = [1, 2, 2.5, 3];
+const STEP_ORDER: TourStep[] = [0, 1, 2, 2.5, 3];
 // On mobile the client-list and add-movement steps (2, 2.5) render on top of
-// each other and are unreadable on a small screen — only the first step
-// ("Agrega un cliente") is worth showing there.
-const MOBILE_STEP_ORDER: TourStep[] = [1];
+// each other and are unreadable on a small screen. Quedan los dos que sí se
+// pueden señalar en un teléfono: importar la libreta y agregar un cliente.
+const MOBILE_STEP_ORDER: TourStep[] = [0, 1];
 
 const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: string }> = {
+  0: {
+    selector: '[data-tour="import-button"]',
+    title: "Importa tus cuentas del fiado",
+    body: "Toma una foto de las cuentas de tu fiado y selecciona esta opción para subirlas de manera masiva.",
+  },
   1: {
     selector: '[data-tour="new-client-button"]',
     title: "Agrega un cliente",
-    body: "Toca aquí para buscar un cliente existente o registrar uno nuevo.",
+    body: "Toca aquí para buscar un cliente o agregar uno nuevo.",
   },
   2: {
     selector: '[data-tour="demo-client-row"]',
@@ -59,7 +64,10 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   const isMobile = useIsMobile();
   const onDashboard = pathname === "/dashboard";
   const stepOrder = isMobile ? MOBILE_STEP_ORDER : STEP_ORDER;
-  const [step, setStep] = useState<TourStep | null>(active ? 1 : null);
+  // 0 y no `stepOrder[0]`: `useIsMobile()` resuelve después de hidratar, así
+  // que el orden todavía no es de fiar en el primer render. Da igual porque 0
+  // encabeza los dos.
+  const [step, setStep] = useState<TourStep | null>(active ? 0 : null);
   const [dismissed, setDismissed] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const highlightedEl = useRef<Element | null>(null);
@@ -168,7 +176,7 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   function restart() {
     if (!onDashboard) router.push("/dashboard");
     setDismissed(false);
-    setStep(1);
+    setStep(0);
   }
 
   const content = showing && step !== null ? STEP_CONTENT[step] : null;
