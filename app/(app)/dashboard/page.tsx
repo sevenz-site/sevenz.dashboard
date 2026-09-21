@@ -4,9 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
-import { ClientSearchSheet } from "@/components/dashboard/client-search-sheet";
-import { ClientFilterProvider } from "@/components/dashboard/client-filter-context";
-import { ClientSearchResults } from "@/components/dashboard/client-search-results";
+import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
+import {
+  ClientFilterProvider,
+  ClientFilterChipsRow,
+} from "@/components/dashboard/client-filter-context";
 import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
@@ -194,9 +196,7 @@ export default async function DashboardPage({
         {/* Debajo del nombre y del negocio, antes que nada más. Buscar a una
             persona es lo que el tendero viene a hacer la mayoría de las veces,
             y hasta ahora exigía bajar toda la pantalla hasta la lista. */}
-        <ClientSearchSheet verTodosHref="/clients">
-          <ClientSearchResults ledger={ledger} />
-        </ClientSearchSheet>
+        <ClientSearchCartera />
 
         {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
             al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
@@ -305,7 +305,12 @@ export default async function DashboardPage({
             sitio donde ya estaba. Moverla al final de la lista habría sido
             más natural de leer, pero ahí abajo ya vive la paginación y dos
             controles de "ir a más clientes" pegados se estorban. */}
-        <div className="mt-1 flex items-center justify-end">
+        {/* Los chips bajan aquí, pegados a la lista que ordenan y filtran.
+            Vivían dentro de la hoja del buscador, arriba del todo, a una
+            pantalla de distancia de lo que tocaban: elegir "Plazo vencido" no
+            enseñaba ningún cambio. */}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <ClientFilterChipsRow />
           <Button variant="ghost" size="sm" asChild className="shrink-0">
             <Link href="/clients">Ver todos</Link>
           </Button>

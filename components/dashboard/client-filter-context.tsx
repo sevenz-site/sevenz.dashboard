@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { useClientFilters } from "@/components/dashboard/client-filters";
+import { ClientFilterChips, useClientFilters } from "@/components/dashboard/client-filters";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummary } from "@/lib/types";
 
@@ -23,30 +23,6 @@ export function useSharedClientFilters() {
   return useContext(FilterContext);
 }
 
-// Cerrar la hoja viaja por contexto, NO como prop.
-//
-// La versión anterior pasaba `children` como funcion `(close) => ...` para que
-// la vista previa pudiera cerrarse al abrir un cliente. Compila y revienta en
-// ejecución: Cartera es un Server Component y React no puede serializar una
-// función a través de esa frontera — "Functions are not valid as a child of
-// Client Component", un 500 en la pantalla principal. El typecheck no lo ve
-// porque no es un error de tipos.
-const CloseContext = createContext<() => void>(() => {});
-
-export function SearchSheetCloseProvider({
-  close,
-  children,
-}: {
-  close: () => void;
-  children: React.ReactNode;
-}) {
-  return <CloseContext.Provider value={close}>{children}</CloseContext.Provider>;
-}
-
-export function useCloseSearchSheet() {
-  return useContext(CloseContext);
-}
-
 // El proveedor llama al hook él mismo, no lo recibe hecho. Cartera es un
 // Server Component: no puede sostener estado, así que si el hook viviera
 // fuera no habría dónde ponerlo. Envolviendo la pantalla entera, el buscador
@@ -62,4 +38,19 @@ export function ClientFilterProvider({
 }) {
   const filters = useClientFilters(rows, rateContext);
   return <FilterContext.Provider value={filters}>{children}</FilterContext.Provider>;
+}
+
+// Los chips, leyendo el estado del contexto.
+//
+// Existe para Cartera, que es la única pantalla donde el campo de búsqueda y
+// los chips están en sitios distintos del documento: el campo arriba del todo
+// y los chips abajo, pegados a la lista que ordenan. En las otras tres van
+// juntos y `ClientSearchInline` los pinta él mismo.
+//
+// La página es un Server Component y no puede leer el contexto, de ahí este
+// envoltorio de una línea.
+export function ClientFilterChipsRow({ className }: { className?: string }) {
+  const filters = useSharedClientFilters();
+  if (!filters) return null;
+  return <ClientFilterChips filters={filters} className={className} />;
 }

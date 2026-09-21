@@ -2,7 +2,7 @@
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +41,6 @@ import {
 } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { useTour } from "@/components/dashboard/tour-context";
-import { formatDocumentId } from "@/lib/format";
 import {
   DEFAULT_PLAZO_PAGO,
   DEFAULT_LEDGER_CURRENCY,
@@ -60,6 +59,10 @@ import {
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import {
+  ClientResultList,
+  CLIENT_RESULT_LIMIT,
+} from "@/components/dashboard/client-result-list";
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
@@ -322,7 +325,7 @@ function ClientSearchDialogBody({
     if (!q) return [];
     return clients
       .filter((c) => c.name.toLowerCase().includes(q) || c.document_id?.toLowerCase().includes(q))
-      .slice(0, 8);
+      .slice(0, CLIENT_RESULT_LIMIT);
   }, [clients, query]);
 
   // There is something to lose once the owner has actually typed something
@@ -409,23 +412,10 @@ function ClientSearchDialogBody({
         />
 
         {results.length > 0 ? (
-          <ul className="flex flex-col divide-y rounded-md border">
-            {results.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => selectExisting(c.id)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                >
-                  <UserRound className="size-4 text-muted-foreground" />
-                  <span className="font-medium">{c.name}</span>
-                  {c.document_id ? (
-                    <span className="text-xs text-muted-foreground">{formatDocumentId(c.document_id)}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ClientResultList
+            results={results.map((c) => ({ id: c.id, name: c.name, documentId: c.document_id }))}
+            onSelect={selectExisting}
+          />
         ) : query.trim() ? (
           <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
         ) : null}

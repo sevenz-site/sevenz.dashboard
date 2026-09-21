@@ -359,31 +359,37 @@ Base UI se instaló y se quitó el mismo día por esto. La alternativa no fue
 fallo.
 ### Un solo buscador de clientes, en dos formas
 
-Las cuatro listas —Cartera, Clientes, Malas pagas, Papelera— usan
-`components/dashboard/client-search-sheet.tsx` y ninguna otra cosa. Cuál de
-las dos formas toca lo decide **la distancia entre el campo y la lista que
-filtra**, no el gusto:
+La forma la decide **si el resultado se ve desde donde estás escribiendo**, no
+el gusto:
 
-- **`ClientSearchInline`** — Clientes, Malas pagas, Papelera. Un `<input>`
-  llano y los chips debajo, y **nada que se despliegue**: el resultado son las
-  tarjetas de la propia pantalla, que se filtran mientras se escribe. Es la
-  forma por defecto.
-- **`ClientSearchSheet`** — solo Cartera. Ahí el campo va arriba del todo y la
-  lista queda al final, detrás de las tarjetas de capital y la tira de tasas.
-  Escribir y no ver nada cambiar, porque lo que cambia está a una pantalla de
-  distancia, se lee como que el buscador está roto; por eso Cartera abre una
-  hoja que trae el resultado consigo, con las coincidencias en un desplegable
-  de `cmdk` (nombre + documento).
+- **`ClientSearchInline`** (`client-search-sheet.tsx`) — Clientes, Malas pagas,
+  Papelera. Campo y chips en la pantalla, y nada que se despliegue: el
+  resultado son las tarjetas de abajo, a dos centímetros del campo. Un
+  desplegable ahí enseñaría lo mismo dos veces y taparía justo lo que acaba de
+  filtrar.
+- **`ClientSearchCartera`** (`client-search-cartera.tsx`) — solo Cartera. Ahí
+  la lista queda al final del documento, detrás de las tarjetas de capital y
+  la tira de tasas: escribir y no ver nada cambiar se lee como que el buscador
+  está roto. Las coincidencias salen justo debajo del campo, flotando sobre la
+  pantalla en vez de empujarla.
 
-**Donde la lista se ve, no hay nada que desplegar.** Las tres primeras
-pantallas tuvieron desplegable durante unas horas el 2026-09-20 y se quitó el
-mismo día: proponía la misma lista que ya estaba a la vista dos centímetros
-más abajo, así que enseñaba dos veces lo mismo y además el popup tapaba justo
-las tarjetas que acababa de filtrar.
+**Las coincidencias son siempre `ClientResultList`** (`client-result-list.tsx`):
+nombre + documento, la misma en Cartera y en el diálogo de "Agregar
+movimiento". Vivía como marcado suelto dentro del diálogo y se extrajo el
+2026-09-20 al llevarla a Cartera — dos copias de una lista de personas y
+cédulas se separan en cuanto alguien retoca una, y el documento es lo que
+distingue a tres Marías del mismo barrio.
 
-Consecuencia buscada: en esas tres no hay cmdk, no hay popup y no hay portal,
-así que tampoco el fallo de la sección anterior. El único desplegable de
-clientes vivo está dentro de la hoja de Cartera.
+**Cartera busca Y filtra**, que es lo que la diferencia del diálogo. El diálogo
+solo encuentra y abre; en Cartera el texto va al estado compartido, así que la
+cartera del final queda recortada al mismo criterio. El efecto secundario que
+conviene conocer: hay que vaciar el campo para recuperar la cartera entera, y
+por eso el aspa está siempre a mano.
+
+Los chips van **pegados a la lista que ordenan**, nunca junto al campo cuando
+los dos están lejos. En Cartera vivieron un rato arriba del todo, a una
+pantalla de distancia de lo que tocaban: elegir "Plazo vencido" no enseñaba
+ningún cambio.
 ### Al buscar se aparta el subtítulo, nunca el título
 
 En Clientes, Malas pagas y Papelera, mientras el campo de búsqueda tiene el
