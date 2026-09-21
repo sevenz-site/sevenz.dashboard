@@ -334,11 +334,19 @@ export default async function DashboardPage({
           {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
               en 15—, así que hace falta una salida explícita a la completa. */}
           {/* Subrayado: es lo único de esta fila que lleva a otra pantalla, y
-              un "ghost" sin subrayar no se distingue de una etiqueta. El
-              subrayado va en el <Link>, no en el botón, para que siga al texto
-              y no dibuje una raya del ancho de la caja. */}
+              un "ghost" sin subrayar no se distingue de una etiqueta. Va en el
+              <Link> y no en el botón, para que siga al texto en vez de dibujar
+              una raya del ancho de la caja.
+
+              `decoration-1` y `underline-offset-2` no son gusto. Este botón es
+              `size="sm"`, o sea `text-[0.8rem]` — 12,8px. A ese tamaño el
+              grosor `auto` del navegador sale por debajo de 1px y se pinta como
+              una línea gris lavada: el subrayado estaba puesto y no se veía. Y
+              un offset de 4px, que va bien en texto de 14px, aquí separa tanto
+              la raya de la palabra que deja de leerse como suya. Mismo
+              tratamiento que el enlace pequeño de /admin/cuentas. */}
           <Button variant="ghost" size="sm" asChild className="shrink-0">
-            <Link href="/clients" className="underline underline-offset-4">
+            <Link href="/clients" className="underline decoration-1 underline-offset-2">
               Ver todos
             </Link>
           </Button>
