@@ -419,6 +419,70 @@ export function ImportFlow({
           de llegar a la primera fila. */}
       <PasosImportar className="-mt-2" />
 
+      {/* La bandeja de fotos va AQUÍ, pegada a las instrucciones, y no al
+          final de la pantalla. Mientras la IA lee la libreta es lo único que
+          se mueve: dejarla debajo de la cuota y del recuadro de subir obligaba
+          a bajar media pantalla para ver si seguía procesando, y en un
+          teléfono quedaba tapada por la barra inferior. Lo que está pasando
+          ahora va antes que lo que ya se hizo. */}
+      {hasJobs ? (
+        <div className="flex flex-col gap-3">
+          <AttachmentGroup className="flex-wrap py-0">
+            {jobs.map((job) => (
+              <Attachment key={job.id} state={ATTACHMENT_STATE[job.status]} orientation="vertical">
+                <AttachmentMedia variant="image">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={job.previewUrl} alt={job.fileName} />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{job.fileName}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {job.status === "error" ? job.error : STATUS_LABEL[job.status]}
+                    {job.status === "done" ? ` · ${job.movements.length} movimientos` : ""}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    aria-label={`Quitar ${job.fileName}`}
+                    onClick={() => removeJob(job.id)}
+                    disabled={job.status === "processing"}
+                  >
+                    <X />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            ))}
+          </AttachmentGroup>
+
+          {errorJobs.length > 0 ? (
+            <p className="flex items-center gap-1.5 text-sm text-destructive">
+              <TriangleAlert className="size-4" />
+              {errorJobs.length} foto{errorJobs.length > 1 ? "s" : ""} no se pudo procesar. Puedes
+              quitarla{errorJobs.length > 1 ? "s" : ""} o intentar de nuevo con otra.
+            </p>
+          ) : null}
+
+          <div className="flex items-center gap-2">
+            <Button onClick={handleViewResults} disabled={doneJobs.length === 0 || isProcessing}>
+              {isProcessing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Procesando...
+                </>
+              ) : (
+                `Ver resultados (${doneJobs.reduce((sum, j) => sum + j.movements.length, 0)} movimientos)`
+              )}
+            </Button>
+            {!isProcessing ? (
+              <Button variant="ghost" onClick={clearJobs}>
+                <RotateCw className="size-4" />
+                Empezar de nuevo
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+
       {usage.plan === "free" && usage.limit !== null ? (
         <Card>
           <CardContent className="flex flex-col gap-1.5 pt-6">
@@ -522,62 +586,6 @@ export function ImportFlow({
         </Card>
       )}
 
-      {hasJobs ? (
-        <div className="flex flex-col gap-3">
-          <AttachmentGroup className="flex-wrap py-0">
-            {jobs.map((job) => (
-              <Attachment key={job.id} state={ATTACHMENT_STATE[job.status]} orientation="vertical">
-                <AttachmentMedia variant="image">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={job.previewUrl} alt={job.fileName} />
-                </AttachmentMedia>
-                <AttachmentContent>
-                  <AttachmentTitle>{job.fileName}</AttachmentTitle>
-                  <AttachmentDescription>
-                    {job.status === "error" ? job.error : STATUS_LABEL[job.status]}
-                    {job.status === "done" ? ` · ${job.movements.length} movimientos` : ""}
-                  </AttachmentDescription>
-                </AttachmentContent>
-                <AttachmentActions>
-                  <AttachmentAction
-                    aria-label={`Quitar ${job.fileName}`}
-                    onClick={() => removeJob(job.id)}
-                    disabled={job.status === "processing"}
-                  >
-                    <X />
-                  </AttachmentAction>
-                </AttachmentActions>
-              </Attachment>
-            ))}
-          </AttachmentGroup>
-
-          {errorJobs.length > 0 ? (
-            <p className="flex items-center gap-1.5 text-sm text-destructive">
-              <TriangleAlert className="size-4" />
-              {errorJobs.length} foto{errorJobs.length > 1 ? "s" : ""} no se pudo procesar. Puedes
-              quitarla{errorJobs.length > 1 ? "s" : ""} o intentar de nuevo con otra.
-            </p>
-          ) : null}
-
-          <div className="flex items-center gap-2">
-            <Button onClick={handleViewResults} disabled={doneJobs.length === 0 || isProcessing}>
-              {isProcessing ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Procesando...
-                </>
-              ) : (
-                `Ver resultados (${doneJobs.reduce((sum, j) => sum + j.movements.length, 0)} movimientos)`
-              )}
-            </Button>
-            {!isProcessing ? (
-              <Button variant="ghost" onClick={clearJobs}>
-                <RotateCw className="size-4" />
-                Empezar de nuevo
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
