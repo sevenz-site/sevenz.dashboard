@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
@@ -89,6 +90,13 @@ export default async function ClientsPage() {
             </p>
           </HideWhileSearching>
         </div>
+        {/* A la derecha de la cabecera. `ghost`: aquí importar es una salida
+            secundaria, no la acción de la pantalla, y un recuadro la haría
+            pesar más que el título que tiene al lado. Se ve en las dos
+            anchuras — a diferencia de "Agregar movimiento", que en teléfono
+            vive en la barra de abajo. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <ImportarCartera variant="ghost" />
         {/* Desktop only, same as Cartera and Malas pagas: the phone keeps this
             action in the bottom bar's "Agregar" instead. */}
         <div className="hidden sm:block">
@@ -100,6 +108,7 @@ export default async function ClientsPage() {
             rateContext={rateContext}
             monedaHabitual={monedaHabitual}
           />
+          </div>
         </div>
       </div>
       {/* No second "Clientes" heading here: the h1 above already names what

@@ -26,7 +26,15 @@ import { PasosImportar } from "@/components/dashboard/pasos-importar";
 // página: el trabajo arranca aquí y sigue vivo al navegar. Por eso el dueño
 // llega a /import con las fotos ya leyéndose en vez de esperando a empezar.
 
-export function ImportarCartera() {
+export function ImportarCartera({
+  variant = "outline",
+}: {
+  // "outline" en Cartera, donde importar es una de las dos acciones de la
+  // sección y compite con "Agregar movimiento". "ghost" en Clientes, Malas
+  // pagas y Papelera, donde es una salida secundaria en la cabecera y un
+  // recuadro la haría pesar más que el título que tiene al lado.
+  variant?: "outline" | "ghost";
+} = {}) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   // Primer paso del recorrido de bienvenida. Un solo marcador aunque abajo se
@@ -39,7 +47,7 @@ export function ImportarCartera() {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
-          variant="outline"
+          variant={variant}
           size="sm"
           className="shrink-0"
           data-tour="import-button"
@@ -69,7 +77,7 @@ export function ImportarCartera() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant={variant}
           size="sm"
           className="shrink-0"
           data-tour="import-button"
