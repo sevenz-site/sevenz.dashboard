@@ -69,17 +69,22 @@ export function ImportReviewTable({
           <option key={c.id} value={c.name} />
         ))}
       </datalist>
-      <Table>
+      {/* Márgenes de celda a 6px en vez de los 8 de serie, y solo aquí. Son
+          siete columnas de campos editables, así que cada 2px de gutter se
+          multiplica por catorce bordes: 28px de scroll menos. No se toca
+          `components/ui/table.tsx` — el resto de las tablas del app no tiene
+          este problema y no debe pagar por él. */}
+      <Table className="[&_td]:px-1.5 [&_th]:px-1.5">
         <TableHeader>
           <TableRow>
             {sharedClientActive ? (
-              <TableHead className="w-[6.5rem] whitespace-nowrap">Mismo cliente</TableHead>
+              <TableHead className="w-20 whitespace-nowrap">Vincular</TableHead>
             ) : null}
-            <TableHead className="min-w-[10rem]">Cliente</TableHead>
-            <TableHead>Cédula/documento</TableHead>
+            <TableHead className="min-w-[7.5rem]">Cliente</TableHead>
+            <TableHead className="w-[8.5rem]">Documento</TableHead>
             <TableHead>Tipo</TableHead>
             <TableHead>Monto</TableHead>
-            <TableHead className="min-w-[10rem]">Detalle</TableHead>
+            <TableHead className="min-w-[7.5rem]">Detalle</TableHead>
             <TableHead>Saldo</TableHead>
             <TableHead />
           </TableRow>
@@ -129,7 +134,7 @@ export function ImportReviewTable({
                   value={row.type}
                   onValueChange={(v) => onUpdate(index, { type: v as "charge" | "payment" })}
                 >
-                  <SelectTrigger className="w-32">
+                  <SelectTrigger className="w-[5.5rem]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -147,7 +152,7 @@ export function ImportReviewTable({
                     type="number"
                     min="0"
                     step="0.01"
-                    className="w-24"
+                    className="w-20"
                     value={row.amount}
                     onChange={(e) => onUpdate(index, { amount: Number(e.target.value) || 0 })}
                   />
@@ -163,10 +168,10 @@ export function ImportReviewTable({
                       onValueChange={(v) => onUpdate(index, { currency: v as LedgerCurrency })}
                     >
                       <SelectTrigger
-                        className={row.currency ? "w-[4.5rem]" : "w-[10.5rem]"}
+                        className={row.currency ? "w-[4.25rem]" : "w-[6.5rem]"}
                         aria-label={`Moneda de ${row.client_name}`}
                       >
-                        <SelectValue placeholder="Selecciona moneda" />
+                        <SelectValue placeholder="Moneda" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="USD">USD</SelectItem>
