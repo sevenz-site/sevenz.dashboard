@@ -180,3 +180,68 @@ export async function changePassword(
 
   return { error: null, success: true };
 }
+
+// ── Avisos por WhatsApp ───────────────────────────────────────────────────
+//
+// EL TEXTO SE GUARDA CON LA FECHA, Y ESO ES EL PUNTO DE TODO ESTO.
+//
+// Meta exige recoger el consentimiento fuera de WhatsApp y poder demostrarlo
+// si el número empieza a recibir reportes. Una marca de tiempo sola no
+// demuestra nada: la frase de la pantalla va a cambiar, y lo que hay que poder
+// enseñar es lo que ESA persona leyó el día que aceptó, no lo que diga la
+// pantalla dentro de un año.
+//
+// Por eso el cliente manda el texto que tenía delante y el servidor lo guarda
+// tal cual. Es el único dato de este formulario que viene del navegador y se
+// escribe sin transformar — deliberadamente, porque su valor es ser una copia
+// literal de lo que se mostró.
+//
+// Lo que NO se borra al desactivar: ni la fecha ni el texto. La evidencia es
+// que el consentimiento existió ese día; borrarla al apagar el interruptor
+// eliminaría justo la prueba. `whatsapp_opt_out_at` cuenta la otra mitad de la
+// historia, y `esta_activo()` en lib/whatsapp-opt-in.ts es quien decide.
+export async function guardarAvisosWhatsapp(
+  activar: boolean,
+  textoMostrado: string,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  // Sin número no hay a dónde mandar nada, y dejar aceptar en ese estado
+  // guardaría un consentimiento que no se puede usar. El WhatsApp del dueño es
+  // obligatorio al registrarse, así que esto solo salta en cuentas viejas.
+  if (activar) {
+    const { data: owner } = await supabase
+      .from("owners")
+      .select("whatsapp")
+      .eq("id", user.id)
+      .single();
+    if (!owner?.whatsapp?.trim()) {
+      return { error: "Escribe tu WhatsApp arriba y guarda antes de activar los avisos." };
+    }
+  }
+
+  const ahora = new Date().toISOString();
+  const { error } = await supabase
+    .from("owners")
+    .update(
+      activar
+        ? { whatsapp_opt_in_at: ahora, whatsapp_opt_in_text: textoMostrado, whatsapp_opt_out_at: null }
+        : { whatsapp_opt_out_at: ahora },
+    )
+    // Redundante con RLS y con `.eq("id", user.id)` siendo la propia fila, y
+    // aun así explícito: es la regla de CLAUDE.md. RLS es el respaldo, no la
+    // única línea.
+    .eq("id", user.id);
+
+  if (error) {
+    console.error("guardarAvisosWhatsapp:", error);
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
+
+  revalidatePath("/profile");
+  return { error: null };
+}

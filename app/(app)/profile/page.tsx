@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
 import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
+import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
 
@@ -43,6 +44,9 @@ export default async function ProfilePage() {
         <h2 className="text-sm font-medium text-muted-foreground">Contraseña</h2>
         <ChangePasswordDialog />
       </section>
+
+      {/* Al final y plegado: se toca una vez y no se vuelve a mirar. */}
+      <NotificacionesAccordion owner={owner as Owner} />
     </div>
   );
 }

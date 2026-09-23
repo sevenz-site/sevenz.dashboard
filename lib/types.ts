@@ -98,6 +98,17 @@ export type Owner = {
   payment_info: string | null;
   country: OwnerCountry;
   onboarding_completed_at: string | null;
+  // Consentimiento para recibir avisos por WhatsApp (migración 065). Meta
+  // exige recogerlo fuera de WhatsApp y poder demostrarlo, así que junto a la
+  // fecha se guarda LA FRASE que el dueño leyó: el texto de la pantalla va a
+  // cambiar, y la evidencia tiene que ser lo que esa persona leyó, no lo que
+  // diga la pantalla dentro de un año.
+  //
+  // `null` en `whatsapp_opt_in_at` significa "no acepta", y es el estado de
+  // todos hasta que lo enciendan a mano.
+  whatsapp_opt_in_at: string | null;
+  whatsapp_opt_in_text: string | null;
+  whatsapp_opt_out_at: string | null;
   created_at: string;
 };
 
