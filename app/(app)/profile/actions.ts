@@ -245,3 +245,35 @@ export async function guardarAvisosWhatsapp(
   revalidatePath("/profile");
   return { error: null };
 }
+
+// Deja constancia de que el diálogo se enseñó. Se llama AL MOSTRARLO, no al
+// contestarlo: si se anotara al contestar, recargar la pantalla antes de
+// responder lo volvería a sacar, y otra vez, y otra. Anotar al aparecer lo
+// hace idempotente por sesión sin guardar nada en el navegador.
+//
+// No devuelve error al llamante a propósito. Si esto falla, lo peor que pasa
+// es que el diálogo salga una vez de más; romperle la pantalla al dueño por no
+// poder escribir un contador sería un intercambio pésimo. Queda en el log.
+export async function registrarPreguntaAvisos(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: owner } = await supabase
+    .from("owners")
+    .select("whatsapp_prompt_count")
+    .eq("id", user.id)
+    .single();
+
+  const { error } = await supabase
+    .from("owners")
+    .update({
+      whatsapp_prompt_last_at: new Date().toISOString(),
+      whatsapp_prompt_count: (owner?.whatsapp_prompt_count ?? 0) + 1,
+    })
+    .eq("id", user.id);
+
+  if (error) console.error("registrarPreguntaAvisos:", error);
+}

@@ -109,6 +109,11 @@ export type Owner = {
   whatsapp_opt_in_at: string | null;
   whatsapp_opt_in_text: string | null;
   whatsapp_opt_out_at: string | null;
+  // Cuándo se le enseñó el diálogo que lo ofrece, y cuántas veces (migración
+  // 066). En el servidor y no en el navegador: iOS Safari borra localStorage
+  // y el contador volvería a cero solo.
+  whatsapp_prompt_last_at: string | null;
+  whatsapp_prompt_count: number;
   created_at: string;
 };
 

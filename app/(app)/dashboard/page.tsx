@@ -13,6 +13,8 @@ import {
 import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
+import { PedirAvisosWhatsappDialog } from "@/components/dashboard/pedir-avisos-whatsapp-dialog";
+import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
@@ -56,7 +58,13 @@ export default async function DashboardPage({
       .is("trashed_at", null)
       .is("deleted_at", null)
       .order("name"),
-    supabase.from("owners").select("business_name, country, first_name").eq("id", user!.id).single(),
+    supabase
+      .from("owners")
+      .select(
+        "business_name, country, first_name, whatsapp, onboarding_completed_at, whatsapp_opt_in_at, whatsapp_opt_out_at, whatsapp_prompt_last_at, whatsapp_prompt_count",
+      )
+      .eq("id", user!.id)
+      .single(),
     getOwnerRateContext(supabase, user!.id),
     // En que moneda escribio la ultima vez, para que el formulario abra ahi.
     getMonedaHabitual(supabase, user!.id),
@@ -95,6 +103,13 @@ export default async function DashboardPage({
   const totalCop = rows.filter((r) => Number(r.balance) > 0).reduce((sum, r) => sum + Number(r.balance), 0);
   const totalUsd = rows.filter((r) => Number(r.balance_usd) > 0).reduce((sum, r) => sum + Number(r.balance_usd), 0);
   const totalEur = rows.filter((r) => Number(r.balance_eur) > 0).reduce((sum, r) => sum + Number(r.balance_eur), 0);
+  // Solo se le ofrece el resumen semanal a quien tiene algo que resumir.
+  // Ofrecerle "el resumen de tu cartera" a un dueño sin ningún cliente
+  // debiendo es ofrecerle el resumen de nada — y enseña que los avisos de
+  // Sevenz no sirven. El resto de condiciones están en tocaPreguntarAvisos().
+  const pedirAvisos =
+    owner !== null && tocaPreguntarAvisos(owner, totalCop > 0 || totalUsd > 0 || totalEur > 0);
+
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
@@ -158,6 +173,12 @@ export default async function DashboardPage({
           en iPhone no aparece nunca. Por eso preguntan por la Play Store; no es
           que quieran la tienda, es que no saben que ya se puede. */}
       <InstallAppBanner />
+      {/* Solo para los dueños que ya estaban cuando esto se construyó y nunca
+          vieron nada: a los nuevos se les pregunta en el registro. No se les
+          enciende por migración — Meta exige consentimiento afirmativo, y con
+          un solo número para toda la plataforma, tres dueños marcando el
+          mensaje como no deseado bajan el rating de los 24 a la vez. */}
+      {pedirAvisos ? <PedirAvisosWhatsappDialog /> : null}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           {/* first_name is required by both the signup form and "Mi negocio",
