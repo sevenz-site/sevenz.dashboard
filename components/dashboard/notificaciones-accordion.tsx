@@ -3,6 +3,16 @@
 import { useState, useTransition } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -27,9 +37,10 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
   const activoInicial = aceptaAvisosWhatsapp(owner);
   const [activo, setActivo] = useState(activoInicial);
   const [abierto, setAbierto] = useState(false);
+  const [confirmandoBaja, setConfirmandoBaja] = useState(false);
   const [guardando, startTransition] = useTransition();
 
-  function cambiar(siguiente: boolean) {
+  function guardar(siguiente: boolean) {
     // Optimista: el interruptor se mueve al instante y vuelve si el servidor
     // dice que no. Un switch que tarda medio segundo en responder se toca dos
     // veces, y dos toques aquí son un alta y una baja seguidas.
@@ -43,6 +54,21 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
       }
       toast.success(siguiente ? "Avisos por WhatsApp activados." : "Avisos por WhatsApp desactivados.");
     });
+  }
+
+  function cambiar(siguiente: boolean) {
+    // Encender es inmediato. Apagar pregunta primero, porque quien lo apaga
+    // casi nunca sabe qué se está quitando: el resumen llega los lunes y la
+    // decisión se toma un miércoles cualquiera, lejos del momento en que el
+    // mensaje sirve.
+    //
+    // El interruptor NO se mueve hasta confirmar. Moverlo y volverlo atrás si
+    // cancela deja al dueño sin saber en qué estado quedó.
+    if (!siguiente) {
+      setConfirmandoBaja(true);
+      return;
+    }
+    guardar(true);
   }
 
   return (
@@ -89,6 +115,33 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
           </div>
         </CollapsibleContent>
       </Collapsible>
+
+      {/* NO ES UN DIÁLOGO DE RETENCIÓN. Dice qué deja de llegar y en qué día,
+          y punto: sin "¿estás seguro?", sin insistir, y con los dos botones
+          al mismo peso. Darse de baja tiene que ser tan fácil como darse de
+          alta — Meta lo espera, y un cliente que no encuentra cómo salirse
+          hace lo único que sabe, que es bloquear y reportar. Eso hunde el
+          rating del número para los 24 negocios a la vez.
+
+          Cerrar con Escape o tocando fuera cancela, que es el resultado que
+          no cambia nada. */}
+      <AlertDialog open={confirmandoBaja} onOpenChange={setConfirmandoBaja}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Desactivar los avisos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dejarás de recibir cada lunes cuánto tienes por cobrar y cuántos clientes se
+              pasaron del plazo. Puedes volver a activarlos aquí cuando quieras.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={guardando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={guardando} onClick={() => guardar(false)}>
+              Desactivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
