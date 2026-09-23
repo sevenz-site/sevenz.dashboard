@@ -163,10 +163,22 @@ begin
 end;
 $$;
 
--- EXECUTE va a PUBLIC por defecto, así que el revoke tiene que ir antes o el
--- grant de abajo es decoración. Ver CLAUDE.md.
-revoke all on function public.whatsapp_send_begin(uuid, text, text) from public;
-revoke all on function public.whatsapp_send_finish(uuid, boolean, text, text) from public;
+-- REVOCAR A `public` NO BASTA, Y ESTO COSTÓ UN AGUJERO REAL.
+--
+-- La primera versión de esta migración hacía `revoke ... from public` a secas,
+-- como la 064. Con eso, `anon` —la clave que lleva cualquier navegador— pudo
+-- llamar a whatsapp_send_begin y dejó una reserva de envío en la tabla. Se vio
+-- al probarlo contra dev, no al leerlo.
+--
+-- El motivo: Supabase tiene `alter default privileges` concediendo EXECUTE a
+-- `anon`, `authenticated` y `service_role` sobre toda función nueva del esquema
+-- public. Eso es un grant EXPLÍCITO a esos roles, y quitarle el permiso a
+-- `public` no lo toca.
+--
+-- La 064 no tenía el problema porque ahí sí se quería que anon llamara. Aquí
+-- no. El patrón correcto es el de la 039, que nombra los tres:
+revoke execute on function public.whatsapp_send_begin(uuid, text, text) from public, anon, authenticated;
+revoke execute on function public.whatsapp_send_finish(uuid, boolean, text, text) from public, anon, authenticated;
 
 -- Solo `service_role`. Ni `anon` ni `authenticated`: un dueño no manda
 -- mensajes, los manda el cron. Que la función exista no es una puerta si
