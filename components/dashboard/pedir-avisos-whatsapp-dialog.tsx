@@ -60,10 +60,10 @@ export function PedirAvisosWhatsappDialog() {
     <Dialog open={abierto} onOpenChange={setAbierto}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>¿Te mandamos el resumen de tu cartera?</DialogTitle>
+          <DialogTitle>Activa tu resumen de cartera</DialogTitle>
           <DialogDescription>
-            Los lunes, un mensaje a tu WhatsApp con lo que tienes por cobrar y quién se pasó
-            del plazo. Puedes desactivarlo cuando quieras en Mi negocio.
+            Recibe resumen de tu cartera con cobros pendientes y plazos vencidos. Puedes
+            desactivarlo cuando quieras en &quot;Mi negocio&quot;
           </DialogDescription>
         </DialogHeader>
 
