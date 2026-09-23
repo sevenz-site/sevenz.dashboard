@@ -117,3 +117,22 @@ export function claveSemanal(fecha = new Date()): string {
   const semana = Math.ceil(((d.getTime() - inicioDeAno.getTime()) / 86400000 + 1) / 7);
   return `${d.getUTCFullYear()}-W${String(semana).padStart(2, "0")}`;
 }
+
+// Día ISO (1 lunes … 7 domingo) en hora de Colombia.
+//
+// Vercel corre en UTC. A las 13:00 UTC son las 8:00 en Bogotá y las 9:00 en
+// Caracas — el mismo día en las tres, así que hoy da igual. Se calcula en
+// UTC-5 de todas formas porque el día que alguien mueva el horario a las 2:00
+// UTC, el cálculo en UTC diría "martes" cuando en la bodega es lunes por la
+// noche, y el mensaje saldría con un día de desfase sin que nadie entendiera
+// por qué.
+//
+// Colombia no tiene horario de verano, así que el offset es constante. Si
+// algún día Sevenz opera en un país que sí lo tenga, esto deja de valer y hay
+// que usar una zona con nombre, no un número.
+const OFFSET_COLOMBIA_MS = -5 * 60 * 60 * 1000;
+
+export function diaIsoEnColombia(ahora = new Date()): number {
+  const local = new Date(ahora.getTime() + OFFSET_COLOMBIA_MS);
+  return local.getUTCDay() || 7;
+}
