@@ -22,6 +22,21 @@ export const TEXTO_AVISOS_WHATSAPP =
 // literalmente lo que se muestra, y no una versión formal escrita aparte: dos
 // textos distintos convertirían la evidencia en una reconstrucción.
 
+// Y por eso hay DOS constantes y no una.
+//
+// El registro y Mi negocio son dos pantallas distintas y dicen cosas
+// distintas: en Mi negocio hay un interruptor al lado y la frase lo describe;
+// en el registro no hay interruptor, la acción es crear la cuenta, y la frase
+// tiene que decir eso. Forzar el mismo texto en las dos dejaría una de las dos
+// pantallas leyéndose mal, o —peor— guardaría en la ficha una frase que esa
+// persona nunca vio.
+//
+// Una constante por superficie. Lo que se muestra es lo que se guarda, en las
+// dos.
+export const TEXTO_AVISOS_WHATSAPP_REGISTRO =
+  "Al crear tu cuenta aceptas recibir un resumen semanal de tu cartera en tu " +
+  "WhatsApp. Puedes desactivarlo cuando quieras en Mi negocio.";
+
 // La única función que decide si a un dueño se le puede escribir.
 //
 // No basta con `whatsapp_opt_in_at is not null`: al desactivar NO se borra esa

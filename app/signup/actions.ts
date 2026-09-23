@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { validatePasswordComplexity } from "@/lib/password";
+import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
 import { isReferralSource } from "@/lib/referral-source";
 
 export type SignupFieldValues = {
@@ -93,6 +94,22 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         whatsapp: whatsapp || null,
         country,
         referral_source: referralSource,
+        // EL CONSENTIMIENTO DE LOS AVISOS POR WHATSAPP.
+        //
+        // Se manda la FRASE, no un booleano: es lo que esa persona leyó encima
+        // del botón de crear cuenta, y es la evidencia que habría que enseñar
+        // si el número empieza a recibir reportes. El texto de la pantalla va a
+        // cambiar; lo que se guarda no.
+        //
+        // Es la constante DEL REGISTRO, no la de Mi negocio. Son dos
+        // pantallas que dicen cosas distintas, y cada ficha guarda la frase de
+        // la pantalla por la que pasó esa persona.
+        //
+        // De aquí lo recoge handle_new_user() (migración 070) al crear la fila
+        // de `owners`. No se actualiza desde esta acción porque al terminar
+        // signUp() todavía no hay sesión —la confirmación de correo está
+        // activada— y el update chocaría con la política `id = auth.uid()`.
+        whatsapp_opt_in_text: TEXTO_AVISOS_WHATSAPP_REGISTRO,
       },
     },
   });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
 import Image from "next/image";
 import Link from "next/link";
 import { signup, type SignupState } from "./actions";
@@ -295,6 +296,19 @@ export default function SignupPage() {
                 </a>
               </Label>
             </div>
+            {/* EL CONSENTIMIENTO DE LOS AVISOS, y por qué es una frase y no una
+                casilla.
+                Una casilla premarcada no es autorización *expresa* —la Ley
+                1581 colombiana pide previa, expresa e informada— y una sin
+                marcar convierte en opcional algo de lo que depende el valor
+                del producto. Una frase encima del botón informa, y crear la
+                cuenta es el acto afirmativo: el mismo patrón que los Términos,
+                que ya se aceptan así.
+                El texto es literalmente el que se guarda en la ficha, para que
+                la evidencia no sea una reconstrucción. Ver lib/whatsapp-opt-in.ts. */}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {TEXTO_AVISOS_WHATSAPP_REGISTRO}
+            </p>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             {state.alreadyRegistered ? (
               <Button asChild variant="secondary" className="w-full">
