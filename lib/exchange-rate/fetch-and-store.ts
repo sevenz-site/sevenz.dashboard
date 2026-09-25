@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { DolarApiProvider } from "@/lib/exchange-rate/dolar-api-provider";
 import { CurrencyApiProvider } from "@/lib/exchange-rate/currency-api-provider";
 import { fetchPrevista } from "@/lib/exchange-rate/fetch-prevista";
-import { fetchUsdtP2p } from "@/lib/exchange-rate/usdt-p2p";
+import { fetchUsdtP2p, lineaDeLog } from "@/lib/exchange-rate/usdt-p2p";
 import type { OfficialRates } from "@/lib/exchange-rate/types";
 
 // A fetch that jumps more than this from the last accepted rate is stored
@@ -48,11 +48,7 @@ export async function fetchAndStoreBcvRate() {
   // La línea que hace medible la fase 1. Se escribe SIEMPRE, también cuando
   // sale null: "no hubo respuesta" es justo el dato que se está midiendo, y
   // un log que solo aparece los días buenos no mide nada.
-  console.log(
-    usdt
-      ? `[usdt] P2P ok · venta ${usdt.ask} · compra ${usdt.bid} · ${usdt.casas} casas · rango ${usdt.min}-${usdt.max} · oficial ${rates.usd}`
-      : "[usdt] P2P sin dato hoy",
-  );
+  console.log(lineaDeLog(usdt, rates.usd));
 
   const supabase = createServiceClient();
 

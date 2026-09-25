@@ -1,30 +1,40 @@
-// El precio real del USDT en bolívares, leído del mercado P2P.
+// El precio del USDT en bolívares. Binance P2P, que es lo que "el USDT"
+// significa en Venezuela.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // FASE 1 DE TRES. HOY ESTO NO SE GUARDA NI SE ENSEÑA A NADIE.
 //
 // Solo corre dentro del cron de la tasa y escribe el resultado en el log. Lo
-// único que mide es si CriptoYa responde todos los días — que es lo único que
-// no se puede saber leyendo su documentación. La fase 2 (guardarlo y
+// único que mide es si la fuente responde todos los días — que es lo único
+// que no se puede saber leyendo su documentación. La fase 2 (guardarlo y
 // enseñarlo en la calculadora) va detrás de esa medición, no delante.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// POR QUÉ NO SE USA LA FUENTE QUE YA ESTÁ INSTALADA
+// BINANCE, NO UN AGREGADO DE CASAS. Corregido el 2026-09-24.
 //
-// `currency-api` —nuestro proveedor de respaldo— publica un campo `usdt.ves`.
-// Es gratis, ya está integrado y sería lo más cómodo. Medido el 2026-09-24, a
-// la misma hora:
+// La primera versión publicaba la mediana de las siete casas que devuelve
+// CriptoYa. Era defendible en estadística y equivocada en producto: cuando un
+// tendero venezolano dice "el USDT" quiere decir Binance P2P, que es donde
+// mira. Si Sevenz enseña 971 y él abre Binance y lee 967,88, no concluye que
+// está viendo una mediana — concluye que Sevenz está mal.
 //
-//   currency-api usdt.ves .......  852,17   ← lo que daría "gratis"
-//   BCV oficial ................   854,46
-//   paralelo (dolarapi) ........   956,95
-//   Binance P2P (CriptoYa) .....   966,60   ← lo que vale de verdad
+// Y medido, el agregado además era PEOR. El 2026-09-24:
 //
-// El campo de currency-api es el oficial disfrazado: sale de 1 USDT ≈ 1 USD
-// multiplicado por la tasa oficial. Es correcto en aritmética y falso en la
-// calle, por un 13,4 %. Un dueño que valore un fiado con esa cifra pierde ese
-// 13,4 % en cada operación y no entiende por qué no le cuadra el mes. Por eso
-// esto existe como fuente aparte y no como un campo más del proveedor viejo.
+//   binancep2p ..... 967,88   ← cotización de hace 21 segundos
+//   bybitp2p ....... 967,39
+//   okexp2p ........ 970,00
+//   mexcp2p ........ 971,00
+//   bingxp2p ....... 971,90
+//   saldo .......... 988,61
+//   bitgetp2p ...... 995,00
+//   mediana de las otras seis: 971,45
+//
+// Las dos de arriba arrastran la mediana un 0,37 % por encima de Binance. El
+// número más limpio era el de la casa de referencia, no el del conjunto.
+//
+// LAS DEMÁS NO SE TIRAN: pasan a ser control, no cifra. Sirven para detectar
+// el día que Binance se despegue del resto del mercado, que es justo cuando
+// publicar su número sin mirar nada más sería un error.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // CRIPTOYA, COMPROBADO EL 2026-09-24 CONTRA SU API Y SUS DOCS
@@ -38,37 +48,35 @@
 // DOS SEGUNDOS, NO OCHO COMO LOS DEMÁS. Y no es por prudencia genérica.
 //
 // `fetchAndStoreBcvRate` corre también en la ruta de ESCRITURA, cuando un
-// dueño guarda un fiado y la tasa está vieja, con un presupuesto de 2,5 s. Va
-// en un Promise.all, así que no suma su tiempo al de los demás... pero sí
-// manda si resulta ser el más lento. Con 8 s, un mal día de CriptoYa se
-// convierte en un dueño mirando una rueda girar mientras guarda su fiado.
-// Con 2 s no puede ser nunca la razón de esa espera.
+// dueño guarda un fiado y la tasa está vieja, y ahí `ensure-fresh` lo mete en
+// un `Promise.race` contra 2,5 s. Con 8 s, un mal día de CriptoYa haría
+// perder esa carrera al refresco entero y el fiado se sellaría con una tasa
+// vieja, en silencio. Con 2 s no puede ser nunca la causa.
 const TIMEOUT_MS = 2_000;
 
-type Casa = { ask?: number; bid?: number };
+// A partir de aquí, Binance y el resto del mercado no están contando la misma
+// historia. No invalida el dato —puede ser real— pero tiene que verse en el
+// log, porque es la única señal de que la casa de referencia se despegó.
+const DESVIO_SOSPECHOSO = 0.03;
+
+type Casa = { ask?: number; bid?: number; time?: number };
 
 export type UsdtP2p = {
-  // La mediana de lo que piden los vendedores y de lo que ofrecen los
-  // compradores, entre todas las casas que contestaron.
+  // Binance P2P. Estos dos son EL dato.
   ask: number;
   bid: number;
-  // Cuántas casas entraron en el cálculo. Si un día son dos en vez de siete,
-  // la mediana sigue saliendo pero vale mucho menos, y eso tiene que verse.
-  casas: number;
-  // La más barata y la más cara, para vigilar la dispersión. El 2026-09-24
-  // seis casas estaban entre 967 y 972 y una —`saldo`— a 987,86: un 2 % por
-  // encima del resto. Si algún día esta horquilla se dispara, el mercado está
-  // roto o la fuente está mala, y en los dos casos hay que enterarse.
-  min: number;
-  max: number;
+  // Cuántos segundos tiene la cotización de Binance según CriptoYa. Un
+  // número correcto pero de hace seis horas es un número equivocado, y sin
+  // esto no habría forma de distinguirlos.
+  edadSegundos: number | null;
+  // ── De aquí abajo, control. Nunca se publica. ──
+  // La mediana de las demás casas, solo para comparar.
+  resto: number | null;
+  // Cuánto se separa Binance del resto, en tanto por uno.
+  desvio: number | null;
+  casasComparadas: number;
 };
 
-// La MEDIANA, nunca el promedio ni una sola casa.
-//
-// Lo que publican los P2P son anuncios, no operaciones cerradas: cualquiera
-// puede poner una oferta absurda y aparecer en la lista. El promedio se la
-// traga entera; la mediana la ignora. Y tomar una sola casa —Binance, por
-// ejemplo— es quedarse a merced de que ESA tenga un mal día.
 function mediana(valores: number[]): number {
   const ordenados = [...valores].sort((a, b) => a - b);
   const medio = Math.floor(ordenados.length / 2);
@@ -89,27 +97,32 @@ export async function fetchUsdtP2p(): Promise<UsdtP2p | null> {
     if (!res.ok) throw new Error(`criptoya respondió ${res.status}`);
 
     const data = (await res.json()) as Record<string, Casa>;
+    const binance = data.binancep2p;
 
-    // Se descarta cualquier casa a la que le falte un lado o venga en cero:
-    // un cero entraría en la mediana como un precio válido y la hundiría.
-    const asks = Object.values(data)
-      .map((c) => c.ask)
-      .filter((n): n is number => typeof n === "number" && n > 0);
-    const bids = Object.values(data)
-      .map((c) => c.bid)
-      .filter((n): n is number => typeof n === "number" && n > 0);
-
-    // Menos de tres casas no es una mediana, es una anécdota.
-    if (asks.length < 3 || bids.length < 3) {
-      throw new Error(`solo ${asks.length} casas con precio válido`);
+    // Sin Binance no hay dato. No se sustituye por otra casa ni por la
+    // mediana del resto: eso sería volver a publicar un número que no es el
+    // que el dueño va a comprobar. Si falta, falta — y el log lo dice, que es
+    // justo lo que la fase 1 está midiendo.
+    if (!binance?.ask || !binance?.bid) {
+      throw new Error("criptoya respondió sin binancep2p");
     }
 
+    // El control: las demás casas, descartando la que falte o venga en cero.
+    const otras = Object.entries(data)
+      .filter(([nombre]) => nombre !== "binancep2p")
+      .map(([, casa]) => casa.ask)
+      .filter((n): n is number => typeof n === "number" && n > 0);
+
+    const resto = otras.length >= 3 ? mediana(otras) : null;
+    const desvio = resto ? (binance.ask - resto) / resto : null;
+
     return {
-      ask: mediana(asks),
-      bid: mediana(bids),
-      casas: asks.length,
-      min: Math.min(...asks),
-      max: Math.max(...asks),
+      ask: binance.ask,
+      bid: binance.bid,
+      edadSegundos: binance.time ? Math.round(Date.now() / 1000 - binance.time) : null,
+      resto,
+      desvio,
+      casasComparadas: otras.length,
     };
   } catch (error) {
     console.error(
@@ -120,4 +133,26 @@ export async function fetchUsdtP2p(): Promise<UsdtP2p | null> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// La línea del log. Vive aquí y no en `fetch-and-store` para que el formato
+// esté al lado de lo que lo produce: la fase 1 se mide leyendo estas líneas,
+// así que son la salida real de este archivo, no un detalle de depuración.
+export function lineaDeLog(usdt: UsdtP2p | null, oficial: number): string {
+  if (!usdt) return "[usdt] sin dato hoy";
+
+  const partes = [
+    `venta ${usdt.ask}`,
+    `compra ${usdt.bid}`,
+    usdt.edadSegundos !== null ? `${usdt.edadSegundos}s de antigüedad` : "sin marca de tiempo",
+    `oficial ${oficial}`,
+  ];
+
+  if (usdt.desvio !== null && usdt.resto !== null) {
+    const pct = (usdt.desvio * 100).toFixed(2);
+    const alarma = Math.abs(usdt.desvio) > DESVIO_SOSPECHOSO ? " ⚠ DESPEGADO" : "";
+    partes.push(`resto del mercado ${usdt.resto} (${pct}%, ${usdt.casasComparadas} casas)${alarma}`);
+  }
+
+  return `[usdt] Binance P2P · ${partes.join(" · ")}`;
 }
