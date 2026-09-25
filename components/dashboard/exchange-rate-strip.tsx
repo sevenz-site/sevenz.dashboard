@@ -311,9 +311,15 @@ function RateCalculator({
   // Tampoco lleva fecha — no es la tasa "del 24 de septiembre", es el precio
   // de hace un minuto. Lleva la casa, que es lo que sí se puede comprobar.
   const stampLabel = pair === "USDT"
-    ? minutosUsdt && minutosUsdt >= 2
-      ? `Binance P2P · hace ${minutosUsdt} min`
-      : "Binance P2P · precio de ahora"
+    // Sin marca de tiempo no se dice "precio de ahora". CriptoYa la manda
+    // siempre hoy, pero si algún día dejara de hacerlo, afirmar frescura que
+    // no podemos comprobar es exactamente el tipo de promesa que esta
+    // pantalla no puede permitirse.
+    ? minutosUsdt === null
+      ? "Binance P2P"
+      : minutosUsdt >= 2
+        ? `Binance P2P · hace ${minutosUsdt} min`
+        : "Binance P2P · precio de ahora"
     : usarPrevista && prevista
       ? `Tasa BCV prevista para ${etiquetaDePrevista(prevista.fecha)}`
       : rateDate

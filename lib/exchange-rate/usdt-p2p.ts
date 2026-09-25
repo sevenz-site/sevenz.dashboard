@@ -59,6 +59,21 @@ const TIMEOUT_MS = 2_000;
 // log, porque es la única señal de que la casa de referencia se despegó.
 const DESVIO_SOSPECHOSO = 0.03;
 
+// EL LÍMITE DE CORDURA, y no es paranoia.
+//
+// Hasta ahora lo único que se comprobaba era `ask > 0`. Eso deja pasar un
+// 9.670.000 por un punto decimal corrido, o por un proveedor que cambie de
+// unidad — y Venezuela ha redenominado el bolívar TRES veces, así que un
+// cambio de unidad en una fuente de tasas no es un escenario inventado.
+//
+// El USDT vale aproximadamente un dólar, así que su precio en bolívares tiene
+// que parecerse al de la tasa oficial. La banda es ancha a propósito: el
+// paralelo ha llegado a estar un 60 % por encima del oficial en Venezuela, y
+// un filtro estrecho tiraría datos buenos en la próxima crisis. Lo que corta
+// es un número de otro orden de magnitud, que es lo que de verdad hace daño.
+const BANDA_MINIMA = 0.5; // medio dólar oficial
+const BANDA_MAXIMA = 5; // cinco veces el oficial
+
 type Casa = { ask?: number; bid?: number; time?: number };
 
 export type UsdtP2p = {
@@ -87,7 +102,7 @@ function mediana(valores: number[]): number {
 
 // Nunca lanza. Igual que `fetchPrevista`: esto es un extra sobre la tasa que
 // sí rige, y que falle no puede impedir que se guarde la tasa oficial del día.
-export async function fetchUsdtP2p(): Promise<UsdtP2p | null> {
+export async function fetchUsdtP2p(oficialUsd?: number): Promise<UsdtP2p | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -105,6 +120,15 @@ export async function fetchUsdtP2p(): Promise<UsdtP2p | null> {
     // justo lo que la fase 1 está midiendo.
     if (!binance?.ask || !binance?.bid) {
       throw new Error("criptoya respondió sin binancep2p");
+    }
+
+    // Fuera de banda: se descarta y se deja constancia. Enseñar un precio de
+    // otro orden de magnitud es peor que no enseñar ninguno — la pestaña
+    // desaparece y la calculadora sigue con dólar y euro.
+    if (oficialUsd && (binance.ask < oficialUsd * BANDA_MINIMA || binance.ask > oficialUsd * BANDA_MAXIMA)) {
+      throw new Error(
+        `precio fuera de banda: ${binance.ask} contra un oficial de ${oficialUsd}`,
+      );
     }
 
     // El control: las demás casas, descartando la que falte o venga en cero.

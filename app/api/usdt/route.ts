@@ -68,10 +68,21 @@ export async function GET() {
     return NextResponse.json({ usdt: cache.precio, cacheado: true });
   }
 
+  // La tasa oficial del día, solo para el límite de cordura: si el precio de
+  // USDT que llega es de otro orden de magnitud —un decimal corrido, un
+  // proveedor que cambia de unidad— se descarta en vez de enseñarse. Una
+  // consulta por fallo de caché, o sea como mucho una por minuto.
+  //
+  // Si no hay tasa oficial no se bloquea nada: se pide el USDT sin banda.
+  // Quedarse sin calculadora porque falta la referencia sería peor que el
+  // riesgo del que protege.
+  const { data: oficial } = await supabase.rpc("get_current_bcv_rate").maybeSingle();
+  const oficialUsd = (oficial as { usd?: number } | null)?.usd;
+
   // `fetchUsdtP2p` nunca lanza: devuelve null y deja el motivo en el log del
   // servidor. Así que aquí no hay nada que enmascarar — el texto de CriptoYa
   // no puede llegar al navegador ni por accidente.
-  const precio = await fetchUsdtP2p();
+  const precio = await fetchUsdtP2p(oficialUsd);
 
   // También se cachea el null. Si la fuente está caída, preguntarle otra vez
   // en cada apertura de la calculadora es castigar al dueño con la espera del
