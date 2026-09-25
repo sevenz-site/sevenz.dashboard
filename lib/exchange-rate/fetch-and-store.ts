@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { DolarApiProvider } from "@/lib/exchange-rate/dolar-api-provider";
 import { CurrencyApiProvider } from "@/lib/exchange-rate/currency-api-provider";
 import { fetchPrevista } from "@/lib/exchange-rate/fetch-prevista";
+import { fetchUsdtP2p } from "@/lib/exchange-rate/usdt-p2p";
 import type { OfficialRates } from "@/lib/exchange-rate/types";
 
 // A fetch that jumps more than this from the last accepted rate is stored
@@ -34,10 +35,25 @@ export async function fetchAndStoreBcvRate() {
   // consulta de la que sí rige. refreshBcvRateIfStale corre esto en la ruta de
   // escritura con un límite de 2,5 s, así que encadenarlas sería sumar tiempo a
   // un dueño que está esperando a que se guarde su fiado.
-  const [rates, prevista] = await Promise.all([
+  // El USDT entra aquí como TERCER extra, y en fase de medición: no se
+  // guarda en ninguna columna y no lo ve ningún dueño. Solo deja rastro en el
+  // log y en la respuesta del cron, que está detrás de CRON_SECRET. Ver la
+  // cabecera de usdt-p2p.ts para el porqué de las tres fases.
+  const [rates, prevista, usdt] = await Promise.all([
     getOfficialRatesWithFallback(),
     fetchPrevista(),
+    fetchUsdtP2p(),
   ]);
+
+  // La línea que hace medible la fase 1. Se escribe SIEMPRE, también cuando
+  // sale null: "no hubo respuesta" es justo el dato que se está midiendo, y
+  // un log que solo aparece los días buenos no mide nada.
+  console.log(
+    usdt
+      ? `[usdt] P2P ok · venta ${usdt.ask} · compra ${usdt.bid} · ${usdt.casas} casas · rango ${usdt.min}-${usdt.max} · oficial ${rates.usd}`
+      : "[usdt] P2P sin dato hoy",
+  );
+
   const supabase = createServiceClient();
 
   const { data: last } = await supabase
@@ -71,5 +87,10 @@ export async function fetchAndStoreBcvRate() {
     rateDate: rates.rateDate,
     prevista,
     needs_review: needsReview,
+    // Va en la respuesta del cron, no en la base de datos. Es diagnóstico de
+    // la fase 1 y la ruta exige CRON_SECRET, así que no lo ve ningún dueño.
+    // Cuando llegue la fase 2 esto deja de ser un campo suelto y pasa a ser
+    // una columna; hasta entonces, borrarlo no rompe nada.
+    usdt_p2p: usdt,
   };
 }
