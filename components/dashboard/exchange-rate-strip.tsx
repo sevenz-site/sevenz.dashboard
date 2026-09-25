@@ -27,6 +27,14 @@ import {
 } from "@/lib/exchange-rate/convert";
 import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import type { LedgerCurrency } from "@/lib/types";
+import { usePrecioUsdt } from "@/components/dashboard/use-precio-usdt";
+
+// La moneda que puede elegirse EN LA CALCULADORA. Es un tipo propio y no una
+// ampliación de `LedgerCurrency` ni de `MovementCurrency` a propósito: esos
+// dos los comparte el formulario de fiado, y `movements.currency` tiene un
+// check que solo admite USD y EUR. Ensanchar aquellos metería el USDT en el
+// camino del dinero, que es justo lo que `CT-17` todavía no autoriza.
+type MonedaCalculadora = LedgerCurrency | "USDT";
 
 // react-day-picker weighs ~19 KB gzipped and only matters once someone opens
 // this panel and asks to filter by date. Loading it lazily keeps it out of the
@@ -49,8 +57,16 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   // Lifted so the history table's variation column can follow the same choice
   // — the mockup's last column is "Var. USD" or "Var. EUR" depending on which
   // pill is active, not a fixed one.
-  const [pair, setPair] = useState<LedgerCurrency>("USD");
+  const [pair, setPair] = useState<MonedaCalculadora>("USD");
   const [open, setOpen] = useState(false);
+  // Se pide al abrir, no al montar la pantalla: la calculadora es a demanda.
+  const { precio: usdt, edadSegundos: edadUsdt } = usePrecioUsdt(open);
+
+  // Si el dueño tenía USDT elegido y el precio desaparece, vuelve a dólares en
+  // vez de quedarse en una pestaña sin tasa. No puede pasar con el dato vivo
+  // —el hook conserva el último precio conocido— pero sí si algún día se
+  // monta la calculadora ya abierta y la primera petición falla.
+  if (pair === "USDT" && !usdt) setPair("USD");
 
   // The rate figures are plain display text — only the "Calcular" button
   // opens the calculator, so it's unambiguous what's tappable.
@@ -70,6 +86,8 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   const calculator = (
     <RateCalculator
       rate={rateContext.effectiveRate}
+      usdt={usdt?.ask ?? null}
+      edadUsdt={edadUsdt}
       pair={pair}
       onPairChange={setPair}
       rateDate={rateContext.rateDate}
@@ -117,8 +135,13 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
               rate history table simply overflows past the top edge again. */}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
             {calculator}
-            <RateHistoryTable currency={pair} />
-            <ExchangeRateLegalDisclaimer />
+            {/* La tabla de 90 días es del BCV. Con USDT elegido se retira: no
+                existe un histórico de USDT (eso es `CT-17`), y dejar debajo
+                una tabla de tasas oficiales mientras arriba se calcula un
+                precio de Binance es el mismo error de categoría que ponerle
+                el sello "Tasa BCV". */}
+            {pair !== "USDT" ? <RateHistoryTable currency={pair} /> : null}
+            <ExchangeRateLegalDisclaimer incluyeUsdt={!!usdt} />
           </div>
         </SheetContent>
       </Sheet>
@@ -144,8 +167,8 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       >
         <div className="flex flex-col gap-4">
           {calculator}
-          <RateHistoryTable currency={pair} />
-          <ExchangeRateLegalDisclaimer />
+          {pair !== "USDT" ? <RateHistoryTable currency={pair} /> : null}
+          <ExchangeRateLegalDisclaimer incluyeUsdt={!!usdt} />
         </div>
       </PopoverContent>
     </Popover>
@@ -154,6 +177,8 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
 
 function RateCalculator({
   rate,
+  usdt,
+  edadUsdt,
   pair,
   onPairChange,
   rateDate,
@@ -161,8 +186,10 @@ function RateCalculator({
   rateFetchedAt,
 }: {
   rate: { usd: number; eur: number };
-  pair: LedgerCurrency;
-  onPairChange: (next: LedgerCurrency) => void;
+  usdt: number | null;
+  edadUsdt: number | null;
+  pair: MonedaCalculadora;
+  onPairChange: (next: MonedaCalculadora) => void;
   rateDate?: string | null;
   rateStatus?: "current" | "no_publication" | "unconfirmed";
   rateFetchedAt?: string | null;
@@ -215,27 +242,51 @@ function RateCalculator({
   // asi que marcar la casilla cambia el numero grande y no solo una etiqueta.
   const tasaEnUso = usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rate;
 
-  const pairRate = pair === "USD" ? tasaEnUso.usd : tasaEnUso.eur;
-  const pairName = pair === "USD" ? "Dólar" : "Euro";
+  const pairRate =
+    pair === "USD" ? tasaEnUso.usd : pair === "EUR" ? tasaEnUso.eur : (usdt ?? 0);
+  const pairName = pair === "USD" ? "Dólar" : pair === "EUR" ? "Euro" : "USDT";
 
-  const putCurrency: MovementCurrency = entry === "VES" ? "VES" : pair;
-  const getCurrency: MovementCurrency = entry === "VES" ? pair : "VES";
-  const labelFor = (c: MovementCurrency) =>
-    c === "VES" ? "Bolívares" : c === "USD" ? "Dólares" : "Euros";
+  type MonedaVisible = MovementCurrency | "USDT";
+  const putCurrency: MonedaVisible = entry === "VES" ? "VES" : pair;
+  const getCurrency: MonedaVisible = entry === "VES" ? pair : "VES";
+  const labelFor = (c: MonedaVisible) =>
+    c === "VES" ? "Bolívares" : c === "USD" ? "Dólares" : c === "EUR" ? "Euros" : "USDT";
 
   const cents = Number(rawDigits || "0");
   const typed = cents / 100;
   const hasAmount = typed > 0;
 
-  const convertBetween = (amount: number, from: MovementCurrency, to: MovementCurrency) => {
+  // Con USDT de por medio la cuenta se hace AQUÍ y no en
+  // `convertToAllCurrencies`, que es la misma función que alimenta la vista
+  // previa del formulario de fiado. Ensancharla para que entienda USDT
+  // metería la moneda en el camino del dinero por la puerta de atrás.
+  //
+  // La cuenta es la misma de siempre —pasar por bolívares— solo que con el
+  // precio de Binance en vez de una tasa del BCV.
+  const convertBetween = (amount: number, from: MonedaVisible, to: MonedaVisible) => {
+    if (from === "USDT" || to === "USDT") {
+      if (!usdt) return 0;
+      const ves = from === "USDT" ? amount * usdt : amount * (from === "USD" ? tasaEnUso.usd : tasaEnUso.eur);
+      if (to === "USDT") return ves / usdt;
+      return to === "VES" ? ves : ves / (to === "USD" ? tasaEnUso.usd : tasaEnUso.eur);
+    }
     const all = convertToAllCurrencies(amount, from, tasaEnUso);
     return to === "VES" ? all.ves : to === "USD" ? all.usd : all.eur;
   };
   const putAmount = source === "put" ? typed : convertBetween(typed, getCurrency, putCurrency);
   const getAmount = source === "get" ? typed : convertBetween(typed, putCurrency, getCurrency);
 
-  const money = (amount: number, currency: MovementCurrency) =>
-    currency === "VES" ? `Bs. ${formatBsAmount(amount)}` : formatDisplayCurrency(amount, currency);
+  // El código detrás del número y no un símbolo delante: el USDT no tiene
+  // símbolo propio, y "$" lo haría indistinguible del dólar — justo la
+  // confusión que esta pestaña existe para evitar. Y `formatDisplayCurrency`
+  // no puede recibirlo: Intl no conoce "USDT", no es una moneda ISO, y
+  // pedírsela lanza.
+  const money = (amount: number, currency: MonedaVisible) =>
+    currency === "VES"
+      ? `Bs. ${formatBsAmount(amount)}`
+      : currency === "USDT"
+        ? `${formatBsAmount(amount)} USDT`
+        : formatDisplayCurrency(amount, currency);
 
   // An empty field stays empty rather than snapping back to 0,00 — the owner is
   // mid-edit and a number reappearing under the cursor is its own bug.
@@ -244,16 +295,40 @@ function RateCalculator({
   const putPlaceholder = money(0, putCurrency);
   const getPlaceholder = money(0, getCurrency);
 
-  const stampLabel = usarPrevista && prevista
-    ? `Tasa BCV prevista para ${etiquetaDePrevista(prevista.fecha)}`
-    : rateDate
-      ? `Tasa BCV del ${formatRateDate(rateDate)}`
-      : "Tasa BCV";
+  // Cuántos minutos tiene el precio de Binance. Solo se dice a partir de dos:
+  // "hace 0 minutos" es ruido, y por debajo de eso el número es el de ahora.
+  //
+  // Existe porque iOS suspende las PWA: el dueño puede reabrir la app y
+  // encontrarse la pantalla tal como la dejó. El hook vuelve a pedir el
+  // precio al reanudar, pero si esa petición falla —sin señal— se conserva el
+  // último conocido, y entonces hay que decir su edad en vez de enseñarlo
+  // como si fuera de este momento.
+  const minutosUsdt = edadUsdt !== null ? Math.floor(edadUsdt / 60) : null;
+
+  // EL USDT NO LLEVA "TASA BCV", y no es un matiz de redacción: el BCV no
+  // publica ninguna tasa de USDT. Ese sello le daría un respaldo oficial que
+  // no tiene, en una pantalla que existe para que alguien se fíe de un número.
+  // Tampoco lleva fecha — no es la tasa "del 24 de septiembre", es el precio
+  // de hace un minuto. Lleva la casa, que es lo que sí se puede comprobar.
+  const stampLabel = pair === "USDT"
+    ? minutosUsdt && minutosUsdt >= 2
+      ? `Binance P2P · hace ${minutosUsdt} min`
+      : "Binance P2P · precio de ahora"
+    : usarPrevista && prevista
+      ? `Tasa BCV prevista para ${etiquetaDePrevista(prevista.fecha)}`
+      : rateDate
+        ? `Tasa BCV del ${formatRateDate(rateDate)}`
+        : "Tasa BCV";
   // Only when the rate is not today's. Two causes, two sentences, because
   // telling an owner "the BCV doesn't publish on weekends" while the real
   // problem is our own fetch would hide the failure precisely when it costs
   // money — they would price a fiado against a rate they think is confirmed.
-  const stampNote = usarPrevista
+  const stampNote = pair === "USDT"
+    // Las notas de abajo explican por qué la tasa del BCV puede no ser de hoy
+    // (fin de semana, festivo, fallo nuestro). Ninguna aplica a un precio de
+    // mercado continuo, y enseñarlas ahí confundiría dos cosas distintas.
+    ? null
+    : usarPrevista
     ? null
     : rateStatus === "no_publication"
       ? "El BCV no publica sábados, domingos ni festivos. Esta es la última tasa publicada."
@@ -345,7 +420,7 @@ function RateCalculator({
     // de que pais es y el simbolo ya dice que moneda es: "$1.00 Dolar" con una
     // bandera de Estados Unidos al lado dice lo mismo tres veces. Y lo que
     // sobra en una tarjeta es justo lo que le quita autoridad.
-    const lado = (amount: number, currency: MovementCurrency) => ({
+    const lado = (amount: number, currency: MonedaVisible) => ({
       texto: money(amount, currency),
       bandera: currency === "VES" ? "/flag-ves.svg" : currency === "USD" ? "/flag-usd.svg" : "/flag-eur.svg",
     });
@@ -362,7 +437,9 @@ function RateCalculator({
           euros is gone with the old three-way select: a shop converts one
           foreign currency against bolívares, never one against the other. */}
       <div className="flex gap-2">
-        {(["USD", "EUR"] as const).map((c) => (
+        {/* USDT solo si hay precio. Sin él no se dibuja una pestaña muerta:
+            la calculadora se ve exactamente como antes. */}
+        {(["USD", "EUR", ...(usdt ? (["USDT"] as const) : [])] as const).map((c) => (
           <button
             key={c}
             type="button"
@@ -376,7 +453,7 @@ function RateCalculator({
             )}
           >
             <CurrencyFlagIcon currency={c} />
-            {c === "USD" ? "Dólares" : "Euro"}
+            {c === "USD" ? "Dólares" : c === "EUR" ? "Euro" : "USDT"}
           </button>
         ))}
       </div>
