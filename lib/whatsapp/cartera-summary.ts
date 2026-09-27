@@ -64,6 +64,30 @@ export async function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
   const supabase = createServiceClient();
   const periodo = claveSemanal();
 
+  // A UNA CUENTA BLOQUEADA SÍ SE LE ESCRIBE, y es una decisión, no un olvido.
+  //
+  // `whatsapp_destinatarios_resumen` filtra por número, consentimiento y baja
+  // voluntaria. NO filtra por `owner_puede_escribir`. Se escribió la migración
+  // que lo añadía y se descartó sin correrla, el 2026-09-25.
+  //
+  // El motivo: un dueño bloqueado sigue pudiendo LEER su cartera —eso no se
+  // bloquea nunca— así que el resumen del lunes le sigue sirviendo, y recibir
+  // el valor del producto es justo lo que puede empujarle a ponerse al día.
+  // Cortarle el aviso le quita una razón para volver.
+  //
+  // LO QUE SE ACEPTA A CAMBIO, para que nadie lo descubra por sorpresa:
+  //   - Se paga a Meta por cada mensaje a quien no está pagando.
+  //   - El mensaje es IDÉNTICO al de un dueño al día. No puede decir "tu
+  //     cuenta está pausada" porque el texto de una plantilla aprobada por
+  //     Meta es inmutable: eso exigiría una plantilla nueva y su aprobación.
+  //     Así que la "motivación" es indirecta — nada en el mensaje menciona el
+  //     pago.
+  //   - Si alguna vez un dueño bloqueado marca el mensaje como no deseado,
+  //     con un solo número para toda la plataforma el quality rating baja
+  //     para todos. Ese es el riesgo real de esta decisión.
+  //
+  // Si algún día se revierte, el cambio es una línea en las funciones de la
+  // 068 y la 069: `and public.owner_puede_escribir(o.id)`.
   const { data, error } = await supabase.rpc("whatsapp_destinatarios_resumen");
   if (error) {
     console.error("whatsapp_destinatarios_resumen:", error);

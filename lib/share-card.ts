@@ -216,7 +216,14 @@ export async function tarjetaDeTasa(datos: DatosDeLaTarjeta): Promise<File | nul
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) return null;
-  return new File([blob], "sevenz-tasa-bcv.png", { type: "image/png" });
+  // El nombre sale del pie de la propia tarjeta, no de una constante: con
+  // USDT elegido el pie dice "Binance P2P" y el archivo se llamaba igual
+  // "sevenz-tasa-bcv.png". Es lo primero que se lee al reenviarlo por
+  // WhatsApp, así que decía BCV de una tarjeta que no lo es.
+  const esUsdt = datos.pie.includes("Binance");
+  return new File([blob], esUsdt ? "sevenz-precio-usdt.png" : "sevenz-tasa-bcv.png", {
+    type: "image/png",
+  });
 }
 
 // ¿Puede este navegador mandar una imagen por el menú de compartir?
