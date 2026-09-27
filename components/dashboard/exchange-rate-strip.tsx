@@ -558,7 +558,18 @@ function RateCalculator({
 
           Fuera de la tarjeta oscura, no dentro: es una decision del dueño sobre
           el calculo, no un dato mas del resultado. */}
-      {prevista ? (
+      {/* EN USDT NO SE OFRECE, y no es cosmético: la tasa prevista es la
+          PRÓXIMA TASA DEL BCV, y el BCV no publica ninguna tasa de USDT. El
+          cálculo del USDT ya ignora `usarPrevista` —`pairRate` va a `usdt`
+          directamente—, así que marcarla aquí cambiaba la casilla y no movía
+          la cifra: una acción que parece hacer algo y no hace nada, justo al
+          lado de un número que el dueño está a punto de usar para fiar.
+
+          Encontrado el 2026-09-27 probando la pestaña en el navegador, no
+          leyendo el código. La web tenía lo mismo y además enseñaba el aviso
+          de que el BCV no publica los domingos; ese ya estaba condicionado
+          aquí. Ver CT-23. */}
+      {prevista && pair !== "USDT" ? (
         <label className="mb-1 flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox
             checked={usarPrevista}
