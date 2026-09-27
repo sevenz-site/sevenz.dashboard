@@ -1,18 +1,21 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Share2, Loader2 } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { track } from "@/lib/mixpanel";
+import { PedirWhatsappDialog } from "@/components/dashboard/pedir-whatsapp-dialog";
+import type { OwnerCountry } from "@/lib/types";
 
 export function ShareActions({
   clientId,
   clientName,
   whatsapp,
   balanceText,
+  ownerCountry,
   variant = "icons",
 }: {
   clientId: string;
@@ -23,6 +26,10 @@ export function ShareActions({
   // this component currency-agnostic rather than re-deriving formatting
   // logic that already lives in formatLedgerAmount/formatCurrency.
   balanceText: string;
+  // Solo para el prefijo por defecto del diálogo que pide el número cuando el
+  // cliente no lo tiene. Un tendero colombiano no debería tener que buscar
+  // "+57" en una lista antes de escribir.
+  ownerCountry: OwnerCountry;
   // "icons" es la pareja de botones redondos de la tabla de clientes.
   // "whatsapp-button" es el botón ancho de la ficha: la misma acción de
   // siempre —handleRemind—, solo que dicha con todas sus letras. Recordar el
@@ -31,6 +38,7 @@ export function ShareActions({
   variant?: "icons" | "whatsapp-button";
 }) {
   const [pending, startTransition] = useTransition();
+  const [pidiendoNumero, setPidiendoNumero] = useState(false);
 
   function resolveUrl(): Promise<string | null> {
     return new Promise((resolve) => {
@@ -77,17 +85,46 @@ export function ShareActions({
     track("Share Link Opened", { client_id: clientId, method: "copy" });
   }
 
-  async function handleRemind() {
+  // Abrir wa.me con el número que toque. `phone` vacío es válido y es lo que
+  // pasaba siempre antes: WhatsApp abre el selector de contacto con el
+  // mensaje puesto. Sigue siendo la salida de "Compartir de otra forma".
+  async function abrirWhatsapp(numero: string | null) {
     const url = await resolveUrl();
     if (!url) return;
-    const phone = whatsapp ? whatsapp.replace(/\D/g, "") : "";
+    const phone = numero ? numero.replace(/\D/g, "") : "";
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(buildMessage(url))}`;
     window.open(wa, "_blank", "noopener,noreferrer");
     track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
   }
 
+  function handleRemind() {
+    // Sin número guardado, se pregunta antes de salir de la app. Es el momento
+    // en que el dato sirve, así que es cuando menos cuesta pedirlo — ver
+    // pedir-whatsapp-dialog.tsx.
+    if (!whatsapp) {
+      setPidiendoNumero(true);
+      return;
+    }
+    void abrirWhatsapp(whatsapp);
+  }
+
+  // Montado una vez y compartido por las dos variantes: es el mismo diálogo y
+  // duplicarlo daría dos que pueden abrirse a la vez.
+  const dialogo = (
+    <PedirWhatsappDialog
+      open={pidiendoNumero}
+      onOpenChange={setPidiendoNumero}
+      clientId={clientId}
+      clientName={clientName}
+      ownerCountry={ownerCountry}
+      onGuardado={(n) => void abrirWhatsapp(n)}
+      onSeguirSinNumero={() => void abrirWhatsapp(null)}
+    />
+  );
+
   if (variant === "whatsapp-button") {
     return (
+      <>
       <Button
         variant="outline"
         className="w-full text-[#128C4A] dark:text-[#25D366]"
@@ -97,6 +134,8 @@ export function ShareActions({
         Compartir saldo vía WhatsApp
         {pending ? <Loader2 className="size-4 animate-spin" /> : <WhatsappIcon className="size-4" />}
       </Button>
+      {dialogo}
+      </>
     );
   }
 
@@ -108,6 +147,7 @@ export function ShareActions({
       <Button variant="ghost" size="icon" disabled={pending} onClick={handleRemind} title="Recordar por WhatsApp">
         <WhatsappIcon className="size-4" />
       </Button>
+      {dialogo}
     </div>
   );
 }

@@ -298,7 +298,16 @@ export default async function SharedBalancePage({
 
       <FeedbackBanner token={token} />
 
-      {shared.whatsapp_last4 ? <VerifyBadge expectedLast4={shared.whatsapp_last4} /> : null}
+      {/* Sin condición desde el 2026-09-21. Antes solo se pintaba si el
+          cliente tenía número guardado, y ahora que el número es opcional eso
+          dejaba a quien no lo tiene sin enterarse de que la verificación
+          existe. El propio componente decide qué enseñar: el campo de los 4
+          dígitos, o la explicación de por qué todavía no se puede. */}
+      <VerifyBadge
+        expectedLast4={shared.whatsapp_last4}
+        businessName={shared.business_name}
+        ownerWhatsapp={shared.owner_whatsapp}
+      />
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>

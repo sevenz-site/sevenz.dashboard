@@ -253,6 +253,7 @@ export default async function ClientDetailPage({
           whatsapp={client.whatsapp}
           balanceText={balanceText}
           variant="whatsapp-button"
+          ownerCountry={ownerCountry}
         />
 
         {/* Un cliente en la papelera no acepta movimientos nuevos —addMovement

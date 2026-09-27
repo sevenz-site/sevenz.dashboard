@@ -36,9 +36,15 @@ export async function updateClient(
 
   if (!clientId) return { error: "Cliente inválido.", success: false };
   if (!name) return { error: "El nombre no puede quedar vacío.", success: false };
-  // Both are required everywhere a client is created, so editing can't be a
-  // back door that empties them again.
-  if (!whatsapp) return { error: "Escribe el WhatsApp del cliente.", success: false };
+  // El documento sigue siendo obligatorio en todas las altas, así que editar
+  // no puede ser la puerta de atrás para vaciarlo.
+  //
+  // EL WHATSAPP YA NO. Desde el 2026-09-21 es opcional al dar de alta y al
+  // importar, y esta comprobación se quedó atrás: el diálogo decía
+  // "WhatsApp (opcional)" mientras el servidor rechazaba guardar sin él, así
+  // que un cliente importado sin número no se podía ni editar la dirección.
+  // Guardar vacío escribe null, que es lo que la columna admite y lo que el
+  // resto del app ya sabe manejar (ver pedir-whatsapp-dialog.tsx).
   if (!documentId) return { error: "Escribe la cédula o documento del cliente.", success: false };
 
   // THE ORIGIN IS ONLY TOUCHED WHEN THE DOCUMENT ACTUALLY CHANGES.
@@ -71,7 +77,10 @@ export async function updateClient(
     .from("clients")
     .update({
       name,
-      whatsapp,
+      // `null`, nunca `""`: la cadena vacía se colaría como "sí hay número"
+      // en el `.is("whatsapp", null)` con el que la importación decide si
+      // rellenar el hueco, y ese cliente nunca volvería a recibir uno.
+      whatsapp: whatsapp || null,
       document_id: documentId,
       ...(documentChanged ? { document_source: DOCUMENT_SOURCE.OWNER } : {}),
       address: address || null,

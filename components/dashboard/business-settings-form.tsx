@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -255,6 +256,16 @@ export function BusinessSettingsForm({
           <ExchangeRateLegalDisclaimer />
         </section>
       ) : null}
+
+      {/* Plegado y justo encima de "Guardar cambios". Va DENTRO del formulario
+          aunque no forme parte de él: su interruptor guarda solo, por su
+          cuenta, porque registra un consentimiento con su fecha y no puede
+          reescribirse cada vez que el dueño corrija su dirección.
+
+          Los dos botones de aquí dentro —el del acordeón y el del
+          interruptor— son `type="button"`, que es lo que impide que abrir
+          "Notificaciones" envíe el formulario entero. */}
+      <NotificacionesAccordion owner={owner} />
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

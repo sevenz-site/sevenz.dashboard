@@ -27,6 +27,8 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
+import { WhatsappInput } from "@/components/whatsapp-input";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useTrampaDeAtras } from "@/hooks/use-trampa-de-atras";
@@ -130,6 +132,7 @@ export function ImportFlow({
   const [sameClient, setSameClient] = useState(false);
   const [sharedName, setSharedName] = useState("");
   const [sharedDocument, setSharedDocument] = useState("");
+  const [sharedWhatsapp, setSharedWhatsapp] = useState("");
   // A page usually holds one client but can mix, so the shared value is a
   // default rather than a rule: any row can opt out and keep its own client.
   // Keyed by uid, not position — deleting a row would otherwise hand its
@@ -153,9 +156,14 @@ export function ImportFlow({
       // restores the shared value; unticking the box restores every original.
       m.uid && unlinked.has(m.uid)
         ? m
-        : { ...m, client_name: sharedName, document_id: sharedDocument.trim() || null },
+        : {
+            ...m,
+            client_name: sharedName,
+            document_id: sharedDocument.trim() || null,
+            whatsapp: sharedWhatsapp.trim() || null,
+          },
     );
-  }, [reviewMovements, sameClient, sharedName, sharedDocument, unlinked]);
+  }, [reviewMovements, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
 
   const reviewRows = useMemo(
     () => (effectiveMovements ? reconcileMovements(effectiveMovements, existingClients) : []),
@@ -264,6 +272,8 @@ export function ImportFlow({
       if (best) setSharedName(best[0]);
       const withDoc = reviewMovements.find((m) => m.document_id?.trim());
       if (withDoc?.document_id) setSharedDocument(withDoc.document_id);
+      const withWa = reviewMovements.find((m) => m.whatsapp?.trim());
+      if (withWa?.whatsapp) setSharedWhatsapp(withWa.whatsapp);
     }
   }
 
@@ -292,6 +302,7 @@ export function ImportFlow({
         amount: r.amount,
         description: r.description,
         document_id: r.document_id,
+        whatsapp: r.whatsapp,
         currency: r.currency,
       }));
       const result = await confirmImport(rows);
@@ -374,6 +385,26 @@ export function ImportFlow({
                   onChange={setSharedDocument}
                 />
               </div>
+            </div>
+          ) : null}
+
+          {/* Debajo del documento y en su propia fila, no al lado: es
+              opcional, y ponerlo junto a los dos obligatorios lo haría
+              parecer uno más. Una libreta suele llevar el teléfono apuntado
+              arriba con el nombre, así que este es el momento natural de
+              copiarlo — pero si no está, no pasa nada. */}
+          {sameClient ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="shared-whatsapp" className="text-xs">
+                WhatsApp (opcional)
+              </Label>
+              <WhatsappInput
+                id="shared-whatsapp"
+                name="shared-whatsapp"
+                preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
+                defaultValue={sharedWhatsapp}
+                onValueChange={setSharedWhatsapp}
+              />
             </div>
           ) : null}
         </div>

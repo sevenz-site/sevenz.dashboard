@@ -114,7 +114,13 @@ export default async function ClientsPage() {
       {/* No second "Clientes" heading here: the h1 above already names what
           this whole screen is, unlike Malas pagas where the h1 names a filter
           and the h2 names the list underneath it. */}
-      <ClientTable rows={rows} scores={scores} rateContext={ownerRate} source="clientes" />
+      <ClientTable
+        rows={rows}
+        scores={scores}
+        rateContext={ownerRate}
+        ownerCountry={ownerCountry}
+        source="clientes"
+      />
     </div>
   );
 }

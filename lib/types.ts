@@ -98,6 +98,22 @@ export type Owner = {
   payment_info: string | null;
   country: OwnerCountry;
   onboarding_completed_at: string | null;
+  // Consentimiento para recibir avisos por WhatsApp (migración 065). Meta
+  // exige recogerlo fuera de WhatsApp y poder demostrarlo, así que junto a la
+  // fecha se guarda LA FRASE que el dueño leyó: el texto de la pantalla va a
+  // cambiar, y la evidencia tiene que ser lo que esa persona leyó, no lo que
+  // diga la pantalla dentro de un año.
+  //
+  // `null` en `whatsapp_opt_in_at` significa "no acepta", y es el estado de
+  // todos hasta que lo enciendan a mano.
+  whatsapp_opt_in_at: string | null;
+  whatsapp_opt_in_text: string | null;
+  whatsapp_opt_out_at: string | null;
+  // Cuándo se le enseñó el diálogo que lo ofrece, y cuántas veces (migración
+  // 066). En el servidor y no en el navegador: iOS Safari borra localStorage
+  // y el contador volvería a cero solo.
+  whatsapp_prompt_last_at: string | null;
+  whatsapp_prompt_count: number;
   created_at: string;
 };
 
@@ -330,6 +346,11 @@ export type ExtractedMovement = {
   // by the owner during review, only actually required for a client who
   // doesn't already have one on file (see ReviewRow.needs_document_id).
   document_id: string | null;
+  // Tampoco sale de la foto, y a diferencia del documento NUNCA bloquea: es
+  // opcional en todas partes desde el 2026-09-21. Está aquí para que el dueño
+  // pueda aprovechar la revisión y añadirlo, no para exigirlo — una libreta
+  // suele tener el teléfono apuntado arriba, junto al nombre.
+  whatsapp: string | null;
   // Assigned when the batch enters the review screen, never by the extraction.
   // Identity that survives deleting a row: positions shift when one is removed,
   // so anything remembered about a row by position (which rows opted out of the

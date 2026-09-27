@@ -19,6 +19,7 @@ export function WhatsappInput({
   preferredDialCode,
   invalid,
   onValueChange,
+  compact,
 }: {
   name: string;
   defaultValue?: string | null;
@@ -40,6 +41,9 @@ export function WhatsappInput({
   // onChange of its own to hook since the combined value lives in a hidden
   // input the caller never touches directly.
   onValueChange?: (combined: string) => void;
+  // Encoge el selector de país a solo la bandera. Para la tabla de importar,
+  // donde la celda entera mide 176px y el selector normal se comía 112.
+  compact?: boolean;
 }) {
   const parsed = defaultValue ? splitPhoneNumber(defaultValue) : null;
   const defaultDialCode =
@@ -79,8 +83,8 @@ export function WhatsappInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex gap-2">
-        <CountryCodeSelect value={dialCode} onChange={setDialCode} />
+      <div className={compact ? "flex gap-1" : "flex gap-2"}>
+        <CountryCodeSelect value={dialCode} onChange={setDialCode} compact={compact} />
         <Input
           id={id}
           type="tel"

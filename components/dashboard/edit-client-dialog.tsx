@@ -21,7 +21,7 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import type { Client, OwnerCountry } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
-import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
+import { required } from "@/lib/form-validation";
 import {
   useErrorDeCuentaPausada,
   useGuardiaDeCuentaPausada,
@@ -74,7 +74,6 @@ export function EditClientDialog({
   }
   const { errors, validate, recheck, reset } = useFieldErrors({
     name: required,
-    whatsapp: whatsappRule,
     document_id: required,
   });
 
@@ -144,17 +143,18 @@ export function EditClientDialog({
             {errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit_whatsapp">WhatsApp</Label>
+            <Label htmlFor="edit_whatsapp">WhatsApp (opcional)</Label>
+            {/* Sin `required` y sin regla en useFieldErrors: el número es
+                opcional desde el 2026-09-21. Se quitó junto con el `required`
+                del HTML, que era lo que quedaba contradiciendo a la etiqueta
+                —y con él un cliente importado sin número no se podía editar
+                ni para corregirle la dirección. */}
             <WhatsappInput
               id="edit_whatsapp"
               name="whatsapp"
               defaultValue={client.whatsapp}
-              required
               preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
-              invalid={Boolean(errors.whatsapp)}
-              onValueChange={() => recheck("whatsapp", formRef.current)}
             />
-            {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit_document_id">Cédula/documento</Label>

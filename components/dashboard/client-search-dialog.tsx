@@ -53,7 +53,7 @@ import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
 import type { MonedaHabitual } from "@/lib/moneda-habitual";
-import { required, whatsapp as whatsappRule, amount as amountRule } from "@/lib/form-validation";
+import { required, amount as amountRule } from "@/lib/form-validation";
 import {
   useErrorDeCuentaPausada,
   useGuardiaAlAbrir,
@@ -316,7 +316,6 @@ function ClientSearchDialogBody({
   const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
   const { errors, validate, recheck } = useFieldErrors({
     new_client_name: required,
-    whatsapp: whatsappRule,
     document_id: required,
     amount: amountRule(),
   });
@@ -479,20 +478,13 @@ function ClientSearchDialogBody({
             <p className="text-xs text-destructive">{errors.new_client_name}</p>
           ) : null}
         </div>
+        {/* Orden: nombre -> documento -> WhatsApp. Los dos obligatorios van
+            juntos y el opcional detrás, así el dueño con prisa llena de
+            corrido lo que no puede saltarse y decide una sola vez si sigue.
+            Con el WhatsApp en medio, el formulario pedía obligatorio,
+            opcional, obligatorio. */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="whatsapp">WhatsApp</Label>
-          <WhatsappInput
-            id="whatsapp"
-            name="whatsapp"
-            required
-            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
-            invalid={Boolean(errors.whatsapp)}
-            onValueChange={() => recheck("whatsapp", formRef.current)}
-          />
-          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="document_id">Cédula/documento</Label>
+          <Label htmlFor="document_id">Documento</Label>
           <DocumentIdInput
             id="document_id"
             country={ownerCountry}
@@ -507,6 +499,17 @@ function ClientSearchDialogBody({
           {errors.document_id ? (
             <p className="text-xs text-destructive">{errors.document_id}</p>
           ) : null}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
+          <WhatsappInput
+            id="whatsapp"
+            name="whatsapp"
+            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
+            invalid={Boolean(errors.whatsapp)}
+            onValueChange={() => recheck("whatsapp", formRef.current)}
+          />
+          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="address">Dirección (opcional)</Label>
@@ -650,7 +653,7 @@ function ClientSearchDialogBody({
           errors={errors}
           etiquetas={{
             new_client_name: "Nombre",
-            document_id: "Cédula/documento",
+            document_id: "Documento",
             whatsapp: "WhatsApp",
             amount: "Monto",
           }}

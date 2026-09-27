@@ -46,6 +46,7 @@ import {
   MALA_PAGA_BADGE_CLASS,
   getClientStatus,
   type ClientSummary,
+  type OwnerCountry,
 } from "@/lib/types";
 
 const PAGE_SIZE = 15;
@@ -54,6 +55,7 @@ export function ClientTable({
   rows,
   scores,
   rateContext = null,
+  ownerCountry,
   emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
   source,
 }: {
@@ -62,6 +64,11 @@ export function ClientTable({
   // Only present for a country='VE' owner with a rate already fetched —
   // absent (null) means every row renders exactly like today's COP figure.
   rateContext?: OwnerRateContext | null;
+  // Solo para el prefijo por defecto al pedir el WhatsApp de un cliente que
+  // no lo tiene. NO se deduce de `rateContext`: ese es null tanto para un
+  // negocio colombiano como para uno venezolano cuya tasa no cargó, y
+  // confundir esas dos cosas ya costó un fallo (ver getOwnerRateContext).
+  ownerCountry: OwnerCountry;
   emptyMessage?: string;
   // Which page rendered this table — tags "Client Details Opened" so it's
   // possible to tell regular Cartera lookups apart from Malas Pagas and the
@@ -340,7 +347,8 @@ export function ClientTable({
                               clientName={row.name}
                               whatsapp={row.whatsapp}
                               balanceText={formatBalanceSummary(row.balance, row.balance_usd, row.balance_eur, ledger)}
-                            />
+                              ownerCountry={ownerCountry}
+                              />
                           </div>
                         </TableCell>
                       </TableRow>

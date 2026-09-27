@@ -146,9 +146,16 @@ export async function createClientWithMovement(
   if (!name) {
     return { error: "Escribe el nombre del cliente.", clientId: null };
   }
-  if (!whatsapp) {
-    return { error: "Escribe el WhatsApp del cliente.", clientId: null };
-  }
+  // El WhatsApp dejó de ser obligatorio el 2026-09-21, y la razón es de datos,
+  // no de comodidad: al exigirlo, quien no lo sabía lo inventaba. En dev había
+  // NUEVE clientes compartiendo un mismo número. Un hueco es honesto y se puede
+  // pedir después; un número falso es indistinguible de uno bueno, sobrevive
+  // para siempre, y el día que se enciendan los avisos al cliente le manda la
+  // deuda de alguien a un tercero.
+  //
+  // La base ya lo permitía (`clients.whatsapp` es nullable) y la importación
+  // nunca lo pidió, así que esto alinea las dos puertas de alta en vez de
+  // abrir una nueva.
   if (!documentId) {
     return { error: "Escribe la cédula o documento del cliente.", clientId: null };
   }
@@ -334,18 +341,21 @@ export async function addMovement(
     return { error: "Este cliente está en la papelera. Restáuralo para registrar movimientos.", clientId: null };
   }
 
+  // Se sigue OFRECIENDO para el cliente que no tiene número, y se guarda si el
+  // dueño lo escribe — pero ya no bloquea. Exigirlo aquí habría dejado el
+  // primer movimiento de cada cliente importado esperando un dato que la
+  // importación no pide.
   if (!clientRow.whatsapp) {
     const whatsapp = String(formData.get("whatsapp") ?? "").trim();
-    if (!whatsapp) {
-      return { error: "Escribe el WhatsApp del cliente.", clientId: null };
-    }
-    const { error: whatsappError } = await supabase
+    if (whatsapp) {
+      const { error: whatsappError } = await supabase
       .from("clients")
-      .update({ whatsapp })
-      .eq("id", clientId)
-      .eq("owner_id", user.id);
-    if (whatsappError) {
-      return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
+        .update({ whatsapp })
+        .eq("id", clientId)
+        .eq("owner_id", user.id);
+      if (whatsappError) {
+        return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
+      }
     }
   }
 
@@ -599,4 +609,48 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${movement.client_id}`);
   return { error: null };
+}
+
+// Guardar el WhatsApp de un cliente que no tenía, desde donde haga falta.
+//
+// Nació para el diálogo de "Compartir saldo vía WhatsApp": al hacerse opcional
+// el número, compartir con un cliente que no lo tiene abre un campo ahí mismo
+// en vez de mandar al dueño a "Editar cliente" y perder lo que estaba
+// haciendo. Es el momento en que el dato de verdad le sirve, que es justo
+// cuando vale la pena pedirlo.
+//
+// COMPROBACIÓN DE PROPIEDAD EXPLÍCITA, no solo RLS: `clientId` viene del
+// navegador. Es la regla de CLAUDE.md, escrita después de encontrar dos
+// funciones que se apoyaban solo en las políticas.
+export async function guardarWhatsappDeCliente(
+  clientId: string,
+  whatsapp: string,
+): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const numero = whatsapp.trim();
+  if (!numero) return { error: "Escribe el número de WhatsApp." };
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!client) return { error: "Cliente inválido." };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ whatsapp: numero })
+    .eq("id", clientId)
+    .eq("owner_id", user.id);
+  if (error) return { error: "No pudimos guardar el número. Intenta de nuevo." };
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true };
 }

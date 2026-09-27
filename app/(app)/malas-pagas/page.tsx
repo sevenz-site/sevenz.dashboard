@@ -115,6 +115,7 @@ export default async function MalasPagasPage() {
         rateContext={ownerRate}
         emptyMessage="No tienes clientes marcados como mala paga."
         source="malas_pagas"
+        ownerCountry={ownerCountry}
       />
     </div>
   );

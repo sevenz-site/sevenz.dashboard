@@ -56,7 +56,7 @@ import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
-import { amount as amountRule, whatsapp as whatsappRule } from "@/lib/form-validation";
+import { amount as amountRule } from "@/lib/form-validation";
 import {
   useErrorDeCuentaPausada,
   useGuardiaAlAbrir,
@@ -195,9 +195,6 @@ export function AddMovementDialog({
         : formatCurrency(currentDebt);
 
   const { errors, validate, recheck, reset: resetErrors } = useFieldErrors({
-    // Only a real field when the client has no number on file at all — see
-    // clientWhatsapp above.
-    ...(!clientWhatsapp ? { whatsapp: whatsappRule } : {}),
     amount: amountRule({
       max: type === "payment" ? topeTecleado : null,
       maxMessage: `Máximo ${formattedMaxDebt} — lo que ${clientName} debe hoy.`,
@@ -419,11 +416,10 @@ export function AddMovementDialog({
 
           {!clientWhatsapp ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="whatsapp">WhatsApp de {clientName}</Label>
+              <Label htmlFor="whatsapp">WhatsApp de {clientName} (opcional)</Label>
               <WhatsappInput
                 id="whatsapp"
                 name="whatsapp"
-                required
                 preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
                 invalid={Boolean(errors.whatsapp)}
                 onValueChange={() => recheck("whatsapp", formRef.current)}

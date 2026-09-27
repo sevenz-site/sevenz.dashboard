@@ -33,9 +33,15 @@ import {
 export function CountryCodeSelect({
   value,
   onChange,
+  compact,
 }: {
   value: string;
   onChange: (dialCode: string) => void;
+  // Solo la bandera, sin "+57" ni chevron: 44px en vez de 112. Existe para la
+  // tabla de importar, donde el selector entero dejaba al número 22px de
+  // ancho — dos dígitos de diez. Fuera de una tabla no se usa: el prefijo
+  // escrito es información que merece su sitio cuando hay sitio.
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -60,12 +66,26 @@ export function CountryCodeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-28 shrink-0 justify-between px-2 font-normal"
+          // En compacto el texto desaparece de la pantalla, así que el país y
+          // su prefijo pasan al nombre accesible: quien navegue con lector de
+          // pantalla oye lo mismo que antes leía.
+          aria-label={compact ? `País del número: ${selected.name} +${selected.dialCode}` : undefined}
+          // `h-8` contra los 40px por defecto de Button: esto no es un botón de
+          // acción, es la mitad izquierda de un campo, y su pareja —el Input
+          // del número— mide 32. Los 40px de DESIGN-SYSTEM.md hablan de
+          // botones etiquetados que se alinean entre sí; aquí lo que tiene que
+          // alinear es la fila. Subir el Input a 40 arreglaría esta fila y
+          // desalinearía el formulario entero, que va a 32.
+          className={cn(
+            "h-8 shrink-0 justify-between px-2 font-normal",
+            compact ? "w-11" : "w-28",
+          )}
         >
           <span className="truncate">
-            {countryFlagEmoji(selected.iso2)} +{selected.dialCode}
+            {countryFlagEmoji(selected.iso2)}
+            {compact ? null : ` +${selected.dialCode}`}
           </span>
-          <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
+          {compact ? null : <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />}
         </Button>
       </PopoverTrigger>
       {/* With the keyboard open, Radix often has to flip this above the
