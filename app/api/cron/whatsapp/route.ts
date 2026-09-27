@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { enviarResumenSemanal } from "@/lib/whatsapp/cartera-summary";
 import { enviarAtencionSemanal } from "@/lib/whatsapp/cartera-attention";
 import { diaIsoEnColombia } from "@/lib/whatsapp/send";
+import { registrarLatido } from "@/lib/whatsapp/latido";
 
 export const runtime = "nodejs";
 
@@ -54,8 +55,7 @@ export async function GET(request: Request) {
     // Sin `detalle`: lleva ids de dueños y no tiene por qué existir en una
     // respuesta HTTP. Lo que hace falta para saber si la tanda fue bien son
     // los contadores; lo demás está en whatsapp_sends y en el log.
-    return NextResponse.json({
-      dia,
+    const resultado = {
       resumen: {
         periodo: resumen.periodo,
         destinatarios: resumen.destinatarios,
@@ -64,10 +64,24 @@ export async function GET(request: Request) {
         fallidos: resumen.fallidos,
       },
       atencion,
-    });
+    };
+
+    // EL LATIDO, y va aquí aunque no se haya enviado nada. Una tanda sin
+    // destinatarios no escribe en `whatsapp_sends`, igual que un cron que
+    // nunca se disparó: sin esta fila, /admin no podría distinguirlos.
+    await registrarLatido(dia, resultado);
+
+    return NextResponse.json({ dia, ...resultado });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido.";
     console.error("cron whatsapp:", error);
+
+    // También se late al reventar: "corrió y falló" es información distinta
+    // de "no corrió", y es justo la que hace falta para diagnosticar. Si el
+    // latido tampoco puede escribirse, no se toca la respuesta: el error que
+    // se devuelve es el de la tanda, no el de la instrumentación.
+    await registrarLatido(dia, null, message);
+
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
