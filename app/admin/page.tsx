@@ -3,6 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MetricCharts } from "@/components/admin/metric-charts";
 import { MetricFilters } from "@/components/admin/metric-filters";
 import { ServiceHealth } from "@/components/admin/service-health";
+import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import {
   getAverageCreditScore,
@@ -120,15 +121,21 @@ export default async function AdminMetricsPage({
   };
   const bucket: Bucket = sp.bucket === "day" || sp.bucket === "month" ? sp.bucket : "week";
 
-  const [summary, totals, trend, byOwner, owners, credit, health] = await Promise.all([
-    getCurrencySummary(filters),
-    getTotals(filters),
-    getTrend(filters, bucket),
-    getByOwner(filters),
-    getOwnerOptions(),
-    getAverageCreditScore(filters),
-    getHealth(filters),
-  ]);
+  const [summary, totals, trend, byOwner, owners, credit, health, cronWhatsapp] =
+    await Promise.all([
+      getCurrencySummary(filters),
+      getTotals(filters),
+      getTrend(filters, bucket),
+      getByOwner(filters),
+      getOwnerOptions(),
+      getAverageCreditScore(filters),
+      getHealth(filters),
+      // SIN `filters` a propósito: el filtro de fechas acota el negocio, y esto
+      // no es una métrica de negocio sino el pulso de una tubería. Preguntarle
+      // "¿corrió el cron en septiembre?" no significa nada útil; la única
+      // pregunta es si corrió HOY.
+      getSaludDelCronWhatsapp(),
+    ]);
 
   const movementsTotal = summary.reduce((s, r) => s + Number(r.movements_total), 0);
   const plazoRows = summary.filter((r) => r.plazo_average !== null);
@@ -280,6 +287,30 @@ export default async function AdminMetricsPage({
               : "se registraron bien, sin guardar la tasa del día"
           }
           explica="Fiados correctos, en su moneda correcta, pero sin guardar a cuánto estaba el dólar ese día. Arranca en 172: son los de antes del 24 de agosto de 2026, que se marcaron como dólares sin poder inventarles una tasa. Ese número no baja nunca. Solo importa si empieza a subir, y eso querría decir que el BCV está fallando."
+        />
+        {/* EL PULSO DEL CRON DE WHATSAPP, y lo que se enseña es CUÁNTO HACE
+            DE LA ÚLTIMA CORRIDA, no cuántos mensajes salieron.
+
+            El número de enviós no sirve como alarma: `whatsapp_sends` solo
+            escribe cuando se reserva un envió, así que una tanda en la que
+            nadie tenía los avisos activos y un cron que lleva tres semanas sin
+            dispararse son las dos cero filas. Y la segunda es la que pasa,
+            porque los crons de Vercel Hobby son de mejor esfuerzo. La
+            migración 071 escribe una fila por ejecución, siempre, y esta
+            tarjeta la lee.
+
+            En rojo a las 26 h: margen para que Vercel se retrase un par de
+            horas sin encender nada, y aun así caza el día entero perdido. */}
+        <Stat
+          label="Cron de WhatsApp"
+          value={
+            cronWhatsapp.horasDesdeUltima === null
+              ? "—"
+              : `${cronWhatsapp.enviados7d}`
+          }
+          hint={cronWhatsapp.detalle}
+          alert={cronWhatsapp.estado === "fail"}
+          explica="Cuándo corrió por última vez la tanda de avisos por WhatsApp a los dueños, y cuántos mensajes salieron en los últimos 7 días. La cifra grande son los envíos de la semana; lo que hay que mirar es la línea de abajo. Se pone en rojo cuando pasan más de 26 horas sin una corrida, porque el cron va una vez al día: eso significa que dejó de dispararse, y nadie se entera por otra vía hasta que un dueño dice que no le llega nada. Un cero en envíos NO es una alarma por sí solo — puede que ningún dueño tenga los avisos activos, o que sea lunes y solo toque el resumen."
         />
       </div>
 
