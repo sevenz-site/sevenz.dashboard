@@ -19,12 +19,34 @@
 //
 // The floor is 100 bytes. The smallest real migration in the repo is
 // 004_onboarding.sql at 168, so there is room to spare and nothing to tune.
+//
+// AND THEN IT HAPPENED AGAIN, on 2026-09-28, in a way the two checks above do
+// not see. The word "anotalo" was typed into the top of
+// 071_whatsapp_cron_latido.sql and saved. The file kept all 6 KB of its SQL and
+// every semicolon, so both checks passed and the run said ALL GREEN. It was
+// found only because `git status` showed a file nobody had edited.
+//
+// A word ADDED is as broken as a file emptied: pasted into the SQL editor,
+// `anotalo` on line 1 is a syntax error. With luck it fails loudly; without it,
+// someone deletes the line by hand, says nothing, and the file in the repo
+// stays broken for the next person.
+//
+// Hence the third check: the first line that is not blank must LOOK like SQL —
+// a comment, or a statement keyword. It is deliberately a whitelist and not a
+// blacklist of stray words: there is no list of the things a person might
+// accidentally type, but there is a very short list of how a .sql file legally
+// begins.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const DIR = "supabase";
 const MIN_BYTES = 100;
+// Cómo empieza legalmente un .sql de este repo. Lista blanca y no lista negra:
+// no existe el catálogo de lo que alguien puede teclear por error, pero sí el
+// de las formas válidas de abrir un archivo.
+const EMPIEZOS =
+  /^(begin|commit|create|alter|insert|update|delete|drop|grant|revoke|set|do|with|comment|select|truncate|analyze|vacuum)\b/i;
 
 let failed = 0;
 let checked = 0;
@@ -48,6 +70,22 @@ for (const name of readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort()) {
     failed++;
     continue;
   }
+
+  // La tercera: que EMPIECE como SQL. Un archivo intacto al que le han
+  // prependido una palabra pasa las dos de arriba — conserva su tamaño y sus
+  // puntos y coma — y revienta al pegarlo en el editor.
+  const primera = body.split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? "";
+  const empiezaComoSql =
+    primera.startsWith("--") ||
+    primera.startsWith("/*") ||
+    EMPIEZOS.test(primera);
+  if (!empiezaComoSql) {
+    console.log(
+      `FAIL  ${name} — la primera línea no parece SQL: ${JSON.stringify(primera.slice(0, 40))}`,
+    );
+    failed++;
+    continue;
+  }
 }
 
 console.log("");
@@ -55,6 +93,9 @@ if (failed === 0) {
   console.log(`ALL GREEN — ${checked} archivos .sql, todos con SQL dentro`);
 } else {
   console.log(`FAILURES: ${failed} de ${checked}`);
+  console.log("");
+  console.log("Si la primera línea no parece SQL, mira si es una palabra suelta");
+  console.log("escrita por error: pasó el 2026-09-18 y el 2026-09-28. Quítala y ya.");
   console.log("");
   console.log("Un archivo de migración vacío o pisado casi siempre se recupera con:");
   console.log("  git checkout -- supabase/<archivo>.sql");
