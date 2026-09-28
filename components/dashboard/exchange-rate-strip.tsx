@@ -431,7 +431,7 @@ function RateCalculator({
     // Antes esto era `VES ? ... : USD ? ... : "/flag-eur.svg"`. Sin caso para
     // USDT, que cayó al último `else`: al compartir el cálculo de USDT la
     // imagen salía con la bandera de la UNIÓN EUROPEA al lado de "1,00 USDT".
-    // La cifra era correcta; la bandera mentiía. Encontrado por el usuario el
+    // La cifra era correcta; la bandera mentía. Encontrado por el usuario el
     // 2026-09-28, compartiendo de verdad desde el teléfono — en la web no
     // pasaba porque allí la cadena sí tenía las cuatro ramas.
     //

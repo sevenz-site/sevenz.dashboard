@@ -22,8 +22,33 @@ import type { OwnerCountry } from "@/lib/types";
 // Kapso genera los nombres con esa convención, así que en su vocabulario es
 // correcto. En el de Sevenz no: aquí "cliente" es el deudor del tendero. No se
 // puede renombrar sin rehacer la plantilla y perder la aprobación, así que el
-// desajuste se aísla aquí, en la única línea que lo toca. Las demás plantillas
-// usan `owner_name` y `client_name`.
+// desajuste se aísla en `PLANTILLAS`, abajo. Las demás usan `owner_name` y
+// `client_name`.
+//
+// Y ESE DESAJUSTE ES POR QUÉ `PLANTILLAS` EXISTE. Desde la 072 este archivo
+// manda DOS plantillas, y no declaran igual el parámetro del destinatario:
+// `cartera_summary` lo llama `customer_name` y `cartera_pausada` —aprobada seis
+// días después— lo llama `owner_name`, porque la corrección se hizo en la
+// plantilla nueva, donde salía gratis.
+//
+// Kapso los manda POR NOMBRE (`parameter_name`, en lib/whatsapp/kapso.ts) y
+// Meta rechaza un parámetro que la plantilla no declara. O sea que el nombre no
+// es cosmético: elegir la plantilla sin elegir también el nombre hace que el
+// envío falle ENTERO. Y falla callado — el dueño pausado se queda sin nada esa
+// semana, porque solo se le manda una plantilla y es la que falla.
+
+// LA PLANTILLA Y SU PARÁMETRO, JUNTOS, porque separados ya se rompieron una
+// vez: la primera versión de la 072 cambiaba la plantilla y dejaba el nombre
+// fijo en `customer_name`. Atados aquí, añadir una tercera obliga a decir su
+// nombre — no hay un valor por defecto que pueda ser el equivocado.
+//
+// Es la misma forma que `BANDERAS` en exchange-rate-strip.tsx, y por el mismo
+// motivo: dos datos que tienen que cambiar a la vez no se guardan en dos
+// sitios.
+const PLANTILLAS = {
+  alDia: { nombre: "cartera_summary", parametroDelDueno: "customer_name" },
+  pausado: { nombre: "cartera_pausada", parametroDelDueno: "owner_name" },
+} as const;
 
 type Destinatario = {
   owner_id: string;
@@ -113,21 +138,24 @@ export async function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
   // compensa que dieciocho llamadas simultáneas a Kapso disparen su límite de
   // ritmo y que los fallos lleguen todos juntos sin poder distinguirlos.
   for (const d of destinatarios) {
+    // LA ÚNICA LÍNEA QUE ELIGE, y elige las dos cosas a la vez. `cartera_pausada`
+    // sustituye a las DOS plantillas para un dueño pausado: una sola cosa a la
+    // semana, no dos. Que `cartera_attention` no se le mande también se
+    // resuelve en su propio archivo, saltándoselo.
+    const plantilla = d.pausado ? PLANTILLAS.pausado : PLANTILLAS.alDia;
+
     const resultado = await enviarAvisoAlDueno({
       ownerId: d.owner_id,
       to: d.whatsapp,
-      // LA ÚNICA LÍNEA QUE ELIGE. `cartera_pausada` sustituye a las DOS
-      // plantillas para un dueño pausado: una sola cosa a la semana, no dos.
-      // Que `cartera_attention` no se le mande también se resuelve en su
-      // propio archivo, saltandoselo.
-      plantilla: d.pausado ? "cartera_pausada" : "cartera_summary",
+      plantilla: plantilla.nombre,
       periodKey: periodo,
       parametrosCuerpo: [
-        // `customer_name` lleva el nombre del DUEÑO. Ver la nota de arriba.
+        // El parámetro del destinatario lleva el nombre del DUEÑO, se llame
+        // como se llame en cada plantilla. Ver la nota de arriba.
         // El respaldo no es decorativo: `first_name` es obligatorio desde el
         // registro, pero una fila anterior a esa regla lo tiene nulo, y "Hola
         // , este es el resumen" es peor que un saludo genérico.
-        { nombre: "customer_name", texto: d.first_name?.trim() || "hola" },
+        { nombre: plantilla.parametroDelDueno, texto: d.first_name?.trim() || "hola" },
         { nombre: "amount_due", texto: porCobrar(d) },
         { nombre: "overdue_clients", texto: String(d.overdue_clients) },
       ],
