@@ -120,6 +120,37 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   WhatsApp dial code, "Mi negocio" still renders País/rate-mode disabled
   (not editable) post-signup.
 
+## 3b. WhatsApp templates — run both scripts, they check different things
+
+Only when the diff touches `lib/whatsapp/`, `app/api/cron/whatsapp*`, or a
+`whatsapp_destinatarios_*` function — and **always** when a new Meta template
+is approved, whether or not any code changed, because the template is the half
+that lives outside this repo.
+
+- **`npm run qa:pausados`** — the recipient and the routing. Who enters the
+  list, which template they'd get, and that anon cannot call the functions.
+  Writes nothing.
+- **`npm run qa:plantillas`** — what goes *inside* the envelope: the body
+  parameters Kapso would receive, by name and in order, for every owner
+  template. It runs the real senders with `fetch` intercepted before Kapso,
+  so zero messages leave. It **does write** reservation rows in dev — on
+  purpose, so the 067 gate is exercised too — and deletes exactly the rows it
+  created, by id.
+
+**Both, not one.** On 2026-09-28 `qa:pausados` was green, 5 of 5, while a bug
+would have left every paused owner with no message at all: the template was
+chosen correctly and the recipient parameter carried the *other* template's
+name. Meta rejects a parameter a template does not declare, so the send fails
+whole — and silently, since nothing surfaces to the owner. It was found by
+reading the diff against `../docs/WHATSAPP-PLANTILLAS.md`, not by running
+anything. `qa:plantillas` exists so that stops depending on someone doing that
+comparison by hand.
+
+The expected parameter names live in that script's `ESPERADO` table, copied
+from the templates Meta has approved. When a new template ships, add its row
+there — the script's job is to notice when the code and the approved template
+drift apart, which it cannot do for a template it has never heard of.
+
 ## 4. Public, unauthenticated surfaces
 
 - The public client balance page (`/s/[token]`) — easy to forget since

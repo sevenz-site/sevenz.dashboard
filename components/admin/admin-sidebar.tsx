@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, Wallet } from "lucide-react";
+import { BarChart3, Building2, Home } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -70,10 +70,10 @@ export function AdminSidebar({ email }: { email: string }) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Ir a mi cartera">
+            <SidebarMenuButton asChild tooltip="Ir a Inicio">
               <Link href="/dashboard">
-                <Wallet />
-                <span>Ir a mi cartera</span>
+                <Home />
+                <span>Ir a Inicio</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

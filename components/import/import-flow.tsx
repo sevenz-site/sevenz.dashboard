@@ -39,7 +39,7 @@ import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 // y eso tiene su propia confirmación: el diálogo de salida solo ofrece
 // quedarse o irse.
 const TEXTO_SALIR_DE_LA_REVISION = {
-  titulo: "¿Salir sin importar la libreta?",
+  titulo: "¿Salir sin subir la libreta?",
   cuerpo:
     "Tienes movimientos leídos que todavía no se han guardado. Si sales ahora se pierden, junto con las correcciones que hayas hecho.",
 };

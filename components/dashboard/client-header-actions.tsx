@@ -171,7 +171,7 @@ export function ClientHeaderActions({
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
-    toast.success(`${clientName} volvió a tu cartera`);
+    toast.success(`${clientName} volvió a tus clientes`);
     track("Client Restored", { client_id: clientId, source: "client_detail" });
     router.refresh();
   }

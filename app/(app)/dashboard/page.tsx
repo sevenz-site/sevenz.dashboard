@@ -233,7 +233,7 @@ export default async function DashboardPage({
             rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
             the 20px. Changing the container's gap changes this too. */}
         <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+          <h2 className="text-xl font-semibold">Por cobrar</h2>
           <div className="flex shrink-0 items-center gap-2">
             {/* Importar vive aquí, no solo en el menú lateral: es la forma de
                 cargar una cartera entera, y estaba escondida detrás de una

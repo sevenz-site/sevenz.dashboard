@@ -281,7 +281,7 @@ export default async function ClientDetailPage({
       {/* El estado va junto al título de la sección y no dentro de una tarjeta
           de saldo: juzga la cuenta entera, y abajo hay una tarjeta por moneda. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Cartera pendiente</h2>
+        <h2 className="text-xl font-semibold">Por cobrar</h2>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
             {CLIENT_STATUS_LABEL[status]}

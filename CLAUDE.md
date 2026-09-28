@@ -535,6 +535,7 @@ Sevenz/
 | `PLANES-Y-CUENTAS-PLAN.md` | `../docs/PLANES-Y-CUENTAS-PLAN.md` |
 | `REPORTES-PLAN.md` | `../docs/REPORTES-PLAN.md` |
 | `PAPELERA-PLAN.md` | `../docs/PAPELERA-PLAN.md` |
+| `SUBIR-LIBRETA-PLAN.md` | `../docs/SUBIR-LIBRETA-PLAN.md` |
 
 **Hay que abrirlos a propósito.** Ya no están en el working directory, así que no
 aparecen solos: leer `../docs/PENDIENTES.md` es el primer paso de cualquier

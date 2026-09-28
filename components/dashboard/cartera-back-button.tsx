@@ -6,7 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 
-// The same "← Cartera" contextual bar used on Malas pagas and a client's
+// The same "← Inicio" contextual bar used on Malas pagas and a client's
 // screen is a plain Link there, since neither has anything to lose. "Mi
 // negocio" does — BusinessSettingsForm registers dirty state with
 // UnsavedChangesProvider so the sidebar and bottom nav already ask before
@@ -20,7 +20,7 @@ export function CarteraBackButton() {
     <Button variant="ghost" size="icon" asChild className="-ml-2">
       <Link
         href="/dashboard"
-        aria-label="Volver a Cartera"
+        aria-label="Volver a Inicio"
         onClick={(e) => {
           if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
           e.preventDefault();

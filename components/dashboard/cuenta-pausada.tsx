@@ -43,8 +43,20 @@ import {
 // "Pausada" y no "bloqueada" ni "suspendida": lo que tiene que entender es que
 // esto se revierte hablando, no que le cerraron la puerta.
 const TITULO = "Tu cuenta está pausada";
+// YA NO ES IDÉNTICO AL DE LA PLANTILLA DE WHATSAPP, y es a propósito.
+//
+// Este párrafo estaba calcado del cuerpo de `cartera_pausada`, la plantilla
+// aprobada por Meta, que dice "tu cartera y el historial siguen ahí". El
+// 2026-09-28 "cartera" salió de todo lo que lee un dueño dentro de la app,
+// pero una plantilla aprobada NO se puede editar: habría que crear otra y
+// pedir aprobación de nuevo. Así que el mensaje de WhatsApp seguirá diciendo
+// "cartera" mientras la pantalla dice "lo que te deben".
+//
+// Es una decisión tomada, no un descuido: no lo "arregles" devolviendo la
+// palabra aquí. Si algún día se rehacen las plantillas, las dos vuelven a
+// coincidir y entonces sí conviene volver a calcarlo.
 const CUERPO =
-  "Por ahora no puedes registrar fiados ni abonos. Tu cartera y el historial siguen aquí, y el enlace que les mandaste a tus clientes sigue funcionando.";
+  "Por ahora no puedes registrar fiados ni abonos. Lo que te deben y el historial siguen aquí, y el enlace que les mandaste a tus clientes sigue funcionando.";
 // El correo va DENTRO del mensaje, no como algo que pedirle después.
 //
 // Quien recibe ese WhatsApp llega con un número de teléfono y nada más, y la
