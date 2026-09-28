@@ -23,6 +23,7 @@
     "qa:bolivares": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-bolivares.mjs",
     "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs",
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
+    "qa:pausados": "node qa/whatsapp-pausados.mjs",
     "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs"
   },
   "dependencies": {

@@ -31,6 +31,8 @@ type Destinatario = {
   overdue_clients: number;
   due_this_week: number;
   viewed_no_payment: number;
+  // Migración 072. Aquí NO elige plantilla: sirve para saltarse al dueño.
+  pausado: boolean;
 };
 
 export type ResumenDeLaTanda = {
@@ -44,6 +46,9 @@ export type ResumenDeLaTanda = {
   // "no había motivo". Confundirlos taparía que el mensaje dejó de servirle a
   // media base.
   suprimidos: number;
+  // Aparte de `suprimidos`, y no sumados con ellos: son dos motivos distintos
+  // de no mandar, y mezclarlos escondería si el enrutado de pausados funciona.
+  pausados: number;
 };
 
 export async function enviarAtencionSemanal(): Promise<ResumenDeLaTanda> {
@@ -59,6 +64,7 @@ export async function enviarAtencionSemanal(): Promise<ResumenDeLaTanda> {
   const destinatarios = (data ?? []) as Destinatario[];
   const resultados: ResultadoEnvio[] = [];
   let suprimidos = 0;
+  let pausados = 0;
 
   for (const d of destinatarios) {
     // LA SUPRESIÓN DE VACÍOS, que es la palanca más grande de todo esto y no
@@ -71,6 +77,22 @@ export async function enviarAtencionSemanal(): Promise<ResumenDeLaTanda> {
     //
     // Vive aquí y no en la consulta para que se lea junto a su motivo: es una
     // decisión de producto, no una optimización.
+    // AL PAUSADO NO SE LE MANDA ESTA. Ya recibió `cartera_pausada` en la tanda
+    // del lunes, y esa plantilla sustituye a las dos: dice lo mismo que el
+    // resumen más que la cuenta está pausada. Mandarle además la de atención
+    // sería el segundo mensaje de la semana a quien no puede tocar su cartera
+    // — el doble de coste en Meta justo en quien no está pagando, y el doble
+    // de probabilidad de que lo marque como no deseado. Con un solo número
+    // para toda la plataforma, esa denuncia baja el quality rating de TODOS.
+    //
+    // Va ANTES de la supresión de vacíos a propósito: un pausado sin nada que
+    // contar debe contarse como pausado, no como suprimido, o el número deja
+    // de decir si el enrutado funciona.
+    if (d.pausado) {
+      pausados++;
+      continue;
+    }
+
     const hayAlgoQueContar =
       d.overdue_clients > 0 || d.due_this_week > 0 || d.viewed_no_payment > 0;
     if (!hayAlgoQueContar) {
@@ -103,5 +125,6 @@ export async function enviarAtencionSemanal(): Promise<ResumenDeLaTanda> {
     omitidos: resultados.filter((r) => r.estado === "omitido").length,
     fallidos: resultados.filter((r) => r.estado === "fallido").length,
     suprimidos,
+    pausados,
   };
 }
