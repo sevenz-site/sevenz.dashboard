@@ -426,9 +426,27 @@ function RateCalculator({
     // de que pais es y el simbolo ya dice que moneda es: "$1.00 Dolar" con una
     // bandera de Estados Unidos al lado dice lo mismo tres veces. Y lo que
     // sobra en una tarjeta es justo lo que le quita autoridad.
+    // UN `Record` Y NO UNA CADENA DE TERNARIOS, y el motivo es un bug real.
+    //
+    // Antes esto era `VES ? ... : USD ? ... : "/flag-eur.svg"`. Sin caso para
+    // USDT, que cayó al último `else`: al compartir el cálculo de USDT la
+    // imagen salía con la bandera de la UNIÓN EUROPEA al lado de "1,00 USDT".
+    // La cifra era correcta; la bandera mentía. Encontrado por el usuario el
+    // 2026-09-28, compartiendo de verdad desde el teléfono — en la web no
+    // pasaba porque allí la cadena sí tenía las cuatro ramas.
+    //
+    // Con un Record sobre `MonedaVisible`, TypeScript no compila si aparece una
+    // moneda sin bandera. La cadena de ternarios no podía avisar de nada: su
+    // `else` siempre tiene respuesta, y esa respuesta era el euro.
+    const BANDERAS: Record<MonedaVisible, string> = {
+      VES: "/flag-ves.svg",
+      USD: "/flag-usd.svg",
+      EUR: "/flag-eur.svg",
+      USDT: "/flag-usdt.svg",
+    };
     const lado = (amount: number, currency: MonedaVisible) => ({
       texto: money(amount, currency),
-      bandera: currency === "VES" ? "/flag-ves.svg" : currency === "USD" ? "/flag-usd.svg" : "/flag-eur.svg",
+      bandera: BANDERAS[currency],
     });
     return {
       izquierda: hasAmount ? lado(putAmount, putCurrency) : lado(1, pair),

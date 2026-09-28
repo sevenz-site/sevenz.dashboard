@@ -22,8 +22,33 @@ import type { OwnerCountry } from "@/lib/types";
 // Kapso genera los nombres con esa convención, así que en su vocabulario es
 // correcto. En el de Sevenz no: aquí "cliente" es el deudor del tendero. No se
 // puede renombrar sin rehacer la plantilla y perder la aprobación, así que el
-// desajuste se aísla aquí, en la única línea que lo toca. Las demás plantillas
-// usan `owner_name` y `client_name`.
+// desajuste se aísla en `PLANTILLAS`, abajo. Las demás usan `owner_name` y
+// `client_name`.
+//
+// Y ESE DESAJUSTE ES POR QUÉ `PLANTILLAS` EXISTE. Desde la 072 este archivo
+// manda DOS plantillas, y no declaran igual el parámetro del destinatario:
+// `cartera_summary` lo llama `customer_name` y `cartera_pausada` —aprobada seis
+// días después— lo llama `owner_name`, porque la corrección se hizo en la
+// plantilla nueva, donde salía gratis.
+//
+// Kapso los manda POR NOMBRE (`parameter_name`, en lib/whatsapp/kapso.ts) y
+// Meta rechaza un parámetro que la plantilla no declara. O sea que el nombre no
+// es cosmético: elegir la plantilla sin elegir también el nombre hace que el
+// envío falle ENTERO. Y falla callado — el dueño pausado se queda sin nada esa
+// semana, porque solo se le manda una plantilla y es la que falla.
+
+// LA PLANTILLA Y SU PARÁMETRO, JUNTOS, porque separados ya se rompieron una
+// vez: la primera versión de la 072 cambiaba la plantilla y dejaba el nombre
+// fijo en `customer_name`. Atados aquí, añadir una tercera obliga a decir su
+// nombre — no hay un valor por defecto que pueda ser el equivocado.
+//
+// Es la misma forma que `BANDERAS` en exchange-rate-strip.tsx, y por el mismo
+// motivo: dos datos que tienen que cambiar a la vez no se guardan en dos
+// sitios.
+const PLANTILLAS = {
+  alDia: { nombre: "cartera_summary", parametroDelDueno: "customer_name" },
+  pausado: { nombre: "cartera_pausada", parametroDelDueno: "owner_name" },
+} as const;
 
 type Destinatario = {
   owner_id: string;
@@ -34,6 +59,9 @@ type Destinatario = {
   balance_usd: number;
   balance_eur: number;
   overdue_clients: number;
+  // Migración 072. Viene como COLUMNA y no como filtro a propósito: un dueño
+  // pausado sigue en la lista y recibe OTRA plantilla, no ninguna.
+  pausado: boolean;
 };
 
 // Lo que el dueño lee como "Por cobrar". Un negocio VE lleva dos libros
@@ -77,17 +105,26 @@ export async function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
   //
   // LO QUE SE ACEPTA A CAMBIO, para que nadie lo descubra por sorpresa:
   //   - Se paga a Meta por cada mensaje a quien no está pagando.
-  //   - El mensaje es IDÉNTICO al de un dueño al día. No puede decir "tu
-  //     cuenta está pausada" porque el texto de una plantilla aprobada por
-  //     Meta es inmutable: eso exigiría una plantilla nueva y su aprobación.
-  //     Así que la "motivación" es indirecta — nada en el mensaje menciona el
-  //     pago.
+  //   - RESUELTO EL 2026-09-28. Meta aprobó `cartera_pausada`, así que el
+  //     mensaje ya NO es idéntico al de un dueño al día: dice que la cuenta
+  //     está pausada, que la cartera y el historial siguen ahí, y trae un
+  //     botón de respuesta rápida para pedir la reactivación. Sustituye a las
+  //     DOS: el pausado recibe una sola cosa a la semana.
+  //
+  //     LO QUE ESA RESPUESTA RÁPIDA ARRASTRA: vuelve al número de Kapso
+  //     (+1 202 915 8501), NO al de soporte (+57 323 813 0265), y no hay
+  //     webhook que la recoja — la solicitud existe solo dentro de Kapso. Se
+  //     acepta porque el usuario revisa esa bandeja a diario. Si eso deja de
+  //     ser cierto hay que revisar esta decisión: un dueño que pide la
+  //     reactivación y no recibe respuesta está peor que uno que nunca pudo
+  //     pedirla.
   //   - Si alguna vez un dueño bloqueado marca el mensaje como no deseado,
   //     con un solo número para toda la plataforma el quality rating baja
   //     para todos. Ese es el riesgo real de esta decisión.
   //
-  // Si algún día se revierte, el cambio es una línea en las funciones de la
-  // 068 y la 069: `and public.owner_puede_escribir(o.id)`.
+  // Si algún día se revierte —dejar de escribirle a un pausado— el cambio es
+  // una línea en las funciones de la 072: pasar `pausado` de columna a filtro,
+  // `and public.owner_puede_escribir(o.id)`.
   const { data, error } = await supabase.rpc("whatsapp_destinatarios_resumen");
   if (error) {
     console.error("whatsapp_destinatarios_resumen:", error);
@@ -101,17 +138,24 @@ export async function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
   // compensa que dieciocho llamadas simultáneas a Kapso disparen su límite de
   // ritmo y que los fallos lleguen todos juntos sin poder distinguirlos.
   for (const d of destinatarios) {
+    // LA ÚNICA LÍNEA QUE ELIGE, y elige las dos cosas a la vez. `cartera_pausada`
+    // sustituye a las DOS plantillas para un dueño pausado: una sola cosa a la
+    // semana, no dos. Que `cartera_attention` no se le mande también se
+    // resuelve en su propio archivo, saltándoselo.
+    const plantilla = d.pausado ? PLANTILLAS.pausado : PLANTILLAS.alDia;
+
     const resultado = await enviarAvisoAlDueno({
       ownerId: d.owner_id,
       to: d.whatsapp,
-      plantilla: "cartera_summary",
+      plantilla: plantilla.nombre,
       periodKey: periodo,
       parametrosCuerpo: [
-        // `customer_name` lleva el nombre del DUEÑO. Ver la nota de arriba.
+        // El parámetro del destinatario lleva el nombre del DUEÑO, se llame
+        // como se llame en cada plantilla. Ver la nota de arriba.
         // El respaldo no es decorativo: `first_name` es obligatorio desde el
         // registro, pero una fila anterior a esa regla lo tiene nulo, y "Hola
         // , este es el resumen" es peor que un saludo genérico.
-        { nombre: "customer_name", texto: d.first_name?.trim() || "hola" },
+        { nombre: plantilla.parametroDelDueno, texto: d.first_name?.trim() || "hola" },
         { nombre: "amount_due", texto: porCobrar(d) },
         { nombre: "overdue_clients", texto: String(d.overdue_clients) },
       ],
