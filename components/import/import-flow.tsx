@@ -3,7 +3,9 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera } from "lucide-react";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2 } from "lucide-react";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { TiraDeFotos } from "@/components/import/tira-de-fotos";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -308,8 +310,32 @@ export function ImportFlow({
   // A libreta is usually kept in one currency even though it can mix, so
   // setting all rows at once is the common path and the per-row select is the
   // exception — not the other way round.
-  function applyCurrencyToAll(currency: LedgerCurrency) {
-    setReviewMovements((prev) => (prev ? prev.map((m) => ({ ...m, currency })) : prev));
+  // Lo que había ANTES de la última aplicación en masa. `null` = no hay nada
+  // que deshacer, y entonces el botón no se enseña: un deshacer que no deshace
+  // nada es peor que ninguno.
+  const [antesDeAplicar, setAntesDeAplicar] = useState<ExtractedMovement[] | null>(null);
+  const [forzarMoneda, setForzarMoneda] = useState(false);
+
+  // POR DEFECTO SOLO TOCA LO QUE SIGUE SIN ASIGNAR.
+  //
+  // Pisar todo era destructivo en silencio: si el dueño ya había corregido a
+  // mano cinco clientes a euros y luego pulsaba "Todo Dólares" —algo que se
+  // hace al principio, con prisa— esos cinco se perdían sin aviso. Así nunca
+  // destruye trabajo, y para el caso raro de querer forzarlos está la casilla,
+  // que es explícita.
+  function applyCurrencyToAll(currency: LedgerCurrency, incluirYaAjustadas = false) {
+    setReviewMovements((prev) => {
+      if (!prev) return prev;
+      setAntesDeAplicar(prev);
+      return prev.map((m) =>
+        incluirYaAjustadas || !m.currency ? { ...m, currency } : m,
+      );
+    });
+  }
+
+  function deshacerMoneda() {
+    setReviewMovements((prev) => antesDeAplicar ?? prev);
+    setAntesDeAplicar(null);
   }
 
   // Por `uid` y no por posición. Ver la nota de `onUpdate` en
@@ -417,6 +443,18 @@ export function ImportFlow({
               ranuraCabecera,
             )
           : null}
+
+        {/* Cuántos clientes salieron y de cuántas fotos. Es lo primero que el
+            dueño quiere saber al llegar aquí —"¿las leyó todas?"— y hasta ahora
+            tenía que contar las filas él. */}
+        <p className="text-sm text-muted-foreground">
+          {clientesRevisados.length} cliente{clientesRevisados.length === 1 ? "" : "s"} encontrado
+          {clientesRevisados.length === 1 ? "" : "s"} de {doneJobs.length} foto
+          {doneJobs.length === 1 ? "" : "s"} analizada{doneJobs.length === 1 ? "" : "s"}
+        </p>
+
+        <TiraDeFotos fotos={doneJobs.map((j) => ({ id: j.id, previewUrl: j.previewUrl, fileName: j.fileName }))} />
+
         <div className="flex flex-col gap-3 rounded-lg border p-3">
           <div className="flex items-start gap-2.5">
             <Checkbox
@@ -494,21 +532,67 @@ export function ImportFlow({
                 la verdad. Si todas coinciden, esa es la elegida; si la libreta
                 mezcla —se permite, cambiando filas sueltas— no se marca
                 ninguna, porque marcar una sería mentir sobre las otras. */}
-            <RadioGroup
-              value={monedaDeLaLibreta ?? ""}
-              onValueChange={(v) => applyCurrencyToAll(v as LedgerCurrency)}
-              className="flex flex-row flex-wrap gap-2"
-            >
-              {(["USD", "EUR"] as const).map((moneda) => (
-                <label
-                  key={moneda}
-                  className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
+            <div className="flex w-full flex-wrap items-center gap-2">
+              {/* Deshacer, y solo cuando hay algo que deshacer. Vive a la
+                  IZQUIERDA de las dos opciones, como en el mapa: es el escape
+                  de lo que está a su derecha, y ponerlo al final lo convertiría
+                  en una tercera opción. */}
+              {antesDeAplicar ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-10 rounded-full"
+                  aria-label="Deshacer la moneda que acabo de aplicar"
+                  title="Deshacer"
+                  onClick={deshacerMoneda}
                 >
-                  <RadioGroupItem value={moneda} />
-                  <span className="whitespace-nowrap">Todo en {moneda}</span>
-                </label>
-              ))}
-            </RadioGroup>
+                  <Undo2 className="size-4" />
+                </Button>
+              ) : null}
+
+              <RadioGroup
+                value={monedaDeLaLibreta ?? ""}
+                onValueChange={(v) => applyCurrencyToAll(v as LedgerCurrency, forzarMoneda)}
+                className="flex flex-row flex-wrap gap-2"
+              >
+                {/* Nombre en castellano y bandera, como el mapa: "Todo en USD"
+                    obligaba a saber que USD es el dólar. La bandera hace el
+                    trabajo antes que la palabra, y es la misma que el dueño ve
+                    en el resto de la app. */}
+                {([
+                  { moneda: "USD", etiqueta: "Todo Dólares" },
+                  { moneda: "EUR", etiqueta: "Todo Euros" },
+                ] as const).map(({ moneda, etiqueta }) => (
+                  <label
+                    key={moneda}
+                    className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
+                  >
+                    <RadioGroupItem value={moneda} />
+                    <span className="whitespace-nowrap">{etiqueta}</span>
+                    <CurrencyFlagIcon currency={moneda} className="size-4" />
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
+
+            {/* La casilla solo sale cuando de verdad hay algo que forzar: si
+                ninguna fila está ya ajustada, ofrecerla es ofrecer una decisión
+                sobre un conjunto vacío. */}
+            {filas.some((r) => r.currency) && filas.some((r) => !r.currency) ? (
+              <label className="flex w-full cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+                <Checkbox
+                  checked={forzarMoneda}
+                  onCheckedChange={(v) => setForzarMoneda(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Aplicar también a {filas.filter((r) => r.currency).length} línea
+                  {filas.filter((r) => r.currency).length === 1 ? "" : "s"} que ya ajustaste
+                </span>
+              </label>
+            ) : null}
+
             <p className="w-full text-xs text-muted-foreground">
               Hay que elegir una para poder importar. Puedes cambiar filas sueltas después, si la
               libreta mezcla.
