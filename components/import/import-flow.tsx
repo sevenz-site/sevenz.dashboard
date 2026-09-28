@@ -22,11 +22,12 @@ import {
 } from "@/components/ui/attachment";
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
 import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
-import { ClienteDuplicado, type DecisionDuplicado } from "@/components/import/cliente-duplicado";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
 import { ImportReviewTable } from "@/components/import/import-review-table";
+import { RevisarClientes, conEstado, type DecisionDuplicado } from "@/components/import/revisar-clientes";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -191,6 +192,8 @@ export function ImportFlow({
     [filasParaCandidatos, existingClients, showCurrency],
   );
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+  // Qué cliente está abierto en el detalle. `null` = la lista.
+  const [abierto, setAbierto] = useState<string | null>(null);
   const sinDecidir = duplicados.some((c) => !decisiones[c.nameKey]);
 
   // LA DECISIÓN ENTRA EN LA RECONCILIACIÓN, no se parchea después.
@@ -221,6 +224,15 @@ export function ImportFlow({
   // import can be confirmed — same requirement as the manual "Registrar
   // cliente nuevo" form, just applied per row here.
   const missingDocumentId = filas.some((r) => r.needs_document_id && !r.document_id?.trim());
+  // La vista por cliente que pinta la lista. Se calcula sobre `filas` —las que
+  // ya aplican la decisión del dueño sobre los repetidos— y no sobre
+  // `filasParaCandidatos`, que solo existe para detectarlos contra la lista
+  // completa de clientes.
+  const clientesRevisados = useMemo(
+    () => agruparPorCliente(filas, existingClients, { esVE: showCurrency }),
+    [filas, existingClients, showCurrency],
+  );
+
   // A blank shared name would create a nameless client, so it blocks the same
   // way a missing cédula does — but only while at least one row still uses it.
   // Opting every row out leaves the field unused, and blocking on an unused
@@ -300,13 +312,13 @@ export function ImportFlow({
     setReviewMovements((prev) => (prev ? prev.map((m) => ({ ...m, currency })) : prev));
   }
 
-  function updateMovement(index: number, patch: Partial<ExtractedMovement>) {
-    setReviewMovements((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      next[index] = { ...next[index], ...patch };
-      return next;
-    });
+  // Por `uid` y no por posición. Ver la nota de `onUpdate` en
+  // import-review-table.tsx: el detalle de un cliente recibe solo sus filas, y
+  // con índices la edición aterrizaba en otro cliente.
+  function updateMovement(rowId: string, patch: Partial<ExtractedMovement>) {
+    setReviewMovements((prev) =>
+      prev ? prev.map((m) => (m.uid === rowId ? { ...m, ...patch } : m)) : prev,
+    );
   }
 
   // Seeded with the name Gemini read most often, so the common case is one
@@ -338,8 +350,8 @@ export function ImportFlow({
     });
   }
 
-  function removeMovement(index: number) {
-    setReviewMovements((prev) => (prev ? prev.filter((_, i) => i !== index) : prev));
+  function removeMovement(rowId: string) {
+    setReviewMovements((prev) => (prev ? prev.filter((m) => m.uid !== rowId) : prev));
   }
 
   async function handleConfirm() {
@@ -503,31 +515,43 @@ export function ImportFlow({
             </p>
           </div>
         ) : null}
-        {duplicados.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {duplicados.map((c) => (
-              <ClienteDuplicado
-                key={c.nameKey}
-                nombreEnLaLibreta={c.name}
-                candidato={c.candidato!}
-                decision={decisiones[c.nameKey]}
-                onDecidir={(d) => setDecisiones((prev) => ({ ...prev, [c.nameKey]: d }))}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        <ImportReviewTable
-              country={country}
-          rows={filas}
-          onUpdate={updateMovement}
-          onRemove={removeMovement}
-          existingClients={existingClients}
-          showCurrency={showCurrency}
-          sharedClientActive={sameClient}
-          isLinked={(rowId) => !unlinked.has(rowId)}
-          onToggleLinked={toggleLinked}
+        {/* LA LISTA POR CLIENTE, que es lo que el dueño lee primero.
+            La tabla sigue existiendo, pero ya no es la pantalla: es el detalle
+            de UN cliente, y se abre tocando su tarjeta. Una libreta de seis
+            páginas eran cuarenta filas de ocho columnas en 375px; ahora son
+            seis tarjetas que se leen de un vistazo. */}
+        <RevisarClientes
+          clientes={conEstado(clientesRevisados, filas, decisiones)}
+          decisiones={decisiones}
+          onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
+          onAbrir={setAbierto}
         />
+
+        <Sheet open={abierto !== null} onOpenChange={(v) => !v && setAbierto(null)}>
+          <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-xl">
+            <SheetHeader>
+              <SheetTitle>
+                {clientesRevisados.find((c) => c.nameKey === abierto)?.name ?? "Cliente"}
+              </SheetTitle>
+            </SheetHeader>
+            {/* Las filas de ESE cliente, con el mismo editor de siempre. Se
+                reutiliza a propósito: ya sabe editar monto, tipo, moneda,
+                documento y WhatsApp, y reescribirlo desde cero para cambiarle
+                el marco es la clase de trabajo que introduce fallos en lo único
+                que aquí es dinero. */}
+            <ImportReviewTable
+              country={country}
+              rows={filas.filter((r) => r.client_name.trim().toLowerCase() === abierto)}
+              onUpdate={updateMovement}
+              onRemove={removeMovement}
+              existingClients={existingClients}
+              showCurrency={showCurrency}
+              sharedClientActive={sameClient}
+              isLinked={(rowId) => !unlinked.has(rowId)}
+              onToggleLinked={toggleLinked}
+            />
+          </SheetContent>
+        </Sheet>
         {missingSharedName ? (
           <p className="text-sm text-destructive">
             Escribe el nombre del cliente antes de continuar.

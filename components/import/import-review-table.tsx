@@ -72,8 +72,14 @@ export function ImportReviewTable({
   rows: ReviewRow[];
   // Decides the document prefix: "V-" in Venezuela, none in Colombia.
   country: OwnerCountry;
-  onUpdate: (index: number, patch: Partial<ExtractedMovement>) => void;
-  onRemove: (index: number) => void;
+  // POR `rowId`, NO POR POSICIÓN. La tabla ya no recibe siempre la lista
+  // entera: el detalle de un cliente le pasa solo SUS filas. Con índices, editar
+  // la primera fila de ese subconjunto escribía en la primera fila del array
+  // completo — o sea, en OTRO cliente. Pasó de verdad el 2026-09-28 al montar
+  // la lista por cliente: se tecleó una cédula en "QA No Cuadra" y apareció en
+  // "QA Cuadra". `rowId` es estable y sobrevive a filtrar y a borrar.
+  onUpdate: (rowId: string, patch: Partial<ExtractedMovement>) => void;
+  onRemove: (rowId: string) => void;
   existingClients: { id: string; name: string }[];
   // False for a CO owner, whose ledger has no currency dimension.
   showCurrency: boolean;
@@ -176,7 +182,7 @@ export function ImportReviewTable({
                   <Input
                     list="known-clients"
                     value={row.client_name}
-                    onChange={(e) => onUpdate(index, { client_name: e.target.value })}
+                    onChange={(e) => onUpdate(row.rowId, { client_name: e.target.value })}
                   />
                 )}
               </TableCell>
@@ -190,7 +196,7 @@ export function ImportReviewTable({
                     id={`import-document-${index}`}
                     country={country}
                     value={row.document_id ?? ""}
-                    onChange={(next) => onUpdate(index, { document_id: next || null })}
+                    onChange={(next) => onUpdate(row.rowId, { document_id: next || null })}
                     invalid={!row.document_id?.trim()}
                   />
                 )}
@@ -203,14 +209,14 @@ export function ImportReviewTable({
                     preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
                     defaultValue={row.whatsapp}
                     compact
-                    onValueChange={(v) => onUpdate(index, { whatsapp: v.trim() || null })}
+                    onValueChange={(v) => onUpdate(row.rowId, { whatsapp: v.trim() || null })}
                   />
                 </TableCell>
               )}
               <TableCell>
                 <Select
                   value={row.type}
-                  onValueChange={(v) => onUpdate(index, { type: v as "charge" | "payment" })}
+                  onValueChange={(v) => onUpdate(row.rowId, { type: v as "charge" | "payment" })}
                 >
                   <SelectTrigger className="w-[5.5rem]">
                     <SelectValue />
@@ -232,7 +238,7 @@ export function ImportReviewTable({
                     step="0.01"
                     className="w-20"
                     value={row.amount}
-                    onChange={(e) => onUpdate(index, { amount: Number(e.target.value) || 0 })}
+                    onChange={(e) => onUpdate(row.rowId, { amount: Number(e.target.value) || 0 })}
                   />
                   {/* Sin moneda no se muestra ninguna, en vez de enseñar USD
                       sin haberlo guardado: la fila diría "USD" mientras el
@@ -243,7 +249,7 @@ export function ImportReviewTable({
                   {showCurrency ? (
                     <Select
                       value={row.currency ?? undefined}
-                      onValueChange={(v) => onUpdate(index, { currency: v as LedgerCurrency })}
+                      onValueChange={(v) => onUpdate(row.rowId, { currency: v as LedgerCurrency })}
                     >
                       <SelectTrigger
                         className={row.currency ? "w-[4.25rem]" : "w-[6.5rem]"}
@@ -262,11 +268,11 @@ export function ImportReviewTable({
               <TableCell>
                 <Input
                   value={row.description ?? ""}
-                  onChange={(e) => onUpdate(index, { description: e.target.value || null })}
+                  onChange={(e) => onUpdate(row.rowId, { description: e.target.value || null })}
                 />
               </TableCell>
               <TableCell>
-                <Button variant="ghost" size="icon" onClick={() => onRemove(index)}>
+                <Button variant="ghost" size="icon" onClick={() => onRemove(row.rowId)}>
                   <Trash2 className="size-4" />
                 </Button>
               </TableCell>
