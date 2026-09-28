@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Sparkles, TriangleAlert, Upload } from "lucide-react";
+import { Camera, Sparkles, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -125,12 +125,11 @@ export function ImportarCartera({
 
 function Controles({ onDone }: { onDone: () => void }) {
   const router = useRouter();
-  const { usage, startImport } = useImportJobs();
+  const { startImport } = useImportJobs();
   // La cuenta pausada se comprueba ANTES de la foto, igual que en /import:
   // escanearla gasta cuota de Gemini para nada si el dueño no puede escribir.
   const guardia = useGuardiaDeCuentaPausada();
 
-  const quotaExhausted = usage.plan === "free" && usage.remaining === 0;
 
   function onFiles(fileList: FileList | null) {
     if (guardia()) return;
@@ -140,18 +139,6 @@ function Controles({ onDone }: { onDone: () => void }) {
     // A la pantalla de revisión, que es donde el dueño tiene que estar cuando
     // la lectura termine.
     router.push("/import");
-  }
-
-  if (quotaExhausted) {
-    return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/50 py-6 text-center">
-        <TriangleAlert className="size-5 text-destructive" />
-        <p className="text-sm font-medium">Alcanzaste el límite de {usage.limit} fotos este mes</p>
-        <p className="max-w-xs text-sm text-muted-foreground">
-          Escríbenos para pasar a Pro y seguir importando sin límites.
-        </p>
-      </div>
-    );
   }
 
   return (
@@ -206,16 +193,13 @@ function Controles({ onDone }: { onDone: () => void }) {
         }}
       />
 
-      {usage.plan === "free" && usage.limit !== null ? (
-        <p className="text-xs text-muted-foreground">
-          Plan Free · {usage.used}/{usage.limit} fotos usadas este mes.
-        </p>
-      ) : usage.plan === "pro" ? (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Sparkles className="size-3.5 text-primary" />
-          Plan Pro · fotos ilimitadas
-        </p>
-      ) : null}
+      {/* Ya no hay tope en ningún plan, así que no se nombra el plan: decirle
+          "Plan Free" a quien tiene las mismas fotos que cualquiera solo invita a
+          preguntarse qué se está perdiendo. */}
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Sparkles className="size-3.5 text-primary" />
+        Fotos ilimitadas
+      </p>
     </div>
   );
 }

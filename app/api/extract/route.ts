@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getImportUsageForOwner } from "@/lib/import-usage";
 import type { ExtractedMovement } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -307,13 +306,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const usage = await getImportUsageForOwner(supabase, user.id);
-  if (usage.plan === "free" && usage.remaining !== null && usage.remaining <= 0) {
-    return NextResponse.json(
-      { error: `Alcanzaste el límite de ${usage.limit} fotos este mes en el plan Free.` },
-      { status: 403 },
-    );
-  }
+  // Aquí vivía la puerta del tope mensual del plan Free, que era la
+  // autoritativa: las pantallas solo pintaban el contador y esto era lo que de
+  // verdad no dejaba pasar. Se retiró el 2026-09-28 al quitar el tope en todos
+  // los planes. Se borra en vez de quedarse desactivada: una guarda que ya no
+  // guarda nada, con su mensaje de "alcanzaste el límite" a cuestas, es lo que
+  // el siguiente lee y da por vigente.
 
   const body = await request.json().catch(() => null);
   const dataUrl: unknown = body?.image;

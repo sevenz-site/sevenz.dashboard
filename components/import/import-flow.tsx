@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
   Attachment,
   AttachmentGroup,
@@ -93,7 +92,7 @@ export function ImportFlow({
   const showCurrency = ownerCountry === "VE";
   // Narrowed once here: the page hands this down as a plain string.
   const country: OwnerCountry = ownerCountry === "VE" ? "VE" : "CO";
-  const { jobs, isProcessing, usage, startImport, removeJob, clearJobs } = useImportJobs();
+  const { jobs, isProcessing, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
   // Cuenta pausada: se para ANTES de la foto. Escanearla gasta cuota de
   // Gemini y veinte minutos de revision para nada.
@@ -140,7 +139,6 @@ export function ImportFlow({
   // opt-out to whichever row moved up into its place.
   const [unlinked, setUnlinked] = useState<Set<string>>(new Set());
 
-  const quotaExhausted = usage.plan === "free" && usage.remaining === 0;
 
   const doneJobs = jobs.filter((j) => j.status === "done");
   const errorJobs = jobs.filter((j) => j.status === "error");
@@ -647,44 +645,16 @@ export function ImportFlow({
       ) : null}
 
 
-      {usage.plan === "free" && usage.limit !== null ? (
-        <Card>
-          <CardContent className="flex flex-col gap-1.5 pt-6">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Fotos usadas este mes (plan Free)</span>
-              <span className={usage.used >= 3 ? "font-medium text-destructive" : "font-medium text-emerald-600 dark:text-emerald-400"}>
-                {usage.used}/{usage.limit}
-              </span>
-            </div>
-            <Progress
-              value={Math.min(100, (usage.used / usage.limit) * 100)}
-              indicatorClassName={usage.used >= 3 ? "bg-destructive" : "bg-emerald-500"}
-            />
-            <p className="text-xs text-muted-foreground">
-              Se reinicia el 1 de cada mes. Solo cuentan las fotos procesadas con éxito.
-            </p>
-          </CardContent>
-        </Card>
-      ) : usage.plan === "pro" ? (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Sparkles className="size-4 text-primary" />
-          Plan Pro · fotos ilimitadas
-        </p>
-      ) : null}
+      {/* Sin tope en ningún plan desde el 2026-09-28. Se cae la barra de
+          progreso entera —medía un límite que ya no existe— y no se nombra el
+          plan: a quien tiene las mismas fotos que cualquiera, leer "Plan Free"
+          solo le invita a preguntarse qué se está perdiendo. */}
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Sparkles className="size-4 text-primary" />
+        Fotos ilimitadas
+      </p>
 
-      {quotaExhausted ? (
-        <Card className="border-destructive/50">
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-            <TriangleAlert className="size-6 text-destructive" />
-            <p className="text-sm font-medium">Alcanzaste el límite de {usage.limit} fotos este mes</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Con el plan Free puedes importar hasta {usage.limit} fotos por mes. Escríbenos para
-              actualizar a Pro y seguir importando sin límites.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
+      <Card>
           <CardContent className="flex flex-col gap-4 pt-6">
             {/* Two inputs, not one with a toggle, because the difference is
                 the `capture` attribute and it cannot be changed per click
@@ -747,8 +717,7 @@ export function ImportFlow({
               </p>
             ) : null}
           </CardContent>
-        </Card>
-      )}
+      </Card>
 
     </div>
   );

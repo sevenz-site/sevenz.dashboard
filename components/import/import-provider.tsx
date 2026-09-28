@@ -51,23 +51,12 @@ export function ImportProvider({
 
   const startImport = useCallback(
     (files: File[]) => {
-      let selected = files.slice(0, MAX_IMPORT_PHOTOS);
+      const selected = files.slice(0, MAX_IMPORT_PHOTOS);
       if (selected.length === 0) return;
 
-      if (usage.plan === "free" && usage.remaining !== null) {
-        if (usage.remaining <= 0) {
-          toast.error(`Alcanzaste el límite de ${usage.limit} fotos este mes en el plan Free.`);
-          return;
-        }
-        if (selected.length > usage.remaining) {
-          const skipped = selected.length - usage.remaining;
-          selected = selected.slice(0, usage.remaining);
-          toast.warning(
-            `Solo se procesarán ${selected.length} foto${selected.length === 1 ? "" : "s"} — te ` +
-              `quedan ${usage.remaining} este mes. Se omitieron ${skipped}.`,
-          );
-        }
-      }
+      // Aquí se recortaba la selección al cupo que quedaba del mes. Sin tope
+      // desde el 2026-09-28, lo único que sigue limitando es MAX_IMPORT_PHOTOS
+      // —cuántas caben en una tanda—, que es otra cosa y sigue arriba.
 
       const newJobs: ImportJob[] = selected.map((file) => ({
         id: crypto.randomUUID(),
@@ -137,7 +126,7 @@ export function ImportProvider({
         toast.success("Libreta procesada — revisa los movimientos antes de guardar.");
       })();
     },
-    [updateJob, usage],
+    [updateJob],
   );
 
   const removeJob = useCallback((id: string) => {

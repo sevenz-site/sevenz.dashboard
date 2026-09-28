@@ -1,5 +1,4 @@
 import type { createClient } from "@/lib/supabase/server";
-import { FREE_PLAN_MONTHLY_IMPORT_LIMIT } from "@/lib/config";
 import type { OwnerPlan } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -36,10 +35,16 @@ export async function getImportUsageForOwner(
   const plan: OwnerPlan = owner?.plan === "pro" ? "pro" : "free";
   const used = count ?? 0;
 
-  if (plan === "pro") {
-    return { plan, used, limit: null, remaining: null };
-  }
-
-  const limit = FREE_PLAN_MONTHLY_IMPORT_LIMIT;
-  return { plan, used, limit, remaining: Math.max(0, limit - used) };
+  // SIN LÍMITE EN NINGÚN PLAN, desde el 2026-09-28. El plan Free tenía 5 fotos
+  // al mes; ya no tiene ninguna.
+  //
+  // `limit: null` es lo que este módulo siempre ha usado para decir "no hay
+  // tope" —era lo que devolvía Pro—, así que las guardas de la ruta y de las
+  // dos pantallas, que ya preguntan por `limit !== null`, se apagan solas. No
+  // hay ningún sitio donde el tope siga vivo a medias.
+  //
+  // `used` se sigue contando: alimenta la pantalla y las métricas, y el día que
+  // vuelva a haber un tope hará falta. Lo que se quitó es la puerta, no el
+  // contador.
+  return { plan, used, limit: null, remaining: null };
 }
