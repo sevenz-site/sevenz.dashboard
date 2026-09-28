@@ -29,6 +29,13 @@ export type ReviewRow = ExtractedMovement & {
   // one that's never had a cédula/documento recorded. False (no need to
   // ask again) when the matched client already has one.
   needs_document_id: boolean;
+  // El saldo corrido DENTRO DE LA PÁGINA, que es contra lo que se compara el
+  // total escrito a mano. Ver la nota larga sobre la base, abajo.
+  page_balance: number;
+  // True cuando el arranque de la página se dedujo del primer total escrito en
+  // vez de ser un cero seguro. En ese caso ESTA fila es la que definió la base,
+  // así que no se puede comprobar contra sí misma.
+  defines_base: boolean;
 };
 
 const RECONCILE_TOLERANCE = 1;
@@ -66,62 +73,278 @@ function seedBalance(client: ReconcileClient, currency: LedgerCurrency | null): 
   return client.balance;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// CT-19: DE DÓNDE ARRANCA LA PÁGINA, QUE ES TODO EL PROBLEMA
+//
+// El total escrito a mano en la libreta y el saldo que calcula Sevenz solo son
+// comparables si los dos arrancan del mismo sitio. La versión anterior
+// arrancaba el saldo corrido en LO QUE EL CLIENTE YA DEBE EN SEVENZ y lo
+// comparaba contra un total que el tendero escribió EN ESA PÁGINA. Medido en
+// dev el 2026-09-25: "Juanito Alimaña" ya debía USD 54,94, así que la misma
+// foto importada en dólares marcaba sus tres líneas desviadas exactamente
+// 54,94, y en euros —donde no debía nada— cuadraba. El rojo mentía.
+//
+// Lo que se hace ahora, decidido el 2026-09-25 (opción B + comparar tramos):
+//
+//   Cliente NUEVO en Sevenz    la página arranca en cero CON CERTEZA, así que
+//                              se comprueban todos los totales, incluido el
+//                              primero.
+//   Cliente que YA tiene saldo no se puede saber si esa página empieza de cero
+//                              o continúa una anterior. Así que el PRIMER total
+//                              escrito DEDUCE el arranque, y a partir de ahí se
+//                              comprueba el resto: cada total contra el
+//                              anterior más los montos que hay en medio. Eso no
+//                              necesita base, que es justo el dato que falta.
+//
+// Y el saldo previo se enseña como DATO y no como acusación: vive en
+// `computed_balance`, que es lo que lee el resumen de "cómo queda cada
+// cliente", separado de `page_balance`, que es lo que lee la comprobación.
+// Un solo número para los dos trabajos acierta en uno y miente en el otro.
+//
+// LO QUE ESTO NO RESUELVE, y conviene no creer que sí: una página sin ningún
+// total escrito no se puede comprobar de ninguna forma —eso es "sin verificar"
+// y así se dice—, y un cliente existente cuya página trae UN SOLO total
+// tampoco, porque ese total se gasta en deducir la base.
 export function reconcileMovements(
   extracted: ExtractedMovement[],
   existingClients: ReconcileClient[],
 ): ReviewRow[] {
   const byName = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
-  // Seeded lazily on first use rather than pre-filled, so a client only gets a
-  // starting balance for the currencies their rows actually mention.
-  const runningBalances = new Map<string, number>();
 
-  return extracted.map((movement, index) => {
-    const nameKey = normalizeName(movement.client_name);
-    const matched = byName.get(nameKey);
-    const key = balanceKey(movement.client_name, movement.currency);
-    const prevBalance =
-      runningBalances.get(key) ?? (matched ? seedBalance(matched, movement.currency) : 0);
-    const delta = movement.type === "charge" ? movement.amount : -movement.amount;
-    const computedBalance = prevBalance + delta;
-    runningBalances.set(key, computedBalance);
+  // Primero se agrupa por (cliente, moneda) conservando el orden, porque la
+  // base de una página solo se puede deducir viendo el grupo entero. La versión
+  // anterior era un `.map` de una pasada y por eso no podía: decidía sobre cada
+  // fila sin saber lo que venía después.
+  const grupos = new Map<string, number[]>();
+  extracted.forEach((m, i) => {
+    const k = balanceKey(m.client_name, m.currency);
+    const g = grupos.get(k);
+    if (g) g.push(i);
+    else grupos.set(k, [i]);
+  });
 
-    const reconciles =
-      movement.read_balance !== null &&
-      Math.abs(movement.read_balance - computedBalance) <= RECONCILE_TOLERANCE;
+  const salida: ReviewRow[] = new Array(extracted.length);
+
+  for (const indices of grupos.values()) {
+    const primero = extracted[indices[0]];
+    const matched = byName.get(normalizeName(primero.client_name));
+    const seed = matched ? seedBalance(matched, primero.currency) : 0;
+
+    // ¿Se puede dar por cierto que la página arranca en cero?
+    //
+    // Solo si el cliente no existe todavía en Sevenz. Un cliente con saldo 0 NO
+    // vale: pudo quedar en cero después de pagar y esta página puede ser la
+    // continuación de otra. La certeza viene de no existir, no de deber cero.
+    const arranqueCierto = !matched;
+
+    // La base, cuando hay que deducirla, sale del primer total escrito: es el
+    // valor que hace que ese total cuadre con los montos que lo preceden.
+    let base = 0;
+    let indiceQueDefineLaBase = -1;
+    if (!arranqueCierto) {
+      let acumulado = 0;
+      for (const i of indices) {
+        const m = extracted[i];
+        acumulado += m.type === "charge" ? m.amount : -m.amount;
+        if (m.read_balance !== null) {
+          base = m.read_balance - acumulado;
+          indiceQueDefineLaBase = i;
+          break;
+        }
+      }
+    }
+
+    let paginaCorrida = base;
+    let sevenzCorrido = seed;
+
+    for (const i of indices) {
+      const m = extracted[i];
+      const delta = m.type === "charge" ? m.amount : -m.amount;
+      paginaCorrida += delta;
+      sevenzCorrido += delta;
+
+      const defineBase = i === indiceQueDefineLaBase;
+      // Comprobable: trae total escrito Y no es el que se gastó en deducir la
+      // base. Cuando el arranque es cierto, ninguna fila se gasta en eso.
+      const comprobable = m.read_balance !== null && !defineBase;
+      const cuadra =
+        comprobable && Math.abs((m.read_balance as number) - paginaCorrida) <= RECONCILE_TOLERANCE;
+
+      salida[i] = {
+        ...m,
+        // The uid assigned when the batch entered review, never the name and
+        // never the currency.
+        //
+        // This is a React key, so anything in it the owner can edit turns an
+        // edit into a remount: the row becomes a different element, its inputs
+        // are rebuilt and focus is lost mid-keystroke. The shared-client field
+        // rewrites every row's name on each keystroke, which by name would have
+        // remounted the whole table per character.
+        //
+        // Position would survive that but not deletion: removing a row shifts
+        // every index above it, so React would reuse the wrong element and the
+        // set of rows opted out of the shared client would move to their
+        // neighbours. Falls back to the index only for a caller that supplies
+        // no uid.
+        rowId: m.uid ?? String(i),
+        matched_client_id: matched?.id ?? null,
+        // El saldo que le queda al cliente EN SEVENZ si se importa esto. Lo lee
+        // el resumen de "cómo queda cada cliente", y por eso sí suma el saldo
+        // previo.
+        computed_balance: sevenzCorrido,
+        page_balance: paginaCorrida,
+        defines_base: defineBase,
+        needs_review: m.confidence === "low" || (comprobable && !cuadra) || (!comprobable && !defineBase),
+        // El orden importa: se queda con el motivo MÁS accionable. Un desajuste
+        // real trae dos cifras que el dueño puede comparar con el cuaderno
+        // delante; "no me fie de la lectura" solo le dice que mire. Si se dan
+        // los dos, gana el que se puede resolver.
+        review_reason: comprobable && !cuadra
+          ? "no_cuadra"
+          : m.confidence === "low"
+            ? "lectura_dudosa"
+            : defineBase
+              ? null
+              : m.read_balance === null
+                ? "sin_saldo"
+                : null,
+        needs_document_id: !matched?.document_id,
+      };
+    }
+  }
+
+  return salida;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA VISTA POR CLIENTE, que es la que pide el rediseño de la revisión
+//
+// La pantalla vieja era una tabla de MOVIMIENTOS; la nueva es una lista de
+// CLIENTES, y cada uno se abre en su propio detalle. Esto traduce lo uno en lo
+// otro sin volver a calcular nada: lee las filas ya reconciliadas.
+
+export type EstadoDeSuma = "cuadra" | "no_cuadra" | "sin_verificar";
+
+export type LibroDelCliente = {
+  currency: LedgerCurrency | null;
+  // Lo que suma esta página en esta moneda.
+  totalPagina: number;
+  // Lo que el cliente ya debe en Sevenz, para enseñarlo como dato.
+  saldoPrevio: number;
+  // Cómo queda si se importa: saldoPrevio + totalPagina.
+  saldoFinal: number;
+  estado: EstadoDeSuma;
+  // Las dos cifras del desajuste, para poder decirlas. Null si cuadra o si no
+  // se pudo comprobar.
+  escrito: number | null;
+  calculado: number | null;
+};
+
+// El cliente que ya existe con ese mismo nombre. NO es una decisión: es un
+// candidato, y el dueño elige. Esa es toda la ficha CT-22 — antes se
+// emparejaba en silencio y las deudas de dos personas distintas acababan en
+// una sola ficha, sin aviso y sin vuelta atrás.
+export type CandidatoDuplicado = {
+  id: string;
+  name: string;
+  document_id: string | null;
+  balance: number;
+  balance_usd: number;
+  balance_eur: number;
+};
+
+export type ClienteRevisado = {
+  nameKey: string;
+  name: string;
+  rowIds: string[];
+  movimientos: number;
+  candidato: CandidatoDuplicado | null;
+  // Un libro por moneda. Nunca se suman entre sí: un $50 y un €20 son dos
+  // deudas independientes, no una vista de dos formas.
+  libros: LibroDelCliente[];
+  necesitaDocumento: boolean;
+  // Solo para un dueño VE. Un negocio colombiano lleva un único libro y su
+  // `currency` es null a propósito, así que ahí esto es siempre false.
+  necesitaMoneda: boolean;
+  faltaWhatsapp: boolean;
+};
+
+export function agruparPorCliente(
+  filas: ReviewRow[],
+  existingClients: ReconcileClient[],
+  opciones: { esVE: boolean },
+): ClienteRevisado[] {
+  const porNombre = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
+  const orden: string[] = [];
+  const acumulado = new Map<string, ReviewRow[]>();
+
+  for (const f of filas) {
+    const k = normalizeName(f.client_name);
+    const ya = acumulado.get(k);
+    if (ya) ya.push(f);
+    else {
+      acumulado.set(k, [f]);
+      orden.push(k);
+    }
+  }
+
+  return orden.map((k) => {
+    const suyas = acumulado.get(k)!;
+    const existente = porNombre.get(k);
+
+    // Un libro por moneda, en el orden en que aparecen.
+    const monedas: (LedgerCurrency | null)[] = [];
+    for (const f of suyas) if (!monedas.includes(f.currency)) monedas.push(f.currency);
+
+    const libros: LibroDelCliente[] = monedas.map((currency) => {
+      const deEsaMoneda = suyas.filter((f) => f.currency === currency);
+      const totalPagina = deEsaMoneda.reduce(
+        (t, f) => t + (f.type === "charge" ? f.amount : -f.amount),
+        0,
+      );
+      const saldoPrevio = existente ? seedBalance(existente, currency) : 0;
+
+      // El estado sale de las filas, no se recalcula: una que no cuadra manda
+      // sobre todas. Y "sin verificar" no es un fallo — es que no había nada
+      // con qué comparar, que en un cuaderno a mano es lo normal.
+      const desajustada = deEsaMoneda.find((f) => f.review_reason === "no_cuadra");
+      const comprobables = deEsaMoneda.filter((f) => f.read_balance !== null && !f.defines_base);
+
+      let estado: EstadoDeSuma;
+      if (desajustada) estado = "no_cuadra";
+      else if (comprobables.length === 0) estado = "sin_verificar";
+      else estado = "cuadra";
+
+      return {
+        currency,
+        totalPagina,
+        saldoPrevio,
+        saldoFinal: saldoPrevio + totalPagina,
+        estado,
+        escrito: desajustada?.read_balance ?? null,
+        calculado: desajustada?.page_balance ?? null,
+      };
+    });
 
     return {
-      ...movement,
-      // The uid assigned when the batch entered review, never the name and
-      // never the currency.
-      //
-      // This is a React key, so anything in it the owner can edit turns an edit
-      // into a remount: the row becomes a different element, its inputs are
-      // rebuilt and focus is lost mid-keystroke. The shared-client field
-      // rewrites every row's name on each keystroke, which by name would have
-      // remounted the whole table per character.
-      //
-      // Position would survive that but not deletion: removing a row shifts
-      // every index above it, so React would reuse the wrong element and the
-      // set of rows opted out of the shared client would move to their
-      // neighbours. Falls back to the index only for a caller that supplies no
-      // uid.
-      rowId: movement.uid ?? String(index),
-      matched_client_id: matched?.id ?? null,
-      computed_balance: computedBalance,
-      needs_review: movement.confidence === "low" || movement.read_balance === null || !reconciles,
-      // El orden importa: se queda con el motivo MÁS accionable. Un desajuste
-      // real trae dos cifras que el dueño puede comparar con el cuaderno
-      // delante; "no me fie de la lectura" solo le dice que mire. Si se dan
-      // los dos, gana el que se puede resolver.
-      review_reason:
-        movement.read_balance !== null && !reconciles
-          ? "no_cuadra"
-          : movement.confidence === "low"
-            ? "lectura_dudosa"
-            : movement.read_balance === null
-              ? "sin_saldo"
-              : null,
-      needs_document_id: !matched?.document_id,
+      nameKey: k,
+      name: suyas[0].client_name,
+      rowIds: suyas.map((f) => f.rowId),
+      movimientos: suyas.length,
+      libros,
+      candidato: existente
+        ? {
+            id: existente.id,
+            name: existente.name,
+            document_id: existente.document_id,
+            balance: existente.balance,
+            balance_usd: existente.balance_usd,
+            balance_eur: existente.balance_eur,
+          }
+        : null,
+      necesitaDocumento: !existente?.document_id,
+      necesitaMoneda: opciones.esVE && suyas.some((f) => f.currency === null),
+      faltaWhatsapp: suyas.every((f) => !f.whatsapp?.trim()),
     };
   });
 }
