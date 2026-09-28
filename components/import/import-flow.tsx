@@ -22,7 +22,8 @@ import {
   AttachmentAction,
 } from "@/components/ui/attachment";
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
-import { reconcileMovements } from "@/lib/reconcile";
+import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
+import { ClienteDuplicado, type DecisionDuplicado } from "@/components/import/cliente-duplicado";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
@@ -165,20 +166,68 @@ export function ImportFlow({
     );
   }, [reviewMovements, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
 
-  const reviewRows = useMemo(
+  // Una reconciliación contra la lista COMPLETA de clientes, y su único trabajo
+  // es detectar los candidatos de CT-22. No se usa para nada más: las filas de
+  // verdad son `filas`, abajo, que ya aplican la decisión del dueño.
+  //
+  // Tiene que ser contra la lista completa o la tarjeta desaparecería en cuanto
+  // se pulsara "es otra persona", y con ella la posibilidad de cambiar de idea.
+  const filasParaCandidatos = useMemo(
     () => (effectiveMovements ? reconcileMovements(effectiveMovements, existingClients) : []),
     [effectiveMovements, existingClients],
+  );
+
+  // ── CT-22: quién es quién, y lo decide el dueño ─────────────────────────
+  //
+  // `matched_client_id` empareja por NOMBRE. Hasta ahora ese id viajaba a
+  // `confirmImport` sin que nadie confirmara nada, así que dos "María González"
+  // distintas acababan en una sola ficha, sin aviso y sin vuelta atrás.
+  //
+  // Ahora el emparejamiento es un CANDIDATO. Mientras haya alguno sin decidir,
+  // la confirmación se bloquea igual que con una cédula que falta.
+  const duplicados = useMemo(
+    () =>
+      agruparPorCliente(filasParaCandidatos, existingClients, { esVE: showCurrency }).filter(
+        (c) => c.candidato !== null,
+      ),
+    [filasParaCandidatos, existingClients, showCurrency],
+  );
+  const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+  const sinDecidir = duplicados.some((c) => !decisiones[c.nameKey]);
+
+  // LA DECISIÓN ENTRA EN LA RECONCILIACIÓN, no se parchea después.
+  //
+  // El primer intento fue corregir las filas ya reconciliadas —poner
+  // `matched_client_id` en null y `needs_document_id` en true—, y se quedaba
+  // corto en dos sitios a la vez: el saldo previo de ese cliente seguía sumado
+  // en `computed_balance`, así que el diálogo de confirmación enseñaba "cómo
+  // queda" con la deuda de OTRA persona dentro; y la comprobación de sumas
+  // seguía deduciendo la base como si el cliente existiera.
+  //
+  // Quitarlo de la lista de clientes existentes lo arregla de una vez: reconcile
+  // vuelve a calcularlo todo sin ese emparejamiento, y las cuatro cosas
+  // —matched_client_id, needs_document_id, computed_balance y la base— salen
+  // solas. Un cliente nuevo es un cliente nuevo en todo, no en dos campos.
+  const filas = useMemo(
+    () =>
+      effectiveMovements
+        ? reconcileMovements(
+            effectiveMovements,
+            existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
+          )
+        : [],
+    [effectiveMovements, existingClients, decisiones],
   );
 
   // A client without a cédula/documento on file must get one before the
   // import can be confirmed — same requirement as the manual "Registrar
   // cliente nuevo" form, just applied per row here.
-  const missingDocumentId = reviewRows.some((r) => r.needs_document_id && !r.document_id?.trim());
+  const missingDocumentId = filas.some((r) => r.needs_document_id && !r.document_id?.trim());
   // A blank shared name would create a nameless client, so it blocks the same
   // way a missing cédula does — but only while at least one row still uses it.
   // Opting every row out leaves the field unused, and blocking on an unused
   // field is the kind of dead end that has no explanation on screen.
-  const someRowLinked = reviewRows.some((r) => !unlinked.has(r.rowId));
+  const someRowLinked = filas.some((r) => !unlinked.has(r.rowId));
   const missingSharedName = sameClient && someRowLinked && !sharedName.trim();
   // Antes las filas nacían en USD. Era el valor por defecto más común y estaba
   // a la vista, pero nada obligaba a mirarlo: una libreta llevada en euros,
@@ -189,13 +238,13 @@ export function ImportFlow({
   // Ahora nacen sin moneda y esto bloquea la confirmación. Un clic en "Todo en
   // USD/EUR" lo resuelve para la tanda entera, que es el camino normal; el
   // selector por fila sigue ahí para la libreta que mezcla.
-  const missingCurrency = showCurrency && reviewRows.some((r) => !r.currency);
+  const missingCurrency = showCurrency && filas.some((r) => !r.currency);
 
   // Cuál de las dos monedas marca el radio. Sale de las filas y no de un
   // estado aparte: las filas son la verdad y se pueden cambiar de una en una.
   // Si todas coinciden, esa; si la libreta mezcla —o si todavía no se ha
   // elegido, que es todas en null—, ninguna.
-  const monedasEnUso = new Set(reviewRows.map((r) => r.currency));
+  const monedasEnUso = new Set(filas.map((r) => r.currency));
   const monedaDeLaLibreta = monedasEnUso.size === 1 ? [...monedasEnUso][0] : null;
 
   // Una sola definición de "no se puede guardar todavía", porque ahora hay DOS
@@ -203,10 +252,15 @@ export function ImportFlow({
   // sería un botón que guarda una tanda que el otro considera incompleta.
   const noSePuedeConfirmar =
     confirming ||
-    reviewRows.length === 0 ||
+    filas.length === 0 ||
     missingDocumentId ||
     missingSharedName ||
-    missingCurrency;
+    missingCurrency ||
+    // CT-22. Bloquea igual que una cédula que falta, y por el mismo motivo: las
+    // dos respuestas se equivocan en silencio y en direcciones opuestas —una
+    // funde dos personas, la otra parte el historial de una—, así que no puede
+    // haber una marcada por defecto ni pasarse de largo.
+    sinDecidir;
 
   // Si estamos en el navegador. `useSyncExternalStore` y no un efecto: el
   // portal necesita un nodo que solo existe tras montar, y poner ese
@@ -292,10 +346,13 @@ export function ImportFlow({
 
   async function handleConfirm() {
     if (guardia()) return;
-    if (reviewRows.length === 0) return;
+    if (filas.length === 0) return;
     setConfirming(true);
     try {
-      const rows: ImportRow[] = reviewRows.map((r) => ({
+      const rows: ImportRow[] = filas.map((r) => ({
+        // CT-22: `filas` ya aplicó la decisión, así que con "es otra persona"
+        // esto llega en null y se crea un cliente nuevo — que es lo que la
+        // versión anterior nunca permitió decir.
         client_id: r.matched_client_id,
         client_name: r.client_name,
         type: r.type,
@@ -310,7 +367,11 @@ export function ImportFlow({
         // La cuenta pausada se para antes de guardar nada, asi que aqui el
         // "ya se guardaron N" seria mentira. Lo dice el dialogo y ya.
         if (!avisarCuentaPausada(result.error)) {
-          toast.error(result.error, { description: `${result.imported} movimientos ya se guardaron.` });
+          // Ya no dice "N movimientos ya se guardaron". Desde la migración 073
+          // la libreta entra entera o no entra, así que ese número es SIEMPRE
+          // cero — y la frase que importa es justo la contraria: que se puede
+          // reintentar sin duplicar nada.
+          toast.error(result.error, { description: "No se guardó nada, puedes intentarlo otra vez." });
         }
       } else {
         toast.success(`${result.imported} movimientos importados.`);
@@ -335,8 +396,8 @@ export function ImportFlow({
         {ranuraCabecera
           ? createPortal(
               <ConfirmarImportacion
-                cuantas={reviewRows.length}
-                filas={reviewRows}
+                cuantas={filas.length}
+                filas={filas}
                 rateContext={rateContext}
                 deshabilitado={noSePuedeConfirmar}
                 guardando={confirming}
@@ -444,9 +505,23 @@ export function ImportFlow({
             </p>
           </div>
         ) : null}
+        {duplicados.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {duplicados.map((c) => (
+              <ClienteDuplicado
+                key={c.nameKey}
+                nombreEnLaLibreta={c.name}
+                candidato={c.candidato!}
+                decision={decisiones[c.nameKey]}
+                onDecidir={(d) => setDecisiones((prev) => ({ ...prev, [c.nameKey]: d }))}
+              />
+            ))}
+          </div>
+        ) : null}
+
         <ImportReviewTable
               country={country}
-          rows={reviewRows}
+          rows={filas}
           onUpdate={updateMovement}
           onRemove={removeMovement}
           existingClients={existingClients}
@@ -465,6 +540,11 @@ export function ImportFlow({
               ? "Falta la cédula/documento del cliente — complétala antes de continuar."
               : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."}
           </p>
+        ) : sinDecidir ? (
+          <p className="text-sm text-destructive">
+            Dinos si {duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"}{" "}
+            la misma persona que ya tienes, o alguien distinto.
+          </p>
         ) : missingCurrency ? (
           <p className="text-sm text-destructive">
             Elige la moneda de la libreta antes de continuar.
@@ -482,8 +562,8 @@ export function ImportFlow({
             Volver
           </Button>
           <ConfirmarImportacion
-            cuantas={reviewRows.length}
-            filas={reviewRows}
+            cuantas={filas.length}
+            filas={filas}
             rateContext={rateContext}
             deshabilitado={noSePuedeConfirmar}
             guardando={confirming}
