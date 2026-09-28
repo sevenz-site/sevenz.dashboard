@@ -69,16 +69,60 @@ class TimeoutGeminiError extends Error {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// UNA CADENA DE MODELOS, Y POR QUÉ
+//
+// La capa gratuita de Gemini limita a 20 peticiones AL DÍA por proyecto y
+// **por modelo** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, medido
+// el 2026-09-28 leyendo el cuerpo del 429). Veinte, para todos los dueños de
+// la plataforma juntos. Cuando se agota, ningún reintento sirve: no se repone
+// hasta el día siguiente, aunque el error diga "reintenta en 30s" —eso es el
+// respiro por minuto, no la cuota.
+//
+// Como el cubo es POR MODELO, pasar al siguiente da un cubo nuevo. Cuatro
+// modelos distintos ⇒ hasta 80 al día en vez de 20.
+//
+// LO QUE ESTO NO ES: la solución. 80 fotos diarias entre todos los dueños
+// sigue sin ser un producto — una libreta de seis páginas se lleva el 7,5% del
+// día de la plataforma entera. Lo que quita el techo es activar la facturación
+// en Gemini. Esto compra margen mientras tanto, y resistencia a que un modelo
+// concreto esté caído, que es un problema distinto y permanente.
+//
+// VERSIONES FIJADAS, SIN ALIAS. `gemini-flash-lite-latest` existe y responde,
+// pero apunta a lo que Google decida y se mueve sin avisar. Además fue
+// justamente el que en la prueba del 2026-09-28 registró como FIADO un abono
+// de 19 —el saldo bajaba de 102,5 a 83,5 y él anotó una deuda subiendo—, así
+// que no entra. Un alias que cambia de calidad por debajo es la clase de fallo
+// que aparece un martes sin que nadie haya tocado nada.
+//
+// EL ORDEN ES POR CALIDAD, NO POR DISPONIBILIDAD. El primero es el que se
+// eligió para producción; el segundo es el único respaldo medido contra una
+// libreta real (23 movimientos, direcciones correctas, 10,5s). Los dos últimos
+// no se pudieron medir —503 y timeout el día de la prueba— y por eso van al
+// final y marcados.
+const MODELOS = [
+  { nombre: "gemini-3-flash-preview", medido: true },
+  { nombre: "gemini-3.1-flash-lite", medido: true },
+  { nombre: "gemini-3.6-flash", medido: false },
+  { nombre: "gemini-3.5-flash-lite", medido: false },
+] as const;
+
 const PRESUPUESTO_MS = 50_000;
 // Lo máximo que se le espera a UN intento. El resto del presupuesto queda para
 // los siguientes.
-const INTENTO_MAX_MS = 20_000;
+// 15s y no 20: con 20 solo caben DOS modelos en el presupuesto, y la cadena
+// existe justamente para probar varios. Una lectura sana tarda 10,5s medidos
+// contra una libreta real, así que 15 deja un 40% de margen y permite tres
+// oportunidades en vez de dos.
+const INTENTO_MAX_MS = 15_000;
 // Por debajo de esto no se empieza un intento: arrancar uno que no puede
 // terminar gasta una llamada a Gemini y el turno del limitador para nada, y
 // acaba igual en un error, solo que más tarde.
 const MINIMO_PARA_INTENTAR_MS = 8_000;
 const SPACING_BETWEEN_CALLS_MS = 4_000;
-const MAX_INTENTOS = 3;
+// Ya no hay un número de intentos: hay una CADENA. Se prueba cada modelo una
+// vez, en orden, mientras quede presupuesto. Repetir el mismo no tenía sentido
+// contra una cuota diaria, que es lo que de verdad falla.
 // Más cortas que antes (eran 5s y 10s) porque ahora salen del mismo bolsillo
 // que los intentos.
 const ESPERAS_MS = [2_000, 4_000];
@@ -126,7 +170,7 @@ async function waitForGlobalSlot(supabase: SupabaseServerClient, spacingMs: numb
 // Turns the model's raw JSON text into validated, typed movements. Shared by
 // every provider below since they all end up with the same "{"movements":
 // [...]}"-shaped text response.
-function parseExtractionResponse(raw: string): ExtractedMovement[] {
+function parseExtractionResponse(raw: string, degradarConfianza = false): ExtractedMovement[] {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
 
   let parsed: { movements?: unknown };
@@ -153,7 +197,18 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
       amount: Number(m.amount) || 0,
       description: typeof m.description === "string" ? m.description : null,
       read_balance: typeof m.read_balance === "number" ? m.read_balance : null,
-      confidence: m.confidence === "low" ? "low" : "high",
+      // SOLO "high" ES ALTA. Antes esto era `=== "low" ? "low" : "high"`, o sea
+      // que cualquier otra cosa entraba como fiable — y los modelos devuelven
+      // otras cosas: en la prueba del 2026-09-28 uno contestó "medium" y esa
+      // línea se guardó como alta. Una línea que el propio modelo marcó como
+      // dudosa llegaba a la revisión sin señalar.
+      //
+      // `degradarConfianza` baja TODAS las filas de un modelo de respaldo no
+      // medido. Un modelo que lee peor no produce "ninguna importación": produce
+      // una importación equivocada, y el error de DIRECCIÓN —un abono anotado
+      // como fiado— es el más difícil de ver porque el monto se lee bien. Así
+      // al menos la pantalla las señala sola.
+      confidence: degradarConfianza || m.confidence !== "high" ? "low" : "high",
       document_id: null,
       // Both filled in by the owner during review, never read from the photo.
       // The review screen seeds this to USD for a VE owner and leaves it null
@@ -173,6 +228,9 @@ async function extractFromImageViaGemini(
   // Lo que le queda de presupuesto a ESTE intento, no una constante: con dos
   // intentos por delante no se le puede dar a uno todo el tiempo.
   timeoutMs: number,
+  modelo: string,
+  // Un respaldo no medido marca sus filas como dudosas. Ver `parseExtractionResponse`.
+  degradarConfianza: boolean,
 ): Promise<ExtractedMovement[]> {
   // trim() because a trailing newline survives a paste into Vercel's env
   // editor and would previously have been interpolated straight into the URL.
@@ -197,7 +255,7 @@ async function extractFromImageViaGemini(
 
   await waitForGlobalSlot(supabase, SPACING_BETWEEN_CALLS_MS);
 
-  const model = "gemini-3-flash-preview";
+  const model = modelo;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -267,39 +325,67 @@ async function extractFromImageViaGemini(
 
   const payload = await response.json();
   const raw: string = payload?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  return parseExtractionResponse(raw);
+  return parseExtractionResponse(raw, degradarConfianza);
 }
+
+export type ResultadoExtraccion = {
+  movements: ExtractedMovement[];
+  // Qué modelo contestó de verdad. Sale en la respuesta y en el log: sin esto,
+  // "a veces lee peor" es una sospecha que nadie puede comprobar.
+  modelo: string;
+  // True si contestó un respaldo no medido, o sea que las filas vienen
+  // marcadas como dudosas a propósito.
+  degradado: boolean;
+};
 
 async function extractFromImageViaGeminiWithRetry(
   supabase: SupabaseServerClient,
   dataUrl: string,
-): Promise<ExtractedMovement[]> {
+): Promise<ResultadoExtraccion> {
   const arranque = Date.now();
   const queda = () => PRESUPUESTO_MS - (Date.now() - arranque);
   let ultimo: unknown = null;
 
-  for (let intento = 0; intento < MAX_INTENTOS; intento++) {
+  // Se recorre la CADENA, no el mismo modelo N veces. Insistir con uno al que
+  // se le acabó la cuota del día no puede funcionar: no se repone hasta mañana.
+  // El siguiente tiene su propio cubo.
+  for (const { nombre, medido } of MODELOS) {
     // No se empieza un intento que no puede terminar: gastaría una llamada a
     // Gemini y el turno del limitador compartido para acabar igual en un error,
     // solo que más tarde y habiéndoselo quitado a otro dueño.
-    const disponible = queda();
+    // El espaciado del limitador compartido se descuenta ANTES de decidir. Se
+    // paga sí o sí dentro del intento (`waitForGlobalSlot`), así que contarlo
+    // como tiempo disponible hacía que el último modelo arrancara creyendo
+    // tener 8s cuando en realidad le quedaban 4. Medido al probar la cadena.
+    const disponible = queda() - SPACING_BETWEEN_CALLS_MS;
     if (disponible < MINIMO_PARA_INTENTAR_MS) break;
 
     try {
-      return await extractFromImageViaGemini(
+      const movements = await extractFromImageViaGemini(
         supabase,
         dataUrl,
         Math.min(INTENTO_MAX_MS, disponible),
+        nombre,
+        !medido,
       );
+      if (nombre !== MODELOS[0].nombre) {
+        console.warn(`[extract] respondió el respaldo ${nombre} (medido=${medido})`);
+      }
+      return { movements, modelo: nombre, degradado: !medido };
     } catch (error) {
       ultimo = error;
       const reintentable =
         error instanceof TransientGeminiError || error instanceof TimeoutGeminiError;
-      // Una clave mal puesta o un formato inválido no mejoran esperando.
+      // Una clave mal puesta o un formato inválido no mejoran cambiando de
+      // modelo: fallarían igual en los cuatro y gastarían el presupuesto.
       if (!reintentable) throw error;
+      console.warn(`[extract] ${nombre} falló (${(error as Error).message}); probando el siguiente`);
 
-      const espera = ESPERAS_MS[intento] ?? ESPERAS_MS[ESPERAS_MS.length - 1];
-      if (queda() - espera < MINIMO_PARA_INTENTAR_MS) break;
+      // La espera es entre modelos y sale del mismo presupuesto. Corta, porque
+      // aquí no se está esperando a que el otro se recupere: se está yendo a
+      // otro sitio.
+      const espera = ESPERAS_MS[0];
+      if (queda() - espera - SPACING_BETWEEN_CALLS_MS < MINIMO_PARA_INTENTAR_MS) break;
       await sleep(espera);
     }
   }
@@ -369,7 +455,12 @@ async function extractFromImageViaOpenRouter(dataUrl: string): Promise<Extracted
   return parseExtractionResponse(raw);
 }
 
-// Swap this one line to switch providers — both implementations stay ready.
+// OJO: las dos implementaciones YA NO devuelven lo mismo. La de Gemini
+// devuelve `ResultadoExtraccion` —con el modelo que contestó y si venía
+// degradado—, y la de OpenRouter sigue devolviendo solo el array. Cambiar esta
+// línea sin adaptar la de OpenRouter rompe el handler. Se deja anotado aquí y
+// no se "arregla" de paso: OpenRouter está aparcado y tocarlo a ciegas, sin
+// poder probarlo, es cómo se cuela un fallo en un camino que nadie ejecuta.
 const extractFromImage = extractFromImageViaGeminiWithRetry;
 void extractFromImageViaOpenRouter; // keep it referenced so lint doesn't flag it as unused
 
@@ -396,8 +487,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const movements = await extractFromImage(supabase, dataUrl);
-    return NextResponse.json({ movements });
+    const { movements, modelo, degradado } = await extractFromImage(supabase, dataUrl);
+    return NextResponse.json({ movements, modelo, degradado });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error extrayendo la libreta.";
     return NextResponse.json({ error: message }, { status: 502 });
