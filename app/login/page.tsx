@@ -42,7 +42,7 @@ export default function LoginPage() {
         <CardHeader>
           <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
           <CardTitle className="text-xl">Controla el fiado de tu bodega o comercio</CardTitle>
-          <CardDescription>Entra a tu cuenta para ver tu cartera.</CardDescription>
+          <CardDescription>Entra a tu cuenta para ver lo que te deben.</CardDescription>
         </CardHeader>
         <CardContent>
           <Suspense fallback={null}>

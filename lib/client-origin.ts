@@ -1,5 +1,11 @@
 // Which list a client's screen was opened from, carried as `?from=` so the
-// back arrow returns there instead of always to Cartera.
+// back arrow returns there instead of always to Inicio.
+//
+// LAS CLAVES NO SE RENOMBRAN AUNQUE LA PANTALLA SÍ. `cartera` viaja en la URL
+// como `?from=cartera` y llega a Mixpanel como `source`, así que cambiarla
+// partiría en dos la serie histórica de "¿desde dónde abren la ficha de un
+// cliente?" y dejaría sin destino cualquier enlace que alguien tenga abierto.
+// Solo cambia la etiqueta, que es lo único que se lee.
 //
 // A query parameter rather than router history or a stored "last list": the
 // page is a server component, so it can read this while rendering and emit the
@@ -8,7 +14,7 @@
 // been fewer characters and wrong: it walks the browser's stack, so it also
 // undoes an in-page navigation and breaks entirely on a link opened directly.
 export const CLIENT_ORIGINS = {
-  cartera: { href: "/dashboard", label: "Volver a Cartera" },
+  cartera: { href: "/dashboard", label: "Volver a Inicio" },
   clientes: { href: "/clients", label: "Volver a Clientes" },
   malas_pagas: { href: "/malas-pagas", label: "Volver a Malas pagas" },
   papelera: { href: "/papelera", label: "Volver a Papelera" },

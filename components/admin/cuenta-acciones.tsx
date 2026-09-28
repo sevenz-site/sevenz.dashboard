@@ -68,7 +68,7 @@ function Bloquear({ cuenta }: { cuenta: Cuenta }) {
   return (
     <DialogoDeAccion
       titulo={`Bloquear a ${cuenta.business_name}`}
-      descripcion="Deja de poder fiar, abonar, crear clientes e importar. Sigue viendo su cartera y el enlace de sus clientes sigue funcionando."
+      descripcion="Deja de poder fiar, abonar, crear clientes y subir libretas. Sigue viendo lo que le deben y el enlace de sus clientes sigue funcionando."
       disparador={
         <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
           <Ban className="size-4" />

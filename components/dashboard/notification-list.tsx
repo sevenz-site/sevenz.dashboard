@@ -171,7 +171,7 @@ function ClientHideRow({
       return;
     }
     onRestored(n.clientId);
-    toast.success(`${n.clientName} volvió a tu cartera`);
+    toast.success(`${n.clientName} volvió a tus clientes`);
     router.refresh();
   }
 

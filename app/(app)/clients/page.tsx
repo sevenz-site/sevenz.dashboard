@@ -76,7 +76,7 @@ export default async function ClientsPage() {
           up, where the real header returns. */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Cartera">
+          <Link href="/dashboard" aria-label="Volver a Inicio">
             <ChevronLeft className="size-5" />
           </Link>
         </Button>

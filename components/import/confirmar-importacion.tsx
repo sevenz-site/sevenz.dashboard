@@ -17,7 +17,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// "Confirmar e importar", con su diálogo.
+// "Guardar todo", con su diálogo. Se llamaba "Confirmar e importar" hasta
+// que la función pasó a llamarse "Subir libreta" el 2026-09-28: el verbo
+// "importar" ya no aparece en ningún sitio que lea el dueño.
 //
 // Vive aparte porque se pinta DOS VECES en la misma pantalla: al final de la
 // revisión, donde estaba siempre, y arriba en la cabecera del teléfono, para
@@ -65,29 +67,28 @@ export function ConfirmarImportacion({
               <Loader2 className="size-4 animate-spin" /> Guardando...
             </>
           ) : (
-            `Confirmar e importar (${cuantas})`
+            `Guardar todo (${cuantas})`
           )}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            ¿Importar {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}?
+            ¿Guardar {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Asegúrate de haber verificado los datos importados del cliente, así como montos y
-            moneda.
+            Asegúrate de haber verificado el cliente de cada línea, y sus montos y moneda.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {/* El resumen va FUERA de AlertDialogDescription: ese componente monta
             un <p>, y estas son tarjetas y una lista. Un <div> dentro de un <p>
             es HTML inválido — el navegador cierra el párrafo por su cuenta y
             React se queja en hidratación. Mismo caso que los tres pasos en la
-            hoja de importar. */}
+            hoja de Subir libreta. */}
         <ResumenImportacion rows={filas} rateContext={rateContext} />
         <AlertDialogFooter>
           <AlertDialogCancel>Volver a revisar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Confirmar importación</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm}>Guardar</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

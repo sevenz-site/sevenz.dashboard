@@ -14,7 +14,13 @@ import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
-// "Importar", al lado del título de Cartera.
+// "Subir libreta", al lado del título de Por cobrar en Inicio.
+//
+// El archivo y el componente siguen llamándose `importar-cartera`. La función
+// se renombró de cara al dueño el 2026-09-28; el nombre interno no, porque
+// CLAUDE.md dice que los nombres existentes no se renombran y convertir un
+// cambio de textos en un refactor de imports es cómo se cuelan los errores.
+// Está anotado como pendiente aparte, y cuando se haga irá en inglés.
 //
 // LO QUE ES Y LO QUE NO ES. Es un lanzador: elige las fotos, las pone a
 // procesar y manda a /import, donde ya vive la revisión. NO es una segunda
@@ -30,7 +36,7 @@ import { PasosImportar } from "@/components/dashboard/pasos-importar";
 export function ImportarCartera({
   variant = "outline",
 }: {
-  // "outline" en Cartera, donde importar es una de las dos acciones de la
+  // "outline" en Inicio, donde subir la libreta es una de las dos acciones de la
   // sección y compite con "Agregar movimiento".
   //
   // "responsive" en las cabeceras de Clientes, Malas pagas y Papelera: sin
@@ -72,13 +78,13 @@ export function ImportarCartera({
             if (tour.step === 0) tour.advance();
           }}
         >
-          Importar
+          Subir libreta
           <Upload className="size-4" />
         </Button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[90dvh] rounded-t-xl">
         <SheetHeader>
-          <SheetTitle>Importar cartera</SheetTitle>
+          <SheetTitle>Subir libreta</SheetTitle>
           {/* asChild: SheetDescription monta un <p>, y un <ol> dentro de un
               <p> es HTML inválido — el navegador cierra el párrafo por su
               cuenta y React se queja en hidratación. Así el <ol> ES la
@@ -102,13 +108,13 @@ export function ImportarCartera({
             if (tour.step === 0) tour.advance();
           }}
         >
-          Importar
+          Subir libreta
           <Upload className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-80 flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h3 className="font-semibold">Importar cartera</h3>
+          <h3 className="font-semibold">Subir libreta</h3>
           <PasosImportar />
         </div>
         <Controles onDone={() => setOpen(false)} />

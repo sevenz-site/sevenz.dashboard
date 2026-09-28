@@ -16,8 +16,8 @@ const MOBILE_STEP_ORDER: TourStep[] = [0, 1];
 const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: string }> = {
   0: {
     selector: '[data-tour="import-button"]',
-    title: "Importa tus cuentas del fiado",
-    body: "Toma una foto de las cuentas de tu fiado y selecciona esta opción para subirlas de manera masiva.",
+    title: "Sube tu libreta",
+    body: "Toma una foto de tu libreta del fiado y toca aquí. Sevenz lee los nombres y los montos, y tú revisas antes de guardar.",
   },
   1: {
     selector: '[data-tour="new-client-button"]',

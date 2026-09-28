@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Loader2, Plus, Users, Wallet } from "lucide-react";
+import { Bell, Home, Loader2, Plus, Users } from "lucide-react";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
@@ -17,7 +17,7 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // whole bar anyway (see onClientDetail below), so there is no case where a
 // child route should light up its parent here.
 const DESTINATIONS = [
-  { href: "/dashboard", label: "Cartera", icon: Wallet },
+  { href: "/dashboard", label: "Inicio", icon: Home },
   { href: "/clients", label: "Clientes", icon: Users },
   { href: "/notificaciones", label: "Notificaciones", icon: Bell },
 ] as const;

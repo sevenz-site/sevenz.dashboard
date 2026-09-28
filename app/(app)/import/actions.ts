@@ -54,7 +54,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   if (!(await puedeEscribir(supabase, user.id))) {
     return { error: MENSAJE_CUENTA_PAUSADA, imported: 0 };
   }
-  if (rows.length === 0) return { error: "No hay movimientos para importar.", imported: 0 };
+  if (rows.length === 0) return { error: "No hay movimientos para subir.", imported: 0 };
 
   // Resolved once per distinct currency in the batch, not once per row.
   //
@@ -133,7 +133,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   if (hiddenClientNames.size > 0) {
     const names = [...hiddenClientNames.values()].join(", ");
     return {
-      error: `${names} está en la papelera. Restáuralo desde Papelera para continuar con esta importación.`,
+      error: `${names} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`,
       imported: 0,
     };
   }

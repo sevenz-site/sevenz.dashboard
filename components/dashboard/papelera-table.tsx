@@ -76,7 +76,7 @@ export function PapeleraTable({
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
-    toast.success(`${row.name} volvió a tu cartera`);
+    toast.success(`${row.name} volvió a tus clientes`);
     track("Client Restored", { client_id: row.client_id, source: "papelera" });
     router.refresh();
   }

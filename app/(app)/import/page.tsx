@@ -70,12 +70,12 @@ export default async function ImportPage() {
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
         {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
-            manda aquí su botón de "Confirmar e importar" por portal — ver
+            manda aquí su botón de "Guardar todo" por portal — ver
             components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la
             derecha; con la ranura vacía no ocupa nada. */}
         <div id={RANURA_ACCION_CABECERA} className="ml-auto flex items-center" />
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight">Importar cartera</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
       {ownerCountry ? (
         <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} rateContext={rateContext} />
       ) : (
