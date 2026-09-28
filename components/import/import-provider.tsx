@@ -9,6 +9,32 @@ import type { ImportUsage } from "@/lib/import-usage";
 import { recordImportNotification } from "@/app/(app)/actions";
 import { track } from "@/lib/mixpanel";
 
+// "Failed to fetch" NO es un mensaje para un tendero.
+//
+// Lo vio el usuario el 2026-09-28 subiendo una libreta desde el teléfono, tres
+// veces seguidas: el error crudo de `fetch`, en inglés, en mitad de la pantalla.
+// Venía de pasar `error.message` directo a la interfaz, que funciona para los
+// errores que escribimos nosotros —ya están en castellano y pensados para él— y
+// falla justo para los que no.
+//
+// `fetch` lanza un `TypeError` cuando la petición NO LLEGA A TENER RESPUESTA:
+// se cayó la red, o el servidor cerró la conexión sin contestar. Lo segundo es
+// lo que pasa cuando la función tarda más de lo que el plan permite y la
+// plataforma la mata a mitad — ver la nota de `REQUEST_TIMEOUT_MS` en
+// app/api/extract/route.ts. Desde el teléfono las dos cosas se ven igual, así
+// que el mensaje nombra las dos y dice qué hacer.
+//
+// Los errores que sí escribimos nosotros pasan tal cual: `data.error` viene del
+// servidor ya redactado para el dueño ("El servicio de lectura está
+// sobrecargado ahora mismo", "Gemini tardó más de 55s").
+function mensajeDeFalloAlLeer(error: unknown): string {
+  if (error instanceof TypeError) {
+    return "Se cortó la conexión mientras leíamos la foto. Puede ser tu internet, o que la lectura tardara demasiado. Inténtalo otra vez.";
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "No pudimos leer la foto. Inténtalo otra vez.";
+}
+
 export function ImportProvider({
   initialUsage,
   children,
@@ -90,7 +116,11 @@ export function ImportProvider({
                 : prev,
             );
           } catch (error) {
-            const message = error instanceof Error ? error.message : "Error al procesar la foto.";
+            const message = mensajeDeFalloAlLeer(error);
+            // El detalle técnico, al log del navegador y no a la pantalla. Es
+            // lo que hace falta para diagnosticar y lo que no significa nada
+            // para quien está intentando subir su libreta.
+            console.error("extract:", error);
             updateJob(job.id, { status: "error", error: message });
             track("Import Photo Failed", { error: message });
             void recordImportNotification({
