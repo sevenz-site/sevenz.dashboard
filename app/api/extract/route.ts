@@ -5,7 +5,11 @@ import type { ExtractedMovement } from "@/lib/types";
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+// 60 y no 90: el plan Hobby no concede 90, así que declararlo no daba más
+// tiempo, solo una cifra falsa en la que el resto del archivo se apoyaba. Es el
+// máximo que el plan da, y `PRESUPUESTO_MS` se queda por debajo a propósito —
+// ver la nota del presupuesto.
+export const maxDuration = 60;
 
 // Gemini's free tier is rate- and token-limited, and this key is SHARED
 // across every owner on the platform — two different owners importing a
@@ -31,10 +35,53 @@ class TransientGeminiError extends Error {
     this.name = "TransientGeminiError";
   }
 }
-const REQUEST_TIMEOUT_MS = 55_000;
+// ─────────────────────────────────────────────────────────────────────────
+// UN PRESUPUESTO PARA TODA LA PETICIÓN, NO UN TIEMPO POR INTENTO
+//
+// Antes esto era un timeout de 55s por llamada y hasta 2 reintentos con esperas
+// de 5s y 10s. El peor caso sumaba 55+5+55+10+55 = 180 SEGUNDOS, contra un
+// `maxDuration` declarado de 90 que además el plan Hobby nunca concedió. O sea
+// que la función no podía cumplir ni su propio límite.
+//
+// Lo que eso producía, y lo reportó el usuario el 2026-09-28 subiendo una
+// libreta desde el teléfono tres veces seguidas: la plataforma mataba la
+// función a mitad, el navegador no recibía NINGUNA respuesta, y `fetch` lanzaba
+// un TypeError que llegaba a la pantalla como "Failed to fetch".
+//
+// LA REGLA QUE ESTO IMPONE: agotamos el tiempo NOSOTROS antes que la
+// plataforma. Un timeout propio devuelve una frase que el dueño puede leer y
+// una foto que puede reintentar; uno de la plataforma devuelve una conexión
+// muerta y un error en inglés.
+//
+// Y de paso da lo que se pedía —más reintentos—, pero por el otro lado: 55s no
+// es lo que tarda Gemini, es cuánto se le espera. Una lectura sana tarda entre
+// 5 y 15 segundos. Con intentos cortos caben TRES en el mismo presupuesto en
+// vez de UNO largo, y contra un 429 —que es lo que devuelve ahora— tres
+// intentos cortos valen mucho más que uno eterno.
+// Un timeout ya NO es definitivo: con presupuesto de sobra se reintenta, igual
+// que un 429. Antes no se reintentaba nunca, y era la decisión correcta cuando
+// un intento se comía 55 de los 90 segundos — no quedaba sitio. Con intentos de
+// 20s sí queda, y una lectura que tardó demasiado suele ir bien a la segunda.
+class TimeoutGeminiError extends Error {
+  constructor(readonly msEsperados: number) {
+    super(`Gemini tardó más de ${Math.round(msEsperados / 1000)}s en responder.`);
+    this.name = "TimeoutGeminiError";
+  }
+}
+
+const PRESUPUESTO_MS = 50_000;
+// Lo máximo que se le espera a UN intento. El resto del presupuesto queda para
+// los siguientes.
+const INTENTO_MAX_MS = 20_000;
+// Por debajo de esto no se empieza un intento: arrancar uno que no puede
+// terminar gasta una llamada a Gemini y el turno del limitador para nada, y
+// acaba igual en un error, solo que más tarde.
+const MINIMO_PARA_INTENTAR_MS = 8_000;
 const SPACING_BETWEEN_CALLS_MS = 4_000;
-const MAX_RETRIES_ON_RATE_LIMIT = 2;
-const RETRY_BACKOFF_MS = [5_000, 10_000];
+const MAX_INTENTOS = 3;
+// Más cortas que antes (eran 5s y 10s) porque ahora salen del mismo bolsillo
+// que los intentos.
+const ESPERAS_MS = [2_000, 4_000];
 
 const EXTRACTION_PROMPT = `Eres un asistente que digitaliza la libreta de fiado de una tienda de barrio.
 Mira la foto de la página de la libreta y extrae cada movimiento que veas como una lista JSON.
@@ -123,6 +170,9 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
 async function extractFromImageViaGemini(
   supabase: SupabaseServerClient,
   dataUrl: string,
+  // Lo que le queda de presupuesto a ESTE intento, no una constante: con dos
+  // intentos por delante no se le puede dar a uno todo el tiempo.
+  timeoutMs: number,
 ): Promise<ExtractedMovement[]> {
   // trim() because a trailing newline survives a paste into Vercel's env
   // editor and would previously have been interpolated straight into the URL.
@@ -149,7 +199,7 @@ async function extractFromImageViaGemini(
 
   const model = "gemini-3-flash-preview";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -180,7 +230,7 @@ async function extractFromImageViaGemini(
     );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Gemini tardó más de ${REQUEST_TIMEOUT_MS / 1000}s en responder.`);
+      throw new TimeoutGeminiError(timeoutMs);
     }
     throw error;
   } finally {
@@ -224,25 +274,51 @@ async function extractFromImageViaGeminiWithRetry(
   supabase: SupabaseServerClient,
   dataUrl: string,
 ): Promise<ExtractedMovement[]> {
-  for (let attempt = 0; ; attempt++) {
+  const arranque = Date.now();
+  const queda = () => PRESUPUESTO_MS - (Date.now() - arranque);
+  let ultimo: unknown = null;
+
+  for (let intento = 0; intento < MAX_INTENTOS; intento++) {
+    // No se empieza un intento que no puede terminar: gastaría una llamada a
+    // Gemini y el turno del limitador compartido para acabar igual en un error,
+    // solo que más tarde y habiéndoselo quitado a otro dueño.
+    const disponible = queda();
+    if (disponible < MINIMO_PARA_INTENTAR_MS) break;
+
     try {
-      return await extractFromImageViaGemini(supabase, dataUrl);
+      return await extractFromImageViaGemini(
+        supabase,
+        dataUrl,
+        Math.min(INTENTO_MAX_MS, disponible),
+      );
     } catch (error) {
-      const transient = error instanceof TransientGeminiError ? error : null;
-      // A timeout is deliberately NOT retried. maxDuration is 90s and the
-      // per-call timeout is 55s, so a second attempt would be killed mid-flight
-      // and the owner would wait a minute and a half to be told nothing.
-      if (!transient || attempt >= MAX_RETRIES_ON_RATE_LIMIT) {
-        if (!transient) throw error;
-        throw new Error(
-          transient.status === 429
-            ? "Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto."
-            : "El servicio de lectura está sobrecargado ahora mismo. Intenta de nuevo en unos minutos.",
-        );
-      }
-      await sleep(RETRY_BACKOFF_MS[attempt] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
+      ultimo = error;
+      const reintentable =
+        error instanceof TransientGeminiError || error instanceof TimeoutGeminiError;
+      // Una clave mal puesta o un formato inválido no mejoran esperando.
+      if (!reintentable) throw error;
+
+      const espera = ESPERAS_MS[intento] ?? ESPERAS_MS[ESPERAS_MS.length - 1];
+      if (queda() - espera < MINIMO_PARA_INTENTAR_MS) break;
+      await sleep(espera);
     }
   }
+
+  // Se agotaron los intentos o el presupuesto. El mensaje sale del ÚLTIMO
+  // fallo, que es el que describe lo que está pasando ahora mismo.
+  if (ultimo instanceof TransientGeminiError) {
+    throw new Error(
+      ultimo.status === 429
+        ? "Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto."
+        : "El servicio de lectura está sobrecargado ahora mismo. Intenta de nuevo en unos minutos.",
+    );
+  }
+  if (ultimo instanceof TimeoutGeminiError) {
+    throw new Error(
+      "La lectura está tardando más de lo normal y no pudimos terminarla. Inténtalo otra vez.",
+    );
+  }
+  throw ultimo ?? new Error("No pudimos leer la foto. Inténtalo otra vez.");
 }
 
 // PARKED (not called right now, kept for when OpenRouter comes back into the
