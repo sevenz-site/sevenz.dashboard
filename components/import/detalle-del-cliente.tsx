@@ -1,14 +1,26 @@
 "use client";
 
-import { CircleAlert, Trash2, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { CircleAlert, Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { TipoButtons } from "@/components/dashboard/movement-currency-field";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { EditarMovimiento, fechaDeLaLibreta } from "@/components/import/editar-movimiento";
+import { CHIP, type EstadoTarjeta } from "@/components/import/revisar-clientes";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
@@ -19,101 +31,15 @@ import type { ClienteRevisado, LibroDelCliente, ReviewRow } from "@/lib/reconcil
 // ─────────────────────────────────────────────────────────────────────────
 // "REGISTRAR MOVIMIENTOS": el detalle de UN cliente
 //
-// Sustituye a `ImportReviewTable` dentro del panel. La tabla se reutilizó
-// mientras la lista por cliente se construía, y por eso funcionaba: sabe editar
-// monto, tipo, moneda, documento y WhatsApp. Lo que no sabe es ser el detalle de
-// una persona — enseña una columna "Cliente" repetida ocho veces con el mismo
-// nombre, una columna "Documento" con el mismo documento en cada fila, y se
-// desplaza de lado en un teléfono para llegar al monto.
-//
-// Aquí los datos del cliente se piden UNA vez arriba, y abajo va solo lo que de
-// verdad cambia de un renglón a otro: tipo, monto, detalle y —si la libreta
-// mezcla— la moneda de esa línea.
-//
-// POR QUÉ NO HAY BOTÓN "IMPORTAR" AQUÍ, aunque el mapa de pantallas lo dibuje.
-// Importar guarda la tanda COMPLETA, no este cliente: `confirmImport` recibe
-// todas las filas de todos los clientes y la migración 073 las mete en una sola
-// transacción. Un botón que diga "Importar" dentro de la ficha de Petronila y
-// guarde además los otros veintinueve clientes miente sobre su alcance, y el
-// error caro no es el de quien lee mal la etiqueta: es el de quien la lee bien.
-// Así que aquí el botón cierra, y el de importar es el de la lista — que además
-// está tapado mientras este panel está abierto, porque el panel es modal.
+// Los datos de la persona se piden UNA vez arriba; abajo, el historial, que es
+// una lista de renglones que se leen de un vistazo. Lo que se edita de un
+// movimiento —tipo, monto, moneda, descripción— vive en su propia hoja
+// (`EditarMovimiento`), porque una libreta de seis páginas son cuarenta
+// renglones y con cuatro campos abiertos en cada uno la pantalla mide metros.
 function importeDe(n: number, currency: LedgerCurrency | null): string {
   return currency ? formatDisplayCurrency(n, currency) : formatCurrency(n);
 }
 
-// El aviso de una línea concreta. Mismo reparto de colores que la lista: rojo
-// solo cuando la cuenta está mal de verdad; lo demás es ámbar, porque una
-// libreta a mano casi nunca trae el total escrito en cada renglón y pintar eso
-// de rojo deja la pantalla entera en rojo.
-function avisoDeLaFila(row: ReviewRow): { texto: string; rojo: boolean } | null {
-  if (row.review_reason === "no_cuadra") {
-    return {
-      rojo: true,
-      texto: `No cuadra: tu libreta dice ${importeDe(row.read_balance!, row.currency)} y con estos montos da ${importeDe(row.page_balance, row.currency)}.`,
-    };
-  }
-  if (row.review_reason === "lectura_dudosa") {
-    return { rojo: false, texto: "La IA no leyó esta línea con seguridad — revisa el monto." };
-  }
-  if (row.review_reason === "sin_saldo") {
-    return { rojo: false, texto: "Esta línea no traía un saldo escrito con el que comparar." };
-  }
-  return null;
-}
-
-// Las dos píldoras de moneda, con su NOMBRE y no solo la bandera.
-//
-// La primera versión ponía la bandera sola en las líneas, para que cupiera al
-// lado del monto. Rompía el patrón de toda la app —en el alta de movimiento, en
-// la cabecera de la cartera y en la modal, la moneda siempre se dice con la
-// palabra— y encima obligaba a saber que la bandera azul de doce estrellas es el
-// euro. Así que la palabra vuelve y lo que cede es el sitio: las píldoras bajan
-// a su propia fila, debajo del monto, donde tienen los 375px enteros.
-export function MonedaPildoras({
-  value,
-  onChange,
-  etiqueta = "Moneda",
-}: {
-  value: LedgerCurrency | null;
-  onChange: (v: LedgerCurrency) => void;
-  etiqueta?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <Label>{etiqueta}</Label>
-      <div className="flex flex-row flex-wrap gap-2">
-        {(
-          [
-            { moneda: "USD", nombre: "Dólares" },
-            { moneda: "EUR", nombre: "Euros" },
-          ] as const
-        ).map(({ moneda, nombre }) => (
-          <Button
-            key={moneda}
-            type="button"
-            variant={value === moneda ? "default" : "outline"}
-            size="sm"
-            className="rounded-full px-3.5"
-            aria-pressed={value === moneda}
-            onClick={() => onChange(moneda)}
-          >
-            <CurrencyFlagIcon currency={moneda} />
-            {nombre}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Los totales, UNO POR MONEDA y nunca sumados entre sí.
-//
-// Un $50 y un €20 son dos deudas independientes, no una deuda vista de dos
-// formas — la regla que sigue toda la app. Sumarlos daría "70" de nada, y el
-// número saldría plausible, que es lo que lo hace peligroso: nadie lo
-// cuestiona. Es el mismo motivo por el que `porCobrar()` manda "$50,00 y
-// €20,00" en vez de un número.
 export type EleccionDeTotal = "libreta" | "suma";
 
 // Lo que hay que recordar de una decisión ya tomada.
@@ -121,16 +47,27 @@ export type EleccionDeTotal = "libreta" | "suma";
 // Las dos cifras se guardan al decidir, no se vuelven a leer del libro: en
 // cuanto se elige "mi libreta" y entra la línea de ajuste, las cuentas cuadran
 // y `escrito`/`calculado` pasan a null — el libro ya no tiene desajuste que
-// contar. Sin guardarlas, el resumen decía "tu libreta dice $140 y estos montos
-// suman $140" y ofrecía "una línea de ajuste de $0,00". Visto en dev.
+// contar. Sin guardarlas, el bloque decía "tu libreta dice $140 y estos montos
+// suman $140" y ofrecía "un ajuste de $0,00". Visto en dev.
 export type DecisionDeTotal = {
   cual: EleccionDeTotal;
   escrito: number;
   calculado: number;
 };
 
-// El bloque que pregunta cuál de los dos números manda — o, si ya se respondió,
-// el que dice qué se decidió y deja cambiarlo.
+// Una entrada del historial: o una fila viva, o una que el dueño quitó y sigue
+// ahí en rojo para poder recuperarla. Se intercalan en el orden de la libreta,
+// que es el mismo en el que se leyeron.
+export type EntradaDelHistorial =
+  | { tipo: "fila"; fila: ReviewRow }
+  | { tipo: "eliminado"; mov: ExtractedMovement };
+
+// ── El desajuste, y cuál de los dos números manda ──────────────────────
+//
+// LOS DOS CHECKS SE QUEDAN SIEMPRE, también después de elegir. Si desaparecieran
+// al responder, la decisión quedaría tomada sin forma de verla ni de cambiarla,
+// y la línea de ajuste aparecería en el historial sin que nada en pantalla
+// explicara de dónde salió.
 function DecisionDelTotal({
   escrito,
   calculado,
@@ -144,84 +81,53 @@ function DecisionDelTotal({
   decidido: DecisionDeTotal | undefined;
   onElegir: (cual: EleccionDeTotal) => void;
 }) {
-  // Con una decisión tomada mandan SUS cifras, no las del libro de ahora.
   const esc = decidido ? decidido.escrito : escrito;
   const cal = decidido ? decidido.calculado : calculado;
   const diferencia = esc - cal;
 
-  if (decidido) {
-    return (
-      <div className="mt-1 flex flex-col gap-2 border-t pt-2">
-        <p className="text-sm">
-          {decidido.cual === "libreta" ? (
-            <>
-              Te quedaste con el total de tu libreta:{" "}
-              <strong>{importeDe(esc, currency)}</strong>. Agregamos la línea de ajuste de{" "}
-              {importeDe(Math.abs(diferencia), currency)} que ves arriba.
-            </>
-          ) : (
-            <>
-              Te quedaste con la suma de los montos:{" "}
-              <strong>{importeDe(cal, currency)}</strong>. Tu libreta decía{" "}
-              {importeDe(esc, currency)} y lo dejamos anotado.
-            </>
-          )}
-        </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="self-start"
-          onClick={() => onElegir(decidido.cual === "libreta" ? "suma" : "libreta")}
-        >
-          {decidido.cual === "libreta"
-            ? `Cambiar a ${importeDe(cal, currency)}`
-            : `Cambiar a ${importeDe(esc, currency)}`}
-        </Button>
-      </div>
-    );
-  }
+  const opciones = [
+    {
+      cual: "libreta" as const,
+      titulo: "Mi libreta subida",
+      importe: esc,
+      // Se dice ANTES de marcarlo lo que va a pasar, porque lo que pasa es que
+      // aparece un movimiento nuevo en la cuenta de una persona.
+      pie: `Agregaremos un movimiento por valor de ${importeDe(Math.abs(diferencia), currency)} para que cuadren las cuentas`,
+    },
+    {
+      cual: "suma" as const,
+      titulo: "La suma de Sevenz",
+      importe: cal,
+      pie: null,
+    },
+  ];
 
   return (
-    <div className="mt-1 flex flex-col gap-2 border-t pt-2">
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
       <p className="flex items-start gap-1.5 text-sm text-destructive">
         <CircleAlert className="mt-0.5 size-4 shrink-0" />
         <span>
-          Tu libreta dice <strong>{importeDe(esc, currency)}</strong> y estos montos suman{" "}
-          <strong>{importeDe(cal, currency)}</strong>. ¿Cuál es el bueno?
+          Tu libreta subida dice <strong>{importeDe(esc, currency)}</strong> para un total de{" "}
+          <strong>{importeDe(cal, currency)}</strong>. ¿Cuál es el correcto?
         </span>
       </p>
 
-      {(
-        [
-          {
-            cual: "libreta" as const,
-            titulo: `Mi libreta: ${importeDe(esc, currency)}`,
-            // Se dice ANTES de pulsarlo lo que va a pasar, porque lo que pasa es
-            // que aparece un movimiento nuevo en la cuenta de una persona. Un
-            // dato de dinero que sale de la nada, sin aviso, es exactamente lo
-            // que nadie quiere encontrarse tres meses después.
-            pie: `Agregamos una línea de ajuste de ${importeDe(Math.abs(diferencia), currency)} para que cuadre.`,
-          },
-          {
-            cual: "suma" as const,
-            titulo: `La suma de estos montos: ${importeDe(cal, currency)}`,
-            pie: "La libreta traía un error de cuentas. Lo dejamos anotado.",
-          },
-        ]
-      ).map((o) => (
+      {opciones.map((o) => (
         <label
           key={o.cual}
-          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-2.5"
+          className="flex cursor-pointer items-start gap-2.5 border-t pt-2 first-of-type:border-t-0 first-of-type:pt-0"
         >
           <Checkbox
-            checked={false}
+            checked={decidido?.cual === o.cual}
             onCheckedChange={(v) => v === true && onElegir(o.cual)}
             className="mt-0.5"
           />
-          <span className="flex flex-col gap-0.5">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-sm font-medium">{o.titulo}</span>
-            <span className="text-xs text-muted-foreground">{o.pie}</span>
+            {o.pie ? <span className="text-xs text-muted-foreground">{o.pie}</span> : null}
+          </span>
+          <span className="shrink-0 font-semibold tabular-nums">
+            {importeDe(o.importe, currency)}
           </span>
         </label>
       ))}
@@ -229,13 +135,14 @@ function DecisionDelTotal({
   );
 }
 
+// Los totales, UNO POR MONEDA y nunca sumados entre sí. Un $50 y un €20 son dos
+// deudas independientes; sumarlos daría "70" de nada, y el número saldría
+// plausible, que es lo que lo hace peligroso.
 function Totales({
   libros,
   decisiones,
 }: {
   libros: LibroDelCliente[];
-  // Por moneda, porque el desajuste es de un libro: la página puede cuadrar en
-  // dólares y no en euros, y son dos preguntas distintas.
   decisiones: Record<string, React.ComponentProps<typeof DecisionDelTotal> | undefined>;
 }) {
   return (
@@ -243,77 +150,129 @@ function Totales({
       {libros.map((l) => {
         const decision = decisiones[l.currency ?? "COP"];
         return (
-        <div key={l.currency ?? "COP"} className="flex flex-col gap-1 rounded-lg border p-3">
-          {/* La cabecera de la moneda solo aparece cuando hay más de un libro:
-              con uno solo, repetir "Dólares" encima de tres cifras que ya
-              llevan el símbolo es ruido. */}
-          {libros.length > 1 && l.currency ? (
-            <p className="flex items-center gap-1.5 text-sm font-medium">
-              <CurrencyFlagIcon currency={l.currency} className="size-4" />
-              {l.currency === "USD" ? "Dólares" : "Euros"}
-            </p>
-          ) : null}
+          <div key={l.currency ?? "COP"} className="flex flex-col gap-2">
+            {decision ? <DecisionDelTotal {...decision} /> : null}
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Ya debía</span>
-            <span className="tabular-nums">{importeDe(l.saldoPrevio, l.currency)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Esta libreta</span>
-            {/* Signo explícito y el importe en absoluto. Un `-` de los que mete
-                el formateador y un `+` puesto a mano quedaban con guiones
-                distintos en la misma tarjeta; y aquí el signo significa algo —
-                si esta página sube o baja la deuda—, así que se dice aparte. */}
-            <span className="tabular-nums">
-              {l.totalPagina >= 0 ? "+" : "-"}
-              {importeDe(Math.abs(l.totalPagina), l.currency)}
-            </span>
-          </div>
-          {/* EL NOMBRE DEL TOTAL DEPENDE DEL SIGNO, y no es un detalle de estilo.
-              "Queda debiendo -€30,00" es lo que salía, y un negativo ahí no
-              significa una deuda negativa: significa que el cliente pagó de más
-              y tiene saldo A FAVOR. El resto de la app ya lo dice así —"Debe",
-              "A favor", "Sin deuda"— y una pantalla que se inventa su propia
-              forma de decirlo obliga a traducir un signo mentalmente, justo
-              donde se está decidiendo sobre dinero. */}
-          <div className="flex items-center justify-between border-t pt-1 font-semibold">
-            <span>
-              {l.saldoFinal > 0 ? "Queda debiendo" : l.saldoFinal < 0 ? "Queda a favor" : "Queda sin deuda"}
-            </span>
-            <span className="tabular-nums">
-              {l.saldoFinal === 0 ? "" : importeDe(Math.abs(l.saldoFinal), l.currency)}
-            </span>
-          </div>
+            <div className="flex flex-col gap-1 rounded-lg border p-3">
+              {libros.length > 1 && l.currency ? (
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <CurrencyFlagIcon currency={l.currency} className="size-4" />
+                  {l.currency === "USD" ? "Dólares" : "Euros"}
+                </p>
+              ) : null}
 
-          {/* ── EL DESAJUSTE, Y CUÁL DE LOS DOS NÚMEROS MANDA ────────────
-              Antes esto era una frase y nada más: decía las dos cifras y
-              dejaba al dueño con el problema. Ahora se elige, porque solo él
-              sabe cuál es cierta — su libreta puede tener un error de suma, o
-              puede faltar un renglón que no salió en la foto.
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Debía en Sevenz</span>
+                <span className="tabular-nums">{importeDe(l.saldoPrevio, l.currency)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Subido desde libreta</span>
+                <span className="tabular-nums">
+                  {l.totalPagina >= 0 ? "+" : "-"}
+                  {importeDe(Math.abs(l.totalPagina), l.currency)}
+                </span>
+              </div>
+              {/* El nombre del total depende del signo: "Queda debiendo -€30,00"
+                  no es una deuda negativa, es que el cliente pagó de más. El
+                  resto de la app ya lo dice como "A favor". */}
+              <div className="flex items-center justify-between border-t pt-1 font-semibold">
+                <span>
+                  {l.saldoFinal > 0
+                    ? "Queda debiendo"
+                    : l.saldoFinal < 0
+                      ? "Queda a favor"
+                      : "Queda sin deuda"}
+                </span>
+                <span className="tabular-nums">
+                  {l.saldoFinal === 0 ? "" : importeDe(Math.abs(l.saldoFinal), l.currency)}
+                </span>
+              </div>
 
-              El bloque sigue visible DESPUÉS de elegir "mi libreta", aunque
-              entonces las cuentas ya cuadren y el estado sea `cuadra`: si
-              desapareciera, la decisión quedaría tomada sin forma de verla ni
-              de cambiarla, y la línea de ajuste aparecería en el historial sin
-              que nada en pantalla explicara de dónde salió. */}
-          {decision ? <DecisionDelTotal {...decision} /> : null}
-          {l.estado === "sin_verificar" ? (
-            <p className="flex items-start gap-1.5 pt-1 text-sm text-amber-700 dark:text-amber-400">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              Esta libreta no traía totales con los que comparar, así que esta cuenta no se pudo
-              verificar.
-            </p>
-          ) : null}
-        </div>
+              {l.estado === "sin_verificar" ? (
+                <p className="flex items-start gap-1.5 pt-1 text-sm text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                  Esta libreta no traía totales con los que comparar, así que esta cuenta no se
+                  pudo verificar.
+                </p>
+              ) : null}
+            </div>
+          </div>
         );
       })}
     </div>
   );
 }
 
+// Un renglón del historial. Se lee, no se edita: el lápiz abre la hoja donde sí.
+function FilaMovimiento({
+  fila,
+  onEditar,
+  onEliminar,
+}: {
+  fila: ReviewRow;
+  onEditar: () => void;
+  onEliminar: () => void;
+}) {
+  const fecha = fechaDeLaLibreta(fila.date);
+  const esCargo = fila.type === "charge";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-lg border p-3",
+        fila.review_reason === "no_cuadra"
+          ? "border-destructive/30 bg-destructive/5"
+          : fila.needs_review
+            ? "border-amber-300 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10"
+            : undefined,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="truncate text-sm font-medium">
+          {esCargo ? "Fiado" : "Abono"}
+          {fila.description ? ` · ${fila.description}` : ""}
+        </p>
+        {fecha ? <p className="text-xs text-muted-foreground">{fecha}</p> : null}
+      </div>
+
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-1 text-sm font-medium tabular-nums",
+          esCargo ? "text-destructive" : "text-money-in",
+        )}
+      >
+        {esCargo ? "+" : "-"}
+        {importeDe(fila.amount, fila.currency)}
+        {fila.currency ? <CurrencyFlagIcon currency={fila.currency} className="size-4" /> : null}
+      </span>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0"
+        aria-label="Editar este movimiento"
+        onClick={onEditar}
+      >
+        <Pencil className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0"
+        aria-label="Quitar este movimiento"
+        onClick={onEliminar}
+      >
+        <Trash2 className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function DetalleDelCliente({
   cliente,
-  filas,
+  estado,
+  entradas,
   country,
   showCurrency,
   clienteCompartido,
@@ -321,294 +280,275 @@ export function DetalleDelCliente({
   onToggleLinked,
   onUpdate,
   onRemove,
+  onRestaurar,
+  onEliminarCliente,
   onAplicarMoneda,
   decisionesDeTotal,
   onElegirTotal,
-  onListo,
+  accionSubir,
 }: {
   cliente: ClienteRevisado;
-  // Solo las filas de ESTE cliente.
-  filas: ReviewRow[];
+  estado: EstadoTarjeta;
+  // El historial en el orden de la libreta, con los quitados intercalados.
+  entradas: EntradaDelHistorial[];
   country: OwnerCountry;
   showCurrency: boolean;
-  // True mientras "todas las filas son del mismo cliente" está marcada. Entonces
-  // el nombre, la cédula y el WhatsApp se escriben UNA vez arriba de la lista y
-  // aquí no se pueden tocar: lo que se teclease aquí lo pisaría el valor
-  // compartido en el siguiente render, o sea que el campo aceptaría texto y no
-  // haría nada.
   clienteCompartido: boolean;
-  // Si esa línea sigue tomando el cliente compartido. Una página suele ser de
-  // una persona pero puede mezclar, así que el valor compartido es un valor por
-  // defecto que cualquier línea puede rechazar — y entonces vuelve al nombre que
-  // se leyó en la foto, y aparece como su propia tarjeta en la lista.
   isLinked: (rowId: string) => boolean;
   onToggleLinked: (rowId: string) => void;
   // Por `rowId`, nunca por posición: este componente recibe un subconjunto, y
   // con índices la edición aterrizaba en otro cliente. Pasó el 2026-09-28.
   onUpdate: (rowId: string, patch: Partial<ExtractedMovement>) => void;
   onRemove: (rowId: string) => void;
-  // La moneda de este cliente, de un toque. Pisa las de sus líneas a propósito:
-  // aquí el dueño está mirando a una persona y decide por ella, que es distinto
-  // del "Todo Dólares" de la lista — ese solo toca lo que sigue sin asignar.
+  onRestaurar: (rowId: string) => void;
+  onEliminarCliente: () => void;
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
-  // Qué hacer con un total escrito que no cuadra: quedarse con el de la
-  // libreta —que añade una línea de ajuste— o con la suma de los montos.
-  // Vive en el flujo y no aquí porque cambia `reviewMovements`, que es de allí.
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
   onElegirTotal: (libro: LibroDelCliente, cual: EleccionDeTotal) => void;
-  onListo: () => void;
+  accionSubir: React.ReactNode;
 }) {
+  const [editando, setEditando] = useState<string | null>(null);
+
+  const filas = entradas.flatMap((e) => (e.tipo === "fila" ? [e.fila] : []));
   const documentoEscrito = filas.find((f) => f.document_id?.trim())?.document_id ?? "";
-  // LA CÉDULA QUE YA ESTÁ GUARDADA en la ficha del cliente. No viene en las
-  // filas: la extracción nunca lee un documento de la foto, así que
-  // `f.document_id` es null para un cliente que existe y ya tiene la suya.
-  //
-  // Sin esto el campo salía VACÍO para QA Petronila, que tiene V-9001101
-  // guardada — visto en dev el 2026-09-28 —, y justo debajo el texto de apoyo
-  // decía "para cambiarlo, entra al cliente desde Clientes". Un campo en blanco
-  // con un pie que habla de cambiar algo: el dueño no puede saber si Sevenz
-  // tiene su cédula o la perdió.
+  // La cédula que YA está guardada en la ficha. No viene en las filas: la
+  // extracción nunca lee un documento de la foto. Sin esto el campo salía vacío
+  // para un cliente que la tiene, con un pie hablando de "cambiarlo".
   const documentoGuardado = cliente.candidato?.document_id ?? null;
   const whatsappGuardado = cliente.candidato?.whatsapp?.trim() || null;
-  // Decisión 3 del mapa: la de un cliente que ya existe SE ENSEÑA, no se exige
-  // ni se edita aquí. Y no se edita por una razón concreta: la migración 073
-  // solo rellena documentos que estén en null (`and document_id is null`), así
-  // que un campo editable aceptaría el texto y lo tiraría en silencio.
   const exigeDocumento = cliente.necesitaDocumento && !documentoEscrito.trim();
 
-  // Cuál de las dos monedas está marcada para este cliente. Sale de sus filas,
-  // no de un estado aparte: si todas coinciden, esa; si mezcla, ninguna.
   const monedas = new Set(filas.map((f) => f.currency));
   const monedaDelCliente = monedas.size === 1 ? [...monedas][0] : null;
+  const chip = CHIP[estado];
 
   return (
     // `px-4`: `SheetContent` no trae ningún margen lateral propio — solo
     // `SheetHeader` lo pone, y por eso el título respiraba y las tarjetas de
-    // abajo tocaban el borde de la pantalla. Va aquí y no en el componente
-    // compartido: el resto de los paneles de la app ya cuadran.
+    // abajo tocaban el borde de la pantalla.
     <div className="flex flex-col gap-4 px-4 pb-2">
-      {/* ── Los datos de la persona, una sola vez ─────────────────────────
-          Con el cliente compartido marcado, la cédula y el WhatsApp ya se
-          escriben una vez arriba de la lista, así que aquí se dice dónde en vez
-          de ofrecer un campo que no guardaría nada. */}
+      {/* ── Quién ──────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2 className="truncate text-xl font-semibold">{cliente.name}</h2>
+          <p className="text-sm text-muted-foreground">
+            {filas.length} {filas.length === 1 ? "movimiento" : "movimientos"}
+            {filas.length === 1 ? " registrado" : " registrados"}
+          </p>
+          <span
+            className={cn(
+              "w-fit rounded-full border px-2 py-0.5 text-xs font-medium",
+              chip.clase,
+            )}
+          >
+            {chip.texto}
+          </span>
+        </div>
+
+        {/* Quitar a esta persona entera de la subida. Con confirmación y no con
+            deshacer, al revés que un movimiento suelto: aquí se van de golpe
+            todos sus renglones, y una tanda revisada durante media hora no
+            debería poder perder un cliente completo de un roce. */}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="shrink-0">
+              Eliminar
+              <Trash2 className="size-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Quitar a {cliente.name} de esta subida?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se quitan sus {filas.length}{" "}
+                {filas.length === 1 ? "movimiento" : "movimientos"} y no se guardará nada suyo. El
+                resto de la libreta se sube igual. La foto no se borra: puedes volver a empezar la
+                revisión si te equivocas.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={onEliminarCliente}>Quitar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
+      {/* ── Sus datos, una sola vez ────────────────────────────────────── */}
       {clienteCompartido ? (
         <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
           La cédula y el WhatsApp de este cliente se escriben arriba, en la lista, porque marcaste
           que todos los movimientos son de la misma persona.
         </p>
       ) : (
-      <div className="flex flex-col gap-3 rounded-lg border p-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="detalle-documento" className="text-xs">
-            Cédula/documento
-          </Label>
-          {documentoGuardado ? (
-            <p id="detalle-documento" className="text-sm tabular-nums">
-              {documentoGuardado}
-            </p>
-          ) : (
-            <DocumentIdInput
-              id="detalle-documento"
-              country={country}
-              value={documentoEscrito}
-              // Se escribe en TODAS las filas de este cliente. El documento es de
-              // la persona, no del renglón: guardarlo en una sola fila dejaría a
-              // `confirmImport` viendo un cliente con cédula y otro sin ella
-              // según qué fila mirase primero.
-              onChange={(next) => {
-                for (const f of filas) onUpdate(f.rowId, { document_id: next || null });
-              }}
-              invalid={exigeDocumento}
-            />
-          )}
-          {documentoGuardado ? (
-            <p className="text-xs text-muted-foreground">
-              Para cambiarlo, entra al cliente desde Clientes cuando termines de subir la libreta.
-            </p>
-          ) : exigeDocumento ? (
-            <p className="text-xs text-destructive">
-              Es un cliente nuevo. Sin cédula no se puede importar.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="detalle-whatsapp" className="text-xs">
-            WhatsApp (opcional)
-          </Label>
-          {/* Mismo criterio que la cédula, y por el mismo motivo mecánico: la
-              073 solo escribe el WhatsApp cuando el cliente no tiene ninguno
-              (`and whatsapp is null`), así que un campo editable sobre un
-              número ya guardado aceptaría el texto y lo tiraría en silencio. Y
-              el número viejo gana a propósito: el de la libreta puede ser más
-              antiguo que el que el dueño corrigió a mano en la ficha. */}
-          {whatsappGuardado ? (
-            <p id="detalle-whatsapp" className="text-sm tabular-nums">
-              {whatsappGuardado}
-            </p>
-          ) : (
-            <WhatsappInput
-              id="detalle-whatsapp"
-              name="detalle-whatsapp"
-              preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
-              defaultValue={filas.find((f) => f.whatsapp?.trim())?.whatsapp ?? null}
-              onValueChange={(v) => {
-                for (const f of filas) onUpdate(f.rowId, { whatsapp: v.trim() || null });
-              }}
-            />
-          )}
-          {/* La explicación entera vive AQUÍ, una vez, junto al campo donde se
-              escribe — y no seis veces en la lista, donde así no se lee.
-              Y no promete lo que todavía no hacemos: hoy Sevenz no manda ningún
-              aviso a un cliente (`MS-3`, bloqueada por `NG-1`). La frase es
-              cierta el día que se publica y sigue siéndolo el día que se active,
-              sin tocar nada. */}
-          {cliente.faltaWhatsapp ? (
-            <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-              Todavía no enviamos avisos de cobro a tus clientes, pero lo haremos pronto. Si
-              registras su WhatsApp ahora, no tendrás que volver a pasar por aquí.
-            </p>
-          ) : null}
-        </div>
-      </div>
-      )}
-
-      {/* La moneda de este cliente. Fuera del recuadro de datos y siempre
-          presente: la moneda es de los movimientos, no de la persona, así que
-          sigue haciendo falta cuando el cliente compartido está marcado — que es
-          justo el caso de una libreta de una sola persona. Un negocio colombiano
-          no tiene esta pregunta: su libro no lleva moneda. */}
-        {showCurrency ? (
-          <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-            <MonedaPildoras
-              value={monedaDelCliente}
-              onChange={onAplicarMoneda}
-              etiqueta="Moneda de este cliente"
-            />
-            {monedaDelCliente === null && monedas.size > 1 ? (
+        <div className="flex flex-col gap-3 rounded-lg border p-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="detalle-documento" className="text-xs">
+              Documento
+            </Label>
+            {/* La de un cliente que ya existe SE ENSEÑA, no se edita: la 073
+                solo rellena documentos que estén en null, así que un campo
+                editable aceptaría el cambio y lo tiraría en silencio. */}
+            {documentoGuardado ? (
+              <p id="detalle-documento" className="text-sm tabular-nums">
+                {documentoGuardado}
+              </p>
+            ) : (
+              <DocumentIdInput
+                id="detalle-documento"
+                country={country}
+                value={documentoEscrito}
+                onChange={(next) => {
+                  for (const f of filas) onUpdate(f.rowId, { document_id: next || null });
+                }}
+                invalid={exigeDocumento}
+              />
+            )}
+            {documentoGuardado ? (
               <p className="text-xs text-muted-foreground">
-                Esta libreta mezcla monedas. Cada línea lleva la suya abajo.
+                Para cambiarlo, entra al cliente desde Clientes cuando termines de subir la libreta.
+              </p>
+            ) : exigeDocumento ? (
+              <p className="text-xs text-destructive">
+                Es un cliente nuevo. Sin cédula no se puede importar.
               </p>
             ) : null}
           </div>
-        ) : null}
 
-      {/* ── El historial, un renglón por movimiento ─────────────────────── */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="detalle-whatsapp" className="text-xs">
+              WhatsApp (opcional)
+            </Label>
+            {whatsappGuardado ? (
+              <p id="detalle-whatsapp" className="text-sm tabular-nums">
+                {whatsappGuardado}
+              </p>
+            ) : (
+              <WhatsappInput
+                id="detalle-whatsapp"
+                name="detalle-whatsapp"
+                preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
+                defaultValue={filas.find((f) => f.whatsapp?.trim())?.whatsapp ?? null}
+                onValueChange={(v) => {
+                  for (const f of filas) onUpdate(f.rowId, { whatsapp: v.trim() || null });
+                }}
+              />
+            )}
+            {cliente.faltaWhatsapp ? (
+              <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                Todavía no enviamos avisos de cobro a tus clientes, pero lo haremos pronto. Si
+                registras su WhatsApp ahora, no tendrás que volver a pasar por aquí.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* La moneda del cliente, con el mismo patrón que "Agregar movimiento". */}
+      {showCurrency ? (
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <Label>Moneda de este cliente</Label>
+          <div className="flex flex-row flex-wrap gap-2">
+            {(
+              [
+                { moneda: "USD", nombre: "Dólares" },
+                { moneda: "EUR", nombre: "Euros" },
+              ] as const
+            ).map(({ moneda, nombre }) => (
+              <Button
+                key={moneda}
+                type="button"
+                variant={monedaDelCliente === moneda ? "default" : "outline"}
+                size="sm"
+                className="rounded-full px-3.5"
+                aria-pressed={monedaDelCliente === moneda}
+                onClick={() => onAplicarMoneda(moneda)}
+              >
+                <CurrencyFlagIcon currency={moneda} />
+                {nombre}
+              </Button>
+            ))}
+          </div>
+          {monedaDelCliente === null && monedas.size > 1 ? (
+            <p className="text-xs text-muted-foreground">
+              Esta libreta mezcla monedas. Cada movimiento lleva la suya.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ── El historial ───────────────────────────────────────────────── */}
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">
-          {filas.length} {filas.length === 1 ? "movimiento" : "movimientos"}
-        </p>
+        <p className="text-sm font-medium">Historial</p>
 
-        {filas.map((f) => {
-          const aviso = avisoDeLaFila(f);
-          return (
-            <div
-              key={f.rowId}
-              className={cn(
-                "flex flex-col gap-2 rounded-lg border p-3",
-                f.review_reason === "no_cuadra"
-                  ? "border-destructive/30 bg-destructive/5"
-                  : f.needs_review
-                    ? "border-amber-300 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10"
-                    : undefined,
-              )}
-            >
-              {/* La papelera FUERA DEL FLUJO, anclada arriba a la derecha.
-                  Estaba en un flex al lado del tipo y le robaba 36px de ancho:
-                  con eso, "Cargo (fía)" y "Abono (paga)" ya no cabían en una
-                  línea y se apilaban, así que cada movimiento crecía dos filas.
-                  Visto en la captura a 375px. */}
-              <div className="relative">
-                {/* EL MISMO COMPONENTE que el formulario de "Agregar
-                    movimiento", no una copia parecida. Antes eran dos botones
-                    propios, más cortos: se veían bien y rompían el patrón, que
-                    es peor que verse mal — el dueño aprende una forma de decir
-                    "cargo o abono" y aquí se encontraba otra.
-                    `canPay` va en true porque aquí no se está pagando contra un
-                    saldo vivo: se está transcribiendo lo que ya pasó y quedó
-                    escrito en la libreta. */}
-                <TipoButtons
-                  value={f.type}
-                  onValueChange={(v) => onUpdate(f.rowId, { type: v })}
-                  canPay
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-0 right-0 size-9"
-                  aria-label="Quitar este movimiento"
-                  onClick={() => onRemove(f.rowId)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`monto-${f.rowId}`} className="text-xs">
-                  Monto
-                </Label>
-                <Input
-                  id={`monto-${f.rowId}`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={f.amount}
-                  onChange={(e) => onUpdate(f.rowId, { amount: Number(e.target.value) || 0 })}
-                />
-              </div>
-
-              {/* La moneda POR LÍNEA, siempre que el negocio tenga monedas.
-                  Estaba condicionada a que el cliente YA mezclara, y eso era un
-                  callejón sin salida: tras aplicar "Todo Dólares" el control
-                  desaparecía, así que el dueño que entonces se daba cuenta de
-                  que un renglón era en euros no tenía forma de decirlo. */}
-              {showCurrency ? (
-                <MonedaPildoras
-                  value={f.currency}
-                  onChange={(v) => onUpdate(f.rowId, { currency: v })}
-                />
+        {entradas.map((e) =>
+          e.tipo === "fila" ? (
+            <div key={e.fila.rowId} className="flex flex-col gap-1">
+              <FilaMovimiento
+                fila={e.fila}
+                onEditar={() => setEditando(e.fila.rowId)}
+                onEliminar={() => onRemove(e.fila.rowId)}
+              />
+              {/* El porqué de una fila marcada, debajo de ella. Solo "no cuadra"
+                  va en rojo: las otras dos son avisos, y en un cuaderno a mano
+                  casi ninguna línea trae su total escrito. */}
+              {e.fila.review_reason === "no_cuadra" ? (
+                <p className="flex items-start gap-1.5 px-1 text-xs text-destructive">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                  No cuadra: tu libreta dice{" "}
+                  {importeDe(e.fila.read_balance!, e.fila.currency)} y con estos montos da{" "}
+                  {importeDe(e.fila.page_balance, e.fila.currency)}.
+                </p>
+              ) : e.fila.review_reason === "lectura_dudosa" ? (
+                <p className="flex items-start gap-1.5 px-1 text-xs text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                  La IA no leyó esta línea con seguridad — revisa el monto.
+                </p>
               ) : null}
 
-              <Input
-                placeholder="Detalle (opcional)"
-                aria-label="Detalle"
-                value={f.description ?? ""}
-                onChange={(e) => onUpdate(f.rowId, { description: e.target.value || null })}
-              />
-
               {/* El escape del cliente compartido, por línea. Sin esto, marcar
-                  "todas son del mismo cliente" en una página que sí mezcla no
-                  tendría más salida que desmarcarlo y perder el nombre, la
-                  cédula y el teléfono ya escritos. Al desvincular, la línea
-                  vuelve al nombre que se leyó en la foto y aparece como su
-                  propia tarjeta en la lista. */}
+                  "todos el mismo cliente" en una página que sí mezcla no tendría
+                  más salida que desmarcarlo y perder lo ya escrito. */}
               {clienteCompartido ? (
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <label className="flex cursor-pointer items-center gap-2 px-1 text-xs text-muted-foreground">
                   <Checkbox
-                    checked={isLinked(f.rowId)}
-                    onCheckedChange={() => onToggleLinked(f.rowId)}
+                    checked={isLinked(e.fila.rowId)}
+                    onCheckedChange={() => onToggleLinked(e.fila.rowId)}
                   />
                   Es de {cliente.name || "este cliente"}
                 </label>
               ) : null}
-
-              {aviso ? (
-                <p
-                  className={cn(
-                    "flex items-start gap-1.5 text-xs",
-                    aviso.rojo ? "text-destructive" : "text-amber-700 dark:text-amber-400",
-                  )}
-                >
-                  <TriangleAlert className="mt-px size-3.5 shrink-0" />
-                  <span className="min-w-0">{aviso.texto}</span>
-                </p>
-              ) : null}
             </div>
-          );
-        })}
+          ) : (
+            // LA FILA QUITADA SE QUEDA A LA VISTA, en su sitio, hasta que se
+            // suba la libreta. Un toast que se va en cinco segundos obliga a
+            // reaccionar a tiempo; aquí el dueño puede quitar un renglón,
+            // seguir revisando veinte clientes y recuperarlo al final.
+            <div
+              key={e.mov.uid}
+              className="flex items-center gap-2 rounded-lg border border-destructive/40 p-3 text-destructive"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                Movimiento eliminado
+              </span>
+              <span className="shrink-0 text-xs opacity-80">
+                {e.mov.type === "charge" ? "Fiado" : "Abono"}
+                {e.mov.description ? ` · ${e.mov.description}` : ""}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-destructive hover:text-destructive"
+                aria-label="Recuperar este movimiento"
+                onClick={() => e.mov.uid && onRestaurar(e.mov.uid)}
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+            </div>
+          ),
+        )}
       </div>
 
       {/* ── Cómo queda ─────────────────────────────────────────────────── */}
@@ -618,11 +558,8 @@ export function DetalleDelCliente({
           cliente.libros.map((l) => {
             const clave = l.currency ?? "COP";
             const decidido = decisionesDeTotal[clave];
-            // El bloque sale cuando el libro NO cuadra, y también cuando ya se
-            // decidió — porque al elegir "mi libreta" las cuentas pasan a
-            // cuadrar y, sin esto, la pregunta y su respuesta desaparecerían
-            // juntas dejando una línea de ajuste sin explicación.
-            const hayQuePreguntar = l.estado === "no_cuadra" && l.escrito !== null && l.calculado !== null;
+            const hayQuePreguntar =
+              l.estado === "no_cuadra" && l.escrito !== null && l.calculado !== null;
             if (!hayQuePreguntar && !decidido) return [clave, undefined];
             return [
               clave,
@@ -638,9 +575,17 @@ export function DetalleDelCliente({
         )}
       />
 
-      <Button type="button" className="w-full" onClick={onListo}>
-        Listo
-      </Button>
+      {accionSubir}
+
+      <EditarMovimiento
+        fila={filas.find((f) => f.rowId === editando) ?? null}
+        abierta={editando !== null}
+        onCerrar={() => setEditando(null)}
+        showCurrency={showCurrency}
+        onUpdate={onUpdate}
+        onEliminar={onRemove}
+        accionSubir={accionSubir}
+      />
     </div>
   );
 }

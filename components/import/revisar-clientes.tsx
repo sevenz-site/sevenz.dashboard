@@ -150,7 +150,7 @@ export function conEstado(
   });
 }
 
-const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
+export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
   faltan_datos: { texto: "Faltan datos", clase: "border-destructive/40 text-destructive" },
   duplicado: { texto: "¿Es el mismo?", clase: "border-amber-400/60 text-amber-700 dark:text-amber-400" },
   revisar_suma: { texto: "Revisar suma", clase: "border-destructive/40 text-destructive" },

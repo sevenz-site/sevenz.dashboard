@@ -33,6 +33,7 @@ import {
   DetalleDelCliente,
   type DecisionDeTotal,
   type EleccionDeTotal,
+  type EntradaDelHistorial,
 } from "@/components/import/detalle-del-cliente";
 import { RevisarClientes, conEstado, type DecisionDuplicado } from "@/components/import/revisar-clientes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -161,6 +162,7 @@ export function ImportFlow({
     setRevisando(false);
     setDirty(false);
     setModalMoneda(false);
+    setEliminados(new Set());
   }
 
   // "Every row is the same person" — for an owner who photographs one client's
@@ -182,6 +184,11 @@ export function ImportFlow({
   // opt-out to whichever row moved up into its place.
   const [unlinked, setUnlinked] = useState<Set<string>>(new Set());
 
+  // Los `uid` de los movimientos que el dueno quito. Siguen en
+  // `reviewMovements` para poder recuperarlos desde el historial, en su sitio
+  // y sin prisa; se filtran antes de calcular nada.
+  const [eliminados, setEliminados] = useState<Set<string>>(new Set());
+
 
   const doneJobs = jobs.filter((j) => j.status === "done");
   const errorJobs = jobs.filter((j) => j.status === "error");
@@ -191,8 +198,11 @@ export function ImportFlow({
   // the box restores the original names and documents instead of losing them.
   const effectiveMovements = useMemo(() => {
     if (!reviewMovements) return null;
-    if (!sameClient) return reviewMovements;
-    return reviewMovements.map((m) =>
+    // Los quitados salen de aqui: para los saldos, las sumas y el resumen no
+    // existen. Siguen en `reviewMovements` solo para poder recuperarlos.
+    const vivos = reviewMovements.filter((m) => !m.uid || !eliminados.has(m.uid));
+    if (!sameClient) return vivos;
+    return vivos.map((m) =>
       // An opted-out row keeps exactly what was read, because the override is
       // applied here and never written back into reviewMovements. Re-linking it
       // restores the shared value; unticking the box restores every original.
@@ -205,7 +215,7 @@ export function ImportFlow({
             whatsapp: sharedWhatsapp.trim() || null,
           },
     );
-  }, [reviewMovements, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
+  }, [reviewMovements, eliminados, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
 
   // Una reconciliación contra la lista COMPLETA de clientes, y su único trabajo
   // es detectar los candidatos de CT-22. No se usa para nada más: las filas de
@@ -293,6 +303,36 @@ export function ImportFlow({
     () => new Map(duplicados.map((c) => [c.nameKey, c.candidato!])),
     [duplicados],
   );
+  // EL HISTORIAL DE UN CLIENTE, con sus quitados intercalados EN SU SITIO.
+  //
+  // Se recorre `reviewMovements` —que conserva el orden de la libreta y sigue
+  // teniendo los quitados— en vez de `filas`, que ya no los ve. Sin esto los
+  // renglones en rojo tendrian que pintarse al final, y entonces el dueno no
+  // sabria cual de los cuatro "Bulto de jabon" fue el que quito.
+  function entradasDelHistorial(nameKey: string) {
+    const porId = new Map(filas.map((f) => [f.rowId, f]));
+    const salida: EntradaDelHistorial[] = [];
+    for (const m of reviewMovements ?? []) {
+      if (!m.uid) continue;
+      const viva = porId.get(m.uid);
+      if (viva) {
+        if (viva.client_name.trim().toLowerCase() === nameKey) {
+          salida.push({ tipo: "fila", fila: viva });
+        }
+        continue;
+      }
+      // Quitada. Su nombre sale del movimiento crudo: no paso por reconcile, y
+      // con el cliente compartido activo el nombre visible es el compartido.
+      const suNombre = (sameClient && !unlinked.has(m.uid) ? sharedName : m.client_name)
+        .trim()
+        .toLowerCase();
+      if (eliminados.has(m.uid) && suNombre === nameKey) {
+        salida.push({ tipo: "eliminado", mov: m });
+      }
+    }
+    return salida;
+  }
+
   // El cliente abierto en el detalle, resuelto una vez. `abierto` es una clave
   // de nombre y el cliente puede desaparecer de la lista mientras el panel está
   // abierto —al borrar su último movimiento, o al decidir "es otra persona"—, y
@@ -334,7 +374,12 @@ export function ImportFlow({
   //
   // Uno solo y por orden: enseñar los cuatro a la vez no dice por dónde
   // empezar, y arreglado el primero aparece el siguiente.
-  const motivoQueBloquea = missingSharedName
+  const motivoQueBloquea = filas.length === 0
+    // Quitar al ultimo cliente deja la lista vacia y el boton apagado. Sin esta
+    // frase no hay nada en pantalla que diga por que, ni que la salida es
+    // "Volver" — que conserva las fotos y rehace la revision desde cero.
+    ? "Quitaste todos los movimientos de esta libreta. Pulsa Volver para empezar la revisión otra vez: tus fotos siguen ahí."
+    : missingSharedName
     ? "Escribe el nombre del cliente antes de continuar."
     : missingDocumentId
       ? sameClient
@@ -476,35 +521,37 @@ export function ImportFlow({
   // Se guarda la POSICIÓN además de la fila: el orden manda en el saldo corrido
   // y en la comprobación de sumas, así que devolverla al final en vez de a su
   // sitio cambiaría las cuentas de esa página.
+  // QUITAR UN MOVIMIENTO YA NO LO BORRA: LO MARCA.
+  //
+  // La fila se queda en `reviewMovements` y en su sitio, y aparece en rojo en el
+  // historial con un boton de recuperar, hasta que se sube la libreta. Antes se
+  // quitaba del array y el deshacer era un toast, que dura cinco segundos: eso
+  // obliga a reaccionar a tiempo. Ahora el dueno puede quitar un renglon, seguir
+  // revisando veinte clientes y recuperarlo al final.
+  //
+  // Para todo lo que calcula —saldos, sumas, el resumen— no existe:
+  // `effectiveMovements` los filtra antes de reconciliar.
   function removeMovement(rowId: string) {
-    // La búsqueda y el toast van FUERA del updater de `setState`. React puede
-    // llamar a un updater más de una vez para la misma actualización —lo hace en
-    // modo estricto, a propósito— y un `toast()` dentro saldría por duplicado.
-    // Un updater tiene que ser una función pura de su argumento.
-    if (!reviewMovements) return;
-    const i = reviewMovements.findIndex((m) => m.uid === rowId);
-    if (i < 0) return;
-    const quitado = reviewMovements[i];
+    setEliminados((prev) => new Set(prev).add(rowId));
+  }
 
-    setReviewMovements((prev) => (prev ? prev.filter((m) => m.uid !== rowId) : prev));
-
-    toast("Movimiento quitado", {
-      description:
-        quitado.description ||
-        `${quitado.type === "charge" ? "Cargo" : "Abono"} de ${quitado.amount}`,
-      action: {
-        label: "Deshacer",
-        onClick: () =>
-          setReviewMovements((actual) => {
-            if (!actual) return actual;
-            // Si ya volvió por otro camino, no se duplica.
-            if (actual.some((m) => m.uid === quitado.uid)) return actual;
-            const copia = [...actual];
-            copia.splice(Math.min(i, copia.length), 0, quitado);
-            return copia;
-          }),
-      },
+  function restaurarMovimiento(rowId: string) {
+    setEliminados((prev) => {
+      const next = new Set(prev);
+      next.delete(rowId);
+      return next;
     });
+  }
+
+  // Quitar a una persona entera de la tanda. Marca todos sus renglones de una
+  // vez, asi que sigue siendo recuperable renglon a renglon si hiciera falta.
+  function eliminarCliente(rowIds: string[]) {
+    setEliminados((prev) => {
+      const next = new Set(prev);
+      for (const id of rowIds) next.add(id);
+      return next;
+    });
+    setAbierto(null);
   }
 
   // ── CUÁL DE LOS DOS TOTALES MANDA ──────────────────────────────────────
@@ -884,7 +931,9 @@ export function ImportFlow({
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
           <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-xl">
             <SheetHeader>
-              <SheetTitle>{clienteAbierto?.name ?? "Cliente"}</SheetTitle>
+              {/* El titulo del panel es la ACCION, no el nombre: el nombre va
+                  dentro, en grande, junto a su estado y su boton de quitar. */}
+              <SheetTitle>Registrar movimientos</SheetTitle>
             </SheetHeader>
             {/* "Registrar movimientos": el detalle de ESE cliente. Sustituye a
                 la tabla de movimientos, que se reutilizó mientras la lista por
@@ -894,7 +943,10 @@ export function ImportFlow({
             {clienteAbierto ? (
               <DetalleDelCliente
                 cliente={clienteAbierto}
-                filas={filas.filter((r) => r.client_name.trim().toLowerCase() === abierto)}
+                estado={
+                  conEstado([clienteAbierto], filas, decisiones, candidatos)[0].estado
+                }
+                entradas={entradasDelHistorial(clienteAbierto.nameKey)}
                 country={country}
                 showCurrency={showCurrency}
                 clienteCompartido={sameClient}
@@ -902,6 +954,8 @@ export function ImportFlow({
                 onToggleLinked={toggleLinked}
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
+                onRestaurar={restaurarMovimiento}
+                onEliminarCliente={() => eliminarCliente(clienteAbierto.rowIds)}
                 onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
                 decisionesDeTotal={Object.fromEntries(
                   clienteAbierto.libros.map((l) => [
@@ -910,7 +964,17 @@ export function ImportFlow({
                   ]),
                 )}
                 onElegirTotal={(libro, cual) => elegirTotal(clienteAbierto, libro, cual)}
-                onListo={() => setAbierto(null)}
+                accionSubir={
+                  <ConfirmarImportacion
+                    className="w-full"
+                    cuantas={filas.length}
+                    filas={filas}
+                    rateContext={rateContext}
+                    deshabilitado={noSePuedeConfirmar}
+                    guardando={confirming}
+                    onConfirm={handleConfirm}
+                  />
+                }
               />
             ) : null}
           </SheetContent>
