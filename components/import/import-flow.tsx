@@ -36,7 +36,13 @@ import {
   type EleccionDeTotal,
   type EntradaDelHistorial,
 } from "@/components/import/detalle-del-cliente";
-import { RevisarClientes, conEstado, type DecisionDuplicado } from "@/components/import/revisar-clientes";
+import {
+  RevisarClientes,
+  conEstado,
+  type ClienteConEstado,
+  type DecisionDuplicado,
+  type EntradaDeLaRevision,
+} from "@/components/import/revisar-clientes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
@@ -164,6 +170,7 @@ export function ImportFlow({
     setDirty(false);
     setModalMoneda(false);
     setEliminados(new Set());
+    setClientesQuitados({});
   }
 
   // "Every row is the same person" — for an owner who photographs one client's
@@ -189,6 +196,10 @@ export function ImportFlow({
   // `reviewMovements` para poder recuperarlos desde el historial, en su sitio
   // y sin prisa; se filtran antes de calcular nada.
   const [eliminados, setEliminados] = useState<Set<string>>(new Set());
+  // Por cliente quitado, los renglones que se llevo POR DELANTE esa
+  // eliminacion — no todos los suyos. Es lo que permite devolverlos al
+  // recuperarlo sin resucitar lo que el dueno habia quitado aparte.
+  const [clientesQuitados, setClientesQuitados] = useState<Record<string, string[]>>({});
 
 
   const doneJobs = jobs.filter((j) => j.status === "done");
@@ -304,6 +315,37 @@ export function ImportFlow({
     () => new Map(duplicados.map((c) => [c.nameKey, c.candidato!])),
     [duplicados],
   );
+  // EL NOMBRE QUE LE TOCA A UN MOVIMIENTO. Con el cliente compartido activo el
+  // nombre visible es el compartido, salvo que esa linea se haya desvinculado.
+  function nombreVisible(m: ExtractedMovement): string {
+    return (sameClient && m.uid && !unlinked.has(m.uid) ? sharedName : m.client_name).trim();
+  }
+
+  // LA LISTA DE LA REVISION, con los clientes quitados EN SU SITIO.
+  //
+  // El orden sale de `reviewMovements`, que conserva a todos; `clientesRevisados`
+  // ya no ve a los quitados, asi que por si solo perderia su posicion y la fila
+  // roja acabaria al final, lejos de donde estaba la persona.
+  function entradasDeLaRevision(conEstadoYa: ClienteConEstado[]): EntradaDeLaRevision[] {
+    const vivos = new Map(conEstadoYa.map((c) => [c.nameKey, c]));
+    const orden: string[] = [];
+    const nombres = new Map<string, string>();
+    for (const m of reviewMovements ?? []) {
+      const nombre = nombreVisible(m);
+      const k = nombre.toLowerCase();
+      if (!nombres.has(k)) {
+        nombres.set(k, nombre);
+        orden.push(k);
+      }
+    }
+    return orden.map((k) => {
+      const vivo = vivos.get(k);
+      return vivo
+        ? ({ tipo: "cliente", cliente: vivo } as const)
+        : ({ tipo: "eliminado", nameKey: k, nombre: nombres.get(k) ?? k } as const);
+    });
+  }
+
   // EL HISTORIAL DE UN CLIENTE, con sus quitados intercalados EN SU SITIO.
   //
   // Se recorre `reviewMovements` —que conserva el orden de la libreta y sigue
@@ -324,9 +366,7 @@ export function ImportFlow({
       }
       // Quitada. Su nombre sale del movimiento crudo: no paso por reconcile, y
       // con el cliente compartido activo el nombre visible es el compartido.
-      const suNombre = (sameClient && !unlinked.has(m.uid) ? sharedName : m.client_name)
-        .trim()
-        .toLowerCase();
+      const suNombre = nombreVisible(m).toLowerCase();
       if (eliminados.has(m.uid) && suNombre === nameKey) {
         salida.push({ tipo: "eliminado", mov: m });
       }
@@ -546,13 +586,33 @@ export function ImportFlow({
 
   // Quitar a una persona entera de la tanda. Marca todos sus renglones de una
   // vez, asi que sigue siendo recuperable renglon a renglon si hiciera falta.
-  function eliminarCliente(rowIds: string[]) {
+  // Quitar a una persona entera de la tanda.
+  //
+  // Se apunta QUE renglones marco ESTA eliminacion, no solo que el cliente se
+  // fue: si el dueno ya habia quitado un movimiento suelto suyo antes, al
+  // recuperar al cliente ese movimiento NO debe volver — el dueno lo quito a
+  // proposito, y devolverselo seria deshacer una decision que no pidio deshacer.
+  function eliminarCliente(nameKey: string, rowIds: string[]) {
+    const nuevos = rowIds.filter((id) => !eliminados.has(id));
     setEliminados((prev) => {
       const next = new Set(prev);
-      for (const id of rowIds) next.add(id);
+      for (const id of nuevos) next.add(id);
       return next;
     });
+    setClientesQuitados((prev) => ({ ...prev, [nameKey]: nuevos }));
     setAbierto(null);
+  }
+
+  function restaurarCliente(nameKey: string) {
+    const suyos = clientesQuitados[nameKey] ?? [];
+    setEliminados((prev) => {
+      const next = new Set(prev);
+      for (const id of suyos) next.delete(id);
+      return next;
+    });
+    setClientesQuitados((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k]) => k !== nameKey)),
+    );
   }
 
   // ── CUÁL DE LOS DOS TOTALES MANDA ──────────────────────────────────────
@@ -706,6 +766,12 @@ export function ImportFlow({
     }
   }
 
+  // Se calcula una vez: lo leen el encabezado y la lista, y que discrepen seria
+  // un recuento que no cuadra con lo que hay debajo.
+  const entradas = reviewMovements
+    ? entradasDeLaRevision(conEstado(clientesRevisados, filas, decisiones, candidatos))
+    : [];
+
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4 pb-2">
@@ -720,9 +786,15 @@ export function ImportFlow({
         {/* Cuántos clientes salieron y de cuántas fotos. Es lo primero que el
             dueño quiere saber al llegar aquí —"¿las leyó todas?"— y hasta ahora
             tenía que contar las filas él. */}
+        {/* CUENTA LO QUE SE ENCONTRO, no lo que queda vivo.
+            Este numero describe la LECTURA de la foto, y esa no cambia porque
+            el dueno quite a alguien. Contando solo los vivos, quitar a un
+            cliente bajaba el encabezado a "2 clientes encontrados" y se lee
+            como que la IA leyo mal una pagina que leyo bien. Lo que se quito
+            se ve igualmente, en su fila roja. */}
         <p className="text-sm text-muted-foreground">
-          {clientesRevisados.length} cliente{clientesRevisados.length === 1 ? "" : "s"} encontrado
-          {clientesRevisados.length === 1 ? "" : "s"} de {doneJobs.length} foto
+          {entradas.length} cliente{entradas.length === 1 ? "" : "s"} encontrado
+          {entradas.length === 1 ? "" : "s"} de {doneJobs.length} foto
           {doneJobs.length === 1 ? "" : "s"} analizada{doneJobs.length === 1 ? "" : "s"}
         </p>
 
@@ -924,10 +996,11 @@ export function ImportFlow({
             páginas eran cuarenta filas de ocho columnas en 375px; ahora son
             seis tarjetas que se leen de un vistazo. */}
         <RevisarClientes
-          clientes={conEstado(clientesRevisados, filas, decisiones, candidatos)}
+          entradas={entradas}
           decisiones={decisiones}
           onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
           onAbrir={setAbierto}
+          onRestaurarCliente={restaurarCliente}
         />
 
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
@@ -962,7 +1035,9 @@ export function ImportFlow({
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
                 onRestaurar={restaurarMovimiento}
-                onEliminarCliente={() => eliminarCliente(clienteAbierto.rowIds)}
+                onEliminarCliente={() =>
+                  eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
+                }
                 onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
                 decisionesDeTotal={Object.fromEntries(
                   clienteAbierto.libros.map((l) => [

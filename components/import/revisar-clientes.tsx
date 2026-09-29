@@ -1,6 +1,12 @@
 "use client";
 
-import { ChevronRight, CircleAlert, TriangleAlert, UserRoundSearch } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  RotateCcw,
+  TriangleAlert,
+  UserRoundSearch,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
@@ -303,28 +309,65 @@ function TarjetaCliente({
   );
 }
 
+// Una entrada de la lista: o un cliente vivo, o uno que el dueno quito y sigue
+// ahi en rojo, en su sitio, para poder recuperarlo. Mismo patron que el
+// historial del detalle.
+export type EntradaDeLaRevision =
+  | { tipo: "cliente"; cliente: ClienteConEstado }
+  | { tipo: "eliminado"; nameKey: string; nombre: string };
+
 export function RevisarClientes({
-  clientes,
+  entradas,
   decisiones,
   onDecidir,
   onAbrir,
+  onRestaurarCliente,
 }: {
-  clientes: ClienteConEstado[];
+  entradas: EntradaDeLaRevision[];
   decisiones: Record<string, DecisionDuplicado>;
   onDecidir: (nameKey: string, d: DecisionDuplicado) => void;
   onAbrir: (nameKey: string) => void;
+  onRestaurarCliente: (nameKey: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      {clientes.map((c) => (
-        <TarjetaCliente
-          key={c.nameKey}
-          cliente={c}
-          decision={decisiones[c.nameKey]}
-          onDecidir={(d) => onDecidir(c.nameKey, d)}
-          onAbrir={() => onAbrir(c.nameKey)}
-        />
-      ))}
+      {entradas.map((e) =>
+        e.tipo === "cliente" ? (
+          <TarjetaCliente
+            key={e.cliente.nameKey}
+            cliente={e.cliente}
+            decision={decisiones[e.cliente.nameKey]}
+            onDecidir={(d) => onDecidir(e.cliente.nameKey, d)}
+            onAbrir={() => onAbrir(e.cliente.nameKey)}
+          />
+        ) : (
+          // EL CLIENTE QUITADO SE QUEDA A LA VISTA, en su sitio, hasta que se
+          // suba la libreta. Quitar a una persona se lleva por delante todos
+          // sus renglones de golpe, asi que la vuelta atras tiene que estar
+          // donde estaba ella — y no en un aviso que se va solo.
+          <div
+            key={e.nameKey}
+            className="flex items-center gap-2 rounded-lg border border-destructive/40 p-3 text-destructive"
+          >
+            <span className="shrink-0 font-medium">Cliente eliminado</span>
+            {/* El nombre, aunque el mapa de pantallas no lo pinte: con tres
+                clientes quitados, tres filas identicas no dicen cual es cual. */}
+            <span className="min-w-0 flex-1 truncate text-right text-xs opacity-80">
+              {e.nombre}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-destructive hover:text-destructive"
+              aria-label={`Recuperar a ${e.nombre}`}
+              onClick={() => onRestaurarCliente(e.nameKey)}
+            >
+              <RotateCcw className="size-4" />
+            </Button>
+          </div>
+        ),
+      )}
     </div>
   );
 }
