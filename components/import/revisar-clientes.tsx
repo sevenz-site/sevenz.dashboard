@@ -6,7 +6,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
-import type { ClienteRevisado, LibroDelCliente } from "@/lib/reconcile";
+import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente } from "@/lib/reconcile";
 
 // ─────────────────────────────────────────────────────────────────────────
 // CT-22: QUIÉN ES QUIÉN LO DECIDE EL DUEÑO
@@ -76,6 +76,13 @@ export type EstadoTarjeta =
 
 export type ClienteConEstado = ClienteRevisado & {
   estado: EstadoTarjeta;
+  // El cliente existente que se parece a este, para poder preguntar. Viene
+  // APARTE de `candidato` y de una reconciliación contra la lista COMPLETA de
+  // clientes, porque `candidato` desaparece en cuanto el dueño responde "es otra
+  // persona" —y tiene que desaparecer, o el saldo previo de esa otra persona se
+  // colaría en los totales—, pero los dos botones tienen que seguir ahí para
+  // poder cambiar de idea.
+  candidatoVisible: CandidatoDuplicado | null;
   // Lo que falta, ya redactado. Puede haber más de una cosa: "Falta cédula" y
   // "Falta WhatsApp" son dos avisos distintos y se enseñan los dos, separados,
   // porque uno impide importar y el otro no.
@@ -90,8 +97,10 @@ export function conEstado(
   clientes: ClienteRevisado[],
   filas: { client_name: string; document_id: string | null }[],
   decisiones: Record<string, DecisionDuplicado>,
+  candidatos: Map<string, CandidatoDuplicado>,
 ): ClienteConEstado[] {
   return clientes.map((c) => {
+    const candidatoVisible = candidatos.get(c.nameKey) ?? null;
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
     const documentoEscrito = suyas.some((f) => f.document_id?.trim());
 
@@ -124,7 +133,7 @@ export function conEstado(
 
     const estado: EstadoTarjeta = bloqueos.length
       ? "faltan_datos"
-      : c.candidato && !decisiones[c.nameKey]
+      : candidatoVisible && !decisiones[c.nameKey]
         ? "duplicado"
         : c.libros.some((l) => l.estado === "no_cuadra")
           ? "revisar_suma"
@@ -132,7 +141,7 @@ export function conEstado(
             ? "sin_verificar"
             : "cuadra";
 
-    return { ...c, estado, bloqueos, avisos };
+    return { ...c, estado, bloqueos, avisos, candidatoVisible };
   });
 }
 
@@ -241,17 +250,17 @@ function TarjetaCliente({
 
       {/* El duplicado, con sus datos y sus dos botones. Sin opción marcada por
           defecto: ver la nota de `DecisionDuplicado`. */}
-      {cliente.candidato && !decision ? (
+      {cliente.candidatoVisible && !decision ? (
         <div className="flex flex-col gap-2 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
           <p className="flex items-start gap-1.5 text-sm">
             <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <span>
-              Ya tienes un &ldquo;{cliente.candidato.name}&rdquo; en tus clientes.
-              {cliente.candidato.document_id ? ` Documento: ${cliente.candidato.document_id}.` : " Sin documento."}
-              {cliente.candidato.balance_usd ? ` Debe ${formatDisplayCurrency(cliente.candidato.balance_usd, "USD")}.` : ""}
-              {cliente.candidato.balance_eur ? ` Debe ${formatDisplayCurrency(cliente.candidato.balance_eur, "EUR")}.` : ""}
-              {!cliente.candidato.balance_usd && !cliente.candidato.balance_eur && cliente.candidato.balance
-                ? ` Debe ${formatCurrency(cliente.candidato.balance)}.`
+              Ya tienes un &ldquo;{cliente.candidatoVisible.name}&rdquo; en tus clientes.
+              {cliente.candidatoVisible.document_id ? ` Documento: ${cliente.candidatoVisible.document_id}.` : " Sin documento."}
+              {cliente.candidatoVisible.balance_usd ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_usd, "USD")}.` : ""}
+              {cliente.candidatoVisible.balance_eur ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_eur, "EUR")}.` : ""}
+              {!cliente.candidatoVisible.balance_usd && !cliente.candidatoVisible.balance_eur && cliente.candidatoVisible.balance
+                ? ` Debe ${formatCurrency(cliente.candidatoVisible.balance)}.`
                 : ""}
             </span>
           </p>
@@ -266,10 +275,24 @@ function TarjetaCliente({
         </div>
       ) : null}
 
-      {cliente.candidato && decision === "otra" ? (
-        <p className="text-sm text-muted-foreground">
-          Se registrará como un cliente nuevo, con su propio documento.
-        </p>
+      {/* LO DECIDIDO, Y CÓMO DESDECIRSE.
+          Antes solo estaba la frase, sin vuelta atrás: una vez pulsado "es otra
+          persona" o "es el mismo" los botones desaparecían para siempre y la
+          única salida era tirar la revisión entera con "Volver". Y toda la
+          maquinaria de reconciliar contra la lista COMPLETA de clientes existe
+          precisamente para que la tarjeta siga ahí y se pueda cambiar de idea —
+          sin este botón esa maquinaria no servía de nada. */}
+      {cliente.candidatoVisible && decision ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2">
+          <p className="text-sm text-muted-foreground">
+            {decision === "otra"
+              ? "Se registrará como un cliente nuevo, con su propio documento."
+              : `Se sumará al “${cliente.candidatoVisible.name}” que ya tienes.`}
+          </p>
+          <Button type="button" size="sm" variant="ghost" onClick={() => onDecidir(decision === "otra" ? "mismo" : "otra")}>
+            {decision === "otra" ? "Es el mismo" : "Es otra persona"}
+          </Button>
+        </div>
       ) : null}
     </div>
   );

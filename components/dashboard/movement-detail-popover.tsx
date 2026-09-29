@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowDownLeft, ArrowUpRight, ImageOff, Share2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, EyeOff, ImageOff, Share2 } from "lucide-react";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { toast } from "sonner";
 import {
@@ -43,6 +43,7 @@ export function MovementDetailPopover({
   amount,
   currency = null,
   description,
+  ownerNote = null,
   plazoDias,
   createdAt,
   runningBalance,
@@ -67,6 +68,12 @@ export function MovementDetailPopover({
   // even though the stored amount was migrated to USD).
   currency?: LedgerCurrency | null;
   description: string | null;
+  // La nota interna del dueño (migración 074). Por defecto null, y la página
+  // pública del cliente NO la pasa — ni podría: `get_shared_balance` no la
+  // devuelve. Que el valor por defecto sea null y no un parámetro obligatorio es
+  // deliberado: así una pantalla nueva que monte este componente no la enseña
+  // por descuido.
+  ownerNote?: string | null;
   plazoDias: number | null;
   createdAt: string;
   runningBalance: number;
@@ -275,6 +282,22 @@ export function MovementDetailPopover({
             <Fila nombre="Detalle">
               <span className="break-words">{description || "—"}</span>
             </Fila>
+            {/* La nota del dueño, y se dice en voz alta que el cliente no la ve.
+                Sin esa frase el dueño no tiene forma de saberlo, y la duda le
+                quita al campo justo lo que lo hace útil: poder anotar algo
+                incómodo sin que llegue a la otra parte. */}
+            {ownerNote ? (
+              <>
+                <dt className="text-xs leading-5 text-muted-foreground">Nota</dt>
+                <dd className="flex flex-col gap-0.5">
+                  <span className="break-words">{ownerNote}</span>
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <EyeOff className="size-3" aria-hidden />
+                    Solo tú ves esto
+                  </span>
+                </dd>
+              </>
+            ) : null}
             {photoUrl !== undefined ? (
               <>
                 <dt className="text-xs leading-5 text-muted-foreground">Foto</dt>

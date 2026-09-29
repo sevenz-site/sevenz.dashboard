@@ -49,6 +49,9 @@ export type ReconcileClient = {
   balance_usd: number;
   balance_eur: number;
   document_id: string | null;
+  // El que el cliente YA tiene guardado. No lo usa la reconciliación de saldos:
+  // existe para que `agruparPorCliente` no pida un teléfono que ya está.
+  whatsapp: string | null;
 };
 
 function normalizeName(name: string): string {
@@ -248,6 +251,7 @@ export type CandidatoDuplicado = {
   id: string;
   name: string;
   document_id: string | null;
+  whatsapp: string | null;
   balance: number;
   balance_usd: number;
   balance_eur: number;
@@ -337,6 +341,7 @@ export function agruparPorCliente(
             id: existente.id,
             name: existente.name,
             document_id: existente.document_id,
+            whatsapp: existente.whatsapp,
             balance: existente.balance,
             balance_usd: existente.balance_usd,
             balance_eur: existente.balance_eur,
@@ -344,7 +349,13 @@ export function agruparPorCliente(
         : null,
       necesitaDocumento: !existente?.document_id,
       necesitaMoneda: opciones.esVE && suyas.some((f) => f.currency === null),
-      faltaWhatsapp: suyas.every((f) => !f.whatsapp?.trim()),
+      // Falta de verdad solo si NO lo trae la revisión Y el cliente tampoco lo
+      // tiene ya guardado. Mirar solo las filas decía "Falta el WhatsApp" a
+      // clientes que lo tenían desde hacía meses: la foto de una libreta no
+      // trae teléfonos casi nunca, así que ese aviso salía prácticamente
+      // siempre — y un aviso que sale siempre deja de leerse, justo cuando
+      // aparece en el cliente al que de verdad le falta.
+      faltaWhatsapp: suyas.every((f) => !f.whatsapp?.trim()) && !existente?.whatsapp?.trim(),
     };
   });
 }

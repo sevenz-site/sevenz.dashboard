@@ -40,6 +40,15 @@ export type ImportRow = {
   // donde nadie la veía. Ahora resolveMovementRateSnapshot rechaza, y la tanda
   // entera se detiene sin escribir ni una fila.
   currency: LedgerCurrency | null;
+  // La nota interna del dueño sobre esta línea. Hoy la escribe una sola cosa:
+  // importar una página cuya suma no cuadraba con el total escrito a mano.
+  //
+  // NUNCA se mete en `description`. `description` es lo único de un movimiento
+  // que el cliente lee en `/s/[token]`, y esto es una nota del dueño sobre sus
+  // dudas con las cuentas de esa persona. Columna aparte desde la 074, y
+  // `get_shared_balance` enumera sus campos uno a uno, así que no se filtra
+  // sola.
+  owner_note?: string | null;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -295,6 +304,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       entry_amount: resolved.entryCurrency ? row.amount : null,
       rate_usd_at_time: resolved.rateUsdAtTime,
       rate_eur_at_time: resolved.rateEurAtTime,
+      owner_note: row.owner_note?.trim() || null,
     });
   }
 

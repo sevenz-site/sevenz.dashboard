@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { formatCurrency } from "@/lib/format";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { TiraDeFotos } from "@/components/import/tira-de-fotos";
+import { ModalDeMoneda } from "@/components/import/modal-de-moneda";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +30,7 @@ import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
-import { ImportReviewTable } from "@/components/import/import-review-table";
+import { DetalleDelCliente } from "@/components/import/detalle-del-cliente";
 import { RevisarClientes, conEstado, type DecisionDuplicado } from "@/components/import/revisar-clientes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
@@ -58,6 +61,35 @@ import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import type { OwnerCountry } from "@/lib/types";
 
 type ExistingClient = ReconcileClient;
+
+// LA NOTA DEL DUEÑO, y solo se escribe en un caso.
+//
+// Cuando el dueño lee "la suma da $30 y tu cuenta en libreta da $99" y decide
+// importarlo así de todas formas, esa decisión no se deduce de ninguna columna:
+// desaparece al cerrar la pantalla. Tres meses después el cliente reclama y
+// nadie —tampoco el dueño— puede distinguir un desajuste que se miró y se
+// aceptó de uno que nadie vio nunca. Ver la migración 074.
+//
+// Se marca SOLO la línea desajustada, no las demás de esa página. Es la que
+// lleva la prueba —las dos cifras—, y estampar la misma frase en las ocho
+// líneas de la libreta convierte un dato en ruido: ocho avisos idénticos se leen
+// como decoración, y el que de verdad importa se pierde entre ellos.
+//
+// "Creado a través de Subir libreta" NO se guarda aquí: se deduce de
+// `source = 'photo_import'` y `created_at`, y la lista de movimientos ya lo
+// pinta ("· de libreta"). Guardarlo otra vez sería un segundo sitio libre de
+// contradecir al primero.
+function notaDeDesajuste(r: {
+  review_reason: string | null;
+  read_balance: number | null;
+  page_balance: number;
+  currency: LedgerCurrency | null;
+}): string | null {
+  if (r.review_reason !== "no_cuadra" || r.read_balance === null) return null;
+  const importe = (n: number) =>
+    r.currency ? formatDisplayCurrency(n, r.currency) : formatCurrency(n);
+  return `Importado aunque la suma no cuadraba: tu libreta decía ${importe(r.read_balance)} y con estos montos daba ${importe(r.page_balance)}.`;
+}
 
 const ATTACHMENT_STATE: Record<ImportJobStatus, "uploading" | "processing" | "done" | "error"> = {
   queued: "uploading",
@@ -115,12 +147,16 @@ export function ImportFlow({
     setReviewMovements(movimientos);
     setRevisando(true);
     setDirty(true, undefined, consumirCentinela, TEXTO_SALIR_DE_LA_REVISION);
+    // La moneda se pregunta al entrar, no al final. Un negocio colombiano no
+    // tiene esta pregunta: su libro no lleva moneda.
+    if (showCurrency) setModalMoneda(true);
   }
 
   function cerrarRevision() {
     setReviewMovements(null);
     setRevisando(false);
     setDirty(false);
+    setModalMoneda(false);
   }
 
   // "Every row is the same person" — for an owner who photographs one client's
@@ -211,15 +247,13 @@ export function ImportFlow({
   // vuelve a calcularlo todo sin ese emparejamiento, y las cuatro cosas
   // —matched_client_id, needs_document_id, computed_balance y la base— salen
   // solas. Un cliente nuevo es un cliente nuevo en todo, no en dos campos.
+  const clientesSinLosDescartados = useMemo(
+    () => existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
+    [existingClients, decisiones],
+  );
   const filas = useMemo(
-    () =>
-      effectiveMovements
-        ? reconcileMovements(
-            effectiveMovements,
-            existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
-          )
-        : [],
-    [effectiveMovements, existingClients, decisiones],
+    () => (effectiveMovements ? reconcileMovements(effectiveMovements, clientesSinLosDescartados) : []),
+    [effectiveMovements, clientesSinLosDescartados],
   );
 
   // A client without a cédula/documento on file must get one before the
@@ -230,10 +264,37 @@ export function ImportFlow({
   // ya aplican la decisión del dueño sobre los repetidos— y no sobre
   // `filasParaCandidatos`, que solo existe para detectarlos contra la lista
   // completa de clientes.
+  // LA MISMA LISTA FILTRADA QUE `filas`, y no la completa.
+  //
+  // Pasarle `existingClients` era un fallo de verdad, visto en dev el
+  // 2026-09-28: al decir "es otra persona", `filas` sí dejaba de emparejar —así
+  // que la importación seguía bloqueada por la cédula que falta— pero esta vista
+  // seguía encontrando al cliente viejo por nombre, y por tanto decía
+  // `necesitaDocumento: false`. Resultado: la tarjeta NO pintaba el aviso rojo
+  // de "Falta la cédula" y el botón de guardar estaba deshabilitado sin ninguna
+  // explicación en pantalla. Un callejón sin salida.
+  //
+  // Y los `libros` heredaban el mismo error: `saldoPrevio` y "queda debiendo"
+  // salían con la deuda de la OTRA persona dentro.
   const clientesRevisados = useMemo(
-    () => agruparPorCliente(filas, existingClients, { esVE: showCurrency }),
-    [filas, existingClients, showCurrency],
+    () => agruparPorCliente(filas, clientesSinLosDescartados, { esVE: showCurrency }),
+    [filas, clientesSinLosDescartados, showCurrency],
   );
+
+  // El candidato, en cambio, SÍ sale de la lista completa: es lo único que
+  // sobrevive a la decisión, porque es lo que permite cambiar de idea. Sin esto
+  // la tarjeta desaparecería en cuanto se pulsara "es otra persona" y con ella
+  // los dos botones.
+  const candidatos = useMemo(
+    () => new Map(duplicados.map((c) => [c.nameKey, c.candidato!])),
+    [duplicados],
+  );
+  // El cliente abierto en el detalle, resuelto una vez. `abierto` es una clave
+  // de nombre y el cliente puede desaparecer de la lista mientras el panel está
+  // abierto —al borrar su último movimiento, o al decidir "es otra persona"—, y
+  // entonces esto pasa a `undefined` y el panel se cierra solo en vez de quedar
+  // abierto y vacío.
+  const clienteAbierto = clientesRevisados.find((c) => c.nameKey === abierto);
 
   // A blank shared name would create a nameless client, so it blocks the same
   // way a missing cédula does — but only while at least one row still uses it.
@@ -315,6 +376,7 @@ export function ImportFlow({
   // nada es peor que ninguno.
   const [antesDeAplicar, setAntesDeAplicar] = useState<ExtractedMovement[] | null>(null);
   const [forzarMoneda, setForzarMoneda] = useState(false);
+  const [modalMoneda, setModalMoneda] = useState(false);
 
   // POR DEFECTO SOLO TOCA LO QUE SIGUE SIN ASIGNAR.
   //
@@ -338,13 +400,27 @@ export function ImportFlow({
     setAntesDeAplicar(null);
   }
 
-  // Por `uid` y no por posición. Ver la nota de `onUpdate` en
-  // import-review-table.tsx: el detalle de un cliente recibe solo sus filas, y
-  // con índices la edición aterrizaba en otro cliente.
+  // Por `uid` y no por posición: el detalle de un cliente recibe solo SUS
+  // filas, y con índices la edición aterrizaba en otro cliente. Pasó de verdad
+  // el 2026-09-28 — se tecleó una cédula en "QA No Cuadra" y apareció en "QA
+  // Cuadra".
   function updateMovement(rowId: string, patch: Partial<ExtractedMovement>) {
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (m.uid === rowId ? { ...m, ...patch } : m)) : prev,
     );
+  }
+
+  // La moneda de UN cliente, de un toque. Pisa las de sus líneas a propósito, al
+  // contrario que el "Todo Dólares" de la lista: allí el dueño decide para la
+  // tanda entera y no puede ver lo que ya corrigió, aquí está mirando a una
+  // persona y a sus movimientos, así que pisar es lo que pidió.
+  function aplicarMonedaAlCliente(rowIds: string[], moneda: LedgerCurrency) {
+    const suyas = new Set(rowIds);
+    setReviewMovements((prev) => {
+      if (!prev) return prev;
+      setAntesDeAplicar(prev);
+      return prev.map((m) => (m.uid && suyas.has(m.uid) ? { ...m, currency: moneda } : m));
+    });
   }
 
   // Seeded with the name Gemini read most often, so the common case is one
@@ -397,6 +473,7 @@ export function ImportFlow({
         document_id: r.document_id,
         whatsapp: r.whatsapp,
         currency: r.currency,
+        owner_note: notaDeDesajuste(r),
       }));
       const result = await confirmImport(rows);
       if (result.error) {
@@ -474,6 +551,16 @@ export function ImportFlow({
                 <Label htmlFor="shared-name" className="text-xs">
                   Cliente
                 </Label>
+                {/* El autocompletado de clientes ya existentes. Vivía en la
+                    tabla de movimientos; al retirarla se vino aquí, porque el
+                    campo que lo usa es este. Un `list=` que apunta a un id que
+                    no existe no da error: simplemente deja de sugerir, en
+                    silencio. */}
+                <datalist id="known-clients">
+                  {existingClients.map((c) => (
+                    <option key={c.id} value={c.name} />
+                  ))}
+                </datalist>
                 <Input
                   id="shared-name"
                   list="known-clients"
@@ -597,7 +684,41 @@ export function ImportFlow({
               Hay que elegir una para poder importar. Puedes cambiar filas sueltas después, si la
               libreta mezcla.
             </p>
+
+            {/* La vuelta a la modal. Hace falta porque la modal se puede cerrar
+                con "Están mezclados" o con la X, y sin esto el dueño que la
+                cerró para mirar primero no tendría forma de recuperarla:
+                tendría que elegir aquí, radio a radio, lo mismo que la modal
+                aplica de un toque. */}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto w-full justify-start p-0 text-xs"
+              onClick={() => setModalMoneda(true)}
+            >
+              Seleccionar moneda
+            </Button>
           </div>
+        ) : null}
+
+        {/* Fuera del recuadro de la moneda: el recuadro solo existe para un
+            negocio venezolano, y la modal también, pero montarla dentro ataría
+            su ciclo de vida a un bloque que además se desplaza con el scroll. */}
+        {showCurrency ? (
+          <ModalDeMoneda
+            abierta={modalMoneda}
+            onCerrar={() => setModalMoneda(false)}
+            onElegir={(moneda) => {
+              // `forzarMoneda` no entra aquí: la modal sale al ENTRAR, cuando
+              // todavía no hay nada ajustado a mano que pisar. Pasarle la
+              // casilla haría que una reapertura posterior borrase correcciones
+              // sin que nadie lo pidiera en esta pantalla.
+              applyCurrencyToAll(moneda);
+              setModalMoneda(false);
+            }}
+            clientes={clientesRevisados.length}
+            movimientos={filas.length}
+          />
         ) : null}
         {/* LA LISTA POR CLIENTE, que es lo que el dueño lee primero.
             La tabla sigue existiendo, pero ya no es la pantalla: es el detalle
@@ -605,35 +726,37 @@ export function ImportFlow({
             páginas eran cuarenta filas de ocho columnas en 375px; ahora son
             seis tarjetas que se leen de un vistazo. */}
         <RevisarClientes
-          clientes={conEstado(clientesRevisados, filas, decisiones)}
+          clientes={conEstado(clientesRevisados, filas, decisiones, candidatos)}
           decisiones={decisiones}
           onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
           onAbrir={setAbierto}
         />
 
-        <Sheet open={abierto !== null} onOpenChange={(v) => !v && setAbierto(null)}>
+        <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
           <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-xl">
             <SheetHeader>
-              <SheetTitle>
-                {clientesRevisados.find((c) => c.nameKey === abierto)?.name ?? "Cliente"}
-              </SheetTitle>
+              <SheetTitle>{clienteAbierto?.name ?? "Cliente"}</SheetTitle>
             </SheetHeader>
-            {/* Las filas de ESE cliente, con el mismo editor de siempre. Se
-                reutiliza a propósito: ya sabe editar monto, tipo, moneda,
-                documento y WhatsApp, y reescribirlo desde cero para cambiarle
-                el marco es la clase de trabajo que introduce fallos en lo único
-                que aquí es dinero. */}
-            <ImportReviewTable
-              country={country}
-              rows={filas.filter((r) => r.client_name.trim().toLowerCase() === abierto)}
-              onUpdate={updateMovement}
-              onRemove={removeMovement}
-              existingClients={existingClients}
-              showCurrency={showCurrency}
-              sharedClientActive={sameClient}
-              isLinked={(rowId) => !unlinked.has(rowId)}
-              onToggleLinked={toggleLinked}
-            />
+            {/* "Registrar movimientos": el detalle de ESE cliente. Sustituye a
+                la tabla de movimientos, que se reutilizó mientras la lista por
+                cliente se construía y por eso funcionaba — pero enseñaba la
+                columna "Cliente" repetida ocho veces con el mismo nombre y se
+                desplazaba de lado en un teléfono para llegar al monto. */}
+            {clienteAbierto ? (
+              <DetalleDelCliente
+                cliente={clienteAbierto}
+                filas={filas.filter((r) => r.client_name.trim().toLowerCase() === abierto)}
+                country={country}
+                showCurrency={showCurrency}
+                clienteCompartido={sameClient}
+                isLinked={(rowId) => !unlinked.has(rowId)}
+                onToggleLinked={toggleLinked}
+                onUpdate={updateMovement}
+                onRemove={removeMovement}
+                onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
+                onListo={() => setAbierto(null)}
+              />
+            ) : null}
           </SheetContent>
         </Sheet>
         {missingSharedName ? (

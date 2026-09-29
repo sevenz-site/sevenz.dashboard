@@ -20,7 +20,7 @@ export default async function ImportPage() {
   const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
-      .select("client_id, name, balance, balance_usd, balance_eur, document_id")
+      .select("client_id, name, balance, balance_usd, balance_eur, document_id, whatsapp")
       .eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
     // Para la línea de bolívares del resumen de confirmación, nada más.
@@ -53,6 +53,11 @@ export default async function ImportPage() {
     balance_usd: (c.balance_usd as number | null) ?? 0,
     balance_eur: (c.balance_eur as number | null) ?? 0,
     document_id: c.document_id as string | null,
+    // Solo para NO pedir un WhatsApp que el cliente ya tiene guardado. Sin esto
+    // la revisión decía "Falta el WhatsApp" a un cliente que lo tenía —visto en
+    // dev el 2026-09-28 con QA Debe Plata— porque el aviso se calculaba
+    // únicamente con lo que traía la foto, y la foto nunca trae teléfonos.
+    whatsapp: c.whatsapp as string | null,
   }));
 
   return (

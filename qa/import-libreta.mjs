@@ -124,6 +124,11 @@ const mov = (key, tipo, monto) => ({
   rate_eur_at_time: null,
 });
 
+// La nota que escribe el rediseño cuando el dueño importa una página cuya suma
+// no cuadraba. Se compara letra por letra: si la función la recortara o la
+// pasara por algún `btrim` distinto, aquí se vería.
+const NOTA = "Importado aunque la suma no cuadraba: tu libreta decía $99,00 y con estos montos daba $30,00.";
+
 let creadosParaLimpiar = { clientes: [], movimientos: [] };
 
 try {
@@ -206,7 +211,13 @@ try {
       ],
       client_documents: [],
       client_whatsapps: [],
-      movements: [mov("a", "charge", 10), mov("b", "charge", 20), mov("a", "payment", 5)],
+      // Una sola de las tres lleva nota, a propósito: ver las dos
+      // comprobaciones de la 074 más abajo.
+      movements: [
+        { ...mov("a", "charge", 10), owner_note: NOTA },
+        mov("b", "charge", 20),
+        mov("a", "payment", 5),
+      ],
     };
     const { data, error } = await dueno.rpc("import_libreta", { p_payload: payload });
     check(
@@ -222,6 +233,36 @@ try {
       "y quedan escritos exactamente 2 clientes y 3 movimientos",
       creadosParaLimpiar.clientes.length === 2 && creadosParaLimpiar.movimientos.length === 3,
       `${creadosParaLimpiar.clientes.length} clientes, ${creadosParaLimpiar.movimientos.length} movimientos`,
+    );
+
+    // ── LA NOTA DEL DUEÑO (migración 074) ───────────────────────────────
+    //
+    // Dos afirmaciones, y las dos hacen falta. Que la nota se guarde es la
+    // menos interesante: la que de verdad importa es que las OTRAS filas de la
+    // misma tanda salgan en null. Si la función escribiera la nota en todas —un
+    // error de una sola línea en el insert—, la pantalla se llenaría de "la
+    // suma no cuadraba" en movimientos que cuadran perfectamente, y eso no
+    // levanta ningún error: se ve bien y miente.
+    const { data: conNota, error: eNota } = await admin
+      .from("movements")
+      .select("id, amount, owner_note")
+      .in("id", creadosParaLimpiar.movimientos);
+    // Sin esto el fallo llegaba como `[]`, que se lee como "no guardó nada"
+    // cuando en realidad la columna no existe todavía en este entorno. Son dos
+    // problemas muy distintos y el mensaje tiene que decir cuál.
+    if (eNota) {
+      console.log(`      (la consulta falló: ${eNota.code} ${eNota.message})`);
+    }
+    const nota = (conNota ?? []).filter((m) => m.owner_note !== null);
+    check(
+      "la nota del dueño se guarda en la fila que la traía",
+      nota.length === 1 && nota[0].owner_note === NOTA,
+      JSON.stringify((conNota ?? []).map((m) => [m.amount, m.owner_note])),
+    );
+    check(
+      "y las demás filas de la misma tanda quedan SIN nota",
+      (conNota ?? []).length === 3 && nota.length === 1,
+      `${nota.length} de ${(conNota ?? []).length} con nota`,
     );
   }
 

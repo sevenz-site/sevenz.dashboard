@@ -17,6 +17,11 @@ export type Movement = {
   type: MovementType;
   amount: number;
   description: string | null;
+  // La nota interna del dueño. NO es `description`: `description` es lo único de
+  // esta fila que el cliente lee en `/s/[token]`, y esto es lo contrario — algo
+  // que solo ve el dueño. Migración 074. Hoy la escribe una sola cosa: importar
+  // una libreta cuya suma no cuadraba con el total escrito a mano.
+  owner_note: string | null;
   source: MovementSource;
   running_balance: number;
   needs_review: boolean;
