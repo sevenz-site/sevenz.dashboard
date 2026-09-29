@@ -17,9 +17,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// "Guardar todo", con su diálogo. Se llamaba "Confirmar e importar" hasta
-// que la función pasó a llamarse "Subir libreta" el 2026-09-28: el verbo
-// "importar" ya no aparece en ningún sitio que lea el dueño.
+// "Confirmar y subir", con su diálogo.
+//
+// EL NOMBRE, QUE HA CAMBIADO DOS VECES Y POR EL MISMO MOTIVO. Era "Confirmar
+// e importar"; pasó a "Guardar todo" el 2026-09-28, cuando la función se
+// renombró a "Subir libreta" y el verbo "importar" salió de todo lo que lee el
+// dueño. El mapa de pantallas del rediseño seguía diciendo "Confirmar e
+// importar" —se dibujó antes de aquel renombrado—, así que se resolvió con la
+// mezcla de los dos: "confirmar" del mapa, "subir" del vocabulario de hoy.
+// Decidido por el usuario el 2026-09-29.
 //
 // Vive aparte porque se pinta DOS VECES en la misma pantalla: al final de la
 // revisión, donde estaba siempre, y arriba en la cabecera del teléfono, para
@@ -67,14 +73,14 @@ export function ConfirmarImportacion({
               <Loader2 className="size-4 animate-spin" /> Guardando...
             </>
           ) : (
-            `Guardar todo (${cuantas})`
+            `Confirmar y subir (${cuantas})`
           )}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            ¿Guardar {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}?
+            ¿Subir {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}?
           </AlertDialogTitle>
           <AlertDialogDescription>
             Asegúrate de haber verificado el cliente de cada línea, y sus montos y moneda.
@@ -88,7 +94,7 @@ export function ConfirmarImportacion({
         <ResumenImportacion rows={filas} rateContext={rateContext} />
         <AlertDialogFooter>
           <AlertDialogCancel>Volver a revisar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Guardar</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm}>Subir</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

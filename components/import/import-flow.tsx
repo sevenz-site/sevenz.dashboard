@@ -590,8 +590,16 @@ export function ImportFlow({
         description: "Ajuste al subir la libreta",
         read_balance: null,
         confidence: "high",
-        document_id: null,
-        whatsapp: null,
+        // HEREDA LA CÉDULA Y EL TELÉFONO de sus hermanas, no nace en null.
+        //
+        // Son datos de la PERSONA, no del renglón. Naciendo vacía, un dueño que
+        // escribiera la cédula y DESPUÉS eligiera "mi libreta" se encontraba el
+        // botón de subir bloqueado por una fila recién creada — y la tarjeta del
+        // cliente diciendo "Todo cuadra", porque miraba si alguna fila tenía
+        // cédula y el bloqueo mira si le falta a alguna. Visto en dev el
+        // 2026-09-29, y sin salida: el campo ya estaba relleno.
+        document_id: prev.find((m) => m.client_name === cliente.name && m.document_id?.trim())?.document_id ?? null,
+        whatsapp: prev.find((m) => m.client_name === cliente.name && m.whatsapp?.trim())?.whatsapp ?? null,
         uid,
         currency: libro.currency,
       });

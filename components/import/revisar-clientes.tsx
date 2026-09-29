@@ -95,17 +95,22 @@ export type ClienteConEstado = ClienteRevisado & {
 // cuando hay tres problemas a la vez—, no de datos.
 export function conEstado(
   clientes: ClienteRevisado[],
-  filas: { client_name: string; document_id: string | null }[],
+  filas: { client_name: string; document_id: string | null; needs_document_id: boolean }[],
   decisiones: Record<string, DecisionDuplicado>,
   candidatos: Map<string, CandidatoDuplicado>,
 ): ClienteConEstado[] {
   return clientes.map((c) => {
     const candidatoVisible = candidatos.get(c.nameKey) ?? null;
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
-    const documentoEscrito = suyas.some((f) => f.document_id?.trim());
 
     const bloqueos: string[] = [];
-    if (c.necesitaDocumento && !documentoEscrito) {
+    // EL MISMO CRITERIO, FILA A FILA, que el bloqueo del pie de la pantalla
+    // (`missingDocumentId`). Antes esto preguntaba si ALGUNA fila traía cédula
+    // y el pie si le FALTABA a alguna: con una sola fila sin ella —la línea de
+    // ajuste recién creada, por ejemplo— la tarjeta decía "Todo cuadra"
+    // mientras el botón de subir estaba apagado. Dos medidas distintas de la
+    // misma cosa siempre acaban contradiciéndose; esta es la que manda.
+    if (suyas.some((f) => f.needs_document_id && !f.document_id?.trim())) {
       bloqueos.push("Falta la cédula. Sin ella no se puede importar.");
     }
     // LA MONEDA NO SE REPITE EN CADA TARJETA. Es un bloqueo de la TANDA —tiene

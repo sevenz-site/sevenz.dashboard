@@ -211,18 +211,25 @@ try {
       ],
       client_documents: [],
       client_whatsapps: [],
-      // Una sola de las tres lleva nota, a propósito: ver las dos
-      // comprobaciones de la 074 más abajo.
+      // CUATRO movimientos para el mismo cliente y la misma moneda, no dos.
+      // Con una cadena de dos filas, el orden aleatorio que la 075 arregla
+      // acierta la mitad de las veces y la comprobación del saldo pasaba por
+      // casualidad. Con cuatro, las probabilidades de que salga bien por azar
+      // son de una entre doce.
+      //
+      // Una sola lleva nota, a propósito: ver las comprobaciones de la 074.
       movements: [
         { ...mov("a", "charge", 10), owner_note: NOTA },
         mov("b", "charge", 20),
+        mov("a", "charge", 40),
         mov("a", "payment", 5),
+        mov("a", "charge", 7),
       ],
     };
     const { data, error } = await dueno.rpc("import_libreta", { p_payload: payload });
     check(
       "una libreta buena entra entera",
-      !error && data?.ok === true && data?.imported === 3 && data?.clients_created === 2,
+      !error && data?.ok === true && data?.imported === 5 && data?.clients_created === 2,
       error ? error.message : JSON.stringify(data),
     );
 
@@ -230,8 +237,8 @@ try {
     creadosParaLimpiar.clientes = [...ahora.clientes].filter((id) => !foto.clientes.has(id));
     creadosParaLimpiar.movimientos = [...ahora.movimientos].filter((id) => !foto.movimientos.has(id));
     check(
-      "y quedan escritos exactamente 2 clientes y 3 movimientos",
-      creadosParaLimpiar.clientes.length === 2 && creadosParaLimpiar.movimientos.length === 3,
+      "y quedan escritos exactamente 2 clientes y 5 movimientos",
+      creadosParaLimpiar.clientes.length === 2 && creadosParaLimpiar.movimientos.length === 5,
       `${creadosParaLimpiar.clientes.length} clientes, ${creadosParaLimpiar.movimientos.length} movimientos`,
     );
 
@@ -261,8 +268,58 @@ try {
     );
     check(
       "y las demás filas de la misma tanda quedan SIN nota",
-      (conNota ?? []).length === 3 && nota.length === 1,
+      (conNota ?? []).length === 5 && nota.length === 1,
       `${nota.length} de ${(conNota ?? []).length} con nota`,
+    );
+
+    // ── EL ORDEN Y LOS SALDOS (migración 075) ────────────────────
+    //
+    // ESTA ES LA COMPROBACIÓN QUE FALTABA, y su ausencia dejó pasar un fallo de
+    // dinero: contar filas no dice nada de si las cuentas salen. La libreta
+    // entraba entera —las tres filas, con sus montos— y el cliente figuraba
+    // debiendo el importe de una sola de ellas.
+    //
+    // `now()` es constante dentro de una transacción, así que sin la 075 toda
+    // la tanda nace con el mismo `created_at` y el trigger del saldo desempata
+    // por `id`, que es un uuid aleatorio.
+    //
+    // La invariante que se comprueba no depende de este fixture: en cada
+    // cadena (cliente, moneda), el `running_balance` de la última fila tiene
+    // que ser la suma de sus movimientos.
+    const { data: filasDeSaldo } = await admin
+      .from("movements")
+      .select("id, client_id, currency, type, amount, running_balance, created_at")
+      .in("id", creadosParaLimpiar.movimientos)
+      .order("created_at");
+
+    const cadenas = new Map();
+    for (const m of filasDeSaldo ?? []) {
+      const k = `${m.client_id}|${m.currency ?? "COP"}`;
+      if (!cadenas.has(k)) cadenas.set(k, []);
+      cadenas.get(k).push(m);
+    }
+    const malas = [];
+    for (const [k, filasCadena] of cadenas) {
+      const suma = filasCadena.reduce(
+        (t, m) => t + (m.type === "charge" ? Number(m.amount) : -Number(m.amount)),
+        0,
+      );
+      const ultima = Number(filasCadena[filasCadena.length - 1].running_balance);
+      if (Math.abs(suma - ultima) > 0.001) malas.push(`${k}: suma ${suma} vs saldo ${ultima}`);
+    }
+    check(
+      "el saldo corrido de cada cadena acaba en la suma de sus movimientos",
+      malas.length === 0,
+      malas.length ? malas.join(" · ") : `${cadenas.size} cadenas correctas`,
+    );
+
+    // Y que el orden sea el del payload, no uno cualquiera: dos filas de la
+    // misma tanda no pueden compartir `created_at`.
+    const instantes = (filasDeSaldo ?? []).map((m) => m.created_at);
+    check(
+      "cada movimiento de la tanda tiene su propio created_at",
+      new Set(instantes).size === instantes.length,
+      `${new Set(instantes).size} instantes distintos de ${instantes.length} filas`,
     );
   }
 
