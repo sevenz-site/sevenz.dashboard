@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
-import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -74,11 +73,6 @@ export default async function ImportPage() {
             corregidos a mano, sin un aviso. Es el mismo componente y el mismo
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
-        {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
-            manda aquí su botón de "Guardar todo" por portal — ver
-            components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la
-            derecha; con la ranura vacía no ocupa nada. */}
-        <div id={RANURA_ACCION_CABECERA} className="ml-auto flex items-center" />
       </div>
       <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
       {ownerCountry ? (

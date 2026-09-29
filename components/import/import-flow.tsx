@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2 } from "lucide-react";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
@@ -52,7 +51,6 @@ const TEXTO_SALIR_DE_LA_REVISION = {
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 
 import type { ReconcileClient } from "@/lib/reconcile";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -323,6 +321,25 @@ export function ImportFlow({
   // Una sola definición de "no se puede guardar todavía", porque ahora hay DOS
   // botones que la preguntan —el del pie y el de la cabecera— y que discrepen
   // sería un botón que guarda una tanda que el otro considera incompleta.
+  // QUÉ es lo que impide guardar, en una frase, y en el mismo sitio que el
+  // botón que no se puede pulsar. Antes estos mensajes vivían sueltos encima
+  // del pie de la pantalla, así que con la lista larga el dueño veía un botón
+  // apagado arriba y su explicación fuera de la vista.
+  //
+  // Uno solo y por orden: enseñar los cuatro a la vez no dice por dónde
+  // empezar, y arreglado el primero aparece el siguiente.
+  const motivoQueBloquea = missingSharedName
+    ? "Escribe el nombre del cliente antes de continuar."
+    : missingDocumentId
+      ? sameClient
+        ? "Falta la cédula/documento del cliente — complétala antes de continuar."
+        : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."
+      : sinDecidir
+        ? `Dinos si ${duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"} la misma persona que ya tienes, o alguien distinto.`
+        : missingCurrency
+          ? "Elige la moneda de la libreta antes de continuar."
+          : null;
+
   const noSePuedeConfirmar =
     confirming ||
     filas.length === 0 ||
@@ -334,17 +351,6 @@ export function ImportFlow({
     // funde dos personas, la otra parte el historial de una—, así que no puede
     // haber una marcada por defecto ni pasarse de largo.
     sinDecidir;
-
-  // Si estamos en el navegador. `useSyncExternalStore` y no un efecto: el
-  // portal necesita un nodo que solo existe tras montar, y poner ese
-  // `setState` en un `useEffect` es justo lo que rechaza
-  // `react-hooks/set-state-in-effect`. Mismo recurso que `useIsMobile()`.
-  const montado = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-  const ranuraCabecera = montado ? document.getElementById(RANURA_ACCION_CABECERA) : null;
 
   function handleFilesSelected(fileList: FileList | null) {
     if (guardia()) return;
@@ -501,25 +507,14 @@ export function ImportFlow({
 
   if (reviewMovements) {
     return (
-      <div className="flex flex-1 flex-col gap-4">
-        {/* El mismo botón, arriba. Con veinticinco filas revisadas, el único
-            que guardaba quedaba a una pantalla y media de scroll del sitio
-            donde el dueño acababa de corregir la última. Ver
-            ranura-cabecera.tsx para por qué viaja por portal. */}
-        {ranuraCabecera
-          ? createPortal(
-              <ConfirmarImportacion
-                cuantas={filas.length}
-                filas={filas}
-                rateContext={rateContext}
-                deshabilitado={noSePuedeConfirmar}
-                guardando={confirming}
-                onConfirm={handleConfirm}
-                size="sm"
-              />,
-              ranuraCabecera,
-            )
-          : null}
+      <div className="flex flex-1 flex-col gap-4 pb-2">
+        {/* EL BOTÓN DE GUARDAR YA NO VA EN LA CABECERA.
+            Estuvo ahí porque el único que guardaba quedaba a una pantalla y
+            media de scroll; la barra fija del pie resuelve lo mismo mejor —
+            está siempre a la vista SIN competir con el título ni con el botón
+            de volver, y sobre todo deja sitio encima para decir qué falta. Un
+            botón deshabilitado arriba y su explicación en rojo veinte filas más
+            abajo era pedirle al dueño que adivinara la relación. */}
 
         {/* Cuántos clientes salieron y de cuántas fotos. Es lo primero que el
             dueño quiere saber al llegar aquí —"¿las leyó todas?"— y hasta ahora
@@ -541,7 +536,7 @@ export function ImportFlow({
               className="mt-0.5"
             />
             <Label htmlFor="same-client" className="cursor-pointer">
-              Todas las filas son del mismo cliente
+              Todos el mismo cliente
             </Label>
           </div>
 
@@ -759,45 +754,42 @@ export function ImportFlow({
             ) : null}
           </SheetContent>
         </Sheet>
-        {missingSharedName ? (
-          <p className="text-sm text-destructive">
-            Escribe el nombre del cliente antes de continuar.
-          </p>
-        ) : missingDocumentId ? (
-          <p className="text-sm text-destructive">
-            {sameClient
-              ? "Falta la cédula/documento del cliente — complétala antes de continuar."
-              : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."}
-          </p>
-        ) : sinDecidir ? (
-          <p className="text-sm text-destructive">
-            Dinos si {duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"}{" "}
-            la misma persona que ya tienes, o alguien distinto.
-          </p>
-        ) : missingCurrency ? (
-          <p className="text-sm text-destructive">
-            Elige la moneda de la libreta antes de continuar.
-          </p>
-        ) : null}
-        <div className="flex items-center justify-between">
-          {/* "Volver" no sale de la app, pero sí tira la revisión: las fotos
-              se conservan y las correcciones hechas a mano no. Duele lo mismo
-              que salir, así que pregunta lo mismo. */}
-          <Button
-            variant="outline"
-            onClick={() => guard(() => cerrarRevision())}
-            disabled={confirming}
-          >
-            Volver
-          </Button>
-          <ConfirmarImportacion
-            cuantas={filas.length}
-            filas={filas}
-            rateContext={rateContext}
-            deshabilitado={noSePuedeConfirmar}
-            guardando={confirming}
-            onConfirm={handleConfirm}
-          />
+        {/* LA BARRA FIJA: lo que falta, y justo debajo el botón que no se
+            puede pulsar por eso mismo.
+            `sticky` y no `fixed`: así sigue siendo parte del flujo, empuja el
+            contenido en vez de taparle la última tarjeta, y no hay que
+            reservarle hueco con un padding que luego se queda desajustado.
+            `pb-[env(safe-area-inset-bottom)]` porque en un iPhone con notch la
+            franja de abajo se come el borde del botón. La barra de navegación
+            del teléfono no estorba: durante la revisión está escondida. */}
+        <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {motivoQueBloquea ? (
+            <p className="flex items-start gap-1.5 text-sm text-destructive">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              {motivoQueBloquea}
+            </p>
+          ) : null}
+          <div className="flex items-center gap-2">
+            {/* "Volver" no sale de la app, pero sí tira la revisión: las fotos
+                se conservan y las correcciones hechas a mano no. Duele lo mismo
+                que salir, así que pregunta lo mismo. */}
+            <Button
+              variant="outline"
+              onClick={() => guard(() => cerrarRevision())}
+              disabled={confirming}
+            >
+              Volver
+            </Button>
+            <ConfirmarImportacion
+              className="flex-1"
+              cuantas={filas.length}
+              filas={filas}
+              rateContext={rateContext}
+              deshabilitado={noSePuedeConfirmar}
+              guardando={confirming}
+              onConfirm={handleConfirm}
+            />
+          </div>
         </div>
       </div>
     );

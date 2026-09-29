@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowDownLeft, ArrowUpRight, CircleAlert, Trash2, TriangleAlert } from "lucide-react";
+import { CircleAlert, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { TipoButtons } from "@/components/dashboard/movement-currency-field";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
@@ -62,40 +63,46 @@ function avisoDeLaFila(row: ReviewRow): { texto: string; rojo: boolean } | null 
   return null;
 }
 
-function TipoCompacto({
+// Las dos píldoras de moneda, con su NOMBRE y no solo la bandera.
+//
+// La primera versión ponía la bandera sola en las líneas, para que cupiera al
+// lado del monto. Rompía el patrón de toda la app —en el alta de movimiento, en
+// la cabecera de la cartera y en la modal, la moneda siempre se dice con la
+// palabra— y encima obligaba a saber que la bandera azul de doce estrellas es el
+// euro. Así que la palabra vuelve y lo que cede es el sitio: las píldoras bajan
+// a su propia fila, debajo del monto, donde tienen los 375px enteros.
+function MonedaPildoras({
   value,
   onChange,
   etiqueta,
 }: {
-  value: "charge" | "payment";
-  onChange: (v: "charge" | "payment") => void;
+  value: LedgerCurrency | null;
+  onChange: (v: LedgerCurrency) => void;
   etiqueta: string;
 }) {
-  // Dos botones y no un `Select`: son dos opciones, y un desplegable esconde la
-  // que no está elegida detrás de un toque. Es la misma píldora que "Cargo /
-  // Abono" del alta manual, en versión corta — sin el `(fía)` / `(paga)`, que
-  // aquí se repetiría en cada renglón.
-  const opciones = [
-    { v: "charge" as const, nombre: "Cargo", Flecha: ArrowUpRight, color: "text-destructive" },
-    { v: "payment" as const, nombre: "Abono", Flecha: ArrowDownLeft, color: "text-money-in" },
-  ];
   return (
-    <div className="flex gap-1" role="group" aria-label={etiqueta}>
-      {opciones.map((o) => (
-        <Button
-          key={o.v}
-          type="button"
-          size="sm"
-          variant={value === o.v ? "default" : "outline"}
-          className="h-9 rounded-full px-3"
-          aria-pressed={value === o.v}
-          onClick={() => onChange(o.v)}
+    <RadioGroup
+      value={value ?? ""}
+      onValueChange={(v) => onChange(v as LedgerCurrency)}
+      aria-label={etiqueta}
+      className="flex flex-row flex-wrap gap-2"
+    >
+      {(
+        [
+          { moneda: "USD", nombre: "Dólares" },
+          { moneda: "EUR", nombre: "Euros" },
+        ] as const
+      ).map(({ moneda, nombre }) => (
+        <label
+          key={moneda}
+          className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
         >
-          <o.Flecha className={cn("size-3.5", value === o.v ? undefined : o.color)} />
-          {o.nombre}
-        </Button>
+          <RadioGroupItem value={moneda} />
+          <span className="whitespace-nowrap">{nombre}</span>
+          <CurrencyFlagIcon currency={moneda} className="size-4" />
+        </label>
       ))}
-    </div>
+    </RadioGroup>
   );
 }
 
@@ -335,27 +342,11 @@ export function DetalleDelCliente({
         {showCurrency ? (
           <div className="flex flex-col gap-1.5 rounded-lg border p-3">
             <Label className="text-xs">Moneda de este cliente</Label>
-            <RadioGroup
-              value={monedaDelCliente ?? ""}
-              onValueChange={(v) => onAplicarMoneda(v as LedgerCurrency)}
-              className="flex flex-row flex-wrap gap-2"
-            >
-              {(
-                [
-                  { moneda: "USD", etiqueta: "Dólares" },
-                  { moneda: "EUR", etiqueta: "Euros" },
-                ] as const
-              ).map(({ moneda, etiqueta }) => (
-                <label
-                  key={moneda}
-                  className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
-                >
-                  <RadioGroupItem value={moneda} />
-                  <span className="whitespace-nowrap">{etiqueta}</span>
-                  <CurrencyFlagIcon currency={moneda} className="size-4" />
-                </label>
-              ))}
-            </RadioGroup>
+            <MonedaPildoras
+              value={monedaDelCliente}
+              onChange={onAplicarMoneda}
+              etiqueta="Moneda de este cliente"
+            />
             {monedaDelCliente === null && monedas.size > 1 ? (
               <p className="text-xs text-muted-foreground">
                 Esta libreta mezcla monedas. Cada línea lleva la suya abajo.
@@ -384,20 +375,30 @@ export function DetalleDelCliente({
                     : undefined,
               )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <TipoCompacto
+              {/* La papelera FUERA DEL FLUJO, anclada arriba a la derecha.
+                  Estaba en un flex al lado del tipo y le robaba 36px de ancho:
+                  con eso, "Cargo (fía)" y "Abono (paga)" ya no cabían en una
+                  línea y se apilaban, así que cada movimiento crecía dos filas.
+                  Visto en la captura a 375px. */}
+              <div className="relative">
+                {/* EL MISMO COMPONENTE que el formulario de "Agregar
+                    movimiento", no una copia parecida. Antes eran dos botones
+                    propios, más cortos: se veían bien y rompían el patrón, que
+                    es peor que verse mal — el dueño aprende una forma de decir
+                    "cargo o abono" y aquí se encontraba otra.
+                    `canPay` va en true porque aquí no se está pagando contra un
+                    saldo vivo: se está transcribiendo lo que ya pasó y quedó
+                    escrito en la libreta. */}
+                <TipoButtons
                   value={f.type}
-                  onChange={(v) => onUpdate(f.rowId, { type: v })}
-                  etiqueta={`Tipo del movimiento de ${importeDe(f.amount, f.currency)}`}
+                  onValueChange={(v) => onUpdate(f.rowId, { type: v })}
+                  canPay
                 />
-                {/* La papelera a la derecha del tipo y no al final de la
-                    tarjeta: así queda lejos del monto, que es lo que el dueño
-                    está tocando cuando corrige. */}
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="size-9 shrink-0"
+                  className="absolute top-0 right-0 size-9"
                   aria-label="Quitar este movimiento"
                   onClick={() => onRemove(f.rowId)}
                 >
@@ -405,44 +406,33 @@ export function DetalleDelCliente({
                 </Button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`monto-${f.rowId}`} className="text-xs">
+                  Monto
+                </Label>
                 <Input
+                  id={`monto-${f.rowId}`}
                   type="number"
                   min="0"
                   step="0.01"
                   inputMode="decimal"
-                  className="w-28"
-                  aria-label="Monto"
                   value={f.amount}
                   onChange={(e) => onUpdate(f.rowId, { amount: Number(e.target.value) || 0 })}
                 />
-                {/* La moneda POR LÍNEA, siempre que el negocio tenga monedas.
-                    Estaba condicionada a que el cliente YA mezclara, y eso era
-                    un callejón sin salida: visto en dev el 2026-09-28, tras
-                    aplicar "Todo Dólares" el control desaparecía, así que el
-                    dueño que entonces se daba cuenta de que un renglón era en
-                    euros no tenía forma de decirlo — solo Deshacer, que le
-                    borraba los otros aciertos. La condición se protegía de
-                    repetir un control que no cambia; el precio era no poder
-                    expresar exactamente el caso para el que existe. */}
-                {showCurrency ? (
-                  <RadioGroup
-                    value={f.currency ?? ""}
-                    onValueChange={(v) => onUpdate(f.rowId, { currency: v as LedgerCurrency })}
-                    className="flex flex-row gap-1"
-                  >
-                    {(["USD", "EUR"] as const).map((moneda) => (
-                      <label
-                        key={moneda}
-                        className="flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-2.5 text-xs"
-                      >
-                        <RadioGroupItem value={moneda} className="size-3.5" />
-                        <CurrencyFlagIcon currency={moneda} className="size-3.5" />
-                      </label>
-                    ))}
-                  </RadioGroup>
-                ) : null}
               </div>
+
+              {/* La moneda POR LÍNEA, siempre que el negocio tenga monedas.
+                  Estaba condicionada a que el cliente YA mezclara, y eso era un
+                  callejón sin salida: tras aplicar "Todo Dólares" el control
+                  desaparecía, así que el dueño que entonces se daba cuenta de
+                  que un renglón era en euros no tenía forma de decirlo. */}
+              {showCurrency ? (
+                <MonedaPildoras
+                  value={f.currency}
+                  onChange={(v) => onUpdate(f.rowId, { currency: v })}
+                  etiqueta="Moneda de este movimiento"
+                />
+              ) : null}
 
               <Input
                 placeholder="Detalle (opcional)"
