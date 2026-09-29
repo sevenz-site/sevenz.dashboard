@@ -241,6 +241,15 @@ export type LibroDelCliente = {
   // se pudo comprobar.
   escrito: number | null;
   calculado: number | null;
+  // El `rowId` de la línea que lleva el total escrito que no cuadra.
+  //
+  // Hace falta para colocar bien una línea de ajuste cuando el dueño dice que
+  // manda su libreta: el ajuste va JUSTO ANTES de esa línea, no al final. El
+  // saldo corrido se comprueba EN la fila que trae el total escrito, así que un
+  // ajuste puesto después no cambia esa comprobación y el aviso seguiría rojo
+  // con el ajuste ya metido. Puesto antes, esa fila pasa a dar exactamente el
+  // total de la libreta — que es lo que el dueño acaba de decir que es cierto.
+  filaDesajustada: string | null;
 };
 
 // El cliente que ya existe con ese mismo nombre. NO es una decisión: es un
@@ -327,6 +336,7 @@ export function agruparPorCliente(
         estado,
         escrito: desajustada?.read_balance ?? null,
         calculado: desajustada?.page_balance ?? null,
+        filaDesajustada: desajustada?.rowId ?? null,
       };
     });
 

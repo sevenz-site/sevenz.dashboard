@@ -29,7 +29,11 @@ import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
-import { DetalleDelCliente } from "@/components/import/detalle-del-cliente";
+import {
+  DetalleDelCliente,
+  type DecisionDeTotal,
+  type EleccionDeTotal,
+} from "@/components/import/detalle-del-cliente";
 import { RevisarClientes, conEstado, type DecisionDuplicado } from "@/components/import/revisar-clientes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
@@ -50,9 +54,8 @@ const TEXTO_SALIR_DE_LA_REVISION = {
 };
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-import type { ReconcileClient } from "@/lib/reconcile";
+import type { ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -77,6 +80,9 @@ type ExistingClient = ReconcileClient;
 // `source = 'photo_import'` y `created_at`, y la lista de movimientos ya lo
 // pinta ("· de libreta"). Guardarlo otra vez sería un segundo sitio libre de
 // contradecir al primero.
+const NOTA_DE_AJUSTE =
+  "Esta línea la agregó Sevenz al subir la libreta, porque el dueño dijo que el total escrito a mano era el bueno y los montos leídos no llegaban a él.";
+
 function notaDeDesajuste(r: {
   review_reason: string | null;
   read_balance: number | null;
@@ -392,13 +398,14 @@ export function ImportFlow({
   // destruye trabajo, y para el caso raro de querer forzarlos está la casilla,
   // que es explícita.
   function applyCurrencyToAll(currency: LedgerCurrency, incluirYaAjustadas = false) {
-    setReviewMovements((prev) => {
-      if (!prev) return prev;
-      setAntesDeAplicar(prev);
-      return prev.map((m) =>
-        incluirYaAjustadas || !m.currency ? { ...m, currency } : m,
-      );
-    });
+    // `setAntesDeAplicar` va FUERA del updater, por lo mismo que el toast de
+    // `removeMovement`: un updater tiene que ser puro, y React puede llamarlo
+    // dos veces para la misma actualización.
+    if (!reviewMovements) return;
+    setAntesDeAplicar(reviewMovements);
+    setReviewMovements((prev) =>
+      prev ? prev.map((m) => (incluirYaAjustadas || !m.currency ? { ...m, currency } : m)) : prev,
+    );
   }
 
   function deshacerMoneda() {
@@ -458,9 +465,146 @@ export function ImportFlow({
     });
   }
 
+  // Quitar un movimiento, CON VUELTA ATRÁS.
+  //
+  // La papelera está a un toque de los campos que el dueño está corrigiendo, en
+  // un teléfono, y borraba sin preguntar y sin deshacer: un roce y ese fiado
+  // desaparecía de la libreta antes de llegar siquiera a Sevenz. No se pone una
+  // confirmación —serían veinticinco confirmaciones en una revisión normal— sino
+  // un deshacer, que no estorba a quien acierta.
+  //
+  // Se guarda la POSICIÓN además de la fila: el orden manda en el saldo corrido
+  // y en la comprobación de sumas, así que devolverla al final en vez de a su
+  // sitio cambiaría las cuentas de esa página.
   function removeMovement(rowId: string) {
+    // La búsqueda y el toast van FUERA del updater de `setState`. React puede
+    // llamar a un updater más de una vez para la misma actualización —lo hace en
+    // modo estricto, a propósito— y un `toast()` dentro saldría por duplicado.
+    // Un updater tiene que ser una función pura de su argumento.
+    if (!reviewMovements) return;
+    const i = reviewMovements.findIndex((m) => m.uid === rowId);
+    if (i < 0) return;
+    const quitado = reviewMovements[i];
+
     setReviewMovements((prev) => (prev ? prev.filter((m) => m.uid !== rowId) : prev));
+
+    toast("Movimiento quitado", {
+      description:
+        quitado.description ||
+        `${quitado.type === "charge" ? "Cargo" : "Abono"} de ${quitado.amount}`,
+      action: {
+        label: "Deshacer",
+        onClick: () =>
+          setReviewMovements((actual) => {
+            if (!actual) return actual;
+            // Si ya volvió por otro camino, no se duplica.
+            if (actual.some((m) => m.uid === quitado.uid)) return actual;
+            const copia = [...actual];
+            copia.splice(Math.min(i, copia.length), 0, quitado);
+            return copia;
+          }),
+      },
+    });
   }
+
+  // ── CUÁL DE LOS DOS TOTALES MANDA ──────────────────────────────────────
+  //
+  // "Mi libreta dice $140 y estos montos suman $125." Solo el dueño sabe cuál
+  // es cierto: su libreta pudo sumar mal, o pudo quedarse un renglón fuera de
+  // la foto.
+  //
+  // SI ELIGE SU LIBRETA, HAY QUE CREAR UNA LÍNEA. No hay otra forma: en Sevenz
+  // el saldo no se guarda, se calcula sumando los movimientos
+  // (`recalc_client_running_balance`), así que no existe ningún sitio donde
+  // escribir "140" y que se quede. Los $15 que faltan tienen que ser un
+  // movimiento.
+  //
+  // Y se crea AQUÍ, en la revisión, no al guardar: así el dueño la ve antes de
+  // confirmar, con su monto y su descripción, y puede editarla o borrarla como
+  // cualquier otra. Una línea de dinero que apareciera sola en el momento de
+  // guardar sería justo lo contrario.
+  const [ajustes, setAjustes] = useState<Record<string, string>>({});
+  const [decisionesDeTotal, setDecisionesDeTotal] = useState<
+    Record<string, DecisionDeTotal | undefined>
+  >({});
+
+  function elegirTotal(cliente: ClienteRevisado, libro: LibroDelCliente, cual: EleccionDeTotal) {
+    const clave = `${cliente.nameKey}|${libro.currency ?? "COP"}`;
+    const yaHecho = ajustes[clave];
+
+    if (cual === "suma") {
+      // Se retira el ajuste si lo había. Sin toast de deshacer: esto no es un
+      // borrado del dueño, es la otra mitad de la decisión que acaba de tomar.
+      if (yaHecho) {
+        setReviewMovements((prev) => (prev ? prev.filter((m) => m.uid !== yaHecho) : prev));
+        setAjustes((prev) =>
+          Object.fromEntries(Object.entries(prev).filter(([k]) => k !== clave)),
+        );
+      }
+      setDecisionesDeTotal((prev) => ({
+        ...prev,
+        [clave]: {
+          cual: "suma",
+          escrito: prev[clave]?.escrito ?? libro.escrito ?? 0,
+          calculado: prev[clave]?.calculado ?? libro.calculado ?? 0,
+        },
+      }));
+      return;
+    }
+
+    setDecisionesDeTotal((prev) => ({
+      ...prev,
+      [clave]: {
+        cual: "libreta",
+        escrito: prev[clave]?.escrito ?? libro.escrito ?? 0,
+        calculado: prev[clave]?.calculado ?? libro.calculado ?? 0,
+      },
+    }));
+    if (yaHecho) return;
+
+    // La diferencia sale de lo YA GUARDADO si lo hay: al volver de "suma" el
+    // libro vuelve a traer sus cifras, pero al llegar aquí desde un libro que
+    // ya cuadra —porque se está rehaciendo la decisión— vendrían en null.
+
+    const guardada = decisionesDeTotal[clave];
+    const diferencia =
+      (libro.escrito ?? guardada?.escrito ?? 0) - (libro.calculado ?? guardada?.calculado ?? 0);
+    if (diferencia === 0 || !libro.filaDesajustada) return;
+
+    const uid = crypto.randomUUID();
+    setReviewMovements((prev) => {
+      if (!prev) return prev;
+      // JUSTO ANTES de la fila que lleva el total escrito, no al final. El
+      // saldo corrido se comprueba EN esa fila, así que un ajuste puesto
+      // después no cambiaría nada y el aviso seguiría en rojo con el ajuste ya
+      // metido.
+      const i = prev.findIndex((m) => m.uid === libro.filaDesajustada);
+      const copia = [...prev];
+      copia.splice(i < 0 ? copia.length : i, 0, {
+        client_name: cliente.name,
+        date: null,
+        type: diferencia > 0 ? "charge" : "payment",
+        amount: Math.abs(diferencia),
+        // La lee el CLIENTE en su enlace de saldo, así que dice la verdad en
+        // sus términos y no en los nuestros.
+        description: "Ajuste al subir la libreta",
+        read_balance: null,
+        confidence: "high",
+        document_id: null,
+        whatsapp: null,
+        uid,
+        currency: libro.currency,
+      });
+      return copia;
+    });
+    setAjustes((prev) => ({ ...prev, [clave]: uid }));
+  }
+
+  // Los `uid` de las líneas que creó el propio Sevenz al decir el dueño que
+  // manda su libreta. Van con su nota, distinta de la del desajuste: aquí no
+  // hay nada descuadrado — el ajuste lo cuadró —, lo que hay que poder
+  // reconstruir tres meses después es de dónde salió ese movimiento.
+  const uidsDeAjuste = new Set(Object.values(ajustes));
 
   async function handleConfirm() {
     if (guardia()) return;
@@ -479,7 +623,7 @@ export function ImportFlow({
         document_id: r.document_id,
         whatsapp: r.whatsapp,
         currency: r.currency,
-        owner_note: notaDeDesajuste(r),
+        owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
       }));
       const result = await confirmImport(rows);
       if (result.error) {
@@ -633,29 +777,31 @@ export function ImportFlow({
                 </Button>
               ) : null}
 
-              <RadioGroup
-                value={monedaDeLaLibreta ?? ""}
-                onValueChange={(v) => applyCurrencyToAll(v as LedgerCurrency, forzarMoneda)}
-                className="flex flex-row flex-wrap gap-2"
-              >
-                {/* Nombre en castellano y bandera, como el mapa: "Todo en USD"
-                    obligaba a saber que USD es el dólar. La bandera hace el
-                    trabajo antes que la palabra, y es la misma que el dueño ve
-                    en el resto de la app. */}
+              {/* EL MISMO PATRÓN que el selector de moneda de "Agregar
+                  movimiento": bandera delante, nombre detrás, píldora rellena
+                  cuando está elegida. Antes era un radio con el punto delante y
+                  la bandera al final — se veía bien y era un tercer dibujo para
+                  la misma pregunta. Aquí las etiquetas dicen "Todo" porque esto
+                  aplica a la tanda entera, que es lo único que cambia. */}
+              <div className="flex flex-row flex-wrap gap-2">
                 {([
                   { moneda: "USD", etiqueta: "Todo Dólares" },
                   { moneda: "EUR", etiqueta: "Todo Euros" },
                 ] as const).map(({ moneda, etiqueta }) => (
-                  <label
+                  <Button
                     key={moneda}
-                    className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
+                    type="button"
+                    variant={monedaDeLaLibreta === moneda ? "default" : "outline"}
+                    size="sm"
+                    className="rounded-full px-3.5"
+                    aria-pressed={monedaDeLaLibreta === moneda}
+                    onClick={() => applyCurrencyToAll(moneda, forzarMoneda)}
                   >
-                    <RadioGroupItem value={moneda} />
-                    <span className="whitespace-nowrap">{etiqueta}</span>
-                    <CurrencyFlagIcon currency={moneda} className="size-4" />
-                  </label>
+                    <CurrencyFlagIcon currency={moneda} />
+                    {etiqueta}
+                  </Button>
                 ))}
-              </RadioGroup>
+              </div>
             </div>
 
             {/* La casilla solo sale cuando de verdad hay algo que forzar: si
@@ -749,6 +895,13 @@ export function ImportFlow({
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
                 onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
+                decisionesDeTotal={Object.fromEntries(
+                  clienteAbierto.libros.map((l) => [
+                    l.currency ?? "COP",
+                    decisionesDeTotal[`${clienteAbierto.nameKey}|${l.currency ?? "COP"}`],
+                  ]),
+                )}
+                onElegirTotal={(libro, cual) => elegirTotal(clienteAbierto, libro, cual)}
                 onListo={() => setAbierto(null)}
               />
             ) : null}

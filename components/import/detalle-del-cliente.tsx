@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { TipoButtons } from "@/components/dashboard/movement-currency-field";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -71,38 +70,40 @@ function avisoDeLaFila(row: ReviewRow): { texto: string; rojo: boolean } | null 
 // palabra— y encima obligaba a saber que la bandera azul de doce estrellas es el
 // euro. Así que la palabra vuelve y lo que cede es el sitio: las píldoras bajan
 // a su propia fila, debajo del monto, donde tienen los 375px enteros.
-function MonedaPildoras({
+export function MonedaPildoras({
   value,
   onChange,
-  etiqueta,
+  etiqueta = "Moneda",
 }: {
   value: LedgerCurrency | null;
   onChange: (v: LedgerCurrency) => void;
-  etiqueta: string;
+  etiqueta?: string;
 }) {
   return (
-    <RadioGroup
-      value={value ?? ""}
-      onValueChange={(v) => onChange(v as LedgerCurrency)}
-      aria-label={etiqueta}
-      className="flex flex-row flex-wrap gap-2"
-    >
-      {(
-        [
-          { moneda: "USD", nombre: "Dólares" },
-          { moneda: "EUR", nombre: "Euros" },
-        ] as const
-      ).map(({ moneda, nombre }) => (
-        <label
-          key={moneda}
-          className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm"
-        >
-          <RadioGroupItem value={moneda} />
-          <span className="whitespace-nowrap">{nombre}</span>
-          <CurrencyFlagIcon currency={moneda} className="size-4" />
-        </label>
-      ))}
-    </RadioGroup>
+    <div className="flex flex-col gap-2">
+      <Label>{etiqueta}</Label>
+      <div className="flex flex-row flex-wrap gap-2">
+        {(
+          [
+            { moneda: "USD", nombre: "Dólares" },
+            { moneda: "EUR", nombre: "Euros" },
+          ] as const
+        ).map(({ moneda, nombre }) => (
+          <Button
+            key={moneda}
+            type="button"
+            variant={value === moneda ? "default" : "outline"}
+            size="sm"
+            className="rounded-full px-3.5"
+            aria-pressed={value === moneda}
+            onClick={() => onChange(moneda)}
+          >
+            <CurrencyFlagIcon currency={moneda} />
+            {nombre}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -113,10 +114,135 @@ function MonedaPildoras({
 // número saldría plausible, que es lo que lo hace peligroso: nadie lo
 // cuestiona. Es el mismo motivo por el que `porCobrar()` manda "$50,00 y
 // €20,00" en vez de un número.
-function Totales({ libros }: { libros: LibroDelCliente[] }) {
+export type EleccionDeTotal = "libreta" | "suma";
+
+// Lo que hay que recordar de una decisión ya tomada.
+//
+// Las dos cifras se guardan al decidir, no se vuelven a leer del libro: en
+// cuanto se elige "mi libreta" y entra la línea de ajuste, las cuentas cuadran
+// y `escrito`/`calculado` pasan a null — el libro ya no tiene desajuste que
+// contar. Sin guardarlas, el resumen decía "tu libreta dice $140 y estos montos
+// suman $140" y ofrecía "una línea de ajuste de $0,00". Visto en dev.
+export type DecisionDeTotal = {
+  cual: EleccionDeTotal;
+  escrito: number;
+  calculado: number;
+};
+
+// El bloque que pregunta cuál de los dos números manda — o, si ya se respondió,
+// el que dice qué se decidió y deja cambiarlo.
+function DecisionDelTotal({
+  escrito,
+  calculado,
+  currency,
+  decidido,
+  onElegir,
+}: {
+  escrito: number;
+  calculado: number;
+  currency: LedgerCurrency | null;
+  decidido: DecisionDeTotal | undefined;
+  onElegir: (cual: EleccionDeTotal) => void;
+}) {
+  // Con una decisión tomada mandan SUS cifras, no las del libro de ahora.
+  const esc = decidido ? decidido.escrito : escrito;
+  const cal = decidido ? decidido.calculado : calculado;
+  const diferencia = esc - cal;
+
+  if (decidido) {
+    return (
+      <div className="mt-1 flex flex-col gap-2 border-t pt-2">
+        <p className="text-sm">
+          {decidido.cual === "libreta" ? (
+            <>
+              Te quedaste con el total de tu libreta:{" "}
+              <strong>{importeDe(esc, currency)}</strong>. Agregamos la línea de ajuste de{" "}
+              {importeDe(Math.abs(diferencia), currency)} que ves arriba.
+            </>
+          ) : (
+            <>
+              Te quedaste con la suma de los montos:{" "}
+              <strong>{importeDe(cal, currency)}</strong>. Tu libreta decía{" "}
+              {importeDe(esc, currency)} y lo dejamos anotado.
+            </>
+          )}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="self-start"
+          onClick={() => onElegir(decidido.cual === "libreta" ? "suma" : "libreta")}
+        >
+          {decidido.cual === "libreta"
+            ? `Cambiar a ${importeDe(cal, currency)}`
+            : `Cambiar a ${importeDe(esc, currency)}`}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 flex flex-col gap-2 border-t pt-2">
+      <p className="flex items-start gap-1.5 text-sm text-destructive">
+        <CircleAlert className="mt-0.5 size-4 shrink-0" />
+        <span>
+          Tu libreta dice <strong>{importeDe(esc, currency)}</strong> y estos montos suman{" "}
+          <strong>{importeDe(cal, currency)}</strong>. ¿Cuál es el bueno?
+        </span>
+      </p>
+
+      {(
+        [
+          {
+            cual: "libreta" as const,
+            titulo: `Mi libreta: ${importeDe(esc, currency)}`,
+            // Se dice ANTES de pulsarlo lo que va a pasar, porque lo que pasa es
+            // que aparece un movimiento nuevo en la cuenta de una persona. Un
+            // dato de dinero que sale de la nada, sin aviso, es exactamente lo
+            // que nadie quiere encontrarse tres meses después.
+            pie: `Agregamos una línea de ajuste de ${importeDe(Math.abs(diferencia), currency)} para que cuadre.`,
+          },
+          {
+            cual: "suma" as const,
+            titulo: `La suma de estos montos: ${importeDe(cal, currency)}`,
+            pie: "La libreta traía un error de cuentas. Lo dejamos anotado.",
+          },
+        ]
+      ).map((o) => (
+        <label
+          key={o.cual}
+          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-2.5"
+        >
+          <Checkbox
+            checked={false}
+            onCheckedChange={(v) => v === true && onElegir(o.cual)}
+            className="mt-0.5"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium">{o.titulo}</span>
+            <span className="text-xs text-muted-foreground">{o.pie}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function Totales({
+  libros,
+  decisiones,
+}: {
+  libros: LibroDelCliente[];
+  // Por moneda, porque el desajuste es de un libro: la página puede cuadrar en
+  // dólares y no en euros, y son dos preguntas distintas.
+  decisiones: Record<string, React.ComponentProps<typeof DecisionDelTotal> | undefined>;
+}) {
   return (
     <div className="flex flex-col gap-2">
-      {libros.map((l) => (
+      {libros.map((l) => {
+        const decision = decisiones[l.currency ?? "COP"];
+        return (
         <div key={l.currency ?? "COP"} className="flex flex-col gap-1 rounded-lg border p-3">
           {/* La cabecera de la moneda solo aparece cuando hay más de un libro:
               con uno solo, repetir "Dólares" encima de tres cifras que ya
@@ -159,16 +285,18 @@ function Totales({ libros }: { libros: LibroDelCliente[] }) {
             </span>
           </div>
 
-          {l.estado === "no_cuadra" && l.escrito !== null && l.calculado !== null ? (
-            <p className="flex items-start gap-1.5 pt-1 text-sm text-destructive">
-              <CircleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>
-                Suma da <strong>{importeDe(l.calculado, l.currency)}</strong> y tu cuenta en libreta
-                da <strong>{importeDe(l.escrito, l.currency)}</strong>. Puedes importarlo así y lo
-                dejamos anotado, o corregir los montos de arriba.
-              </span>
-            </p>
-          ) : null}
+          {/* ── EL DESAJUSTE, Y CUÁL DE LOS DOS NÚMEROS MANDA ────────────
+              Antes esto era una frase y nada más: decía las dos cifras y
+              dejaba al dueño con el problema. Ahora se elige, porque solo él
+              sabe cuál es cierta — su libreta puede tener un error de suma, o
+              puede faltar un renglón que no salió en la foto.
+
+              El bloque sigue visible DESPUÉS de elegir "mi libreta", aunque
+              entonces las cuentas ya cuadren y el estado sea `cuadra`: si
+              desapareciera, la decisión quedaría tomada sin forma de verla ni
+              de cambiarla, y la línea de ajuste aparecería en el historial sin
+              que nada en pantalla explicara de dónde salió. */}
+          {decision ? <DecisionDelTotal {...decision} /> : null}
           {l.estado === "sin_verificar" ? (
             <p className="flex items-start gap-1.5 pt-1 text-sm text-amber-700 dark:text-amber-400">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
@@ -177,7 +305,8 @@ function Totales({ libros }: { libros: LibroDelCliente[] }) {
             </p>
           ) : null}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -193,6 +322,8 @@ export function DetalleDelCliente({
   onUpdate,
   onRemove,
   onAplicarMoneda,
+  decisionesDeTotal,
+  onElegirTotal,
   onListo,
 }: {
   cliente: ClienteRevisado;
@@ -220,6 +351,11 @@ export function DetalleDelCliente({
   // aquí el dueño está mirando a una persona y decide por ella, que es distinto
   // del "Todo Dólares" de la lista — ese solo toca lo que sigue sin asignar.
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
+  // Qué hacer con un total escrito que no cuadra: quedarse con el de la
+  // libreta —que añade una línea de ajuste— o con la suma de los montos.
+  // Vive en el flujo y no aquí porque cambia `reviewMovements`, que es de allí.
+  decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
+  onElegirTotal: (libro: LibroDelCliente, cual: EleccionDeTotal) => void;
   onListo: () => void;
 }) {
   const documentoEscrito = filas.find((f) => f.document_id?.trim())?.document_id ?? "";
@@ -246,7 +382,11 @@ export function DetalleDelCliente({
   const monedaDelCliente = monedas.size === 1 ? [...monedas][0] : null;
 
   return (
-    <div className="flex flex-col gap-4 pb-2">
+    // `px-4`: `SheetContent` no trae ningún margen lateral propio — solo
+    // `SheetHeader` lo pone, y por eso el título respiraba y las tarjetas de
+    // abajo tocaban el borde de la pantalla. Va aquí y no en el componente
+    // compartido: el resto de los paneles de la app ya cuadran.
+    <div className="flex flex-col gap-4 px-4 pb-2">
       {/* ── Los datos de la persona, una sola vez ─────────────────────────
           Con el cliente compartido marcado, la cédula y el WhatsApp ya se
           escriben una vez arriba de la lista, así que aquí se dice dónde en vez
@@ -341,7 +481,6 @@ export function DetalleDelCliente({
           no tiene esta pregunta: su libro no lleva moneda. */}
         {showCurrency ? (
           <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-            <Label className="text-xs">Moneda de este cliente</Label>
             <MonedaPildoras
               value={monedaDelCliente}
               onChange={onAplicarMoneda}
@@ -430,7 +569,6 @@ export function DetalleDelCliente({
                 <MonedaPildoras
                   value={f.currency}
                   onChange={(v) => onUpdate(f.rowId, { currency: v })}
-                  etiqueta="Moneda de este movimiento"
                 />
               ) : null}
 
@@ -474,7 +612,31 @@ export function DetalleDelCliente({
       </div>
 
       {/* ── Cómo queda ─────────────────────────────────────────────────── */}
-      <Totales libros={cliente.libros} />
+      <Totales
+        libros={cliente.libros}
+        decisiones={Object.fromEntries(
+          cliente.libros.map((l) => {
+            const clave = l.currency ?? "COP";
+            const decidido = decisionesDeTotal[clave];
+            // El bloque sale cuando el libro NO cuadra, y también cuando ya se
+            // decidió — porque al elegir "mi libreta" las cuentas pasan a
+            // cuadrar y, sin esto, la pregunta y su respuesta desaparecerían
+            // juntas dejando una línea de ajuste sin explicación.
+            const hayQuePreguntar = l.estado === "no_cuadra" && l.escrito !== null && l.calculado !== null;
+            if (!hayQuePreguntar && !decidido) return [clave, undefined];
+            return [
+              clave,
+              {
+                escrito: l.escrito ?? l.saldoFinal,
+                calculado: l.calculado ?? l.totalPagina,
+                currency: l.currency,
+                decidido,
+                onElegir: (cual: EleccionDeTotal) => onElegirTotal(l, cual),
+              },
+            ];
+          }),
+        )}
+      />
 
       <Button type="button" className="w-full" onClick={onListo}>
         Listo
