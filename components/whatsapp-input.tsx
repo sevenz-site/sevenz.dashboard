@@ -20,6 +20,7 @@ export function WhatsappInput({
   invalid,
   onValueChange,
   compact,
+  disabled,
 }: {
   name: string;
   defaultValue?: string | null;
@@ -44,6 +45,10 @@ export function WhatsappInput({
   // Encoge el selector de país a solo la bandera. Para la tabla de importar,
   // donde la celda entera mide 176px y el selector normal se comía 112.
   compact?: boolean;
+  // Se ensena el numero pero no se puede tocar. Mismo motivo que en
+  // DocumentIdInput: la 073 solo escribe el WhatsApp cuando el cliente no
+  // tiene ninguno, asi que editarlo sobre uno ya guardado no haria nada.
+  disabled?: boolean;
 }) {
   const parsed = defaultValue ? splitPhoneNumber(defaultValue) : null;
   const defaultDialCode =
@@ -84,8 +89,14 @@ export function WhatsappInput({
   return (
     <div className="flex flex-col gap-1.5">
       <div className={compact ? "flex gap-1" : "flex gap-2"}>
-        <CountryCodeSelect value={dialCode} onChange={setDialCode} compact={compact} />
+        <CountryCodeSelect
+          value={dialCode}
+          onChange={setDialCode}
+          compact={compact}
+          disabled={disabled}
+        />
         <Input
+          disabled={disabled}
           id={id}
           type="tel"
           inputMode="numeric"

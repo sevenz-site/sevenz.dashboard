@@ -26,6 +26,7 @@ export function DocumentIdInput({
   onChange,
   invalid,
   required,
+  disabled,
 }: {
   id: string;
   country: OwnerCountry | null;
@@ -34,6 +35,11 @@ export function DocumentIdInput({
   onChange: (next: string) => void;
   invalid?: boolean;
   required?: boolean;
+  // Se ensena el valor pero no se puede tocar. Lo usa la revision de una
+  // libreta con un cliente que YA existe: la migracion 073 solo rellena
+  // documentos que esten en null, asi que un campo editable ahi aceptaria el
+  // cambio y lo tiraria en silencio.
+  disabled?: boolean;
 }) {
   const { digits, legacy } = parseDocumentId(value);
 
@@ -44,6 +50,7 @@ export function DocumentIdInput({
     return (
       <>
         <Input
+          disabled={disabled}
           id={id}
           name="document_id"
           value={value}
@@ -61,6 +68,7 @@ export function DocumentIdInput({
 
   const field = (
     <Input
+      disabled={disabled}
       id={id}
       name="document_id"
       value={digits}

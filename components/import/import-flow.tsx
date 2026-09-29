@@ -946,6 +946,11 @@ export function ImportFlow({
                 estado={
                   conEstado([clienteAbierto], filas, decisiones, candidatos)[0].estado
                 }
+                candidato={candidatos.get(clienteAbierto.nameKey) ?? null}
+                decision={decisiones[clienteAbierto.nameKey]}
+                onDecidir={(d) =>
+                  setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }))
+                }
                 entradas={entradasDelHistorial(clienteAbierto.nameKey)}
                 country={country}
                 showCurrency={showCurrency}

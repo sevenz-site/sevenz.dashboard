@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CircleAlert, Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
+import {
+  CircleAlert,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  TriangleAlert,
+  UserRoundSearch,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -9,7 +16,11 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { EditarMovimiento, fechaDeLaLibreta } from "@/components/import/editar-movimiento";
-import { CHIP, type EstadoTarjeta } from "@/components/import/revisar-clientes";
+import {
+  CHIP,
+  type DecisionDuplicado,
+  type EstadoTarjeta,
+} from "@/components/import/revisar-clientes";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +37,12 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
 import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
-import type { ClienteRevisado, LibroDelCliente, ReviewRow } from "@/lib/reconcile";
+import type {
+  CandidatoDuplicado,
+  ClienteRevisado,
+  LibroDelCliente,
+  ReviewRow,
+} from "@/lib/reconcile";
 
 // ─────────────────────────────────────────────────────────────────────────
 // "REGISTRAR MOVIMIENTOS": el detalle de UN cliente
@@ -272,6 +288,9 @@ function FilaMovimiento({
 export function DetalleDelCliente({
   cliente,
   estado,
+  candidato,
+  decision,
+  onDecidir,
   entradas,
   country,
   showCurrency,
@@ -289,6 +308,14 @@ export function DetalleDelCliente({
 }: {
   cliente: ClienteRevisado;
   estado: EstadoTarjeta;
+  // El cliente existente que se le parece, y qué dijo el dueño. Vienen APARTE
+  // de `cliente.candidato`: ese desaparece en cuanto se responde "es otra
+  // persona" —y tiene que desaparecer, o el saldo previo de la otra persona se
+  // colaría en los totales—, pero la pregunta sigue en pantalla para poder
+  // cambiar de idea.
+  candidato: CandidatoDuplicado | null;
+  decision: DecisionDuplicado | undefined;
+  onDecidir: (d: DecisionDuplicado) => void;
   // El historial en el orden de la libreta, con los quitados intercalados.
   entradas: EntradaDelHistorial[];
   country: OwnerCountry;
@@ -314,8 +341,17 @@ export function DetalleDelCliente({
   // La cédula que YA está guardada en la ficha. No viene en las filas: la
   // extracción nunca lee un documento de la foto. Sin esto el campo salía vacío
   // para un cliente que la tiene, con un pie hablando de "cambiarlo".
-  const documentoGuardado = cliente.candidato?.document_id ?? null;
-  const whatsappGuardado = cliente.candidato?.whatsapp?.trim() || null;
+  // SIN RESPUESTA NO HAY CAMPOS. Mientras no se diga si es la misma persona, no
+  // se sabe de quién son la cédula y el teléfono que se verían: los del cliente
+  // que ya existe, o los de alguien nuevo que todavía no tiene ninguno.
+  // Enseñar unos cualesquiera es invitar a escribir sobre la ficha equivocada.
+  const sinDecidir = candidato !== null && !decision;
+  // "Es el mismo": se enseña lo que ya está guardado y no se toca. La 073 solo
+  // rellena documentos y teléfonos que estén en null, así que un campo editable
+  // aceptaría el cambio y lo tiraría en silencio.
+  const esElMismo = candidato !== null && decision === "mismo";
+  const documentoGuardado = esElMismo ? (candidato?.document_id ?? null) : null;
+  const whatsappGuardado = esElMismo ? (candidato?.whatsapp?.trim() || null) : null;
   const exigeDocumento = cliente.necesitaDocumento && !documentoEscrito.trim();
 
   const monedas = new Set(filas.map((f) => f.currency));
@@ -374,8 +410,65 @@ export function DetalleDelCliente({
         </AlertDialog>
       </div>
 
-      {/* ── Sus datos, una sola vez ────────────────────────────────────── */}
-      {clienteCompartido ? (
+      {/* ── ¿Es el mismo, o es otra persona? ───────────────────────────
+          Ámbar y no rojo: no es un dato que falte, es una pregunta que solo el
+          dueño puede responder. Sin marcar por defecto — las dos respuestas se
+          equivocan en silencio y en direcciones opuestas: una funde a dos
+          personas en una ficha, la otra parte el historial de una. */}
+      {candidato ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+          <p className="font-semibold text-amber-800 dark:text-amber-300">¿Es el mismo?</p>
+          <p className="flex items-start gap-1.5 text-sm text-amber-800 dark:text-amber-300">
+            <UserRoundSearch className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Ya tienes un &ldquo;{candidato.name}&rdquo; en tus clientes.
+              {candidato.document_id ? ` Cédula: ${candidato.document_id}.` : " Sin cédula."}
+              {candidato.balance_usd
+                ? ` Debe ${formatDisplayCurrency(candidato.balance_usd, "USD")}.`
+                : ""}
+              {candidato.balance_eur
+                ? ` Debe ${formatDisplayCurrency(candidato.balance_eur, "EUR")}.`
+                : ""}
+              {!candidato.balance_usd && !candidato.balance_eur && candidato.balance
+                ? ` Debe ${formatCurrency(candidato.balance)}.`
+                : ""}
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { valor: "mismo" as const, texto: "Es el mismo" },
+                { valor: "otra" as const, texto: "Es otra persona" },
+              ]
+            ).map((o) => (
+              <label
+                key={o.valor}
+                className={cn(
+                  "flex h-10 cursor-pointer items-center gap-2 rounded-full border bg-background px-3.5 text-sm",
+                  decision === o.valor ? "border-foreground" : "border-border",
+                )}
+              >
+                {/* Un `input type=radio` nativo y no el de Radix: son dos
+                    opciones sueltas dentro de un aviso, no un RadioGroup de
+                    formulario, y el nombre tiene que ser único por cliente para
+                    que abrir otro detalle no herede la marca del anterior. */}
+                <input
+                  type="radio"
+                  name={`duplicado-${cliente.nameKey}`}
+                  className="size-4 accent-foreground"
+                  checked={decision === o.valor}
+                  onChange={() => onDecidir(o.valor)}
+                />
+                {o.texto}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Sus datos, una sola vez ──────────────────────────────────────
+          No salen hasta que la pregunta de arriba esté respondida. */}
+      {sinDecidir ? null : clienteCompartido ? (
         <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
           La cédula y el WhatsApp de este cliente se escriben arriba, en la lista, porque marcaste
           que todos los movimientos son de la misma persona.
@@ -389,21 +482,16 @@ export function DetalleDelCliente({
             {/* La de un cliente que ya existe SE ENSEÑA, no se edita: la 073
                 solo rellena documentos que estén en null, así que un campo
                 editable aceptaría el cambio y lo tiraría en silencio. */}
-            {documentoGuardado ? (
-              <p id="detalle-documento" className="text-sm tabular-nums">
-                {documentoGuardado}
-              </p>
-            ) : (
-              <DocumentIdInput
-                id="detalle-documento"
-                country={country}
-                value={documentoEscrito}
-                onChange={(next) => {
-                  for (const f of filas) onUpdate(f.rowId, { document_id: next || null });
-                }}
-                invalid={exigeDocumento}
-              />
-            )}
+            <DocumentIdInput
+              id="detalle-documento"
+              country={country}
+              disabled={esElMismo}
+              value={documentoGuardado ?? documentoEscrito}
+              onChange={(next) => {
+                for (const f of filas) onUpdate(f.rowId, { document_id: next || null });
+              }}
+              invalid={exigeDocumento}
+            />
             {documentoGuardado ? (
               <p className="text-xs text-muted-foreground">
                 Para cambiarlo, entra al cliente desde Clientes cuando termines de subir la libreta.
@@ -419,21 +507,22 @@ export function DetalleDelCliente({
             <Label htmlFor="detalle-whatsapp" className="text-xs">
               WhatsApp (opcional)
             </Label>
-            {whatsappGuardado ? (
-              <p id="detalle-whatsapp" className="text-sm tabular-nums">
-                {whatsappGuardado}
-              </p>
-            ) : (
-              <WhatsappInput
-                id="detalle-whatsapp"
-                name="detalle-whatsapp"
-                preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
-                defaultValue={filas.find((f) => f.whatsapp?.trim())?.whatsapp ?? null}
-                onValueChange={(v) => {
-                  for (const f of filas) onUpdate(f.rowId, { whatsapp: v.trim() || null });
-                }}
-              />
-            )}
+            <WhatsappInput
+              // `key`: `defaultValue` solo se lee al montar, asi que al cambiar
+              // de "es el mismo" a "es otra persona" el campo se quedaria con el
+              // numero del otro cliente. Cambiar la key lo vuelve a montar.
+              key={esElMismo ? "guardado" : "nuevo"}
+              id="detalle-whatsapp"
+              name="detalle-whatsapp"
+              disabled={esElMismo}
+              preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
+              defaultValue={
+                whatsappGuardado ?? filas.find((f) => f.whatsapp?.trim())?.whatsapp ?? null
+              }
+              onValueChange={(v) => {
+                for (const f of filas) onUpdate(f.rowId, { whatsapp: v.trim() || null });
+              }}
+            />
             {cliente.faltaWhatsapp ? (
               <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
