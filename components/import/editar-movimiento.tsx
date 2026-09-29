@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TriangleAlert } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
@@ -27,24 +28,74 @@ import type { ReviewRow } from "@/lib/reconcile";
 // Por eso el campo es de SOLO LECTURA y dice de dónde sale. Un campo editable
 // aceptaría una corrección y la tiraría, que es peor que no ofrecerlo; y una
 // fecha a secas se leería como la fecha del movimiento en Sevenz, que no es.
+// El dia que leyo la IA, como Date local. Null si no hay nada parseable.
+//
+// UN "2026-08-30" SUELTO ES UTC, Y AQUI ESO RESTA UN DIA.
+// `new Date("2026-08-30")` es medianoche UTC; en Venezuela (UTC-4) sale el 29.
+// Medido en dev el 2026-09-29: la libreta decia 30 y la pantalla decia 29. Una
+// fecha escrita a mano en un cuaderno es un DIA, sin hora y sin zona.
+//
+// Y se construye AL MEDIODIA, no a medianoche. Ese Date acaba viajando al
+// servidor como instante UTC: a medianoche local, cualquier zona al este del
+// meridiano lo devuelve al dia anterior en cuanto alguien lo lea desde otro
+// sitio. Al mediodia hay doce horas de margen por cada lado, que cubre el
+// planeta entero.
+function alMediodia(anio: number, mes: number, dia: number): Date | null {
+  const d = new Date(anio, mes - 1, dia, 12);
+  // `new Date(2026, 12, 40)` no falla: se desborda a otro mes. Se comprueba que
+  // salga lo que entro, o un "30/2" acabaria guardado como 2 de marzo.
+  return d.getFullYear() === anio && d.getMonth() === mes - 1 && d.getDate() === dia ? d : null;
+}
+
+function diaLeido(date: string | null): Date | null {
+  const bruto = date?.trim();
+  if (!bruto) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(bruto);
+  if (iso) return alMediodia(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  // RESPALDO PARA "30/8/2026" Y "30-8-26".
+  //
+  // El prompt de `/api/extract` pide ISO, pero un modelo puede desobedecer y en
+  // una libreta venezolana la fecha se escribe asi. Sin esto, `new Date()` lo
+  // interpreta a la americana —mes/dia— o devuelve NaN, y la fecha se perdia en
+  // silencio: el campo salia vacio y el movimiento se guardaba con la de hoy.
+  //
+  // DIA PRIMERO, que es como se escribe en Venezuela y Colombia. Con "8/3" no
+  // hay forma de saberlo y se elige lo que acierta en este mercado.
+  const suelto = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2}|\d{4})$/.exec(bruto);
+  if (suelto) {
+    const anio = Number(suelto[3]);
+    return alMediodia(anio < 100 ? 2000 + anio : anio, Number(suelto[2]), Number(suelto[1]));
+  }
+
+  const d = new Date(bruto);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+// Lo que se ensena. Si la IA escribio algo que no es una fecha —"30/8", "lunes"—
+// se ensena tal cual: mejor eso que nada, y el dueno ve que hay que corregirlo.
 export function fechaDeLaLibreta(date: string | null): string | null {
   const bruto = date?.trim();
   if (!bruto) return null;
+  const d = diaLeido(date);
+  return d ? formatDate(d.toISOString()) : bruto;
+}
 
-  // UN "2026-08-30" SUELTO ES UTC, Y AQUI ESO RESTA UN DIA.
-  //
-  // `new Date("2026-08-30")` es medianoche UTC; formateado en Venezuela (UTC-4)
-  // sale "29 de agosto". Medido en dev el 2026-09-29: la libreta decia 30 y la
-  // pantalla decia 29. Una fecha escrita a mano en un cuaderno es un DIA, sin
-  // hora y sin zona, asi que se construye como fecha local.
-  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bruto);
-  const d = soloDia
-    ? new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3]))
-    : new Date(bruto);
+// Lo que va en un `<input type="date">`, que solo entiende "YYYY-MM-DD".
+export function valorDeInputFecha(date: string | null): string {
+  const d = diaLeido(date);
+  if (!d) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
 
-  // Lo que la IA leyo tal cual si no es una fecha reconocible: puede haber
-  // escrito "30/8" o "lunes". Mejor ensenar eso que no ensenar nada.
-  return Number.isNaN(d.getTime()) ? bruto : formatDate(d.toISOString());
+// Lo que se manda al servidor. Null cuando no hay fecha que valga: entonces la
+// migracion 076 usa la de la subida.
+export function isoDeLaFecha(date: string | null): string | null {
+  return diaLeido(date)?.toISOString() ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -81,7 +132,6 @@ export function EditarMovimiento({
   accionSubir: React.ReactNode;
 }) {
   if (!fila) return null;
-  const fecha = fechaDeLaLibreta(fila.date);
 
   return (
     <Dialog open={abierta} onOpenChange={(v) => !v && onCerrar()}>
@@ -150,13 +200,51 @@ export function EditarMovimiento({
             />
           </div>
 
-          {/* Solo si la IA leyó una fecha. Inventar "hoy" aquí sería enseñar como
-              dato de la libreta algo que sale de nuestro reloj. */}
-          {fecha ? (
+          {/* Solo si la IA leyó una fecha, y entonces EDITABLE: el movimiento se
+              guarda con ella. Cuando la página no traía fecha no se ofrece el
+              campo — se guardará con la de hoy, y un campo vacío invitaría a
+              escribir una fecha inventada en algo que decide la mora. */}
+          {fila.date && !valorDeInputFecha(fila.date) ? (
+            // La IA escribio algo en la fecha que no sabemos leer —"lunes", un
+            // borron—. Se dice, y se ofrece el campo vacio para escribirla: lo
+            // que no se hace es prometer que se guardara con "ella".
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="editar-fecha">Fecha</Label>
+              <Input
+                id="editar-fecha"
+                type="date"
+                value=""
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => onUpdate(fila.rowId, { date: e.target.value || null })}
+              />
+              <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                En tu libreta leimos &ldquo;{fila.date}&rdquo; y no sabemos qué fecha es. Escríbela
+                o se guardará con la de hoy.
+              </p>
+            </div>
+          ) : fila.date ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="editar-fecha">Fecha</Label>
+              <Input
+                id="editar-fecha"
+                type="date"
+                value={valorDeInputFecha(fila.date)}
+                // `max`: una fecha futura la rechaza igualmente el servidor y se
+                // guardaría con la de hoy, pero es mejor no dejar escribirla que
+                // aceptarla y cambiarla por detrás.
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => onUpdate(fila.rowId, { date: e.target.value || null })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Es la fecha que leímos en tu libreta. Se guardará con ella.
+              </p>
+            </div>
+          ) : (
             <p className="text-xs text-muted-foreground">
-              Fecha en la libreta: {fecha}. El movimiento se guardará con la fecha de hoy.
+              Tu libreta no traía fecha en esta línea, así que se guardará con la de hoy.
             </p>
-          ) : null}
+          )}
         </div>
 
         <div className="flex flex-col gap-2 pt-1">

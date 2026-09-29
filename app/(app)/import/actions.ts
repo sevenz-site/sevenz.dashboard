@@ -49,6 +49,14 @@ export type ImportRow = {
   // `get_shared_balance` enumera sus campos uno a uno, así que no se filtra
   // sola.
   owner_note?: string | null;
+  // La fecha que la IA leyó en la libreta, ya corregida por el dueño si hizo
+  // falta, en ISO. Null cuando la página no traía fecha en ese renglón: entonces
+  // el movimiento se guarda con la de la subida.
+  //
+  // NO ES UN CAMPO MÁS. `created_at` decide el saldo corrido y la mora — ver la
+  // cabecera de la migración 076 —, y por eso la función descarta una fecha
+  // futura o anterior a 2015 en vez de fiarse de lo que llegue de aquí.
+  created_at?: string | null;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -305,6 +313,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       rate_usd_at_time: resolved.rateUsdAtTime,
       rate_eur_at_time: resolved.rateEurAtTime,
       owner_note: row.owner_note?.trim() || null,
+      created_at: row.created_at ?? null,
     });
   }
 

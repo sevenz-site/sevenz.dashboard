@@ -129,6 +129,9 @@ const mov = (key, tipo, monto) => ({
 // pasara por algún `btrim` distinto, aquí se vería.
 const NOTA = "Importado aunque la suma no cuadraba: tu libreta decía $99,00 y con estos montos daba $30,00.";
 
+// Un dia concreto y pasado, para comprobar que se guarda tal cual.
+const FECHA_LIBRETA = "2026-08-30";
+
 let creadosParaLimpiar = { clientes: [], movimientos: [] };
 
 try {
@@ -221,9 +224,14 @@ try {
       movements: [
         { ...mov("a", "charge", 10), owner_note: NOTA },
         mov("b", "charge", 20),
-        mov("a", "charge", 40),
+        // Con fecha de libreta: tiene que guardarse con ELLA.
+        { ...mov("a", "charge", 40), created_at: `${FECHA_LIBRETA}T12:00:00.000Z` },
         mov("a", "payment", 5),
-        mov("a", "charge", 7),
+        // Una fecha del futuro es una lectura mala, no una fecha: la funcion
+        // tiene que descartarla y usar la de la subida. Si entrara, ese
+        // movimiento se quedaria para siempre al final de la cadena del cliente
+        // y su mora saldria mal.
+        { ...mov("a", "charge", 7), created_at: "2099-01-01T12:00:00.000Z" },
       ],
     };
     const { data, error } = await dueno.rpc("import_libreta", { p_payload: payload });
@@ -320,6 +328,31 @@ try {
       "cada movimiento de la tanda tiene su propio created_at",
       new Set(instantes).size === instantes.length,
       `${new Set(instantes).size} instantes distintos de ${instantes.length} filas`,
+    );
+
+    // ── LA FECHA DE LA LIBRETA (migración 076) ─────────────────
+    //
+    // `created_at` decide el saldo corrido y la mora, así que lo que se
+    // comprueba no es que "se guarde algo": es que se guarde el DÍA correcto, y
+    // que una fecha imposible NO entre.
+    const conFecha = (filasDeSaldo ?? []).find((m) => Number(m.amount) === 40);
+    const enElFuturo = (filasDeSaldo ?? []).find((m) => Number(m.amount) === 7);
+    const sinFecha = (filasDeSaldo ?? []).find((m) => Number(m.amount) === 20);
+    const dia = (x) => (x ? new Date(x.created_at).toISOString().slice(0, 10) : null);
+    check(
+      "un movimiento con fecha de libreta se guarda CON ella",
+      dia(conFecha) === FECHA_LIBRETA,
+      `${dia(conFecha)} (esperado ${FECHA_LIBRETA})`,
+    );
+    check(
+      "una fecha del futuro se descarta y gana la de la subida",
+      dia(enElFuturo) === new Date().toISOString().slice(0, 10),
+      `${dia(enElFuturo)}`,
+    );
+    check(
+      "sin fecha en la libreta, se guarda con la de la subida",
+      dia(sinFecha) === new Date().toISOString().slice(0, 10),
+      `${dia(sinFecha)}`,
     );
   }
 

@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { TiraDeFotos } from "@/components/import/tira-de-fotos";
 import { ModalDeMoneda } from "@/components/import/modal-de-moneda";
+import { isoDeLaFecha } from "@/components/import/editar-movimiento";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -679,6 +680,7 @@ export function ImportFlow({
         whatsapp: r.whatsapp,
         currency: r.currency,
         owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
+        created_at: isoDeLaFecha(r.date),
       }));
       const result = await confirmImport(rows);
       if (result.error) {
