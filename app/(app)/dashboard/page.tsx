@@ -178,7 +178,7 @@ export default async function DashboardPage({
           enciende por migración — Meta exige consentimiento afirmativo, y con
           un solo número para toda la plataforma, tres dueños marcando el
           mensaje como no deseado bajan el rating de los 24 a la vez. */}
-      {pedirAvisos ? <PedirAvisosWhatsappDialog /> : null}
+      {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           {/* first_name is required by both the signup form and "Mi negocio",
