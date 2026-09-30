@@ -1035,6 +1035,7 @@ export function ImportFlow({
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
                 onRestaurar={restaurarMovimiento}
+                esAjuste={(rowId) => uidsDeAjuste.has(rowId)}
                 onEliminarCliente={() =>
                   eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
                 }

@@ -222,10 +222,13 @@ function Totales({
 // Un renglón del historial. Se lee, no se edita: el lápiz abre la hoja donde sí.
 function FilaMovimiento({
   fila,
+  esAjuste,
   onEditar,
   onEliminar,
 }: {
   fila: ReviewRow;
+  // La línea de ajuste la calculó Sevenz, no la leyó de la libreta.
+  esAjuste: boolean;
   onEditar: () => void;
   onEliminar: () => void;
 }) {
@@ -261,26 +264,39 @@ function FilaMovimiento({
         {fila.currency ? <CurrencyFlagIcon currency={fila.currency} className="size-4" /> : null}
       </span>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0"
-        aria-label="Editar este movimiento"
-        onClick={onEditar}
-      >
-        <Pencil className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0"
-        aria-label="Quitar este movimiento"
-        onClick={onEliminar}
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      {/* LA LÍNEA DE AJUSTE NO SE TOCA: ni lápiz ni papelera.
+          No es un renglón de la libreta, es la cuenta que hizo Sevenz para
+          llegar al total que el dueño dijo que era el bueno. Editarla rompe
+          justo eso: en dev se vio una de $15 cambiada a $150, y la pantalla
+          quedó diciendo a la vez "agregaremos un movimiento de $15" y "con
+          estos montos da $275". Dos cifras contradictorias sobre la deuda de
+          una persona, sin nada que avisara.
+          Y no es un callejón sin salida: para quitarla se cambia la decisión a
+          "La suma de Sevenz" ahí abajo, que es de donde salió. */}
+      {esAjuste ? null : (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label="Editar este movimiento"
+            onClick={onEditar}
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label="Quitar este movimiento"
+            onClick={onEliminar}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -300,6 +316,7 @@ export function DetalleDelCliente({
   onUpdate,
   onRemove,
   onRestaurar,
+  esAjuste,
   onEliminarCliente,
   onAplicarMoneda,
   decisionesDeTotal,
@@ -328,6 +345,8 @@ export function DetalleDelCliente({
   onUpdate: (rowId: string, patch: Partial<ExtractedMovement>) => void;
   onRemove: (rowId: string) => void;
   onRestaurar: (rowId: string) => void;
+  // Qué renglones los puso Sevenz para cuadrar, y por tanto no se editan.
+  esAjuste: (rowId: string) => boolean;
   onEliminarCliente: () => void;
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
@@ -577,9 +596,18 @@ export function DetalleDelCliente({
             <div key={e.fila.rowId} className="flex flex-col gap-1">
               <FilaMovimiento
                 fila={e.fila}
+                esAjuste={esAjuste(e.fila.rowId)}
                 onEditar={() => setEditando(e.fila.rowId)}
                 onEliminar={() => onRemove(e.fila.rowId)}
               />
+              {/* Se dice de dónde salió y cómo quitarla. Un renglón que aparece
+                  solo y no se puede tocar, sin explicación, se lee como un fallo. */}
+              {esAjuste(e.fila.rowId) ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  Lo puso Sevenz para llegar al total de tu libreta. Para quitarlo, elige &ldquo;La
+                  suma de Sevenz&rdquo; más abajo.
+                </p>
+              ) : null}
               {/* El porqué de una fila marcada, debajo de ella. Solo "no cuadra"
                   va en rojo: las otras dos son avisos, y en un cuaderno a mano
                   casi ninguna línea trae su total escrito. */}
