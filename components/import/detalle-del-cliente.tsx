@@ -357,6 +357,7 @@ export function DetalleDelCliente({
   const monedas = new Set(filas.map((f) => f.currency));
   const monedaDelCliente = monedas.size === 1 ? [...monedas][0] : null;
   const chip = CHIP[estado];
+  const filaEditandose = filas.find((f) => f.rowId === editando) ?? null;
 
   return (
     // `px-4`: `SheetContent` no trae ningún margen lateral propio — solo
@@ -666,15 +667,20 @@ export function DetalleDelCliente({
 
       {accionSubir}
 
-      <EditarMovimiento
-        fila={filas.find((f) => f.rowId === editando) ?? null}
-        abierta={editando !== null}
-        onCerrar={() => setEditando(null)}
-        showCurrency={showCurrency}
-        onUpdate={onUpdate}
-        onEliminar={onRemove}
-        accionSubir={accionSubir}
-      />
+      {/* Montado solo mientras se edita, y con `key` en la fila: su borrador nace
+          de los valores de ESE movimiento al montarse, sin un efecto que los
+          copie. Con el componente siempre montado, abrir la hoja de otro
+          renglon heredaria el borrador del anterior. */}
+      {filaEditandose ? (
+        <EditarMovimiento
+          key={filaEditandose.rowId}
+          fila={filaEditandose}
+          onCerrar={() => setEditando(null)}
+          showCurrency={showCurrency}
+          onUpdate={onUpdate}
+          onEliminar={onRemove}
+        />
+      ) : null}
     </div>
   );
 }

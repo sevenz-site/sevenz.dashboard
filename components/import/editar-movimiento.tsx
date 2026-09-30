@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,49 +19,49 @@ import { formatDate } from "@/lib/format";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
 
-// La fecha que leyó la IA, en bonito si se puede.
+// ─────────────────────────────────────────────────────────────────────────
+// LA FECHA DE LA LIBRETA
 //
-// SE ENSEÑA Y NO SE GUARDA — decidido el 2026-09-29. El movimiento se crea con
-// la fecha en que se sube la libreta, porque guardar la de la página cambiaría
-// dos cosas que hoy dependen de `created_at`: el orden de los saldos y el
-// cálculo de mora. Está anotado como pendiente.
+// Desde la migración 076 el movimiento SE GUARDA con la fecha que la IA leyó en
+// la página, si la leyó; si no, con la de la subida. Y el campo es editable,
+// porque el dato lo saca una IA de algo escrito a mano.
 //
-// Por eso el campo es de SOLO LECTURA y dice de dónde sale. Un campo editable
-// aceptaría una corrección y la tiraría, que es peor que no ofrecerlo; y una
-// fecha a secas se leería como la fecha del movimiento en Sevenz, que no es.
-// El dia que leyo la IA, como Date local. Null si no hay nada parseable.
-//
-// UN "2026-08-30" SUELTO ES UTC, Y AQUI ESO RESTA UN DIA.
-// `new Date("2026-08-30")` es medianoche UTC; en Venezuela (UTC-4) sale el 29.
-// Medido en dev el 2026-09-29: la libreta decia 30 y la pantalla decia 29. Una
-// fecha escrita a mano en un cuaderno es un DIA, sin hora y sin zona.
-//
-// Y se construye AL MEDIODIA, no a medianoche. Ese Date acaba viajando al
-// servidor como instante UTC: a medianoche local, cualquier zona al este del
-// meridiano lo devuelve al dia anterior en cuanto alguien lo lea desde otro
-// sitio. Al mediodia hay doce horas de margen por cada lado, que cubre el
-// planeta entero.
+// No es decoración: `created_at` decide el saldo corrido y la mora. Ver la
+// cabecera de `supabase/076_import_libreta_fecha.sql`.
+
 function alMediodia(anio: number, mes: number, dia: number): Date | null {
   const d = new Date(anio, mes - 1, dia, 12);
-  // `new Date(2026, 12, 40)` no falla: se desborda a otro mes. Se comprueba que
-  // salga lo que entro, o un "30/2" acabaria guardado como 2 de marzo.
+  // `new Date(2026, 1, 30)` no falla: se desborda a marzo. Se comprueba que
+  // salga lo que entró, o un "30/2" acabaría guardado como 2 de marzo.
   return d.getFullYear() === anio && d.getMonth() === mes - 1 && d.getDate() === dia ? d : null;
 }
 
+// El día que leyó la IA, como Date local. Null si no hay nada parseable.
+//
+// UN "2026-08-30" SUELTO ES UTC, Y AQUÍ ESO RESTA UN DÍA.
+// `new Date("2026-08-30")` es medianoche UTC; en Venezuela (UTC-4) sale el 29.
+// Medido en dev el 2026-09-29: la libreta decía 30 y la pantalla decía 29. Una
+// fecha escrita a mano en un cuaderno es un DÍA, sin hora y sin zona.
+//
+// Y se construye AL MEDIODÍA, no a medianoche. Ese Date acaba viajando al
+// servidor como instante UTC: a medianoche local, cualquier zona lo devuelve al
+// día anterior en cuanto alguien lo lea desde otro sitio. Al mediodía hay doce
+// horas de margen por cada lado, que cubre el planeta entero.
 function diaLeido(date: string | null): Date | null {
   const bruto = date?.trim();
   if (!bruto) return null;
+
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(bruto);
   if (iso) return alMediodia(Number(iso[1]), Number(iso[2]), Number(iso[3]));
 
   // RESPALDO PARA "30/8/2026" Y "30-8-26".
   //
   // El prompt de `/api/extract` pide ISO, pero un modelo puede desobedecer y en
-  // una libreta venezolana la fecha se escribe asi. Sin esto, `new Date()` lo
-  // interpreta a la americana —mes/dia— o devuelve NaN, y la fecha se perdia en
-  // silencio: el campo salia vacio y el movimiento se guardaba con la de hoy.
+  // una libreta venezolana la fecha se escribe así. Sin esto, `new Date()` lo
+  // interpreta a la americana —mes/día— o devuelve NaN, y la fecha se perdía en
+  // silencio: el campo salía vacío y el movimiento se guardaba con la de hoy.
   //
-  // DIA PRIMERO, que es como se escribe en Venezuela y Colombia. Con "8/3" no
+  // DÍA PRIMERO, que es como se escribe en Venezuela y Colombia. Con "8/3" no
   // hay forma de saberlo y se elige lo que acierta en este mercado.
   const suelto = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2}|\d{4})$/.exec(bruto);
   if (suelto) {
@@ -74,8 +75,8 @@ function diaLeido(date: string | null): Date | null {
   return d;
 }
 
-// Lo que se ensena. Si la IA escribio algo que no es una fecha —"30/8", "lunes"—
-// se ensena tal cual: mejor eso que nada, y el dueno ve que hay que corregirlo.
+// Lo que se enseña. Si la IA escribió algo que no es una fecha —"lunes"— se
+// enseña tal cual: mejor eso que nada, y el dueño ve que hay que corregirlo.
 export function fechaDeLaLibreta(date: string | null): string | null {
   const bruto = date?.trim();
   if (!bruto) return null;
@@ -93,7 +94,7 @@ export function valorDeInputFecha(date: string | null): string {
 }
 
 // Lo que se manda al servidor. Null cuando no hay fecha que valga: entonces la
-// migracion 076 usa la de la subida.
+// migración 076 usa la de la subida.
 export function isoDeLaFecha(date: string | null): string | null {
   return diaLeido(date)?.toISOString() ?? null;
 }
@@ -101,56 +102,68 @@ export function isoDeLaFecha(date: string | null): string | null {
 // ─────────────────────────────────────────────────────────────────────────
 // EDITAR UN MOVIMIENTO, en su propia hoja
 //
-// El historial pasa a ser una lista de renglones que se leen de un vistazo
-// —"Fiado · Bulto de jabón / +$40,00"— y lo que antes estaba desplegado en cada
-// tarjeta (tipo, monto, moneda, detalle) se edita aquí dentro.
+// El historial es una lista de renglones que se leen de un vistazo —"Fiado ·
+// Bulto de jabón / +$40,00"— y lo que se edita de cada uno vive aquí. El motivo
+// es de volumen: una libreta de seis páginas son cuarenta renglones, y con
+// cuatro campos abiertos en cada uno la pantalla medía metros.
 //
-// El motivo es de volumen: una libreta de seis páginas son cuarenta renglones, y
-// con cuatro campos abiertos en cada uno la pantalla medía metros. Con la lista
-// compacta, revisar es leer; corregir es entrar.
+// TIENE SU PROPIO BORRADOR. Antes cada tecla se aplicaba en vivo al movimiento
+// de verdad, así que no había forma de arrepentirse: abrir la hoja, teclear un
+// monto y cerrar ya lo había cambiado. Ahora se edita una copia y no pasa nada
+// hasta "Confirmar" — la X, Esc o tocar fuera descartan.
 //
-// Los cambios se aplican EN VIVO según se teclean, así que este diálogo no tiene
-// "guardar": lo que hay abajo es la misma acción de subir la tanda que el pie
-// del detalle, para no obligar a salir de aquí cuando ya está todo bien.
+// El componente se monta con `key={rowId}` desde el detalle, así que el borrador
+// nace con los valores de ese movimiento sin necesidad de un efecto que los
+// copie — que además es lo que prohíbe `react-hooks/set-state-in-effect`.
 export function EditarMovimiento({
   fila,
-  abierta,
   onCerrar,
   showCurrency,
   onUpdate,
   onEliminar,
-  accionSubir,
 }: {
-  fila: ReviewRow | null;
-  abierta: boolean;
+  fila: ReviewRow;
   onCerrar: () => void;
   showCurrency: boolean;
   onUpdate: (rowId: string, patch: Partial<ExtractedMovement>) => void;
   onEliminar: (rowId: string) => void;
-  // El mismo botón de subir de la lista, pasado entero para que no haya dos
-  // definiciones de "se puede guardar ya" que puedan discrepar.
-  accionSubir: React.ReactNode;
 }) {
-  if (!fila) return null;
+  const [borrador, setBorrador] = useState<{
+    type: "charge" | "payment";
+    amount: number;
+    description: string | null;
+    currency: LedgerCurrency | null;
+    date: string | null;
+  }>({
+    type: fila.type,
+    amount: fila.amount,
+    description: fila.description,
+    currency: fila.currency,
+    date: fila.date,
+  });
+
+  const cambiar = (patch: Partial<typeof borrador>) =>
+    setBorrador((prev) => ({ ...prev, ...patch }));
+
+  function confirmar() {
+    onUpdate(fila.rowId, borrador);
+    onCerrar();
+  }
 
   return (
-    <Dialog open={abierta} onOpenChange={(v) => !v && onCerrar()}>
+    <Dialog open onOpenChange={(v) => !v && onCerrar()}>
       <DialogContent className="max-w-[min(92vw,420px)]">
         <DialogHeader>
           {/* "Fiado" y "Abono", que es como los nombra el historial del cliente
               (`movement-history-list.tsx`), no "Cargo"/"Abono" del formulario.
               Son los dos vocabularios que ya existen y cada uno manda en su
               sitio: al REGISTRAR se pregunta "cargo o abono", al LEER se dice
-              "fiado". */}
-          <DialogTitle>{fila.type === "charge" ? "Fiado" : "Abono"}</DialogTitle>
+              "fiado". Sigue al tipo del BORRADOR, para que cambiarlo se vea. */}
+          <DialogTitle>{borrador.type === "charge" ? "Fiado" : "Abono"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <TipoButtons
-            value={fila.type}
-            onValueChange={(v) => onUpdate(fila.rowId, { type: v })}
-            canPay
-          />
+          <TipoButtons value={borrador.type} onValueChange={(v) => cambiar({ type: v })} canPay />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="editar-monto">Monto</Label>
@@ -162,15 +175,15 @@ export function EditarMovimiento({
                 step="0.01"
                 inputMode="decimal"
                 className="flex-1"
-                value={fila.amount}
-                onChange={(e) => onUpdate(fila.rowId, { amount: Number(e.target.value) || 0 })}
+                value={borrador.amount}
+                onChange={(e) => cambiar({ amount: Number(e.target.value) || 0 })}
               />
-              {/* La moneda pegada al monto, como en el alta de movimiento: es una
-                  propiedad de ese número, no un campo aparte. */}
+              {/* La moneda pegada al monto, como en el alta de movimiento: es
+                  una propiedad de ese número, no un campo aparte. */}
               {showCurrency ? (
                 <Select
-                  value={fila.currency ?? undefined}
-                  onValueChange={(v) => onUpdate(fila.rowId, { currency: v as LedgerCurrency })}
+                  value={borrador.currency ?? undefined}
+                  onValueChange={(v) => cambiar({ currency: v as LedgerCurrency })}
                 >
                   <SelectTrigger className="w-[8.5rem]" aria-label="Moneda de este movimiento">
                     <SelectValue placeholder="Moneda" />
@@ -195,19 +208,15 @@ export function EditarMovimiento({
             <Input
               id="editar-descripcion"
               placeholder="Qué se llevó"
-              value={fila.description ?? ""}
-              onChange={(e) => onUpdate(fila.rowId, { description: e.target.value || null })}
+              value={borrador.description ?? ""}
+              onChange={(e) => cambiar({ description: e.target.value || null })}
             />
           </div>
 
-          {/* Solo si la IA leyó una fecha, y entonces EDITABLE: el movimiento se
-              guarda con ella. Cuando la página no traía fecha no se ofrece el
-              campo — se guardará con la de hoy, y un campo vacío invitaría a
-              escribir una fecha inventada en algo que decide la mora. */}
-          {fila.date && !valorDeInputFecha(fila.date) ? (
-            // La IA escribio algo en la fecha que no sabemos leer —"lunes", un
-            // borron—. Se dice, y se ofrece el campo vacio para escribirla: lo
-            // que no se hace es prometer que se guardara con "ella".
+          {borrador.date && !valorDeInputFecha(borrador.date) ? (
+            // La IA escribió algo en la fecha que no sabemos leer —"lunes", un
+            // borrón—. Se dice, y se ofrece el campo vacío para escribirla: lo
+            // que no se hace es prometer que se guardará "con ella".
             <div className="flex flex-col gap-2">
               <Label htmlFor="editar-fecha">Fecha</Label>
               <Input
@@ -215,26 +224,26 @@ export function EditarMovimiento({
                 type="date"
                 value=""
                 max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => onUpdate(fila.rowId, { date: e.target.value || null })}
+                onChange={(e) => cambiar({ date: e.target.value || null })}
               />
               <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" />
-                En tu libreta leimos &ldquo;{fila.date}&rdquo; y no sabemos qué fecha es. Escríbela
-                o se guardará con la de hoy.
+                En tu libreta leímos &ldquo;{borrador.date}&rdquo; y no sabemos qué fecha es.
+                Escríbela o se guardará con la de hoy.
               </p>
             </div>
-          ) : fila.date ? (
+          ) : borrador.date ? (
             <div className="flex flex-col gap-2">
               <Label htmlFor="editar-fecha">Fecha</Label>
               <Input
                 id="editar-fecha"
                 type="date"
-                value={valorDeInputFecha(fila.date)}
+                value={valorDeInputFecha(borrador.date)}
                 // `max`: una fecha futura la rechaza igualmente el servidor y se
                 // guardaría con la de hoy, pero es mejor no dejar escribirla que
                 // aceptarla y cambiarla por detrás.
                 max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => onUpdate(fila.rowId, { date: e.target.value || null })}
+                onChange={(e) => cambiar({ date: e.target.value || null })}
               />
               <p className="text-xs text-muted-foreground">
                 Es la fecha que leímos en tu libreta. Se guardará con ella.
@@ -248,6 +257,8 @@ export function EditarMovimiento({
         </div>
 
         <div className="flex flex-col gap-2 pt-1">
+          {/* Eliminar no pasa por el borrador: se lleva el movimiento entero, así
+              que lo que se hubiera tecleado da igual. */}
           <Button
             type="button"
             variant="ghost"
@@ -259,7 +270,9 @@ export function EditarMovimiento({
           >
             Eliminar
           </Button>
-          {accionSubir}
+          <Button type="button" className="h-11 w-full" onClick={confirmar}>
+            Confirmar
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
