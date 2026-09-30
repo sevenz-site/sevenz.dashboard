@@ -102,7 +102,7 @@ export function FeedbackBanner({ token }: { token: string }) {
       <div className="flex items-start gap-3 rounded-xl bg-neutral-900 p-4">
         {/* icon.svg ya trae su propio fondo oscuro, así que se funde con el
             banner sin necesidad de una variante en blanco. */}
-        <Image src="/icon.svg" alt="" width={32} height={32} className="shrink-0 rounded-md" />
+        <Image src="/fav-icon-primary.svg" alt="" width={32} height={32} className="shrink-0 rounded-md" />
 
         {/* min-w-0 para que el texto largo se parta en vez de empujar la X
             fuera de la tarjeta en un teléfono. */}

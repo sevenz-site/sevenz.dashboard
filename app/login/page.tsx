@@ -40,7 +40,7 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
+          <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
           <CardTitle className="text-xl">Controla el fiado de tu bodega o comercio</CardTitle>
           <CardDescription>Entra a tu cuenta para ver lo que te deben.</CardDescription>
         </CardHeader>

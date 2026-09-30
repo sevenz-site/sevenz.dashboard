@@ -78,7 +78,7 @@ export default function SignupPage() {
       <div className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
+            <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
             <CardTitle className="text-xl">Revisa tu correo</CardTitle>
             <CardDescription>
               Te enviamos un enlace para confirmar tu cuenta antes de entrar.
@@ -102,7 +102,7 @@ export default function SignupPage() {
       <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
+          <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
           <CardTitle className="text-xl">Crea tu cuenta</CardTitle>
           <CardDescription>Empieza a compartir el saldo con tus clientes.</CardDescription>
         </CardHeader>

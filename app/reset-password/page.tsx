@@ -65,7 +65,7 @@ export default function ResetPasswordPage() {
     <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-2" />
+          <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
           <CardDescription>Elige tu nueva contraseña.</CardDescription>
         </CardHeader>
         <CardContent>

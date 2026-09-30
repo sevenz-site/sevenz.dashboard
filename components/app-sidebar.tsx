@@ -57,7 +57,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
     <Sidebar>
       <SidebarHeader className="flex-row items-center gap-2 px-3 py-3">
         <Image
-          src="/icon.svg"
+          src="/fav-icon-primary.svg"
           alt=""
           width={36}
           height={36}

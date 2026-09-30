@@ -80,7 +80,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                     <NotificationsButton />
                   </div>
                   <Image
-                    src="/logo.svg"
+                    src="/logo-primary.svg"
                     alt="Sevenz"
                     width={96}
                     height={30}

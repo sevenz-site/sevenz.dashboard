@@ -40,7 +40,10 @@ const TINTA = "#fafafa";
 const TINTA_TENUE = "rgba(250, 250, 250, 0.65)";
 // El gris del logo en el archivo. Se cambia por blanco al vuelo porque sobre la
 // tarjeta oscura no se vería; el punto naranja se queda como está.
-const GRIS_DEL_LOGO = "#272727";
+// El oscuro del logo. Cambio de #272727 a #171717 con el logo nuevo del
+// 2026-09-30. Si no coincide con el del SVG, el replaceAll no encuentra
+// nada, el logo sale en su gris original sobre fondo oscuro y no se lee.
+const GRIS_DEL_LOGO = "#171717";
 
 // Medidas en puntos, no en píxeles. Se multiplican por ESCALA al final para que
 // la imagen salga nítida en una pantalla de teléfono sin tener que escribir
@@ -71,7 +74,7 @@ function cargarImagen(src: string): Promise<HTMLImageElement | null> {
 // que una tasa compartida sin logo.
 async function cargarLogoBlanco(): Promise<HTMLImageElement | null> {
   try {
-    const respuesta = await fetch("/logo.svg");
+    const respuesta = await fetch("/logo-primary.svg");
     if (!respuesta.ok) return null;
     const svg = (await respuesta.text()).replaceAll(GRIS_DEL_LOGO, TINTA);
     const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));

@@ -147,7 +147,7 @@ export default async function SharedBalancePage({
   const movements = [...shared.movements].reverse();
 
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
-  const logoUrl = shared.owner_logo_path ? getPublicLogoUrl(shared.owner_logo_path) : "/icon.svg";
+  const logoUrl = shared.owner_logo_path ? getPublicLogoUrl(shared.owner_logo_path) : "/fav-icon-primary.svg";
 
   // Absent (null) for a 'CO' owner, or a 'VE' owner before any rate has ever
   // been fetched — the balance then renders exactly like today's plain COP
@@ -329,7 +329,7 @@ export default async function SharedBalancePage({
       </div>
 
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
-        <Image src="/logo.svg" alt="Sevenz" width={120} height={37} className="mb-1" />
+        <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-1" />
         <p className="text-sm font-medium">
           ¿Quieres tener las cuentas claras con tus clientes?
         </p>
