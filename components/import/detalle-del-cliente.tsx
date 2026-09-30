@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
-import { EditarMovimiento, fechaDeLaLibreta } from "@/components/import/editar-movimiento";
+import { EditarMovimiento } from "@/components/import/editar-movimiento";
+import { fechaDeLaLibreta } from "@/lib/fecha-de-libreta";
 import {
   CHIP,
   type DecisionDuplicado,

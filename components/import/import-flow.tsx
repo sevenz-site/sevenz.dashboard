@@ -8,7 +8,8 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { TiraDeFotos } from "@/components/import/tira-de-fotos";
 import { ModalDeMoneda } from "@/components/import/modal-de-moneda";
-import { isoDeLaFecha } from "@/components/import/editar-movimiento";
+import { isoDeLaFecha } from "@/lib/fecha-de-libreta";
+import { construirAjuste } from "@/lib/ajuste-de-libreta";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -675,42 +676,28 @@ export function ImportFlow({
     // ya cuadra —porque se está rehaciendo la decisión— vendrían en null.
 
     const guardada = decisionesDeTotal[clave];
-    const diferencia =
-      (libro.escrito ?? guardada?.escrito ?? 0) - (libro.calculado ?? guardada?.calculado ?? 0);
-    if (diferencia === 0 || !libro.filaDesajustada) return;
 
     const uid = crypto.randomUUID();
+    // La construcción vive en `lib/ajuste-de-libreta.ts`: decide un movimiento
+    // en la deuda de una persona y ahí sí se puede probar desde Node.
+    // Ver qa/bordes-subir-libreta.mjs.
+    const ajuste = construirAjuste({
+      movimientos: reviewMovements ?? [],
+      nombreDelCliente: cliente.name,
+      libro: {
+        escrito: libro.escrito ?? guardada?.escrito ?? 0,
+        calculado: libro.calculado ?? guardada?.calculado ?? 0,
+        currency: libro.currency,
+        filaDesajustada: libro.filaDesajustada,
+      },
+      uid,
+    });
+    if (!ajuste) return;
+
     setReviewMovements((prev) => {
       if (!prev) return prev;
-      // JUSTO ANTES de la fila que lleva el total escrito, no al final. El
-      // saldo corrido se comprueba EN esa fila, así que un ajuste puesto
-      // después no cambiaría nada y el aviso seguiría en rojo con el ajuste ya
-      // metido.
-      const i = prev.findIndex((m) => m.uid === libro.filaDesajustada);
       const copia = [...prev];
-      copia.splice(i < 0 ? copia.length : i, 0, {
-        client_name: cliente.name,
-        date: null,
-        type: diferencia > 0 ? "charge" : "payment",
-        amount: Math.abs(diferencia),
-        // La lee el CLIENTE en su enlace de saldo, así que dice la verdad en
-        // sus términos y no en los nuestros.
-        description: "Ajuste al subir la libreta",
-        read_balance: null,
-        confidence: "high",
-        // HEREDA LA CÉDULA Y EL TELÉFONO de sus hermanas, no nace en null.
-        //
-        // Son datos de la PERSONA, no del renglón. Naciendo vacía, un dueño que
-        // escribiera la cédula y DESPUÉS eligiera "mi libreta" se encontraba el
-        // botón de subir bloqueado por una fila recién creada — y la tarjeta del
-        // cliente diciendo "Todo cuadra", porque miraba si alguna fila tenía
-        // cédula y el bloqueo mira si le falta a alguna. Visto en dev el
-        // 2026-09-29, y sin salida: el campo ya estaba relleno.
-        document_id: prev.find((m) => m.client_name === cliente.name && m.document_id?.trim())?.document_id ?? null,
-        whatsapp: prev.find((m) => m.client_name === cliente.name && m.whatsapp?.trim())?.whatsapp ?? null,
-        uid,
-        currency: libro.currency,
-      });
+      copia.splice(ajuste.indice, 0, ajuste.movimiento);
       return copia;
     });
     setAjustes((prev) => ({ ...prev, [clave]: uid }));

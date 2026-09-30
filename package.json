@@ -28,7 +28,8 @@
     "qa:import": "node qa/import-libreta.mjs",
     "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
     "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs",
-    "qa:libreta:fixture": "node qa/libreta-fixture.mjs"
+    "qa:libreta:fixture": "node qa/libreta-fixture.mjs",
+    "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
