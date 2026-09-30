@@ -29,7 +29,10 @@ export const metadata: Metadata = {
   description: DESCRIPCION,
   manifest: "/manifest.json",
   icons: {
-    icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+    // El sufijo -v2 no es decoración: ver la nota de public/manifest.json en
+    // public/sw.js. Un icono nuevo bajo el MISMO nombre no llega a un teléfono
+    // que ya tiene la app instalada.
+    icon: [{ url: "/icon-192-v2.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   // Sin openGraph, WhatsApp caía al favicon y mostraba un cuadradito en vez de
