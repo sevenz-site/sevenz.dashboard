@@ -117,12 +117,16 @@ export function isoDeLaFecha(date: string | null): string | null {
 // copie — que además es lo que prohíbe `react-hooks/set-state-in-effect`.
 export function EditarMovimiento({
   fila,
+  esAjuste,
   onCerrar,
   showCurrency,
   onUpdate,
   onEliminar,
 }: {
   fila: ReviewRow;
+  // La línea que puso Sevenz para cuadrar. Se puede ABRIR — para ver de dónde
+  // salió y qué implica — pero no se edita ni se borra desde aquí.
+  esAjuste: boolean;
   onCerrar: () => void;
   showCurrency: boolean;
   onUpdate: (rowId: string, patch: Partial<ExtractedMovement>) => void;
@@ -148,6 +152,65 @@ export function EditarMovimiento({
   function confirmar() {
     onUpdate(fila.rowId, borrador);
     onCerrar();
+  }
+
+  if (esAjuste) {
+    return (
+      <Dialog open onOpenChange={(v) => !v && onCerrar()}>
+        <DialogContent className="max-w-[min(92vw,420px)]">
+          <DialogHeader>
+            <DialogTitle>Ajuste al subir la libreta</DialogTitle>
+          </DialogHeader>
+
+          {/* SE VE, NO SE TOCA. Los mismos campos y en el mismo orden que un
+              movimiento normal, pero desactivados: la caja es la misma y lo
+              único que cambia es que no se puede escribir en ella, que es
+              exactamente lo que pasa. No es un movimiento que el dueño leyó en
+              su libreta — es la resta que hizo Sevenz para llegar al total que
+              él dijo que era el bueno, y cambiarla rompe justo esa cuenta. */}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Tipo</Label>
+              <p className="text-sm">{fila.type === "charge" ? "Cargo (fía)" : "Abono (paga)"}</p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ajuste-monto">Monto</Label>
+              <div className="flex items-center gap-2">
+                <Input id="ajuste-monto" className="flex-1" value={fila.amount} disabled readOnly />
+                {fila.currency ? (
+                  <span className="flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm text-muted-foreground">
+                    <CurrencyFlagIcon currency={fila.currency} />
+                    {fila.currency === "USD" ? "Dólares" : "Euros"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ajuste-descripcion">Descripción</Label>
+              <Input id="ajuste-descripcion" value={fila.description ?? ""} disabled readOnly />
+            </div>
+
+            {/* LO QUE EL DUEÑO TIENE QUE SABER, y no se deduce de nada: que esta
+                línea la verá su cliente. `description` es el único campo del
+                movimiento que viaja a la página pública /s/[token]. */}
+            <p className="flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                <strong>Nota:</strong> este movimiento se agrega para poder cuadrar las cuentas de
+                la suma en tu libreta. El cliente podrá ver este movimiento adicional; si no
+                quieres que lo vea, debes seleccionar la cuenta calculada por Sevenz.
+              </span>
+            </p>
+          </div>
+
+          <Button type="button" className="h-11 w-full" onClick={onCerrar}>
+            Entendido
+          </Button>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (

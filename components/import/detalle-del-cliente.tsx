@@ -264,7 +264,7 @@ function FilaMovimiento({
         {fila.currency ? <CurrencyFlagIcon currency={fila.currency} className="size-4" /> : null}
       </span>
 
-      {/* LA LÍNEA DE AJUSTE NO SE TOCA: ni lápiz ni papelera.
+      {/* EL LÁPIZ SIEMPRE, LA PAPELERA NO PARA EL AJUSTE.
           No es un renglón de la libreta, es la cuenta que hizo Sevenz para
           llegar al total que el dueño dijo que era el bueno. Editarla rompe
           justo eso: en dev se vio una de $15 cambiada a $150, y la pantalla
@@ -273,29 +273,27 @@ function FilaMovimiento({
           una persona, sin nada que avisara.
           Y no es un callejón sin salida: para quitarla se cambia la decisión a
           "La suma de Sevenz" ahí abajo, que es de donde salió. */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0"
+        aria-label={esAjuste ? "Ver este movimiento" : "Editar este movimiento"}
+        onClick={onEditar}
+      >
+        <Pencil className="size-4" />
+      </Button>
       {esAjuste ? null : (
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
-            aria-label="Editar este movimiento"
-            onClick={onEditar}
-          >
-            <Pencil className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
-            aria-label="Quitar este movimiento"
-            onClick={onEliminar}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label="Quitar este movimiento"
+          onClick={onEliminar}
+        >
+          <Trash2 className="size-4" />
+        </Button>
       )}
     </div>
   );
@@ -604,8 +602,7 @@ export function DetalleDelCliente({
                   solo y no se puede tocar, sin explicación, se lee como un fallo. */}
               {esAjuste(e.fila.rowId) ? (
                 <p className="px-1 text-xs text-muted-foreground">
-                  Lo puso Sevenz para llegar al total de tu libreta. Para quitarlo, elige &ldquo;La
-                  suma de Sevenz&rdquo; más abajo.
+                  Lo agregó Sevenz para cuadrar con tu libreta.
                 </p>
               ) : null}
               {/* El porqué de una fila marcada, debajo de ella. Solo "no cuadra"
@@ -703,6 +700,7 @@ export function DetalleDelCliente({
         <EditarMovimiento
           key={filaEditandose.rowId}
           fila={filaEditandose}
+          esAjuste={esAjuste(filaEditandose.rowId)}
           onCerrar={() => setEditando(null)}
           showCurrency={showCurrency}
           onUpdate={onUpdate}
