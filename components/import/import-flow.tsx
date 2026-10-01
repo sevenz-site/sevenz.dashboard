@@ -335,8 +335,8 @@ export function ImportFlow({
   // vieja, que es la unica forma de que esto no vuelva a pasar.
   //
   // EL LIBRO SOMBRA se reconcilia sobre los renglones SIN los ajustes. Hace
-  // falta porque `escrito`/`calculado`/`filaDesajustada` salen de la fila
-  // marcada `no_cuadra`, y en cuanto el ajuste entra esa fila cuadra — que es su
+  // falta porque `escrito`/`calculado` salen del ultimo total escrito de la
+  // pagina, y en cuanto el ajuste entra ese total pasa a cuadrar — que es su
   // proposito. El libro normal deja de saber cuanto era el desajuste; la sombra
   // no se entera del ajuste y por eso sigue sabiendolo.
   const librosSombra = useMemo(() => {
@@ -357,7 +357,7 @@ export function ImportFlow({
   // que hace falta AHORA. El uid se deriva de la clave en vez de sortearse:
   // asi es estable entre renders sin guardar nada, y la fila no se remonta sola.
   const ajustesDerivados = useMemo(() => {
-    const salida = new Map<string, { movimiento: ExtractedMovement; indice: number; anclaUid: string | null }>();
+    const salida = new Map<string, { movimiento: ExtractedMovement; indice: number }>();
     if (!movimientosBase) return salida;
     for (const [clave, decision] of Object.entries(decisionesDeTotal)) {
       if (decision?.cual !== "libreta") continue;
@@ -374,7 +374,7 @@ export function ImportFlow({
         libro: sombra,
         uid: `ajuste:${clave}`,
       });
-      if (construido) salida.set(clave, { ...construido, anclaUid: sombra.filaDesajustada });
+      if (construido) salida.set(clave, construido);
     }
     return salida;
   }, [movimientosBase, decisionesDeTotal, librosSombra]);
@@ -386,32 +386,21 @@ export function ImportFlow({
 
   // Los renglones con los ajustes ya dentro, en su sitio. Es lo que ve todo lo
   // de abajo: las filas, los saldos, el resumen y lo que se sube.
-  // La misma insercion pero sobre `reviewMovements`, que conserva los renglones
-  // QUITADOS para poder pintarlos en rojo en su sitio. Las dos listas tienen
-  // indexados distintos —una lleva los quitados y la otra no—, asi que aqui el
-  // ajuste se coloca por el UID de su ancla y no por el indice.
+  // Lo mismo pero sobre `reviewMovements`, que conserva los renglones QUITADOS
+  // para poder pintarlos en rojo en su sitio.
   //
   // Hace falta porque el historial se recorre sobre `reviewMovements`: sin esto
   // el ajuste contaba en los totales pero no salia en la lista. Visto al probar
   // el arreglo, el 2026-10-01.
+  //
+  // Desde CT-27 los ajustes van todos al final, asi que aqui basta con
+  // concatenar: ya no hay que colocarlos por el UID de un ancla. La lista se
+  // filtra por cliente antes de pintarse, asi que "al final de todo" es "al
+  // final de lo suyo" en cuanto se ve.
   const movimientosConAjustes = useMemo(() => {
     if (!reviewMovements) return null;
     if (ajustesDerivados.size === 0) return reviewMovements;
-    const porAncla = new Map<string, ExtractedMovement[]>();
-    const alFinal: ExtractedMovement[] = [];
-    for (const a of ajustesDerivados.values()) {
-      if (!a.anclaUid) { alFinal.push(a.movimiento); continue; }
-      const lista = porAncla.get(a.anclaUid) ?? [];
-      lista.push(a.movimiento);
-      porAncla.set(a.anclaUid, lista);
-    }
-    const salida: ExtractedMovement[] = [];
-    for (const m of reviewMovements) {
-      const antes = m.uid ? porAncla.get(m.uid) : undefined;
-      if (antes) salida.push(...antes);
-      salida.push(m);
-    }
-    return [...salida, ...alFinal];
+    return [...reviewMovements, ...[...ajustesDerivados.values()].map((a) => a.movimiento)];
   }, [reviewMovements, ajustesDerivados]);
 
   const effectiveMovements = useMemo(() => {

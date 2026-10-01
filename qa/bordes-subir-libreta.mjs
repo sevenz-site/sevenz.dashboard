@@ -118,24 +118,28 @@ check("sin fecha, el input queda vacío", valorDeInputFecha(null) === "", `"${va
 console.log("\n── La línea de ajuste ───────────────────────────────────────");
 
 const tresMovs = [
-  mov({ amount: 40, document_id: "V-123", whatsapp: "584141112233" }),
-  mov({ amount: 50 }),
-  mov({ amount: 35, read_balance: 140 }),
+  mov({ amount: 40, document_id: "V-123", whatsapp: "584141112233", date: "2026-09-02" }),
+  mov({ amount: 50, date: "2026-09-05" }),
+  mov({ amount: 35, read_balance: 140, date: "2026-09-08" }),
 ];
-const desajustada = tresMovs[2].uid;
+const filaDelTotal = tresMovs[2].uid;
 const ajuste = construirAjuste({
   movimientos: tresMovs,
   nombreDelCliente: "Ana",
-  libro: { escrito: 140, calculado: 125, currency: "USD", filaDesajustada: desajustada },
+  libro: { escrito: 140, calculado: 125, currency: "USD", filaDelTotal },
   uid: "ajuste-1",
 });
 
 check("se construye cuando hay desajuste", ajuste !== null);
 check("el monto es la diferencia exacta", ajuste.movimiento.amount === 15, String(ajuste.movimiento.amount));
 check("es un cargo cuando la libreta dice MÁS", ajuste.movimiento.type === "charge", ajuste.movimiento.type);
-// JUSTO ANTES de la fila del total escrito. El saldo corrido se comprueba EN
-// esa fila, así que puesto después no cambiaría nada.
-check("se coloca justo antes de la fila desajustada", ajuste.indice === 2, `índice ${ajuste.indice}`);
+// CT-27, 2026-10-01: AL FINAL de todos los renglones, por decisión del usuario.
+// Antes iba justo antes de la fila del total escrito.
+check("se coloca al final de todo", ajuste.indice === tresMovs.length, `índice ${ajuste.indice}`);
+// La fecha sale del ÚLTIMO renglón de su libro, porque va detrás de él. Con
+// `date: null` la 076 le pondría la de HOY y lo sacaría del periodo de la
+// página; la mora y el enlace del cliente leen esa misma cadena.
+check("hereda la fecha del último renglón", ajuste.movimiento.date === "2026-09-08", String(ajuste.movimiento.date));
 // Datos de la PERSONA, no del renglón. Naciendo en null, quien escribiera la
 // cédula y DESPUÉS eligiera "mi libreta" se encontraba el botón bloqueado por
 // una fila recién creada, y sin salida. Visto en dev el 2026-09-29.
@@ -146,11 +150,28 @@ check("lleva la moneda del libro", ajuste.movimiento.currency === "USD", String(
 // movimiento que devuelve get_shared_balance.
 check("la descripción es la que ve el cliente", ajuste.movimiento.description === DESCRIPCION_DEL_AJUSTE, ajuste.movimiento.description);
 
+// DOS LIBROS DEL MISMO CLIENTE SON DOS CADENAS. La fecha del ajuste en euros no
+// puede salir del último renglón en dólares: lo colocaría en el sitio
+// equivocado de la cadena de euros.
+const mezclado = [
+  mov({ amount: 20, currency: "EUR", date: "2026-09-05" }),
+  mov({ amount: 12, currency: "EUR", read_balance: 35, date: "2026-09-11" }),
+  mov({ amount: 40, currency: "USD", date: "2026-09-20" }),
+];
+const ajusteEur = construirAjuste({
+  movimientos: mezclado,
+  nombreDelCliente: "Ana",
+  libro: { escrito: 35, calculado: 32, currency: "EUR", filaDelTotal: mezclado[1].uid },
+  uid: "ajuste-eur",
+});
+check("el ajuste en euros toma la fecha del último renglón EN EUROS", ajusteEur.movimiento.date === "2026-09-11", String(ajusteEur.movimiento.date));
+check("y no la del último en dólares", ajusteEur.movimiento.date !== "2026-09-20");
+
 // El caso contrario: la libreta dice MENOS que los montos.
 const alReves = construirAjuste({
   movimientos: tresMovs,
   nombreDelCliente: "Ana",
-  libro: { escrito: 100, calculado: 125, currency: "USD", filaDesajustada: desajustada },
+  libro: { escrito: 100, calculado: 125, currency: "USD", filaDelTotal },
   uid: "ajuste-2",
 });
 check("es un abono cuando la libreta dice MENOS", alReves.movimiento.type === "payment", alReves.movimiento.type);
@@ -161,29 +182,60 @@ check(
   construirAjuste({
     movimientos: tresMovs,
     nombreDelCliente: "Ana",
-    libro: { escrito: 125, calculado: 125, currency: "USD", filaDesajustada: desajustada },
+    libro: { escrito: 125, calculado: 125, currency: "USD", filaDelTotal },
     uid: "x",
   }) === null,
 );
 check(
-  "sin fila desajustada tampoco",
+  "sin fila de total tampoco",
   construirAjuste({
     movimientos: tresMovs,
     nombreDelCliente: "Ana",
-    libro: { escrito: 140, calculado: 125, currency: "USD", filaDesajustada: null },
+    libro: { escrito: 140, calculado: 125, currency: "USD", filaDelTotal: null },
     uid: "x",
   }) === null,
 );
 
-// Y lo que de verdad importa: que METIDO EN SU SITIO, las cuentas cuadren.
-const conAjuste = [...tresMovs];
-conAjuste.splice(ajuste.indice, 0, ajuste.movimiento);
-const reconciliado = reconcileMovements(conAjuste, []);
-const filaDelTotal = reconciliado.find((r) => r.read_balance === 140);
+// ── Lo que de verdad importa: el CIERRE acaba en lo que dice la libreta ──
+//
+// Y aquí está CT-27 entero. La regla vieja —cuadrar contra la PRIMERA fila que
+// descuadra— solo acierta cuando el error es un desfase constante. Esta libreta
+// tiene el error en medio, que es el caso del mockup M: con la regla vieja
+// cerraba en 60 donde la libreta dice 50.
+const errorEnMedio = [
+  mov({ amount: 30, read_balance: 30, date: "2026-09-02" }),
+  mov({ amount: 10, read_balance: 25, date: "2026-09-04" }), // aquí se separa
+  mov({ amount: 25, read_balance: 50, date: "2026-09-06" }), // y aquí cierra
+];
+const librosM = agruparPorCliente(reconcileMovements(errorEnMedio, []), [], { esVE: true })[0].libros[0];
 check(
-  "con el ajuste en su sitio, la fila del total CUADRA",
-  filaDelTotal.review_reason !== "no_cuadra" && filaDelTotal.page_balance === 140,
-  `page_balance ${filaDelTotal.page_balance}, motivo ${filaDelTotal.review_reason}`,
+  "el libro mira el ÚLTIMO total escrito, no el primer descuadre",
+  librosM.escrito === 50 && librosM.calculado === 65,
+  `escrito ${librosM.escrito}, calculado ${librosM.calculado}`,
+);
+const ajusteM = construirAjuste({
+  movimientos: errorEnMedio,
+  nombreDelCliente: "Ana",
+  libro: librosM,
+  uid: "ajuste-m",
+});
+check("y el ajuste es el que cierra en lo escrito", ajusteM.movimiento.amount === 15 && ajusteM.movimiento.type === "payment", `${ajusteM.movimiento.type} ${ajusteM.movimiento.amount}`);
+const conAjusteM = [...errorEnMedio];
+conAjusteM.splice(ajusteM.indice, 0, ajusteM.movimiento);
+const libroCerrado = agruparPorCliente(reconcileMovements(conAjusteM, []), [], { esVE: true })[0].libros[0];
+check(
+  "el total de la página acaba siendo EXACTAMENTE el de la libreta",
+  libroCerrado.totalPagina === 50,
+  `totalPagina ${libroCerrado.totalPagina}`,
+);
+// Lo que se paga por ponerlo al final, dicho en una prueba para que nadie lo
+// descubra como sorpresa: la fila de en medio SIGUE en rojo. El ajuste arregla
+// el cierre, no el renglón donde la cuenta se separó.
+const filasM = reconcileMovements(conAjusteM, []);
+check(
+  "la fila de en medio sigue marcada, y eso es correcto",
+  filasM[1].review_reason === "no_cuadra",
+  String(filasM[1].review_reason),
 );
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -225,7 +277,7 @@ const cliente = (p = {}) => ({
   rowIds: ["r1"],
   movimientos: 1,
   candidato: null,
-  libros: [{ currency: "USD", totalPagina: 10, saldoPrevio: 0, saldoFinal: 10, estado: "cuadra", escrito: null, calculado: null, filaDesajustada: null }],
+  libros: [{ currency: "USD", totalPagina: 10, saldoPrevio: 0, saldoFinal: 10, estado: "cuadra", escrito: null, calculado: null, filaDelTotal: null }],
   necesitaDocumento: false,
   necesitaMoneda: false,
   faltaWhatsapp: false,
@@ -321,8 +373,10 @@ console.log("-- El ajuste se mantiene al dia ------------------------------");
 const sombra = (escrito, calculado, ancla = "c") => ({
   escrito,
   calculado,
-  currency: null,
-  filaDesajustada: ancla,
+  // La misma moneda que `mov()` pone en las filas: los libros se derivan de las
+  // propias filas, asi que en la app nunca discrepan.
+  currency: "USD",
+  filaDelTotal: ancla,
 });
 const renglones = [
   mov({ uid: "a", amount: 50 }),
@@ -376,13 +430,13 @@ check(
   `${unaVez.movimiento.amount} == ${otraVez.movimiento.amount}`,
 );
 check(
-  "y la linea entra ANTES de la fila que lleva el total escrito",
-  conLaLinea[unaVez.indice].uid === "ajuste:x" && conLaLinea[unaVez.indice + 1].uid === "c",
+  "y la linea entra LA ULTIMA, detras de todos los renglones (CT-27)",
+  conLaLinea[conLaLinea.length - 1].uid === "ajuste:x" && conLaLinea.length === renglones.length + 1,
   conLaLinea.map((m) => m.uid).join(","),
 );
 
 check(
-  "el ajuste hereda la FECHA de la fila a la que se ancla",
+  "el ajuste hereda la FECHA del ultimo renglon de su libro",
   (() => {
     const conFechas = [
       mov({ uid: "a", amount: 50, date: "2026-09-12" }),

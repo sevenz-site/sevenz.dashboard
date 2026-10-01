@@ -239,17 +239,27 @@ export type LibroDelCliente = {
   estado: EstadoDeSuma;
   // Las dos cifras del desajuste, para poder decirlas. Null si cuadra o si no
   // se pudo comprobar.
+  //
+  // SALEN DEL ÚLTIMO TOTAL ESCRITO DE LA PÁGINA, no de la primera fila que
+  // descuadra. Cambiado el 2026-10-01 (CT-27), por decisión del usuario.
+  //
+  // Antes salían de la primera `no_cuadra`, y eso solo da el número correcto
+  // cuando el error es un desfase constante —el caso de CT-12, una página que
+  // arranca con una deuda que Sevenz no tiene, donde las 23 filas difieren en
+  // los mismos 99—. En cuanto el error está en medio, corregir en el primer
+  // descuadre deja el total final en otro sitio: con la libreta del mockup M
+  // daba 60 donde la libreta cerraba en 50.
+  //
+  // El último total escrito es el único número que el dueño escribió a mano,
+  // miró y dio por bueno. Cuadrar contra él garantiza que la cifra final sea
+  // exactamente la suya, que es lo que significa "manda mi libreta".
   escrito: number | null;
   calculado: number | null;
-  // El `rowId` de la línea que lleva el total escrito que no cuadra.
-  //
-  // Hace falta para colocar bien una línea de ajuste cuando el dueño dice que
-  // manda su libreta: el ajuste va JUSTO ANTES de esa línea, no al final. El
-  // saldo corrido se comprueba EN la fila que trae el total escrito, así que un
-  // ajuste puesto después no cambia esa comprobación y el aviso seguiría rojo
-  // con el ajuste ya metido. Puesto antes, esa fila pasa a dar exactamente el
-  // total de la libreta — que es lo que el dueño acaba de decir que es cierto.
-  filaDesajustada: string | null;
+  // El `rowId` de la línea que lleva ese último total escrito. El ajuste no se
+  // ancla ahí —va al final de la página, ver `construirAjuste`—, pero esa fila
+  // es la que dice que hay un total con el que comparar, y de ella sale la
+  // fecha cuando hace falta.
+  filaDelTotal: string | null;
 };
 
 // El cliente que ya existe con ese mismo nombre. NO es una decisión: es un
@@ -328,15 +338,27 @@ export function agruparPorCliente(
       else if (comprobables.length === 0) estado = "sin_verificar";
       else estado = "cuadra";
 
+      // El ÚLTIMO total escrito de la página manda sobre el importe del ajuste
+      // (ver la nota de `escrito` arriba). `estado` sigue saliendo de CUALQUIER
+      // fila que descuadre, que es otra pregunta: una cosa es "esta cuenta hay
+      // que mirarla" y otra "cuánto falta para cerrar en lo que escribiste".
+      const ultimoTotal = comprobables.length ? comprobables[comprobables.length - 1] : null;
+      // Si el último total SÍ cuadra, no hay nada que preguntar aunque alguna
+      // fila de en medio esté en rojo: el cierre ya es el del dueño, y el rojo
+      // es un renglón que leer otra vez, no dinero que falte. Null y null deja
+      // la pregunta sin salir y `construirAjuste` sin construir nada.
+      const hayDesfase =
+        ultimoTotal !== null && (ultimoTotal.read_balance ?? 0) !== ultimoTotal.page_balance;
+
       return {
         currency,
         totalPagina,
         saldoPrevio,
         saldoFinal: saldoPrevio + totalPagina,
         estado,
-        escrito: desajustada?.read_balance ?? null,
-        calculado: desajustada?.page_balance ?? null,
-        filaDesajustada: desajustada?.rowId ?? null,
+        escrito: hayDesfase ? ultimoTotal!.read_balance : null,
+        calculado: hayDesfase ? ultimoTotal!.page_balance : null,
+        filaDelTotal: ultimoTotal?.rowId ?? null,
       };
     });
 

@@ -15,10 +15,21 @@ export const DESCRIPCION_DEL_AJUSTE = "Ajuste al subir la libreta";
 
 export type AjusteConstruido = {
   movimiento: ExtractedMovement;
-  // Dónde va dentro de `reviewMovements`. JUSTO ANTES de la fila que lleva el
-  // total escrito, no al final: el saldo corrido se comprueba EN esa fila, así
-  // que un ajuste puesto después no cambiaría nada y el aviso seguiría en rojo
-  // con el ajuste ya metido.
+  // Dónde va dentro de la lista: AL FINAL, detrás de todos los renglones.
+  //
+  // Hasta el 2026-10-01 iba justo antes de la primera fila que descuadraba, para
+  // que esa fila pasara a dar el total de la libreta y su aviso rojo se apagara.
+  // Decisión del usuario, CT-27: va al final.
+  //
+  // Lo que se gana es que la cifra final sea SIEMPRE la que el dueño escribió a
+  // mano. Anclar en el primer descuadre solo acierta cuando el error es un
+  // desfase constante; con el error en medio, el cierre quedaba en otro número
+  // (60 donde la libreta decía 50, en el mockup M).
+  //
+  // Lo que se paga, y hay que saberlo: los avisos rojos de las filas de en medio
+  // NO se apagan. Siguen diciendo que ahí la cuenta se separó, que es verdad —
+  // lo que el ajuste arregla es el cierre, no el renglón. Un ajuste al final no
+  // puede cambiar un saldo corrido que se comprueba antes de él.
   indice: number;
 };
 
@@ -38,21 +49,31 @@ export function construirAjuste({
 }: {
   movimientos: ExtractedMovement[];
   nombreDelCliente: string;
-  libro: Pick<LibroDelCliente, "escrito" | "calculado" | "currency" | "filaDesajustada">;
+  libro: Pick<LibroDelCliente, "escrito" | "calculado" | "currency" | "filaDelTotal">;
   uid: string;
 }): AjusteConstruido | null {
   const diferencia = (libro.escrito ?? 0) - (libro.calculado ?? 0);
-  if (diferencia === 0 || !libro.filaDesajustada) return null;
+  if (diferencia === 0 || !libro.filaDelTotal) return null;
 
   const suyas = movimientos.filter((m) => m.client_name === nombreDelCliente);
-  const i = movimientos.findIndex((m) => m.uid === libro.filaDesajustada);
-  const ancla = i >= 0 ? movimientos[i] : null;
+  // La fecha sale del ÚLTIMO renglón de esta persona EN ESTA MONEDA, porque el
+  // ajuste va detrás de él. Dos libros del mismo cliente son dos cadenas
+  // distintas: heredar la fecha del último renglón en euros para un ajuste en
+  // dólares lo colocaría en el sitio equivocado de la cadena de dólares.
+  const deEsaMoneda = suyas.filter((m) => (m.currency ?? null) === (libro.currency ?? null));
+  // Si ninguna fila lleva esa moneda —no debería pasar, los libros se derivan de
+  // las propias filas— vale cualquier renglón suyo antes que ninguno: quedarse
+  // en `date: null` haría que la 076 le pusiera la fecha de HOY, que es
+  // exactamente el fallo que se arregló el 2026-10-01. Una fecha algo movida es
+  // recuperable; un cargo fechado hoy en la cadena de una deuda vieja, no.
+  const candidatos = deEsaMoneda.length ? deEsaMoneda : suyas;
+  const ultimo = candidatos.length ? candidatos[candidatos.length - 1] : null;
 
   return {
-    indice: i < 0 ? movimientos.length : i,
+    indice: movimientos.length,
     movimiento: {
       client_name: nombreDelCliente,
-      // HEREDA LA FECHA DE LA FILA A LA QUE SE ANCLA, no la de la subida.
+      // HEREDA LA FECHA DEL ÚLTIMO RENGLÓN DE SU LIBRO, no la de la subida.
       //
       // Con `date: null` la migración 076 le ponía la fecha de HOY, así que el
       // ajuste se colocaba el último de la cadena por mucho que en la revisión
@@ -67,13 +88,14 @@ export function construirAjuste({
       // (`get_oldest_unpaid_charge`), así que el cargo figuraba como de hoy en
       // vez de desde cuando empezó la deuda.
       //
-      // Misma fecha que el ancla y no un día antes: la 076 añade un milisegundo
-      // por cada movimiento EN EL ORDEN DEL PAYLOAD, y el ajuste va justo antes
-      // de su ancla, así que con la misma fecha ya ordena delante.
+      // Misma fecha que el último renglón y no un día después: la 076 añade un
+      // milisegundo por cada movimiento EN EL ORDEN DEL PAYLOAD, y desde CT-27
+      // el ajuste va el último, así que con la misma fecha ya ordena detrás.
+      // Ponerle un día más lo sacaría del periodo que cubre la página.
       //
-      // Si el ancla tampoco trae fecha, se queda en null y manda la de subida,
-      // que es lo mismo que hacen sus hermanas.
-      date: ancla?.date ?? null,
+      // Si ese renglón tampoco trae fecha, se queda en null y manda la de
+      // subida, que es lo mismo que hacen sus hermanas.
+      date: ultimo?.date ?? null,
       type: diferencia > 0 ? "charge" : "payment",
       amount: Math.abs(diferencia),
       description: DESCRIPCION_DEL_AJUSTE,
