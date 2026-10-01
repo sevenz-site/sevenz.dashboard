@@ -381,6 +381,36 @@ check(
 );
 
 check(
+  "el ajuste hereda la FECHA de la fila a la que se ancla",
+  (() => {
+    const conFechas = [
+      mov({ uid: "a", amount: 50, date: "2026-09-12" }),
+      mov({ uid: "b", amount: 40, date: "2026-09-13" }),
+      mov({ uid: "c", amount: 20, type: "payment", date: "2026-09-15" }),
+    ];
+    const r = construirAjuste({
+      movimientos: conFechas,
+      nombreDelCliente: conFechas[0].client_name,
+      libro: sombra(95, 70, "c"),
+      uid: "ajuste:x",
+    });
+    return r.movimiento.date === "2026-09-15";
+  })(),
+);
+check(
+  "si el ancla no trae fecha, el ajuste tampoco (manda la de subida)",
+  (() => {
+    const r = construirAjuste({
+      movimientos: renglones,
+      nombreDelCliente: renglones[0].client_name,
+      libro: sombra(95, 70, "c"),
+      uid: "ajuste:x",
+    });
+    return r.movimiento.date === null;
+  })(),
+);
+
+check(
   "el uid se deriva de la clave: estable entre renders, sin guardar nada",
   unaVez.movimiento.uid === "ajuste:x",
 );

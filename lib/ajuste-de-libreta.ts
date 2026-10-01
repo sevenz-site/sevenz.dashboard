@@ -46,12 +46,34 @@ export function construirAjuste({
 
   const suyas = movimientos.filter((m) => m.client_name === nombreDelCliente);
   const i = movimientos.findIndex((m) => m.uid === libro.filaDesajustada);
+  const ancla = i >= 0 ? movimientos[i] : null;
 
   return {
     indice: i < 0 ? movimientos.length : i,
     movimiento: {
       client_name: nombreDelCliente,
-      date: null,
+      // HEREDA LA FECHA DE LA FILA A LA QUE SE ANCLA, no la de la subida.
+      //
+      // Con `date: null` la migración 076 le ponía la fecha de HOY, así que el
+      // ajuste se colocaba el último de la cadena por mucho que en la revisión
+      // fuera el primero. Medido en dev el 2026-10-01 subiendo la libreta de
+      // Mariangel: en pantalla iba delante y los saldos eran 99 → 102,50 →
+      // 110,50 → 90,50; en la base quedó detrás y la cadena pasó a ser 3,50 →
+      // 11,50 → -8,50 → 90,50.
+      //
+      // Dos cosas se rompían con eso. La clienta ve en su enlace que durante
+      // tres semanas el negocio le debía 8,50 y que hoy le metieron un cargo de
+      // 99 de golpe — nada de eso pasó. Y la mora sale de esa misma cadena
+      // (`get_oldest_unpaid_charge`), así que el cargo figuraba como de hoy en
+      // vez de desde cuando empezó la deuda.
+      //
+      // Misma fecha que el ancla y no un día antes: la 076 añade un milisegundo
+      // por cada movimiento EN EL ORDEN DEL PAYLOAD, y el ajuste va justo antes
+      // de su ancla, así que con la misma fecha ya ordena delante.
+      //
+      // Si el ancla tampoco trae fecha, se queda en null y manda la de subida,
+      // que es lo mismo que hacen sus hermanas.
+      date: ancla?.date ?? null,
       type: diferencia > 0 ? "charge" : "payment",
       amount: Math.abs(diferencia),
       description: DESCRIPCION_DEL_AJUSTE,
