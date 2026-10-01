@@ -127,12 +127,37 @@ const SPACING_BETWEEN_CALLS_MS = 4_000;
 // que los intentos.
 const ESPERAS_MS = [2_000, 4_000];
 
-const EXTRACTION_PROMPT = `Eres un asistente que digitaliza la libreta de fiado de una tienda de barrio.
+// EL PROMPT SABE EN QUÉ DÍA VIVE, y por eso es una función y no una constante.
+//
+// Medido el 2026-10-01 con libretas escritas a mano de verdad: ninguna escribía
+// el año —nadie lo escribe, se apunta "02-09"— y el modelo se lo inventaba.
+// Dalia y Rosa salieron en 2024; Mariangel, Elena, Jacinta, Ramona y Teófilo en
+// 2023. Dos modelos distintos, dos años inventados distintos, ninguno el actual.
+//
+// NO ES COSMÉTICO. `created_at` manda en el saldo corrido Y en la mora: de él
+// salen los días sin pagar, el puntaje de crédito y Malas pagas (ver la nota de
+// la migración 076). Un fiado de esta semana guardado en 2023 pone al cliente en
+// Malas pagas con mil días de atraso por una compra del martes.
+//
+// Y la guarda de la 076 NO lo caza: rechaza fechas futuras y anteriores a 2015,
+// pero 2023 y 2024 caen dentro y pasan limpias.
+//
+// El día primero se dice también a propósito: con la página girada el modelo
+// leyó "05-09" como 9 de mayo. Es la misma convención que ya documenta
+// `lib/fecha-de-libreta.ts` para el respaldo del navegador.
+function promptDeExtraccion(): string {
+  const hoy = new Date().toISOString().slice(0, 10);
+  return `Eres un asistente que digitaliza la libreta de fiado de una tienda de barrio.
 Mira la foto de la página de la libreta y extrae cada movimiento que veas como una lista JSON.
 
 Para cada movimiento identifica:
 - client_name: el nombre del cliente tal como está escrito (corrige mayúsculas obvias, no inventes apellidos)
-- date: la fecha si está escrita, en formato ISO "YYYY-MM-DD"; si no hay fecha legible, usa null
+- date: la fecha si está escrita, en formato ISO "YYYY-MM-DD"; si no hay fecha legible, usa null.
+  Hoy es ${hoy}. Una libreta casi nunca escribe el año: apunta "02-09" o "5-8".
+  Cuando el año NO esté escrito, usa el año en curso; si con ese año la fecha quedara
+  en el futuro, usa el anterior. No inventes un año distinto.
+  Y el DÍA VA PRIMERO: "02-09" es el 2 de septiembre, no el 9 de febrero. Así se
+  escribe en Venezuela y en Colombia.
 - type: "charge" si el cliente se llevó algo fiado (aumenta lo que debe), "payment" si el cliente abonó/pagó (disminuye lo que debe)
 - amount: el monto del movimiento en pesos, solo el número (sin puntos, comas ni símbolo $)
 - description: qué se llevó o detalle breve, si está escrito; si no, null
@@ -143,6 +168,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta forma, sin texto adicional 
 {"movements": [{"client_name": "...", "date": null, "type": "charge", "amount": 0, "description": null, "read_balance": null, "confidence": "high"}]}
 
 Si la foto no tiene movimientos legibles, devuelve {"movements": []}.`;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -274,7 +300,7 @@ async function extractFromImageViaGemini(
           contents: [
             {
               parts: [
-                { text: EXTRACTION_PROMPT },
+                { text: promptDeExtraccion() },
                 { inline_data: { mime_type: mimeType, data: base64Data } },
               ],
             },
@@ -423,7 +449,7 @@ async function extractFromImageViaOpenRouter(dataUrl: string): Promise<Extracted
     {
       role: "user",
       content: [
-        { type: "text", text: EXTRACTION_PROMPT },
+        { type: "text", text: promptDeExtraccion() },
         { type: "image_url", image_url: { url: dataUrl } },
       ],
     },
