@@ -176,7 +176,14 @@ Para cada movimiento identifica:
   Y el DÍA VA PRIMERO: "02-09" es el 2 de septiembre, no el 9 de febrero. Así se
   escribe en Venezuela y en Colombia.
 - type: "charge" si el cliente se llevó algo fiado (aumenta lo que debe), "payment" si el cliente abonó/pagó (disminuye lo que debe)
-- amount: el monto del movimiento en pesos, solo el número (sin puntos, comas ni símbolo $)
+- amount: el monto del movimiento, como número JSON y con PUNTO decimal. Sin símbolo de moneda.
+  El bodeguero usa punto Y coma para las dos cosas, así que mira cuántas cifras van detrás:
+    · dos cifras detrás = DECIMAL ->  "3,50" y "3.50" son 3.5   ·  "12,75" y "12.75" son 12.75
+    · tres cifras detrás = MILES  ->  "1,500" y "1.500" son 1500 ·  "25.000" son 25000
+    · los dos a la vez: "1.500,50" y "1,500.50" son 1500.5
+  Es la diferencia entre 1,5 y mil quinientos. Si de verdad no puedes decidirlo, elige la
+  lectura de MILES —un bodeguero apunta más veces bultos que céntimos— y marca ese
+  movimiento con confidence "low".
 - description: qué se llevó o detalle breve, si está escrito; si no, null
 - read_balance: si en esa misma línea hay un saldo/total escrito a mano, el número de ese saldo; si no hay saldo legible en esa línea, null
 - confidence: "high" SOLO si el monto y el tipo se leen sin ninguna duda. Usa "low" en cuanto
