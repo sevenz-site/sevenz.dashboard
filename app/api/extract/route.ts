@@ -169,6 +169,11 @@ Mira la foto de la página de la libreta y extrae cada movimiento que veas como 
 
 Para cada movimiento identifica:
 - client_name: el nombre del cliente tal como está escrito (corrige mayúsculas obvias, no inventes apellidos)
+  UNA PÁGINA PUEDE EMPEZAR SIN NOMBRE: los primeros renglones vienen de la hoja anterior
+  y su nombre está allí, no aquí. En ese caso devuelve client_name: "" (cadena vacía)
+  y NO te saltes el renglón ni le pongas el nombre que aparece más abajo. Esas líneas
+  son deuda de verdad y el dueño dirá de quién son. Lo mismo si el nombre está tachado,
+  cortado por el borde o simplemente no se lee.
 - date: la fecha si está escrita, en formato ISO "YYYY-MM-DD"; si no hay fecha legible, usa null.
   Hoy es ${hoy}. Una libreta casi nunca escribe el año: apunta "02-09" o "5-8".
   Cuando el año NO esté escrito, usa el año en curso; si con ese año la fecha quedara
@@ -286,7 +291,30 @@ function parseExtractionResponse(raw: string, degradarConfianza = false): Extrac
       // page where the symbol is usually absent or ambiguous.
       currency: null,
     }))
-    .filter((m) => m.client_name && m.amount > 0);
+    // ─────────────────────────────────────────────────────────────────────
+    // CT-25: LO QUE NO SE PUEDE LEER SE DEVUELVE, NO SE TIRA.
+    //
+    // Hasta el 2026-10-01 esta línea era `m.client_name && m.amount > 0`, dos
+    // descartes muy distintos escondidos en la misma condición, y ninguno de
+    // los dos avisaba de nada.
+    //
+    // Medido ese día con una libreta escrita a mano: una página que empieza con
+    // tres renglones que vienen de la hoja anterior —no llevan nombre encima,
+    // porque el nombre está en la página de antes— y solo después pone "Zulay
+    // Berrios". La app leyó 2 movimientos de 5. Los tres primeros, $35 de deuda
+    // real, desaparecieron sin una fila en ámbar, sin un aviso y sin un hueco:
+    // el dueño ve "Listo · 2 movimientos" y da por bueno que la página tenía
+    // dos. Y el 0 es peor de lo que parece, porque en una libreta casi nunca
+    // significa "nada": significa "apuntado y todavía sin precio".
+    //
+    // Ahora salen las dos y las resuelve la revisión, que es donde hay una
+    // persona mirando: las que no traen nombre van a "líneas sin cliente" y se
+    // asignan o se descartan a mano, y el monto en 0 se queda marcado hasta que
+    // alguien lo escriba. Ninguna de las dos deja subir la libreta sin tocarla.
+    //
+    // Lo único que se sigue tirando es lo que no es un movimiento: un monto que
+    // no es un número, o negativo —el signo lo lleva `type`, nunca el importe—.
+    .filter((m) => Number.isFinite(m.amount) && m.amount >= 0);
 }
 
 // ACTIVE: calls Gemini directly (Google AI Studio), no middleman. Cheapest

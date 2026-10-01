@@ -38,6 +38,16 @@ import {
 import { conEstado } from "../lib/estado-de-tarjeta.ts";
 import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
 import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
+import {
+  esLineaSuelta,
+  esLineaSinMonto,
+  separarLineasSueltas,
+  nombresParaAsignar,
+  asignarLineaSuelta,
+  asignarTodasLasSueltas,
+  pendientesDeResolver,
+  motivoDeLineasPendientes,
+} from "../lib/lineas-sueltas.ts";
 
 const filas = [];
 const check = (nombre, pasa, detalle) => {
@@ -237,6 +247,98 @@ check(
   filasM[1].review_reason === "no_cuadra",
   String(filasM[1].review_reason),
 );
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// LÍNEAS SIN CLIENTE Y SIN MONTO — CT-25
+//
+// Hasta el 2026-10-01 `/api/extract` las tiraba las dos en la misma línea
+// (`m.client_name && m.amount > 0`) y no avisaba de ninguna. Medido ese día con
+// una libreta escrita a mano: 2 movimientos leídos de 5, $35 de deuda real
+// fuera, y la pantalla diciendo "Listo · 2 movimientos".
+console.log("");
+console.log("-- Lineas sin cliente y sin monto (CT-25) --------------------");
+
+check("una fila sin nombre es una linea suelta", esLineaSuelta({ client_name: "" }));
+check("y una con espacios tambien", esLineaSuelta({ client_name: "   " }));
+check("una con nombre no lo es", !esLineaSuelta({ client_name: "Zulay Berrios" }));
+check("monto 0 es una linea sin monto", esLineaSinMonto({ amount: 0 }));
+check("monto negativo tambien (el signo lo lleva `type`)", esLineaSinMonto({ amount: -5 }));
+check("un monto normal no lo es", !esLineaSinMonto({ amount: 18 }));
+
+// La libreta R, tal cual: tres renglones que vienen de la hoja anterior y
+// despues el nombre.
+const libretaR = [
+  mov({ uid: "r1", client_name: "", amount: 10, description: "harina" }),
+  mov({ uid: "r2", client_name: "", amount: 0, description: "cafe" }),
+  mov({ uid: "r3", client_name: "", amount: 25, description: "aceite" }),
+  mov({ uid: "r4", client_name: "Zulay Berrios", amount: 18, description: "jabon" }),
+  mov({ uid: "r5", client_name: "Zulay Berrios", amount: 8, type: "payment", description: "abono" }),
+];
+const partida = separarLineasSueltas(libretaR);
+check("las tres huerfanas se separan", partida.sueltas.length === 3, String(partida.sueltas.length));
+check("y las dos con nombre siguen su camino", partida.conCliente.length === 2, String(partida.conCliente.length));
+// LO QUE ESTO EVITA: con nombre vacio, `reconcileMovements` agrupa por "" y
+// fabrica una tarjeta sin nombre con los saldos de varias personas mezclados.
+check(
+  "ninguna suelta llega a la agrupacion por cliente",
+  agruparPorCliente(reconcileMovements(partida.conCliente, []), [], { esVE: true }).every((c) => c.nameKey !== ""),
+);
+
+const pend = pendientesDeResolver(libretaR);
+check("se cuentan 3 sin cliente", pend.sinCliente === 3, String(pend.sinCliente));
+// El cafe en 0 NO se cuenta dos veces: ya esta contado como "sin cliente", y
+// decir "3 sin cliente y 1 sin monto" sobre 3 renglones confundiria.
+check("y 0 sin monto, porque el del cafe ya cuenta como sin cliente", pend.sinMonto === 0, String(pend.sinMonto));
+check("el motivo del bloqueo lo dice", (motivoDeLineasPendientes(pend) ?? "").includes("3 líneas sin cliente"), String(motivoDeLineasPendientes(pend)));
+check("sin nada pendiente no hay motivo", motivoDeLineasPendientes({ sinCliente: 0, sinMonto: 0 }) === null);
+// EL REMEDIO QUE SE NOMBRA ES EL QUE SIRVE. La primera version listaba los tres
+// siempre, asi que con una sola linea sin monto decia "asignalas a un cliente".
+const soloMonto = motivoDeLineasPendientes({ sinCliente: 0, sinMonto: 1 });
+check("con solo un monto que falta NO dice que la asignes a un cliente", !soloMonto.includes("cliente"), soloMonto);
+check("y dice en singular lo que hay que hacer", soloMonto.includes("Escribe el monto") && soloMonto.includes("quítala"), soloMonto);
+const soloCliente = motivoDeLineasPendientes({ sinCliente: 2, sinMonto: 0 });
+check("con solo lineas sin cliente NO habla de montos", !soloCliente.includes("monto"), soloCliente);
+check("y en plural", soloCliente.includes("Dinos de quién son") && soloCliente.includes("quítalas"), soloCliente);
+const lasDos = motivoDeLineasPendientes({ sinCliente: 1, sinMonto: 2 });
+check("con las dos cosas, nombra las dos y las distingue", lasDos.includes("las primeras") && lasDos.includes("las otras"), lasDos);
+
+// Los nombres que se ofrecen: PRIMERO los de esta tanda de fotos, que son los
+// que el dueno tiene delante.
+const nombres = nombresParaAsignar({
+  movimientos: libretaR,
+  clientesDeSevenz: [{ name: "Petra Villalba" }, { name: "zulay berrios" }],
+});
+check("el primero es el de la libreta", nombres[0]?.nombre === "Zulay Berrios" && nombres[0]?.origen === "libreta", JSON.stringify(nombres[0]));
+check("despues los de Sevenz", nombres[1]?.nombre === "Petra Villalba" && nombres[1]?.origen === "sevenz", JSON.stringify(nombres[1]));
+// "Zulay Berrios" y "zulay berrios" son la misma persona: se compara en
+// minusculas, igual que el resto de la revision, y se ensena la grafia de la foto.
+check("no se repite el mismo nombre con otra grafia", nombres.length === 2, JSON.stringify(nombres.map((n) => n.nombre)));
+check("las vacias no entran en la lista", !nombres.some((n) => n.nombre === ""));
+
+// Asignar una: solo esa, y por uid.
+const traAsignarUna = asignarLineaSuelta(libretaR, "r1", "  Zulay Berrios  ");
+check("asignar escribe el nombre, sin espacios de sobra", traAsignarUna[0].client_name === "Zulay Berrios", `"${traAsignarUna[0].client_name}"`);
+check("y no toca a las demas", traAsignarUna[1].client_name === "" && traAsignarUna[2].client_name === "");
+// Un nombre en blanco la devuelve a "sin cliente": es como se deshace sin
+// borrar la linea.
+check("un nombre vacio la devuelve a sin cliente", asignarLineaSuelta(traAsignarUna, "r1", "  ")[0].client_name === "");
+
+// Asignar todas, respetando lo que el dueno ya habia quitado. Es la misma regla
+// que `recuperarCliente`: no se deshace una decision que nadie pidio deshacer.
+const todas = asignarTodasLasSueltas(libretaR, "Zulay Berrios", new Set(["r2"]));
+check("asignar todas alcanza a las vivas", todas[0].client_name === "Zulay Berrios" && todas[2].client_name === "Zulay Berrios");
+check("pero NO resucita la que estaba quitada", todas[1].client_name === "", `"${todas[1].client_name}"`);
+check("y no toca a las que ya tenian nombre", todas[3].client_name === "Zulay Berrios" && todas[4].client_name === "Zulay Berrios");
+check("sin nombre no hace nada", asignarTodasLasSueltas(libretaR, "   ") === libretaR);
+
+// Una vez asignadas, el pendiente que queda es el monto en 0, y ESE si es de la
+// tarjeta: la linea ya sabe de quien es.
+const yaAsignadas = asignarTodasLasSueltas(libretaR, "Zulay Berrios");
+const pend2 = pendientesDeResolver(yaAsignadas);
+check("asignadas todas, no queda ninguna sin cliente", pend2.sinCliente === 0, String(pend2.sinCliente));
+check("pero el monto en 0 sigue pendiente", pend2.sinMonto === 1, String(pend2.sinMonto));
+check("y el motivo cambia al que toca", (motivoDeLineasPendientes(pend2) ?? "").includes("1 línea sin monto"), String(motivoDeLineasPendientes(pend2)));
 
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR

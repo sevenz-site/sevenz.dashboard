@@ -11,6 +11,16 @@ import { ModalDeMoneda } from "@/components/import/modal-de-moneda";
 import { isoDeLaFecha } from "@/lib/fecha-de-libreta";
 import { construirAjuste } from "@/lib/ajuste-de-libreta";
 import {
+  asignarLineaSuelta,
+  asignarTodasLasSueltas,
+  motivoDeLineasPendientes,
+  nombresParaAsignar,
+  pendientesDeResolver,
+  esLineaSuelta,
+  separarLineasSueltas,
+} from "@/lib/lineas-sueltas";
+import { LineasSueltas } from "@/components/import/lineas-sueltas";
+import {
   cargarRevision,
   guardarRevision,
   olvidarRevision,
@@ -234,7 +244,7 @@ export function ImportFlow({
 
   // Applied on top of what was read, never written back into it, so unticking
   // the box restores the original names and documents instead of losing them.
-  const movimientosBase = useMemo(() => {
+  const movimientosVivos = useMemo(() => {
     if (!reviewMovements) return null;
     // Los quitados salen de aqui: para los saldos, las sumas y el resumen no
     // existen. Siguen en `reviewMovements` solo para poder recuperarlos.
@@ -254,6 +264,63 @@ export function ImportFlow({
           },
     );
   }, [reviewMovements, eliminados, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
+
+  // CT-25: LAS LINEAS SIN CLIENTE SALEN DE LA TUBERIA, NO DE LA LIBRETA.
+  //
+  // `/api/extract` ya no las tira (ver el comentario de `parseExtractionResponse`),
+  // asi que llegan aqui con `client_name` vacio. No pueden entrar en
+  // `reconcileMovements`: alli el nombre ES la clave de agrupacion, y una clave
+  // vacia fabrica una tarjeta sin nombre con los saldos de varias personas
+  // mezclados. Van a su propia seccion, arriba, y vuelven a la tuberia en cuanto
+  // alguien les pone nombre.
+  //
+  // "Todos el mismo cliente" las rescata gratis: `movimientosVivos` ya escribio
+  // el nombre compartido en todas, asi que a esta altura ninguna esta suelta.
+  const lineasSueltas = useMemo(
+    () => (movimientosVivos ? separarLineasSueltas(movimientosVivos).sueltas : []),
+    [movimientosVivos],
+  );
+  const movimientosBase = useMemo(
+    () => (movimientosVivos ? separarLineasSueltas(movimientosVivos).conCliente : null),
+    [movimientosVivos],
+  );
+
+  // Las sueltas que el dueno QUITO. Se siguen enseniando, en gris y con su boton
+  // de recuperar, igual que un renglon quitado dentro de una tarjeta.
+  //
+  // Sin esto, quitar una suelta seria el unico borrado irreversible y sin rastro
+  // de toda la pantalla: no vuelve a la seccion —ya no cuenta como pendiente— y
+  // tampoco tiene una tarjeta donde aparecer en rojo, porque justamente lo que
+  // le falta es un cliente. Un dueno que se equivoca de boton pierde el renglon
+  // y no se entera.
+  const sueltasQuitadas = useMemo(
+    () =>
+      (reviewMovements ?? []).filter(
+        (m) => esLineaSuelta(m) && Boolean(m.uid) && eliminados.has(m.uid!),
+      ),
+    [reviewMovements, eliminados],
+  );
+
+  // Los nombres que se le ofrecen: primero los de ESTA tanda de fotos, que son
+  // los que tiene delante, y despues los que ya tiene guardados en Sevenz.
+  const nombresParaLasSueltas = useMemo(
+    () =>
+      nombresParaAsignar({
+        movimientos: movimientosBase ?? [],
+        clientesDeSevenz: existingClients,
+      }),
+    [movimientosBase, existingClients],
+  );
+
+  // Lo que queda por resolver antes de poder subir nada: lineas sin cliente y
+  // lineas sin monto. Se cuentan sobre los renglones VIVOS —un quitado ya esta
+  // resuelto, el dueno lo descarto a proposito.
+  const pendientesDeLineas = useMemo(
+    () => pendientesDeResolver(movimientosVivos ?? []),
+    [movimientosVivos],
+  );
+  const hayLineasSinResolver =
+    pendientesDeLineas.sinCliente > 0 || pendientesDeLineas.sinMonto > 0;
 
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
 
@@ -511,6 +578,11 @@ export function ImportFlow({
     const nombres = new Map<string, string>();
     for (const m of movimientosConAjustes ?? []) {
       const nombre = nombreVisible(m);
+      // CT-25: las lineas sin cliente no son un cliente. Sin este corte su
+      // nombre vacio entraba aqui como una clave mas y, al no encontrarla entre
+      // los vivos, la lista pintaba una tarjeta fantasma "Cliente eliminado"
+      // justo encima de las de verdad. Visto en dev el 2026-10-01.
+      if (!nombre.trim()) continue;
       const k = nombre.toLowerCase();
       if (!nombres.has(k)) {
         nombres.set(k, nombre);
@@ -601,6 +673,7 @@ export function ImportFlow({
   const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, {
     exigeMoneda: showCurrency,
     subidos,
+    hayLineasSinResolver,
   });
   const listosParaSubir = estadosPendientes.filter((c) => c.puedeSubir);
   const sinCompletar = estadosPendientes.length - listosParaSubir.length;
@@ -636,7 +709,12 @@ export function ImportFlow({
   // tarjeta —cada una con lo suyo— y aqui lo util es cuantos quedan fuera. Dejar
   // el mensaje viejo seria contradecir al boton: "falta la cedula de uno o mas
   // clientes" encima de un boton encendido que va a subir a los otros cuatro.
-  const motivoQueBloquea = listosParaSubir.length > 0
+  // CT-25 va PRIMERO, por delante incluso de "ya hay alguien listo": mientras
+  // cuelgue una linea sin cliente no se sube nadie, asi que el pie tiene que
+  // decir eso y no "3 clientes sin completar; se subiran 7 movimientos", que
+  // ademas seria falso.
+  const motivoQueBloquea = motivoDeLineasPendientes(pendientesDeLineas)
+    ?? (listosParaSubir.length > 0
     ? resumenDelPie
     : filas.length === 0
     // Quitar al ultimo cliente deja la lista vacia y el boton apagado. Sin esta
@@ -653,7 +731,7 @@ export function ImportFlow({
         ? `Dinos si ${duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"} la misma persona que ya tienes, o alguien distinto.`
         : missingCurrency
           ? "Elige la moneda de la libreta antes de continuar."
-          : resumenDelPie;
+          : resumenDelPie);
 
   // YA NO EXIGE QUE LA TANDA ENTERA ESTE PERFECTA, desde el 2026-10-01.
   //
@@ -667,6 +745,11 @@ export function ImportFlow({
   // ningun cliente que subir.
   const noSePuedeConfirmar =
     confirming ||
+    // CT-25: una linea sin cliente o sin monto bloquea la tanda ENTERA. No
+    // pertenece a ninguna tarjeta todavia, asi que no hay un boton suyo que
+    // apagar; y dejar subir al resto es exactamente como se pierde — el dueno
+    // sube, la pantalla se vacia, y nadie vuelve a por ella.
+    hayLineasSinResolver ||
     filas.length === 0 ||
     missingSharedName ||
     listosParaSubir.length === 0 ||
@@ -874,6 +957,22 @@ export function ImportFlow({
     setEliminados((prev) => new Set(prev).add(rowId));
   }
 
+  // CT-25. Escribir el nombre en la fila la saca de "sin cliente" y la mete en
+  // la tuberia normal: a partir de ahi es un renglon como cualquier otro, con su
+  // tarjeta, su saldo corrido y su comprobacion contra el total escrito.
+  function asignarSuelta(uid: string, nombre: string) {
+    setReviewMovements((prev) => (prev ? asignarLineaSuelta(prev, uid, nombre) : prev));
+  }
+
+  // El caso corriente: los huerfanos de una pagina son todos del mismo cliente,
+  // el de la hoja anterior. Se asignan solo los que siguen VIVOS — uno que el
+  // dueno acaba de quitar no debe resucitar con nombre puesto.
+  function asignarTodasSueltas(nombre: string) {
+    setReviewMovements((prev) =>
+      prev ? asignarTodasLasSueltas(prev, nombre, eliminados) : prev,
+    );
+  }
+
   function restaurarMovimiento(rowId: string) {
     setEliminados((prev) => {
       const next = new Set(prev);
@@ -1044,6 +1143,7 @@ export function ImportFlow({
         conEstado(clientesRevisados, filas, decisiones, candidatos, {
           exigeMoneda: showCurrency,
           subidos,
+          hayLineasSinResolver,
         }),
       )
     : [];
@@ -1266,6 +1366,19 @@ export function ImportFlow({
             movimientos={filas.length}
           />
         ) : null}
+        {/* CT-25: ARRIBA DE TODO, antes que las tarjetas. Bloquea la subida
+            entera, asi que si estuviera debajo de seis tarjetas el dueno veria
+            el boton apagado sin ver por que. */}
+        <LineasSueltas
+          lineas={lineasSueltas}
+          quitadas={sueltasQuitadas}
+          nombres={nombresParaLasSueltas}
+          onAsignar={asignarSuelta}
+          onAsignarTodas={asignarTodasSueltas}
+          onQuitar={removeMovement}
+          onRecuperar={restaurarMovimiento}
+        />
+
         {/* LA LISTA POR CLIENTE, que es lo que el dueño lee primero.
             La tabla sigue existiendo, pero ya no es la pantalla: es el detalle
             de UN cliente, y se abre tocando su tarjeta. Una libreta de seis

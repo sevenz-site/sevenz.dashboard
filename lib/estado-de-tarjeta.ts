@@ -95,6 +95,7 @@ export function conEstado(
     document_id: string | null;
     needs_document_id: boolean;
     currency?: string | null;
+    amount?: number;
   }[],
   decisiones: Record<string, DecisionDuplicado>,
   candidatos: Map<string, CandidatoDuplicado>,
@@ -104,6 +105,19 @@ export function conEstado(
     exigeMoneda?: boolean;
     // Los `nameKey` que ya entraron.
     subidos?: Set<string>;
+    // CT-25: hay algo en la tanda que no pertenece a ningun cliente todavia
+    // —lineas sin nombre— y hasta resolverlo no se sube NADIE.
+    //
+    // No entra en `bloqueos`: eso pintaria las seis tarjetas de rojo con el
+    // mismo texto, que es justo el error que documenta el bloque de la moneda
+    // aqui abajo. El motivo se dice UNA vez, en la seccion de arriba donde esta
+    // el problema y donde se arregla.
+    //
+    // Y bloquea a TODOS y no solo al cliente al que acabaran asignandose,
+    // porque no se sabe a quien sera: ese es el dato que falta. Dejar subir al
+    // resto es como se pierden — el dueno sube, la pantalla se vacia, y nadie
+    // vuelve a por ellas.
+    hayLineasSinResolver?: boolean;
   } = {},
 ): ClienteConEstado[] {
   return clientes.map((c) => {
@@ -136,6 +150,14 @@ export function conEstado(
     // tanda sigue arriba: un toque las arregla todas.
     if (opciones.exigeMoneda && suyas.some((f) => !f.currency)) {
       bloqueos.push("Falta la moneda. Sin ella no se puede importar.");
+    }
+    // CT-25, la otra mitad: un renglon con el monto en 0. En una libreta eso
+    // casi nunca quiere decir "nada", quiere decir "apuntado y todavia sin
+    // precio" — hasta el 2026-10-01 se tiraba sin avisar, junto con las lineas
+    // sin nombre. Este SI es de la tarjeta: la linea ya sabe de quien es, lo que
+    // le falta es el importe, y se escribe en su detalle.
+    if (suyas.some((f) => f.amount !== undefined && f.amount <= 0)) {
+      bloqueos.push("Hay una línea sin monto. Escríbelo o quítala para poder importar.");
     }
 
     const avisos: string[] = [];
@@ -171,7 +193,10 @@ export function conEstado(
     // su duplicado esta decidido. Es la MISMA cuenta que hacia el pie para la
     // tanda entera, aplicada a una persona.
     const puedeSubir =
-      !subido && bloqueos.length === 0 && !(candidatoVisible && !decisiones[c.nameKey]);
+      !subido &&
+      !opciones.hayLineasSinResolver &&
+      bloqueos.length === 0 &&
+      !(candidatoVisible && !decisiones[c.nameKey]);
 
     // UNA TARJETA SUBIDA NO PIDE NADA. Ni bloqueos, ni avisos, ni la pregunta
     // del duplicado: ya esta en la base y no hay nada que decidir.
