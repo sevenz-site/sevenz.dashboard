@@ -40,6 +40,21 @@ export type DecisionDuplicadoGuardada = "mismo" | "otra";
 export type RevisionGuardada = {
   version: typeof VERSION;
   guardadaEn: number;
+  // Si el dueno llego a ABRIR la revision, o solo se leyo la foto.
+  //
+  // CT-26: desde el 2026-10-01 tambien se guarda en cuanto termina la lectura,
+  // antes de tocar "Ver resultados". Esa ventana es corta pero es donde la cuota
+  // ya se gasto y nada estaba guardado: recargar ahi —o que iOS recicle la
+  // pestana— obligaba a subir la foto otra vez y a pagar una segunda peticion
+  // por la misma pagina.
+  //
+  // Hace falta distinguirlas porque el aviso MIENTE si no: "dejaste una revision
+  // a medias, las correcciones siguen ahi" es falso de cabo a rabo cuando no
+  // hubo revision ni correcciones.
+  //
+  // Un borrador viejo sin este campo se lee como `true`: en la version 1 solo se
+  // escribia con la revision abierta, asi que es lo que era.
+  revisada: boolean;
   movimientos: ExtractedMovement[];
   eliminados: string[];
   clientesQuitados: Record<string, string[]>;
@@ -132,6 +147,7 @@ export function cargarRevision(ahora = Date.now(), almacen?: Almacen | null): Re
   return {
     version: VERSION,
     guardadaEn: p.guardadaEn,
+    revisada: p.revisada !== false,
     movimientos: p.movimientos,
     eliminados: Array.isArray(p.eliminados) ? p.eliminados : [],
     clientesQuitados: p.clientesQuitados ?? {},

@@ -699,6 +699,20 @@ al = almacenFalso();
 guardarRevision({ ...unaRevision, movimientos: [] }, al);
 check("sin movimientos no se recupera nada", cargarRevision(Date.now(), al) === null);
 
+
+// CT-26: `revisada` distingue "dejo la revision a medias" de "ni la abrio".
+al = almacenFalso();
+guardarRevision({ ...unaRevision, revisada: false }, al);
+check("lo guardado sin revisar vuelve como no revisado", cargarRevision(Date.now(), al).revisada === false);
+al = almacenFalso();
+guardarRevision({ ...unaRevision, revisada: true }, al);
+check("y lo revisado, como revisado", cargarRevision(Date.now(), al).revisada === true);
+// Un borrador de la version 1 no traia el campo, y solo se escribia con la
+// revision abierta: leerlo como `true` es leerlo como lo que era.
+al = almacenFalso();
+guardarRevision(unaRevision, al);
+al._romper(al._clave(), JSON.stringify({ version: 1, guardadaEn: Date.now(), movimientos: [mov()], eliminados: [] }));
+check("un borrador sin el campo se lee como revisado", cargarRevision(Date.now(), al).revisada === true);
 // EL CASO DE MODO PRIVADO: el almacen LANZA en vez de devolver null.
 const almacenQueLanza = {
   getItem() { throw new Error("bloqueado"); },

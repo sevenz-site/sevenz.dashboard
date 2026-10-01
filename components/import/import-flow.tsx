@@ -343,6 +343,7 @@ export function ImportFlow({
   useEffect(() => {
     if (!reviewMovements) return;
     guardarRevision({
+      revisada: true,
       movimientos: reviewMovements,
       eliminados: [...eliminados],
       clientesQuitados,
@@ -368,6 +369,41 @@ export function ImportFlow({
     sharedWhatsapp,
     unlinked,
   ]);
+
+  // CT-26: GUARDAR LA LECTURA, NO SOLO LA REVISION.
+  //
+  // El efecto de arriba arranca con `if (!reviewMovements) return;`, asi que
+  // entre que la pantalla dice "Listo · N movimientos" y que el dueno toca "Ver
+  // resultados" no habia nada guardado — y a esas alturas la peticion a la IA ya
+  // se gasto. Recargar ahi, o que iOS recicle la pestana en segundo plano,
+  // obligaba a subir la misma foto otra vez y a pagar una segunda lectura.
+  //
+  // Navegar a otra pantalla nunca estuvo en riesgo: `ImportProvider` vive en el
+  // layout de `(app)` y los trabajos sobreviven a un cambio de ruta. Lo que esto
+  // cubre es la recarga y el reciclado de pestana.
+  //
+  // Se marca `revisada: false` para que el aviso no mienta: no hubo revision ni
+  // correcciones que recuperar, solo la lectura.
+  useEffect(() => {
+    if (reviewMovements) return;
+    if (confirming || isProcessing) return;
+    const leidos = jobs.filter((j) => j.status === "done").flatMap((j) => j.movements);
+    if (leidos.length === 0) return;
+    guardarRevision({
+      revisada: false,
+      movimientos: leidos,
+      eliminados: [],
+      clientesQuitados: {},
+      decisiones: {},
+      decisionesDeTotal: {},
+      subidos: [],
+      sameClient: false,
+      sharedName: "",
+      sharedDocument: "",
+      sharedWhatsapp: "",
+      unlinked: [],
+    });
+  }, [jobs, reviewMovements, confirming, isProcessing]);
 
   // Retomar lo que quedó a medias. Las fotos NO vuelven —no se guardan—, así
   // que la tira sale vacía y el contador de fotos dice cero; lo que vuelve es
@@ -1608,21 +1644,40 @@ export function ImportFlow({
           Se dice que las fotos no vuelven, porque es lo que va a ver. */}
       {borrador && !borradorDescartado && !reviewMovements && !hasJobs ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+          {/* DOS AVISOS, PORQUE SON DOS COSAS DISTINTAS (CT-26).
+              `revisada` dice si el dueño llegó a abrir la revisión o si la
+              pantalla se cerró con la foto recién leída. Contarle que "las
+              correcciones siguen ahí" a quien no llegó a corregir nada es
+              mentirle, y encima le hace buscar un trabajo que no existe. */}
           <p className="flex items-start gap-1.5 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            <span>
-              Dejaste una revisión a medias con{" "}
-              <strong>
-                {borrador.movimientos.length}{" "}
-                {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
-              </strong>
-              . Puedes seguir donde la dejaste: las correcciones y las decisiones siguen ahí. Las
-              fotos no, así que la tira saldrá vacía.
-            </span>
+            {borrador.revisada ? (
+              <span>
+                Dejaste una revisión a medias con{" "}
+                <strong>
+                  {borrador.movimientos.length}{" "}
+                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
+                </strong>
+                . Puedes seguir donde la dejaste: las correcciones y las decisiones siguen ahí. Las
+                fotos no, así que la tira saldrá vacía.
+              </span>
+            ) : (
+              <span>
+                Ya leímos tu libreta:{" "}
+                <strong>
+                  {borrador.movimientos.length}{" "}
+                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
+                </strong>
+                . La pantalla se cerró antes de que los revisaras, pero no hace falta volver a subir
+                la foto: sigue desde aquí. La tira de fotos saldrá vacía, nada más.
+              </span>
+            )}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={retomarBorrador}>
-              Seguir con esa revisión
+              {borrador.revisada
+                ? "Seguir con esa revisión"
+                : `Revisar ${borrador.movimientos.length === 1 ? "ese movimiento" : `esos ${borrador.movimientos.length} movimientos`}`}
             </Button>
             <Button
               type="button"
