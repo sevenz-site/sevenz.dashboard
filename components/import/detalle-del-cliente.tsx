@@ -165,9 +165,14 @@ function DecisionDelTotal({
 function Totales({
   libros,
   decisiones,
+  subido = false,
 }: {
   libros: LibroDelCliente[];
   decisiones: Record<string, React.ComponentProps<typeof DecisionDelTotal> | undefined>;
+  // Ya entro en la base: la pregunta de que total manda ya se respondio y no se
+  // puede cambiar. Dejar las dos casillas ahi seria un control que se deja
+  // pulsar y no hace nada.
+  subido?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -175,7 +180,7 @@ function Totales({
         const decision = decisiones[l.currency ?? "COP"];
         return (
           <div key={l.currency ?? "COP"} className="flex flex-col gap-2">
-            {decision ? <DecisionDelTotal {...decision} /> : null}
+            {decision && !subido ? <DecisionDelTotal {...decision} /> : null}
 
             <div className="flex flex-col gap-1 rounded-lg border p-3">
               {libros.length > 1 && l.currency ? (
@@ -231,12 +236,16 @@ function Totales({
 function FilaMovimiento({
   fila,
   esAjuste,
+  soloLectura = false,
   onEditar,
   onEliminar,
 }: {
   fila: ReviewRow;
   // La línea de ajuste la calculó Sevenz, no la leyó de la libreta.
   esAjuste: boolean;
+  // El cliente ya se subio: el renglon se lee y nada mas. Editarlo aqui no
+  // tocaria la fila que ya esta en la base.
+  soloLectura?: boolean;
   onEditar: () => void;
   onEliminar: () => void;
 }) {
@@ -286,12 +295,12 @@ function FilaMovimiento({
         variant="ghost"
         size="icon"
         className="size-8 shrink-0"
-        aria-label={esAjuste ? "Ver este movimiento" : "Editar este movimiento"}
+        aria-label={esAjuste || soloLectura ? "Ver este movimiento" : "Editar este movimiento"}
         onClick={onEditar}
       >
         <Pencil className="size-4" />
       </Button>
-      {esAjuste ? null : (
+      {esAjuste || soloLectura ? null : (
         <Button
           type="button"
           variant="ghost"
@@ -328,6 +337,7 @@ export function DetalleDelCliente({
   decisionesDeTotal,
   onElegirTotal,
   accionSubir,
+  subido = false,
 }: {
   cliente: ClienteRevisado;
   estado: EstadoTarjeta;
@@ -358,6 +368,10 @@ export function DetalleDelCliente({
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
   onElegirTotal: (libro: LibroDelCliente, cual: EleccionDeTotal) => void;
   accionSubir: React.ReactNode;
+  // Ya entro en la base. La hoja se queda abrible —para ver QUE se subio— pero
+  // sin nada que tocar: editar aqui no cambiaria la fila ya guardada, y ofrecer
+  // "Eliminar" sobre algo que ya existe es prometer un deshacer que no hay.
+  subido?: boolean;
 }) {
   const [editando, setEditando] = useState<string | null>(null);
 
@@ -418,7 +432,12 @@ export function DetalleDelCliente({
         {/* Quitar a esta persona entera de la subida. Con confirmación y no con
             deshacer, al revés que un movimiento suelto: aquí se van de golpe
             todos sus renglones, y una tanda revisada durante media hora no
-            debería poder perder un cliente completo de un roce. */}
+            debería poder perder un cliente completo de un roce.
+
+            No sale si ya se subio: sus movimientos estan en la base y quitar la
+            tarjeta no los sacaria de ahi. Seria un boton que promete deshacer
+            algo que no deshace. */}
+        {subido ? null : (
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button type="button" variant="outline" size="sm" className="shrink-0">
@@ -442,6 +461,7 @@ export function DetalleDelCliente({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        )}
       </div>
 
       {/* ── ¿Es el mismo, o es otra persona? ───────────────────────────
@@ -449,7 +469,10 @@ export function DetalleDelCliente({
           dueño puede responder. Sin marcar por defecto — las dos respuestas se
           equivocan en silencio y en direcciones opuestas: una funde a dos
           personas en una ficha, la otra parte el historial de una. */}
-      {candidato ? (
+      {/* Nada de esto sale si el cliente ya entro: la pregunta del duplicado se
+          respondio antes de subir, y volver a mostrarla invita a cambiar algo
+          que ya no se puede cambiar. */}
+      {candidato && !subido ? (
         <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
           <p className="font-semibold text-amber-800 dark:text-amber-300">¿Es el mismo?</p>
           <p className="flex items-start gap-1.5 text-sm text-amber-800 dark:text-amber-300">
@@ -502,7 +525,7 @@ export function DetalleDelCliente({
 
       {/* ── Sus datos, una sola vez ──────────────────────────────────────
           No salen hasta que la pregunta de arriba esté respondida. */}
-      {sinDecidir ? null : clienteCompartido ? (
+      {sinDecidir || subido ? null : clienteCompartido ? (
         <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
           La cédula y el WhatsApp de este cliente se escriben arriba, en la lista, porque marcaste
           que todos los movimientos son de la misma persona.
@@ -574,7 +597,7 @@ export function DetalleDelCliente({
       )}
 
       {/* La moneda del cliente, con el mismo patrón que "Agregar movimiento". */}
-      {showCurrency ? (
+      {showCurrency && !subido ? (
         <div className="flex flex-col gap-2 rounded-lg border p-3">
           <Label>Moneda de este cliente</Label>
           <div className="flex flex-row flex-wrap gap-2">
@@ -616,6 +639,7 @@ export function DetalleDelCliente({
               <FilaMovimiento
                 fila={e.fila}
                 esAjuste={esAjuste(e.fila.rowId)}
+                soloLectura={subido}
                 onEditar={() => setEditando(e.fila.rowId)}
                 onEliminar={() => onRemove(e.fila.rowId)}
               />
@@ -704,6 +728,7 @@ export function DetalleDelCliente({
 
       {/* ── Cómo queda ─────────────────────────────────────────────────── */}
       <Totales
+        subido={subido}
         libros={cliente.libros}
         decisiones={Object.fromEntries(
           cliente.libros.map((l) => {
@@ -726,7 +751,7 @@ export function DetalleDelCliente({
         )}
       />
 
-      {accionSubir}
+      {subido ? null : accionSubir}
 
       {/* Montado solo mientras se edita, y con `key` en la fila: su borrador nace
           de los valores de ESE movimiento al montarse, sin un efecto que los

@@ -237,6 +237,10 @@ export function ImportFlow({
     [existingClients, decisiones],
   );
 
+  // Los `nameKey` que ya entraron en la base con su propio boton. La tarjeta se
+  // queda en su sitio para ver lo que llevas hecho; lo que desaparece es la
+  // posibilidad de volver a subirlos.
+  const [subidos, setSubidos] = useState<Set<string>>(new Set());
   const [decisionesDeTotal, setDecisionesDeTotal] = useState<
     Record<string, DecisionDeTotal | undefined>
   >({});
@@ -525,7 +529,40 @@ export function ImportFlow({
   //
   // Uno solo y por orden: enseñar los cuatro a la vez no dice por dónde
   // empezar, y arreglado el primero aparece el siguiente.
-  const motivoQueBloquea = filas.length === 0
+  // LO QUE QUEDA POR SUBIR. De aqui salen el contador del boton del lote, el
+  // resumen de encima y a quien sube ese boton: tres cifras que si se calcularan
+  // por separado acabarian discrepando.
+  const pendientes = clientesRevisados.filter((c) => !subidos.has(c.nameKey));
+  const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, {
+    exigeMoneda: showCurrency,
+    subidos,
+  });
+  const listosParaSubir = estadosPendientes.filter((c) => c.puedeSubir);
+  const sinCompletar = estadosPendientes.length - listosParaSubir.length;
+  // El contador cuenta MOVIMIENTOS, y solo los que de verdad van a entrar: a
+  // medida que se suben clientes, baja.
+  const movimientosListos = filas.filter((r) =>
+    listosParaSubir.some((c) => c.nameKey === r.client_name.trim().toLowerCase()),
+  ).length;
+
+  // EL RESUMEN DEL PIE. Ya no dice que impide subir la tanda —eso lo dice cada
+  // tarjeta, que es donde esta el cliente al que le falta—, dice cuantos quedan
+  // fuera y cuantos van a entrar.
+  const resumenDelPie =
+    sinCompletar > 0 && listosParaSubir.length > 0
+      ? `${sinCompletar} ${sinCompletar === 1 ? "cliente sin completar" : "clientes sin completar"}; se ${movimientosListos === 1 ? "subirá" : "subirán"} ${movimientosListos} ${movimientosListos === 1 ? "movimiento" : "movimientos"}.`
+      : null;
+
+  // EL ORDEN CAMBIA CUANDO YA SE PUEDE SUBIR ALGO.
+  //
+  // Mientras no haya nadie listo, el pie dice QUE FALTA, como siempre. Pero en
+  // cuanto hay al menos un cliente completo, lo que falta ya lo dice su propia
+  // tarjeta —cada una con lo suyo— y aqui lo util es cuantos quedan fuera. Dejar
+  // el mensaje viejo seria contradecir al boton: "falta la cedula de uno o mas
+  // clientes" encima de un boton encendido que va a subir a los otros cuatro.
+  const motivoQueBloquea = listosParaSubir.length > 0
+    ? resumenDelPie
+    : filas.length === 0
     // Quitar al ultimo cliente deja la lista vacia y el boton apagado. Sin esta
     // frase no hay nada en pantalla que diga por que, ni que la salida es
     // "Volver" — que conserva las fotos y rehace la revision desde cero.
@@ -540,19 +577,28 @@ export function ImportFlow({
         ? `Dinos si ${duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"} la misma persona que ya tienes, o alguien distinto.`
         : missingCurrency
           ? "Elige la moneda de la libreta antes de continuar."
-          : null;
+          : resumenDelPie;
 
+  // YA NO EXIGE QUE LA TANDA ENTERA ESTE PERFECTA, desde el 2026-10-01.
+  //
+  // Antes bastaba un cliente incompleto para apagar el boton de los seis: el
+  // dueno tenia seis personas listas y no podia subir ninguna hasta resolver la
+  // septima. Ahora el boton sube a TODOS los que esten completos y deja al resto
+  // en la revision, asi que solo se apaga cuando no hay nadie listo.
+  //
+  // `missingSharedName` sigue siendo global a proposito: con "todos el mismo
+  // cliente" marcado, el nombre compartido es de la tanda entera y sin el no hay
+  // ningun cliente que subir.
   const noSePuedeConfirmar =
     confirming ||
     filas.length === 0 ||
-    missingDocumentId ||
     missingSharedName ||
-    missingCurrency ||
-    // CT-22. Bloquea igual que una cédula que falta, y por el mismo motivo: las
-    // dos respuestas se equivocan en silencio y en direcciones opuestas —una
-    // funde dos personas, la otra parte el historial de una—, así que no puede
-    // haber una marcada por defecto ni pasarse de largo.
-    sinDecidir;
+    listosParaSubir.length === 0 ||
+    // CT-22 ya no bloquea la tanda: bloquea al cliente repetido, dentro de
+    // `puedeSubir`. Las dos respuestas se siguen equivocando en silencio y en
+    // direcciones opuestas —una funde dos personas, la otra parte el historial
+    // de una—, asi que ese cliente no se sube hasta responder; los demas si.
+    false;
 
   function handleFilesSelected(fileList: FileList | null) {
     if (guardia()) return;
@@ -835,54 +881,93 @@ export function ImportFlow({
   // reconstruir tres meses después es de dónde salió ese movimiento.
 
 
-  async function handleConfirm() {
+  // El payload de unas filas concretas. Sale aparte porque ahora hay dos
+  // caminos que suben —el boton de una tarjeta y el del lote— y que armaran el
+  // payload por separado es justo como se acaban desviando el uno del otro.
+  function payloadDe(deEstas: typeof filas): ImportRow[] {
+    return deEstas.map((r) => ({
+      // CT-22: `filas` ya aplico la decision, asi que con "es otra persona"
+      // esto llega en null y se crea un cliente nuevo.
+      client_id: r.matched_client_id,
+      client_name: r.client_name,
+      type: r.type,
+      amount: r.amount,
+      description: r.description,
+      document_id: r.document_id,
+      whatsapp: r.whatsapp,
+      currency: r.currency,
+      owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
+      created_at: isoDeLaFecha(r.date),
+    }));
+  }
+
+  // UNA LLAMADA POR CLIENTE, decidido el 2026-10-01.
+  //
+  // La migracion 073 hizo que una libreta entrara entera o no entrara. Al poder
+  // subir cliente a cliente esa garantia se rompe a proposito, pero se conserva
+  // DENTRO de cada persona: si el tercero falla, los dos anteriores ya estan
+  // guardados y el tercero no deja nada a medias. Es lo unico que importa aqui,
+  // porque lo que no puede quedar partido es la cuenta de alguien.
+  async function subirClientes(nameKeys: string[]) {
     if (guardia()) return;
-    if (filas.length === 0) return;
+    if (nameKeys.length === 0) return;
     setConfirming(true);
+    const hechos: string[] = [];
+    let movimientos = 0;
     try {
-      const rows: ImportRow[] = filas.map((r) => ({
-        // CT-22: `filas` ya aplicó la decisión, así que con "es otra persona"
-        // esto llega en null y se crea un cliente nuevo — que es lo que la
-        // versión anterior nunca permitió decir.
-        client_id: r.matched_client_id,
-        client_name: r.client_name,
-        type: r.type,
-        amount: r.amount,
-        description: r.description,
-        document_id: r.document_id,
-        whatsapp: r.whatsapp,
-        currency: r.currency,
-        owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
-        created_at: isoDeLaFecha(r.date),
-      }));
-      const result = await confirmImport(rows);
-      if (result.error) {
-        // La cuenta pausada se para antes de guardar nada, asi que aqui el
-        // "ya se guardaron N" seria mentira. Lo dice el dialogo y ya.
-        if (!avisarCuentaPausada(result.error)) {
-          // Ya no dice "N movimientos ya se guardaron". Desde la migración 073
-          // la libreta entra entera o no entra, así que ese número es SIEMPRE
-          // cero — y la frase que importa es justo la contraria: que se puede
-          // reintentar sin duplicar nada.
-          toast.error(result.error, { description: "No se guardó nada, puedes intentarlo otra vez." });
+      for (const nameKey of nameKeys) {
+        const suyas = filas.filter((r) => r.client_name.trim().toLowerCase() === nameKey);
+        if (suyas.length === 0) continue;
+        const result = await confirmImport(payloadDe(suyas));
+        if (result.error) {
+          // Se para en el primero que falla: seguir con los demas dejaria al
+          // dueno adivinando cuales entraron.
+          if (!avisarCuentaPausada(result.error)) {
+            toast.error(result.error, {
+              description: hechos.length
+                ? `Ya se guardaron ${hechos.length} ${hechos.length === 1 ? "cliente" : "clientes"}. Este no, y puedes intentarlo otra vez.`
+                : "No se guardo nada, puedes intentarlo otra vez.",
+            });
+          }
+          break;
         }
-      } else {
-        toast.success(`${result.imported} movimientos importados.`);
-        // Antes de navegar: si el aviso siguiera armado, el router.push de
-        // abajo abriría "¿salir sin importar?" justo después de importar.
-        cerrarRevision();
-        clearJobs();
-        router.push("/dashboard");
+        hechos.push(nameKey);
+        movimientos += result.imported ?? suyas.length;
       }
     } finally {
       setConfirming(false);
     }
+    if (hechos.length === 0) return;
+
+    const subidosAhora = new Set([...subidos, ...hechos]);
+    setSubidos(subidosAhora);
+
+    // Si ya no queda nadie por subir, la revision se acaba y se vuelve a Inicio,
+    // igual que antes. Si queda gente, NO se navega: el dueno sigue en la lista
+    // con lo que falta.
+    const quedan = clientesRevisados.some((c) => !subidosAhora.has(c.nameKey));
+    if (quedan) {
+      toast.success(
+        `${movimientos} ${movimientos === 1 ? "movimiento importado" : "movimientos importados"}. Sigue con el resto.`,
+      );
+      return;
+    }
+    toast.success(`${movimientos} movimientos importados.`);
+    cerrarRevision();
+    clearJobs();
+    router.push("/dashboard");
   }
+
 
   // Se calcula una vez: lo leen el encabezado y la lista, y que discrepen seria
   // un recuento que no cuadra con lo que hay debajo.
   const entradas = reviewMovements
-    ? entradasDeLaRevision(conEstado(clientesRevisados, filas, decisiones, candidatos))
+    ? entradasDeLaRevision(
+        conEstado(clientesRevisados, filas, decisiones, candidatos, {
+          exigeMoneda: showCurrency,
+          subidos,
+        }),
+      )
     : [];
 
   if (reviewMovements) {
@@ -1114,6 +1199,8 @@ export function ImportFlow({
           onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
           onAbrir={setAbierto}
           onRestaurarCliente={restaurarCliente}
+          onSubirCliente={(nameKey) => subirClientes([nameKey])}
+          subiendo={confirming}
         />
 
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
@@ -1132,7 +1219,10 @@ export function ImportFlow({
               <DetalleDelCliente
                 cliente={clienteAbierto}
                 estado={
-                  conEstado([clienteAbierto], filas, decisiones, candidatos)[0].estado
+                  conEstado([clienteAbierto], filas, decisiones, candidatos, {
+                    exigeMoneda: showCurrency,
+                    subidos,
+                  })[0].estado
                 }
                 candidato={candidatos.get(clienteAbierto.nameKey) ?? null}
                 decision={decisiones[clienteAbierto.nameKey]}
@@ -1182,15 +1272,25 @@ export function ImportFlow({
                   }),
                 )}
                 onElegirTotal={(libro, cual) => elegirTotal(clienteAbierto, libro, cual)}
+                subido={subidos.has(clienteAbierto.nameKey)}
                 accionSubir={
                   <ConfirmarImportacion
                     className="w-full"
-                    cuantas={filas.length}
-                    filas={filas}
+                    soloEsteCliente
+                    cuantas={
+                      filas.filter((r) => r.client_name.trim().toLowerCase() === clienteAbierto.nameKey)
+                        .length
+                    }
+                    filas={filas.filter(
+                      (r) => r.client_name.trim().toLowerCase() === clienteAbierto.nameKey,
+                    )}
                     rateContext={rateContext}
-                    deshabilitado={noSePuedeConfirmar}
+                    deshabilitado={
+                      confirming ||
+                      !estadosPendientes.find((c) => c.nameKey === clienteAbierto.nameKey)?.puedeSubir
+                    }
                     guardando={confirming}
-                    onConfirm={handleConfirm}
+                    onConfirm={() => subirClientes([clienteAbierto.nameKey])}
                   />
                 }
               />
@@ -1225,12 +1325,12 @@ export function ImportFlow({
             </Button>
             <ConfirmarImportacion
               className="flex-1"
-              cuantas={filas.length}
+              cuantas={movimientosListos}
               filas={filas}
               rateContext={rateContext}
               deshabilitado={noSePuedeConfirmar}
               guardando={confirming}
-              onConfirm={handleConfirm}
+              onConfirm={() => subirClientes(listosParaSubir.map((c) => c.nameKey))}
             />
           </div>
         </div>

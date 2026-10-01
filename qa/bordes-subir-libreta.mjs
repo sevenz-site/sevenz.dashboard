@@ -232,7 +232,8 @@ const cliente = (p = {}) => ({
 });
 const fila = (p = {}) => ({ client_name: "Ana", document_id: null, needs_document_id: false, ...p });
 const candidato = { id: "c1", name: "Ana", document_id: "V-9", whatsapp: null, balance: 0, balance_usd: 40, balance_eur: 0 };
-const estadoDe = (c, fs, dec = {}, cand = new Map()) => conEstado([c], fs, dec, cand)[0];
+const estadoDe = (c, fs, dec = {}, cand = new Map(), op = {}) =>
+  conEstado([c], fs, dec, cand, op)[0];
 
 check(
   "sin cédula, la tarjeta bloquea",
@@ -382,6 +383,63 @@ check(
 check(
   "el uid se deriva de la clave: estable entre renders, sin guardar nada",
   unaVez.movimiento.uid === "ajuste:x",
+);
+
+console.log("");
+console.log("-- Subir cliente por cliente --------------------------------");
+// Desde el 2026-10-01 cada cliente se puede subir por separado, asi que lo que
+// antes era un bloqueo de la tanda pasa a decidirse por persona: `puedeSubir`
+// es lo que enciende su boton y lo que cuenta el del lote.
+const conMoneda = (p = {}) => fila({ currency: "USD", ...p });
+
+check(
+  "cliente completo -> se puede subir",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), { exigeMoneda: true }).puedeSubir === true,
+);
+check(
+  "sin cedula -> no se puede subir",
+  estadoDe(cliente(), [conMoneda({ needs_document_id: true })], {}, new Map(), { exigeMoneda: true })
+    .puedeSubir === false,
+);
+check(
+  "sin moneda en un negocio VE -> no se puede subir, y lo dice",
+  (() => {
+    const e = estadoDe(cliente(), [fila()], {}, new Map(), { exigeMoneda: true });
+    return e.puedeSubir === false && e.bloqueos.some((b) => b.includes("moneda"));
+  })(),
+);
+check(
+  "sin moneda en un negocio CO -> SI se puede subir (alli no se elige moneda)",
+  (() => {
+    const e = estadoDe(cliente(), [fila()], {}, new Map(), { exigeMoneda: false });
+    return e.puedeSubir === true && e.bloqueos.length === 0;
+  })(),
+);
+check(
+  "duplicado sin decidir -> no se puede subir",
+  estadoDe(cliente(), [conMoneda()], {}, new Map([["ana", candidato]]), { exigeMoneda: true })
+    .puedeSubir === false,
+);
+check(
+  "duplicado ya decidido -> se puede subir",
+  estadoDe(cliente(), [conMoneda()], { ana: "mismo" }, new Map([["ana", candidato]]), {
+    exigeMoneda: true,
+  }).puedeSubir === true,
+);
+check(
+  "un cliente YA subido no se vuelve a subir",
+  (() => {
+    const e = estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+      exigeMoneda: true,
+      subidos: new Set(["ana"]),
+    });
+    return e.subido === true && e.puedeSubir === false;
+  })(),
+);
+check(
+  "la suma que no cuadra NO impide subir: el dueno decide",
+  estadoDe(cliente({ libros: [{ currency: "USD", estado: "no_cuadra", escrito: 95, calculado: 70 }] }), [conMoneda()], {}, new Map(), { exigeMoneda: true })
+    .puedeSubir === true,
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

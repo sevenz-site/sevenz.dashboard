@@ -50,8 +50,13 @@ export function ConfirmarImportacion({
   onConfirm,
   className,
   size,
+  soloEsteCliente = false,
 }: {
   cuantas: number;
+  // Dentro del detalle de una persona el boton sube SOLO a esa persona. Decir
+  // "Confirmar y subir (4)" mirando a Petronila y que entren otros tres seria
+  // una trampa: el dueno esta leyendo SU cuenta.
+  soloEsteCliente?: boolean;
   // Las filas tal cual, no un resumen ya masticado: el resumen se calcula
   // dentro, para que las dos instancias del botón —la del pie y la de la
   // cabecera— no puedan enseñar cuentas distintas.
@@ -73,14 +78,15 @@ export function ConfirmarImportacion({
               <Loader2 className="size-4 animate-spin" /> Guardando...
             </>
           ) : (
-            `Confirmar y subir (${cuantas})`
+            soloEsteCliente ? `Subir este cliente (${cuantas})` : `Confirmar y subir (${cuantas})`
           )}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            ¿Subir {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}?
+            ¿Subir {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}
+            {soloEsteCliente ? " de este cliente" : ""}?
           </AlertDialogTitle>
           <AlertDialogDescription>
             Asegúrate de haber verificado el cliente de cada línea, y sus montos y moneda.

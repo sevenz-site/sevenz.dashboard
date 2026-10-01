@@ -47,6 +47,7 @@ import type {
 } from "@/lib/estado-de-tarjeta";
 
 export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
+  subido: { texto: "Subido", clase: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400" },
   faltan_datos: { texto: "Faltan datos", clase: "border-destructive/40 text-destructive" },
   duplicado: { texto: "¿Es el mismo?", clase: "border-amber-400/60 text-amber-700 dark:text-amber-400" },
   revisar_suma: { texto: "Revisar suma", clase: "border-destructive/40 text-destructive" },
@@ -55,6 +56,9 @@ export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
 };
 
 const FONDO: Record<EstadoTarjeta, string> = {
+  // Mismo verde que "Todo cuadra" pero apagado: ya no pide nada, solo deja ver
+  // lo que llevas hecho.
+  subido: "border-emerald-500/30 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/5",
   faltan_datos: "border-destructive/30 bg-destructive/5",
   duplicado: "border-amber-300 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10",
   revisar_suma: "border-destructive/30 bg-destructive/5",
@@ -67,6 +71,8 @@ function montoDeLibro(l: LibroDelCliente): string {
 }
 
 function TarjetaCliente({
+  onSubir,
+  subiendo,
   cliente,
   decision,
   onDecidir,
@@ -76,6 +82,8 @@ function TarjetaCliente({
   decision: DecisionDuplicado | undefined;
   onDecidir: (d: DecisionDuplicado) => void;
   onAbrir: () => void;
+  onSubir: () => void;
+  subiendo: boolean;
 }) {
   const chip = CHIP[cliente.estado];
   const desajustado = cliente.libros.find((l) => l.estado === "no_cuadra");
@@ -139,6 +147,24 @@ function TarjetaCliente({
             <strong>{montoDeLibro({ ...desajustado, totalPagina: desajustado.escrito })}</strong>
           </span>
         </p>
+      ) : null}
+
+      {/* SUBIR SOLO A ESTA PERSONA. Desde el 2026-10-01 no hace falta que la
+          libreta entera este perfecta para empezar a guardar: en cuanto un
+          cliente tiene lo suyo, entra. La tarjeta de quien ya entro se queda en
+          su sitio, sin boton y en verde apagado, para que se vea lo hecho — y
+          se puede seguir abriendo para mirar lo que se subio. */}
+      {cliente.subido ? null : cliente.puedeSubir ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={subiendo}
+          onClick={onSubir}
+        >
+          Subir este cliente
+        </Button>
       ) : null}
 
       {/* Lo que conviene mirar pero no impide nada, en ámbar. */}
@@ -212,12 +238,16 @@ export function RevisarClientes({
   onDecidir,
   onAbrir,
   onRestaurarCliente,
+  onSubirCliente,
+  subiendo,
 }: {
   entradas: EntradaDeLaRevision[];
   decisiones: Record<string, DecisionDuplicado>;
   onDecidir: (nameKey: string, d: DecisionDuplicado) => void;
   onAbrir: (nameKey: string) => void;
   onRestaurarCliente: (nameKey: string) => void;
+  onSubirCliente: (nameKey: string) => void;
+  subiendo: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -229,6 +259,8 @@ export function RevisarClientes({
             decision={decisiones[e.cliente.nameKey]}
             onDecidir={(d) => onDecidir(e.cliente.nameKey, d)}
             onAbrir={() => onAbrir(e.cliente.nameKey)}
+            onSubir={() => onSubirCliente(e.cliente.nameKey)}
+            subiendo={subiendo}
           />
         ) : (
           // EL CLIENTE QUITADO SE QUEDA A LA VISTA, en su sitio, hasta que se

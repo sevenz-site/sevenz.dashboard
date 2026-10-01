@@ -53,6 +53,9 @@ export type DecisionDuplicado = "mismo" | "otra";
 // manda la decisión, no el mockup. `lib/types.ts` lo dice desde el 2026-09-21:
 // es opcional en todas partes.
 export type EstadoTarjeta =
+  // Ya entro en la base. Manda sobre todos los demas: lo que le faltara o
+  // sobrara dejo de importar en cuanto se guardo.
+  | "subido"
   | "faltan_datos"
   | "duplicado"
   | "revisar_suma"
@@ -73,6 +76,13 @@ export type ClienteConEstado = ClienteRevisado & {
   // porque uno impide importar y el otro no.
   bloqueos: string[];
   avisos: string[];
+  // Ya esta en la base: se subio suelto con su propio boton. La tarjeta se
+  // queda en su sitio para que se vea lo que llevas hecho, se puede abrir para
+  // mirar lo que entro, y pierde los botones.
+  subido: boolean;
+  // Si este cliente, EL SOLO, se puede subir ya. Es lo que enciende su boton y
+  // lo que cuenta el del lote.
+  puedeSubir: boolean;
 };
 
 // Traduce la vista por cliente en lo que se pinta. Vive aquí y no en
@@ -80,11 +90,24 @@ export type ClienteConEstado = ClienteRevisado & {
 // cuando hay tres problemas a la vez—, no de datos.
 export function conEstado(
   clientes: ClienteRevisado[],
-  filas: { client_name: string; document_id: string | null; needs_document_id: boolean }[],
+  filas: {
+    client_name: string;
+    document_id: string | null;
+    needs_document_id: boolean;
+    currency?: string | null;
+  }[],
   decisiones: Record<string, DecisionDuplicado>,
   candidatos: Map<string, CandidatoDuplicado>,
+  opciones: {
+    // Solo un negocio venezolano elige moneda. Para uno colombiano la columna
+    // es null a proposito y preguntarla seria un bloqueo imposible de resolver.
+    exigeMoneda?: boolean;
+    // Los `nameKey` que ya entraron.
+    subidos?: Set<string>;
+  } = {},
 ): ClienteConEstado[] {
   return clientes.map((c) => {
+    const subido = opciones.subidos?.has(c.nameKey) ?? false;
     const candidatoVisible = candidatos.get(c.nameKey) ?? null;
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
 
@@ -98,11 +121,22 @@ export function conEstado(
     if (suyas.some((f) => f.needs_document_id && !f.document_id?.trim())) {
       bloqueos.push("Falta la cédula. Sin ella no se puede importar.");
     }
-    // LA MONEDA NO SE REPITE EN CADA TARJETA. Es un bloqueo de la TANDA —tiene
-    // su propio selector arriba y su propio mensaje en el pie—, así que
-    // ponerlo también aquí pintaba las seis tarjetas de rojo con el mismo
-    // texto y tapaba lo único que las distingue: que una no cuadra, que otra
-    // no tiene totales, que otra está repetida. Se vio al pintarlo.
+    // LA MONEDA SI SE REPITE EN CADA TARJETA, desde el 2026-10-01.
+    //
+    // Hasta entonces no, y por una razon buena: era un bloqueo de la TANDA, con
+    // su selector arriba y su mensaje en el pie, asi que ponerlo aqui pintaba
+    // las seis tarjetas de rojo con el mismo texto y tapaba lo unico que las
+    // distingue. Lo que cambio es que ahora cada cliente se sube por separado,
+    // asi que la moneda dejo de ser una condicion de la libreta y paso a serlo
+    // de cada persona: sin decirlo en su tarjeta, su boton estaria apagado sin
+    // ninguna explicacion al lado.
+    //
+    // El riesgo viejo sigue existiendo —nadie ha elegido moneda y salen seis
+    // tarjetas rojas iguales—, y lo que lo contiene es que el selector de la
+    // tanda sigue arriba: un toque las arregla todas.
+    if (opciones.exigeMoneda && suyas.some((f) => !f.currency)) {
+      bloqueos.push("Falta la moneda. Sin ella no se puede importar.");
+    }
 
     const avisos: string[] = [];
     if (c.libros.some((l) => l.estado === "sin_verificar")) {
@@ -121,7 +155,9 @@ export function conEstado(
       avisos.push("Falta el WhatsApp. Es opcional, pero conviene apuntarlo ahora.");
     }
 
-    const estado: EstadoTarjeta = bloqueos.length
+    const estado: EstadoTarjeta = subido
+      ? "subido"
+      : bloqueos.length
       ? "faltan_datos"
       : candidatoVisible && !decisiones[c.nameKey]
         ? "duplicado"
@@ -131,6 +167,31 @@ export function conEstado(
             ? "sin_verificar"
             : "cuadra";
 
-    return { ...c, estado, bloqueos, avisos, candidatoVisible };
+    // Un cliente se puede subir cuando no le falta nada que impida importar y
+    // su duplicado esta decidido. Es la MISMA cuenta que hacia el pie para la
+    // tanda entera, aplicada a una persona.
+    const puedeSubir =
+      !subido && bloqueos.length === 0 && !(candidatoVisible && !decisiones[c.nameKey]);
+
+    // UNA TARJETA SUBIDA NO PIDE NADA. Ni bloqueos, ni avisos, ni la pregunta
+    // del duplicado: ya esta en la base y no hay nada que decidir.
+    //
+    // Lo del duplicado no es cosmetico. Al subir a Pedro, Pedro pasa a existir
+    // como cliente, asi que la deteccion de repetidos lo encuentra -- y su
+    // propia tarjeta le preguntaba al dueno si Pedro es el mismo Pedro, con sus
+    // dos botones. Visto al probarlo el 2026-10-01.
+    if (subido) {
+      return {
+        ...c,
+        estado,
+        bloqueos: [],
+        avisos: [],
+        candidatoVisible: null,
+        subido,
+        puedeSubir: false,
+      };
+    }
+
+    return { ...c, estado, bloqueos, avisos, candidatoVisible, subido, puedeSubir };
   });
 }
