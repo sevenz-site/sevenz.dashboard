@@ -36,6 +36,7 @@ import {
   DESCRIPCION_DEL_AJUSTE,
 } from "../lib/ajuste-de-libreta.ts";
 import { conEstado } from "../lib/estado-de-tarjeta.ts";
+import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
 import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
 
 const filas = [];
@@ -471,6 +472,91 @@ check(
   estadoDe(cliente({ libros: [{ currency: "USD", estado: "no_cuadra", escrito: 95, calculado: 70 }] }), [conMoneda()], {}, new Map(), { exigeMoneda: true })
     .puedeSubir === true,
 );
+
+console.log("");
+console.log("-- La revision sobrevive a una recarga -----------------------");
+// sessionStorage no existe en Node, asi que el almacen se inyecta. Es la misma
+// funcion que corre en el navegador, no una copia.
+const almacenFalso = () => {
+  const m = new Map();
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+    _romper(k, v) { m.set(k, v); },
+    _clave: () => [...m.keys()][0],
+  };
+};
+const unaRevision = {
+  movimientos: [mov({ uid: "a", amount: 50 })],
+  eliminados: ["b"],
+  clientesQuitados: { ana: ["b"] },
+  decisiones: { ana: "mismo" },
+  decisionesDeTotal: { "ana|USD": { cual: "libreta", escrito: 95, calculado: 70 } },
+  subidos: ["otra"],
+  sameClient: true,
+  sharedName: "Ana",
+  sharedDocument: "V-1",
+  sharedWhatsapp: "+58400",
+  unlinked: ["c"],
+};
+
+let al = almacenFalso();
+guardarRevision(unaRevision, al);
+const vuelta = cargarRevision(Date.now(), al);
+check(
+  "lo guardado vuelve entero",
+  vuelta &&
+    vuelta.movimientos.length === 1 &&
+    vuelta.eliminados[0] === "b" &&
+    vuelta.decisiones.ana === "mismo" &&
+    vuelta.sharedName === "Ana" &&
+    vuelta.sameClient === true &&
+    vuelta.unlinked[0] === "c",
+);
+
+check("sin nada guardado devuelve null", cargarRevision(Date.now(), almacenFalso()) === null);
+
+al = almacenFalso();
+guardarRevision(unaRevision, al);
+check(
+  "caducado a las 24h -> null, y se borra",
+  cargarRevision(Date.now() + 25 * 60 * 60 * 1000, al) === null && cargarRevision(Date.now(), al) === null,
+);
+
+al = almacenFalso();
+guardarRevision(unaRevision, al);
+olvidarRevision(al);
+check("olvidar lo borra", cargarRevision(Date.now(), al) === null);
+
+al = almacenFalso();
+guardarRevision(unaRevision, al);
+al._romper(al._clave(), "{esto no es json");
+check("un blob corrupto no revienta: devuelve null", cargarRevision(Date.now(), al) === null);
+
+al = almacenFalso();
+guardarRevision(unaRevision, al);
+al._romper(al._clave(), JSON.stringify({ version: 99, guardadaEn: Date.now(), movimientos: [mov()] }));
+check("otra version se tira en vez de usarse", cargarRevision(Date.now(), al) === null);
+
+al = almacenFalso();
+guardarRevision({ ...unaRevision, movimientos: [] }, al);
+check("sin movimientos no se recupera nada", cargarRevision(Date.now(), al) === null);
+
+// EL CASO DE MODO PRIVADO: el almacen LANZA en vez de devolver null.
+const almacenQueLanza = {
+  getItem() { throw new Error("bloqueado"); },
+  setItem() { throw new Error("bloqueado"); },
+  removeItem() { throw new Error("bloqueado"); },
+};
+let reventó = false;
+try {
+  guardarRevision(unaRevision, almacenQueLanza);
+  check("guardar con el almacen bloqueado no lanza", cargarRevision(Date.now(), almacenQueLanza) === null);
+} catch {
+  reventó = true;
+}
+check("ni guardar ni cargar lanzan si el navegador lo bloquea", reventó === false);
 
 const fallos = filas.filter((f) => !f.pasa).length;
 console.log(`\n${fallos} FALLO(S) de ${filas.length}`);

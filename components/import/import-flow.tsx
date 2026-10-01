@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -10,6 +10,11 @@ import { TiraDeFotos } from "@/components/import/tira-de-fotos";
 import { ModalDeMoneda } from "@/components/import/modal-de-moneda";
 import { isoDeLaFecha } from "@/lib/fecha-de-libreta";
 import { construirAjuste } from "@/lib/ajuste-de-libreta";
+import {
+  cargarRevision,
+  guardarRevision,
+  olvidarRevision,
+} from "@/lib/revision-guardada";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -145,6 +150,16 @@ export function ImportFlow({
   // Cuenta pausada: se para ANTES de la foto. Escanearla gasta cuota de
   // Gemini y veinte minutos de revision para nada.
   const guardia = useGuardiaDeCuentaPausada();
+  // El borrador de una revisión a medias, leído una sola vez al montar.
+  //
+  // NO SE ENTRA SOLO EN LA REVISIÓN. Se ofrece, con un aviso en la pantalla de
+  // subir. Meter al dueño de golpe en una revisión que él no acaba de abrir es
+  // desconcertante —sobre todo si volvió para subir OTRA libreta— y además
+  // obligaría a tocar `setRevisando` y `setDirty` desde un efecto, que es justo
+  // el patrón que esta base de código ya tiene prohibido.
+  const borrador = useMemo(() => cargarRevision(), []);
+  const [borradorDescartado, setBorradorDescartado] = useState(false);
+
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
   const { setDirty, guard } = useUnsavedChangesGuard();
   const { setRevisando } = useRevisionEnCurso();
@@ -166,6 +181,8 @@ export function ImportFlow({
   }
 
   function cerrarRevision() {
+    // La revisión terminó —se subió o se salió—, así que el borrador sobra.
+    olvidarRevision();
     setReviewMovements(null);
     setRevisando(false);
     setDirty(false);
@@ -244,6 +261,57 @@ export function ImportFlow({
   const [decisionesDeTotal, setDecisionesDeTotal] = useState<
     Record<string, DecisionDeTotal | undefined>
   >({});
+
+  // Se guarda en cada cambio mientras haya revisión abierta. Escribir en
+  // `sessionStorage` no es `setState`, así que el efecto no entra en la regla
+  // que prohíbe lo otro.
+  useEffect(() => {
+    if (!reviewMovements) return;
+    guardarRevision({
+      movimientos: reviewMovements,
+      eliminados: [...eliminados],
+      clientesQuitados,
+      decisiones,
+      decisionesDeTotal,
+      subidos: [...subidos],
+      sameClient,
+      sharedName,
+      sharedDocument,
+      sharedWhatsapp,
+      unlinked: [...unlinked],
+    });
+  }, [
+    reviewMovements,
+    eliminados,
+    clientesQuitados,
+    decisiones,
+    decisionesDeTotal,
+    subidos,
+    sameClient,
+    sharedName,
+    sharedDocument,
+    sharedWhatsapp,
+    unlinked,
+  ]);
+
+  // Retomar lo que quedó a medias. Las fotos NO vuelven —no se guardan—, así
+  // que la tira sale vacía y el contador de fotos dice cero; lo que vuelve es
+  // el trabajo manual, que es lo que costaba media hora.
+  function retomarBorrador() {
+    if (!borrador) return;
+    setEliminados(new Set(borrador.eliminados));
+    setClientesQuitados(borrador.clientesQuitados);
+    setDecisiones(borrador.decisiones as Record<string, DecisionDuplicado>);
+    setDecisionesDeTotal(borrador.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>);
+    setSubidos(new Set(borrador.subidos));
+    setSameClient(borrador.sameClient);
+    setSharedName(borrador.sharedName);
+    setSharedDocument(borrador.sharedDocument);
+    setSharedWhatsapp(borrador.sharedWhatsapp);
+    setUnlinked(new Set(borrador.unlinked));
+    abrirRevision(borrador.movimientos);
+  }
+
 
   // ── EL AJUSTE ES DERIVADO, NO GUARDADO ────────────────────────────────
   //
@@ -1410,6 +1478,43 @@ export function ImportFlow({
         </div>
       ) : null}
 
+
+      {/* UNA REVISIÓN QUE SE QUEDÓ A MEDIAS.
+          Se ofrece, no se impone: puede que el dueño haya vuelto a subir OTRA
+          libreta, y meterlo de golpe en la de ayer sería desconcertante.
+          Se dice que las fotos no vuelven, porque es lo que va a ver. */}
+      {borrador && !borradorDescartado && !reviewMovements && !hasJobs ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+          <p className="flex items-start gap-1.5 text-sm">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+            <span>
+              Dejaste una revisión a medias con{" "}
+              <strong>
+                {borrador.movimientos.length}{" "}
+                {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
+              </strong>
+              . Puedes seguir donde la dejaste: las correcciones y las decisiones siguen ahí. Las
+              fotos no, así que la tira saldrá vacía.
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={retomarBorrador}>
+              Seguir con esa revisión
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                olvidarRevision();
+                setBorradorDescartado(true);
+              }}
+            >
+              Descartarla
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Sin tope en ningún plan desde el 2026-09-28. Se cae la barra de
           progreso entera —medía un límite que ya no existe— y no se nombra el
