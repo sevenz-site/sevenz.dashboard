@@ -24,9 +24,12 @@ import { track } from "@/lib/mixpanel";
 // app/api/extract/route.ts. Desde el teléfono las dos cosas se ven igual, así
 // que el mensaje nombra las dos y dice qué hacer.
 //
-// Los errores que sí escribimos nosotros pasan tal cual: `data.error` viene del
-// servidor ya redactado para el dueño ("El servicio de lectura está
-// sobrecargado ahora mismo", "Gemini tardó más de 55s").
+// `data.error` pasa tal cual, y desde el 2026-10-01 eso ya no es una suposición
+// sino algo que el servidor garantiza: `/api/extract` devuelve únicamente lo que
+// `lib/errores-legibles.ts` sabe decir en castellano, y todo lo demás cae en un
+// mensaje genérico legible. Antes era una suposición, y era falsa — el día que
+// el servidor se quedó sin salida a internet, aquí llegó "fetch failed" y de
+// aquí pasó entera a la pantalla.
 function mensajeDeFalloAlLeer(error: unknown): string {
   if (error instanceof TypeError) {
     return "Se cortó la conexión mientras leíamos la foto. Puede ser tu internet, o que la lectura tardara demasiado. Inténtalo otra vez.";

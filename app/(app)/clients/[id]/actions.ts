@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE } from "@/lib/types";
+import { mensajeDeError } from "@/lib/errores-legibles";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
 // la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
@@ -89,7 +90,7 @@ export async function updateClient(
     .eq("owner_id", user.id);
 
   if (error) {
-    return { error: `No pudimos guardar los cambios: ${error.message}`, success: false };
+    return { error: mensajeDeError("guardar los cambios", error, "updateClient"), success: false };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -125,7 +126,7 @@ export async function flagClient(
     reason,
   });
   if (flagError) {
-    return { error: `No pudimos registrar la marca: ${flagError.message}`, success: false };
+    return { error: mensajeDeError("registrar la marca", flagError, "flagClient"), success: false };
   }
 
   const { error: updateError } = await supabase
@@ -134,7 +135,7 @@ export async function flagClient(
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos marcar al cliente: ${updateError.message}`, success: false };
+    return { error: mensajeDeError("marcar al cliente", updateError, "flagClient"), success: false };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -160,7 +161,7 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
     .eq("owner_id", user.id)
     .is("unflagged_at", null);
   if (closeError) {
-    return { error: `No pudimos quitar la marca: ${closeError.message}` };
+    return { error: mensajeDeError("quitar la marca", closeError, "unflagClient") };
   }
 
   const { error: updateError } = await supabase
@@ -169,7 +170,7 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos quitar la marca: ${updateError.message}` };
+    return { error: mensajeDeError("quitar la marca", updateError, "unflagClient") };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -243,7 +244,7 @@ export async function trashClient(clientId: string): Promise<HideClientState> {
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos mover el cliente a la papelera: ${updateError.message}` };
+    return { error: mensajeDeError("mover el cliente a la papelera", updateError, "trashClient") };
   }
 
   // The notification is the undo path, the same way movement_deletions is for
@@ -297,7 +298,7 @@ export async function restoreClient(clientId: string): Promise<HideClientState> 
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (error) {
-    return { error: `No pudimos restaurar el cliente: ${error.message}` };
+    return { error: mensajeDeError("restaurar el cliente", error, "restoreClient") };
   }
 
   const { error: hideError } = await supabase.from("client_hides").insert({
@@ -346,7 +347,7 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (error) {
-    return { error: `No pudimos ocultar el cliente: ${error.message}` };
+    return { error: mensajeDeError("ocultar el cliente", error, "hideClient") };
   }
 
   const { error: hideError } = await supabase.from("client_hides").insert({
@@ -410,7 +411,7 @@ export async function setClientProfilePicture(
     .eq("id", clientId)
     .eq("owner_id", user.id);
 
-  if (error) return { error: `No pudimos guardar la foto: ${error.message}` };
+  if (error) return { error: mensajeDeError("guardar la foto", error, "clientPhoto") };
 
   // El archivo viejo se borra de verdad, y después de actualizar la fila, no
   // antes: si el borrado falla queda un archivo huérfano ocupando espacio, que

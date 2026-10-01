@@ -38,6 +38,7 @@ import {
 import { conEstado } from "../lib/estado-de-tarjeta.ts";
 import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
 import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
+import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import {
   esLineaSuelta,
   esLineaSinMonto,
@@ -339,6 +340,69 @@ const pend2 = pendientesDeResolver(yaAsignadas);
 check("asignadas todas, no queda ninguna sin cliente", pend2.sinCliente === 0, String(pend2.sinCliente));
 check("pero el monto en 0 sigue pendiente", pend2.sinMonto === 1, String(pend2.sinMonto));
 check("y el motivo cambia al que toca", (motivoDeLineasPendientes(pend2) ?? "").includes("1 línea sin monto"), String(motivoDeLineasPendientes(pend2)));
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// NINGUN ERROR EN IDIOMA DE PROGRAMADOR
+//
+// Regla del usuario, 2026-10-01. Lo que habia era el defecto al reves: salia
+// todo salvo lo que alguien tapara. El dia que el servidor se quedo sin salida
+// a internet, la pantalla del dueno dijo "fetch failed".
+console.log("");
+console.log("-- Errores legibles ------------------------------------------");
+
+// `mensajeDeError` escribe en console.error a proposito. Se silencia durante
+// estas pruebas para no ensuciar la salida: lo que se comprueba es lo que
+// DEVUELVE, no lo que registra.
+const errorDeVerdad = console.error;
+console.error = () => {};
+
+const sinJerga = (m) =>
+  !/fetch failed|violates|constraint|policy|undefined|null|GEMINI|Gemini|OpenRouter|TypeError|ECONNREFUSED|PGRST|[0-9]{5}/.test(m);
+
+// EL CASO EXACTO QUE LO MOTIVO.
+const red = mensajeDeError("leer la foto", new TypeError("fetch failed"), "extract");
+check("'fetch failed' no llega al dueno", !red.includes("fetch failed"), red);
+check("y en su lugar se explica lo que paso", red.includes("se cortó la conexión") && red.includes("leer la foto"), red);
+
+// Un error nuevo que nadie ha visto nunca cae en el generico, no en ingles.
+const raro = mensajeDeError("guardar los cambios", new Error("ECONNABORTED: upstream kaput"), "x");
+check("un error desconocido NO se filtra", !raro.includes("kaput") && !raro.includes("ECONNABORTED"), raro);
+check("y dice que se puede reintentar y a quien escribir", raro.includes("Inténtalo otra vez") && raro.includes("escríbenos"), raro);
+
+// Postgres, tal como llega de Supabase.
+const rls = mensajeDeError("guardar el movimiento", { code: "42501", message: "new row violates row-level security policy for table movements" }, "x");
+check("una violacion de RLS no se enseña como tal", sinJerga(rls), rls);
+const dup = mensajeDeError("guardar los cambios", { code: "23505", message: 'duplicate key value violates unique constraint "clients_owner_id_document_id_key"' }, "x");
+check("la cedula repetida se dice en cristiano", dup.includes("otro cliente con esa cédula") && sinJerga(dup), dup);
+const dup2 = mensajeDeError("guardar los cambios", { code: "23505", message: 'duplicate key value violates unique constraint "otra_cosa"' }, "x");
+check("y una clave repetida cualquiera, tambien", dup2.includes("ya está registrado") && sinJerga(dup2), dup2);
+const chk = mensajeDeError("guardar el movimiento", { code: "23514", message: "violates check constraint movements_plazo_dias_check" }, "x");
+check("el check constraint del plazo tampoco se enseña", sinJerga(chk), chk);
+
+// Storage: sin codigo, mensaje en ingles del servicio.
+const grande = mensajeDeError("guardar la foto", { message: "The object exceeded the maximum allowed size" }, "x");
+check("una foto demasiado grande lo dice en cristiano", grande.includes("pesa demasiado") && sinJerga(grande), grande);
+
+// Lo nuestro pasa tal cual, y se reconoce por la CLASE, no por el texto: mirar
+// el string para decidir si un mensaje es nuestro da una respuesta siempre y no
+// mide nada, que es el mismo error que el `confidence` del modelo.
+const mio = mensajeDeError("leer la foto", new ErrorParaElDueno("Ahora mismo hay muchas libretas en cola. Espera un minuto y vuelve a intentarlo."), "x");
+check("un mensaje nuestro sale entero y sin prefijo", mio === "Ahora mismo hay muchas libretas en cola. Espera un minuto y vuelve a intentarlo.", mio);
+
+// La accion se nombra SIEMPRE, para que se lea que no pasó antes que qué hacer.
+check("la frase dice que se estaba intentando", mensajeDeError("mover el cliente a la papelera", new Error("x"), "y").startsWith("No pudimos mover el cliente a la papelera"));
+
+// Y el detalle de verdad no se pierde: se registra desde dentro, no en cada
+// sitio que llama, porque lo que se delega a veintitres sitios se olvida.
+let registrado = null;
+console.error = (...args) => { registrado = args; };
+mensajeDeError("guardar el logo", new Error("detalle interno que importa"), "logo");
+console.error = () => {};
+check("el error real SI se registra en el servidor", registrado && String(registrado[1]).includes("detalle interno que importa"), JSON.stringify(registrado?.map(String)));
+check("y con su contexto para poder buscarlo", registrado && registrado[0] === "[logo]", String(registrado?.[0]));
+
+console.error = errorDeVerdad;
 
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR

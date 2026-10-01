@@ -11,6 +11,7 @@ import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
+import { mensajeDeError } from "@/lib/errores-legibles";
 
 export type MovementFormState = {
   error: string | null;
@@ -221,7 +222,7 @@ export async function createClientWithMovement(
 
   if (clientError || !newClient) {
     return {
-      error: `No pudimos crear el cliente: ${clientError?.message ?? "error desconocido"}`,
+      error: mensajeDeError("crear el cliente", clientError, "createClient"),
       clientId: null,
     };
   }
@@ -282,7 +283,7 @@ export async function createClientWithMovement(
   });
 
   if (movementError) {
-    return { error: `No pudimos guardar el movimiento: ${movementError.message}`, clientId: null };
+    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
   }
 
   // Tracked here rather than in the browser: this fires after the response
@@ -354,7 +355,7 @@ export async function addMovement(
         .eq("id", clientId)
         .eq("owner_id", user.id);
       if (whatsappError) {
-        return { error: `No pudimos guardar el WhatsApp: ${whatsappError.message}`, clientId: null };
+        return { error: mensajeDeError("guardar el WhatsApp", whatsappError, "whatsapp"), clientId: null };
       }
     }
   }
@@ -455,7 +456,7 @@ export async function addMovement(
   });
 
   if (movementError) {
-    return { error: `No pudimos guardar el movimiento: ${movementError.message}`, clientId: null };
+    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
   }
 
   trackServer("Movement Added", user.id, { client_id: clientId, movement_type: type }, user.email);
@@ -533,14 +534,14 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     .eq("id", movementId);
 
   if (deleteError) {
-    return { error: `No pudimos eliminar el movimiento: ${deleteError.message}` };
+    return { error: mensajeDeError("eliminar el movimiento", deleteError, "deleteMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
     p_client_id: movement.client_id,
   });
   if (recalcError) {
-    return { error: `No pudimos recalcular el saldo: ${recalcError.message}` };
+    return { error: mensajeDeError("recalcular el saldo", recalcError, "recalc") };
   }
 
   const { error: notifyError } = await supabase.from("movement_deletions").insert({
@@ -590,14 +591,14 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     .eq("id", movementId);
 
   if (restoreError) {
-    return { error: `No pudimos restaurar el movimiento: ${restoreError.message}` };
+    return { error: mensajeDeError("restaurar el movimiento", restoreError, "restoreMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
     p_client_id: movement.client_id,
   });
   if (recalcError) {
-    return { error: `No pudimos recalcular el saldo: ${recalcError.message}` };
+    return { error: mensajeDeError("recalcular el saldo", recalcError, "recalc") };
   }
 
   await supabase

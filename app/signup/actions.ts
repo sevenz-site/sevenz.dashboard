@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { validatePasswordComplexity } from "@/lib/password";
 import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
 import { isReferralSource } from "@/lib/referral-source";
+import { mensajeDeError } from "@/lib/errores-legibles";
 
 export type SignupFieldValues = {
   business_name: string;
@@ -131,11 +132,17 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         values,
       };
     }
-    // Surfaced directly (not a generic fallback) so a real Supabase error —
-    // e.g. an email rate limit from repeated test signups, or a rejected
-    // domain — is visible without needing server log access.
-    console.error("[signup] supabase.auth.signUp failed:", error.message);
-    return { error: `No pudimos crear tu cuenta: ${error.message}`, success: false, values };
+    // Hasta el 2026-10-01 este error salía TAL CUAL, en inglés, "para no
+    // necesitar acceso al log". Lo lee alguien que está creando su primera
+    // cuenta y que no programa, así que ahora sale el mensaje legible y el
+    // detalle entero se escribe en el log desde `mensajeDeError`. Los dos casos
+    // de arriba —correo ya registrado y contraseña filtrada— siguen teniendo su
+    // frase propia, que dice más que cualquier genérico.
+    //
+    // Y esta pantalla no pide sesión, así que además era la única excepción que
+    // se saltaba la regla de `CLAUDE.md` sobre no filtrar errores crudos en
+    // superficies sin autenticar.
+    return { error: mensajeDeError("crear tu cuenta", error, "signup"), success: false, values };
   }
 
   // Supabase returns no error for a duplicate email when email confirmation is

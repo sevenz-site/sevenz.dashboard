@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ErrorParaElDueno, mensajeDeError } from "@/lib/errores-legibles";
 import { createClient } from "@/lib/supabase/server";
 import type { ExtractedMovement } from "@/lib/types";
 
@@ -342,13 +343,21 @@ async function extractFromImageViaGemini(
   // "implausibly short" rather than against an exact length, so a future change
   // to Google's key format does not turn this into a false alarm.
   if (apiKey.length < 30) {
-    throw new Error(
-      `GEMINI_API_KEY parece incompleta (${apiKey.length} caracteres). Suele ser un pegado truncado en las variables de entorno.`,
-    );
+    // Sin marcar a proposito: es un fallo NUESTRO de configuracion, no algo que
+    // el dueno pueda entender ni arreglar. Sale por el generico y el detalle
+    // —que es lo util— queda en el log.
+    console.error(`[extract] GEMINI_API_KEY parece incompleta (${apiKey.length} caracteres). Suele ser un pegado truncado en las variables de entorno.`);
+    throw new Error("GEMINI_API_KEY incompleta");
   }
 
   const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-  if (!match) throw new Error("Formato de imagen inválido.");
+  // Este si lo puede entender y arreglar el dueno: el archivo que eligio no es
+  // una foto. "Formato de imagen invalido" era correcto y no decia que hacer.
+  if (!match) {
+    throw new ErrorParaElDueno(
+      "Ese archivo no es una foto. Elige una imagen de la libreta (JPG o PNG).",
+    );
+  }
   const [, mimeType, base64Data] = match;
 
   await waitForGlobalSlot(supabase, SPACING_BETWEEN_CALLS_MS);
@@ -412,9 +421,9 @@ async function extractFromImageViaGemini(
     // your photo".
     if (response.status === 401 || response.status === 403) {
       console.error(`[extract] Gemini rechazó la credencial (${response.status}):`, text);
-      throw new Error(
-        `Error de configuración del servicio de lectura (${response.status}). Revisa GEMINI_API_KEY.`,
-      );
+      // Idem: configuracion nuestra. Sin marcar, para que al dueno le llegue el
+      // generico en vez de un numero y el nombre de una variable de entorno.
+      throw new Error(`Gemini rechazo la credencial (${response.status})`);
     }
 
     console.error(`[extract] Gemini respondió ${response.status}:`, text);
@@ -490,19 +499,26 @@ async function extractFromImageViaGeminiWithRetry(
 
   // Se agotaron los intentos o el presupuesto. El mensaje sale del ÚLTIMO
   // fallo, que es el que describe lo que está pasando ahora mismo.
+  // Estos SI son para el dueno, asi que se marcan con `ErrorParaElDueno` y
+  // salen tal cual. Lo que no esta marcado no sale: ver `lib/errores-legibles.ts`.
+  //
+  // Y ya no se nombra a Gemini. El dueno no ha contratado a Google, ha
+  // contratado a Sevenz; decirle "Gemini esta saturado" le hace cargar con un
+  // nombre que no significa nada para el y que ademas puede cambiar. El nombre
+  // del proveedor y el codigo HTTP viven en el log, que es donde sirven.
   if (ultimo instanceof TransientGeminiError) {
-    throw new Error(
+    throw new ErrorParaElDueno(
       ultimo.status === 429
-        ? "Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto."
-        : "El servicio de lectura está sobrecargado ahora mismo. Intenta de nuevo en unos minutos.",
+        ? "Ahora mismo hay muchas libretas en cola. Espera un minuto y vuelve a intentarlo."
+        : "El servicio que lee las fotos está saturado en este momento. Inténtalo otra vez en unos minutos.",
     );
   }
   if (ultimo instanceof TimeoutGeminiError) {
-    throw new Error(
+    throw new ErrorParaElDueno(
       "La lectura está tardando más de lo normal y no pudimos terminarla. Inténtalo otra vez.",
     );
   }
-  throw ultimo ?? new Error("No pudimos leer la foto. Inténtalo otra vez.");
+  throw ultimo ?? new ErrorParaElDueno("No pudimos leer la foto. Inténtalo otra vez.");
 }
 
 // PARKED (not called right now, kept for when OpenRouter comes back into the
@@ -588,7 +604,11 @@ export async function POST(request: Request) {
     const { movements, modelo, degradado } = await extractFromImage(supabase, dataUrl);
     return NextResponse.json({ movements, modelo, degradado });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error extrayendo la libreta.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    // EL DEFECTO INVERTIDO (2026-10-01). Antes esto devolvia `error.message` de
+    // lo que fuera, asi que cualquier excepcion nueva acababa en la pantalla en
+    // ingles: el dia que el servidor se quedo sin salida a internet, el dueno
+    // leyo "fetch failed". Ahora solo sale lo que `mensajeDeError` sepa decir en
+    // castellano, y el detalle entero va al log desde dentro.
+    return NextResponse.json({ error: mensajeDeError("leer la foto", error, "extract") }, { status: 502 });
   }
 }
