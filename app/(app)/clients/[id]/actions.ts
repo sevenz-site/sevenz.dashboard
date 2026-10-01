@@ -6,6 +6,7 @@ import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { normalizeDocumentId } from "@/lib/format";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
 // la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
@@ -70,6 +71,49 @@ export async function updateClient(
   // document the client declared themselves, just because the shopkeeper edited
   // the address — silently erasing the very thing the column exists to hold.
   const documentChanged = (previous?.document_id ?? "").trim() !== documentId;
+
+  // NADIE PUEDE EDITAR A UN CLIENTE HASTA DARLE LA CEDULA DE OTRO (CT-28).
+  //
+  // Esta comprobacion existia al CREAR (`createClientWithMovement`) y al
+  // IMPORTAR (`confirmImport`), y aqui no existia en absoluto: editar a Carmen
+  // y ponerle la cedula de Petra se guardaba sin una palabra, con su toast de
+  // "Cliente actualizado". Visto en dev el 2026-10-01 al intentar provocar el
+  // error de clave repetida para comprobar otra cosa.
+  //
+  // Y no es cosmetico. `confirmImport` monta un Map de clientes POR CEDULA
+  // NORMALIZADA (`clientsByNormalizedDocumentId`) para decidir a quien
+  // pertenece cada renglon de una libreta: con dos fichas compartiendo cedula,
+  // una gana y la otra no, en silencio, y un fiado puede acabar en la persona
+  // equivocada. El agujero estaba en una pantalla de contacto y salia por el
+  // camino del dinero.
+  //
+  // Se compara NORMALIZADA —sin puntos ni mayusculas— porque el documento se
+  // guarda tal como se teclea: "V-19.887.766" y "19887766" son el mismo.
+  // Se incluyen los ocultos y los de la papelera por lo mismo que al crear:
+  // dejarlos fuera permitiria duplicar a alguien que solo esta escondido.
+  //
+  // BLOQUEA, no pregunta. Al crear se puede confirmar que es otra cuenta a
+  // proposito —el caso "Pepito" y "Pepito negocio"—, y ese camino sigue
+  // abierto; lo que no tiene sentido es llegar a esa situacion EDITANDO a
+  // alguien que ya existe. Si hace falta, se anade aqui la misma confirmacion.
+  if (documentId) {
+    const normalizado = normalizeDocumentId(documentId);
+    const { data: suyos } = await supabase
+      .from("clients")
+      .select("id, name, document_id")
+      .eq("owner_id", user.id)
+      .neq("id", clientId)
+      .not("document_id", "is", null);
+    const choca = suyos?.find(
+      (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizado,
+    );
+    if (choca) {
+      return {
+        error: `Esa cédula ya es de ${choca.name}. Revísala, o abre su ficha si es la misma persona.`,
+        success: false,
+      };
+    }
+  }
 
   // document_country is deliberately absent from this update: it's inherited
   // from the owner at creation and no longer editable in the UI, so listing

@@ -39,6 +39,7 @@ import { conEstado } from "../lib/estado-de-tarjeta.ts";
 import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
 import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
+import { normalizeDocumentId } from "../lib/format.ts";
 import {
   esLineaSuelta,
   esLineaSinMonto,
@@ -403,6 +404,18 @@ check("el error real SI se registra en el servidor", registrado && String(regist
 check("y con su contexto para poder buscarlo", registrado && registrado[0] === "[logo]", String(registrado?.[0]));
 
 console.error = errorDeVerdad;
+
+
+// La normalizacion de la cedula es la que decide si dos fichas son la misma
+// persona, en crear, en importar y —desde CT-28, 2026-10-01— en editar. El
+// documento se guarda TAL COMO SE TECLEA, sin formato fijo, asi que comparar
+// en crudo deja pasar al mismo humano dos veces.
+console.log("");
+console.log("-- La cedula se compara normalizada ---------------------------");
+check("los puntos no cuentan", normalizeDocumentId("19.887.766") === normalizeDocumentId("19887766"));
+check("el prefijo V- tampoco", normalizeDocumentId("V-19887766") === "v19887766", normalizeDocumentId("V-19887766"));
+check("ni las mayusculas", normalizeDocumentId("V-19887766") === normalizeDocumentId("v.19.887.766"));
+check("dos documentos distintos siguen siendo distintos", normalizeDocumentId("19887766") !== normalizeDocumentId("18223344"));
 
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR
