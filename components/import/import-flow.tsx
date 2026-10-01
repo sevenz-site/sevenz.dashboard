@@ -183,6 +183,14 @@ export function ImportFlow({
   function cerrarRevision() {
     // La revisión terminó —se subió o se salió—, así que el borrador sobra.
     olvidarRevision();
+    // Y hay que taparlo también en memoria. `borrador` es un `useMemo` del
+    // montaje: vaciar `sessionStorage` no lo borra, así que el render que viene
+    // justo antes del `router.push("/dashboard")` —ya sin revisión y sin
+    // fotos— cumplía las cuatro condiciones del banner y ofrecía "Seguir con
+    // esa revisión" encima de los movimientos que se acababan de guardar.
+    // Tocarlo habría sido subir la libreta dos veces. Visto en dev el
+    // 2026-10-01, tras subir un lote de 7 completo.
+    setBorradorDescartado(true);
     setReviewMovements(null);
     setRevisando(false);
     setDirty(false);
@@ -609,9 +617,20 @@ export function ImportFlow({
   const sinCompletar = estadosPendientes.length - listosParaSubir.length;
   // El contador cuenta MOVIMIENTOS, y solo los que de verdad van a entrar: a
   // medida que se suben clientes, baja.
-  const movimientosListos = filas.filter((r) =>
+  //
+  // Y las filas salen de aquí también, no de `filas` entero, porque el resumen
+  // de la confirmación es la cuarta cifra que el comentario de arriba avisaba
+  // que acabaría discrepando — y discrepó. Pasarle `filas` metía en el resumen
+  // a los clientes YA SUBIDOS, y encima `ResumenImportacion` suma los montos
+  // de la libreta sobre el saldo que el cliente tiene ahora en Sevenz: subir a
+  // Hilda sola y pulsar después el botón del lote la enseñaba por el doble
+  // ($25 ya guardados + $25 de sus filas = $50), en la pantalla que pide
+  // confirmar dinero. Lo que se escribía era correcto; lo que se leía, no.
+  // Visto en dev el 2026-10-01.
+  const filasListas = filas.filter((r) =>
     listosParaSubir.some((c) => c.nameKey === r.client_name.trim().toLowerCase()),
-  ).length;
+  );
+  const movimientosListos = filasListas.length;
 
   // EL RESUMEN DEL PIE. Ya no dice que impide subir la tanda —eso lo dice cada
   // tarjeta, que es donde esta el cliente al que le falta—, dice cuantos quedan
@@ -1020,7 +1039,9 @@ export function ImportFlow({
       );
       return;
     }
-    toast.success(`${movimientos} movimientos importados.`);
+    toast.success(
+      `${movimientos} ${movimientos === 1 ? "movimiento importado" : "movimientos importados"}.`,
+    );
     cerrarRevision();
     clearJobs();
     router.push("/dashboard");
@@ -1394,7 +1415,7 @@ export function ImportFlow({
             <ConfirmarImportacion
               className="flex-1"
               cuantas={movimientosListos}
-              filas={filas}
+              filas={filasListas}
               rateContext={rateContext}
               deshabilitado={noSePuedeConfirmar}
               guardando={confirming}
