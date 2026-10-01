@@ -593,12 +593,73 @@ export function ImportFlow({
   // hace al principio, con prisa— esos cinco se perdían sin aviso. Así nunca
   // destruye trabajo, y para el caso raro de querer forzarlos está la casilla,
   // que es explícita.
+  // ── LA DECISION DEL TOTAL VIAJA CON LA MONEDA ─────────────────────────
+  //
+  // Se guarda bajo `nombre|moneda`, asi que cambiar la moneda despues de haber
+  // elegido dejaba la decision en una clave que ya nadie miraba. Medido en dev
+  // el 2026-10-01, y pasaba en los dos ordenes:
+  //
+  //   Elijo "mi libreta" sin moneda  -> clave pedro|COP, casilla marcada, +$95
+  //   Pulso Dolares                  -> clave pedro|USD, VACIA: casilla
+  //                                     desmarcada sola, el ajuste desaparece
+  //                                     y Pedro vuelve a deber 70.
+  //
+  // Y al volver a la moneda anterior la decision vieja RESUCITABA, porque
+  // seguia ahi: una respuesta dada en otro contexto se reaplicaba sola.
+  //
+  // El dueno cambio la moneda, no su respuesta a "cual total es el correcto".
+  // Asi que la decision se muda con el, y se borra de la clave vieja -- eso
+  // ultimo es lo que mata la resurreccion.
+  //
+  // SI EL DESTINO YA TIENE DECISION, GANA LA QUE ESTABA. Pisarla seria cambiar
+  // una respuesta que el dueno dio sobre ESE libro, que es lo contrario de lo
+  // que se intenta arreglar aqui.
+  //
+  // No se muda al cambiar la moneda de UNA fila suelta (la hoja de edicion):
+  // ahi el renglon cambia de libro de verdad, y la decision pertenece al libro
+  // que deja atras, no al que estrena.
+  function mudarDecisionesDeMoneda(
+    afectada: (m: ExtractedMovement) => boolean,
+    moneda: LedgerCurrency,
+  ) {
+    if (!reviewMovements) return;
+    // Las claves de origen salen de las monedas que las filas tienen AHORA,
+    // antes de que `setReviewMovements` las cambie.
+    const origenes = new Map<string, Set<string>>();
+    for (const m of reviewMovements) {
+      if (!afectada(m)) continue;
+      const nameKey = nombreVisible(m).trim().toLowerCase();
+      const suyas = origenes.get(nameKey) ?? new Set<string>();
+      suyas.add(m.currency ?? "COP");
+      origenes.set(nameKey, suyas);
+    }
+    if (origenes.size === 0) return;
+    setDecisionesDeTotal((prev) => {
+      const siguiente = { ...prev };
+      for (const [nameKey, monedasViejas] of origenes) {
+        const destino = `${nameKey}|${moneda}`;
+        if (siguiente[destino]) continue;
+        for (const vieja of monedasViejas) {
+          const origen = `${nameKey}|${vieja}`;
+          if (origen === destino) continue;
+          if (siguiente[origen]) {
+            siguiente[destino] = siguiente[origen];
+            delete siguiente[origen];
+            break;
+          }
+        }
+      }
+      return siguiente;
+    });
+  }
+
   function applyCurrencyToAll(currency: LedgerCurrency, incluirYaAjustadas = false) {
     // `setAntesDeAplicar` va FUERA del updater, por lo mismo que el toast de
     // `removeMovement`: un updater tiene que ser puro, y React puede llamarlo
     // dos veces para la misma actualización.
     if (!reviewMovements) return;
     setAntesDeAplicar(reviewMovements);
+    mudarDecisionesDeMoneda((m) => incluirYaAjustadas || !m.currency, currency);
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (incluirYaAjustadas || !m.currency ? { ...m, currency } : m)) : prev,
     );
@@ -624,12 +685,17 @@ export function ImportFlow({
   // tanda entera y no puede ver lo que ya corrigió, aquí está mirando a una
   // persona y a sus movimientos, así que pisar es lo que pidió.
   function aplicarMonedaAlCliente(rowIds: string[], moneda: LedgerCurrency) {
+    if (!reviewMovements) return;
     const suyas = new Set(rowIds);
-    setReviewMovements((prev) => {
-      if (!prev) return prev;
-      setAntesDeAplicar(prev);
-      return prev.map((m) => (m.uid && suyas.has(m.uid) ? { ...m, currency: moneda } : m));
-    });
+    // `setAntesDeAplicar` FUERA del updater: un updater tiene que ser puro y
+    // React puede llamarlo dos veces para la misma actualizacion. Es el mismo
+    // fallo que ya se corrigio en `applyCurrencyToAll` y que aqui habia
+    // quedado dentro.
+    setAntesDeAplicar(reviewMovements);
+    mudarDecisionesDeMoneda((m) => Boolean(m.uid && suyas.has(m.uid)), moneda);
+    setReviewMovements((prev) =>
+      prev ? prev.map((m) => (m.uid && suyas.has(m.uid) ? { ...m, currency: moneda } : m)) : prev,
+    );
   }
 
   // Seeded with the name Gemini read most often, so the common case is one
