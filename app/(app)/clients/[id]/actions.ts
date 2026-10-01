@@ -96,7 +96,17 @@ export async function updateClient(
   // proposito —el caso "Pepito" y "Pepito negocio"—, y ese camino sigue
   // abierto; lo que no tiene sentido es llegar a esa situacion EDITANDO a
   // alguien que ya existe. Si hace falta, se anade aqui la misma confirmacion.
-  if (documentId) {
+  //
+  // SOLO SI LA CEDULA CAMBIA, y esto no es un detalle: el duplicado deliberado
+  // EXISTE y esta en produccion. Medido el 2026-10-01 — "Karina castillo
+  // (negocio lomas)" y "Karina castillo (kari)" comparten la 18356808 a
+  // proposito, que es exactamente el caso para el que la migracion 034 tiro el
+  // indice unico. Comprobando en cada guardado, su duenia no podria volver a
+  // tocarles NI LA DIRECCION: le saldria "esa cedula ya es de Karina castillo
+  // (kari)" al editar a Karina castillo. Un cliente que ya convive con su
+  // duplicado se queda como esta; lo que se impide es CREAR la colision desde
+  // aqui.
+  if (documentId && documentChanged) {
     const normalizado = normalizeDocumentId(documentId);
     const { data: suyos } = await supabase
       .from("clients")
