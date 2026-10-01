@@ -95,16 +95,33 @@ class TimeoutGeminiError extends Error {
 // que no entra. Un alias que cambia de calidad por debajo es la clase de fallo
 // que aparece un martes sin que nadie haya tocado nada.
 //
-// EL ORDEN ES POR CALIDAD, NO POR DISPONIBILIDAD. El primero es el que se
-// eligió para producción; el segundo es el único respaldo medido contra una
-// libreta real (23 movimientos, direcciones correctas, 10,5s). Los dos últimos
-// no se pudieron medir —503 y timeout el día de la prueba— y por eso van al
-// final y marcados.
+// EL ORDEN ES POR CALIDAD, NO POR DISPONIBILIDAD — y eso sigue siendo cierto.
+// Lo que cambió el 2026-10-01 es qué sabemos de cada uno.
+//
+// `gemini-3.5-flash-lite` iba el último y marcado como no medido, pero no
+// porque leyera peor: porque el día de la prueba anterior dio 503 y timeout y
+// no se pudo medir. Ya se midió, contra OCHO libretas escritas a mano: nombres,
+// montos y saldos correctos, y —lo que de verdad importa— las DIRECCIONES bien
+// en todas, incluidas las que escriben "Paga" y "pagó" en vez de "abono". Un
+// abono anotado como fiado es el error que esta lista existe para evitar, y no
+// lo cometió ni una vez.
+//
+// Y pasa a ser el primero por una razón que no es la velocidad en sí: el
+// anterior primario SE PASA DEL TOPE POR INTENTO con frecuencia. Medido el
+// mismo día: 16, 19, 32, 34, 45, 47 y 64 segundos contra un `INTENTO_MAX_MS` de
+// 15. Un modelo que no llega a tiempo no es de más calidad: es un modelo que
+// devuelve nada. El nuevo primero tarda 1,3–2,6s, que deja el presupuesto
+// entero para los respaldos en vez de gastárselo en el primer intento.
+//
+// Los otros dos se quedan donde están. `gemini-3.1-flash-lite` sigue medido de
+// la prueba anterior (23 movimientos, direcciones correctas, 10,5s).
+// `gemini-3.6-flash` sigue sin medirse: dio 503 las dos veces que se intentó,
+// el 2026-09-30 y el 2026-10-01.
 const MODELOS = [
+  { nombre: "gemini-3.5-flash-lite", medido: true },
   { nombre: "gemini-3-flash-preview", medido: true },
   { nombre: "gemini-3.1-flash-lite", medido: true },
   { nombre: "gemini-3.6-flash", medido: false },
-  { nombre: "gemini-3.5-flash-lite", medido: false },
 ] as const;
 
 const PRESUPUESTO_MS = 50_000;
@@ -162,7 +179,12 @@ Para cada movimiento identifica:
 - amount: el monto del movimiento en pesos, solo el número (sin puntos, comas ni símbolo $)
 - description: qué se llevó o detalle breve, si está escrito; si no, null
 - read_balance: si en esa misma línea hay un saldo/total escrito a mano, el número de ese saldo; si no hay saldo legible en esa línea, null
-- confidence: "low" si la letra es ambigua, el monto no se lee con certeza, o estás adivinando; "high" si lo leíste con claridad
+- confidence: "high" SOLO si el monto y el tipo se leen sin ninguna duda. Usa "low" en cuanto
+  haya la más mínima: un dígito que podría ser otro (un 0 que parece 6, un 2 que parece 7,
+  un 15 que podría ser 45), un número emborronado, tachado o a contraluz, o un renglón que
+  estés completando por lo que cuadra en vez de por lo que ves.
+  Marcar de más no cuesta nada: una fila en "low" solo pide que el dueño la mire. Una fila
+  mal leída y marcada "high" entra como dinero equivocado y nadie la revisa.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta forma, sin texto adicional ni bloques de código:
 {"movements": [{"client_name": "...", "date": null, "type": "charge", "amount": 0, "description": null, "read_balance": null, "confidence": "high"}]}
@@ -234,6 +256,21 @@ function parseExtractionResponse(raw: string, degradarConfianza = false): Extrac
       // una importación equivocada, y el error de DIRECCIÓN —un abono anotado
       // como fiado— es el más difícil de ver porque el monto se lee bien. Así
       // al menos la pantalla las señala sola.
+      // EL `confidence` QUE DEVUELVE EL MODELO NO SIRVE. Medido el 2026-10-01
+      // con libretas escritas a mano: 35 movimientos, CERO marcados -- incluido
+      // un renglón del que tenemos prueba de que es ambiguo, porque el mismo
+      // modelo, con la misma foto y temperature 0, lo leyó 20 tres veces y 15
+      // una. Se reescribió la instrucción del prompt para endurecerla y luego
+      // se probó una versión mucho más agresiva ("si devuelves todo en high es
+      // que no has revisado"): las dos siguieron dando 0 en low.
+      //
+      // Se deja la redacción buena, pero NO se puede construir nada encima. Lo
+      // que de verdad señala una fila dudosa es la comprobación del saldo
+      // corrido contra el total escrito (`review_reason === "no_cuadra"`), que
+      // es una medida nuestra y no una autoevaluación del modelo.
+      //
+      // `degradarConfianza` sí funciona, porque también es nuestra: baja TODAS
+      // las filas de un modelo de respaldo no medido.
       confidence: degradarConfianza || m.confidence !== "high" ? "low" : "high",
       document_id: null,
       // Both filled in by the owner during review, never read from the photo.
