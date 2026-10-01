@@ -70,6 +70,9 @@ export type DecisionDeTotal = {
   cual: EleccionDeTotal;
   escrito: number;
   calculado: number;
+  // El importe al que el ajuste se rehizo solo, cuando el dueno toco un monto
+  // DESPUES de haber elegido. Null mientras nadie lo haya movido.
+  rehechoA?: number | null;
 };
 
 // Una entrada del historial: o una fila viva, o una que el dueño quitó y sigue
@@ -98,6 +101,10 @@ function DecisionDelTotal({
   decidido: DecisionDeTotal | undefined;
   onElegir: (cual: EleccionDeTotal) => void;
 }) {
+  // Las dos cifras llegan YA RESUELTAS: cuando hay decision, `import-flow` las
+  // saca del libro sombra —el que se calcula sin las lineas de ajuste— en vez
+  // de las que se guardaron al decidir. Congelarlas dejaba el panel diciendo
+  // "la suma de Sevenz: $70" despues de que el dueno corrigiera un monto.
   const esc = decidido ? decidido.escrito : escrito;
   const cal = decidido ? decidido.calculado : calculado;
   const diferencia = esc - cal;
@@ -366,7 +373,15 @@ export function DetalleDelCliente({
   const sinDecidir = candidato !== null && !decision;
   // "Es el mismo": se enseña lo que ya está guardado y no se toca. La 073 solo
   // rellena documentos y teléfonos que estén en null, así que un campo editable
-  // aceptaría el cambio y lo tiraría en silencio.
+  // sobre un valor YA GUARDADO aceptaría el cambio y lo tiraría en silencio.
+  //
+  // PERO SOLO CUANDO HAY ALGO GUARDADO. Bloquearlo por el mero hecho de ser el
+  // mismo cliente dejaba un callejón sin salida, medido en dev el 2026-10-01:
+  // un cliente que ya existe y NO tiene cédula pedía la cédula para poder
+  // importar —"Confirmar y subir" deshabilitado— con el único campo donde
+  // escribirla bloqueado. La migración sí la habría guardado: los dos updates de
+  // la 076 llevan `where ... is null`. Las únicas salidas eran quitar al cliente
+  // de la tanda o decir "es otra persona" y duplicarlo.
   const esElMismo = candidato !== null && decision === "mismo";
   const documentoGuardado = esElMismo ? (candidato?.document_id ?? null) : null;
   const whatsappGuardado = esElMismo ? (candidato?.whatsapp?.trim() || null) : null;
@@ -504,7 +519,7 @@ export function DetalleDelCliente({
             <DocumentIdInput
               id="detalle-documento"
               country={country}
-              disabled={esElMismo}
+              disabled={Boolean(documentoGuardado)}
               value={documentoGuardado ?? documentoEscrito}
               onChange={(next) => {
                 for (const f of filas) onUpdate(f.rowId, { document_id: next || null });
@@ -517,7 +532,12 @@ export function DetalleDelCliente({
               </p>
             ) : exigeDocumento ? (
               <p className="text-xs text-destructive">
-                Es un cliente nuevo. Sin cédula no se puede importar.
+                {/* A un cliente que YA existe no se le llama nuevo: la pantalla
+                    acababa de decir "ya tienes un X en tus clientes" y dos líneas
+                    después lo contradecía. */}
+                {esElMismo
+                  ? "Este cliente todavía no tiene cédula guardada. Escríbela para poder importar."
+                  : "Es un cliente nuevo. Sin cédula no se puede importar."}
               </p>
             ) : null}
           </div>
@@ -533,7 +553,7 @@ export function DetalleDelCliente({
               key={esElMismo ? "guardado" : "nuevo"}
               id="detalle-whatsapp"
               name="detalle-whatsapp"
-              disabled={esElMismo}
+              disabled={Boolean(whatsappGuardado)}
               preferredDialCode={OWNER_COUNTRY_DIAL_CODE[country]}
               defaultValue={
                 whatsappGuardado ?? filas.find((f) => f.whatsapp?.trim())?.whatsapp ?? null
@@ -604,6 +624,21 @@ export function DetalleDelCliente({
               {esAjuste(e.fila.rowId) ? (
                 <p className="px-1 text-xs text-muted-foreground">
                   Lo agregó Sevenz para cuadrar con tu libreta.
+                  {/* SE DICE CUANDO CAMBIA SOLO. El dueño aceptó un importe
+                      concreto y el cliente va a ver esta línea; que se recalcule
+                      en silencio al corregir un monto sería cambiarle un número
+                      a su espalda. Solo sale si de verdad se movió. */}
+                  {decisionesDeTotal[e.fila.currency ?? "COP"]?.rehechoA != null ? (
+                    <>
+                      {" "}
+                      Se actualizó a{" "}
+                      {importeDe(
+                        decisionesDeTotal[e.fila.currency ?? "COP"]!.rehechoA!,
+                        e.fila.currency,
+                      )}{" "}
+                      al cambiar un monto.
+                    </>
+                  ) : null}
                 </p>
               ) : null}
               {/* El porqué de una fila marcada, debajo de ella. Solo "no cuadra"

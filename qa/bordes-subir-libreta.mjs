@@ -296,6 +296,94 @@ check(
   libros.map((l) => `${l.currency}=${l.totalPagina}`).join(" "),
 );
 
+// ── El ajuste se mantiene al dia ─────────────────────────────────────────
+//
+// `construirAjuste` crea la linea una vez; `reconciliarAjuste` la mantiene
+// cuadrando cuando el dueno sigue tocando la libreta DESPUES de haber elegido.
+// El fallo que esto cubre se midio en dev el 2026-10-01: ajuste de +25 creado,
+// luego se corrige un monto, y el ajuste seguia en 25 — se importaba 100 donde
+// la libreta decia 95.
+console.log("");
+console.log("-- El ajuste se mantiene al dia ------------------------------");
+// Desde el 2026-10-01 el ajuste NO se guarda: se deriva en cada render de la
+// decision del dueno y del LIBRO SOMBRA — la reconciliacion hecha sobre los
+// renglones SIN las lineas de ajuste.
+//
+// El fallo que esto cubre se midio en dev ese dia: el ajuste se creaba una vez
+// y se quedaba. Ajuste de +25 sobre una libreta que decia 95; se corregia un
+// renglon y se acababa importando 100. El panel seguia diciendo "la suma de
+// Sevenz: $70" y "agregaremos $25 para que cuadren las cuentas".
+//
+// Lo que se prueba aqui es que construirAjuste, alimentado con la sombra, da
+// SIEMPRE la linea que cuadra con lo que hay en ese momento.
+const sombra = (escrito, calculado, ancla = "c") => ({
+  escrito,
+  calculado,
+  currency: null,
+  filaDesajustada: ancla,
+});
+const renglones = [
+  mov({ uid: "a", amount: 50 }),
+  mov({ uid: "b", amount: 40 }),
+  mov({ uid: "c", amount: 20, type: "payment" }),
+];
+const derivar = (libro, movimientos = renglones) =>
+  construirAjuste({ movimientos, nombreDelCliente: movimientos[0].client_name, libro, uid: "ajuste:x" });
+
+const recien = derivar(sombra(95, 70));
+check(
+  "con desajuste, sale la linea por la diferencia exacta",
+  recien && recien.movimiento.amount === 25 && recien.movimiento.type === "charge",
+  recien && `${recien.movimiento.amount} ${recien.movimiento.type}`,
+);
+
+// EL CASO QUE SE ESCAPO: el arroz pasa de 40 a 45, asi que la suma sube a 75.
+const traEditar = derivar(sombra(95, 75));
+check(
+  "si cambia un monto, la linea sale ya por el importe nuevo (25 -> 20)",
+  traEditar && traEditar.movimiento.amount === 20,
+  traEditar && String(traEditar.movimiento.amount),
+);
+
+check("si ya cuadra exactamente, NO hay linea (no se queda en 0)", derivar(sombra(95, 95)) === null);
+
+const flip = derivar(sombra(70, 95));
+check(
+  "si la suma pasa del total escrito, la linea es un abono",
+  flip && flip.movimiento.type === "payment" && flip.movimiento.amount === 25,
+  flip && `${flip.movimiento.type} ${flip.movimiento.amount}`,
+);
+
+check(
+  "si la fila que llevaba el total escrito desaparece, no hay linea",
+  derivar(sombra(95, 70, null)) === null,
+);
+
+// IDEMPOTENCIA / CONVERGENCIA. Al derivarse en cada render, lo que importa es
+// que la sombra NO cambie al meter la linea: si cambiara, el calculo se
+// perseguiria a si mismo. La sombra se reconcilia sin los ajustes, asi que dos
+// pasadas sobre el mismo estado dan lo mismo.
+const unaVez = derivar(sombra(95, 70));
+const conLaLinea = [...renglones];
+conLaLinea.splice(unaVez.indice, 0, unaVez.movimiento);
+const otraVez = derivar(sombra(95, 70), renglones);
+check(
+  "derivarlo dos veces sobre la misma sombra da lo mismo (converge)",
+  otraVez.movimiento.amount === unaVez.movimiento.amount &&
+    otraVez.movimiento.type === unaVez.movimiento.type,
+  `${unaVez.movimiento.amount} == ${otraVez.movimiento.amount}`,
+);
+check(
+  "y la linea entra ANTES de la fila que lleva el total escrito",
+  conLaLinea[unaVez.indice].uid === "ajuste:x" && conLaLinea[unaVez.indice + 1].uid === "c",
+  conLaLinea.map((m) => m.uid).join(","),
+);
+
+check(
+  "el uid se deriva de la clave: estable entre renders, sin guardar nada",
+  unaVez.movimiento.uid === "ajuste:x",
+);
+
 const fallos = filas.filter((f) => !f.pasa).length;
 console.log(`\n${fallos} FALLO(S) de ${filas.length}`);
 process.exit(fallos === 0 ? 0 : 1);

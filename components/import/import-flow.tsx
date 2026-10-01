@@ -209,7 +209,7 @@ export function ImportFlow({
 
   // Applied on top of what was read, never written back into it, so unticking
   // the box restores the original names and documents instead of losing them.
-  const effectiveMovements = useMemo(() => {
+  const movimientosBase = useMemo(() => {
     if (!reviewMovements) return null;
     // Los quitados salen de aqui: para los saldos, las sumas y el resumen no
     // existen. Siguen en `reviewMovements` solo para poder recuperarlos.
@@ -229,6 +229,120 @@ export function ImportFlow({
           },
     );
   }, [reviewMovements, eliminados, sameClient, sharedName, sharedDocument, sharedWhatsapp, unlinked]);
+
+  const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+
+  const clientesSinLosDescartados = useMemo(
+    () => existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
+    [existingClients, decisiones],
+  );
+
+  const [decisionesDeTotal, setDecisionesDeTotal] = useState<
+    Record<string, DecisionDeTotal | undefined>
+  >({});
+
+  // ── EL AJUSTE ES DERIVADO, NO GUARDADO ────────────────────────────────
+  //
+  // Antes se creaba una vez al elegir "mi libreta" y se metia en
+  // `reviewMovements` como una fila mas. A partir de ahi nadie lo volvia a
+  // tocar: corregir un monto despues dejaba la linea en su importe viejo, y se
+  // importaba una deuda que no era la que el dueno habia aceptado. Medido en
+  // dev el 2026-10-01: ajuste de +25 sobre una libreta que decia 95, se corrige
+  // un renglon y acaba subiendo 100.
+  //
+  // Ahora no se guarda: se CALCULA en cada render a partir de la decision y de
+  // los renglones que hay en ese momento. Una cifra derivada no puede quedarse
+  // vieja, que es la unica forma de que esto no vuelva a pasar.
+  //
+  // EL LIBRO SOMBRA se reconcilia sobre los renglones SIN los ajustes. Hace
+  // falta porque `escrito`/`calculado`/`filaDesajustada` salen de la fila
+  // marcada `no_cuadra`, y en cuanto el ajuste entra esa fila cuadra — que es su
+  // proposito. El libro normal deja de saber cuanto era el desajuste; la sombra
+  // no se entera del ajuste y por eso sigue sabiendolo.
+  const librosSombra = useMemo(() => {
+    const porClave = new Map<string, LibroDelCliente>();
+    if (!movimientosBase) return porClave;
+    const clientes = agruparPorCliente(
+      reconcileMovements(movimientosBase, clientesSinLosDescartados),
+      clientesSinLosDescartados,
+      { esVE: showCurrency },
+    );
+    for (const c of clientes) {
+      for (const l of c.libros) porClave.set(`${c.nameKey}|${l.currency ?? "COP"}`, l);
+    }
+    return porClave;
+  }, [movimientosBase, clientesSinLosDescartados, showCurrency]);
+
+  // Un ajuste por cliente que haya dicho que manda su libreta, con el importe
+  // que hace falta AHORA. El uid se deriva de la clave en vez de sortearse:
+  // asi es estable entre renders sin guardar nada, y la fila no se remonta sola.
+  const ajustesDerivados = useMemo(() => {
+    const salida = new Map<string, { movimiento: ExtractedMovement; indice: number; anclaUid: string | null }>();
+    if (!movimientosBase) return salida;
+    for (const [clave, decision] of Object.entries(decisionesDeTotal)) {
+      if (decision?.cual !== "libreta") continue;
+      const sombra = librosSombra.get(clave);
+      if (!sombra) continue;
+      const nombre = clave.slice(0, clave.lastIndexOf("|"));
+      const cliente = movimientosBase.find(
+        (m) => (m.client_name ?? "").trim().toLowerCase() === nombre,
+      );
+      if (!cliente) continue;
+      const construido = construirAjuste({
+        movimientos: movimientosBase,
+        nombreDelCliente: cliente.client_name,
+        libro: sombra,
+        uid: `ajuste:${clave}`,
+      });
+      if (construido) salida.set(clave, { ...construido, anclaUid: sombra.filaDesajustada });
+    }
+    return salida;
+  }, [movimientosBase, decisionesDeTotal, librosSombra]);
+
+  const uidsDeAjuste = useMemo(
+    () => new Set([...ajustesDerivados.values()].map((a) => a.movimiento.uid!)),
+    [ajustesDerivados],
+  );
+
+  // Los renglones con los ajustes ya dentro, en su sitio. Es lo que ve todo lo
+  // de abajo: las filas, los saldos, el resumen y lo que se sube.
+  // La misma insercion pero sobre `reviewMovements`, que conserva los renglones
+  // QUITADOS para poder pintarlos en rojo en su sitio. Las dos listas tienen
+  // indexados distintos —una lleva los quitados y la otra no—, asi que aqui el
+  // ajuste se coloca por el UID de su ancla y no por el indice.
+  //
+  // Hace falta porque el historial se recorre sobre `reviewMovements`: sin esto
+  // el ajuste contaba en los totales pero no salia en la lista. Visto al probar
+  // el arreglo, el 2026-10-01.
+  const movimientosConAjustes = useMemo(() => {
+    if (!reviewMovements) return null;
+    if (ajustesDerivados.size === 0) return reviewMovements;
+    const porAncla = new Map<string, ExtractedMovement[]>();
+    const alFinal: ExtractedMovement[] = [];
+    for (const a of ajustesDerivados.values()) {
+      if (!a.anclaUid) { alFinal.push(a.movimiento); continue; }
+      const lista = porAncla.get(a.anclaUid) ?? [];
+      lista.push(a.movimiento);
+      porAncla.set(a.anclaUid, lista);
+    }
+    const salida: ExtractedMovement[] = [];
+    for (const m of reviewMovements) {
+      const antes = m.uid ? porAncla.get(m.uid) : undefined;
+      if (antes) salida.push(...antes);
+      salida.push(m);
+    }
+    return [...salida, ...alFinal];
+  }, [reviewMovements, ajustesDerivados]);
+
+  const effectiveMovements = useMemo(() => {
+    if (!movimientosBase) return null;
+    if (ajustesDerivados.size === 0) return movimientosBase;
+    // De mayor a menor indice para que insertar uno no desplace al siguiente.
+    const copia = [...movimientosBase];
+    const porIndice = [...ajustesDerivados.values()].sort((a, b) => b.indice - a.indice);
+    for (const a of porIndice) copia.splice(a.indice, 0, a.movimiento);
+    return copia;
+  }, [movimientosBase, ajustesDerivados]);
 
   // Una reconciliación contra la lista COMPLETA de clientes, y su único trabajo
   // es detectar los candidatos de CT-22. No se usa para nada más: las filas de
@@ -256,7 +370,6 @@ export function ImportFlow({
       ),
     [filasParaCandidatos, existingClients, showCurrency],
   );
-  const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
   // Qué cliente está abierto en el detalle. `null` = la lista.
   const [abierto, setAbierto] = useState<string | null>(null);
   const sinDecidir = duplicados.some((c) => !decisiones[c.nameKey]);
@@ -274,10 +387,6 @@ export function ImportFlow({
   // vuelve a calcularlo todo sin ese emparejamiento, y las cuatro cosas
   // —matched_client_id, needs_document_id, computed_balance y la base— salen
   // solas. Un cliente nuevo es un cliente nuevo en todo, no en dos campos.
-  const clientesSinLosDescartados = useMemo(
-    () => existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
-    [existingClients, decisiones],
-  );
   const filas = useMemo(
     () => (effectiveMovements ? reconcileMovements(effectiveMovements, clientesSinLosDescartados) : []),
     [effectiveMovements, clientesSinLosDescartados],
@@ -331,7 +440,7 @@ export function ImportFlow({
     const vivos = new Map(conEstadoYa.map((c) => [c.nameKey, c]));
     const orden: string[] = [];
     const nombres = new Map<string, string>();
-    for (const m of reviewMovements ?? []) {
+    for (const m of movimientosConAjustes ?? []) {
       const nombre = nombreVisible(m);
       const k = nombre.toLowerCase();
       if (!nombres.has(k)) {
@@ -356,7 +465,7 @@ export function ImportFlow({
   function entradasDelHistorial(nameKey: string) {
     const porId = new Map(filas.map((f) => [f.rowId, f]));
     const salida: EntradaDelHistorial[] = [];
-    for (const m of reviewMovements ?? []) {
+    for (const m of movimientosConAjustes ?? []) {
       if (!m.uid) continue;
       const viva = porId.get(m.uid);
       if (viva) {
@@ -632,82 +741,33 @@ export function ImportFlow({
   // confirmar, con su monto y su descripción, y puede editarla o borrarla como
   // cualquier otra. Una línea de dinero que apareciera sola en el momento de
   // guardar sería justo lo contrario.
-  const [ajustes, setAjustes] = useState<Record<string, string>>({});
-  const [decisionesDeTotal, setDecisionesDeTotal] = useState<
-    Record<string, DecisionDeTotal | undefined>
-  >({});
 
+  // Solo APUNTA la decision. La linea de ajuste ya no se crea aqui: se deriva
+  // de esta decision y de los renglones que haya en cada momento, mas arriba.
+  // Antes se creaba aqui una vez y se quedaba congelada, que es lo que hacia que
+  // corregir un monto despues dejara una deuda equivocada.
+  //
+  // `escrito` y `calculado` se guardan tal como estaban AL DECIDIR, y para una
+  // sola cosa: poder notar luego que la cifra cambio y decirselo al dueno. Lo
+  // que el panel ensena no sale de aqui, sale del libro sombra.
   function elegirTotal(cliente: ClienteRevisado, libro: LibroDelCliente, cual: EleccionDeTotal) {
     const clave = `${cliente.nameKey}|${libro.currency ?? "COP"}`;
-    const yaHecho = ajustes[clave];
-
-    if (cual === "suma") {
-      // Se retira el ajuste si lo había. Sin toast de deshacer: esto no es un
-      // borrado del dueño, es la otra mitad de la decisión que acaba de tomar.
-      if (yaHecho) {
-        setReviewMovements((prev) => (prev ? prev.filter((m) => m.uid !== yaHecho) : prev));
-        setAjustes((prev) =>
-          Object.fromEntries(Object.entries(prev).filter(([k]) => k !== clave)),
-        );
-      }
-      setDecisionesDeTotal((prev) => ({
-        ...prev,
-        [clave]: {
-          cual: "suma",
-          escrito: prev[clave]?.escrito ?? libro.escrito ?? 0,
-          calculado: prev[clave]?.calculado ?? libro.calculado ?? 0,
-        },
-      }));
-      return;
-    }
-
+    const sombra = librosSombra.get(clave);
     setDecisionesDeTotal((prev) => ({
       ...prev,
       [clave]: {
-        cual: "libreta",
-        escrito: prev[clave]?.escrito ?? libro.escrito ?? 0,
-        calculado: prev[clave]?.calculado ?? libro.calculado ?? 0,
+        cual,
+        escrito: prev[clave]?.escrito ?? sombra?.escrito ?? libro.escrito ?? 0,
+        calculado: prev[clave]?.calculado ?? sombra?.calculado ?? libro.calculado ?? 0,
       },
     }));
-    if (yaHecho) return;
-
-    // La diferencia sale de lo YA GUARDADO si lo hay: al volver de "suma" el
-    // libro vuelve a traer sus cifras, pero al llegar aquí desde un libro que
-    // ya cuadra —porque se está rehaciendo la decisión— vendrían en null.
-
-    const guardada = decisionesDeTotal[clave];
-
-    const uid = crypto.randomUUID();
-    // La construcción vive en `lib/ajuste-de-libreta.ts`: decide un movimiento
-    // en la deuda de una persona y ahí sí se puede probar desde Node.
-    // Ver qa/bordes-subir-libreta.mjs.
-    const ajuste = construirAjuste({
-      movimientos: reviewMovements ?? [],
-      nombreDelCliente: cliente.name,
-      libro: {
-        escrito: libro.escrito ?? guardada?.escrito ?? 0,
-        calculado: libro.calculado ?? guardada?.calculado ?? 0,
-        currency: libro.currency,
-        filaDesajustada: libro.filaDesajustada,
-      },
-      uid,
-    });
-    if (!ajuste) return;
-
-    setReviewMovements((prev) => {
-      if (!prev) return prev;
-      const copia = [...prev];
-      copia.splice(ajuste.indice, 0, ajuste.movimiento);
-      return copia;
-    });
-    setAjustes((prev) => ({ ...prev, [clave]: uid }));
   }
 
   // Los `uid` de las líneas que creó el propio Sevenz al decir el dueño que
   // manda su libreta. Van con su nota, distinta de la del desajuste: aquí no
   // hay nada descuadrado — el ajuste lo cuadró —, lo que hay que poder
   // reconstruir tres meses después es de dónde salió ese movimiento.
-  const uidsDeAjuste = new Set(Object.values(ajustes));
+
 
   async function handleConfirm() {
     if (guardia()) return;
@@ -1028,10 +1088,32 @@ export function ImportFlow({
                 }
                 onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
                 decisionesDeTotal={Object.fromEntries(
-                  clienteAbierto.libros.map((l) => [
-                    l.currency ?? "COP",
-                    decisionesDeTotal[`${clienteAbierto.nameKey}|${l.currency ?? "COP"}`],
-                  ]),
+                  clienteAbierto.libros.map((l) => {
+                    const clave = `${clienteAbierto.nameKey}|${l.currency ?? "COP"}`;
+                    const d = decisionesDeTotal[clave];
+                    if (!d) return [l.currency ?? "COP", undefined];
+                    // LAS CIFRAS SALEN DE LA SOMBRA, no de lo guardado al
+                    // decidir. Congelarlas era lo que hacia que el panel siguiera
+                    // diciendo "la suma de Sevenz: $70" despues de corregir un
+                    // monto. La sombra no se entera del ajuste, asi que sigue
+                    // sabiendo cuanto falta de verdad.
+                    const sombra = librosSombra.get(clave);
+                    // "Se actualizo a X": se compara el importe que el ajuste
+                    // tiene AHORA contra el que el dueno vio al decidir. Si no
+                    // coincide, es que corrigio algo despues y la cifra que
+                    // acepto cambio; se le dice, porque el cliente la va a ver.
+                    const ahora = ajustesDerivados.get(clave)?.movimiento.amount ?? null;
+                    const alDecidir = Math.abs(d.escrito - d.calculado);
+                    return [
+                      l.currency ?? "COP",
+                      {
+                        ...d,
+                        escrito: sombra?.escrito ?? d.escrito,
+                        calculado: sombra?.calculado ?? d.calculado,
+                        rehechoA: ahora !== null && ahora !== alDecidir ? ahora : null,
+                      },
+                    ];
+                  }),
                 )}
                 onElegirTotal={(libro, cual) => elegirTotal(clienteAbierto, libro, cual)}
                 accionSubir={
