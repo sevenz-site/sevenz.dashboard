@@ -21,6 +21,10 @@ import {
 } from "@/lib/lineas-sueltas";
 import { LineasSueltas } from "@/components/import/lineas-sueltas";
 import {
+  ConfirmarEmparejamiento,
+  ListaDeCandidatos,
+} from "@/components/import/emparejar-cliente";
+import {
   cargarRevision,
   guardarRevision,
   olvidarRevision,
@@ -42,7 +46,7 @@ import {
   AttachmentAction,
 } from "@/components/ui/attachment";
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
-import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
+import { reconcileMovements, agruparPorCliente, seParecen } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
@@ -79,7 +83,7 @@ const TEXTO_SALIR_DE_LA_REVISION = {
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
-import type { ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
+import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -323,11 +327,38 @@ export function ImportFlow({
     pendientesDeLineas.sinCliente > 0 || pendientesDeLineas.sinMonto > 0;
 
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+  // CT-29. `listaAbierta` es el nameKey cuya lista de candidatos esta abierta;
+  // `porConfirmar` es el emparejamiento esperando confirmacion. Separados porque
+  // el dialogo sale TAMBIEN sin pasar por la lista, cuando el candidato es uno.
+  const [listaAbierta, setListaAbierta] = useState<string | null>(null);
+  const [porConfirmar, setPorConfirmar] = useState<
+    { nameKey: string; candidato: CandidatoDuplicado } | null
+  >(null);
 
   const clientesSinLosDescartados = useMemo(
-    () => existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
+    () =>
+      // CT-29: "es otra persona" descarta a TODOS los que se parecian, no solo
+      // al de grafia identica. Con dos fichas candidatas, dejar una dentro la
+      // volveria a emparejar por nombre y la decision no serviria de nada.
+      existingClients.filter(
+        (c) =>
+          !Object.entries(decisiones).some(
+            ([nameKey, d]) => d?.cual === "otra" && seParecen(c.name, nameKey),
+          ),
+      ),
     [existingClients, decisiones],
   );
+
+  // Los emparejamientos explicitos, por nameKey. Van a `reconcileMovements`
+  // porque mandan sobre el nombre: es lo unico que puede unir "Karina castillo"
+  // con la ficha "Karina castillo (kari)".
+  const emparejados = useMemo(() => {
+    const salida: Record<string, string> = {};
+    for (const [nameKey, d] of Object.entries(decisiones)) {
+      if (d?.cual === "mismo") salida[nameKey] = d.clientId;
+    }
+    return salida;
+  }, [decisiones]);
 
   // Los `nameKey` que ya entraron en la base con su propio boton. La tarjeta se
   // queda en su sitio para ver lo que llevas hecho; lo que desaparece es la
@@ -412,7 +443,21 @@ export function ImportFlow({
     if (!borrador) return;
     setEliminados(new Set(borrador.eliminados));
     setClientesQuitados(borrador.clientesQuitados);
-    setDecisiones(borrador.decisiones as Record<string, DecisionDuplicado>);
+    // Un borrador de antes de CT-29 guardaba "mismo" | "otra" en texto plano.
+    // "otra" sigue significando lo mismo; "mismo" ya no basta —no dice con cual—
+    // asi que se descarta y la pregunta vuelve a salir. Es lo honesto: mejor
+    // preguntar otra vez que emparejar con una ficha que nadie eligio.
+    setDecisiones(
+      Object.fromEntries(
+        Object.entries(borrador.decisiones ?? {}).flatMap(([k, d]): [string, DecisionDuplicado][] => {
+          if (d === "otra") return [[k, { cual: "otra" }]];
+          if (d === "mismo") return [];
+          if (d?.cual === "otra") return [[k, { cual: "otra" }]];
+          if (d?.cual === "mismo" && d.clientId) return [[k, { cual: "mismo", clientId: d.clientId }]];
+          return [];
+        }),
+      ),
+    );
     setDecisionesDeTotal(borrador.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>);
     setSubidos(new Set(borrador.subidos));
     setSameClient(borrador.sameClient);
@@ -446,7 +491,7 @@ export function ImportFlow({
     const porClave = new Map<string, LibroDelCliente>();
     if (!movimientosBase) return porClave;
     const clientes = agruparPorCliente(
-      reconcileMovements(movimientosBase, clientesSinLosDescartados),
+      reconcileMovements(movimientosBase, clientesSinLosDescartados, emparejados),
       clientesSinLosDescartados,
       { esVE: showCurrency },
     );
@@ -454,7 +499,7 @@ export function ImportFlow({
       for (const l of c.libros) porClave.set(`${c.nameKey}|${l.currency ?? "COP"}`, l);
     }
     return porClave;
-  }, [movimientosBase, clientesSinLosDescartados, showCurrency]);
+  }, [movimientosBase, clientesSinLosDescartados, showCurrency, emparejados]);
 
   // Un ajuste por cliente que haya dicho que manda su libreta, con el importe
   // que hace falta AHORA. El uid se deriva de la clave en vez de sortearse:
@@ -538,7 +583,7 @@ export function ImportFlow({
   const duplicados = useMemo(
     () =>
       agruparPorCliente(filasParaCandidatos, existingClients, { esVE: showCurrency }).filter(
-        (c) => c.candidato !== null,
+        (c) => c.candidatos.length > 0,
       ),
     [filasParaCandidatos, existingClients, showCurrency],
   );
@@ -560,8 +605,11 @@ export function ImportFlow({
   // —matched_client_id, needs_document_id, computed_balance y la base— salen
   // solas. Un cliente nuevo es un cliente nuevo en todo, no en dos campos.
   const filas = useMemo(
-    () => (effectiveMovements ? reconcileMovements(effectiveMovements, clientesSinLosDescartados) : []),
-    [effectiveMovements, clientesSinLosDescartados],
+    () =>
+      effectiveMovements
+        ? reconcileMovements(effectiveMovements, clientesSinLosDescartados, emparejados)
+        : [],
+    [effectiveMovements, clientesSinLosDescartados, emparejados],
   );
 
   // A client without a cédula/documento on file must get one before the
@@ -594,7 +642,7 @@ export function ImportFlow({
   // la tarjeta desaparecería en cuanto se pulsara "es otra persona" y con ella
   // los dos botones.
   const candidatos = useMemo(
-    () => new Map(duplicados.map((c) => [c.nameKey, c.candidato!])),
+    () => new Map(duplicados.map((c) => [c.nameKey, c.candidatos])),
     [duplicados],
   );
   // EL NOMBRE QUE LE TOCA A UN MOVIMIENTO. Con el cliente compartido activo el
@@ -1095,6 +1143,23 @@ export function ImportFlow({
   // El payload de unas filas concretas. Sale aparte porque ahora hay dos
   // caminos que suben —el boton de una tarjeta y el del lote— y que armaran el
   // payload por separado es justo como se acaban desviando el uno del otro.
+  // Lo que esa persona trae EN ESTA LIBRETA, por moneda. Es la mitad de la
+  // pregunta que hace la confirmacion: arriba lo que llega, abajo lo que ya hay.
+  // Nunca se suman dos monedas, la regla de siempre.
+  function textoDeLoQueTrae(nameKey: string | undefined): string {
+    if (!nameKey) return "—";
+    const suyas = filas.filter((r) => r.client_name.trim().toLowerCase() === nameKey);
+    const porMoneda = new Map<string, number>();
+    for (const r of suyas) {
+      const k = r.currency ?? "COP";
+      porMoneda.set(k, (porMoneda.get(k) ?? 0) + (r.type === "charge" ? r.amount : -r.amount));
+    }
+    const partes = [...porMoneda.entries()].map(([k, total]) =>
+      k === "COP" ? formatCurrency(total) : formatDisplayCurrency(total, k as LedgerCurrency),
+    );
+    return partes.length ? partes.join(" · ") : "—";
+  }
+
   function payloadDe(deEstas: typeof filas): ImportRow[] {
     return deEstas.map((r) => ({
       // CT-22: `filas` ya aplico la decision, asi que con "es otra persona"
@@ -1424,10 +1489,64 @@ export function ImportFlow({
           entradas={entradas}
           decisiones={decisiones}
           onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
+          onVerClientes={setListaAbierta}
+          onConfirmarCon={(nameKey, candidato) => setPorConfirmar({ nameKey, candidato })}
           onAbrir={setAbierto}
           onRestaurarCliente={restaurarCliente}
           onSubirCliente={(nameKey) => subirClientes([nameKey])}
           subiendo={confirming}
+        />
+
+        {/* CT-29: la lista de candidatos y la confirmacion. Van FUERA de la hoja
+            del detalle, no dentro: un popup en portal dentro de un Dialog de
+            Radix no recibe toques (DESIGN-SYSTEM.md), y ademas las dos salen
+            tambien desde la tarjeta, con el detalle cerrado. */}
+        <ListaDeCandidatos
+          abierta={listaAbierta !== null}
+          onCerrar={() => setListaAbierta(null)}
+          nombreEnLaLibreta={
+            clientesRevisados.find((c) => c.nameKey === listaAbierta)?.name ?? listaAbierta ?? ""
+          }
+          candidatos={listaAbierta ? (candidatos.get(listaAbierta) ?? []) : []}
+          onElegir={(candidato) => {
+            if (!listaAbierta) return;
+            setPorConfirmar({ nameKey: listaAbierta, candidato });
+          }}
+          onEsOtraPersona={() => {
+            if (!listaAbierta) return;
+            setDecisiones((prev) => ({ ...prev, [listaAbierta]: { cual: "otra" } }));
+            setListaAbierta(null);
+          }}
+        />
+
+        <ConfirmarEmparejamiento
+          abierta={porConfirmar !== null}
+          onCerrar={() => setPorConfirmar(null)}
+          onConfirmar={() => {
+            if (!porConfirmar) return;
+            setDecisiones((prev) => ({
+              ...prev,
+              [porConfirmar.nameKey]: { cual: "mismo", clientId: porConfirmar.candidato.id },
+            }));
+            // Se cierran las dos: la confirmacion devuelve a la lista de la
+            // revision para seguir con la subida, que es lo que pide el diseño.
+            setPorConfirmar(null);
+            setListaAbierta(null);
+            toast.success(`Emparejado con ${porConfirmar.candidato.name}.`);
+          }}
+          nombreEnLaLibreta={
+            clientesRevisados.find((c) => c.nameKey === porConfirmar?.nameKey)?.name ?? ""
+          }
+          documentoEnLaLibreta={
+            filas.find((r) => r.client_name.trim().toLowerCase() === porConfirmar?.nameKey)
+              ?.document_id ?? null
+          }
+          whatsappEnLaLibreta={
+            filas.find((r) => r.client_name.trim().toLowerCase() === porConfirmar?.nameKey)
+              ?.whatsapp ?? null
+          }
+          loQueTraeLaLibreta={textoDeLoQueTrae(porConfirmar?.nameKey)}
+          candidato={porConfirmar?.candidato ?? null}
         />
 
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
@@ -1451,7 +1570,11 @@ export function ImportFlow({
                     subidos,
                   })[0].estado
                 }
-                candidato={candidatos.get(clienteAbierto.nameKey) ?? null}
+                candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
+                onVerClientes={() => setListaAbierta(clienteAbierto.nameKey)}
+                onConfirmarCon={(candidato) =>
+                  setPorConfirmar({ nameKey: clienteAbierto.nameKey, candidato })
+                }
                 decision={decisiones[clienteAbierto.nameKey]}
                 onDecidir={(d) =>
                   setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }))

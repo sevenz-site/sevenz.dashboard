@@ -12,7 +12,17 @@ import type {
 // `qa/bordes-subir-libreta.mjs`. Los colores y el texto de cada chip siguen en
 // el componente: eso sí es pantalla.
 
-export type DecisionDuplicado = "mismo" | "otra";
+// CT-29: LA DECISIÓN GUARDA CON CUÁL, no solo "sí" o "no".
+//
+// Era `"mismo" | "otra"`, y bastaba mientras el candidato fuera uno. Con varios
+// —dos fichas deliberadas de la misma persona, caso real de producción— decir
+// "es el mismo" no dice nada: el sistema seguiría sin saber a cuál de las dos
+// le toca la deuda, y elegir por él es elegir a quién se le carga.
+//
+// `clientId` es el emparejamiento explícito, y manda sobre el nombre: por eso
+// funciona cuando el renglón dice "Karina castillo" y la ficha elegida se llama
+// "Karina castillo (kari)". Sin él, ninguna coincidencia de nombre las uniría.
+export type DecisionDuplicado = { cual: "otra" } | { cual: "mismo"; clientId: string };
 
 // La revisión, por CLIENTE y no por movimiento.
 //
@@ -70,7 +80,8 @@ export type ClienteConEstado = ClienteRevisado & {
   // persona" —y tiene que desaparecer, o el saldo previo de esa otra persona se
   // colaría en los totales—, pero los dos botones tienen que seguir ahí para
   // poder cambiar de idea.
-  candidatoVisible: CandidatoDuplicado | null;
+  // Todos los que se parecen. Vacío cuando no hay ninguno.
+  candidatosVisibles: CandidatoDuplicado[];
   // Lo que falta, ya redactado. Puede haber más de una cosa: "Falta cédula" y
   // "Falta WhatsApp" son dos avisos distintos y se enseñan los dos, separados,
   // porque uno impide importar y el otro no.
@@ -98,7 +109,7 @@ export function conEstado(
     amount?: number;
   }[],
   decisiones: Record<string, DecisionDuplicado>,
-  candidatos: Map<string, CandidatoDuplicado>,
+  candidatos: Map<string, CandidatoDuplicado[]>,
   opciones: {
     // Solo un negocio venezolano elige moneda. Para uno colombiano la columna
     // es null a proposito y preguntarla seria un bloqueo imposible de resolver.
@@ -122,7 +133,7 @@ export function conEstado(
 ): ClienteConEstado[] {
   return clientes.map((c) => {
     const subido = opciones.subidos?.has(c.nameKey) ?? false;
-    const candidatoVisible = candidatos.get(c.nameKey) ?? null;
+    const candidatosVisibles = candidatos.get(c.nameKey) ?? [];
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
 
     const bloqueos: string[] = [];
@@ -181,7 +192,7 @@ export function conEstado(
       ? "subido"
       : bloqueos.length
       ? "faltan_datos"
-      : candidatoVisible && !decisiones[c.nameKey]
+      : candidatosVisibles.length > 0 && !decisiones[c.nameKey]
         ? "duplicado"
         : c.libros.some((l) => l.estado === "no_cuadra")
           ? "revisar_suma"
@@ -196,7 +207,7 @@ export function conEstado(
       !subido &&
       !opciones.hayLineasSinResolver &&
       bloqueos.length === 0 &&
-      !(candidatoVisible && !decisiones[c.nameKey]);
+      !(candidatosVisibles.length > 0 && !decisiones[c.nameKey]);
 
     // UNA TARJETA SUBIDA NO PIDE NADA. Ni bloqueos, ni avisos, ni la pregunta
     // del duplicado: ya esta en la base y no hay nada que decidir.
@@ -211,12 +222,12 @@ export function conEstado(
         estado,
         bloqueos: [],
         avisos: [],
-        candidatoVisible: null,
+        candidatosVisibles: [],
         subido,
         puedeSubir: false,
       };
     }
 
-    return { ...c, estado, bloqueos, avisos, candidatoVisible, subido, puedeSubir };
+    return { ...c, estado, bloqueos, avisos, candidatosVisibles, subido, puedeSubir };
   });
 }

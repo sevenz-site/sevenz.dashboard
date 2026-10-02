@@ -35,7 +35,14 @@ const MAX_HORAS = 24;
 // Si la forma cambia, lo viejo se tira en vez de reventar al leerlo.
 const VERSION = 1 as const;
 
-export type DecisionDuplicadoGuardada = "mismo" | "otra";
+// Lo guardado puede venir de antes de CT-29 ("mismo" | "otra" en texto plano) o
+// de después ({ cual, clientId }). `import-flow` convierte al leerlo: "otra"
+// sigue valiendo, y un "mismo" viejo se descarta porque no dice CON CUÁL.
+export type DecisionDuplicadoGuardada =
+  | "mismo"
+  | "otra"
+  | { cual: "otra" }
+  | { cual: "mismo"; clientId: string };
 
 export type RevisionGuardada = {
   version: typeof VERSION;

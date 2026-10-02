@@ -7,7 +7,6 @@ import {
   RotateCcw,
   Trash2,
   TriangleAlert,
-  UserRoundSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,6 +37,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
 import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
+import { AvisoDeDuplicado } from "@/components/import/emparejar-cliente";
 import type {
   CandidatoDuplicado,
   ClienteRevisado,
@@ -319,7 +319,9 @@ function FilaMovimiento({
 export function DetalleDelCliente({
   cliente,
   estado,
-  candidato,
+  candidatos,
+  onVerClientes,
+  onConfirmarCon,
   decision,
   onDecidir,
   entradas,
@@ -346,7 +348,9 @@ export function DetalleDelCliente({
   // persona" —y tiene que desaparecer, o el saldo previo de la otra persona se
   // colaría en los totales—, pero la pregunta sigue en pantalla para poder
   // cambiar de idea.
-  candidato: CandidatoDuplicado | null;
+  candidatos: CandidatoDuplicado[];
+  onVerClientes: () => void;
+  onConfirmarCon: (c: CandidatoDuplicado) => void;
   decision: DecisionDuplicado | undefined;
   onDecidir: (d: DecisionDuplicado) => void;
   // El historial en el orden de la libreta, con los quitados intercalados.
@@ -384,7 +388,7 @@ export function DetalleDelCliente({
   // se sabe de quién son la cédula y el teléfono que se verían: los del cliente
   // que ya existe, o los de alguien nuevo que todavía no tiene ninguno.
   // Enseñar unos cualesquiera es invitar a escribir sobre la ficha equivocada.
-  const sinDecidir = candidato !== null && !decision;
+  const sinDecidir = candidatos.length > 0 && !decision;
   // "Es el mismo": se enseña lo que ya está guardado y no se toca. La 073 solo
   // rellena documentos y teléfonos que estén en null, así que un campo editable
   // sobre un valor YA GUARDADO aceptaría el cambio y lo tiraría en silencio.
@@ -396,9 +400,15 @@ export function DetalleDelCliente({
   // escribirla bloqueado. La migración sí la habría guardado: los dos updates de
   // la 076 llevan `where ... is null`. Las únicas salidas eran quitar al cliente
   // de la tanda o decir "es otra persona" y duplicarlo.
-  const esElMismo = candidato !== null && decision === "mismo";
-  const documentoGuardado = esElMismo ? (candidato?.document_id ?? null) : null;
-  const whatsappGuardado = esElMismo ? (candidato?.whatsapp?.trim() || null) : null;
+  // Con cual se emparejo, si se emparejo. De el salen la cedula y el WhatsApp
+  // que se enseñan bloqueados: son los de ESA ficha, no los de "alguna".
+  const emparejadoCon =
+    decision?.cual === "mismo"
+      ? (candidatos.find((c) => c.id === decision.clientId) ?? null)
+      : null;
+  const esElMismo = emparejadoCon !== null;
+  const documentoGuardado = esElMismo ? (emparejadoCon?.document_id ?? null) : null;
+  const whatsappGuardado = esElMismo ? (emparejadoCon?.whatsapp?.trim() || null) : null;
   const exigeDocumento = cliente.necesitaDocumento && !documentoEscrito.trim();
 
   const monedas = new Set(filas.map((f) => f.currency));
@@ -472,54 +482,35 @@ export function DetalleDelCliente({
       {/* Nada de esto sale si el cliente ya entro: la pregunta del duplicado se
           respondio antes de subir, y volver a mostrarla invita a cambiar algo
           que ya no se puede cambiar. */}
-      {candidato && !subido ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
-          <p className="font-semibold text-amber-800 dark:text-amber-300">¿Es el mismo?</p>
-          <p className="flex items-start gap-1.5 text-sm text-amber-800 dark:text-amber-300">
-            <UserRoundSearch className="mt-0.5 size-4 shrink-0" />
-            <span>
-              Ya tienes un &ldquo;{candidato.name}&rdquo; en tus clientes.
-              {candidato.document_id ? ` Cédula: ${candidato.document_id}.` : " Sin cédula."}
-              {candidato.balance_usd
-                ? ` Debe ${formatDisplayCurrency(candidato.balance_usd, "USD")}.`
-                : ""}
-              {candidato.balance_eur
-                ? ` Debe ${formatDisplayCurrency(candidato.balance_eur, "EUR")}.`
-                : ""}
-              {!candidato.balance_usd && !candidato.balance_eur && candidato.balance
-                ? ` Debe ${formatCurrency(candidato.balance)}.`
-                : ""}
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                { valor: "mismo" as const, texto: "Es el mismo" },
-                { valor: "otra" as const, texto: "Es otra persona" },
-              ]
-            ).map((o) => (
-              <label
-                key={o.valor}
-                className={cn(
-                  "flex h-10 cursor-pointer items-center gap-2 rounded-full border bg-background px-3.5 text-sm",
-                  decision === o.valor ? "border-foreground" : "border-border",
-                )}
-              >
-                {/* Un `input type=radio` nativo y no el de Radix: son dos
-                    opciones sueltas dentro de un aviso, no un RadioGroup de
-                    formulario, y el nombre tiene que ser único por cliente para
-                    que abrir otro detalle no herede la marca del anterior. */}
-                <input
-                  type="radio"
-                  name={`duplicado-${cliente.nameKey}`}
-                  className="size-4 accent-foreground"
-                  checked={decision === o.valor}
-                  onChange={() => onDecidir(o.valor)}
-                />
-                {o.texto}
-              </label>
-            ))}
-          </div>
+      {candidatos.length > 0 && !subido ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+          <p className="font-semibold">¿Es el mismo?</p>
+          {/* LOS MISMOS DOS BOTONES QUE LA TARJETA, desde el 2026-10-02 (CT-29).
+              Aqui eran dos pildoras de radio, porque la regla del design system
+              dice que una ELECCION se marca. Y segui siendo cierto mientras la
+              respuesta se guardara sola; ahora no: elegir abre una confirmacion
+              —la lista cuando hay varios, el dialogo cuando hay uno— asi que ya
+              no es un valor que se marca, es una accion que se pulsa. Un radio
+              que al tocarlo abre un dialogo miente sobre lo que acaba de pasar. */}
+          <AvisoDeDuplicado nombreEnLaLibreta={cliente.name} candidatos={candidatos}>
+            {candidatos.length > 1 ? (
+              <Button type="button" size="sm" onClick={onVerClientes}>
+                Ver clientes
+              </Button>
+            ) : (
+              <Button type="button" size="sm" onClick={() => onConfirmarCon(candidatos[0])}>
+                Es el mismo
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onDecidir({ cual: "otra" })}
+            >
+              Es otra persona
+            </Button>
+          </AvisoDeDuplicado>
         </div>
       ) : null}
 

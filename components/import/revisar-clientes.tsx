@@ -5,7 +5,6 @@ import {
   CircleAlert,
   RotateCcw,
   TriangleAlert,
-  UserRoundSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -45,6 +44,8 @@ import type {
   EstadoTarjeta,
   ClienteConEstado,
 } from "@/lib/estado-de-tarjeta";
+import { AvisoDeDuplicado } from "@/components/import/emparejar-cliente";
+import type { CandidatoDuplicado } from "@/lib/reconcile";
 
 export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
   subido: { texto: "Subido", clase: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400" },
@@ -76,11 +77,15 @@ function TarjetaCliente({
   cliente,
   decision,
   onDecidir,
+  onVerClientes,
+  onConfirmarCon,
   onAbrir,
 }: {
   cliente: ClienteConEstado;
   decision: DecisionDuplicado | undefined;
   onDecidir: (d: DecisionDuplicado) => void;
+  onVerClientes: () => void;
+  onConfirmarCon: (c: CandidatoDuplicado) => void;
   onAbrir: () => void;
   onSubir: () => void;
   subiendo: boolean;
@@ -175,30 +180,31 @@ function TarjetaCliente({
         </p>
       ))}
 
-      {/* El duplicado, con sus datos y sus dos botones. Sin opción marcada por
-          defecto: ver la nota de `DecisionDuplicado`. */}
-      {cliente.candidatoVisible && !decision ? (
+      {/* El duplicado. Un candidato pregunta; varios abren la lista (CT-29).
+          Sin opción marcada por defecto: ver la nota de `DecisionDuplicado`. */}
+      {cliente.candidatosVisibles.length > 0 && !decision ? (
         <div className="flex flex-col gap-2 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
-          <p className="flex items-start gap-1.5 text-sm">
-            <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            <span>
-              Ya tienes un &ldquo;{cliente.candidatoVisible.name}&rdquo; en tus clientes.
-              {cliente.candidatoVisible.document_id ? ` Documento: ${cliente.candidatoVisible.document_id}.` : " Sin documento."}
-              {cliente.candidatoVisible.balance_usd ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_usd, "USD")}.` : ""}
-              {cliente.candidatoVisible.balance_eur ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_eur, "EUR")}.` : ""}
-              {!cliente.candidatoVisible.balance_usd && !cliente.candidatoVisible.balance_eur && cliente.candidatoVisible.balance
-                ? ` Debe ${formatCurrency(cliente.candidatoVisible.balance)}.`
-                : ""}
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => onDecidir("mismo")}>
-              Es el mismo
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => onDecidir("otra")}>
+          <AvisoDeDuplicado
+            nombreEnLaLibreta={cliente.name}
+            candidatos={cliente.candidatosVisibles}
+          >
+            {cliente.candidatosVisibles.length > 1 ? (
+              <Button type="button" size="sm" onClick={onVerClientes}>
+                Ver clientes
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onConfirmarCon(cliente.candidatosVisibles[0])}
+              >
+                Es el mismo
+              </Button>
+            )}
+            <Button type="button" size="sm" variant="outline" onClick={() => onDecidir({ cual: "otra" })}>
               Es otra persona
             </Button>
-          </div>
+          </AvisoDeDuplicado>
         </div>
       ) : null}
 
@@ -209,15 +215,33 @@ function TarjetaCliente({
           maquinaria de reconciliar contra la lista COMPLETA de clientes existe
           precisamente para que la tarjeta siga ahí y se pueda cambiar de idea —
           sin este botón esa maquinaria no servía de nada. */}
-      {cliente.candidatoVisible && decision ? (
+      {cliente.candidatosVisibles.length > 0 && decision ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2">
           <p className="text-sm text-muted-foreground">
-            {decision === "otra"
+            {decision.cual === "otra"
               ? "Se registrará como un cliente nuevo, con su propio documento."
-              : `Se sumará al “${cliente.candidatoVisible.name}” que ya tienes.`}
+              : `Se sumará al “${
+                  cliente.candidatosVisibles.find((c) => c.id === decision.clientId)?.name ??
+                  "cliente que ya tienes"
+                }”.`}
           </p>
-          <Button type="button" size="sm" variant="ghost" onClick={() => onDecidir(decision === "otra" ? "mismo" : "otra")}>
-            {decision === "otra" ? "Es el mismo" : "Es otra persona"}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              decision.cual === "otra"
+                ? cliente.candidatosVisibles.length > 1
+                  ? onVerClientes()
+                  : onConfirmarCon(cliente.candidatosVisibles[0])
+                : onDecidir({ cual: "otra" })
+            }
+          >
+            {decision.cual === "otra"
+              ? cliente.candidatosVisibles.length > 1
+                ? "Ver clientes"
+                : "Es el mismo"
+              : "Es otra persona"}
           </Button>
         </div>
       ) : null}
@@ -236,6 +260,8 @@ export function RevisarClientes({
   entradas,
   decisiones,
   onDecidir,
+  onVerClientes,
+  onConfirmarCon,
   onAbrir,
   onRestaurarCliente,
   onSubirCliente,
@@ -244,6 +270,8 @@ export function RevisarClientes({
   entradas: EntradaDeLaRevision[];
   decisiones: Record<string, DecisionDuplicado>;
   onDecidir: (nameKey: string, d: DecisionDuplicado) => void;
+  onVerClientes: (nameKey: string) => void;
+  onConfirmarCon: (nameKey: string, c: CandidatoDuplicado) => void;
   onAbrir: (nameKey: string) => void;
   onRestaurarCliente: (nameKey: string) => void;
   onSubirCliente: (nameKey: string) => void;
@@ -258,6 +286,8 @@ export function RevisarClientes({
             cliente={e.cliente}
             decision={decisiones[e.cliente.nameKey]}
             onDecidir={(d) => onDecidir(e.cliente.nameKey, d)}
+            onVerClientes={() => onVerClientes(e.cliente.nameKey)}
+            onConfirmarCon={(c) => onConfirmarCon(e.cliente.nameKey, c)}
             onAbrir={() => onAbrir(e.cliente.nameKey)}
             onSubir={() => onSubirCliente(e.cliente.nameKey)}
             subiendo={subiendo}

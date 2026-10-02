@@ -37,7 +37,7 @@ import {
 } from "../lib/ajuste-de-libreta.ts";
 import { conEstado } from "../lib/estado-de-tarjeta.ts";
 import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
-import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
+import { reconcileMovements, agruparPorCliente, seParecen } from "../lib/reconcile.ts";
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import { normalizeDocumentId } from "../lib/format.ts";
 import {
@@ -417,6 +417,70 @@ check("el prefijo V- tampoco", normalizeDocumentId("V-19887766") === "v19887766"
 check("ni las mayusculas", normalizeDocumentId("V-19887766") === normalizeDocumentId("v.19.887.766"));
 check("dos documentos distintos siguen siendo distintos", normalizeDocumentId("19887766") !== normalizeDocumentId("18223344"));
 
+
+// ═════════════════════════════════════════════════════════════════════════
+// VARIAS FICHAS DE LA MISMA PERSONA — CT-29
+//
+// Caso real de produccion: "Karina castillo (negocio lomas)" y "Karina castillo
+// (kari)" comparten la cedula 18356808 a proposito, y la migracion 034 tiro el
+// indice unico para permitirlo. Un renglon que diga solo "Karina castillo" no
+// casaba con ninguna de las dos.
+console.log("");
+console.log("-- Varias fichas de la misma persona (CT-29) -----------------");
+
+check("una grafia contiene a la otra -> se parecen", seParecen("Karina castillo", "Karina castillo (kari)"));
+check("y al reves tambien", seParecen("Karina castillo (kari)", "Karina castillo"));
+check("identicas, obviamente", seParecen("Ana Perez", "  ana perez "));
+// NO inventa parecidos: una letra distinta son dos personas distintas.
+check("Carina y Karina NO se parecen", !seParecen("Carina Lopez", "Karina Lopez"));
+// Por PALABRAS, no por subcadena: "ana" esta dentro de "mariana" y no son la
+// misma persona. La primera version de `seParecen` fallaba justo aqui.
+check("una palabra dentro de otra NO basta", !seParecen("Ana", "Mariana Gomez"));
+check("pero un nombre corto que SI es palabra suya, si", seParecen("Ana", "Ana Gomez"));
+check("los parentesis no estorban", seParecen("Karina castillo", "Karina castillo (negocio lomas)"));
+check("vacio no se parece a nada", !seParecen("", "Karina"));
+
+const lasDosKarinas = [
+  { id: "k1", name: "Karina castillo (negocio lomas)", balance: 0, balance_usd: 120, balance_eur: 0, document_id: "18356808", whatsapp: null },
+  { id: "k2", name: "Karina castillo (kari)", balance: 0, balance_usd: 45, balance_eur: 0, document_id: "18356808", whatsapp: null },
+  { id: "o1", name: "Otilio Prieto", balance: 0, balance_usd: 20, balance_eur: 0, document_id: "16334455", whatsapp: null },
+];
+const renglon = [mov({ client_name: "Karina castillo", amount: 30 })];
+const grupo = agruparPorCliente(reconcileMovements(renglon, lasDosKarinas), lasDosKarinas, { esVE: true })[0];
+check("se proponen LAS DOS, no una", grupo.candidatos.length === 2, `${grupo.candidatos.length}`);
+check("y no se cuela quien no se parece", !grupo.candidatos.some((c) => c.id === "o1"));
+// Orden alfabetico y por tanto estable: "(kari)" antes que "(negocio lomas)".
+// Que sea determinista importa mas que cual vaya primero — una lista que baila
+// entre renders es una lista donde se toca la opcion equivocada.
+check("cada una con su saldo, para poder distinguirlas", grupo.candidatos.map((c) => c.balance_usd).join("/") === "45/120", grupo.candidatos.map((c) => c.balance_usd).join("/"));
+
+// EL EMPAREJAMIENTO EXPLICITO MANDA SOBRE EL NOMBRE. Es lo unico que puede unir
+// "Karina castillo" con una ficha que se llama distinto: ninguna comparacion de
+// nombres las haria la misma.
+const sinElegir = reconcileMovements(renglon, lasDosKarinas)[0];
+check("sin elegir, no hay cliente emparejado", sinElegir.matched_client_id === null, String(sinElegir.matched_client_id));
+const conK2 = reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k2" })[0];
+check("elegida la segunda, la fila apunta a ELLA", conK2.matched_client_id === "k2", String(conK2.matched_client_id));
+check("y deja de pedir cedula, porque esa ficha ya la tiene", conK2.needs_document_id === false);
+const conK1 = reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k1" })[0];
+check("elegida la primera, apunta a la primera", conK1.matched_client_id === "k1", String(conK1.matched_client_id));
+
+// La exacta va primero: es la que el dueño espera ver arriba de la lista.
+const conExacta = [...lasDosKarinas, { id: "k0", name: "Karina castillo", balance: 0, balance_usd: 5, balance_eur: 0, document_id: "18356808", whatsapp: null }];
+const g2 = agruparPorCliente(reconcileMovements(renglon, conExacta), conExacta, { esVE: true })[0];
+check("la coincidencia exacta encabeza la lista", g2.candidatos[0].id === "k0", g2.candidatos[0].id);
+check("y siguen estando las tres", g2.candidatos.length === 3, String(g2.candidatos.length));
+
+// Un duplicado sin decidir sigue bloqueando a ESE cliente, como antes.
+const estadoKarina = conEstado([grupo], reconcileMovements(renglon, lasDosKarinas), {}, new Map([["karina castillo", grupo.candidatos]]), { exigeMoneda: false })[0];
+check("con varios candidatos y sin decidir, no se puede subir", estadoKarina.puedeSubir === false);
+// El chip dice "faltan datos" y no "duplicado" porque la cedula que falta gana:
+// es la regla que ya documenta `conEstado`, y sigue siendo la correcta — sin
+// cedula no se sube ni eligiendo bien.
+check("manda el bloqueo mas duro, la cedula", estadoKarina.estado === "faltan_datos", estadoKarina.estado);
+const yaElegido = conEstado([grupo], reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k2" }), { "karina castillo": { cual: "mismo", clientId: "k2" } }, new Map([["karina castillo", grupo.candidatos]]), { exigeMoneda: false })[0];
+check("elegida una, ya se puede subir", yaElegido.puedeSubir === true);
+
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR
 console.log("\n── Quitar y recuperar ───────────────────────────────────────");
@@ -455,7 +519,7 @@ const cliente = (p = {}) => ({
   name: "Ana",
   rowIds: ["r1"],
   movimientos: 1,
-  candidato: null,
+  candidatos: [],
   libros: [{ currency: "USD", totalPagina: 10, saldoPrevio: 0, saldoFinal: 10, estado: "cuadra", escrito: null, calculado: null, filaDelTotal: null }],
   necesitaDocumento: false,
   necesitaMoneda: false,
@@ -483,15 +547,15 @@ check(
 );
 check(
   "la cédula que falta gana al duplicado sin decidir",
-  estadoDe(cliente(), [fila({ needs_document_id: true })], {}, new Map([["ana", candidato]])).estado === "faltan_datos",
+  estadoDe(cliente(), [fila({ needs_document_id: true })], {}, new Map([["ana", [candidato]]])).estado === "faltan_datos",
 );
 check(
   "un duplicado sin decidir bloquea",
-  estadoDe(cliente(), [fila()], {}, new Map([["ana", candidato]])).estado === "duplicado",
+  estadoDe(cliente(), [fila()], {}, new Map([["ana", [candidato]]])).estado === "duplicado",
 );
 check(
   "decidido, deja de bloquear",
-  estadoDe(cliente(), [fila()], { ana: "mismo" }, new Map([["ana", candidato]])).estado === "cuadra",
+  estadoDe(cliente(), [fila()], { ana: { cual: "mismo", clientId: "c1" } }, new Map([["ana", [candidato]]])).estado === "cuadra",
 );
 check(
   "una suma que no cuadra gana a 'sin verificar'",
@@ -681,12 +745,12 @@ check(
 );
 check(
   "duplicado sin decidir -> no se puede subir",
-  estadoDe(cliente(), [conMoneda()], {}, new Map([["ana", candidato]]), { exigeMoneda: true })
+  estadoDe(cliente(), [conMoneda()], {}, new Map([["ana", [candidato]]]), { exigeMoneda: true })
     .puedeSubir === false,
 );
 check(
   "duplicado ya decidido -> se puede subir",
-  estadoDe(cliente(), [conMoneda()], { ana: "mismo" }, new Map([["ana", candidato]]), {
+  estadoDe(cliente(), [conMoneda()], { ana: { cual: "mismo", clientId: "c1" } }, new Map([["ana", [candidato]]]), {
     exigeMoneda: true,
   }).puedeSubir === true,
 );
@@ -724,7 +788,7 @@ const unaRevision = {
   movimientos: [mov({ uid: "a", amount: 50 })],
   eliminados: ["b"],
   clientesQuitados: { ana: ["b"] },
-  decisiones: { ana: "mismo" },
+  decisiones: { ana: { cual: "mismo", clientId: "c1" } },
   decisionesDeTotal: { "ana|USD": { cual: "libreta", escrito: 95, calculado: 70 } },
   subidos: ["otra"],
   sameClient: true,
@@ -742,7 +806,7 @@ check(
   vuelta &&
     vuelta.movimientos.length === 1 &&
     vuelta.eliminados[0] === "b" &&
-    vuelta.decisiones.ana === "mismo" &&
+    vuelta.decisiones.ana.cual === "mismo" &&
     vuelta.sharedName === "Ana" &&
     vuelta.sameClient === true &&
     vuelta.unlinked[0] === "c",
