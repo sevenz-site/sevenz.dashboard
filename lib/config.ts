@@ -30,10 +30,11 @@ export const PASOS_IMPORTAR = [
   "Revisas, corriges lo que haga falta y guardas todo de una vez.",
 ] as const;
 
-// Free plan: photos are capped per calendar month (resets on the 1st). Only
-// successfully-processed photos count — a failed OCR read doesn't burn quota.
-// Pro has no limit.
-export const FREE_PLAN_MONTHLY_IMPORT_LIMIT = 5;
+// FREE_PLAN_MONTHLY_IMPORT_LIMIT se retiró el 2026-09-28: subir la libreta ya
+// no tiene tope en ningún plan. La constante se borra en vez de quedarse en 0 o
+// en Infinity porque un tope que no se aplica es una mentira esperando a que
+// alguien lo lea y lo dé por cierto. Si vuelve a hacer falta, vuelve entera:
+// lo que la aplicaba era `limit`/`remaining` en lib/import-usage.ts.
 
 // WhatsApp de soporte, sin "+" ni espacios: así lo quiere wa.me. Lo usa el
 // diálogo que aparece cuando no se pueden leer los datos del negocio, que sin

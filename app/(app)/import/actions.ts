@@ -9,7 +9,10 @@ import { recordMovementRejection } from "@/lib/movement-rejection";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
-import { DOCUMENT_SOURCE } from "@/lib/types";
+// DOCUMENT_SOURCE ya no se importa aquí: quien escribe `document_source` es
+// ahora `import_libreta()` (migración 073), que pone 'owner' porque la cédula
+// la tecleó el dueño en la revisión y no salió de la foto. La restricción que
+// admite solo 'owner' y 'client' está en la 063.
 
 export type ImportRow = {
   client_id: string | null;
@@ -37,6 +40,23 @@ export type ImportRow = {
   // donde nadie la veía. Ahora resolveMovementRateSnapshot rechaza, y la tanda
   // entera se detiene sin escribir ni una fila.
   currency: LedgerCurrency | null;
+  // La nota interna del dueño sobre esta línea. Hoy la escribe una sola cosa:
+  // importar una página cuya suma no cuadraba con el total escrito a mano.
+  //
+  // NUNCA se mete en `description`. `description` es lo único de un movimiento
+  // que el cliente lee en `/s/[token]`, y esto es una nota del dueño sobre sus
+  // dudas con las cuentas de esa persona. Columna aparte desde la 074, y
+  // `get_shared_balance` enumera sus campos uno a uno, así que no se filtra
+  // sola.
+  owner_note?: string | null;
+  // La fecha que la IA leyó en la libreta, ya corregida por el dueño si hizo
+  // falta, en ISO. Null cuando la página no traía fecha en ese renglón: entonces
+  // el movimiento se guarda con la de la subida.
+  //
+  // NO ES UN CAMPO MÁS. `created_at` decide el saldo corrido y la mora — ver la
+  // cabecera de la migración 076 —, y por eso la función descarta una fecha
+  // futura o anterior a 2015 en vez de fiarse de lo que llegue de aquí.
+  created_at?: string | null;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -166,45 +186,67 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     });
   }
 
-  const clientIdByName = new Map<string, string>();
-  let imported = 0;
+  // ── De aquí abajo ya no se escribe: se ARMA ──────────────────────────
+  //
+  // Este bucle era el que insertaba fila a fila, y ante el primer fallo volvía
+  // con las que ya habían entrado: `return { error, imported }`. Sin
+  // transacción, la fila 27 de 30 dejaba 26 escritas, el dueño entendía «no se
+  // importó», lo reintentaba, y 26 clientes acababan con sus fiados por
+  // duplicado.
+  //
+  // Ahora recorre lo mismo y toma las mismas decisiones, pero en vez de
+  // escribir construye el payload que `import_libreta()` (migración 073)
+  // escribe de una sola vez. Por eso `imported` es 0 en TODOS los errores de
+  // aquí: no se ha tocado nada, y decir otra cosa sería justo la mentira que
+  // hacía peligroso reintentar.
+  //
+  // LAS COMPROBACIONES DE ABAJO SE QUEDAN AUNQUE LA FUNCIÓN LAS REPITA. Es
+  // deliberado y es la regla de CLAUDE.md: la función es `SECURITY DEFINER`,
+  // así que TIENE que validar por su cuenta —no puede fiarse de lo que le
+  // llegue—, y aquí se validan otra vez para fallar antes del viaje y, sobre
+  // todo, para poder decir el nombre del cliente en la frase. La función
+  // devuelve un `code`; el castellano vive aquí.
+  const clientsNew: {
+    key: string;
+    name: string;
+    document_id: string;
+    whatsapp: string | null;
+    document_country: string | null;
+  }[] = [];
+  const clientDocuments: { client_id: string; document_id: string }[] = [];
+  const clientWhatsapps: { client_id: string; whatsapp: string }[] = [];
+  const movements: Record<string, unknown>[] = [];
+
+  // Una clave temporal por cliente nuevo. El movimiento no puede traer un uuid
+  // que todavía no existe, así que trae esto y la función lo traduce.
+  const keyByName = new Map<string, string>();
 
   for (const row of rows) {
     const cacheKey = row.client_name.trim().toLowerCase();
-    let clientId: string;
-
     const documentId = row.document_id?.trim() || null;
+    let clientId: string | null = null;
+    let clientKey: string | null = null;
 
     if (row.client_id) {
       if (!ownedClientIds.has(row.client_id)) {
-        return { error: `Cliente inválido para "${row.client_name}".`, imported };
+        return { error: `Cliente inválido para "${row.client_name}".`, imported: 0 };
       }
       clientId = row.client_id;
       // Only require/persist a document_id here if this client didn't
       // already have one — never overwrite an existing value.
       if (!existingDocumentIds.get(clientId)) {
         if (!documentId) {
-          return { error: `Falta la cédula/documento de "${row.client_name}".`, imported };
+          return { error: `Falta la cédula/documento de "${row.client_name}".`, imported: 0 };
         }
-        const { error: updateError } = await supabase
-          .from("clients")
-          // Reached only when the record had NO document, so the shopkeeper is
-          // the one supplying it. See supabase/063_document_source.sql.
-          .update({ document_id: documentId, document_source: DOCUMENT_SOURCE.OWNER })
-          .eq("id", clientId);
-        if (updateError) {
-          return {
-            error: `No pudimos guardar la cédula de "${row.client_name}": ${updateError.message}`,
-            imported,
-          };
-        }
+        clientDocuments.push({ client_id: clientId, document_id: documentId });
+        // Para que una segunda fila del mismo cliente no lo pida otra vez.
         existingDocumentIds.set(clientId, documentId);
       }
-    } else if (clientIdByName.has(cacheKey)) {
-      clientId = clientIdByName.get(cacheKey)!;
+    } else if (keyByName.has(cacheKey)) {
+      clientKey = keyByName.get(cacheKey)!;
     } else {
       if (!documentId) {
-        return { error: `Falta la cédula/documento de "${row.client_name}".`, imported };
+        return { error: `Falta la cédula/documento de "${row.client_name}".`, imported: 0 };
       }
 
       const normalizedDocumentId = normalizeDocumentId(documentId);
@@ -214,59 +256,41 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
           error: duplicate.hidden
             ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera y vuelve a seleccionarlo en la tabla.`
             : `Ya existe un cliente con esta cédula: ${duplicate.name}. Selecciónalo en la tabla en vez de crear uno nuevo.`,
-          imported,
+          imported: 0,
         };
       }
 
-      const { data: newClient, error: clientError } = await supabase
-        .from("clients")
-        .insert({
-          owner_id: user.id,
-          name: row.client_name.trim(),
-          document_id: documentId,
-          // Opcional: `null` si el dueño no lo escribió en la revisión, que es
-          // lo normal. La columna admite nulos desde siempre.
-          whatsapp: row.whatsapp?.trim() || null,
-          document_source: DOCUMENT_SOURCE.OWNER,
-          document_country: ownerCountry,
-        })
-        .select("id")
-        .single();
-
-      if (clientError || !newClient) {
-        return {
-          error: `No pudimos crear el cliente "${row.client_name}": ${clientError?.message ?? "error desconocido"}`,
-          imported,
-        };
-      }
-      clientId = newClient.id as string;
-      clientIdByName.set(cacheKey, clientId);
+      clientKey = `c${clientsNew.length}`;
+      keyByName.set(cacheKey, clientKey);
+      clientsNew.push({
+        key: clientKey,
+        name: row.client_name.trim(),
+        document_id: documentId,
+        // Opcional: `null` si el dueño no lo escribió en la revisión, que es
+        // lo normal. La columna admite nulos desde siempre.
+        whatsapp: row.whatsapp?.trim() || null,
+        document_country: ownerCountry,
+      });
+      // Se apunta con la clave temporal en vez del id, que aún no existe: lo
+      // que importa de este índice es detectar el choque, no a quién señala.
       clientsByNormalizedDocumentId.set(normalizedDocumentId, {
-        id: clientId,
+        id: clientKey,
         name: row.client_name.trim(),
         hidden: false,
       });
     }
 
-    // El WhatsApp, si el dueño lo escribió y el cliente no tenía.
+    // El WhatsApp de un cliente que YA existe. Los nuevos lo llevan en su
+    // propia entrada, arriba.
     //
-    // `.is("whatsapp", null)` en vez de leer primero y decidir: así el update
-    // NO PUEDE pisar un número ya guardado, ni siquiera si dos filas de la
-    // misma tanda traen números distintos para el mismo cliente. El de la
-    // libreta puede ser más viejo que el que el dueño corrigió a mano en la
-    // ficha, y en esa duda gana siempre lo que ya estaba.
-    //
-    // `.eq("owner_id", user.id)` aunque `clientId` ya venga validado arriba:
-    // es la regla de comprobaciones explícitas de CLAUDE.md — RLS es el
-    // respaldo, no la única línea.
+    // La función lo escribe con `whatsapp is null` en el WHERE, así que no
+    // puede pisar un número ya guardado ni aunque dos filas de la misma tanda
+    // traigan números distintos: el de la libreta puede ser más viejo que el
+    // que el dueño corrigió a mano en la ficha, y en esa duda gana siempre lo
+    // que ya estaba.
     const numero = row.whatsapp?.trim();
-    if (numero) {
-      await supabase
-        .from("clients")
-        .update({ whatsapp: numero })
-        .eq("id", clientId)
-        .eq("owner_id", user.id)
-        .is("whatsapp", null);
+    if (numero && clientId) {
+      clientWhatsapps.push({ client_id: clientId, whatsapp: numero });
     }
 
     // No needs_review here: the owner already saw and could fix every
@@ -274,14 +298,13 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     // confirming the import *is* the review — defaults to false in the DB.
     const resolved = snapshots.get(row.currency ?? "COP")!;
 
-    const { error: movementError } = await supabase.from("movements").insert({
+    movements.push({
       client_id: clientId,
-      created_by: user.id,
+      client_key: clientKey,
       type: row.type,
       amount: row.amount,
       currency: resolved.currency,
       description: row.description,
-      source: "photo_import",
       rate_mode_used: resolved.rateModeUsed,
       exchange_rate_used: resolved.exchangeRateUsed,
       official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
@@ -289,17 +312,46 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       entry_amount: resolved.entryCurrency ? row.amount : null,
       rate_usd_at_time: resolved.rateUsdAtTime,
       rate_eur_at_time: resolved.rateEurAtTime,
+      owner_note: row.owner_note?.trim() || null,
+      created_at: row.created_at ?? null,
     });
-
-    if (movementError) {
-      return {
-        error: `No pudimos guardar el movimiento de "${row.client_name}": ${movementError.message}`,
-        imported,
-      };
-    }
-
-    imported += 1;
   }
+
+  // ── La única escritura, y es una ──────────────────────────────────────
+  const { data, error: rpcError } = await supabase.rpc("import_libreta", {
+    p_payload: {
+      clients_new: clientsNew,
+      client_documents: clientDocuments,
+      client_whatsapps: clientWhatsapps,
+      movements,
+    },
+  });
+
+  if (rpcError) {
+    // Una excepción dentro de la función: ya deshizo todo lo suyo. Lo que el
+    // dueño necesita saber cabe en media frase, y es justo lo que antes no se
+    // le podía decir. El detalle va al log, no a la pantalla.
+    console.error("import_libreta:", rpcError);
+    return {
+      error: "No pudimos subir la libreta. No se guardó nada, puedes intentarlo otra vez.",
+      imported: 0,
+    };
+  }
+
+  const resultado = data as {
+    ok: boolean;
+    code?: string;
+    client_name?: string;
+    hidden?: boolean;
+    imported?: number;
+    clients_created?: number;
+  };
+
+  if (!resultado.ok) {
+    return { error: mensajeDeImportacion(resultado), imported: 0 };
+  }
+
+  const imported = resultado.imported ?? 0;
 
   // The photo-import path had no analytics at all: an owner who works mainly
   // from their libreta could import dozens of movements and register as
@@ -309,10 +361,50 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   trackServer(
     "Import Confirmed",
     user.id,
-    { movements_imported: imported, clients_created: clientIdByName.size },
+    { movements_imported: imported, clients_created: resultado.clients_created ?? 0 },
     user.email,
   );
 
   revalidatePath("/dashboard");
   return { error: null, imported };
+}
+
+// El castellano de los rechazos de `import_libreta()`.
+//
+// La función devuelve un `code` y los datos para armar la frase, y no la frase:
+// el copy que lee el tendero se cambia aquí, sin una migración, y no hay dos
+// idiomas conviviendo dentro de un archivo .sql. Mismo patrón que los `skip` de
+// `whatsapp_send_begin`.
+//
+// Casi todos estos casos los caza ya la comprobación de arriba, que corre antes
+// del viaje. Llegan aquí los que se le escapan: una carrera —el cliente se fue a
+// la papelera en otra pestaña mientras la revisión estaba abierta— o un payload
+// que no salió de esta pantalla.
+function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?: boolean }): string {
+  switch (r.code) {
+    case "sin_sesion":
+      return "Sesión expirada, vuelve a entrar.";
+    case "cuenta_pausada":
+      return MENSAJE_CUENTA_PAUSADA;
+    case "sin_movimientos":
+      return "No hay movimientos para subir.";
+    case "cliente_invalido":
+      return "Uno de los clientes de esta libreta ya no está disponible. Vuelve a abrir la revisión.";
+    case "cliente_en_papelera":
+      return `${r.client_name ?? "Un cliente"} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`;
+    case "falta_nombre":
+      return "Hay una fila sin nombre de cliente.";
+    case "falta_documento":
+      return `Falta la cédula/documento de "${r.client_name ?? "un cliente"}".`;
+    case "documento_de_otro_cliente":
+      return r.hidden
+        ? `${r.client_name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera y vuelve a seleccionarlo en la tabla.`
+        : `Ya existe un cliente con esta cédula: ${r.client_name}. Selecciónalo en la tabla en vez de crear uno nuevo.`;
+    case "documento_repetido_en_lote":
+      return `Hay dos clientes con la misma cédula en esta libreta, uno de ellos "${r.client_name ?? ""}". Cada persona necesita la suya.`;
+    case "referencia_invalida":
+      return "Un movimiento quedó sin cliente. Vuelve a abrir la revisión.";
+    default:
+      return "No pudimos subir la libreta. No se guardó nada, puedes intentarlo otra vez.";
+  }
 }

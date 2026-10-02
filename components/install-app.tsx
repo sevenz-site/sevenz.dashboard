@@ -211,7 +211,7 @@ export function InstallAppBanner() {
           encima del 4.5:1 que pide AA. El blanco del título, 14.9:1. */}
       <div className="relative flex items-center gap-4 rounded-2xl bg-[#272727] p-4 pr-12">
         <Image
-          src="/icon.svg"
+          src="/fav-icon-primary.svg"
           alt=""
           width={56}
           height={56}

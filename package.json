@@ -25,7 +25,11 @@
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
     "qa:pausados": "node qa/whatsapp-pausados.mjs",
     "qa:plantillas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-plantillas.mjs",
-    "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs"
+    "qa:import": "node qa/import-libreta.mjs",
+    "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
+    "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs",
+    "qa:libreta:fixture": "node qa/libreta-fixture.mjs",
+    "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

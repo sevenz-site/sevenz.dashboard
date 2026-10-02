@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE } from "@/lib/types";
+import { mensajeDeError } from "@/lib/errores-legibles";
+import { normalizeDocumentId } from "@/lib/format";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
 // la 061 se las rechaza a una cuenta pausada. Por eso cada una empieza
@@ -70,6 +72,59 @@ export async function updateClient(
   // the address — silently erasing the very thing the column exists to hold.
   const documentChanged = (previous?.document_id ?? "").trim() !== documentId;
 
+  // NADIE PUEDE EDITAR A UN CLIENTE HASTA DARLE LA CEDULA DE OTRO (CT-28).
+  //
+  // Esta comprobacion existia al CREAR (`createClientWithMovement`) y al
+  // IMPORTAR (`confirmImport`), y aqui no existia en absoluto: editar a Carmen
+  // y ponerle la cedula de Petra se guardaba sin una palabra, con su toast de
+  // "Cliente actualizado". Visto en dev el 2026-10-01 al intentar provocar el
+  // error de clave repetida para comprobar otra cosa.
+  //
+  // Y no es cosmetico. `confirmImport` monta un Map de clientes POR CEDULA
+  // NORMALIZADA (`clientsByNormalizedDocumentId`) para decidir a quien
+  // pertenece cada renglon de una libreta: con dos fichas compartiendo cedula,
+  // una gana y la otra no, en silencio, y un fiado puede acabar en la persona
+  // equivocada. El agujero estaba en una pantalla de contacto y salia por el
+  // camino del dinero.
+  //
+  // Se compara NORMALIZADA —sin puntos ni mayusculas— porque el documento se
+  // guarda tal como se teclea: "V-19.887.766" y "19887766" son el mismo.
+  // Se incluyen los ocultos y los de la papelera por lo mismo que al crear:
+  // dejarlos fuera permitiria duplicar a alguien que solo esta escondido.
+  //
+  // BLOQUEA, no pregunta. Al crear se puede confirmar que es otra cuenta a
+  // proposito —el caso "Pepito" y "Pepito negocio"—, y ese camino sigue
+  // abierto; lo que no tiene sentido es llegar a esa situacion EDITANDO a
+  // alguien que ya existe. Si hace falta, se anade aqui la misma confirmacion.
+  //
+  // SOLO SI LA CEDULA CAMBIA, y esto no es un detalle: el duplicado deliberado
+  // EXISTE y esta en produccion. Medido el 2026-10-01 — "Karina castillo
+  // (negocio lomas)" y "Karina castillo (kari)" comparten la 18356808 a
+  // proposito, que es exactamente el caso para el que la migracion 034 tiro el
+  // indice unico. Comprobando en cada guardado, su duenia no podria volver a
+  // tocarles NI LA DIRECCION: le saldria "esa cedula ya es de Karina castillo
+  // (kari)" al editar a Karina castillo. Un cliente que ya convive con su
+  // duplicado se queda como esta; lo que se impide es CREAR la colision desde
+  // aqui.
+  if (documentId && documentChanged) {
+    const normalizado = normalizeDocumentId(documentId);
+    const { data: suyos } = await supabase
+      .from("clients")
+      .select("id, name, document_id")
+      .eq("owner_id", user.id)
+      .neq("id", clientId)
+      .not("document_id", "is", null);
+    const choca = suyos?.find(
+      (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizado,
+    );
+    if (choca) {
+      return {
+        error: `Esa cédula ya es de ${choca.name}. Revísala, o abre su ficha si es la misma persona.`,
+        success: false,
+      };
+    }
+  }
+
   // document_country is deliberately absent from this update: it's inherited
   // from the owner at creation and no longer editable in the UI, so listing
   // it here would wipe the stored value to null on every save.
@@ -89,7 +144,7 @@ export async function updateClient(
     .eq("owner_id", user.id);
 
   if (error) {
-    return { error: `No pudimos guardar los cambios: ${error.message}`, success: false };
+    return { error: mensajeDeError("guardar los cambios", error, "updateClient"), success: false };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -125,7 +180,7 @@ export async function flagClient(
     reason,
   });
   if (flagError) {
-    return { error: `No pudimos registrar la marca: ${flagError.message}`, success: false };
+    return { error: mensajeDeError("registrar la marca", flagError, "flagClient"), success: false };
   }
 
   const { error: updateError } = await supabase
@@ -134,7 +189,7 @@ export async function flagClient(
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos marcar al cliente: ${updateError.message}`, success: false };
+    return { error: mensajeDeError("marcar al cliente", updateError, "flagClient"), success: false };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -160,7 +215,7 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
     .eq("owner_id", user.id)
     .is("unflagged_at", null);
   if (closeError) {
-    return { error: `No pudimos quitar la marca: ${closeError.message}` };
+    return { error: mensajeDeError("quitar la marca", closeError, "unflagClient") };
   }
 
   const { error: updateError } = await supabase
@@ -169,7 +224,7 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos quitar la marca: ${updateError.message}` };
+    return { error: mensajeDeError("quitar la marca", updateError, "unflagClient") };
   }
 
   revalidatePath(`/clients/${clientId}`);
@@ -243,7 +298,7 @@ export async function trashClient(clientId: string): Promise<HideClientState> {
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (updateError) {
-    return { error: `No pudimos mover el cliente a la papelera: ${updateError.message}` };
+    return { error: mensajeDeError("mover el cliente a la papelera", updateError, "trashClient") };
   }
 
   // The notification is the undo path, the same way movement_deletions is for
@@ -297,7 +352,7 @@ export async function restoreClient(clientId: string): Promise<HideClientState> 
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (error) {
-    return { error: `No pudimos restaurar el cliente: ${error.message}` };
+    return { error: mensajeDeError("restaurar el cliente", error, "restoreClient") };
   }
 
   const { error: hideError } = await supabase.from("client_hides").insert({
@@ -346,7 +401,7 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
     .eq("id", clientId)
     .eq("owner_id", user.id);
   if (error) {
-    return { error: `No pudimos ocultar el cliente: ${error.message}` };
+    return { error: mensajeDeError("ocultar el cliente", error, "hideClient") };
   }
 
   const { error: hideError } = await supabase.from("client_hides").insert({
@@ -410,7 +465,7 @@ export async function setClientProfilePicture(
     .eq("id", clientId)
     .eq("owner_id", user.id);
 
-  if (error) return { error: `No pudimos guardar la foto: ${error.message}` };
+  if (error) return { error: mensajeDeError("guardar la foto", error, "clientPhoto") };
 
   // El archivo viejo se borra de verdad, y después de actualizar la fila, no
   // antes: si el borrado falla queda un archivo huérfano ocupando espacio, que

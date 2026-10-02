@@ -79,10 +79,25 @@ async function makeClient(name, documentId, movements) {
     .select("id")
     .single();
   if (error) throw error;
-  if (movements.length > 0) {
+  // DE UNO EN UNO, Y CON AUTOR. Dos cosas que este fixture no hacia y que
+  // dejaban dos suites en rojo permanente:
+  //
+  //   `created_by` faltaba -> qa:currency fallaba en "ningun movimiento sin
+  //   autor", que es una invariante real del producto desde la 049.
+  //
+  //   El insert de varias filas en UNA sentencia les da el MISMO created_at
+  //   -- now() es constante dentro de una transaccion -- y entonces el trigger
+  //   set_movement_running_balance desempata por uuid, que es aleatorio. Es
+  //   exactamente el fallo que la migracion 075 arreglo dentro de
+  //   import_libreta, y aqui reaparecia: "QA Saldado" quedaba con saldo 30000
+  //   cuando sus dos movimientos suman 0, y qa:parity lo cazaba.
+  //
+  // Insertadas de una en una, cada una cae en su propia transaccion y su
+  // propio now(), asi que la cadena sale en el orden escrito.
+  for (const m of movements) {
     const { error: mError } = await db
       .from("movements")
-      .insert(movements.map((m) => ({ client_id: c.id, ...m })));
+      .insert({ client_id: c.id, created_by: ownerId, ...m });
     if (mError) throw mError;
   }
   return c.id;

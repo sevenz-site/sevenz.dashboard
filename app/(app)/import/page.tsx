@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
-import { RANURA_ACCION_CABECERA } from "@/components/import/ranura-cabecera";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -20,7 +19,7 @@ export default async function ImportPage() {
   const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
-      .select("client_id, name, balance, balance_usd, balance_eur, document_id")
+      .select("client_id, name, balance, balance_usd, balance_eur, document_id, whatsapp")
       .eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
     // Para la línea de bolívares del resumen de confirmación, nada más.
@@ -53,6 +52,11 @@ export default async function ImportPage() {
     balance_usd: (c.balance_usd as number | null) ?? 0,
     balance_eur: (c.balance_eur as number | null) ?? 0,
     document_id: c.document_id as string | null,
+    // Solo para NO pedir un WhatsApp que el cliente ya tiene guardado. Sin esto
+    // la revisión decía "Falta el WhatsApp" a un cliente que lo tenía —visto en
+    // dev el 2026-09-28 con QA Debe Plata— porque el aviso se calculaba
+    // únicamente con lo que traía la foto, y la foto nunca trae teléfonos.
+    whatsapp: c.whatsapp as string | null,
   }));
 
   return (
@@ -69,11 +73,6 @@ export default async function ImportPage() {
             corregidos a mano, sin un aviso. Es el mismo componente y el mismo
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
-        {/* Vacío casi siempre. Mientras se revisa una libreta, ImportFlow
-            manda aquí su botón de "Guardar todo" por portal — ver
-            components/import/ranura-cabecera.tsx. `ml-auto` lo pega a la
-            derecha; con la ranura vacía no ocupa nada. */}
-        <div id={RANURA_ACCION_CABECERA} className="ml-auto flex items-center" />
       </div>
       <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
       {ownerCountry ? (

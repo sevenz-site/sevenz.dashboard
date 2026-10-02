@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
+import { ErrorParaElDueno, mensajeDeError } from "@/lib/errores-legibles";
 import { createClient } from "@/lib/supabase/server";
-import { getImportUsageForOwner } from "@/lib/import-usage";
 import type { ExtractedMovement } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+// 60 y no 90: el plan Hobby no concede 90, así que declararlo no daba más
+// tiempo, solo una cifra falsa en la que el resto del archivo se apoyaba. Es el
+// máximo que el plan da, y `PRESUPUESTO_MS` se queda por debajo a propósito —
+// ver la nota del presupuesto.
+export const maxDuration = 60;
 
 // Gemini's free tier is rate- and token-limited, and this key is SHARED
 // across every owner on the platform — two different owners importing a
@@ -32,27 +36,174 @@ class TransientGeminiError extends Error {
     this.name = "TransientGeminiError";
   }
 }
-const REQUEST_TIMEOUT_MS = 55_000;
-const SPACING_BETWEEN_CALLS_MS = 4_000;
-const MAX_RETRIES_ON_RATE_LIMIT = 2;
-const RETRY_BACKOFF_MS = [5_000, 10_000];
+// ─────────────────────────────────────────────────────────────────────────
+// UN PRESUPUESTO PARA TODA LA PETICIÓN, NO UN TIEMPO POR INTENTO
+//
+// Antes esto era un timeout de 55s por llamada y hasta 2 reintentos con esperas
+// de 5s y 10s. El peor caso sumaba 55+5+55+10+55 = 180 SEGUNDOS, contra un
+// `maxDuration` declarado de 90 que además el plan Hobby nunca concedió. O sea
+// que la función no podía cumplir ni su propio límite.
+//
+// Lo que eso producía, y lo reportó el usuario el 2026-09-28 subiendo una
+// libreta desde el teléfono tres veces seguidas: la plataforma mataba la
+// función a mitad, el navegador no recibía NINGUNA respuesta, y `fetch` lanzaba
+// un TypeError que llegaba a la pantalla como "Failed to fetch".
+//
+// LA REGLA QUE ESTO IMPONE: agotamos el tiempo NOSOTROS antes que la
+// plataforma. Un timeout propio devuelve una frase que el dueño puede leer y
+// una foto que puede reintentar; uno de la plataforma devuelve una conexión
+// muerta y un error en inglés.
+//
+// Y de paso da lo que se pedía —más reintentos—, pero por el otro lado: 55s no
+// es lo que tarda Gemini, es cuánto se le espera. Una lectura sana tarda entre
+// 5 y 15 segundos. Con intentos cortos caben TRES en el mismo presupuesto en
+// vez de UNO largo, y contra un 429 —que es lo que devuelve ahora— tres
+// intentos cortos valen mucho más que uno eterno.
+// Un timeout ya NO es definitivo: con presupuesto de sobra se reintenta, igual
+// que un 429. Antes no se reintentaba nunca, y era la decisión correcta cuando
+// un intento se comía 55 de los 90 segundos — no quedaba sitio. Con intentos de
+// 20s sí queda, y una lectura que tardó demasiado suele ir bien a la segunda.
+class TimeoutGeminiError extends Error {
+  constructor(readonly msEsperados: number) {
+    super(`Gemini tardó más de ${Math.round(msEsperados / 1000)}s en responder.`);
+    this.name = "TimeoutGeminiError";
+  }
+}
 
-const EXTRACTION_PROMPT = `Eres un asistente que digitaliza la libreta de fiado de una tienda de barrio.
+// ─────────────────────────────────────────────────────────────────────────
+// UNA CADENA DE MODELOS, Y POR QUÉ
+//
+// La capa gratuita de Gemini limita a 20 peticiones AL DÍA por proyecto y
+// **por modelo** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, medido
+// el 2026-09-28 leyendo el cuerpo del 429). Veinte, para todos los dueños de
+// la plataforma juntos. Cuando se agota, ningún reintento sirve: no se repone
+// hasta el día siguiente, aunque el error diga "reintenta en 30s" —eso es el
+// respiro por minuto, no la cuota.
+//
+// Como el cubo es POR MODELO, pasar al siguiente da un cubo nuevo. Cuatro
+// modelos distintos ⇒ hasta 80 al día en vez de 20.
+//
+// LO QUE ESTO NO ES: la solución. 80 fotos diarias entre todos los dueños
+// sigue sin ser un producto — una libreta de seis páginas se lleva el 7,5% del
+// día de la plataforma entera. Lo que quita el techo es activar la facturación
+// en Gemini. Esto compra margen mientras tanto, y resistencia a que un modelo
+// concreto esté caído, que es un problema distinto y permanente.
+//
+// VERSIONES FIJADAS, SIN ALIAS. `gemini-flash-lite-latest` existe y responde,
+// pero apunta a lo que Google decida y se mueve sin avisar. Además fue
+// justamente el que en la prueba del 2026-09-28 registró como FIADO un abono
+// de 19 —el saldo bajaba de 102,5 a 83,5 y él anotó una deuda subiendo—, así
+// que no entra. Un alias que cambia de calidad por debajo es la clase de fallo
+// que aparece un martes sin que nadie haya tocado nada.
+//
+// EL ORDEN ES POR CALIDAD, NO POR DISPONIBILIDAD — y eso sigue siendo cierto.
+// Lo que cambió el 2026-10-01 es qué sabemos de cada uno.
+//
+// `gemini-3.5-flash-lite` iba el último y marcado como no medido, pero no
+// porque leyera peor: porque el día de la prueba anterior dio 503 y timeout y
+// no se pudo medir. Ya se midió, contra OCHO libretas escritas a mano: nombres,
+// montos y saldos correctos, y —lo que de verdad importa— las DIRECCIONES bien
+// en todas, incluidas las que escriben "Paga" y "pagó" en vez de "abono". Un
+// abono anotado como fiado es el error que esta lista existe para evitar, y no
+// lo cometió ni una vez.
+//
+// Y pasa a ser el primero por una razón que no es la velocidad en sí: el
+// anterior primario SE PASA DEL TOPE POR INTENTO con frecuencia. Medido el
+// mismo día: 16, 19, 32, 34, 45, 47 y 64 segundos contra un `INTENTO_MAX_MS` de
+// 15. Un modelo que no llega a tiempo no es de más calidad: es un modelo que
+// devuelve nada. El nuevo primero tarda 1,3–2,6s, que deja el presupuesto
+// entero para los respaldos en vez de gastárselo en el primer intento.
+//
+// Los otros dos se quedan donde están. `gemini-3.1-flash-lite` sigue medido de
+// la prueba anterior (23 movimientos, direcciones correctas, 10,5s).
+// `gemini-3.6-flash` sigue sin medirse: dio 503 las dos veces que se intentó,
+// el 2026-09-30 y el 2026-10-01.
+const MODELOS = [
+  { nombre: "gemini-3.5-flash-lite", medido: true },
+  { nombre: "gemini-3-flash-preview", medido: true },
+  { nombre: "gemini-3.1-flash-lite", medido: true },
+  { nombre: "gemini-3.6-flash", medido: false },
+] as const;
+
+const PRESUPUESTO_MS = 50_000;
+// Lo máximo que se le espera a UN intento. El resto del presupuesto queda para
+// los siguientes.
+// 15s y no 20: con 20 solo caben DOS modelos en el presupuesto, y la cadena
+// existe justamente para probar varios. Una lectura sana tarda 10,5s medidos
+// contra una libreta real, así que 15 deja un 40% de margen y permite tres
+// oportunidades en vez de dos.
+const INTENTO_MAX_MS = 15_000;
+// Por debajo de esto no se empieza un intento: arrancar uno que no puede
+// terminar gasta una llamada a Gemini y el turno del limitador para nada, y
+// acaba igual en un error, solo que más tarde.
+const MINIMO_PARA_INTENTAR_MS = 8_000;
+const SPACING_BETWEEN_CALLS_MS = 4_000;
+// Ya no hay un número de intentos: hay una CADENA. Se prueba cada modelo una
+// vez, en orden, mientras quede presupuesto. Repetir el mismo no tenía sentido
+// contra una cuota diaria, que es lo que de verdad falla.
+// Más cortas que antes (eran 5s y 10s) porque ahora salen del mismo bolsillo
+// que los intentos.
+const ESPERAS_MS = [2_000, 4_000];
+
+// EL PROMPT SABE EN QUÉ DÍA VIVE, y por eso es una función y no una constante.
+//
+// Medido el 2026-10-01 con libretas escritas a mano de verdad: ninguna escribía
+// el año —nadie lo escribe, se apunta "02-09"— y el modelo se lo inventaba.
+// Dalia y Rosa salieron en 2024; Mariangel, Elena, Jacinta, Ramona y Teófilo en
+// 2023. Dos modelos distintos, dos años inventados distintos, ninguno el actual.
+//
+// NO ES COSMÉTICO. `created_at` manda en el saldo corrido Y en la mora: de él
+// salen los días sin pagar, el puntaje de crédito y Malas pagas (ver la nota de
+// la migración 076). Un fiado de esta semana guardado en 2023 pone al cliente en
+// Malas pagas con mil días de atraso por una compra del martes.
+//
+// Y la guarda de la 076 NO lo caza: rechaza fechas futuras y anteriores a 2015,
+// pero 2023 y 2024 caen dentro y pasan limpias.
+//
+// El día primero se dice también a propósito: con la página girada el modelo
+// leyó "05-09" como 9 de mayo. Es la misma convención que ya documenta
+// `lib/fecha-de-libreta.ts` para el respaldo del navegador.
+function promptDeExtraccion(): string {
+  const hoy = new Date().toISOString().slice(0, 10);
+  return `Eres un asistente que digitaliza la libreta de fiado de una tienda de barrio.
 Mira la foto de la página de la libreta y extrae cada movimiento que veas como una lista JSON.
 
 Para cada movimiento identifica:
 - client_name: el nombre del cliente tal como está escrito (corrige mayúsculas obvias, no inventes apellidos)
-- date: la fecha si está escrita, en formato ISO "YYYY-MM-DD"; si no hay fecha legible, usa null
+  UNA PÁGINA PUEDE EMPEZAR SIN NOMBRE: los primeros renglones vienen de la hoja anterior
+  y su nombre está allí, no aquí. En ese caso devuelve client_name: "" (cadena vacía)
+  y NO te saltes el renglón ni le pongas el nombre que aparece más abajo. Esas líneas
+  son deuda de verdad y el dueño dirá de quién son. Lo mismo si el nombre está tachado,
+  cortado por el borde o simplemente no se lee.
+- date: la fecha si está escrita, en formato ISO "YYYY-MM-DD"; si no hay fecha legible, usa null.
+  Hoy es ${hoy}. Una libreta casi nunca escribe el año: apunta "02-09" o "5-8".
+  Cuando el año NO esté escrito, usa el año en curso; si con ese año la fecha quedara
+  en el futuro, usa el anterior. No inventes un año distinto.
+  Y el DÍA VA PRIMERO: "02-09" es el 2 de septiembre, no el 9 de febrero. Así se
+  escribe en Venezuela y en Colombia.
 - type: "charge" si el cliente se llevó algo fiado (aumenta lo que debe), "payment" si el cliente abonó/pagó (disminuye lo que debe)
-- amount: el monto del movimiento en pesos, solo el número (sin puntos, comas ni símbolo $)
+- amount: el monto del movimiento, como número JSON y con PUNTO decimal. Sin símbolo de moneda.
+  El bodeguero usa punto Y coma para las dos cosas, así que mira cuántas cifras van detrás:
+    · dos cifras detrás = DECIMAL ->  "3,50" y "3.50" son 3.5   ·  "12,75" y "12.75" son 12.75
+    · tres cifras detrás = MILES  ->  "1,500" y "1.500" son 1500 ·  "25.000" son 25000
+    · los dos a la vez: "1.500,50" y "1,500.50" son 1500.5
+  Es la diferencia entre 1,5 y mil quinientos. Si de verdad no puedes decidirlo, elige la
+  lectura de MILES —un bodeguero apunta más veces bultos que céntimos— y marca ese
+  movimiento con confidence "low".
 - description: qué se llevó o detalle breve, si está escrito; si no, null
 - read_balance: si en esa misma línea hay un saldo/total escrito a mano, el número de ese saldo; si no hay saldo legible en esa línea, null
-- confidence: "low" si la letra es ambigua, el monto no se lee con certeza, o estás adivinando; "high" si lo leíste con claridad
+- confidence: "high" SOLO si el monto y el tipo se leen sin ninguna duda. Usa "low" en cuanto
+  haya la más mínima: un dígito que podría ser otro (un 0 que parece 6, un 2 que parece 7,
+  un 15 que podría ser 45), un número emborronado, tachado o a contraluz, o un renglón que
+  estés completando por lo que cuadra en vez de por lo que ves.
+  Marcar de más no cuesta nada: una fila en "low" solo pide que el dueño la mire. Una fila
+  mal leída y marcada "high" entra como dinero equivocado y nadie la revisa.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta forma, sin texto adicional ni bloques de código:
 {"movements": [{"client_name": "...", "date": null, "type": "charge", "amount": 0, "description": null, "read_balance": null, "confidence": "high"}]}
 
 Si la foto no tiene movimientos legibles, devuelve {"movements": []}.`;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,7 +231,7 @@ async function waitForGlobalSlot(supabase: SupabaseServerClient, spacingMs: numb
 // Turns the model's raw JSON text into validated, typed movements. Shared by
 // every provider below since they all end up with the same "{"movements":
 // [...]}"-shaped text response.
-function parseExtractionResponse(raw: string): ExtractedMovement[] {
+function parseExtractionResponse(raw: string, degradarConfianza = false): ExtractedMovement[] {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
 
   let parsed: { movements?: unknown };
@@ -107,7 +258,33 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
       amount: Number(m.amount) || 0,
       description: typeof m.description === "string" ? m.description : null,
       read_balance: typeof m.read_balance === "number" ? m.read_balance : null,
-      confidence: m.confidence === "low" ? "low" : "high",
+      // SOLO "high" ES ALTA. Antes esto era `=== "low" ? "low" : "high"`, o sea
+      // que cualquier otra cosa entraba como fiable — y los modelos devuelven
+      // otras cosas: en la prueba del 2026-09-28 uno contestó "medium" y esa
+      // línea se guardó como alta. Una línea que el propio modelo marcó como
+      // dudosa llegaba a la revisión sin señalar.
+      //
+      // `degradarConfianza` baja TODAS las filas de un modelo de respaldo no
+      // medido. Un modelo que lee peor no produce "ninguna importación": produce
+      // una importación equivocada, y el error de DIRECCIÓN —un abono anotado
+      // como fiado— es el más difícil de ver porque el monto se lee bien. Así
+      // al menos la pantalla las señala sola.
+      // EL `confidence` QUE DEVUELVE EL MODELO NO SIRVE. Medido el 2026-10-01
+      // con libretas escritas a mano: 35 movimientos, CERO marcados -- incluido
+      // un renglón del que tenemos prueba de que es ambiguo, porque el mismo
+      // modelo, con la misma foto y temperature 0, lo leyó 20 tres veces y 15
+      // una. Se reescribió la instrucción del prompt para endurecerla y luego
+      // se probó una versión mucho más agresiva ("si devuelves todo en high es
+      // que no has revisado"): las dos siguieron dando 0 en low.
+      //
+      // Se deja la redacción buena, pero NO se puede construir nada encima. Lo
+      // que de verdad señala una fila dudosa es la comprobación del saldo
+      // corrido contra el total escrito (`review_reason === "no_cuadra"`), que
+      // es una medida nuestra y no una autoevaluación del modelo.
+      //
+      // `degradarConfianza` sí funciona, porque también es nuestra: baja TODAS
+      // las filas de un modelo de respaldo no medido.
+      confidence: degradarConfianza || m.confidence !== "high" ? "low" : "high",
       document_id: null,
       // Both filled in by the owner during review, never read from the photo.
       // The review screen seeds this to USD for a VE owner and leaves it null
@@ -115,7 +292,30 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
       // page where the symbol is usually absent or ambiguous.
       currency: null,
     }))
-    .filter((m) => m.client_name && m.amount > 0);
+    // ─────────────────────────────────────────────────────────────────────
+    // CT-25: LO QUE NO SE PUEDE LEER SE DEVUELVE, NO SE TIRA.
+    //
+    // Hasta el 2026-10-01 esta línea era `m.client_name && m.amount > 0`, dos
+    // descartes muy distintos escondidos en la misma condición, y ninguno de
+    // los dos avisaba de nada.
+    //
+    // Medido ese día con una libreta escrita a mano: una página que empieza con
+    // tres renglones que vienen de la hoja anterior —no llevan nombre encima,
+    // porque el nombre está en la página de antes— y solo después pone "Zulay
+    // Berrios". La app leyó 2 movimientos de 5. Los tres primeros, $35 de deuda
+    // real, desaparecieron sin una fila en ámbar, sin un aviso y sin un hueco:
+    // el dueño ve "Listo · 2 movimientos" y da por bueno que la página tenía
+    // dos. Y el 0 es peor de lo que parece, porque en una libreta casi nunca
+    // significa "nada": significa "apuntado y todavía sin precio".
+    //
+    // Ahora salen las dos y las resuelve la revisión, que es donde hay una
+    // persona mirando: las que no traen nombre van a "líneas sin cliente" y se
+    // asignan o se descartan a mano, y el monto en 0 se queda marcado hasta que
+    // alguien lo escriba. Ninguna de las dos deja subir la libreta sin tocarla.
+    //
+    // Lo único que se sigue tirando es lo que no es un movimiento: un monto que
+    // no es un número, o negativo —el signo lo lleva `type`, nunca el importe—.
+    .filter((m) => Number.isFinite(m.amount) && m.amount >= 0);
 }
 
 // ACTIVE: calls Gemini directly (Google AI Studio), no middleman. Cheapest
@@ -124,6 +324,12 @@ function parseExtractionResponse(raw: string): ExtractedMovement[] {
 async function extractFromImageViaGemini(
   supabase: SupabaseServerClient,
   dataUrl: string,
+  // Lo que le queda de presupuesto a ESTE intento, no una constante: con dos
+  // intentos por delante no se le puede dar a uno todo el tiempo.
+  timeoutMs: number,
+  modelo: string,
+  // Un respaldo no medido marca sus filas como dudosas. Ver `parseExtractionResponse`.
+  degradarConfianza: boolean,
 ): Promise<ExtractedMovement[]> {
   // trim() because a trailing newline survives a paste into Vercel's env
   // editor and would previously have been interpolated straight into the URL.
@@ -137,20 +343,28 @@ async function extractFromImageViaGemini(
   // "implausibly short" rather than against an exact length, so a future change
   // to Google's key format does not turn this into a false alarm.
   if (apiKey.length < 30) {
-    throw new Error(
-      `GEMINI_API_KEY parece incompleta (${apiKey.length} caracteres). Suele ser un pegado truncado en las variables de entorno.`,
-    );
+    // Sin marcar a proposito: es un fallo NUESTRO de configuracion, no algo que
+    // el dueno pueda entender ni arreglar. Sale por el generico y el detalle
+    // —que es lo util— queda en el log.
+    console.error(`[extract] GEMINI_API_KEY parece incompleta (${apiKey.length} caracteres). Suele ser un pegado truncado en las variables de entorno.`);
+    throw new Error("GEMINI_API_KEY incompleta");
   }
 
   const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-  if (!match) throw new Error("Formato de imagen inválido.");
+  // Este si lo puede entender y arreglar el dueno: el archivo que eligio no es
+  // una foto. "Formato de imagen invalido" era correcto y no decia que hacer.
+  if (!match) {
+    throw new ErrorParaElDueno(
+      "Ese archivo no es una foto. Elige una imagen de la libreta (JPG o PNG).",
+    );
+  }
   const [, mimeType, base64Data] = match;
 
   await waitForGlobalSlot(supabase, SPACING_BETWEEN_CALLS_MS);
 
-  const model = "gemini-3-flash-preview";
+  const model = modelo;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -167,7 +381,7 @@ async function extractFromImageViaGemini(
           contents: [
             {
               parts: [
-                { text: EXTRACTION_PROMPT },
+                { text: promptDeExtraccion() },
                 { inline_data: { mime_type: mimeType, data: base64Data } },
               ],
             },
@@ -181,7 +395,7 @@ async function extractFromImageViaGemini(
     );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Gemini tardó más de ${REQUEST_TIMEOUT_MS / 1000}s en responder.`);
+      throw new TimeoutGeminiError(timeoutMs);
     }
     throw error;
   } finally {
@@ -207,9 +421,9 @@ async function extractFromImageViaGemini(
     // your photo".
     if (response.status === 401 || response.status === 403) {
       console.error(`[extract] Gemini rechazó la credencial (${response.status}):`, text);
-      throw new Error(
-        `Error de configuración del servicio de lectura (${response.status}). Revisa GEMINI_API_KEY.`,
-      );
+      // Idem: configuracion nuestra. Sin marcar, para que al dueno le llegue el
+      // generico en vez de un numero y el nombre de una variable de entorno.
+      throw new Error(`Gemini rechazo la credencial (${response.status})`);
     }
 
     console.error(`[extract] Gemini respondió ${response.status}:`, text);
@@ -218,32 +432,93 @@ async function extractFromImageViaGemini(
 
   const payload = await response.json();
   const raw: string = payload?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  return parseExtractionResponse(raw);
+  return parseExtractionResponse(raw, degradarConfianza);
 }
+
+export type ResultadoExtraccion = {
+  movements: ExtractedMovement[];
+  // Qué modelo contestó de verdad. Sale en la respuesta y en el log: sin esto,
+  // "a veces lee peor" es una sospecha que nadie puede comprobar.
+  modelo: string;
+  // True si contestó un respaldo no medido, o sea que las filas vienen
+  // marcadas como dudosas a propósito.
+  degradado: boolean;
+};
 
 async function extractFromImageViaGeminiWithRetry(
   supabase: SupabaseServerClient,
   dataUrl: string,
-): Promise<ExtractedMovement[]> {
-  for (let attempt = 0; ; attempt++) {
+): Promise<ResultadoExtraccion> {
+  const arranque = Date.now();
+  const queda = () => PRESUPUESTO_MS - (Date.now() - arranque);
+  let ultimo: unknown = null;
+
+  // Se recorre la CADENA, no el mismo modelo N veces. Insistir con uno al que
+  // se le acabó la cuota del día no puede funcionar: no se repone hasta mañana.
+  // El siguiente tiene su propio cubo.
+  for (const { nombre, medido } of MODELOS) {
+    // No se empieza un intento que no puede terminar: gastaría una llamada a
+    // Gemini y el turno del limitador compartido para acabar igual en un error,
+    // solo que más tarde y habiéndoselo quitado a otro dueño.
+    // El espaciado del limitador compartido se descuenta ANTES de decidir. Se
+    // paga sí o sí dentro del intento (`waitForGlobalSlot`), así que contarlo
+    // como tiempo disponible hacía que el último modelo arrancara creyendo
+    // tener 8s cuando en realidad le quedaban 4. Medido al probar la cadena.
+    const disponible = queda() - SPACING_BETWEEN_CALLS_MS;
+    if (disponible < MINIMO_PARA_INTENTAR_MS) break;
+
     try {
-      return await extractFromImageViaGemini(supabase, dataUrl);
-    } catch (error) {
-      const transient = error instanceof TransientGeminiError ? error : null;
-      // A timeout is deliberately NOT retried. maxDuration is 90s and the
-      // per-call timeout is 55s, so a second attempt would be killed mid-flight
-      // and the owner would wait a minute and a half to be told nothing.
-      if (!transient || attempt >= MAX_RETRIES_ON_RATE_LIMIT) {
-        if (!transient) throw error;
-        throw new Error(
-          transient.status === 429
-            ? "Gemini está saturado (límite de la capa gratuita). Intenta de nuevo en un minuto."
-            : "El servicio de lectura está sobrecargado ahora mismo. Intenta de nuevo en unos minutos.",
-        );
+      const movements = await extractFromImageViaGemini(
+        supabase,
+        dataUrl,
+        Math.min(INTENTO_MAX_MS, disponible),
+        nombre,
+        !medido,
+      );
+      if (nombre !== MODELOS[0].nombre) {
+        console.warn(`[extract] respondió el respaldo ${nombre} (medido=${medido})`);
       }
-      await sleep(RETRY_BACKOFF_MS[attempt] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
+      return { movements, modelo: nombre, degradado: !medido };
+    } catch (error) {
+      ultimo = error;
+      const reintentable =
+        error instanceof TransientGeminiError || error instanceof TimeoutGeminiError;
+      // Una clave mal puesta o un formato inválido no mejoran cambiando de
+      // modelo: fallarían igual en los cuatro y gastarían el presupuesto.
+      if (!reintentable) throw error;
+      console.warn(`[extract] ${nombre} falló (${(error as Error).message}); probando el siguiente`);
+
+      // La espera es entre modelos y sale del mismo presupuesto. Corta, porque
+      // aquí no se está esperando a que el otro se recupere: se está yendo a
+      // otro sitio.
+      const espera = ESPERAS_MS[0];
+      if (queda() - espera - SPACING_BETWEEN_CALLS_MS < MINIMO_PARA_INTENTAR_MS) break;
+      await sleep(espera);
     }
   }
+
+  // Se agotaron los intentos o el presupuesto. El mensaje sale del ÚLTIMO
+  // fallo, que es el que describe lo que está pasando ahora mismo.
+  // Estos SI son para el dueno, asi que se marcan con `ErrorParaElDueno` y
+  // salen tal cual. Lo que no esta marcado no sale: ver `lib/errores-legibles.ts`.
+  //
+  // Y ya no se nombra a Gemini. El dueno no ha contratado a Google, ha
+  // contratado a Sevenz; decirle "Gemini esta saturado" le hace cargar con un
+  // nombre que no significa nada para el y que ademas puede cambiar. El nombre
+  // del proveedor y el codigo HTTP viven en el log, que es donde sirven.
+  if (ultimo instanceof TransientGeminiError) {
+    throw new ErrorParaElDueno(
+      ultimo.status === 429
+        ? "Ahora mismo hay muchas libretas en cola. Espera un minuto y vuelve a intentarlo."
+        : "El servicio que lee las fotos está saturado en este momento. Inténtalo otra vez en unos minutos.",
+    );
+  }
+  if (ultimo instanceof TimeoutGeminiError) {
+    throw new ErrorParaElDueno(
+      "La lectura está tardando más de lo normal y no pudimos terminarla. Inténtalo otra vez.",
+    );
+  }
+  throw ultimo ?? new ErrorParaElDueno("No pudimos leer la foto. Inténtalo otra vez.");
 }
 
 // PARKED (not called right now, kept for when OpenRouter comes back into the
@@ -262,7 +537,7 @@ async function extractFromImageViaOpenRouter(dataUrl: string): Promise<Extracted
     {
       role: "user",
       content: [
-        { type: "text", text: EXTRACTION_PROMPT },
+        { type: "text", text: promptDeExtraccion() },
         { type: "image_url", image_url: { url: dataUrl } },
       ],
     },
@@ -294,7 +569,12 @@ async function extractFromImageViaOpenRouter(dataUrl: string): Promise<Extracted
   return parseExtractionResponse(raw);
 }
 
-// Swap this one line to switch providers — both implementations stay ready.
+// OJO: las dos implementaciones YA NO devuelven lo mismo. La de Gemini
+// devuelve `ResultadoExtraccion` —con el modelo que contestó y si venía
+// degradado—, y la de OpenRouter sigue devolviendo solo el array. Cambiar esta
+// línea sin adaptar la de OpenRouter rompe el handler. Se deja anotado aquí y
+// no se "arregla" de paso: OpenRouter está aparcado y tocarlo a ciegas, sin
+// poder probarlo, es cómo se cuela un fallo en un camino que nadie ejecuta.
 const extractFromImage = extractFromImageViaGeminiWithRetry;
 void extractFromImageViaOpenRouter; // keep it referenced so lint doesn't flag it as unused
 
@@ -307,13 +587,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const usage = await getImportUsageForOwner(supabase, user.id);
-  if (usage.plan === "free" && usage.remaining !== null && usage.remaining <= 0) {
-    return NextResponse.json(
-      { error: `Alcanzaste el límite de ${usage.limit} fotos este mes en el plan Free.` },
-      { status: 403 },
-    );
-  }
+  // Aquí vivía la puerta del tope mensual del plan Free, que era la
+  // autoritativa: las pantallas solo pintaban el contador y esto era lo que de
+  // verdad no dejaba pasar. Se retiró el 2026-09-28 al quitar el tope en todos
+  // los planes. Se borra en vez de quedarse desactivada: una guarda que ya no
+  // guarda nada, con su mensaje de "alcanzaste el límite" a cuestas, es lo que
+  // el siguiente lee y da por vigente.
 
   const body = await request.json().catch(() => null);
   const dataUrl: unknown = body?.image;
@@ -322,10 +601,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const movements = await extractFromImage(supabase, dataUrl);
-    return NextResponse.json({ movements });
+    const { movements, modelo, degradado } = await extractFromImage(supabase, dataUrl);
+    return NextResponse.json({ movements, modelo, degradado });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error extrayendo la libreta.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    // EL DEFECTO INVERTIDO (2026-10-01). Antes esto devolvia `error.message` de
+    // lo que fuera, asi que cualquier excepcion nueva acababa en la pantalla en
+    // ingles: el dia que el servidor se quedo sin salida a internet, el dueno
+    // leyo "fetch failed". Ahora solo sale lo que `mensajeDeError` sepa decir en
+    // castellano, y el detalle entero va al log desde dentro.
+    return NextResponse.json({ error: mensajeDeError("leer la foto", error, "extract") }, { status: 502 });
   }
 }

@@ -68,6 +68,7 @@ export function MovementHistoryList({
               amount={m.amount}
               currency={m.currency}
               description={m.description}
+              ownerNote={m.owner_note}
               plazoDias={m.plazo_dias}
               createdAt={m.created_at}
               runningBalance={m.running_balance}

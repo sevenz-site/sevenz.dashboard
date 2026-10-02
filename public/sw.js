@@ -1,5 +1,21 @@
-const CACHE_NAME = "sevenz-shell-v2";
-const SHELL_ASSETS = ["/manifest.json", "/icon-192.png", "/icon-512.png"];
+// POR QUÉ LOS ICONOS LLEVAN -v2 EN EL NOMBRE.
+//
+// Android no guarda una PWA instalada como una página: genera un WebAPK, un
+// paquete real con el icono dentro, y decide si lo regenera comparando el
+// manifest que descarga contra el que guardó. Cambiar los bytes de
+// /icon-512.png dejando el nombre igual le da un manifest idéntico al que ya
+// tiene, así que el icono nuevo puede no llegar nunca a un teléfono que ya
+// tiene Sevenz en la pantalla de inicio. El nombre es lo que se compara.
+//
+// Y ESTA LISTA TIENE QUE SEGUIRLES EL PASO. `cache.addAll` rechaza la
+// instalación ENTERA si una sola URL da 404, así que un rename aquí no
+// aplicado deja el service worker sin instalarse y al anterior sirviendo los
+// iconos viejos — el fallo justo contrario al que el rename buscaba arreglar.
+// Si algún día vuelven a cambiar los iconos: nombre nuevo en los tres sitios
+// (este, public/manifest.json y app/layout.tsx) y CACHE_NAME al siguiente
+// número, que es lo que borra del caché los bytes anteriores.
+const CACHE_NAME = "sevenz-shell-v3";
+const SHELL_ASSETS = ["/manifest.json", "/icon-192-v2.png", "/icon-512-v2.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));

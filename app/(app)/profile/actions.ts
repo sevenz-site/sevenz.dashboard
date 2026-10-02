@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { validatePasswordComplexity } from "@/lib/password";
+import { mensajeDeError } from "@/lib/errores-legibles";
 
 export type ProfileState = { error: string | null; success: boolean };
 
@@ -14,15 +15,11 @@ export type ProfileState = { error: string | null; success: boolean };
 // que solo quería fiar.
 //
 // Hoy no salta nunca: este formulario manda el país que ya tiene, así que no
-// cambia nada. Está aquí para el día que alguien toque el formulario y sí
-// cambie — que es justo el día en que nadie se acordará de este trigger.
-const CODIGO_COLUMNA_PROTEGIDA = "42501";
-
-function mensajeDeGuardado(error: { code?: string; message: string }): string {
-  if (error.code === CODIGO_COLUMNA_PROTEGIDA) {
-    return "Ese dato solo lo puede cambiar Sevenz. Escríbenos y lo ajustamos.";
-  }
-  return `No pudimos guardar los cambios: ${error.message}`;
+// cambia nada. El caso vive desde el 2026-10-01 en `lib/errores-legibles.ts`,
+// con el resto: tenerlo aquí además era la MISMA frase escrita dos veces, y de
+// esas dos una acaba quedándose vieja.
+function mensajeDeGuardado(error: unknown): string {
+  return mensajeDeError("guardar los cambios", error, "profile");
 }
 
 
@@ -41,7 +38,7 @@ export async function updateLogo(logoPath: string): Promise<{ error: string | nu
     .update({ logo_path: logoPath || null })
     .eq("id", user.id);
 
-  if (error) return { error: `No pudimos guardar el logo: ${error.message}` };
+  if (error) return { error: mensajeDeError("guardar el logo", error, "logo") };
 
   revalidatePath("/profile");
   return { error: null };
@@ -61,7 +58,7 @@ export async function deleteLogo(): Promise<{ error: string | null }> {
     .single();
 
   const { error } = await supabase.from("owners").update({ logo_path: null }).eq("id", user.id);
-  if (error) return { error: `No pudimos borrar el logo: ${error.message}` };
+  if (error) return { error: mensajeDeError("borrar el logo", error, "logo") };
 
   if (owner?.logo_path) {
     await supabase.storage.from("logos").remove([owner.logo_path]);
@@ -126,7 +123,7 @@ export async function updateBusinessSettings(
     );
 
     if (rateError) {
-      return { error: `No pudimos guardar la tasa de cambio: ${rateError.message}`, success: false };
+      return { error: mensajeDeError("guardar la tasa de cambio", rateError, "tasa"), success: false };
     }
   }
 

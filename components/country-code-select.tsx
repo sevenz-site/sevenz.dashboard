@@ -34,6 +34,7 @@ export function CountryCodeSelect({
   value,
   onChange,
   compact,
+  disabled,
 }: {
   value: string;
   onChange: (dialCode: string) => void;
@@ -42,6 +43,8 @@ export function CountryCodeSelect({
   // ancho — dos dígitos de diez. Fuera de una tabla no se usa: el prefijo
   // escrito es información que merece su sitio cuando hay sitio.
   compact?: boolean;
+  // Solo lectura: el prefijo se ensena pero no se elige. Ver WhatsappInput.
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -66,6 +69,7 @@ export function CountryCodeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           // En compacto el texto desaparece de la pantalla, así que el país y
           // su prefijo pasan al nombre accesible: quien navegue con lector de
           // pantalla oye lo mismo que antes leía.
