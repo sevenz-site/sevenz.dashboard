@@ -156,11 +156,16 @@ export function AvisoDeDuplicado({
             design system fija para una elección. */}
         <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
           <RadioGroupItem value="mismo" />
-          <span className="whitespace-nowrap">Es el mismo</span>
+          {/* CON VARIOS NO SE PUEDE DECIR "es el mismo": el aviso de arriba
+              acaba de decir que hay VARIOS, asi que "el mismo" no nombra a
+              nadie. Tocarlo abre la lista y la marca llega al confirmar.
+              Reportado el 2026-10-02: el flujo de varios candidatos habia
+              perdido su etiqueta al pasar de botones a radios. */}
+          <span className="whitespace-nowrap">{varios ? "Ver clientes" : "Es el mismo"}</span>
         </label>
         <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
           <RadioGroupItem value="otra" />
-          <span className="whitespace-nowrap">Es otra persona</span>
+          <span className="whitespace-nowrap">Es otro cliente</span>
         </label>
       </RadioGroup>
       ) : null}
@@ -199,7 +204,7 @@ export function ListaDeCandidatos({
             <AvisoDeDuplicado nombreEnLaLibreta={nombreEnLaLibreta} candidatos={candidatos} />
             <div>
               <Button type="button" size="sm" variant="outline" onClick={onEsOtraPersona}>
-                Es otra persona
+                Es otro cliente
               </Button>
             </div>
           </div>

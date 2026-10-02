@@ -20,6 +20,7 @@ import {
   separarLineasSueltas,
 } from "@/lib/lineas-sueltas";
 import { LineasSueltas } from "@/components/import/lineas-sueltas";
+import { AvisoDeBorrador } from "@/components/import/aviso-de-borrador";
 import { BotonDeshacer } from "@/components/import/boton-deshacer";
 import { empujar, sacar, type Instantanea } from "@/lib/historial-de-revision";
 import {
@@ -1928,55 +1929,14 @@ export function ImportFlow({
           libreta, y meterlo de golpe en la de ayer sería desconcertante.
           Se dice que las fotos no vuelven, porque es lo que va a ver. */}
       {borrador && !borradorDescartado && !reviewMovements && !hasJobs ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
-          {/* DOS AVISOS, PORQUE SON DOS COSAS DISTINTAS (CT-26).
-              `revisada` dice si el dueño llegó a abrir la revisión o si la
-              pantalla se cerró con la foto recién leída. Contarle que "las
-              correcciones siguen ahí" a quien no llegó a corregir nada es
-              mentirle, y encima le hace buscar un trabajo que no existe. */}
-          <p className="flex items-start gap-1.5 text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            {borrador.revisada ? (
-              <span>
-                Dejaste una revisión a medias con{" "}
-                <strong>
-                  {borrador.movimientos.length}{" "}
-                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
-                </strong>
-                . Puedes seguir donde la dejaste: las correcciones y las decisiones siguen ahí. Las
-                fotos no, así que la tira saldrá vacía.
-              </span>
-            ) : (
-              <span>
-                Ya leímos tu libreta:{" "}
-                <strong>
-                  {borrador.movimientos.length}{" "}
-                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
-                </strong>
-                . La pantalla se cerró antes de que los revisaras, pero no hace falta volver a subir
-                la foto: sigue desde aquí. La tira de fotos saldrá vacía, nada más.
-              </span>
-            )}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={retomarBorrador}>
-              {borrador.revisada
-                ? "Seguir con esa revisión"
-                : `Revisar ${borrador.movimientos.length === 1 ? "ese movimiento" : `esos ${borrador.movimientos.length} movimientos`}`}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                olvidarRevision();
-                setBorradorDescartado(true);
-              }}
-            >
-              Descartarla
-            </Button>
-          </div>
-        </div>
+        <AvisoDeBorrador
+          borrador={borrador}
+          onSeguir={retomarBorrador}
+          onDescartar={() => {
+            olvidarRevision();
+            setBorradorDescartado(true);
+          }}
+        />
       ) : null}
 
       {/* Sin tope en ningún plan desde el 2026-09-28. Se cae la barra de
