@@ -335,6 +335,7 @@ export function DetalleDelCliente({
   onRestaurar,
   esAjuste,
   onEliminarCliente,
+  onRenombrar,
   onAplicarMoneda,
   decisionesDeTotal,
   onElegirTotal,
@@ -368,6 +369,7 @@ export function DetalleDelCliente({
   // Qué renglones los puso Sevenz para cuadrar, y por tanto no se editan.
   esAjuste: (rowId: string) => boolean;
   onEliminarCliente: () => void;
+  onRenombrar: (nombre: string) => void;
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
   onElegirTotal: (libro: LibroDelCliente, cual: EleccionDeTotal) => void;
@@ -424,7 +426,27 @@ export function DetalleDelCliente({
       {/* ── Quién ──────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="truncate text-xl font-semibold">{cliente.name}</h2>
+          {/* EL NOMBRE SE EDITA SIEMPRE, pedido el 2026-10-02. Era un `h2` fijo,
+              así que un nombre mal leído por la IA —o una grafía que hay que
+              igualar a la de una ficha existente— solo se podía corregir
+              quitando al cliente y volviendo a empezar.
+              `onBlur` y no `onChange`: el nombre ES la clave de agrupación, y
+              reagrupar en cada tecla partiría la tarjeta en "K", "Ka", "Kar"
+              mientras se escribe. Se aplica al salir del campo o con Enter. */}
+          {subido ? (
+            <h2 className="truncate text-xl font-semibold">{cliente.name}</h2>
+          ) : (
+            <input
+              aria-label="Nombre del cliente"
+              defaultValue={cliente.name}
+              key={cliente.name}
+              onBlur={(e) => onRenombrar(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="w-full min-w-0 truncate rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xl font-semibold hover:border-border focus:border-border focus:outline-none"
+            />
+          )}
           <p className="text-sm text-muted-foreground">
             {filas.length} {filas.length === 1 ? "movimiento" : "movimientos"}
             {filas.length === 1 ? " registrado" : " registrados"}

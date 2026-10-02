@@ -907,6 +907,65 @@ export function ImportFlow({
   // No se muda al cambiar la moneda de UNA fila suelta (la hoja de edicion):
   // ahi el renglon cambia de libro de verdad, y la decision pertenece al libro
   // que deja atras, no al que estrena.
+  // RENOMBRAR A UNA PERSONA DE LA REVISIÓN.
+  //
+  // Pedido el 2026-10-02: "el nombre del cliente debe poder editarse en todos
+  // los casos". Y no es cosmético — el nombre ES la clave de agrupación, así que
+  // renombrar junta y separa tarjetas: escribir "Karina castillo (kari)" sobre
+  // un renglón que decía "Karina castillo" lo empareja con la ficha que ya
+  // existe, sin pasar por el diálogo.
+  //
+  // POR ESO HAY QUE MUDAR LAS CLAVES. `decisiones`, `clientesQuitados` y
+  // `decisionesDeTotal` van indexadas por `nameKey`: dejarlas donde estaban es
+  // como se pierde una decisión ya tomada —y peor, como reaparece sobre otra
+  // persona si alguien reusa el nombre viejo—. Es el mismo cuidado que
+  // `mudarDecisionesDeMoneda`, y por la misma razón.
+  //
+  // Si la clave destino YA tiene decisión, gana la que estaba: el dueño la tomó
+  // mirando a ESA tarjeta, y pisarla con la de otra sería decidir por él.
+  function renombrarCliente(nameKeyViejo: string, nombreNuevo: string) {
+    const limpio = nombreNuevo.trim();
+    const nuevo = limpio.toLowerCase();
+    if (!limpio || nuevo === nameKeyViejo) return;
+
+    setReviewMovements((prev) =>
+      prev
+        ? prev.map((m) =>
+            (m.client_name ?? "").trim().toLowerCase() === nameKeyViejo
+              ? { ...m, client_name: limpio }
+              : m,
+          )
+        : prev,
+    );
+
+    setDecisiones((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suya, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suya };
+    });
+    setClientesQuitados((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suyos, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suyos };
+    });
+    setDecisionesDeTotal((prev) => {
+      const salida: typeof prev = {};
+      for (const [clave, d] of Object.entries(prev)) {
+        const i = clave.lastIndexOf("|");
+        const suNombre = i < 0 ? clave : clave.slice(0, i);
+        const moneda = i < 0 ? "" : clave.slice(i);
+        const destino = suNombre === nameKeyViejo ? `${nuevo}${moneda}` : clave;
+        if (destino in salida) continue;
+        salida[destino] = d;
+      }
+      return salida;
+    });
+
+    // La hoja del detalle se identifica por nameKey: sin esto, renombrar la
+    // cierra de golpe en mitad de la edición.
+    setAbierto((actual) => (actual === nameKeyViejo ? nuevo : actual));
+  }
+
   function mudarDecisionesDeMoneda(
     afectada: (m: ExtractedMovement) => boolean,
     moneda: LedgerCurrency,
@@ -1571,6 +1630,7 @@ export function ImportFlow({
                   })[0].estado
                 }
                 candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
+                onRenombrar={(nombre) => renombrarCliente(clienteAbierto.nameKey, nombre)}
                 onVerClientes={() => setListaAbierta(clienteAbierto.nameKey)}
                 onConfirmarCon={(candidato) =>
                   setPorConfirmar({ nameKey: clienteAbierto.nameKey, candidato })
