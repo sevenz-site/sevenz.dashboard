@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
@@ -471,6 +471,33 @@ export function ImportFlow({
     setUnlinked(new Set(borrador.unlinked));
     abrirRevision(borrador.movimientos);
   }
+  // RETOMAR DE UN TOQUE, no de dos. El aviso de la hoja de Inicio llega aquí con
+  // `?retomar=1` y la revisión se abre sola: sin esto, el dueño pulsaba "Seguir
+  // con esa revisión" en Inicio, aterrizaba en esta pantalla y se encontraba el
+  // MISMO aviso pidiéndole lo mismo otra vez. Reportado el 2026-10-02.
+  //
+  // El `ref` y no un estado: esto tiene que correr UNA vez por montaje, y React
+  // ejecuta los efectos dos veces en desarrollo. Con un estado serían dos
+  // aperturas y la segunda pisaría lo que la primera dejó.
+  const retomarAlEntrar = useSearchParams().get("retomar") === "1";
+  const yaRetomado = useRef(false);
+  useEffect(() => {
+    if (!retomarAlEntrar || yaRetomado.current) return;
+    if (!borrador || reviewMovements) return;
+    yaRetomado.current = true;
+    retomarBorrador();
+    // La marca se quita de la URL con la API del historial y NO con
+    // `router.replace`: `abrirRevision` acaba de marcar la revisión como "sin
+    // guardar", y el guard que eso instala se traga cualquier navegación — la
+    // primera versión usaba el router y la URL se quedaba con `?retomar=1`.
+    // Aquí no hay navegación que guardar: solo se ordena la barra de
+    // direcciones, para que recargar no vuelva a abrirla sola.
+    window.history.replaceState(null, "", "/import");
+    // `retomarBorrador` se define arriba y no cambia entre renders; incluirlo
+    // obligaría a envolverlo en `useCallback` sin ganar nada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retomarAlEntrar, borrador, reviewMovements]);
+
 
 
   // ── EL AJUSTE ES DERIVADO, NO GUARDADO ────────────────────────────────

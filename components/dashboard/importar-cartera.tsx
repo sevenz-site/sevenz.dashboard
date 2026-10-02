@@ -170,7 +170,10 @@ function Controles({ onDone }: { onDone: () => void }) {
           // su contexto delante: cuántos clientes salieron y qué falta.
           onSeguir={() => {
             onDone();
-            router.push("/import");
+            // `?retomar=1`: la revisión se abre sola al llegar. Sin la marca,
+            // aterrizaba en /import y salía el MISMO aviso pidiendo lo mismo
+            // otra vez.
+            router.push("/import?retomar=1");
           }}
           onDescartar={() => {
             olvidarRevision();
