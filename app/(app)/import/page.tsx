@@ -74,7 +74,8 @@ export default async function ImportPage() {
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+      {/* El título vive dentro de `ImportFlow` desde CT-31: el botón de
+          deshacer va alineado a su derecha y necesitan el mismo estado. */}
       {ownerCountry ? (
         <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} rateContext={rateContext} />
       ) : (

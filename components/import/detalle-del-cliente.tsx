@@ -38,6 +38,7 @@ import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
 import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
 import { AvisoDeDuplicado } from "@/components/import/emparejar-cliente";
+import { BotonDeshacer } from "@/components/import/boton-deshacer";
 import type {
   CandidatoDuplicado,
   ClienteRevisado,
@@ -336,6 +337,8 @@ export function DetalleDelCliente({
   esAjuste,
   onEliminarCliente,
   onRenombrar,
+  pasosParaDeshacer,
+  onDeshacer,
   onAplicarMoneda,
   decisionesDeTotal,
   onElegirTotal,
@@ -370,6 +373,8 @@ export function DetalleDelCliente({
   esAjuste: (rowId: string) => boolean;
   onEliminarCliente: () => void;
   onRenombrar: (nombre: string) => void;
+  pasosParaDeshacer: number;
+  onDeshacer: () => void;
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
   onElegirTotal: (libro: LibroDelCliente, cual: EleccionDeTotal) => void;
@@ -470,6 +475,16 @@ export function DetalleDelCliente({
             tarjeta no los sacaria de ahi. Seria un boton que promete deshacer
             algo que no deshace. */}
         {subido ? null : (
+        <div className="flex shrink-0 items-center gap-2">
+        {/* El deshacer, a la IZQUIERDA de "Eliminar" (CT-31). Se queda a la
+            vista y apagado cuando no hay nada que deshacer: si apareciera y
+            desapareciera movería el botón de eliminar, y eso es un toque en el
+            sitio equivocado sobre una acción que borra. */}
+        <BotonDeshacer
+          pasos={pasosParaDeshacer}
+          onDeshacer={onDeshacer}
+          className="size-9 shrink-0 rounded-full"
+        />
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button type="button" variant="outline" size="sm" className="shrink-0">
@@ -493,6 +508,7 @@ export function DetalleDelCliente({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </div>
         )}
       </div>
 

@@ -40,6 +40,7 @@ import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revisio
 import { reconcileMovements, agruparPorCliente, seParecen } from "../lib/reconcile.ts";
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import { normalizeDocumentId } from "../lib/format.ts";
+import { empujar, sacar, textoDeDeshacer, MAX_PASOS } from "../lib/historial-de-revision.ts";
 import {
   esLineaSuelta,
   esLineaSinMonto,
@@ -480,6 +481,38 @@ check("con varios candidatos y sin decidir, no se puede subir", estadoKarina.pue
 check("manda el bloqueo mas duro, la cedula", estadoKarina.estado === "faltan_datos", estadoKarina.estado);
 const yaElegido = conEstado([grupo], reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k2" }), { "karina castillo": { cual: "mismo", clientId: "k2" } }, new Map([["karina castillo", grupo.candidatos]]), { exigeMoneda: false })[0];
 check("elegida una, ya se puede subir", yaElegido.puedeSubir === true);
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// DESHACER — CT-31
+console.log("");
+console.log("-- Deshacer (CT-31) ------------------------------------------");
+
+const foto = (n) => ({ movimientos: [mov({ amount: n })], eliminados: [], clientesQuitados: {}, decisiones: {}, decisionesDeTotal: {}, sameClient: false, sharedName: "", sharedDocument: "", sharedWhatsapp: "", unlinked: [] });
+
+let pila = [];
+pila = empujar(pila, foto(1));
+pila = empujar(pila, foto(2));
+check("apila en orden", pila.length === 2 && pila[1].movimientos[0].amount === 2);
+
+const sacado = sacar(pila);
+check("sacar devuelve el ultimo", sacado.instantanea.movimientos[0].amount === 2);
+check("y lo quita de la pila", sacado.pasado.length === 1);
+check("la pila original no se muta", pila.length === 2);
+check("sacar de una pila vacia no revienta", sacar([]).instantanea === null);
+
+// EL TOPE. Veinte no es por memoria —veinte copias de sesenta movimientos no es
+// nada— sino por previsibilidad: sin lista visible de que se deshace, mas alla
+// de ahi el dueno ya no sabe a donde vuelve.
+let larga = [];
+for (let i = 0; i < MAX_PASOS + 15; i++) larga = empujar(larga, foto(i));
+check("nunca pasa del tope", larga.length === MAX_PASOS, String(larga.length));
+check("y lo que se tira es lo MAS VIEJO", larga[0].movimientos[0].amount === 15, String(larga[0].movimientos[0].amount));
+check("el ultimo sigue siendo el ultimo", larga[larga.length - 1].movimientos[0].amount === MAX_PASOS + 14);
+
+check("sin pasos, el boton lo dice", textoDeDeshacer(0) === "No hay nada que deshacer", textoDeDeshacer(0));
+check("con uno, en singular", textoDeDeshacer(1).includes("el ultimo cambio".replace("u", "ú")), textoDeDeshacer(1));
+check("con varios, dice cuantos", textoDeDeshacer(7).includes("7 pasos"), textoDeDeshacer(7));
 
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR

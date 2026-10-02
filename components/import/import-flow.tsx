@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2, CircleAlert } from "lucide-react";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
@@ -20,6 +20,8 @@ import {
   separarLineasSueltas,
 } from "@/lib/lineas-sueltas";
 import { LineasSueltas } from "@/components/import/lineas-sueltas";
+import { BotonDeshacer } from "@/components/import/boton-deshacer";
+import { empujar, sacar, type Instantanea } from "@/lib/historial-de-revision";
 import {
   ConfirmarEmparejamiento,
   ListaDeCandidatos,
@@ -871,7 +873,47 @@ export function ImportFlow({
   // Lo que había ANTES de la última aplicación en masa. `null` = no hay nada
   // que deshacer, y entonces el botón no se enseña: un deshacer que no deshace
   // nada es peor que ninguno.
-  const [antesDeAplicar, setAntesDeAplicar] = useState<ExtractedMovement[] | null>(null);
+  // CT-31. Sustituye al deshacer de un solo nivel que habia aqui para la
+  // moneda: ahora aplicar moneda es un paso mas del historial, como los demas.
+  const [pasado, setPasado] = useState<Instantanea[]>([]);
+
+  // LA FOTO DEL ESTADO DE AHORA. Se llama ANTES de cambiar nada, y siempre desde
+  // un manejador de evento — nunca dentro de un updater de `setState`, que React
+  // puede ejecutar dos veces y dejaria dos pasos identicos en la pila.
+  function recordar() {
+    setPasado((prev) =>
+      empujar(prev, {
+        movimientos: reviewMovements ?? [],
+        eliminados: [...eliminados],
+        clientesQuitados,
+        decisiones,
+        decisionesDeTotal,
+        sameClient,
+        sharedName,
+        sharedDocument,
+        sharedWhatsapp,
+        unlinked: [...unlinked],
+      }),
+    );
+  }
+
+  function deshacer() {
+    const { pasado: resto, instantanea } = sacar(pasado);
+    if (!instantanea) return;
+    setPasado(resto);
+    setReviewMovements(instantanea.movimientos);
+    setEliminados(new Set(instantanea.eliminados));
+    setClientesQuitados(instantanea.clientesQuitados);
+    setDecisiones(instantanea.decisiones);
+    setDecisionesDeTotal(
+      instantanea.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>,
+    );
+    setSameClient(instantanea.sameClient);
+    setSharedName(instantanea.sharedName);
+    setSharedDocument(instantanea.sharedDocument);
+    setSharedWhatsapp(instantanea.sharedWhatsapp);
+    setUnlinked(new Set(instantanea.unlinked));
+  }
   const [forzarMoneda, setForzarMoneda] = useState(false);
   const [modalMoneda, setModalMoneda] = useState(false);
 
@@ -927,6 +969,7 @@ export function ImportFlow({
     const limpio = nombreNuevo.trim();
     const nuevo = limpio.toLowerCase();
     if (!limpio || nuevo === nameKeyViejo) return;
+    recordar();
 
     setReviewMovements((prev) =>
       prev
@@ -1006,23 +1049,21 @@ export function ImportFlow({
     // `removeMovement`: un updater tiene que ser puro, y React puede llamarlo
     // dos veces para la misma actualización.
     if (!reviewMovements) return;
-    setAntesDeAplicar(reviewMovements);
+    recordar();
     mudarDecisionesDeMoneda((m) => incluirYaAjustadas || !m.currency, currency);
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (incluirYaAjustadas || !m.currency ? { ...m, currency } : m)) : prev,
     );
   }
 
-  function deshacerMoneda() {
-    setReviewMovements((prev) => antesDeAplicar ?? prev);
-    setAntesDeAplicar(null);
-  }
+
 
   // Por `uid` y no por posición: el detalle de un cliente recibe solo SUS
   // filas, y con índices la edición aterrizaba en otro cliente. Pasó de verdad
   // el 2026-09-28 — se tecleó una cédula en "QA No Cuadra" y apareció en "QA
   // Cuadra".
   function updateMovement(rowId: string, patch: Partial<ExtractedMovement>) {
+    recordar();
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (m.uid === rowId ? { ...m, ...patch } : m)) : prev,
     );
@@ -1035,11 +1076,10 @@ export function ImportFlow({
   function aplicarMonedaAlCliente(rowIds: string[], moneda: LedgerCurrency) {
     if (!reviewMovements) return;
     const suyas = new Set(rowIds);
-    // `setAntesDeAplicar` FUERA del updater: un updater tiene que ser puro y
-    // React puede llamarlo dos veces para la misma actualizacion. Es el mismo
-    // fallo que ya se corrigio en `applyCurrencyToAll` y que aqui habia
-    // quedado dentro.
-    setAntesDeAplicar(reviewMovements);
+    // `recordar()` FUERA del updater: un updater tiene que ser puro y React
+    // puede llamarlo dos veces para la misma actualizacion, lo que dejaria dos
+    // pasos identicos en la pila.
+    recordar();
     mudarDecisionesDeMoneda((m) => Boolean(m.uid && suyas.has(m.uid)), moneda);
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (m.uid && suyas.has(m.uid) ? { ...m, currency: moneda } : m)) : prev,
@@ -1097,6 +1137,7 @@ export function ImportFlow({
   // Para todo lo que calcula —saldos, sumas, el resumen— no existe:
   // `effectiveMovements` los filtra antes de reconciliar.
   function removeMovement(rowId: string) {
+    recordar();
     setEliminados((prev) => new Set(prev).add(rowId));
   }
 
@@ -1104,6 +1145,7 @@ export function ImportFlow({
   // la tuberia normal: a partir de ahi es un renglon como cualquier otro, con su
   // tarjeta, su saldo corrido y su comprobacion contra el total escrito.
   function asignarSuelta(uid: string, nombre: string) {
+    recordar();
     setReviewMovements((prev) => (prev ? asignarLineaSuelta(prev, uid, nombre) : prev));
   }
 
@@ -1111,12 +1153,14 @@ export function ImportFlow({
   // el de la hoja anterior. Se asignan solo los que siguen VIVOS — uno que el
   // dueno acaba de quitar no debe resucitar con nombre puesto.
   function asignarTodasSueltas(nombre: string) {
+    recordar();
     setReviewMovements((prev) =>
       prev ? asignarTodasLasSueltas(prev, nombre, eliminados) : prev,
     );
   }
 
   function restaurarMovimiento(rowId: string) {
+    recordar();
     setEliminados((prev) => {
       const next = new Set(prev);
       next.delete(rowId);
@@ -1133,6 +1177,7 @@ export function ImportFlow({
   // recuperar al cliente ese movimiento NO debe volver — el dueno lo quito a
   // proposito, y devolverselo seria deshacer una decision que no pidio deshacer.
   function eliminarCliente(nameKey: string, rowIds: string[]) {
+    recordar();
     const nuevos = rowIds.filter((id) => !eliminados.has(id));
     setEliminados((prev) => {
       const next = new Set(prev);
@@ -1144,6 +1189,7 @@ export function ImportFlow({
   }
 
   function restaurarCliente(nameKey: string) {
+    recordar();
     const suyos = clientesQuitados[nameKey] ?? [];
     setEliminados((prev) => {
       const next = new Set(prev);
@@ -1181,6 +1227,7 @@ export function ImportFlow({
   // sola cosa: poder notar luego que la cifra cambio y decirselo al dueno. Lo
   // que el panel ensena no sale de aqui, sale del libro sombra.
   function elegirTotal(cliente: ClienteRevisado, libro: LibroDelCliente, cual: EleccionDeTotal) {
+    recordar();
     const clave = `${cliente.nameKey}|${libro.currency ?? "COP"}`;
     const sombra = librosSombra.get(clave);
     setDecisionesDeTotal((prev) => ({
@@ -1276,6 +1323,11 @@ export function ImportFlow({
 
     const subidosAhora = new Set([...subidos, ...hechos]);
     setSubidos(subidosAhora);
+    // EL HISTORIAL SE VACIA AL SUBIR. Un cliente ya escrito en la base no se
+    // des-sube desde aqui, asi que deshacer hasta antes de la subida enseñaria
+    // una revision que ya no se corresponde con lo guardado — y el boton
+    // parecería ofrecer justo lo que no puede hacer.
+    setPasado([]);
 
     // Si ya no queda nadie por subir, la revision se acaba y se vuelve a Inicio,
     // igual que antes. Si queda gente, NO se navega: el dueno sigue en la lista
@@ -1311,6 +1363,14 @@ export function ImportFlow({
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4 pb-2">
+        {/* EL TÍTULO VIVE AQUÍ, no en la página, desde CT-31: el deshacer va
+            alineado a su derecha y los dos tienen que estar en el mismo
+            componente para poder compartir el estado. */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+          <BotonDeshacer pasos={pasado.length} onDeshacer={deshacer} />
+        </div>
+
         {/* EL BOTÓN DE GUARDAR YA NO VA EN LA CABECERA.
             Estuvo ahí porque el único que guardaba quedaba a una pantalla y
             media de scroll; la barra fija del pie resuelve lo mismo mejor —
@@ -1424,23 +1484,9 @@ export function ImportFlow({
                 mezcla —se permite, cambiando filas sueltas— no se marca
                 ninguna, porque marcar una sería mentir sobre las otras. */}
             <div className="flex w-full flex-wrap items-center gap-2">
-              {/* Deshacer, y solo cuando hay algo que deshacer. Vive a la
-                  IZQUIERDA de las dos opciones, como en el mapa: es el escape
-                  de lo que está a su derecha, y ponerlo al final lo convertiría
-                  en una tercera opción. */}
-              {antesDeAplicar ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-10 rounded-full"
-                  aria-label="Deshacer la moneda que acabo de aplicar"
-                  title="Deshacer"
-                  onClick={deshacerMoneda}
-                >
-                  <Undo2 className="size-4" />
-                </Button>
-              ) : null}
+              {/* El deshacer de la moneda vivia aqui, de un solo nivel. Desde
+                  CT-31 es global y esta arriba, junto al titulo: aplicar moneda
+                  es un paso mas del historial y no merecia boton propio. */}
 
               {/* EL MISMO PATRÓN que el selector de moneda de "Agregar
                   movimiento": bandera delante, nombre detrás, píldora rellena
@@ -1547,7 +1593,10 @@ export function ImportFlow({
         <RevisarClientes
           entradas={entradas}
           decisiones={decisiones}
-          onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
+          onDecidir={(nameKey, d) => {
+            recordar();
+            setDecisiones((prev) => ({ ...prev, [nameKey]: d }));
+          }}
           onVerClientes={setListaAbierta}
           onConfirmarCon={(nameKey, candidato) => setPorConfirmar({ nameKey, candidato })}
           onAbrir={setAbierto}
@@ -1573,6 +1622,7 @@ export function ImportFlow({
           }}
           onEsOtraPersona={() => {
             if (!listaAbierta) return;
+            recordar();
             setDecisiones((prev) => ({ ...prev, [listaAbierta]: { cual: "otra" } }));
             setListaAbierta(null);
           }}
@@ -1583,6 +1633,7 @@ export function ImportFlow({
           onCerrar={() => setPorConfirmar(null)}
           onConfirmar={() => {
             if (!porConfirmar) return;
+            recordar();
             setDecisiones((prev) => ({
               ...prev,
               [porConfirmar.nameKey]: { cual: "mismo", clientId: porConfirmar.candidato.id },
@@ -1631,14 +1682,17 @@ export function ImportFlow({
                 }
                 candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
                 onRenombrar={(nombre) => renombrarCliente(clienteAbierto.nameKey, nombre)}
+                pasosParaDeshacer={pasado.length}
+                onDeshacer={deshacer}
                 onVerClientes={() => setListaAbierta(clienteAbierto.nameKey)}
                 onConfirmarCon={(candidato) =>
                   setPorConfirmar({ nameKey: clienteAbierto.nameKey, candidato })
                 }
                 decision={decisiones[clienteAbierto.nameKey]}
-                onDecidir={(d) =>
-                  setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }))
-                }
+                onDecidir={(d) => {
+                  recordar();
+                  setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }));
+                }}
                 entradas={entradasDelHistorial(clienteAbierto.nameKey)}
                 country={country}
                 showCurrency={showCurrency}
@@ -1750,6 +1804,7 @@ export function ImportFlow({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
       {/* Los tres pasos viven aquí y no en la página porque solo valen para
           este momento: explican cómo se importa, y una vez la libreta está
           leída y el dueño está corrigiendo montos, describen algo que ya
