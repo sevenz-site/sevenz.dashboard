@@ -333,6 +333,7 @@ export function ImportFlow({
   // `porConfirmar` es el emparejamiento esperando confirmacion. Separados porque
   // el dialogo sale TAMBIEN sin pasar por la lista, cuando el candidato es uno.
   const [listaAbierta, setListaAbierta] = useState<string | null>(null);
+  const [sinNombre, setSinNombre] = useState<Set<string>>(new Set());
   const [porConfirmar, setPorConfirmar] = useState<
     { nameKey: string; candidato: CandidatoDuplicado } | null
   >(null);
@@ -760,6 +761,7 @@ export function ImportFlow({
     exigeMoneda: showCurrency,
     subidos,
     hayLineasSinResolver,
+    sinNombre,
   });
   const listosParaSubir = estadosPendientes.filter((c) => c.puedeSubir);
   const sinCompletar = estadosPendientes.length - listosParaSubir.length;
@@ -968,7 +970,24 @@ export function ImportFlow({
   function renombrarCliente(nameKeyViejo: string, nombreNuevo: string) {
     const limpio = nombreNuevo.trim();
     const nuevo = limpio.toLowerCase();
-    if (!limpio || nuevo === nameKeyViejo) return;
+
+    // VACIO: no se escribe en la fila, se APUNTA. Escribirlo convertiria esos
+    // renglones en "lineas sin cliente" (CT-25) y la tarjeta desapareceria de la
+    // lista con la hoja abierta encima. Se marca, `conEstado` lo bloquea, y en
+    // cuanto se escriba un nombre valido se desmarca. Reportado el 2026-10-02:
+    // con el campo vacio, "Subir este cliente" seguia encendido.
+    if (!limpio) {
+      setSinNombre((prev) => new Set(prev).add(nameKeyViejo));
+      return;
+    }
+    setSinNombre((prev) => {
+      if (!prev.has(nameKeyViejo)) return prev;
+      const next = new Set(prev);
+      next.delete(nameKeyViejo);
+      return next;
+    });
+
+    if (nuevo === nameKeyViejo) return;
     recordar();
 
     setReviewMovements((prev) =>
@@ -1044,16 +1063,29 @@ export function ImportFlow({
     });
   }
 
+  // SI LA LIBRETA NO MEZCLA, EL BOTÓN ALCANZA A TODAS. Reportado el 2026-10-02
+  // desde el móvil: "Todo Euros" no hacía nada.
+  //
+  // La condición era `!m.currency` —solo las filas sin moneda— con una casilla
+  // aparte para forzar el resto. Pero esa casilla solo salía si había filas CON
+  // y SIN moneda a la vez, y después de que la modal pusiera dólares a toda la
+  // tanda no queda ninguna sin moneda: ni casilla, ni filas que alcanzar. El
+  // botón quedaba muerto, diciendo "Todo Euros" y sin hacer nada.
+  //
+  // Ahora `incluirYaAjustadas` solo hace falta cuando hay DE VERDAD algo que
+  // proteger: dos monedas distintas conviviendo, que es el único caso en que
+  // aplicar a todas pisaría un ajuste hecho a mano fila por fila. Sin mezcla,
+  // el botón hace lo que su etiqueta dice.
   function applyCurrencyToAll(currency: LedgerCurrency, incluirYaAjustadas = false) {
-    // `setAntesDeAplicar` va FUERA del updater, por lo mismo que el toast de
-    // `removeMovement`: un updater tiene que ser puro, y React puede llamarlo
-    // dos veces para la misma actualización.
     if (!reviewMovements) return;
+    const distintas = new Set(reviewMovements.filter((m) => m.currency).map((m) => m.currency));
+    const hayMezcla = distintas.size > 1;
+    const alcanza = (m: ExtractedMovement) => incluirYaAjustadas || !m.currency || !hayMezcla;
+    // `recordar()` FUERA del updater: un updater tiene que ser puro y React
+    // puede llamarlo dos veces para la misma actualización.
     recordar();
-    mudarDecisionesDeMoneda((m) => incluirYaAjustadas || !m.currency, currency);
-    setReviewMovements((prev) =>
-      prev ? prev.map((m) => (incluirYaAjustadas || !m.currency ? { ...m, currency } : m)) : prev,
-    );
+    mudarDecisionesDeMoneda(alcanza, currency);
+    setReviewMovements((prev) => (prev ? prev.map((m) => (alcanza(m) ? { ...m, currency } : m)) : prev));
   }
 
 
@@ -1356,6 +1388,7 @@ export function ImportFlow({
           exigeMoneda: showCurrency,
           subidos,
           hayLineasSinResolver,
+          sinNombre,
         }),
       )
     : [];
@@ -1515,10 +1548,11 @@ export function ImportFlow({
               </div>
             </div>
 
-            {/* La casilla solo sale cuando de verdad hay algo que forzar: si
-                ninguna fila está ya ajustada, ofrecerla es ofrecer una decisión
-                sobre un conjunto vacío. */}
-            {filas.some((r) => r.currency) && filas.some((r) => !r.currency) ? (
+            {/* La casilla sale cuando hay algo que forzar DE VERDAD: dos monedas
+                distintas conviviendo. Antes la condición era "unas con moneda y
+                otras sin", y por eso desaparecía justo cuando la tanda entera ya
+                tenía una — que es cuando el otro botón dejaba de funcionar. */}
+            {new Set(filas.filter((r) => r.currency).map((r) => r.currency)).size > 1 ? (
               <label className="flex w-full cursor-pointer items-start gap-2 text-xs text-muted-foreground">
                 <Checkbox
                   checked={forzarMoneda}
@@ -1526,8 +1560,8 @@ export function ImportFlow({
                   className="mt-0.5"
                 />
                 <span>
-                  Aplicar también a {filas.filter((r) => r.currency).length} línea
-                  {filas.filter((r) => r.currency).length === 1 ? "" : "s"} que ya ajustaste
+                  Aplicar también a las {filas.filter((r) => r.currency).length} líneas que ya
+                  llevan moneda
                 </span>
               </label>
             ) : null}
@@ -1660,7 +1694,16 @@ export function ImportFlow({
         />
 
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
-          <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-xl">
+          <SheetContent
+            side="bottom"
+            className="max-h-[92dvh] overflow-y-auto rounded-t-xl"
+            // NADA ABRE ENFOCADO. Radix enfoca el primer elemento enfocable al
+            // abrir la hoja, y desde que el nombre es un campo editable ese
+            // primero es el nombre: la hoja abria con el nombre seleccionado y
+            // el teclado fuera, a una tecla de borrarlo entero sin querer.
+            // Reportado el 2026-10-02 con captura desde el movil.
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <SheetHeader>
               {/* El titulo del panel es la ACCION, no el nombre: el nombre va
                   dentro, en grande, junto a su estado y su boton de quitar. */}
@@ -1678,10 +1721,14 @@ export function ImportFlow({
                   conEstado([clienteAbierto], filas, decisiones, candidatos, {
                     exigeMoneda: showCurrency,
                     subidos,
+                    sinNombre,
                   })[0].estado
                 }
                 candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
                 onRenombrar={(nombre) => renombrarCliente(clienteAbierto.nameKey, nombre)}
+                bloqueos={
+                  estadosPendientes.find((c) => c.nameKey === clienteAbierto.nameKey)?.bloqueos ?? []
+                }
                 pasosParaDeshacer={pasado.length}
                 onDeshacer={deshacer}
                 onVerClientes={() => setListaAbierta(clienteAbierto.nameKey)}

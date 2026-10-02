@@ -129,6 +129,8 @@ export function conEstado(
     // resto es como se pierden — el dueno sube, la pantalla se vacia, y nadie
     // vuelve a por ellas.
     hayLineasSinResolver?: boolean;
+    // Los `nameKey` cuyo campo de nombre esta vacio ahora mismo en pantalla.
+    sinNombre?: Set<string>;
   } = {},
 ): ClienteConEstado[] {
   return clientes.map((c) => {
@@ -137,6 +139,20 @@ export function conEstado(
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
 
     const bloqueos: string[] = [];
+    // SIN NOMBRE NO SE SUBE. Reportado el 2026-10-02: con el campo del nombre
+    // vaciado, "Subir este cliente" seguia encendido.
+    //
+    // El vacio NO se escribe en la fila, y por eso llega aqui en una lista
+    // aparte: un `client_name` vacio convierte esos renglones en "lineas sin
+    // cliente" (CT-25), la tarjeta desaparece de la lista y la hoja abierta se
+    // cierra sola en mitad de la edicion. El dueño borro el nombre para escribir
+    // otro, no para mandar sus movimientos a otra seccion.
+    //
+    // Va el PRIMERO a proposito: el detalle enseña un bloqueo a la vez, y sin
+    // nombre no tiene sentido pedir la cedula de nadie.
+    if (opciones.sinNombre?.has(c.nameKey)) {
+      bloqueos.push("Falta el nombre del cliente. Sin él no se puede importar.");
+    }
     // EL MISMO CRITERIO, FILA A FILA, que el bloqueo del pie de la pantalla
     // (`missingDocumentId`). Antes esto preguntaba si ALGUNA fila traía cédula
     // y el pie si le FALTABA a alguna: con una sola fila sin ella —la línea de

@@ -514,6 +514,7 @@ check("sin pasos, el boton lo dice", textoDeDeshacer(0) === "No hay nada que des
 check("con uno, en singular", textoDeDeshacer(1).includes("el ultimo cambio".replace("u", "ú")), textoDeDeshacer(1));
 check("con varios, dice cuantos", textoDeDeshacer(7).includes("7 pasos"), textoDeDeshacer(7));
 
+
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR
 console.log("\n── Quitar y recuperar ───────────────────────────────────────");
@@ -586,6 +587,23 @@ check(
   "un duplicado sin decidir bloquea",
   estadoDe(cliente(), [fila()], {}, new Map([["ana", [candidato]]])).estado === "duplicado",
 );
+
+// ═════════════════════════════════════════════════════════════════════════
+// LOS TRES FALLOS DEL 2026-10-02, reportados probando en un movil de verdad
+console.log("");
+console.log("-- Reportados desde el movil (2026-10-02) --------------------");
+
+// 1. Con el nombre vacio no se sube. El vacio NO se escribe en la fila —eso
+//    convertiria sus renglones en "lineas sin cliente" y la tarjeta
+//    desapareceria con la hoja abierta encima— sino que se apunta aparte.
+const sinNom = conEstado([cliente()], [fila()], {}, new Map(), { sinNombre: new Set(["ana"]) })[0];
+check("sin nombre, no se puede subir", sinNom.puedeSubir === false);
+check("y lo dice como los demas bloqueos", sinNom.bloqueos[0]?.includes("Falta el nombre"), sinNom.bloqueos[0]);
+check("el bloqueo del nombre va PRIMERO", sinNom.bloqueos[0]?.includes("nombre"), sinNom.bloqueos.join(" | "));
+const conNom = conEstado([cliente()], [fila()], {}, new Map(), { sinNombre: new Set(["otro"]) })[0];
+check("con nombre, ningun bloqueo por eso", !conNom.bloqueos.some((b) => b.includes("nombre")));
+
+
 check(
   "decidido, deja de bloquear",
   estadoDe(cliente(), [fila()], { ana: { cual: "mismo", clientId: "c1" } }, new Map([["ana", [candidato]]])).estado === "cuadra",

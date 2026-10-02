@@ -337,6 +337,7 @@ export function DetalleDelCliente({
   esAjuste,
   onEliminarCliente,
   onRenombrar,
+  bloqueos,
   pasosParaDeshacer,
   onDeshacer,
   onAplicarMoneda,
@@ -373,6 +374,9 @@ export function DetalleDelCliente({
   esAjuste: (rowId: string) => boolean;
   onEliminarCliente: () => void;
   onRenombrar: (nombre: string) => void;
+  // Lo que impide subir a ESTE cliente. Se enseña el primero: el detalle
+  // resuelve de uno en uno y cuatro avisos a la vez no dicen por dónde empezar.
+  bloqueos: string[];
   pasosParaDeshacer: number;
   onDeshacer: () => void;
   onAplicarMoneda: (moneda: LedgerCurrency) => void;
@@ -779,6 +783,18 @@ export function DetalleDelCliente({
           }),
         )}
       />
+
+      {/* LO QUE IMPIDE SUBIR, justo encima del boton que impide. Hasta el
+          2026-10-02 esto solo salia en la tarjeta de la lista: desde el detalle
+          el boton aparecia apagado sin ninguna explicacion al lado, y con el
+          nombre borrado ni siquiera habia pista de que faltaba. Misma forma que
+          el pie de la revision. */}
+      {!subido && bloqueos.length > 0 ? (
+        <p className="flex items-start gap-1.5 text-sm text-destructive">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" />
+          {bloqueos[0]}
+        </p>
+      ) : null}
 
       {subido ? null : accionSubir}
 
