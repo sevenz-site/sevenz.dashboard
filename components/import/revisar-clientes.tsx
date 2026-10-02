@@ -5,6 +5,7 @@ import {
   CircleAlert,
   RotateCcw,
   TriangleAlert,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -44,7 +45,7 @@ import type {
   EstadoTarjeta,
   ClienteConEstado,
 } from "@/lib/estado-de-tarjeta";
-import { AvisoDeDuplicado } from "@/components/import/emparejar-cliente";
+import { AvisoDeDuplicado, FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente";
 import type { CandidatoDuplicado } from "@/lib/reconcile";
 
 export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
@@ -90,6 +91,12 @@ function TarjetaCliente({
   onSubir: () => void;
   subiendo: boolean;
 }) {
+  // Con quien se emparejo, si se emparejo. De el salen la ficha y el sitio del
+  // boton de subir.
+  const emparejado =
+    decision?.cual === "mismo"
+      ? (cliente.candidatosVisibles.find((c) => c.id === decision.clientId) ?? null)
+      : null;
   const chip = CHIP[cliente.estado];
   const desajustado = cliente.libros.find((l) => l.estado === "no_cuadra");
 
@@ -158,8 +165,13 @@ function TarjetaCliente({
           libreta entera este perfecta para empezar a guardar: en cuanto un
           cliente tiene lo suyo, entra. La tarjeta de quien ya entro se queda en
           su sitio, sin boton y en verde apagado, para que se vea lo hecho — y
-          se puede seguir abriendo para mirar lo que se subio. */}
-      {cliente.subido ? null : cliente.puedeSubir ? (
+          se puede seguir abriendo para mirar lo que se subio.
+
+          CUANDO HAY EMPAREJAMIENTO el boton NO sale aqui: baja al final del
+          bloque ambar, debajo de la ficha de con quien se emparejo. Subir es lo
+          ultimo que se hace y tiene que leerse despues de la decision, no
+          encima de ella. */}
+      {cliente.subido || emparejado ? null : cliente.puedeSubir ? (
         <Button
           type="button"
           variant="outline"
@@ -180,14 +192,18 @@ function TarjetaCliente({
         </p>
       ))}
 
-      {/* El duplicado. Un candidato pregunta; varios abren la lista (CT-29).
-          Sin opción marcada por defecto: ver la nota de `DecisionDuplicado`. */}
       {/* El duplicado. Un candidato pregunta directo; varios abren la lista
-          (CT-29). Las dos opciones son RADIOS y ninguna nace marcada: ver la
-          nota de `AvisoDeDuplicado`. La tarjeta las enseña SIEMPRE, decidido o
-          no, para poder cambiar de idea sin buscar dónde. */}
+          (CT-29). Las opciones son RADIOS y ninguna nace marcada: ver la nota de
+          `AvisoDeDuplicado`.
+
+          YA EMPAREJADO, la tarjeta cambia de forma (2026-10-02): en vez de una
+          frase suelta —"Se sumara al X"— se enseña la FICHA del cliente con el
+          que se emparejo, con su cedula, su WhatsApp y lo que debe. Esos tres
+          datos son los que dejan comprobar de un vistazo que es la persona
+          correcta; un nombre repetido, no. Queda una sola salida, "Es otro
+          cliente", y el boton de subir cierra el bloque. */}
       {cliente.candidatosVisibles.length > 0 ? (
-        <div className="flex flex-col gap-2 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
+        <div className="flex flex-col gap-3 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
           <AvisoDeDuplicado
             nombreEnLaLibreta={cliente.name}
             candidatos={cliente.candidatosVisibles}
@@ -198,16 +214,32 @@ function TarjetaCliente({
                 : onConfirmarCon(cliente.candidatosVisibles[0])
             }
             onElegirOtra={() => onDecidir({ cual: "otra" })}
+            fichaEmparejada={
+              emparejado ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs text-muted-foreground">Emparejado con:</p>
+                  <FichaDeCliente
+                    nombre={emparejado.name}
+                    documento={emparejado.document_id}
+                    whatsapp={emparejado.whatsapp}
+                    debe={loQueDebe(emparejado)}
+                  />
+                </div>
+              ) : null
+            }
           />
-          {decision ? (
+
+          {decision?.cual === "otra" ? (
             <p className="text-sm text-muted-foreground">
-              {decision.cual === "otra"
-                ? "Se registrará como un cliente nuevo, con su propio documento."
-                : `Se sumará al “${
-                    cliente.candidatosVisibles.find((c) => c.id === decision.clientId)?.name ??
-                    "cliente que ya tienes"
-                  }”.`}
+              Se registrará como un cliente nuevo, con su propio documento.
             </p>
+          ) : null}
+
+          {emparejado && !cliente.subido && cliente.puedeSubir ? (
+            <Button type="button" className="w-full" disabled={subiendo} onClick={onSubir}>
+              <Upload className="size-4" />
+              Subir este cliente
+            </Button>
           ) : null}
         </div>
       ) : null}

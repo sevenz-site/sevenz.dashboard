@@ -42,7 +42,7 @@ function iniciales(nombre: string): string {
 
 // Lo que debe, en las monedas que tenga. Un cliente VE puede deber en las dos y
 // NUNCA se suman: son deudas independientes, la regla que sigue toda la app.
-function loQueDebe(c: Pick<CandidatoDuplicado, "balance" | "balance_usd" | "balance_eur">): string {
+export function loQueDebe(c: Pick<CandidatoDuplicado, "balance" | "balance_usd" | "balance_eur">): string {
   const partes: string[] = [];
   if (c.balance_usd) partes.push(formatDisplayCurrency(c.balance_usd, "USD"));
   if (c.balance_eur) partes.push(formatDisplayCurrency(c.balance_eur, "EUR"));
@@ -53,7 +53,7 @@ function loQueDebe(c: Pick<CandidatoDuplicado, "balance" | "balance_usd" | "bala
 // La ficha de un cliente, igual en la lista y en la confirmación. Se escribe una
 // vez porque en la confirmación aparecen DOS, una encima de otra, y que no se
 // vean idénticas sería justo lo que haría dudar de cuál es cuál.
-function FichaDeCliente({
+export function FichaDeCliente({
   nombre,
   documento,
   whatsapp,
@@ -109,6 +109,7 @@ export function AvisoDeDuplicado({
   elegido,
   onElegirMismo,
   onElegirOtra,
+  fichaEmparejada,
 }: {
   nombreEnLaLibreta: string;
   candidatos: CandidatoDuplicado[];
@@ -119,6 +120,11 @@ export function AvisoDeDuplicado({
   // es solo el texto, porque elegir se hace tocando una ficha de la lista.
   onElegirMismo?: () => void;
   onElegirOtra?: () => void;
+  // La ficha del cliente con el que se emparejó, cuando ya se emparejó. Va entre
+  // el aviso y las opciones: la cédula, el WhatsApp y lo que debe son lo que
+  // deja comprobar de un vistazo que es la persona correcta — un nombre
+  // repetido, que es justo el caso, no.
+  fichaEmparejada?: React.ReactNode;
 }) {
   const varios = candidatos.length > 1;
   const uno = candidatos[0];
@@ -146,6 +152,11 @@ export function AvisoDeDuplicado({
           )}
         </span>
       </p>
+      {/* La ficha va FUERA del condicional de las opciones: es un dato, no una
+          eleccion, y dentro de la hoja de candidatos —que no pinta opciones—
+          tambien tendria sentido enseñarla. */}
+      {fichaEmparejada}
+
       {onElegirMismo && onElegirOtra ? (
       <RadioGroup
         value={elegido ?? ""}
@@ -154,6 +165,10 @@ export function AvisoDeDuplicado({
       >
         {/* `h-10` y `rounded-full`, la forma de `TipoButtons`, que es la que el
             design system fija para una elección. */}
+        {/* Ya emparejado: la opcion de "el mismo" desaparece y queda solo la
+            salida. Repetirla marcada seria enseñar una eleccion donde ya hay una
+            FICHA concreta debajo diciendo con quien — y la ficha dice mas. */}
+        {elegido === "mismo" ? null : (
         <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
           <RadioGroupItem value="mismo" />
           {/* CON VARIOS NO SE PUEDE DECIR "es el mismo": el aviso de arriba
@@ -163,6 +178,7 @@ export function AvisoDeDuplicado({
               perdido su etiqueta al pasar de botones a radios. */}
           <span className="whitespace-nowrap">{varios ? "Ver clientes" : "Es el mismo"}</span>
         </label>
+        )}
         <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
           <RadioGroupItem value="otra" />
           <span className="whitespace-nowrap">Es otro cliente</span>
