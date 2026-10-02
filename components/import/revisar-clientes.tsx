@@ -182,69 +182,36 @@ function TarjetaCliente({
 
       {/* El duplicado. Un candidato pregunta; varios abren la lista (CT-29).
           Sin opción marcada por defecto: ver la nota de `DecisionDuplicado`. */}
-      {cliente.candidatosVisibles.length > 0 && !decision ? (
+      {/* El duplicado. Un candidato pregunta directo; varios abren la lista
+          (CT-29). Las dos opciones son RADIOS y ninguna nace marcada: ver la
+          nota de `AvisoDeDuplicado`. La tarjeta las enseña SIEMPRE, decidido o
+          no, para poder cambiar de idea sin buscar dónde. */}
+      {cliente.candidatosVisibles.length > 0 ? (
         <div className="flex flex-col gap-2 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
           <AvisoDeDuplicado
             nombreEnLaLibreta={cliente.name}
             candidatos={cliente.candidatosVisibles}
-          >
-            {cliente.candidatosVisibles.length > 1 ? (
-              <Button type="button" size="sm" onClick={onVerClientes}>
-                Ver clientes
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onConfirmarCon(cliente.candidatosVisibles[0])}
-              >
-                Es el mismo
-              </Button>
-            )}
-            <Button type="button" size="sm" variant="outline" onClick={() => onDecidir({ cual: "otra" })}>
-              Es otra persona
-            </Button>
-          </AvisoDeDuplicado>
+            elegido={decision?.cual}
+            onElegirMismo={() =>
+              cliente.candidatosVisibles.length > 1
+                ? onVerClientes()
+                : onConfirmarCon(cliente.candidatosVisibles[0])
+            }
+            onElegirOtra={() => onDecidir({ cual: "otra" })}
+          />
+          {decision ? (
+            <p className="text-sm text-muted-foreground">
+              {decision.cual === "otra"
+                ? "Se registrará como un cliente nuevo, con su propio documento."
+                : `Se sumará al “${
+                    cliente.candidatosVisibles.find((c) => c.id === decision.clientId)?.name ??
+                    "cliente que ya tienes"
+                  }”.`}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      {/* LO DECIDIDO, Y CÓMO DESDECIRSE.
-          Antes solo estaba la frase, sin vuelta atrás: una vez pulsado "es otra
-          persona" o "es el mismo" los botones desaparecían para siempre y la
-          única salida era tirar la revisión entera con "Volver". Y toda la
-          maquinaria de reconciliar contra la lista COMPLETA de clientes existe
-          precisamente para que la tarjeta siga ahí y se pueda cambiar de idea —
-          sin este botón esa maquinaria no servía de nada. */}
-      {cliente.candidatosVisibles.length > 0 && decision ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2">
-          <p className="text-sm text-muted-foreground">
-            {decision.cual === "otra"
-              ? "Se registrará como un cliente nuevo, con su propio documento."
-              : `Se sumará al “${
-                  cliente.candidatosVisibles.find((c) => c.id === decision.clientId)?.name ??
-                  "cliente que ya tienes"
-                }”.`}
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              decision.cual === "otra"
-                ? cliente.candidatosVisibles.length > 1
-                  ? onVerClientes()
-                  : onConfirmarCon(cliente.candidatosVisibles[0])
-                : onDecidir({ cual: "otra" })
-            }
-          >
-            {decision.cual === "otra"
-              ? cliente.candidatosVisibles.length > 1
-                ? "Ver clientes"
-                : "Es el mismo"
-              : "Es otra persona"}
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }

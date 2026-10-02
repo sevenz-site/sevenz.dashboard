@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   CircleAlert,
+  Eye,
   Pencil,
   RotateCcw,
   Trash2,
@@ -299,7 +300,11 @@ function FilaMovimiento({
         aria-label={esAjuste || soloLectura ? "Ver este movimiento" : "Editar este movimiento"}
         onClick={onEditar}
       >
-        <Pencil className="size-4" />
+        {/* EL ICONO DICE LO QUE EL BOTÓN HACE. Cuando la fila es de solo lectura
+            —el cliente ya se subió, o es la línea de ajuste— el lápiz promete
+            una edición que no existe: se abre la hoja y no deja cambiar nada. El
+            `aria-label` ya decía "Ver"; el icono no. Reportado el 2026-10-02. */}
+        {esAjuste || soloLectura ? <Eye className="size-4" /> : <Pencil className="size-4" />}
       </Button>
       {esAjuste || soloLectura ? null : (
         <Button
@@ -527,32 +532,21 @@ export function DetalleDelCliente({
       {candidatos.length > 0 && !subido ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
           <p className="font-semibold">¿Es el mismo?</p>
-          {/* LOS MISMOS DOS BOTONES QUE LA TARJETA, desde el 2026-10-02 (CT-29).
-              Aqui eran dos pildoras de radio, porque la regla del design system
-              dice que una ELECCION se marca. Y segui siendo cierto mientras la
-              respuesta se guardara sola; ahora no: elegir abre una confirmacion
-              —la lista cuando hay varios, el dialogo cuando hay uno— asi que ya
-              no es un valor que se marca, es una accion que se pulsa. Un radio
-              que al tocarlo abre un dialogo miente sobre lo que acaba de pasar. */}
-          <AvisoDeDuplicado nombreEnLaLibreta={cliente.name} candidatos={candidatos}>
-            {candidatos.length > 1 ? (
-              <Button type="button" size="sm" onClick={onVerClientes}>
-                Ver clientes
-              </Button>
-            ) : (
-              <Button type="button" size="sm" onClick={() => onConfirmarCon(candidatos[0])}>
-                Es el mismo
-              </Button>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => onDecidir({ cual: "otra" })}
-            >
-              Es otra persona
-            </Button>
-          </AvisoDeDuplicado>
+          {/* RADIOS, NO BOTONES. Esto fueron dos `Button` durante unas horas,
+              por un razonamiento mio que resulto equivocado: que, como elegir
+              abre una confirmacion, era una accion. Lo que queda guardado es un
+              VALOR, y la regla del design system ya lo decia. El sintoma: tras
+              pulsar "Es otra persona" los dos botones seguian ahi, iguales, sin
+              marca de lo elegido. Reportado el 2026-10-02. */}
+          <AvisoDeDuplicado
+            nombreEnLaLibreta={cliente.name}
+            candidatos={candidatos}
+            elegido={decision?.cual}
+            onElegirMismo={() =>
+              candidatos.length > 1 ? onVerClientes() : onConfirmarCon(candidatos[0])
+            }
+            onElegirOtra={() => onDecidir({ cual: "otra" })}
+          />
         </div>
       ) : null}
 

@@ -2,6 +2,7 @@
 
 import { ArrowDown, UserRoundSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -87,14 +88,37 @@ function FichaDeCliente({
 // El recuadro ámbar, que es el MISMO en la tarjeta, en la hoja y en el detalle.
 // Lo que cambia es el texto y qué botones lleva al lado — por eso vive aquí y no
 // copiado en tres sitios, que es como dos de los tres se quedan viejos.
+// LA ELECCIÓN SE MARCA, NO SE PULSA — 2026-10-02.
+//
+// Esto nació con dos `Button`, y era un error mío: CT-29 razonó que, como elegir
+// abre una confirmación, era una acción. Pero lo que queda guardado es un VALOR
+// —esta persona es la misma, o no lo es— y `DESIGN-SYSTEM.md` ya tenía la regla
+// escrita: "si dos botones representan un valor elegido, son un RadioGroup".
+//
+// El síntoma que lo destapó: tras pulsar "Es otra persona" los dos botones
+// seguían ahí, iguales, sin ninguna marca de lo que se acababa de elegir. La
+// pantalla se veía igual antes y después — exactamente el fallo que la regla
+// describe con el selector de moneda.
+//
+// NINGUNA MARCADA DE SALIDA, a propósito: las dos respuestas se equivocan en
+// silencio y en direcciones opuestas —una funde a dos personas, la otra parte el
+// historial de una—, así que marcar una por defecto sería responder por el dueño.
 export function AvisoDeDuplicado({
   nombreEnLaLibreta,
   candidatos,
-  children,
+  elegido,
+  onElegirMismo,
+  onElegirOtra,
 }: {
   nombreEnLaLibreta: string;
   candidatos: CandidatoDuplicado[];
-  children?: React.ReactNode;
+  // "mismo" | "otra" | undefined. Sin decidir no marca ninguna.
+  elegido?: "mismo" | "otra";
+  // Con un candidato confirma directo; con varios abre la lista para elegir cuál.
+  // Sin ellos no se pintan las opciones: dentro de la hoja de candidatos el aviso
+  // es solo el texto, porque elegir se hace tocando una ficha de la lista.
+  onElegirMismo?: () => void;
+  onElegirOtra?: () => void;
 }) {
   const varios = candidatos.length > 1;
   const uno = candidatos[0];
@@ -122,7 +146,24 @@ export function AvisoDeDuplicado({
           )}
         </span>
       </p>
-      {children ? <div className="flex flex-wrap gap-2">{children}</div> : null}
+      {onElegirMismo && onElegirOtra ? (
+      <RadioGroup
+        value={elegido ?? ""}
+        onValueChange={(v) => (v === "mismo" ? onElegirMismo() : onElegirOtra())}
+        className="flex flex-row flex-wrap gap-2"
+      >
+        {/* `h-10` y `rounded-full`, la forma de `TipoButtons`, que es la que el
+            design system fija para una elección. */}
+        <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
+          <RadioGroupItem value="mismo" />
+          <span className="whitespace-nowrap">Es el mismo</span>
+        </label>
+        <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
+          <RadioGroupItem value="otra" />
+          <span className="whitespace-nowrap">Es otra persona</span>
+        </label>
+      </RadioGroup>
+      ) : null}
     </div>
   );
 }
