@@ -70,6 +70,11 @@ export type RevisionGuardada = {
   // enseñan salen del libro sombra, no de aquí (ver import-flow), así que esto
   // solo sirve para recordar QUÉ se eligió y poder avisar si el ajuste cambió.
   decisionesDeTotal: Record<string, unknown>;
+  // CT-29b. Opcional: un borrador guardado antes de que esto existiera no lo
+  // trae, y entonces vale `{}` y la pregunta de la cédula repetida vuelve a
+  // salir. Vuelve a salir también si la cédula cambió — la respuesta se guarda
+  // junto al documento con el que se dio, no como un "sí" suelto.
+  documentoConfirmado?: Record<string, string>;
   subidos: string[];
   sameClient: boolean;
   sharedName: string;
@@ -160,6 +165,7 @@ export function cargarRevision(ahora = Date.now(), almacen?: Almacen | null): Re
     clientesQuitados: p.clientesQuitados ?? {},
     decisiones: p.decisiones ?? {},
     decisionesDeTotal: p.decisionesDeTotal ?? {},
+    documentoConfirmado: p.documentoConfirmado ?? {},
     subidos: Array.isArray(p.subidos) ? p.subidos : [],
     sameClient: Boolean(p.sameClient),
     sharedName: typeof p.sharedName === "string" ? p.sharedName : "",

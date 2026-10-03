@@ -24,6 +24,7 @@ import type { ExtractedMovement } from "@/lib/types";
 //   quitar y recuperar un movimiento · quitar y recuperar un cliente ·
 //   editar un movimiento · aplicar moneda a la tanda · elegir el total ·
 //   emparejar con un cliente existente · decir "es otra persona" ·
+//   decir "es una cuenta separada" ante una cédula repetida ·
 //   asignar una línea suelta · renombrar a un cliente ·
 //   marcar o desmarcar "todos el mismo cliente"
 //
@@ -51,6 +52,11 @@ export type Instantanea = {
   clientesQuitados: Record<string, string[]>;
   decisiones: Record<string, DecisionDuplicado>;
   decisionesDeTotal: Record<string, unknown>;
+  // CT-29b. Opcional porque una instantanea guardada antes de que esto
+  // existiera no lo trae, y al restaurarla vale `{}` — o sea, la pregunta
+  // vuelve. Preguntar de mas es el fallo barato; el caro es crear un duplicado
+  // que nadie confirmo.
+  documentoConfirmado?: Record<string, string>;
   sameClient: boolean;
   sharedName: string;
   sharedDocument: string;

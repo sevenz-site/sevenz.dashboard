@@ -82,6 +82,10 @@ export type ClienteConEstado = ClienteRevisado & {
   // poder cambiar de idea.
   // Todos los que se parecen. Vacío cuando no hay ninguno.
   candidatosVisibles: CandidatoDuplicado[];
+  // CT-29b: los que ya tienen la CÉDULA que esta tarjeta trae escrita, y que no
+  // están ya en `candidatosVisibles` — ver la cabecera de
+  // `lib/document-duplicates.ts` para por qué son dos listas y no una.
+  duplicadosPorDocumento: CandidatoDuplicado[];
   // Lo que falta, ya redactado. Puede haber más de una cosa: "Falta cédula" y
   // "Falta WhatsApp" son dos avisos distintos y se enseñan los dos, separados,
   // porque uno impide importar y el otro no.
@@ -131,12 +135,43 @@ export function conEstado(
     hayLineasSinResolver?: boolean;
     // Los `nameKey` cuyo campo de nombre esta vacio ahora mismo en pantalla.
     sinNombre?: Set<string>;
+    // CT-29b. Los clientes que ya tienen la cédula escrita en cada tarjeta,
+    // calculados por `findDocumentDuplicates`.
+    duplicadosPorDocumento?: Map<string, CandidatoDuplicado[]>;
+    // La respuesta, guardada CON el documento con el que se respondió. Vale
+    // mientras ese documento siga siendo el que hay escrito: corregir un dígito
+    // la invalida sola y la pregunta vuelve, que es justo lo que tiene que
+    // pasar cuando la cédula nueva choca con OTRA persona.
+    documentoConfirmado?: Record<string, string>;
+    // El documento normalizado que hay escrito ahora en cada tarjeta, para
+    // comparar contra el de arriba. Se pasa ya calculado porque la
+    // normalización tiene que ser la misma en los tres sitios — detectar,
+    // responder y comprobar — y tres copias de una expresión regular se
+    // separan.
+    documentoActual?: Record<string, string>;
   } = {},
 ): ClienteConEstado[] {
   return clientes.map((c) => {
     const subido = opciones.subidos?.has(c.nameKey) ?? false;
     const candidatosVisibles = candidatos.get(c.nameKey) ?? [];
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
+
+    // CT-29b. La respuesta vale solo contra el documento con el que se dio. Si
+    // no hay respuesta, o si la cédula cambió desde entonces, vuelve a
+    // preguntar — y tiene que volver, porque la cédula nueva puede ser de otra
+    // persona que la dueña no ha visto nunca.
+    //
+    // Si llegan candidatos y NO llega `documentoActual`, bloquea: eso solo
+    // puede ser un fallo de cableado, y la salida segura de un fallo de
+    // cableado aquí es preguntar de más, no crear un duplicado de menos.
+    const duplicadosPorDocumento = opciones.duplicadosPorDocumento?.get(c.nameKey) ?? [];
+    const respuestaDelDocumento = opciones.documentoConfirmado?.[c.nameKey];
+    const documentoSinResolver =
+      duplicadosPorDocumento.length > 0 &&
+      !(
+        respuestaDelDocumento !== undefined &&
+        respuestaDelDocumento === opciones.documentoActual?.[c.nameKey]
+      );
 
     const bloqueos: string[] = [];
     // SIN NOMBRE NO SE SUBE. Reportado el 2026-10-02: con el campo del nombre
@@ -208,7 +243,7 @@ export function conEstado(
       ? "subido"
       : bloqueos.length
       ? "faltan_datos"
-      : candidatosVisibles.length > 0 && !decisiones[c.nameKey]
+      : (candidatosVisibles.length > 0 && !decisiones[c.nameKey]) || documentoSinResolver
         ? "duplicado"
         : c.libros.some((l) => l.estado === "no_cuadra")
           ? "revisar_suma"
@@ -223,7 +258,8 @@ export function conEstado(
       !subido &&
       !opciones.hayLineasSinResolver &&
       bloqueos.length === 0 &&
-      !(candidatosVisibles.length > 0 && !decisiones[c.nameKey]);
+      !(candidatosVisibles.length > 0 && !decisiones[c.nameKey]) &&
+      !documentoSinResolver;
 
     // UNA TARJETA SUBIDA NO PIDE NADA. Ni bloqueos, ni avisos, ni la pregunta
     // del duplicado: ya esta en la base y no hay nada que decidir.
@@ -239,11 +275,21 @@ export function conEstado(
         bloqueos: [],
         avisos: [],
         candidatosVisibles: [],
+        duplicadosPorDocumento: [],
         subido,
         puedeSubir: false,
       };
     }
 
-    return { ...c, estado, bloqueos, avisos, candidatosVisibles, subido, puedeSubir };
+    return {
+      ...c,
+      estado,
+      bloqueos,
+      avisos,
+      candidatosVisibles,
+      duplicadosPorDocumento,
+      subido,
+      puedeSubir,
+    };
   });
 }

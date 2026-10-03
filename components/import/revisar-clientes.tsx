@@ -45,7 +45,12 @@ import type {
   EstadoTarjeta,
   ClienteConEstado,
 } from "@/lib/estado-de-tarjeta";
-import { AvisoDeDuplicado, FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente";
+import {
+  AvisoDeDocumentoRepetido,
+  AvisoDeDuplicado,
+  FichaDeCliente,
+  loQueDebe,
+} from "@/components/import/emparejar-cliente";
 import type { CandidatoDuplicado } from "@/lib/reconcile";
 
 export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
@@ -81,6 +86,9 @@ function TarjetaCliente({
   onVerClientes,
   onConfirmarCon,
   onAbrir,
+  documentoEscrito,
+  cuentaSeparada,
+  onCuentaSeparada,
 }: {
   cliente: ClienteConEstado;
   decision: DecisionDuplicado | undefined;
@@ -90,6 +98,12 @@ function TarjetaCliente({
   onAbrir: () => void;
   onSubir: () => void;
   subiendo: boolean;
+  // CT-29b. Lo que la dueña tecleó, tal cual, para poder nombrarlo en el aviso.
+  // No se saca de la ficha del cliente que choca: esa guarda SU grafía, y lo
+  // que hay que enseñar es lo que ella acaba de escribir.
+  documentoEscrito: string;
+  cuentaSeparada: boolean;
+  onCuentaSeparada: () => void;
 }) {
   // Con quien se emparejo, si se emparejo. De el salen la ficha y el sitio del
   // boton de subir.
@@ -171,7 +185,7 @@ function TarjetaCliente({
           bloque ambar, debajo de la ficha de con quien se emparejo. Subir es lo
           ultimo que se hace y tiene que leerse despues de la decision, no
           encima de ella. */}
-      {cliente.subido || emparejado ? null : cliente.puedeSubir ? (
+      {cliente.subido || emparejado || cliente.duplicadosPorDocumento.length > 0 ? null : cliente.puedeSubir ? (
         <Button
           type="button"
           variant="outline"
@@ -244,6 +258,40 @@ function TarjetaCliente({
         </div>
       ) : null}
 
+      {/* CT-29b: la cédula escrita ya es de alguien. Es una pregunta DISTINTA a
+          la del nombre y por eso va en su propio bloque — ver la cabecera de
+          `lib/document-duplicates.ts`. Solo salen aquí los clientes que el aviso
+          del nombre NO está enseñando ya, así que las dos nunca repiten a la
+          misma persona.
+
+          El botón de subir vuelve a ir DEBAJO, por lo mismo que en el bloque de
+          arriba: subir es lo último y tiene que leerse después de la decisión. */}
+      {cliente.duplicadosPorDocumento.length > 0 ? (
+        <div className="flex flex-col gap-3 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
+          <AvisoDeDocumentoRepetido
+            documento={documentoEscrito}
+            candidatos={cliente.duplicadosPorDocumento}
+            elegido={cuentaSeparada ? "separada" : undefined}
+            onElegirCliente={onConfirmarCon}
+            onElegirSeparada={onCuentaSeparada}
+          />
+
+          {cuentaSeparada ? (
+            <p className="text-sm text-muted-foreground">
+              Se creará una cuenta aparte con la misma cédula. Las dos quedarán en tu lista de
+              clientes.
+            </p>
+          ) : null}
+
+          {!cliente.subido && cliente.puedeSubir ? (
+            <Button type="button" className="w-full" disabled={subiendo} onClick={onSubir}>
+              <Upload className="size-4" />
+              Subir este cliente
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
     </div>
   );
 }
@@ -265,6 +313,9 @@ export function RevisarClientes({
   onRestaurarCliente,
   onSubirCliente,
   subiendo,
+  documentosEscritos,
+  cuentasSeparadas,
+  onCuentaSeparada,
 }: {
   entradas: EntradaDeLaRevision[];
   decisiones: Record<string, DecisionDuplicado>;
@@ -275,6 +326,11 @@ export function RevisarClientes({
   onRestaurarCliente: (nameKey: string) => void;
   onSubirCliente: (nameKey: string) => void;
   subiendo: boolean;
+  // CT-29b, los tres por `nameKey`: lo tecleado, quienes ya dijeron que si a
+  // una cuenta aparte, y como se dice que si.
+  documentosEscritos: Record<string, string>;
+  cuentasSeparadas: Set<string>;
+  onCuentaSeparada: (nameKey: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -290,6 +346,9 @@ export function RevisarClientes({
             onAbrir={() => onAbrir(e.cliente.nameKey)}
             onSubir={() => onSubirCliente(e.cliente.nameKey)}
             subiendo={subiendo}
+            documentoEscrito={documentosEscritos[e.cliente.nameKey] ?? ""}
+            cuentaSeparada={cuentasSeparadas.has(e.cliente.nameKey)}
+            onCuentaSeparada={() => onCuentaSeparada(e.cliente.nameKey)}
           />
         ) : (
           // EL CLIENTE QUITADO SE QUEDA A LA VISTA, en su sitio, hasta que se

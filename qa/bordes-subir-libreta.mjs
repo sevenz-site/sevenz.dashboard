@@ -40,6 +40,7 @@ import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revisio
 import { reconcileMovements, agruparPorCliente, seParecen } from "../lib/reconcile.ts";
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import { normalizeDocumentId } from "../lib/format.ts";
+import { documentAnswerKey, findDocumentDuplicates } from "../lib/document-duplicates.ts";
 import { empujar, sacar, textoDeDeshacer, MAX_PASOS } from "../lib/historial-de-revision.ts";
 import {
   esLineaSuelta,
@@ -820,6 +821,175 @@ check(
   estadoDe(cliente({ libros: [{ currency: "USD", estado: "no_cuadra", escrito: 95, calculado: 70 }] }), [conMoneda()], {}, new Map(), { exigeMoneda: true })
     .puedeSubir === true,
 );
+
+console.log("");
+
+console.log("");
+console.log("-- CT-29b: la cedula que ya es de otro ------------------------");
+// La otra mitad de CT-29. El nombre lo resolvio `CT-29a`; esto es lo que la
+// dueña TECLEA, y hasta hoy era un rechazo del servidor sin salida.
+const karinaKari = {
+  id: "k1",
+  name: "Karina castillo (kari)",
+  document_id: "18356808",
+  whatsapp: null,
+  balance: 0,
+  balance_usd: 0,
+  balance_eur: 0,
+};
+const karinaLomas = { ...karinaKari, id: "k2", name: "Karina castillo (negocio lomas)" };
+const petra = { ...karinaKari, id: "p1", name: "Petra Villalba", document_id: "21054832" };
+const cartera = [karinaKari, karinaLomas, petra];
+const filaDoc = (p = {}) => ({
+  client_name: "Karina castillo",
+  document_id: null,
+  matched_client_id: null,
+  ...p,
+});
+
+check(
+  "la cedula tecleada encuentra a los DOS clientes que la llevan, no al ultimo",
+  (() => {
+    const m = findDocumentDuplicates([filaDoc({ document_id: "18356808" })], cartera, new Map());
+    return m.get("karina castillo")?.length === 2;
+  })(),
+);
+check(
+  "normaliza la puntuacion: '18.356.808' encuentra lo mismo que '18356808'",
+  findDocumentDuplicates([filaDoc({ document_id: "18.356.808" })], cartera, new Map()).get(
+    "karina castillo",
+  )?.length === 2,
+);
+// LAS LETRAS SI CUENTAN, y esto no es un descuido de aqui: `normalizeDocumentId`
+// quita la puntuacion pero NO las letras, y las tres comprobaciones de duplicado
+// de la app —esta, el alta manual y la edicion de un cliente— usan la misma
+// funcion. Cambiarla aqui las separaria, que es peor que la limitacion.
+//
+// Consecuencia real: un cliente guardado como "V-18356808" antes del
+// 2026-09-17 —cuando el campo paso a aceptar solo digitos y la "V-" salio
+// fuera del input— NO lo encuentra una cedula tecleada hoy como "18356808".
+// Queda anotado en PENDIENTES; esta prueba existe para que nadie lo "arregle"
+// aqui solo y deje las otras dos comparando distinto.
+check(
+  "una 'V-' guardada NO casa con digitos pelados — limitacion conocida y compartida",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    [{ ...karinaKari, document_id: "V-18356808" }],
+    new Map(),
+  ).size === 0,
+);
+check(
+  "sin cedula escrita no pregunta nada",
+  findDocumentDuplicates([filaDoc()], cartera, new Map()).size === 0,
+);
+check(
+  "una cedula que no es de nadie no pregunta nada",
+  findDocumentDuplicates([filaDoc({ document_id: "99999999" })], cartera, new Map()).size === 0,
+);
+// Lo que evita DOS recuadros ambar diciendo lo mismo: si el aviso del nombre ya
+// enseña a esas dos personas, la cedula no las repite.
+check(
+  "no repite a quien el aviso del NOMBRE ya esta enseñando",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    cartera,
+    new Map([["karina castillo", [karinaKari, karinaLomas]]]),
+  ).size === 0,
+);
+check(
+  "pero SI pregunta por el que el nombre no enseñaba (tecleo la de Petra)",
+  (() => {
+    const m = findDocumentDuplicates(
+      [filaDoc({ document_id: "21054832" })],
+      cartera,
+      new Map([["karina castillo", [karinaKari, karinaLomas]]]),
+    );
+    return m.get("karina castillo")?.length === 1 && m.get("karina castillo")[0].id === "p1";
+  })(),
+);
+// Una tarjeta ya emparejada NO crea a nadie, asi que no puede chocar.
+check(
+  "emparejada con un cliente que ya existe -> no pregunta",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808", matched_client_id: "k1" })],
+    cartera,
+    new Map(),
+  ).size === 0,
+);
+// Un cliente sin documento guardado nunca es un choque.
+check(
+  "un cliente sin cedula guardada no cuenta como choque",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    [{ ...karinaKari, document_id: null }],
+    new Map(),
+  ).size === 0,
+);
+
+// ── Y lo que hace con eso la tarjeta ──────────────────────────────────────
+const dupDoc = new Map([["ana", [karinaKari]]]);
+check(
+  "cedula repetida sin responder -> bloquea, y el chip dice 'duplicado'",
+  (() => {
+    const e = estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+      exigeMoneda: true,
+      duplicadosPorDocumento: dupDoc,
+      documentoActual: { ana: "18356808" },
+      documentoConfirmado: {},
+    });
+    return e.puedeSubir === false && e.estado === "duplicado";
+  })(),
+);
+check(
+  "respondida 'cuenta separada' con ESA cedula -> se puede subir",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: dupDoc,
+    documentoActual: { ana: "18356808" },
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === true,
+);
+// EL CASO QUE JUSTIFICA GUARDAR LA CEDULA Y NO UN "SI": responde que si, y
+// despues cambia la cedula por la de OTRA persona. La respuesta vieja no puede
+// seguir valiendo, o entraria un duplicado de alguien que no ha visto nunca.
+check(
+  "cambia la cedula despues de responder -> vuelve a preguntar",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: new Map([["ana", [petra]]]),
+    documentoActual: { ana: "21054832" },
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === false,
+);
+// Fallo de cableado: llegan candidatos y no llega el documento de ahora. La
+// salida segura es preguntar de mas, nunca crear un duplicado de menos.
+check(
+  "sin saber que cedula hay escrita, bloquea en vez de dejar pasar",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: dupDoc,
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === false,
+);
+// Un cliente ya subido no vuelve a preguntar nada: ya esta en la base.
+check(
+  "un cliente YA subido no pregunta por la cedula repetida",
+  (() => {
+    const e = estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+      exigeMoneda: true,
+      subidos: new Set(["ana"]),
+      duplicadosPorDocumento: dupDoc,
+      documentoActual: { ana: "18356808" },
+      documentoConfirmado: {},
+    });
+    return e.duplicadosPorDocumento.length === 0 && e.puedeSubir === false;
+  })(),
+);
+check(
+  "documentAnswerKey normaliza EXACTAMENTE igual que la deteccion",
+  documentAnswerKey(" 18.356.808 ") === normalizeDocumentId("18356808"),
+);
+check("documentAnswerKey sin nada devuelve cadena vacia", documentAnswerKey(null) === "");
 
 console.log("");
 console.log("-- La revision sobrevive a una recarga -----------------------");

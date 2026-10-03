@@ -87,6 +87,7 @@ import { ConfirmarImportacion } from "@/components/import/confirmar-importacion"
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
+import { documentAnswerKey, findDocumentDuplicates } from "@/lib/document-duplicates";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -330,6 +331,13 @@ export function ImportFlow({
     pendientesDeLineas.sinCliente > 0 || pendientesDeLineas.sinMonto > 0;
 
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+  // CT-29b. Por `nameKey`, el documento CON EL QUE se respondio "es una cuenta
+  // separada" — no un booleano. La diferencia es la que hace que esto se cure
+  // solo: si la dueña corrige un digito, la respuesta deja de coincidir con lo
+  // escrito y la pregunta vuelve, que es justo lo que tiene que pasar cuando la
+  // cedula nueva es de otra persona que no ha visto nunca. Con un booleano
+  // habria que acordarse de borrarlo, y eso se olvida.
+  const [documentoConfirmado, setDocumentoConfirmado] = useState<Record<string, string>>({});
   // CT-29. `listaAbierta` es el nameKey cuya lista de candidatos esta abierta;
   // `porConfirmar` es el emparejamiento esperando confirmacion. Separados porque
   // el dialogo sale TAMBIEN sin pasar por la lista, cuando el candidato es uno.
@@ -384,6 +392,7 @@ export function ImportFlow({
       clientesQuitados,
       decisiones,
       decisionesDeTotal,
+      documentoConfirmado,
       subidos: [...subidos],
       sameClient,
       sharedName,
@@ -397,6 +406,7 @@ export function ImportFlow({
     clientesQuitados,
     decisiones,
     decisionesDeTotal,
+    documentoConfirmado,
     subidos,
     sameClient,
     sharedName,
@@ -431,6 +441,7 @@ export function ImportFlow({
       clientesQuitados: {},
       decisiones: {},
       decisionesDeTotal: {},
+      documentoConfirmado: {},
       subidos: [],
       sameClient: false,
       sharedName: "",
@@ -463,6 +474,7 @@ export function ImportFlow({
       ),
     );
     setDecisionesDeTotal(borrador.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>);
+    setDocumentoConfirmado(borrador.documentoConfirmado ?? {});
     setSubidos(new Set(borrador.subidos));
     setSameClient(borrador.sameClient);
     setSharedName(borrador.sharedName);
@@ -781,16 +793,75 @@ export function ImportFlow({
   //
   // Uno solo y por orden: enseñar los cuatro a la vez no dice por dónde
   // empezar, y arreglado el primero aparece el siguiente.
+  // ── CT-29b: la cedula escrita contra la cartera ───────────────────────
+  //
+  // Sobre `filas` y no sobre `filasParaCandidatos`: aqui hace falta el
+  // `matched_client_id` YA aplicado, porque una tarjeta emparejada no crea a
+  // nadie y por tanto no puede chocar. Sobre la lista COMPLETA de clientes, en
+  // cambio, igual que los candidatos por nombre — si no, decir "es otro
+  // cliente" haria desaparecer el choque que es justo el que hay que avisar.
+  const duplicadosPorDocumento = useMemo(
+    () => findDocumentDuplicates(filas, existingClients, candidatos),
+    [filas, existingClients, candidatos],
+  );
+  // Lo tecleado, dos veces: normalizado para comparar con la respuesta, y tal
+  // cual para poder enseñarlo. La primera fila de cada cliente manda — todas
+  // las suyas comparten documento, porque se escribe una vez por persona.
+  const documentoActual = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const f of filas) {
+      const k = f.client_name.trim().toLowerCase();
+      if (!k || k in m) continue;
+      m[k] = documentAnswerKey(f.document_id);
+    }
+    return m;
+  }, [filas]);
+  const documentosEscritos = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const f of filas) {
+      const k = f.client_name.trim().toLowerCase();
+      if (!k || m[k]) continue;
+      m[k] = f.document_id?.trim() ?? "";
+    }
+    return m;
+  }, [filas]);
+  // Quien ya dijo que si, con la cedula que hay escrita AHORA. Si cambio, no
+  // esta: la pregunta vuelve sola.
+  const cuentasSeparadas = useMemo(
+    () =>
+      new Set(
+        Object.entries(documentoConfirmado)
+          .filter(([k, doc]) => doc !== "" && doc === documentoActual[k])
+          .map(([k]) => k),
+      ),
+    [documentoConfirmado, documentoActual],
+  );
+
   // LO QUE QUEDA POR SUBIR. De aqui salen el contador del boton del lote, el
   // resumen de encima y a quien sube ese boton: tres cifras que si se calcularan
   // por separado acabarian discrepando.
-  const pendientes = clientesRevisados.filter((c) => !subidos.has(c.nameKey));
-  const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, {
+  // ── UN SOLO JUEGO DE OPCIONES PARA LOS TRES `conEstado` ────────────────
+  //
+  // Habia tres llamadas con la lista escrita a mano en cada una, y al añadir las
+  // de CT-29b solo se cableo esta: la LISTA seguia enseñando "Subir este
+  // cliente" sobre una tarjeta que el pie contaba como no lista, y sin pintar la
+  // pregunta de la cedula. Visto en dev el 2026-10-02, en la primera pasada por
+  // el navegador.
+  //
+  // Juntarlas no es estetica: tres copias de una lista de opciones se separan en
+  // cuanto alguien añade la cuarta, y el sintoma —dos partes de la pantalla
+  // discrepando sobre si se puede subir— no se parece a su causa.
+  const opcionesDeEstado = {
     exigeMoneda: showCurrency,
     subidos,
     hayLineasSinResolver,
     sinNombre,
-  });
+    duplicadosPorDocumento,
+    documentoConfirmado,
+    documentoActual,
+  };
+  const pendientes = clientesRevisados.filter((c) => !subidos.has(c.nameKey));
+  const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, opcionesDeEstado);
   const listosParaSubir = estadosPendientes.filter((c) => c.puedeSubir);
   const sinCompletar = estadosPendientes.length - listosParaSubir.length;
   // El contador cuenta MOVIMIENTOS, y solo los que de verdad van a entrar: a
@@ -918,6 +989,7 @@ export function ImportFlow({
         clientesQuitados,
         decisiones,
         decisionesDeTotal,
+        documentoConfirmado,
         sameClient,
         sharedName,
         sharedDocument,
@@ -938,12 +1010,21 @@ export function ImportFlow({
     setDecisionesDeTotal(
       instantanea.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>,
     );
+    setDocumentoConfirmado(instantanea.documentoConfirmado ?? {});
     setSameClient(instantanea.sameClient);
     setSharedName(instantanea.sharedName);
     setSharedDocument(instantanea.sharedDocument);
     setSharedWhatsapp(instantanea.sharedWhatsapp);
     setUnlinked(new Set(instantanea.unlinked));
   }
+  // CT-29b. Guarda la cedula CON LA QUE se respondio, no un "si": ver la nota
+  // de `documentoConfirmado`. Empuja al historial como cualquier otra decision
+  // que cambie lo que se va a escribir en la deuda de alguien.
+  function confirmarCuentaSeparada(nameKey: string) {
+    recordar();
+    setDocumentoConfirmado((prev) => ({ ...prev, [nameKey]: documentoActual[nameKey] ?? "" }));
+  }
+
   const [forzarMoneda, setForzarMoneda] = useState(false);
   const [modalMoneda, setModalMoneda] = useState(false);
 
@@ -1037,6 +1118,14 @@ export function ImportFlow({
       if (!(nameKeyViejo in prev)) return prev;
       const { [nameKeyViejo]: suyos, ...resto } = prev;
       return nuevo in resto ? resto : { ...resto, [nuevo]: suyos };
+    });
+    // CT-29b. Sin esto, renombrar despues de aceptar la cuenta aparte perdia la
+    // respuesta y la pregunta volvia a salir — con la misma cedula y las mismas
+    // fichas, que es como se aprende a pulsar sin leer.
+    setDocumentoConfirmado((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suya, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suya };
     });
     setDecisionesDeTotal((prev) => {
       const salida: typeof prev = {};
@@ -1340,6 +1429,14 @@ export function ImportFlow({
       currency: r.currency,
       owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
       created_at: isoDeLaFecha(r.date),
+      // CT-29b. "Si, ya se que esa cedula es de alguien, abrele otra cuenta."
+      //
+      // Solo puede ser `true` cuando la pantalla ENSEÑO el choque y la dueña
+      // respondio: `cuentasSeparadas` se calcula contra la cedula que hay
+      // escrita ahora mismo, asi que una respuesta vieja a otra cedula no vale.
+      // Sin eso, cambiar un digito despues de responder colaria un duplicado de
+      // alguien que ella no ha visto nunca.
+      confirm_duplicate: cuentasSeparadas.has(r.client_name.trim().toLowerCase()),
     }));
   }
 
@@ -1412,12 +1509,7 @@ export function ImportFlow({
   // un recuento que no cuadra con lo que hay debajo.
   const entradas = reviewMovements
     ? entradasDeLaRevision(
-        conEstado(clientesRevisados, filas, decisiones, candidatos, {
-          exigeMoneda: showCurrency,
-          subidos,
-          hayLineasSinResolver,
-          sinNombre,
-        }),
+        conEstado(clientesRevisados, filas, decisiones, candidatos, opcionesDeEstado),
       )
     : [];
 
@@ -1665,6 +1757,9 @@ export function ImportFlow({
           onRestaurarCliente={restaurarCliente}
           onSubirCliente={(nameKey) => subirClientes([nameKey])}
           subiendo={confirming}
+          documentosEscritos={documentosEscritos}
+          cuentasSeparadas={cuentasSeparadas}
+          onCuentaSeparada={confirmarCuentaSeparada}
         />
 
         {/* CT-29: la lista de candidatos y la confirmacion. Van FUERA de la hoja
@@ -1747,9 +1842,11 @@ export function ImportFlow({
                 cliente={clienteAbierto}
                 estado={
                   conEstado([clienteAbierto], filas, decisiones, candidatos, {
-                    exigeMoneda: showCurrency,
-                    subidos,
-                    sinNombre,
+                    ...opcionesDeEstado,
+                    // El chip del detalle habla de ESTE cliente: una linea
+                    // suelta de otro no es un problema suyo, y pintarsela aqui
+                    // seria decirle que le falta algo que no le falta.
+                    hayLineasSinResolver: false,
                   })[0].estado
                 }
                 candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
@@ -1782,6 +1879,9 @@ export function ImportFlow({
                   eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
                 }
                 onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
+                duplicadosPorDocumento={duplicadosPorDocumento.get(clienteAbierto.nameKey) ?? []}
+                cuentaSeparada={cuentasSeparadas.has(clienteAbierto.nameKey)}
+                onCuentaSeparada={() => confirmarCuentaSeparada(clienteAbierto.nameKey)}
                 decisionesDeTotal={Object.fromEntries(
                   clienteAbierto.libros.map((l) => {
                     const clave = `${clienteAbierto.nameKey}|${l.currency ?? "COP"}`;

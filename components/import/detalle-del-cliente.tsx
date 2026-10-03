@@ -38,7 +38,12 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
 import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
-import { AvisoDeDuplicado, FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente";
+import {
+  AvisoDeDocumentoRepetido,
+  AvisoDeDuplicado,
+  FichaDeCliente,
+  loQueDebe,
+} from "@/components/import/emparejar-cliente";
 import { BotonDeshacer } from "@/components/import/boton-deshacer";
 import type {
   CandidatoDuplicado,
@@ -328,6 +333,9 @@ export function DetalleDelCliente({
   candidatos,
   onVerClientes,
   onConfirmarCon,
+  cuentaSeparada,
+  onCuentaSeparada,
+  duplicadosPorDocumento,
   decision,
   onDecidir,
   entradas,
@@ -361,6 +369,14 @@ export function DetalleDelCliente({
   candidatos: CandidatoDuplicado[];
   onVerClientes: () => void;
   onConfirmarCon: (c: CandidatoDuplicado) => void;
+  // CT-29b. Si ya dijo que si a una cuenta aparte con la misma cedula, y como
+  // se dice que si.
+  cuentaSeparada: boolean;
+  onCuentaSeparada: () => void;
+  // Llega como prop y no dentro de `cliente` porque la hoja recibe un
+  // `ClienteRevisado` pelado —sin el estado de la tarjeta—, y ese calculo vive
+  // en `conEstado`, que solo corre para la lista.
+  duplicadosPorDocumento: CandidatoDuplicado[];
   decision: DecisionDuplicado | undefined;
   onDecidir: (d: DecisionDuplicado) => void;
   // El historial en el orden de la libreta, con los quitados intercalados.
@@ -607,6 +623,29 @@ export function DetalleDelCliente({
                   ? "Este cliente todavía no tiene cédula guardada. Escríbela para poder importar."
                   : "Es un cliente nuevo. Sin cédula no se puede importar."}
               </p>
+            ) : null}
+
+            {/* CT-29b: PEGADO AL CAMPO QUE LO DISPARA, y no arriba con la
+                pregunta del nombre. Esta la provoca lo que ella acaba de
+                teclear, asi que la respuesta tiene que leerse donde esta la
+                causa: subirla al bloque ambar de arriba la separaria del campo
+                y pareceria otra vez la misma pregunta. */}
+            {duplicadosPorDocumento.length > 0 ? (
+              <div className="mt-1 flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                <AvisoDeDocumentoRepetido
+                  documento={documentoGuardado ?? documentoEscrito}
+                  candidatos={duplicadosPorDocumento}
+                  elegido={cuentaSeparada ? "separada" : undefined}
+                  onElegirCliente={onConfirmarCon}
+                  onElegirSeparada={onCuentaSeparada}
+                />
+                {cuentaSeparada ? (
+                  <p className="text-sm text-muted-foreground">
+                    Se creará una cuenta aparte con la misma cédula. Las dos quedarán en tu lista
+                    de clientes.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
 

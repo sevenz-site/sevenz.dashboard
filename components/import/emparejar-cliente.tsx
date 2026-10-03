@@ -189,6 +189,92 @@ export function AvisoDeDuplicado({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// EL MISMO AVISO, PERO DISPARADO POR LA CÉDULA — CT-29b
+//
+// Separado de `AvisoDeDuplicado` y no un `modo` dentro de él, aunque la forma
+// sea casi igual, porque lo que cambia es lo que la dueña tiene que decidir:
+//
+//   por nombre      "¿este renglón es esta persona que ya tienes?"
+//   por documento   "esta cédula ya es de alguien. ¿Es la misma persona, o le
+//                    estás abriendo una segunda cuenta?"
+//
+// La segunda opción NO se llama "Es otro cliente" aquí, y no es un matiz: con
+// la misma cédula delante, decir "es otro cliente" sería mentira — es la misma
+// persona. Lo que se está creando es una SEGUNDA CUENTA de ella, que es lo que
+// la 034 permite a propósito, y es la misma palabra que usa el alta manual
+// ("Crear cuenta separada"). Dos pantallas que hacen lo mismo lo llaman igual.
+// CADA CLIENTE ES UNA OPCIÓN, y no hay un "es el mismo" genérico.
+//
+// Con dos fichas que comparten cédula, "¿es el mismo?" no nombra a nadie: ese
+// es exactamente el fallo que `CT-22` arregló para los nombres, y repetirlo
+// aquí sería elegir por la dueña a quién le cae la deuda. Así que la ficha ES
+// la opción —se marca la que sea—, y la última opción es abrirle una cuenta
+// aparte. No hace falta una segunda hoja para elegir: con una o dos fichas
+// caben en la tarjeta, y el caso de producción que motiva todo esto son dos.
+export function AvisoDeDocumentoRepetido({
+  documento,
+  candidatos,
+  elegido,
+  onElegirCliente,
+  onElegirSeparada,
+}: {
+  documento: string;
+  candidatos: CandidatoDuplicado[];
+  // El id del cliente elegido, "separada", o nada. Sin decidir no marca
+  // ninguna — una elección no se presupone, y menos ésta.
+  elegido?: string;
+  onElegirCliente: (c: CandidatoDuplicado) => void;
+  onElegirSeparada: () => void;
+}) {
+  const varios = candidatos.length > 1;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-start gap-1.5 text-sm">
+        <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+        <span>
+          {varios
+            ? `La cédula ${formatDocumentId(documento)} ya es de ${candidatos.length} clientes tuyos.`
+            : `La cédula ${formatDocumentId(documento)} ya es de “${candidatos[0]?.name}”.`}
+          <span className="mt-1 block text-muted-foreground">
+            Dinos de cuál es, o ábrele una cuenta aparte con la misma cédula.
+          </span>
+        </span>
+      </p>
+      <RadioGroup
+        value={elegido ?? ""}
+        onValueChange={(v) => {
+          if (v === "separada") return onElegirSeparada();
+          const c = candidatos.find((x) => x.id === v);
+          if (c) onElegirCliente(c);
+        }}
+        className="flex flex-col gap-2"
+      >
+        {/* Las fichas enteras y no una línea de texto: con la cédula repetida,
+            lo único que distingue una cuenta de otra es el nombre completo y lo
+            que debe cada una. Es el dato que decide, no un adorno. */}
+        {candidatos.map((c) => (
+          <label key={c.id} className="flex cursor-pointer items-center gap-2.5">
+            <RadioGroupItem value={c.id} className="shrink-0" />
+            <span className="min-w-0 flex-1">
+              <FichaDeCliente
+                nombre={c.name}
+                documento={c.document_id}
+                whatsapp={c.whatsapp}
+                debe={loQueDebe(c)}
+              />
+            </span>
+          </label>
+        ))}
+        <label className="flex h-10 w-fit cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm">
+          <RadioGroupItem value="separada" />
+          <span className="whitespace-nowrap">Es una cuenta separada</span>
+        </label>
+      </RadioGroup>
+    </div>
+  );
+}
+
 // LA LISTA, cuando hay varios. Misma forma de navegación que el detalle del
 // cliente: una hoja desde abajo, no un diálogo centrado — se abre desde una
 // tarjeta y se vuelve a ella.
