@@ -127,7 +127,13 @@ export async function createClientWithMovement(
 
   const name = String(formData.get("new_client_name") ?? "").trim();
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
-  const documentId = String(formData.get("document_id") ?? "").trim();
+  // SOLO DIGITOS, tambien aqui. `DocumentIdInput` ya los filtra en pantalla
+  // desde el 2026-09-17, pero el navegador filtrando es una comodidad para
+  // quien escribe, no una defensa del servidor. Mismo criterio que la regla
+  // de las comprobaciones de propiedad explicitas: la capa de arriba no
+  // exime a la de abajo. Ver la migracion 079, que cierra la misma puerta en
+  // la unica de las tres que se alcanza sin iniciar sesion.
+  const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
   const address = String(formData.get("address") ?? "").trim();
   // Inherited from the owner's own country rather than asked for in the
   // form: which country issued a client's cédula is a database concern, not
