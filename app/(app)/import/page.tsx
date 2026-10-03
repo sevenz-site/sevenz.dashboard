@@ -17,9 +17,25 @@ export default async function ImportPage() {
   // A VE owner's `balance` is not the sum of the other two and must not be
   // used as a stand-in.
   const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
+    // `client_summary_all` Y NO `client_summary`, desde CT-33.
+    //
+    // La vista filtrada esconde a los de la papelera y a los ocultos
+    // definitivamente, y eso dejaba a esta pantalla sin poder ver justo a quien
+    // la bloqueaba: el aviso decia "Karina castillo (kari) ya tiene esta cedula
+    // y esta en la papelera" mientras la lista de candidatos enseñaba a los
+    // otros dos. Nombraba a alguien que la pantalla no podia mostrar.
+    //
+    // LO QUE PROTEGE QUE ESTO NO SE DESMADRE esta en `reconcile.ts`, no aqui:
+    // el emparejamiento AUTOMATICO por nombre sigue mirando solo a los
+    // visibles. Un oculto solo aparece como CANDIDATO, con su marca, y hace
+    // falta que el dueño lo elija a mano. Sin esa separacion, subir una libreta
+    // con un nombre repetido habria empezado a emparejar en silencio con gente
+    // que el dueño quito de su cartera a proposito.
     supabase
-      .from("client_summary")
-      .select("client_id, name, balance, balance_usd, balance_eur, document_id, whatsapp")
+      .from("client_summary_all")
+      .select(
+        "client_id, name, balance, balance_usd, balance_eur, document_id, whatsapp, trashed_at, deleted_at",
+      )
       .eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
     // Para la línea de bolívares del resumen de confirmación, nada más.
@@ -57,6 +73,15 @@ export default async function ImportPage() {
     // dev el 2026-09-28 con QA Debe Plata— porque el aviso se calculaba
     // únicamente con lo que traía la foto, y la foto nunca trae teléfonos.
     whatsapp: c.whatsapp as string | null,
+    // Dos estados distintos y la pantalla los nombra distinto: la papelera se
+    // ve y se deshace desde Papelera; "oculto definitivamente" no sale ni ahi.
+    // Mandar a alguien a buscar en Papelera a quien no esta en Papelera es el
+    // callejon que CT-33 cierra.
+    hidden: c.deleted_at
+      ? ("definitivo" as const)
+      : c.trashed_at
+        ? ("papelera" as const)
+        : null,
   }));
 
   return (
@@ -74,7 +99,8 @@ export default async function ImportPage() {
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+      {/* El título vive dentro de `ImportFlow` desde CT-31: el botón de
+          deshacer va alineado a su derecha y necesitan el mismo estado. */}
       {ownerCountry ? (
         <ImportFlow existingClients={existingClients} ownerCountry={ownerCountry} rateContext={rateContext} />
       ) : (

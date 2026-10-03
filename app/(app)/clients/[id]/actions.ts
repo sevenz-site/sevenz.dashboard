@@ -16,7 +16,34 @@ import { normalizeDocumentId } from "@/lib/format";
 // devuelve error, afecta a cero filas. Marcar una mala paga o mandar un
 // cliente a la papelera se veria como que funciono, y no habria pasado nada.
 
-export type EditClientState = { error: string | null; success: boolean };
+// CT-28. El choque de cedula deja de ser un callejon: `updateClient` devuelve
+// QUIENES llevan ya esa cedula —con su saldo— para que el dialogo lo enseñe y
+// el dueño pueda decir "si, es otra cuenta de la misma persona".
+//
+// A LISTA, no a uno. El mensaje viejo nombraba al primero que encontraba y
+// callaba los demas: con las dos "Karina castillo" de produccion compartiendo
+// la 18356808, decia una y la otra era invisible. Mismo fallo que CT-29b
+// arreglo en la importacion.
+export type ClienteQueChoca = {
+  id: string;
+  name: string;
+  document_id: string | null;
+  whatsapp: string | null;
+  balance: number;
+  balance_usd: number;
+  balance_eur: number;
+  // Fuera de la cartera: el aviso tiene que decirlo o el dueño va a Clientes a
+  // buscar a alguien que no esta ahi. Al crear si se dice; al editar, no se
+  // decia.
+  hidden: "papelera" | "definitivo" | null;
+};
+
+export type EditClientState = {
+  error: string | null;
+  success: boolean;
+  // Solo viene cuando la cedula nueva choca y nadie lo ha confirmado todavia.
+  duplicados?: ClienteQueChoca[];
+};
 
 export async function updateClient(
   _prevState: EditClientState,
@@ -110,17 +137,54 @@ export async function updateClient(
     const normalizado = normalizeDocumentId(documentId);
     const { data: suyos } = await supabase
       .from("clients")
-      .select("id, name, document_id")
+      .select("id, name, document_id, whatsapp")
       .eq("owner_id", user.id)
       .neq("id", clientId)
       .not("document_id", "is", null);
-    const choca = suyos?.find(
+    const chocan = (suyos ?? []).filter(
       (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizado,
     );
-    if (choca) {
+    // CT-28: DEJA DE SER UN MURO Y PASA A SER UNA PREGUNTA.
+    //
+    // Hasta el 2026-10-02 esto bloqueaba sin salida, y era el UNICO de los tres
+    // sitios donde se teclea una cedula que lo hacia: el alta ofrece "Crear
+    // cuenta separada" desde la 034, y la importacion lo ofrece desde CT-29b.
+    // Que la misma situacion se resolviera de dos formas segun la pantalla por
+    // la que entras no habia manera de explicarlo.
+    //
+    // El caso que rompia, medido: una ficha creada deprisa sin cedula —"Karina
+    // negocio"— a la que tres semanas despues se le quiere poner la de Karina.
+    // No se podia, y la unica salida que le queda a quien no sabe de codigo es
+    // borrar la ficha y rehacerla, perdiendo los movimientos. O sea, deudas.
+    const confirmado = String(formData.get("confirm_duplicate") ?? "") === "true";
+    if (chocan.length > 0 && !confirmado) {
+      // El saldo sale en consulta aparte y solo en este camino: es lo que
+      // convierte la confirmacion en una decision informada en vez de un boton
+      // que se pulsa sin leer. Nadie dice "es otra cuenta de la misma persona"
+      // viendo que la otra debe $3.016 y no la reconoce.
+      const ids = chocan.map((c) => c.id as string);
+      const { data: saldos } = await supabase
+        .from("client_summary_all")
+        .select("client_id, balance, balance_usd, balance_eur, trashed_at, deleted_at")
+        .eq("owner_id", user.id)
+        .in("client_id", ids);
+      const porId = new Map((saldos ?? []).map((s) => [s.client_id as string, s]));
       return {
-        error: `Esa cédula ya es de ${choca.name}. Revísala, o abre su ficha si es la misma persona.`,
+        error: null,
         success: false,
+        duplicados: chocan.map((c) => {
+          const s = porId.get(c.id as string);
+          return {
+            id: c.id as string,
+            name: c.name as string,
+            document_id: c.document_id as string | null,
+            whatsapp: (c as { whatsapp?: string | null }).whatsapp ?? null,
+            balance: (s?.balance as number | null) ?? 0,
+            balance_usd: (s?.balance_usd as number | null) ?? 0,
+            balance_eur: (s?.balance_eur as number | null) ?? 0,
+            hidden: s?.deleted_at ? "definitivo" : s?.trashed_at ? "papelera" : null,
+          };
+        }),
       };
     }
   }

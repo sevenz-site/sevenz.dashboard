@@ -175,8 +175,8 @@ const cliente = (over = {}) => ({
   );
   check(
     "el candidato de CT-22 se expone, pero NO se decide por el dueño",
-    g[0].candidato?.id === "cli-1" && g[0].candidato?.document_id === "123",
-    `candidato=${g[0].candidato?.name}`,
+    g[0].candidatos[0]?.id === "cli-1" && g[0].candidatos[0]?.document_id === "123",
+    `candidatos=${g[0].candidatos.map((c) => c.name).join(", ")}`,
   );
 }
 

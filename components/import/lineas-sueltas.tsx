@@ -134,7 +134,21 @@ export function LineasSueltas({
               <SelectTrigger id="sueltas-todas" className="flex-1">
                 <SelectValue placeholder="Elige un cliente" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                position="popper"
+                // ACOTADO A MANO, y no a la altura "disponible" (DESIGN-SYSTEM.md,
+                // "A fixed panel must be bounded to the space it has"). El tope por
+                // defecto de `SelectContent` ES la altura disponible, y en un teléfono
+                // con veinticinco clientes eso significa LA PANTALLA ENTERA: la lista
+                // tapaba la navegación y no dejaba ningún sitio fuera donde tocar para
+                // cerrarla. Reportado el 2026-10-02 con capturas desde el móvil.
+                //
+                // 18rem deja a la vista el renglón que se está asignando y margen
+                // suficiente para cerrar tocando fuera. `position="popper"` ancla el
+                // panel al campo en vez de alinear el elemento marcado sobre él, que
+                // es lo que lo centraba en mitad de la pantalla.
+                className="max-h-[min(18rem,var(--radix-select-content-available-height))]"
+              >
                 {nombres.map((n) => (
                   <SelectItem key={n.nombre} value={n.nombre}>
                     {n.nombre}
@@ -238,7 +252,21 @@ export function LineasSueltas({
                   <SelectTrigger aria-label="Cliente de esta línea">
                     <SelectValue placeholder="¿De quién es?" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                position="popper"
+                // ACOTADO A MANO, y no a la altura "disponible" (DESIGN-SYSTEM.md,
+                // "A fixed panel must be bounded to the space it has"). El tope por
+                // defecto de `SelectContent` ES la altura disponible, y en un teléfono
+                // con veinticinco clientes eso significa LA PANTALLA ENTERA: la lista
+                // tapaba la navegación y no dejaba ningún sitio fuera donde tocar para
+                // cerrarla. Reportado el 2026-10-02 con capturas desde el móvil.
+                //
+                // 18rem deja a la vista el renglón que se está asignando y margen
+                // suficiente para cerrar tocando fuera. `position="popper"` ancla el
+                // panel al campo en vez de alinear el elemento marcado sobre él, que
+                // es lo que lo centraba en mitad de la pantalla.
+                className="max-h-[min(18rem,var(--radix-select-content-available-height))]"
+              >
                     {nombres.map((n) => (
                       <SelectItem key={n.nombre} value={n.nombre}>
                         {n.nombre}

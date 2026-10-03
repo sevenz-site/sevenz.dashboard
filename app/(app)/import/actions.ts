@@ -57,6 +57,27 @@ export type ImportRow = {
   // cabecera de la migración 076 —, y por eso la función descarta una fecha
   // futura o anterior a 2015 en vez de fiarse de lo que llegue de aquí.
   created_at?: string | null;
+  // CT-29b. "Ya se que esa cedula es de alguien; abrele otra cuenta igual."
+  //
+  // La 034 tiro el indice unico justamente para permitirlo: una persona puede
+  // llevar dos libros a proposito —el personal y el del negocio— bajo la misma
+  // cedula. Hasta hoy esta ruta lo rechazaba, asi que la importacion era mas
+  // estricta que el alta manual, que ya ofrece "Crear cuenta separada" desde
+  // `confirm_duplicate` en `app/(app)/dashboard/actions.ts`.
+  //
+  // NO vale para un cliente en la papelera, ni con esto en true: ahi el
+  // segundo registro partiria el historial de alguien que sigue existiendo, y
+  // lo correcto es restaurarlo. Esa puerta se queda cerrada.
+  confirm_duplicate?: boolean;
+  // CT-33. "Si, se que esta en la papelera (o que lo oculte); restauralo al
+  // subir esto."
+  //
+  // Lo manda la revision cuando el dueño emparejo con un cliente oculto
+  // HABIENDO VISTO su marca y la cifra que vuelve a sus totales. Nunca se
+  // deduce en el servidor: restaurar devuelve un saldo a "Capital por cobrar",
+  // y eso no puede pasar porque un payload viejo apuntara a alguien que entre
+  // tanto se oculto.
+  confirm_restore?: boolean;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -150,10 +171,27 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       if (c.trashed_at || c.deleted_at) hiddenClientNames.set(c.id as string, c.name as string);
     }
   }
-  if (hiddenClientNames.size > 0) {
-    const names = [...hiddenClientNames.values()].join(", ");
+  // ── CT-33: EMPAREJAR CON UN OCULTO LO RESTAURA, si el dueño lo confirmo ──
+  //
+  // Antes esto paraba la tanda y mandaba a Papelera: salir de la revision, ir
+  // a otra pantalla, restaurar, volver. Y para un cliente "oculto
+  // definitivamente" el mensaje era directamente falso — ese no sale ni en
+  // Papelera, asi que mandaba a buscarlo a un sitio vacio.
+  //
+  // Ahora la revision lo enseña con su marca, el dialogo de confirmacion dice
+  // que se va a restaurar y CON QUE SALDO vuelve a los totales, y aqui solo se
+  // comprueba que esa confirmacion viajo. Sin ella sigue parando: restaurar
+  // devuelve dinero a "Capital por cobrar" y eso no puede pasar por accidente.
+  const restoreClientIds = new Set<string>();
+  const sinConfirmar: string[] = [];
+  for (const [id, nombre] of hiddenClientNames) {
+    const confirmada = rows.some((r) => r.client_id === id && r.confirm_restore);
+    if (confirmada) restoreClientIds.add(id);
+    else sinConfirmar.push(nombre);
+  }
+  if (sinConfirmar.length > 0) {
     return {
-      error: `${names} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`,
+      error: `${sinConfirmar.join(", ")} está fuera de tu cartera. Vuelve a abrir la revisión y dinos si quieres recuperarlo con esta libreta.`,
       imported: 0,
     };
   }
@@ -176,14 +214,26 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     .select("id, name, document_id, trashed_at, deleted_at")
     .eq("owner_id", user.id)
     .not("document_id", "is", null);
-  const clientsByNormalizedDocumentId = new Map<string, { id: string; name: string; hidden: boolean }>();
+  // A LISTA, NO A UNO (CT-29b). Guardaba un solo cliente por documento, asi
+  // que con dos fichas de la misma cedula —el caso real de produccion que la
+  // 034 permite— ganaba la ultima del bucle y la otra era invisible: el error
+  // nombraba a una persona y callaba la otra, y el dueño no podia entender
+  // contra que estaba chocando.
+  const clientsByNormalizedDocumentId = new Map<
+    string,
+    { id: string; name: string; hidden: boolean; enLaTanda?: boolean }[]
+  >();
   for (const c of allOwnerClients ?? []) {
     if (!c.document_id) continue;
-    clientsByNormalizedDocumentId.set(normalizeDocumentId(c.document_id as string), {
+    const key = normalizeDocumentId(c.document_id as string);
+    const entry = {
       id: c.id as string,
       name: c.name as string,
       hidden: Boolean(c.trashed_at || c.deleted_at),
-    });
+    };
+    const ya = clientsByNormalizedDocumentId.get(key);
+    if (ya) ya.push(entry);
+    else clientsByNormalizedDocumentId.set(key, [entry]);
   }
 
   // ── De aquí abajo ya no se escribe: se ARMA ──────────────────────────
@@ -212,6 +262,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     document_id: string;
     whatsapp: string | null;
     document_country: string | null;
+    confirm_duplicate: boolean;
   }[] = [];
   const clientDocuments: { client_id: string; document_id: string }[] = [];
   const clientWhatsapps: { client_id: string; whatsapp: string }[] = [];
@@ -250,12 +301,45 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       }
 
       const normalizedDocumentId = normalizeDocumentId(documentId);
-      const duplicate = clientsByNormalizedDocumentId.get(normalizedDocumentId);
-      if (duplicate) {
+      const choques = clientsByNormalizedDocumentId.get(normalizedDocumentId) ?? [];
+      // CT-33: UN CLIENTE OCULTO YA NO ES UN MURO.
+      //
+      // La 077 lo bloqueaba aunque viniera confirmado, con el argumento de que
+      // un segundo registro parte un historial. El argumento era bueno MIENTRAS
+      // la pantalla no pudiera enseñarlo: la revision leia `client_summary`, que
+      // esconde a los ocultos, asi que el aviso nombraba a alguien que no se
+      // veia por ningun lado y mandaba a otra pantalla a arreglarlo.
+      //
+      // Ahora la revision lee `client_summary_all` y el oculto sale como
+      // candidato, con su marca y su saldo. Con la ficha delante, decir "es una
+      // cuenta separada" es una decision informada, igual que con un cliente
+      // vivo — y tratarla distinto seria paternalismo con una pantalla que ya
+      // no hace falta. Decidido con el usuario el 2026-10-02.
+      // DOS CLIENTES DE ESTA MISMA LIBRETA CON LA MISMA CÉDULA se bloquean
+      // SIEMPRE, con confirmación o sin ella, porque la propia `import_libreta`
+      // los rechaza (`documento_repetido_en_lote`) y dejarlos pasar aquí sería
+      // prometer en pantalla algo que revienta al final del viaje. Y no es el
+      // caso que la 034 quiso permitir: ahí son dos libros de una persona
+      // creados a lo largo del tiempo, no dos renglones de la misma página.
+      const otroDeLaTanda = choques.find((c) => c.enLaTanda);
+      if (otroDeLaTanda) {
         return {
-          error: duplicate.hidden
-            ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera y vuelve a seleccionarlo en la tabla.`
-            : `Ya existe un cliente con esta cédula: ${duplicate.name}. Selecciónalo en la tabla en vez de crear uno nuevo.`,
+          error: `"${row.client_name.trim()}" y "${otroDeLaTanda.name}" llevan la misma cédula en esta libreta. Cada persona necesita la suya.`,
+          imported: 0,
+        };
+      }
+      // CT-30: el mensaje ya no manda a «la tabla» —esa pantalla se borro en
+      // `7274c93`— sino a donde se responde de verdad. Y solo llega aqui quien
+      // se salto la pregunta: una carrera, o un borrador abierto antes de que
+      // el otro cliente existiera. Lo normal es que la revision ya la haya
+      // hecho y esto no se vea nunca.
+      if (choques.length > 0 && !row.confirm_duplicate) {
+        const nombres = choques.map((c) => c.name).join(", ");
+        return {
+          error:
+            choques.length === 1
+              ? `Ya tienes a ${nombres} con esta cédula. Abre ${row.client_name} en la revisión y dinos si es la misma persona o una cuenta aparte.`
+              : `Ya tienes ${choques.length} clientes con esta cédula (${nombres}). Abre ${row.client_name} en la revisión y dinos de cuál es, o si es una cuenta aparte.`,
           imported: 0,
         };
       }
@@ -270,14 +354,26 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
         // lo normal. La columna admite nulos desde siempre.
         whatsapp: row.whatsapp?.trim() || null,
         document_country: ownerCountry,
+        // Viaja hasta `import_libreta` (migracion 077): la comprobacion de
+        // arriba corre ANTES del viaje y la de dentro de la funcion es la que
+        // caza las carreras, asi que las dos tienen que conocer la respuesta o
+        // la segunda rechazaria lo que la primera acaba de permitir.
+        confirm_duplicate: Boolean(row.confirm_duplicate),
       });
       // Se apunta con la clave temporal en vez del id, que aún no existe: lo
       // que importa de este índice es detectar el choque, no a quién señala.
-      clientsByNormalizedDocumentId.set(normalizedDocumentId, {
+      //
+      // Y se AÑADE, no se pisa (CT-29b): pisando, el segundo choque de la misma
+      // cédula borraba el primero del índice.
+      const yaEnElIndice = clientsByNormalizedDocumentId.get(normalizedDocumentId);
+      const recienCreado = {
         id: clientKey,
         name: row.client_name.trim(),
         hidden: false,
-      });
+        enLaTanda: true,
+      };
+      if (yaEnElIndice) yaEnElIndice.push(recienCreado);
+      else clientsByNormalizedDocumentId.set(normalizedDocumentId, [recienCreado]);
     }
 
     // El WhatsApp de un cliente que YA existe. Los nuevos lo llevan en su
@@ -320,6 +416,11 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // ── La única escritura, y es una ──────────────────────────────────────
   const { data, error: rpcError } = await supabase.rpc("import_libreta", {
     p_payload: {
+      // CT-33. Los que se restauran en la misma transaccion que la escritura:
+      // si la importacion falla, no se restaura a nadie. Hacerlo antes, desde
+      // aqui, dejaria al cliente de vuelta en la cartera con un "no se guardo
+      // nada" en pantalla — que seria mentira.
+      restore_clients: [...restoreClientIds],
       clients_new: clientsNew,
       client_documents: clientDocuments,
       client_whatsapps: clientWhatsapps,
@@ -391,15 +492,23 @@ function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?:
     case "cliente_invalido":
       return "Uno de los clientes de esta libreta ya no está disponible. Vuelve a abrir la revisión.";
     case "cliente_en_papelera":
-      return `${r.client_name ?? "Un cliente"} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`;
+      // CT-33: ya no manda a Papelera. Aqui solo se llega por una carrera —se
+      // oculto en otra pestaña mientras la revision estaba abierta—, y la
+      // salida util es volver a abrirla, donde ahora saldra la pregunta.
+      return `${r.client_name ?? "Un cliente"} salió de tu cartera mientras revisabas. Vuelve a abrir la revisión para decidir qué hacer con él.`;
     case "falta_nombre":
       return "Hay una fila sin nombre de cliente.";
     case "falta_documento":
       return `Falta la cédula/documento de "${r.client_name ?? "un cliente"}".`;
     case "documento_de_otro_cliente":
+      // CT-30: igual que su gemelo de arriba, ya no manda a una tabla que se
+      // borro en `7274c93`. Este lado es el de la carrera pura —alguien creo
+      // ese cliente en otra pestaña mientras la revision estaba abierta—, asi
+      // que lo util es decir que vuelva a abrirla, donde ahora si saldra la
+      // pregunta.
       return r.hidden
-        ? `${r.client_name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera y vuelve a seleccionarlo en la tabla.`
-        : `Ya existe un cliente con esta cédula: ${r.client_name}. Selecciónalo en la tabla en vez de crear uno nuevo.`;
+        ? `${r.client_name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera para poder subir esta libreta.`
+        : `${r.client_name} ya tiene esta cédula. Vuelve a abrir la revisión para decirnos si es la misma persona o una cuenta aparte.`;
     case "documento_repetido_en_lote":
       return `Hay dos clientes con la misma cédula en esta libreta, uno de ellos "${r.client_name ?? ""}". Cada persona necesita la suya.`;
     case "referencia_invalida":

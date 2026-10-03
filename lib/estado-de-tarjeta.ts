@@ -12,7 +12,17 @@ import type {
 // `qa/bordes-subir-libreta.mjs`. Los colores y el texto de cada chip siguen en
 // el componente: eso sí es pantalla.
 
-export type DecisionDuplicado = "mismo" | "otra";
+// CT-29: LA DECISIÓN GUARDA CON CUÁL, no solo "sí" o "no".
+//
+// Era `"mismo" | "otra"`, y bastaba mientras el candidato fuera uno. Con varios
+// —dos fichas deliberadas de la misma persona, caso real de producción— decir
+// "es el mismo" no dice nada: el sistema seguiría sin saber a cuál de las dos
+// le toca la deuda, y elegir por él es elegir a quién se le carga.
+//
+// `clientId` es el emparejamiento explícito, y manda sobre el nombre: por eso
+// funciona cuando el renglón dice "Karina castillo" y la ficha elegida se llama
+// "Karina castillo (kari)". Sin él, ninguna coincidencia de nombre las uniría.
+export type DecisionDuplicado = { cual: "otra" } | { cual: "mismo"; clientId: string };
 
 // La revisión, por CLIENTE y no por movimiento.
 //
@@ -70,7 +80,12 @@ export type ClienteConEstado = ClienteRevisado & {
   // persona" —y tiene que desaparecer, o el saldo previo de esa otra persona se
   // colaría en los totales—, pero los dos botones tienen que seguir ahí para
   // poder cambiar de idea.
-  candidatoVisible: CandidatoDuplicado | null;
+  // Todos los que se parecen. Vacío cuando no hay ninguno.
+  candidatosVisibles: CandidatoDuplicado[];
+  // CT-29b: los que ya tienen la CÉDULA que esta tarjeta trae escrita, y que no
+  // están ya en `candidatosVisibles` — ver la cabecera de
+  // `lib/document-duplicates.ts` para por qué son dos listas y no una.
+  duplicadosPorDocumento: CandidatoDuplicado[];
   // Lo que falta, ya redactado. Puede haber más de una cosa: "Falta cédula" y
   // "Falta WhatsApp" son dos avisos distintos y se enseñan los dos, separados,
   // porque uno impide importar y el otro no.
@@ -98,7 +113,7 @@ export function conEstado(
     amount?: number;
   }[],
   decisiones: Record<string, DecisionDuplicado>,
-  candidatos: Map<string, CandidatoDuplicado>,
+  candidatos: Map<string, CandidatoDuplicado[]>,
   opciones: {
     // Solo un negocio venezolano elige moneda. Para uno colombiano la columna
     // es null a proposito y preguntarla seria un bloqueo imposible de resolver.
@@ -118,14 +133,61 @@ export function conEstado(
     // resto es como se pierden — el dueno sube, la pantalla se vacia, y nadie
     // vuelve a por ellas.
     hayLineasSinResolver?: boolean;
+    // Los `nameKey` cuyo campo de nombre esta vacio ahora mismo en pantalla.
+    sinNombre?: Set<string>;
+    // CT-29b. Los clientes que ya tienen la cédula escrita en cada tarjeta,
+    // calculados por `findDocumentDuplicates`.
+    duplicadosPorDocumento?: Map<string, CandidatoDuplicado[]>;
+    // La respuesta, guardada CON el documento con el que se respondió. Vale
+    // mientras ese documento siga siendo el que hay escrito: corregir un dígito
+    // la invalida sola y la pregunta vuelve, que es justo lo que tiene que
+    // pasar cuando la cédula nueva choca con OTRA persona.
+    documentoConfirmado?: Record<string, string>;
+    // El documento normalizado que hay escrito ahora en cada tarjeta, para
+    // comparar contra el de arriba. Se pasa ya calculado porque la
+    // normalización tiene que ser la misma en los tres sitios — detectar,
+    // responder y comprobar — y tres copias de una expresión regular se
+    // separan.
+    documentoActual?: Record<string, string>;
   } = {},
 ): ClienteConEstado[] {
   return clientes.map((c) => {
     const subido = opciones.subidos?.has(c.nameKey) ?? false;
-    const candidatoVisible = candidatos.get(c.nameKey) ?? null;
+    const candidatosVisibles = candidatos.get(c.nameKey) ?? [];
     const suyas = filas.filter((f) => f.client_name.trim().toLowerCase() === c.nameKey);
 
+    // CT-29b. La respuesta vale solo contra el documento con el que se dio. Si
+    // no hay respuesta, o si la cédula cambió desde entonces, vuelve a
+    // preguntar — y tiene que volver, porque la cédula nueva puede ser de otra
+    // persona que la dueña no ha visto nunca.
+    //
+    // Si llegan candidatos y NO llega `documentoActual`, bloquea: eso solo
+    // puede ser un fallo de cableado, y la salida segura de un fallo de
+    // cableado aquí es preguntar de más, no crear un duplicado de menos.
+    const duplicadosPorDocumento = opciones.duplicadosPorDocumento?.get(c.nameKey) ?? [];
+    const respuestaDelDocumento = opciones.documentoConfirmado?.[c.nameKey];
+    const documentoSinResolver =
+      duplicadosPorDocumento.length > 0 &&
+      !(
+        respuestaDelDocumento !== undefined &&
+        respuestaDelDocumento === opciones.documentoActual?.[c.nameKey]
+      );
+
     const bloqueos: string[] = [];
+    // SIN NOMBRE NO SE SUBE. Reportado el 2026-10-02: con el campo del nombre
+    // vaciado, "Subir este cliente" seguia encendido.
+    //
+    // El vacio NO se escribe en la fila, y por eso llega aqui en una lista
+    // aparte: un `client_name` vacio convierte esos renglones en "lineas sin
+    // cliente" (CT-25), la tarjeta desaparece de la lista y la hoja abierta se
+    // cierra sola en mitad de la edicion. El dueño borro el nombre para escribir
+    // otro, no para mandar sus movimientos a otra seccion.
+    //
+    // Va el PRIMERO a proposito: el detalle enseña un bloqueo a la vez, y sin
+    // nombre no tiene sentido pedir la cedula de nadie.
+    if (opciones.sinNombre?.has(c.nameKey)) {
+      bloqueos.push("Falta el nombre del cliente. Sin él no se puede importar.");
+    }
     // EL MISMO CRITERIO, FILA A FILA, que el bloqueo del pie de la pantalla
     // (`missingDocumentId`). Antes esto preguntaba si ALGUNA fila traía cédula
     // y el pie si le FALTABA a alguna: con una sola fila sin ella —la línea de
@@ -181,7 +243,7 @@ export function conEstado(
       ? "subido"
       : bloqueos.length
       ? "faltan_datos"
-      : candidatoVisible && !decisiones[c.nameKey]
+      : (candidatosVisibles.length > 0 && !decisiones[c.nameKey]) || documentoSinResolver
         ? "duplicado"
         : c.libros.some((l) => l.estado === "no_cuadra")
           ? "revisar_suma"
@@ -196,7 +258,8 @@ export function conEstado(
       !subido &&
       !opciones.hayLineasSinResolver &&
       bloqueos.length === 0 &&
-      !(candidatoVisible && !decisiones[c.nameKey]);
+      !(candidatosVisibles.length > 0 && !decisiones[c.nameKey]) &&
+      !documentoSinResolver;
 
     // UNA TARJETA SUBIDA NO PIDE NADA. Ni bloqueos, ni avisos, ni la pregunta
     // del duplicado: ya esta en la base y no hay nada que decidir.
@@ -211,12 +274,22 @@ export function conEstado(
         estado,
         bloqueos: [],
         avisos: [],
-        candidatoVisible: null,
+        candidatosVisibles: [],
+        duplicadosPorDocumento: [],
         subido,
         puedeSubir: false,
       };
     }
 
-    return { ...c, estado, bloqueos, avisos, candidatoVisible, subido, puedeSubir };
+    return {
+      ...c,
+      estado,
+      bloqueos,
+      avisos,
+      candidatosVisibles,
+      duplicadosPorDocumento,
+      subido,
+      puedeSubir,
+    };
   });
 }

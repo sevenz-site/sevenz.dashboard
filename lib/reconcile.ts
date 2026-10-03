@@ -52,10 +52,56 @@ export type ReconcileClient = {
   // El que el cliente YA tiene guardado. No lo usa la reconciliación de saldos:
   // existe para que `agruparPorCliente` no pida un teléfono que ya está.
   whatsapp: string | null;
+  // CT-33. `null` = visible. Los dos estados se distinguen porque la pantalla
+  // los nombra distinto: la papelera se deshace desde Papelera, y "oculto
+  // definitivamente" ni siquiera sale ahí.
+  hidden?: "papelera" | "definitivo" | null;
 };
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CT-29: QUIÉN SE PARECE A QUIÉN
+//
+// Hasta el 2026-10-02 el emparejamiento era `Map.get(nombreNormalizado)`: o la
+// grafía coincidía ENTERA o no había candidato. Con dos fichas deliberadas de
+// la misma persona —"Karina castillo (negocio lomas)" y "Karina castillo
+// (kari)", caso real de producción— un renglón que diga solo "Karina castillo"
+// no casaba con ninguna, el aviso del duplicado ni se pintaba, y la dueña se
+// enteraba al final, cuando la cédula chocaba y la subida se paraba en seco.
+//
+// La regla nueva es CONTENCIÓN, no parecido: uno contiene al otro entero.
+// "Karina castillo" está dentro de "Karina castillo (kari)", así que son
+// candidatos. "Karina" sola también lo estaría, y eso es deliberado — en una
+// libreta se escribe el nombre corto. Lo que NO hace es inventar parecidos por
+// distancia de edición: "Carina" y "Karina" no se tocan. Un falso positivo aquí
+// se paga con una pregunta de más; un falso negativo, con la deuda en la ficha
+// equivocada, y por eso se prefiere preguntar.
+//
+// LA CONTENCIÓN ES POR PALABRAS ENTERAS, no por subcadena. La primera versión
+// usaba `includes` sobre el texto y proponía "Ana" para "Mariana Gómez", porque
+// "ana" está dentro de "mariana". En una cartera de doscientos clientes eso es
+// ruido, y un aviso que sale siempre deja de leerse — justo cuando aparece en el
+// cliente al que de verdad le hace falta. Visto al escribir su prueba.
+//
+// Así que: todas las palabras del nombre corto tienen que estar, como palabras,
+// en el largo. "Karina castillo" ⊂ "Karina castillo (kari)" ✓. "Ana" ⊄ "Mariana
+// Gómez" ✗. Los paréntesis y la puntuación no son palabras y no estorban.
+function palabras(nombre: string): string[] {
+  return normalizeName(nombre)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((p) => p.length > 0);
+}
+
+export function seParecen(a: string, b: string): boolean {
+  const x = palabras(a);
+  const y = palabras(b);
+  if (x.length === 0 || y.length === 0) return false;
+  const [corto, largo] = x.length <= y.length ? [x, y] : [y, x];
+  const enElLargo = new Set(largo);
+  return corto.every((p) => enElLargo.has(p));
 }
 
 // The running balance is per client AND per currency, never per client alone.
@@ -111,8 +157,27 @@ function seedBalance(client: ReconcileClient, currency: LedgerCurrency | null): 
 export function reconcileMovements(
   extracted: ExtractedMovement[],
   existingClients: ReconcileClient[],
+  // CT-29: el emparejamiento que el dueño eligió a mano, por `nameKey`. MANDA
+  // SOBRE EL NOMBRE, y por eso existe: cuando el renglón dice "Karina castillo"
+  // y la ficha elegida se llama "Karina castillo (kari)", ninguna comparación de
+  // nombres las uniría. Lo que las une es que alguien lo dijo.
+  emparejados: Record<string, string> = {},
 ): ReviewRow[] {
-  const byName = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
+  // ── CT-33: DOS MAPAS CON DOS ALCANCES, y la diferencia es la salvaguarda ──
+  //
+  // Desde CT-33 la lista incluye a los clientes de la papelera y a los ocultos
+  // definitivamente, para poder PREGUNTAR por ellos. Pero emparejar por nombre
+  // es automático y silencioso: si `byName` los viera, subir una libreta con un
+  // nombre repetido empezaría a cargarle los fiados a alguien que el dueño
+  // quitó de su cartera a propósito, sin que nadie lo decidiera — y encima con
+  // su saldo viejo metido en los totales de la revisión.
+  //
+  // Así que el automático mira solo a los visibles, y al oculto se llega solo
+  // por `porId`, que es el emparejamiento que el dueño eligió a mano.
+  const byName = new Map(
+    existingClients.filter((c) => !c.hidden).map((c) => [normalizeName(c.name), c]),
+  );
+  const porId = new Map(existingClients.map((c) => [c.id, c]));
 
   // Primero se agrupa por (cliente, moneda) conservando el orden, porque la
   // base de una página solo se puede deducir viendo el grupo entero. La versión
@@ -130,7 +195,8 @@ export function reconcileMovements(
 
   for (const indices of grupos.values()) {
     const primero = extracted[indices[0]];
-    const matched = byName.get(normalizeName(primero.client_name));
+    const elegido = emparejados[normalizeName(primero.client_name)];
+    const matched = (elegido ? porId.get(elegido) : undefined) ?? byName.get(normalizeName(primero.client_name));
     const seed = matched ? seedBalance(matched, primero.currency) : 0;
 
     // ¿Se puede dar por cierto que la página arranca en cero?
@@ -274,6 +340,12 @@ export type CandidatoDuplicado = {
   balance: number;
   balance_usd: number;
   balance_eur: number;
+  // CT-33. Viaja hasta la ficha para poder pintar la marca y avisar de que
+  // elegirlo lo restaura. El saldo que viene arriba es el REAL —
+  // `client_summary_all` lo calcula de los movimientos, no del snapshot de la
+  // papelera—, así que la cifra que se enseña al restaurar es la que volverá a
+  // contar en los totales del dueño.
+  hidden?: "papelera" | "definitivo" | null;
 };
 
 export type ClienteRevisado = {
@@ -281,7 +353,10 @@ export type ClienteRevisado = {
   name: string;
   rowIds: string[];
   movimientos: number;
-  candidato: CandidatoDuplicado | null;
+  // TODOS los que se parecen, no uno. Con dos fichas de la misma persona, elegir
+  // una por el sistema es elegir a quién le cae la deuda — y el sistema no sabe.
+  // Ordenados: primero la coincidencia exacta, luego por parecido.
+  candidatos: CandidatoDuplicado[];
   // Un libro por moneda. Nunca se suman entre sí: un $50 y un €20 son dos
   // deudas independientes, no una vista de dos formas.
   libros: LibroDelCliente[];
@@ -297,7 +372,6 @@ export function agruparPorCliente(
   existingClients: ReconcileClient[],
   opciones: { esVE: boolean },
 ): ClienteRevisado[] {
-  const porNombre = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
   const orden: string[] = [];
   const acumulado = new Map<string, ReviewRow[]>();
 
@@ -313,7 +387,19 @@ export function agruparPorCliente(
 
   return orden.map((k) => {
     const suyas = acumulado.get(k)!;
-    const existente = porNombre.get(k);
+    // Exacto primero: si existe una ficha con esa misma grafía, es la que el
+    // dueño espera ver arriba.
+    const parecidos = existingClients
+      .filter((c) => seParecen(c.name, k))
+      .sort((a, b) => {
+        const ea = normalizeName(a.name) === k ? 0 : 1;
+        const eb = normalizeName(b.name) === k ? 0 : 1;
+        if (ea !== eb) return ea - eb;
+        return a.name.localeCompare(b.name, "es");
+      });
+    // El exacto sigue mandando sobre el saldo de arranque y sobre si falta
+    // documento: esas dos cosas necesitan UN cliente, no una lista.
+    const existente = parecidos.find((c) => normalizeName(c.name) === k) ?? null;
 
     // Un libro por moneda, en el orden en que aparecen.
     const monedas: (LedgerCurrency | null)[] = [];
@@ -368,17 +454,16 @@ export function agruparPorCliente(
       rowIds: suyas.map((f) => f.rowId),
       movimientos: suyas.length,
       libros,
-      candidato: existente
-        ? {
-            id: existente.id,
-            name: existente.name,
-            document_id: existente.document_id,
-            whatsapp: existente.whatsapp,
-            balance: existente.balance,
-            balance_usd: existente.balance_usd,
-            balance_eur: existente.balance_eur,
-          }
-        : null,
+      candidatos: parecidos.map((c) => ({
+        id: c.id,
+        name: c.name,
+        document_id: c.document_id,
+        whatsapp: c.whatsapp,
+        balance: c.balance,
+        balance_usd: c.balance_usd,
+        balance_eur: c.balance_eur,
+        hidden: c.hidden ?? null,
+      })),
       necesitaDocumento: !existente?.document_id,
       necesitaMoneda: opciones.esVE && suyas.some((f) => f.currency === null),
       // Falta de verdad solo si NO lo trae la revisión Y el cliente tampoco lo

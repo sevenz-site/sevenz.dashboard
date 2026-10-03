@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, Undo2, CircleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
@@ -20,6 +20,13 @@ import {
   separarLineasSueltas,
 } from "@/lib/lineas-sueltas";
 import { LineasSueltas } from "@/components/import/lineas-sueltas";
+import { AvisoDeBorrador } from "@/components/import/aviso-de-borrador";
+import { BotonDeshacer } from "@/components/import/boton-deshacer";
+import { empujar, sacar, type Instantanea } from "@/lib/historial-de-revision";
+import {
+  ConfirmarEmparejamiento,
+  ListaDeCandidatos,
+} from "@/components/import/emparejar-cliente";
 import {
   cargarRevision,
   guardarRevision,
@@ -42,7 +49,7 @@ import {
   AttachmentAction,
 } from "@/components/ui/attachment";
 import { useImportJobs, type ImportJobStatus } from "@/components/import/import-context";
-import { reconcileMovements, agruparPorCliente } from "@/lib/reconcile";
+import { reconcileMovements, agruparPorCliente, seParecen } from "@/lib/reconcile";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { type ExtractedMovement, type LedgerCurrency } from "@/lib/types";
 import { confirmImport, type ImportRow } from "@/app/(app)/import/actions";
@@ -79,7 +86,14 @@ const TEXTO_SALIR_DE_LA_REVISION = {
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
-import type { ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
+import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
+import { documentAnswerKey, findDocumentDuplicates } from "@/lib/document-duplicates";
+import {
+  construirApertura,
+  detectarApertura,
+  fechaDeApertura,
+  type AperturaDetectada,
+} from "@/lib/saldo-de-apertura";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -173,9 +187,41 @@ export function ImportFlow({
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
   const { setDirty, guard } = useUnsavedChangesGuard();
   const { setRevisando } = useRevisionEnCurso();
+
+  // ── CT-21: la seleccion de movimientos, y por que vive aqui ────────────
+  //
+  // La pinta el detalle, pero el estado esta aqui por el boton «atras»: hace
+  // falta decidir, DENTRO del guardia que ya existe, si ese atras deshace la
+  // seleccion o pregunta si se sale de la revision. Una segunda trampa de
+  // historial propia despertaba a esta y sacaba «¿Salir sin subir la libreta?»
+  // al deseleccionar — visto en dev el 2026-10-02.
+  const [seleccionDeMovimientos, setSeleccionDeMovimientos] = useState<Set<string>>(new Set());
+  // Un espejo en ref porque `guardConSeleccion` TIENE que ser estable: es
+  // dependencia del efecto de `useTrampaDeAtras`, y ese efecto empuja una
+  // entrada al historial cada vez que corre. Con la seleccion en las
+  // dependencias, marcar un movimiento empujaria una entrada por toque.
+  const seleccionRef = useRef(seleccionDeMovimientos);
+  useEffect(() => {
+    seleccionRef.current = seleccionDeMovimientos;
+  }, [seleccionDeMovimientos]);
   // El botón atrás del teléfono y el gesto de deslizar: la salida más probable
   // en un móvil, y la única que no pasa por ningún onClick nuestro.
-  const consumirCentinela = useTrampaDeAtras(reviewMovements !== null, guard);
+  // «Atras» con movimientos marcados DESHACE LA SELECCION y no sale.
+  //
+  // Devolver sin llamar a `proceed` basta: `useTrampaDeAtras` repone su
+  // centinela ANTES de llamar aqui, asi que la trampa sigue armada para el
+  // siguiente atras y no queda ninguna entrada suelta que gastar.
+  const guardConSeleccion = useCallback(
+    (proceed: () => void) => {
+      if (seleccionRef.current.size > 0) {
+        setSeleccionDeMovimientos(new Set());
+        return;
+      }
+      guard(proceed);
+    },
+    [guard],
+  );
+  const consumirCentinela = useTrampaDeAtras(reviewMovements !== null, guardConSeleccion);
 
   // Entrar y salir de la revisión, en un solo sitio. Los tres estados van
   // juntos siempre —hay filas, hay que avisar al salir, la barra se esconde—
@@ -323,11 +369,62 @@ export function ImportFlow({
     pendientesDeLineas.sinCliente > 0 || pendientesDeLineas.sinMonto > 0;
 
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDuplicado>>({});
+  // CT-29b. Por `nameKey`, el documento CON EL QUE se respondio "es una cuenta
+  // separada" — no un booleano. La diferencia es la que hace que esto se cure
+  // solo: si la dueña corrige un digito, la respuesta deja de coincidir con lo
+  // escrito y la pregunta vuelve, que es justo lo que tiene que pasar cuando la
+  // cedula nueva es de otra persona que no ha visto nunca. Con un booleano
+  // habria que acordarse de borrarlo, y eso se olvida.
+  const [documentoConfirmado, setDocumentoConfirmado] = useState<Record<string, string>>({});
+  // ── CT-12: el saldo con el que arranca la libreta ──────────────────────
+  //
+  // Por `nameKey|moneda`, igual que `decisionesDeTotal`. Guarda el importe Y la
+  // fecha, y no se recalcula — a diferencia del ajuste, que SI es derivado.
+  //
+  // La diferencia no es de estilo: el ajuste es una funcion de los renglones de
+  // ESTA pagina, asi que si uno cambia tiene que cambiar; la apertura es un
+  // hecho sobre la pagina ANTERIOR, y corregir un monto de hoy no cambia lo que
+  // esa persona debia antes de empezar.
+  //
+  // Sirve para los dos caminos a la vez: lo que el dueño acepta de la propuesta
+  // automatica y lo que teclea a mano cuando no hay propuesta. Un solo sitio
+  // donde mirar, en vez de dos mecanismos que acaban discrepando.
+  const [aperturas, setAperturas] = useState<
+    Record<string, { importe: number; fecha: string | null } | undefined>
+  >({});
+  // CT-29. `listaAbierta` es el nameKey cuya lista de candidatos esta abierta;
+  // `porConfirmar` es el emparejamiento esperando confirmacion. Separados porque
+  // el dialogo sale TAMBIEN sin pasar por la lista, cuando el candidato es uno.
+  const [listaAbierta, setListaAbierta] = useState<string | null>(null);
+  const [sinNombre, setSinNombre] = useState<Set<string>>(new Set());
+  const [porConfirmar, setPorConfirmar] = useState<
+    { nameKey: string; candidato: CandidatoDuplicado } | null
+  >(null);
 
   const clientesSinLosDescartados = useMemo(
-    () => existingClients.filter((c) => decisiones[c.name.trim().toLowerCase()] !== "otra"),
+    () =>
+      // CT-29: "es otra persona" descarta a TODOS los que se parecian, no solo
+      // al de grafia identica. Con dos fichas candidatas, dejar una dentro la
+      // volveria a emparejar por nombre y la decision no serviria de nada.
+      existingClients.filter(
+        (c) =>
+          !Object.entries(decisiones).some(
+            ([nameKey, d]) => d?.cual === "otra" && seParecen(c.name, nameKey),
+          ),
+      ),
     [existingClients, decisiones],
   );
+
+  // Los emparejamientos explicitos, por nameKey. Van a `reconcileMovements`
+  // porque mandan sobre el nombre: es lo unico que puede unir "Karina castillo"
+  // con la ficha "Karina castillo (kari)".
+  const emparejados = useMemo(() => {
+    const salida: Record<string, string> = {};
+    for (const [nameKey, d] of Object.entries(decisiones)) {
+      if (d?.cual === "mismo") salida[nameKey] = d.clientId;
+    }
+    return salida;
+  }, [decisiones]);
 
   // Los `nameKey` que ya entraron en la base con su propio boton. La tarjeta se
   // queda en su sitio para ver lo que llevas hecho; lo que desaparece es la
@@ -349,6 +446,8 @@ export function ImportFlow({
       clientesQuitados,
       decisiones,
       decisionesDeTotal,
+      documentoConfirmado,
+      aperturas,
       subidos: [...subidos],
       sameClient,
       sharedName,
@@ -362,6 +461,8 @@ export function ImportFlow({
     clientesQuitados,
     decisiones,
     decisionesDeTotal,
+    documentoConfirmado,
+    aperturas,
     subidos,
     sameClient,
     sharedName,
@@ -396,6 +497,8 @@ export function ImportFlow({
       clientesQuitados: {},
       decisiones: {},
       decisionesDeTotal: {},
+      documentoConfirmado: {},
+      aperturas: {},
       subidos: [],
       sameClient: false,
       sharedName: "",
@@ -412,8 +515,24 @@ export function ImportFlow({
     if (!borrador) return;
     setEliminados(new Set(borrador.eliminados));
     setClientesQuitados(borrador.clientesQuitados);
-    setDecisiones(borrador.decisiones as Record<string, DecisionDuplicado>);
+    // Un borrador de antes de CT-29 guardaba "mismo" | "otra" en texto plano.
+    // "otra" sigue significando lo mismo; "mismo" ya no basta —no dice con cual—
+    // asi que se descarta y la pregunta vuelve a salir. Es lo honesto: mejor
+    // preguntar otra vez que emparejar con una ficha que nadie eligio.
+    setDecisiones(
+      Object.fromEntries(
+        Object.entries(borrador.decisiones ?? {}).flatMap(([k, d]): [string, DecisionDuplicado][] => {
+          if (d === "otra") return [[k, { cual: "otra" }]];
+          if (d === "mismo") return [];
+          if (d?.cual === "otra") return [[k, { cual: "otra" }]];
+          if (d?.cual === "mismo" && d.clientId) return [[k, { cual: "mismo", clientId: d.clientId }]];
+          return [];
+        }),
+      ),
+    );
     setDecisionesDeTotal(borrador.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>);
+    setDocumentoConfirmado(borrador.documentoConfirmado ?? {});
+    setAperturas(borrador.aperturas ?? {});
     setSubidos(new Set(borrador.subidos));
     setSameClient(borrador.sameClient);
     setSharedName(borrador.sharedName);
@@ -422,7 +541,111 @@ export function ImportFlow({
     setUnlinked(new Set(borrador.unlinked));
     abrirRevision(borrador.movimientos);
   }
+  // RETOMAR DE UN TOQUE, no de dos. El aviso de la hoja de Inicio llega aquí con
+  // `?retomar=1` y la revisión se abre sola: sin esto, el dueño pulsaba "Seguir
+  // con esa revisión" en Inicio, aterrizaba en esta pantalla y se encontraba el
+  // MISMO aviso pidiéndole lo mismo otra vez. Reportado el 2026-10-02.
+  //
+  // El `ref` y no un estado: esto tiene que correr UNA vez por montaje, y React
+  // ejecuta los efectos dos veces en desarrollo. Con un estado serían dos
+  // aperturas y la segunda pisaría lo que la primera dejó.
+  const retomarAlEntrar = useSearchParams().get("retomar") === "1";
+  const yaRetomado = useRef(false);
+  useEffect(() => {
+    if (!retomarAlEntrar || yaRetomado.current) return;
+    if (!borrador || reviewMovements) return;
+    yaRetomado.current = true;
+    retomarBorrador();
+    // La marca se quita de la URL con la API del historial y NO con
+    // `router.replace`: `abrirRevision` acaba de marcar la revisión como "sin
+    // guardar", y el guard que eso instala se traga cualquier navegación — la
+    // primera versión usaba el router y la URL se quedaba con `?retomar=1`.
+    // Aquí no hay navegación que guardar: solo se ordena la barra de
+    // direcciones, para que recargar no vuelva a abrirla sola.
+    window.history.replaceState(null, "", "/import");
+    // `retomarBorrador` se define arriba y no cambia entre renders; incluirlo
+    // obligaría a envolverlo en `useCallback` sin ganar nada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retomarAlEntrar, borrador, reviewMovements]);
 
+
+
+  // ── CT-12: LA APERTURA, Y EL ORDEN EN QUE SE CALCULA TODO ──────────────
+  //
+  // Hay tres reconciliaciones y cada una responde a una pregunta distinta. El
+  // orden importa y equivocarlo mete una linea de mas en la deuda de alguien:
+  //
+  //   filasSinApertura  los renglones PELADOS. Es donde se DETECTA el desfase
+  //                     constante — tiene que ignorar la apertura o esta
+  //                     dejaria de detectarse en cuanto se acepta, y la
+  //                     propuesta desapareceria de la pantalla sola.
+  //   conAperturas      los renglones con la apertura ya dentro.
+  //   librosSombra      se reconcilia sobre CON APERTURAS. Si se reconciliara
+  //                     sobre los pelados, el ajuste seguiria creyendo que
+  //                     faltan los 99 que la apertura acaba de poner, y
+  //                     añadiria una SEGUNDA linea por el mismo dinero.
+  const filasSinApertura = useMemo(
+    () =>
+      movimientosBase
+        ? reconcileMovements(movimientosBase, clientesSinLosDescartados, emparejados)
+        : [],
+    [movimientosBase, clientesSinLosDescartados, emparejados],
+  );
+
+  // Lo que se le puede proponer a cada libro, mire o no el dueño. Es una
+  // deduccion, no una decision: hasta que alguien diga que si, no toca nada.
+  const aperturasDetectadas = useMemo(() => {
+    const salida = new Map<string, AperturaDetectada>();
+    const porClave = new Map<string, typeof filasSinApertura>();
+    for (const f of filasSinApertura) {
+      const clave = `${f.client_name.trim().toLowerCase()}|${f.currency ?? "COP"}`;
+      const ya = porClave.get(clave);
+      if (ya) ya.push(f);
+      else porClave.set(clave, [f]);
+    }
+    for (const [clave, filas] of porClave) {
+      const d = detectarApertura(filas);
+      if (d) salida.set(clave, d);
+    }
+    return salida;
+  }, [filasSinApertura]);
+
+  const aperturasDerivadas = useMemo(() => {
+    const salida = new Map<string, { movimiento: ExtractedMovement; indice: number }>();
+    if (!movimientosBase) return salida;
+    for (const [clave, decidida] of Object.entries(aperturas)) {
+      if (!decidida) continue;
+      const corte = clave.lastIndexOf("|");
+      const nombre = clave.slice(0, corte);
+      const monedaTexto = clave.slice(corte + 1);
+      const currency = monedaTexto === "COP" ? null : (monedaTexto as LedgerCurrency);
+      const construida = construirApertura({
+        movimientos: movimientosBase,
+        nombreDelCliente: nombre,
+        currency,
+        importe: decidida.importe,
+        fecha: decidida.fecha,
+        uid: `apertura:${clave}`,
+      });
+      if (construida) salida.set(clave, construida);
+    }
+    return salida;
+  }, [movimientosBase, aperturas]);
+
+  const uidsDeApertura = useMemo(
+    () => new Set([...aperturasDerivadas.values()].map((a) => a.movimiento.uid!)),
+    [aperturasDerivadas],
+  );
+
+  const conAperturas = useMemo(() => {
+    if (!movimientosBase) return null;
+    if (aperturasDerivadas.size === 0) return movimientosBase;
+    // De mayor a menor indice para que insertar una no desplace a la siguiente.
+    const copia = [...movimientosBase];
+    const porIndice = [...aperturasDerivadas.values()].sort((a, b) => b.indice - a.indice);
+    for (const a of porIndice) copia.splice(a.indice, 0, a.movimiento);
+    return copia;
+  }, [movimientosBase, aperturasDerivadas]);
 
   // ── EL AJUSTE ES DERIVADO, NO GUARDADO ────────────────────────────────
   //
@@ -444,9 +667,9 @@ export function ImportFlow({
   // no se entera del ajuste y por eso sigue sabiendolo.
   const librosSombra = useMemo(() => {
     const porClave = new Map<string, LibroDelCliente>();
-    if (!movimientosBase) return porClave;
+    if (!conAperturas) return porClave;
     const clientes = agruparPorCliente(
-      reconcileMovements(movimientosBase, clientesSinLosDescartados),
+      reconcileMovements(conAperturas, clientesSinLosDescartados, emparejados),
       clientesSinLosDescartados,
       { esVE: showCurrency },
     );
@@ -454,25 +677,25 @@ export function ImportFlow({
       for (const l of c.libros) porClave.set(`${c.nameKey}|${l.currency ?? "COP"}`, l);
     }
     return porClave;
-  }, [movimientosBase, clientesSinLosDescartados, showCurrency]);
+  }, [conAperturas, clientesSinLosDescartados, showCurrency, emparejados]);
 
   // Un ajuste por cliente que haya dicho que manda su libreta, con el importe
   // que hace falta AHORA. El uid se deriva de la clave en vez de sortearse:
   // asi es estable entre renders sin guardar nada, y la fila no se remonta sola.
   const ajustesDerivados = useMemo(() => {
     const salida = new Map<string, { movimiento: ExtractedMovement; indice: number }>();
-    if (!movimientosBase) return salida;
+    if (!conAperturas) return salida;
     for (const [clave, decision] of Object.entries(decisionesDeTotal)) {
       if (decision?.cual !== "libreta") continue;
       const sombra = librosSombra.get(clave);
       if (!sombra) continue;
       const nombre = clave.slice(0, clave.lastIndexOf("|"));
-      const cliente = movimientosBase.find(
+      const cliente = conAperturas.find(
         (m) => (m.client_name ?? "").trim().toLowerCase() === nombre,
       );
       if (!cliente) continue;
       const construido = construirAjuste({
-        movimientos: movimientosBase,
+        movimientos: conAperturas,
         nombreDelCliente: cliente.client_name,
         libro: sombra,
         uid: `ajuste:${clave}`,
@@ -480,7 +703,7 @@ export function ImportFlow({
       if (construido) salida.set(clave, construido);
     }
     return salida;
-  }, [movimientosBase, decisionesDeTotal, librosSombra]);
+  }, [conAperturas, decisionesDeTotal, librosSombra]);
 
   const uidsDeAjuste = useMemo(
     () => new Set([...ajustesDerivados.values()].map((a) => a.movimiento.uid!)),
@@ -502,19 +725,26 @@ export function ImportFlow({
   // final de lo suyo" en cuanto se ve.
   const movimientosConAjustes = useMemo(() => {
     if (!reviewMovements) return null;
-    if (ajustesDerivados.size === 0) return reviewMovements;
-    return [...reviewMovements, ...[...ajustesDerivados.values()].map((a) => a.movimiento)];
-  }, [reviewMovements, ajustesDerivados]);
+    if (ajustesDerivados.size === 0 && aperturasDerivadas.size === 0) return reviewMovements;
+    // La apertura DELANTE y el ajuste detras, que es donde van cada uno. La
+    // lista se filtra por cliente antes de pintarse, asi que "la primera de
+    // todas" es "la primera de las suyas" en cuanto se ve.
+    return [
+      ...[...aperturasDerivadas.values()].map((a) => a.movimiento),
+      ...reviewMovements,
+      ...[...ajustesDerivados.values()].map((a) => a.movimiento),
+    ];
+  }, [reviewMovements, ajustesDerivados, aperturasDerivadas]);
 
   const effectiveMovements = useMemo(() => {
-    if (!movimientosBase) return null;
-    if (ajustesDerivados.size === 0) return movimientosBase;
+    if (!conAperturas) return null;
+    if (ajustesDerivados.size === 0) return conAperturas;
     // De mayor a menor indice para que insertar uno no desplace al siguiente.
-    const copia = [...movimientosBase];
+    const copia = [...conAperturas];
     const porIndice = [...ajustesDerivados.values()].sort((a, b) => b.indice - a.indice);
     for (const a of porIndice) copia.splice(a.indice, 0, a.movimiento);
     return copia;
-  }, [movimientosBase, ajustesDerivados]);
+  }, [conAperturas, ajustesDerivados]);
 
   // Una reconciliación contra la lista COMPLETA de clientes, y su único trabajo
   // es detectar los candidatos de CT-22. No se usa para nada más: las filas de
@@ -538,7 +768,7 @@ export function ImportFlow({
   const duplicados = useMemo(
     () =>
       agruparPorCliente(filasParaCandidatos, existingClients, { esVE: showCurrency }).filter(
-        (c) => c.candidato !== null,
+        (c) => c.candidatos.length > 0,
       ),
     [filasParaCandidatos, existingClients, showCurrency],
   );
@@ -560,8 +790,11 @@ export function ImportFlow({
   // —matched_client_id, needs_document_id, computed_balance y la base— salen
   // solas. Un cliente nuevo es un cliente nuevo en todo, no en dos campos.
   const filas = useMemo(
-    () => (effectiveMovements ? reconcileMovements(effectiveMovements, clientesSinLosDescartados) : []),
-    [effectiveMovements, clientesSinLosDescartados],
+    () =>
+      effectiveMovements
+        ? reconcileMovements(effectiveMovements, clientesSinLosDescartados, emparejados)
+        : [],
+    [effectiveMovements, clientesSinLosDescartados, emparejados],
   );
 
   // A client without a cédula/documento on file must get one before the
@@ -594,7 +827,7 @@ export function ImportFlow({
   // la tarjeta desaparecería en cuanto se pulsara "es otra persona" y con ella
   // los dos botones.
   const candidatos = useMemo(
-    () => new Map(duplicados.map((c) => [c.nameKey, c.candidato!])),
+    () => new Map(duplicados.map((c) => [c.nameKey, c.candidatos])),
     [duplicados],
   );
   // EL NOMBRE QUE LE TOCA A UN MOVIMIENTO. Con el cliente compartido activo el
@@ -702,15 +935,81 @@ export function ImportFlow({
   //
   // Uno solo y por orden: enseñar los cuatro a la vez no dice por dónde
   // empezar, y arreglado el primero aparece el siguiente.
+  // ── CT-29b: la cedula escrita contra la cartera ───────────────────────
+  //
+  // Sobre `filas` y no sobre `filasParaCandidatos`: aqui hace falta el
+  // `matched_client_id` YA aplicado, porque una tarjeta emparejada no crea a
+  // nadie y por tanto no puede chocar. Sobre la lista COMPLETA de clientes, en
+  // cambio, igual que los candidatos por nombre — si no, decir "es otro
+  // cliente" haria desaparecer el choque que es justo el que hay que avisar.
+  const duplicadosPorDocumento = useMemo(
+    () => findDocumentDuplicates(filas, existingClients, candidatos),
+    [filas, existingClients, candidatos],
+  );
+  // Lo tecleado, dos veces: normalizado para comparar con la respuesta, y tal
+  // cual para poder enseñarlo. La primera fila de cada cliente manda — todas
+  // las suyas comparten documento, porque se escribe una vez por persona.
+  const documentoActual = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const f of filas) {
+      const k = f.client_name.trim().toLowerCase();
+      if (!k || k in m) continue;
+      m[k] = documentAnswerKey(f.document_id);
+    }
+    return m;
+  }, [filas]);
+  const documentosEscritos = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const f of filas) {
+      const k = f.client_name.trim().toLowerCase();
+      if (!k || m[k]) continue;
+      m[k] = f.document_id?.trim() ?? "";
+    }
+    return m;
+  }, [filas]);
+  // Quien ya dijo que si, con la cedula que hay escrita AHORA. Si cambio, no
+  // esta: la pregunta vuelve sola.
+  const cuentasSeparadas = useMemo(
+    () =>
+      new Set(
+        Object.entries(documentoConfirmado)
+          .filter(([k, doc]) => doc !== "" && doc === documentoActual[k])
+          .map(([k]) => k),
+      ),
+    [documentoConfirmado, documentoActual],
+  );
+
   // LO QUE QUEDA POR SUBIR. De aqui salen el contador del boton del lote, el
   // resumen de encima y a quien sube ese boton: tres cifras que si se calcularan
   // por separado acabarian discrepando.
-  const pendientes = clientesRevisados.filter((c) => !subidos.has(c.nameKey));
-  const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, {
+  // ── UN SOLO JUEGO DE OPCIONES PARA LOS TRES `conEstado` ────────────────
+  //
+  // Habia tres llamadas con la lista escrita a mano en cada una, y al añadir las
+  // de CT-29b solo se cableo esta: la LISTA seguia enseñando "Subir este
+  // cliente" sobre una tarjeta que el pie contaba como no lista, y sin pintar la
+  // pregunta de la cedula. Visto en dev el 2026-10-02, en la primera pasada por
+  // el navegador.
+  //
+  // Juntarlas no es estetica: tres copias de una lista de opciones se separan en
+  // cuanto alguien añade la cuarta, y el sintoma —dos partes de la pantalla
+  // discrepando sobre si se puede subir— no se parece a su causa.
+  // Los que estan fuera de la cartera, por `id`. CT-33.
+  const ocultos = useMemo(
+    () => new Set(existingClients.filter((c) => c.hidden).map((c) => c.id)),
+    [existingClients],
+  );
+
+  const opcionesDeEstado = {
     exigeMoneda: showCurrency,
     subidos,
     hayLineasSinResolver,
-  });
+    sinNombre,
+    duplicadosPorDocumento,
+    documentoConfirmado,
+    documentoActual,
+  };
+  const pendientes = clientesRevisados.filter((c) => !subidos.has(c.nameKey));
+  const estadosPendientes = conEstado(pendientes, filas, decisiones, candidatos, opcionesDeEstado);
   const listosParaSubir = estadosPendientes.filter((c) => c.puedeSubir);
   const sinCompletar = estadosPendientes.length - listosParaSubir.length;
   // El contador cuenta MOVIMIENTOS, y solo los que de verdad van a entrar: a
@@ -823,7 +1122,59 @@ export function ImportFlow({
   // Lo que había ANTES de la última aplicación en masa. `null` = no hay nada
   // que deshacer, y entonces el botón no se enseña: un deshacer que no deshace
   // nada es peor que ninguno.
-  const [antesDeAplicar, setAntesDeAplicar] = useState<ExtractedMovement[] | null>(null);
+  // CT-31. Sustituye al deshacer de un solo nivel que habia aqui para la
+  // moneda: ahora aplicar moneda es un paso mas del historial, como los demas.
+  const [pasado, setPasado] = useState<Instantanea[]>([]);
+
+  // LA FOTO DEL ESTADO DE AHORA. Se llama ANTES de cambiar nada, y siempre desde
+  // un manejador de evento — nunca dentro de un updater de `setState`, que React
+  // puede ejecutar dos veces y dejaria dos pasos identicos en la pila.
+  function recordar() {
+    setPasado((prev) =>
+      empujar(prev, {
+        movimientos: reviewMovements ?? [],
+        eliminados: [...eliminados],
+        clientesQuitados,
+        decisiones,
+        decisionesDeTotal,
+        documentoConfirmado,
+        aperturas,
+        sameClient,
+        sharedName,
+        sharedDocument,
+        sharedWhatsapp,
+        unlinked: [...unlinked],
+      }),
+    );
+  }
+
+  function deshacer() {
+    const { pasado: resto, instantanea } = sacar(pasado);
+    if (!instantanea) return;
+    setPasado(resto);
+    setReviewMovements(instantanea.movimientos);
+    setEliminados(new Set(instantanea.eliminados));
+    setClientesQuitados(instantanea.clientesQuitados);
+    setDecisiones(instantanea.decisiones);
+    setDecisionesDeTotal(
+      instantanea.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>,
+    );
+    setDocumentoConfirmado(instantanea.documentoConfirmado ?? {});
+    setAperturas(instantanea.aperturas ?? {});
+    setSameClient(instantanea.sameClient);
+    setSharedName(instantanea.sharedName);
+    setSharedDocument(instantanea.sharedDocument);
+    setSharedWhatsapp(instantanea.sharedWhatsapp);
+    setUnlinked(new Set(instantanea.unlinked));
+  }
+  // CT-29b. Guarda la cedula CON LA QUE se respondio, no un "si": ver la nota
+  // de `documentoConfirmado`. Empuja al historial como cualquier otra decision
+  // que cambie lo que se va a escribir en la deuda de alguien.
+  function confirmarCuentaSeparada(nameKey: string) {
+    recordar();
+    setDocumentoConfirmado((prev) => ({ ...prev, [nameKey]: documentoActual[nameKey] ?? "" }));
+  }
+
   const [forzarMoneda, setForzarMoneda] = useState(false);
   const [modalMoneda, setModalMoneda] = useState(false);
 
@@ -859,6 +1210,104 @@ export function ImportFlow({
   // No se muda al cambiar la moneda de UNA fila suelta (la hoja de edicion):
   // ahi el renglon cambia de libro de verdad, y la decision pertenece al libro
   // que deja atras, no al que estrena.
+  // RENOMBRAR A UNA PERSONA DE LA REVISIÓN.
+  //
+  // Pedido el 2026-10-02: "el nombre del cliente debe poder editarse en todos
+  // los casos". Y no es cosmético — el nombre ES la clave de agrupación, así que
+  // renombrar junta y separa tarjetas: escribir "Karina castillo (kari)" sobre
+  // un renglón que decía "Karina castillo" lo empareja con la ficha que ya
+  // existe, sin pasar por el diálogo.
+  //
+  // POR ESO HAY QUE MUDAR LAS CLAVES. `decisiones`, `clientesQuitados` y
+  // `decisionesDeTotal` van indexadas por `nameKey`: dejarlas donde estaban es
+  // como se pierde una decisión ya tomada —y peor, como reaparece sobre otra
+  // persona si alguien reusa el nombre viejo—. Es el mismo cuidado que
+  // `mudarDecisionesDeMoneda`, y por la misma razón.
+  //
+  // Si la clave destino YA tiene decisión, gana la que estaba: el dueño la tomó
+  // mirando a ESA tarjeta, y pisarla con la de otra sería decidir por él.
+  function renombrarCliente(nameKeyViejo: string, nombreNuevo: string) {
+    const limpio = nombreNuevo.trim();
+    const nuevo = limpio.toLowerCase();
+
+    // VACIO: no se escribe en la fila, se APUNTA. Escribirlo convertiria esos
+    // renglones en "lineas sin cliente" (CT-25) y la tarjeta desapareceria de la
+    // lista con la hoja abierta encima. Se marca, `conEstado` lo bloquea, y en
+    // cuanto se escriba un nombre valido se desmarca. Reportado el 2026-10-02:
+    // con el campo vacio, "Subir este cliente" seguia encendido.
+    if (!limpio) {
+      setSinNombre((prev) => new Set(prev).add(nameKeyViejo));
+      return;
+    }
+    setSinNombre((prev) => {
+      if (!prev.has(nameKeyViejo)) return prev;
+      const next = new Set(prev);
+      next.delete(nameKeyViejo);
+      return next;
+    });
+
+    if (nuevo === nameKeyViejo) return;
+    recordar();
+
+    setReviewMovements((prev) =>
+      prev
+        ? prev.map((m) =>
+            (m.client_name ?? "").trim().toLowerCase() === nameKeyViejo
+              ? { ...m, client_name: limpio }
+              : m,
+          )
+        : prev,
+    );
+
+    setDecisiones((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suya, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suya };
+    });
+    setClientesQuitados((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suyos, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suyos };
+    });
+    // CT-29b. Sin esto, renombrar despues de aceptar la cuenta aparte perdia la
+    // respuesta y la pregunta volvia a salir — con la misma cedula y las mismas
+    // fichas, que es como se aprende a pulsar sin leer.
+    setDocumentoConfirmado((prev) => {
+      if (!(nameKeyViejo in prev)) return prev;
+      const { [nameKeyViejo]: suya, ...resto } = prev;
+      return nuevo in resto ? resto : { ...resto, [nuevo]: suya };
+    });
+    // CT-12. Misma forma de clave que `decisionesDeTotal`: `nombre|moneda`.
+    setAperturas((prev) => {
+      const salida: typeof prev = {};
+      for (const [clave, a] of Object.entries(prev)) {
+        const i = clave.lastIndexOf("|");
+        const suNombre = i < 0 ? clave : clave.slice(0, i);
+        const moneda = i < 0 ? "" : clave.slice(i);
+        const destino = suNombre === nameKeyViejo ? `${nuevo}${moneda}` : clave;
+        if (destino in salida) continue;
+        salida[destino] = a;
+      }
+      return salida;
+    });
+    setDecisionesDeTotal((prev) => {
+      const salida: typeof prev = {};
+      for (const [clave, d] of Object.entries(prev)) {
+        const i = clave.lastIndexOf("|");
+        const suNombre = i < 0 ? clave : clave.slice(0, i);
+        const moneda = i < 0 ? "" : clave.slice(i);
+        const destino = suNombre === nameKeyViejo ? `${nuevo}${moneda}` : clave;
+        if (destino in salida) continue;
+        salida[destino] = d;
+      }
+      return salida;
+    });
+
+    // La hoja del detalle se identifica por nameKey: sin esto, renombrar la
+    // cierra de golpe en mitad de la edición.
+    setAbierto((actual) => (actual === nameKeyViejo ? nuevo : actual));
+  }
+
   function mudarDecisionesDeMoneda(
     afectada: (m: ExtractedMovement) => boolean,
     moneda: LedgerCurrency,
@@ -894,28 +1343,39 @@ export function ImportFlow({
     });
   }
 
+  // SI LA LIBRETA NO MEZCLA, EL BOTÓN ALCANZA A TODAS. Reportado el 2026-10-02
+  // desde el móvil: "Todo Euros" no hacía nada.
+  //
+  // La condición era `!m.currency` —solo las filas sin moneda— con una casilla
+  // aparte para forzar el resto. Pero esa casilla solo salía si había filas CON
+  // y SIN moneda a la vez, y después de que la modal pusiera dólares a toda la
+  // tanda no queda ninguna sin moneda: ni casilla, ni filas que alcanzar. El
+  // botón quedaba muerto, diciendo "Todo Euros" y sin hacer nada.
+  //
+  // Ahora `incluirYaAjustadas` solo hace falta cuando hay DE VERDAD algo que
+  // proteger: dos monedas distintas conviviendo, que es el único caso en que
+  // aplicar a todas pisaría un ajuste hecho a mano fila por fila. Sin mezcla,
+  // el botón hace lo que su etiqueta dice.
   function applyCurrencyToAll(currency: LedgerCurrency, incluirYaAjustadas = false) {
-    // `setAntesDeAplicar` va FUERA del updater, por lo mismo que el toast de
-    // `removeMovement`: un updater tiene que ser puro, y React puede llamarlo
-    // dos veces para la misma actualización.
     if (!reviewMovements) return;
-    setAntesDeAplicar(reviewMovements);
-    mudarDecisionesDeMoneda((m) => incluirYaAjustadas || !m.currency, currency);
-    setReviewMovements((prev) =>
-      prev ? prev.map((m) => (incluirYaAjustadas || !m.currency ? { ...m, currency } : m)) : prev,
-    );
+    const distintas = new Set(reviewMovements.filter((m) => m.currency).map((m) => m.currency));
+    const hayMezcla = distintas.size > 1;
+    const alcanza = (m: ExtractedMovement) => incluirYaAjustadas || !m.currency || !hayMezcla;
+    // `recordar()` FUERA del updater: un updater tiene que ser puro y React
+    // puede llamarlo dos veces para la misma actualización.
+    recordar();
+    mudarDecisionesDeMoneda(alcanza, currency);
+    setReviewMovements((prev) => (prev ? prev.map((m) => (alcanza(m) ? { ...m, currency } : m)) : prev));
   }
 
-  function deshacerMoneda() {
-    setReviewMovements((prev) => antesDeAplicar ?? prev);
-    setAntesDeAplicar(null);
-  }
+
 
   // Por `uid` y no por posición: el detalle de un cliente recibe solo SUS
   // filas, y con índices la edición aterrizaba en otro cliente. Pasó de verdad
   // el 2026-09-28 — se tecleó una cédula en "QA No Cuadra" y apareció en "QA
   // Cuadra".
   function updateMovement(rowId: string, patch: Partial<ExtractedMovement>) {
+    recordar();
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (m.uid === rowId ? { ...m, ...patch } : m)) : prev,
     );
@@ -928,11 +1388,10 @@ export function ImportFlow({
   function aplicarMonedaAlCliente(rowIds: string[], moneda: LedgerCurrency) {
     if (!reviewMovements) return;
     const suyas = new Set(rowIds);
-    // `setAntesDeAplicar` FUERA del updater: un updater tiene que ser puro y
-    // React puede llamarlo dos veces para la misma actualizacion. Es el mismo
-    // fallo que ya se corrigio en `applyCurrencyToAll` y que aqui habia
-    // quedado dentro.
-    setAntesDeAplicar(reviewMovements);
+    // `recordar()` FUERA del updater: un updater tiene que ser puro y React
+    // puede llamarlo dos veces para la misma actualizacion, lo que dejaria dos
+    // pasos identicos en la pila.
+    recordar();
     mudarDecisionesDeMoneda((m) => Boolean(m.uid && suyas.has(m.uid)), moneda);
     setReviewMovements((prev) =>
       prev ? prev.map((m) => (m.uid && suyas.has(m.uid) ? { ...m, currency: moneda } : m)) : prev,
@@ -990,13 +1449,26 @@ export function ImportFlow({
   // Para todo lo que calcula —saldos, sumas, el resumen— no existe:
   // `effectiveMovements` los filtra antes de reconciliar.
   function removeMovement(rowId: string) {
+    recordar();
     setEliminados((prev) => new Set(prev).add(rowId));
+  }
+
+  // CT-21. Varios de golpe, con UNA sola foto para el historial.
+  function removeMovements(rowIds: string[]) {
+    if (rowIds.length === 0) return;
+    recordar();
+    setEliminados((prev) => {
+      const siguiente = new Set(prev);
+      for (const id of rowIds) siguiente.add(id);
+      return siguiente;
+    });
   }
 
   // CT-25. Escribir el nombre en la fila la saca de "sin cliente" y la mete en
   // la tuberia normal: a partir de ahi es un renglon como cualquier otro, con su
   // tarjeta, su saldo corrido y su comprobacion contra el total escrito.
   function asignarSuelta(uid: string, nombre: string) {
+    recordar();
     setReviewMovements((prev) => (prev ? asignarLineaSuelta(prev, uid, nombre) : prev));
   }
 
@@ -1004,12 +1476,14 @@ export function ImportFlow({
   // el de la hoja anterior. Se asignan solo los que siguen VIVOS — uno que el
   // dueno acaba de quitar no debe resucitar con nombre puesto.
   function asignarTodasSueltas(nombre: string) {
+    recordar();
     setReviewMovements((prev) =>
       prev ? asignarTodasLasSueltas(prev, nombre, eliminados) : prev,
     );
   }
 
   function restaurarMovimiento(rowId: string) {
+    recordar();
     setEliminados((prev) => {
       const next = new Set(prev);
       next.delete(rowId);
@@ -1026,6 +1500,7 @@ export function ImportFlow({
   // recuperar al cliente ese movimiento NO debe volver — el dueno lo quito a
   // proposito, y devolverselo seria deshacer una decision que no pidio deshacer.
   function eliminarCliente(nameKey: string, rowIds: string[]) {
+    recordar();
     const nuevos = rowIds.filter((id) => !eliminados.has(id));
     setEliminados((prev) => {
       const next = new Set(prev);
@@ -1037,6 +1512,7 @@ export function ImportFlow({
   }
 
   function restaurarCliente(nameKey: string) {
+    recordar();
     const suyos = clientesQuitados[nameKey] ?? [];
     setEliminados((prev) => {
       const next = new Set(prev);
@@ -1074,6 +1550,7 @@ export function ImportFlow({
   // sola cosa: poder notar luego que la cifra cambio y decirselo al dueno. Lo
   // que el panel ensena no sale de aqui, sale del libro sombra.
   function elegirTotal(cliente: ClienteRevisado, libro: LibroDelCliente, cual: EleccionDeTotal) {
+    recordar();
     const clave = `${cliente.nameKey}|${libro.currency ?? "COP"}`;
     const sombra = librosSombra.get(clave);
     setDecisionesDeTotal((prev) => ({
@@ -1095,6 +1572,23 @@ export function ImportFlow({
   // El payload de unas filas concretas. Sale aparte porque ahora hay dos
   // caminos que suben —el boton de una tarjeta y el del lote— y que armaran el
   // payload por separado es justo como se acaban desviando el uno del otro.
+  // Lo que esa persona trae EN ESTA LIBRETA, por moneda. Es la mitad de la
+  // pregunta que hace la confirmacion: arriba lo que llega, abajo lo que ya hay.
+  // Nunca se suman dos monedas, la regla de siempre.
+  function textoDeLoQueTrae(nameKey: string | undefined): string {
+    if (!nameKey) return "—";
+    const suyas = filas.filter((r) => r.client_name.trim().toLowerCase() === nameKey);
+    const porMoneda = new Map<string, number>();
+    for (const r of suyas) {
+      const k = r.currency ?? "COP";
+      porMoneda.set(k, (porMoneda.get(k) ?? 0) + (r.type === "charge" ? r.amount : -r.amount));
+    }
+    const partes = [...porMoneda.entries()].map(([k, total]) =>
+      k === "COP" ? formatCurrency(total) : formatDisplayCurrency(total, k as LedgerCurrency),
+    );
+    return partes.length ? partes.join(" · ") : "—";
+  }
+
   function payloadDe(deEstas: typeof filas): ImportRow[] {
     return deEstas.map((r) => ({
       // CT-22: `filas` ya aplico la decision, asi que con "es otra persona"
@@ -1109,6 +1603,23 @@ export function ImportFlow({
       currency: r.currency,
       owner_note: uidsDeAjuste.has(r.rowId) ? NOTA_DE_AJUSTE : notaDeDesajuste(r),
       created_at: isoDeLaFecha(r.date),
+      // CT-29b. "Si, ya se que esa cedula es de alguien, abrele otra cuenta."
+      //
+      // Solo puede ser `true` cuando la pantalla ENSEÑO el choque y la dueña
+      // respondio: `cuentasSeparadas` se calcula contra la cedula que hay
+      // escrita ahora mismo, asi que una respuesta vieja a otra cedula no vale.
+      // Sin eso, cambiar un digito despues de responder colaria un duplicado de
+      // alguien que ella no ha visto nunca.
+      confirm_duplicate: cuentasSeparadas.has(r.client_name.trim().toLowerCase()),
+      // CT-33. "Si, recuperalo al subir esto."
+      //
+      // Se DEDUCE de que el cliente emparejado este oculto, y eso basta porque
+      // a un oculto no se llega por accidente: el emparejamiento automatico por
+      // nombre los excluye a proposito (ver `byName` en `lib/reconcile.ts`), asi
+      // que `matched_client_id` solo puede apuntar a uno si la dueña lo eligio
+      // a mano — y ese camino pasa SIEMPRE por `ConfirmarEmparejamiento`, que
+      // le dice que se va a restaurar y con que saldo vuelve a sus totales.
+      confirm_restore: Boolean(r.matched_client_id && ocultos.has(r.matched_client_id)),
     }));
   }
 
@@ -1152,6 +1663,11 @@ export function ImportFlow({
 
     const subidosAhora = new Set([...subidos, ...hechos]);
     setSubidos(subidosAhora);
+    // EL HISTORIAL SE VACIA AL SUBIR. Un cliente ya escrito en la base no se
+    // des-sube desde aqui, asi que deshacer hasta antes de la subida enseñaria
+    // una revision que ya no se corresponde con lo guardado — y el boton
+    // parecería ofrecer justo lo que no puede hacer.
+    setPasado([]);
 
     // Si ya no queda nadie por subir, la revision se acaba y se vuelve a Inicio,
     // igual que antes. Si queda gente, NO se navega: el dueno sigue en la lista
@@ -1176,17 +1692,21 @@ export function ImportFlow({
   // un recuento que no cuadra con lo que hay debajo.
   const entradas = reviewMovements
     ? entradasDeLaRevision(
-        conEstado(clientesRevisados, filas, decisiones, candidatos, {
-          exigeMoneda: showCurrency,
-          subidos,
-          hayLineasSinResolver,
-        }),
+        conEstado(clientesRevisados, filas, decisiones, candidatos, opcionesDeEstado),
       )
     : [];
 
   if (reviewMovements) {
     return (
       <div className="flex flex-1 flex-col gap-4 pb-2">
+        {/* EL TÍTULO VIVE AQUÍ, no en la página, desde CT-31: el deshacer va
+            alineado a su derecha y los dos tienen que estar en el mismo
+            componente para poder compartir el estado. */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+          <BotonDeshacer pasos={pasado.length} onDeshacer={deshacer} />
+        </div>
+
         {/* EL BOTÓN DE GUARDAR YA NO VA EN LA CABECERA.
             Estuvo ahí porque el único que guardaba quedaba a una pantalla y
             media de scroll; la barra fija del pie resuelve lo mismo mejor —
@@ -1300,23 +1820,9 @@ export function ImportFlow({
                 mezcla —se permite, cambiando filas sueltas— no se marca
                 ninguna, porque marcar una sería mentir sobre las otras. */}
             <div className="flex w-full flex-wrap items-center gap-2">
-              {/* Deshacer, y solo cuando hay algo que deshacer. Vive a la
-                  IZQUIERDA de las dos opciones, como en el mapa: es el escape
-                  de lo que está a su derecha, y ponerlo al final lo convertiría
-                  en una tercera opción. */}
-              {antesDeAplicar ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-10 rounded-full"
-                  aria-label="Deshacer la moneda que acabo de aplicar"
-                  title="Deshacer"
-                  onClick={deshacerMoneda}
-                >
-                  <Undo2 className="size-4" />
-                </Button>
-              ) : null}
+              {/* El deshacer de la moneda vivia aqui, de un solo nivel. Desde
+                  CT-31 es global y esta arriba, junto al titulo: aplicar moneda
+                  es un paso mas del historial y no merecia boton propio. */}
 
               {/* EL MISMO PATRÓN que el selector de moneda de "Agregar
                   movimiento": bandera delante, nombre detrás, píldora rellena
@@ -1345,10 +1851,11 @@ export function ImportFlow({
               </div>
             </div>
 
-            {/* La casilla solo sale cuando de verdad hay algo que forzar: si
-                ninguna fila está ya ajustada, ofrecerla es ofrecer una decisión
-                sobre un conjunto vacío. */}
-            {filas.some((r) => r.currency) && filas.some((r) => !r.currency) ? (
+            {/* La casilla sale cuando hay algo que forzar DE VERDAD: dos monedas
+                distintas conviviendo. Antes la condición era "unas con moneda y
+                otras sin", y por eso desaparecía justo cuando la tanda entera ya
+                tenía una — que es cuando el otro botón dejaba de funcionar. */}
+            {new Set(filas.filter((r) => r.currency).map((r) => r.currency)).size > 1 ? (
               <label className="flex w-full cursor-pointer items-start gap-2 text-xs text-muted-foreground">
                 <Checkbox
                   checked={forzarMoneda}
@@ -1356,8 +1863,8 @@ export function ImportFlow({
                   className="mt-0.5"
                 />
                 <span>
-                  Aplicar también a {filas.filter((r) => r.currency).length} línea
-                  {filas.filter((r) => r.currency).length === 1 ? "" : "s"} que ya ajustaste
+                  Aplicar también a las {filas.filter((r) => r.currency).length} líneas que ya
+                  llevan moneda
                 </span>
               </label>
             ) : null}
@@ -1423,15 +1930,86 @@ export function ImportFlow({
         <RevisarClientes
           entradas={entradas}
           decisiones={decisiones}
-          onDecidir={(nameKey, d) => setDecisiones((prev) => ({ ...prev, [nameKey]: d }))}
+          onDecidir={(nameKey, d) => {
+            recordar();
+            setDecisiones((prev) => ({ ...prev, [nameKey]: d }));
+          }}
+          onVerClientes={setListaAbierta}
+          onConfirmarCon={(nameKey, candidato) => setPorConfirmar({ nameKey, candidato })}
           onAbrir={setAbierto}
           onRestaurarCliente={restaurarCliente}
           onSubirCliente={(nameKey) => subirClientes([nameKey])}
           subiendo={confirming}
+          documentosEscritos={documentosEscritos}
+          cuentasSeparadas={cuentasSeparadas}
+          onCuentaSeparada={confirmarCuentaSeparada}
+        />
+
+        {/* CT-29: la lista de candidatos y la confirmacion. Van FUERA de la hoja
+            del detalle, no dentro: un popup en portal dentro de un Dialog de
+            Radix no recibe toques (DESIGN-SYSTEM.md), y ademas las dos salen
+            tambien desde la tarjeta, con el detalle cerrado. */}
+        <ListaDeCandidatos
+          abierta={listaAbierta !== null}
+          onCerrar={() => setListaAbierta(null)}
+          nombreEnLaLibreta={
+            clientesRevisados.find((c) => c.nameKey === listaAbierta)?.name ?? listaAbierta ?? ""
+          }
+          candidatos={listaAbierta ? (candidatos.get(listaAbierta) ?? []) : []}
+          onElegir={(candidato) => {
+            if (!listaAbierta) return;
+            setPorConfirmar({ nameKey: listaAbierta, candidato });
+          }}
+          onEsOtraPersona={() => {
+            if (!listaAbierta) return;
+            recordar();
+            setDecisiones((prev) => ({ ...prev, [listaAbierta]: { cual: "otra" } }));
+            setListaAbierta(null);
+          }}
+        />
+
+        <ConfirmarEmparejamiento
+          abierta={porConfirmar !== null}
+          onCerrar={() => setPorConfirmar(null)}
+          onConfirmar={() => {
+            if (!porConfirmar) return;
+            recordar();
+            setDecisiones((prev) => ({
+              ...prev,
+              [porConfirmar.nameKey]: { cual: "mismo", clientId: porConfirmar.candidato.id },
+            }));
+            // Se cierran las dos: la confirmacion devuelve a la lista de la
+            // revision para seguir con la subida, que es lo que pide el diseño.
+            setPorConfirmar(null);
+            setListaAbierta(null);
+            toast.success(`Emparejado con ${porConfirmar.candidato.name}.`);
+          }}
+          nombreEnLaLibreta={
+            clientesRevisados.find((c) => c.nameKey === porConfirmar?.nameKey)?.name ?? ""
+          }
+          documentoEnLaLibreta={
+            filas.find((r) => r.client_name.trim().toLowerCase() === porConfirmar?.nameKey)
+              ?.document_id ?? null
+          }
+          whatsappEnLaLibreta={
+            filas.find((r) => r.client_name.trim().toLowerCase() === porConfirmar?.nameKey)
+              ?.whatsapp ?? null
+          }
+          loQueTraeLaLibreta={textoDeLoQueTrae(porConfirmar?.nameKey)}
+          candidato={porConfirmar?.candidato ?? null}
         />
 
         <Sheet open={clienteAbierto !== undefined} onOpenChange={(v) => !v && setAbierto(null)}>
-          <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-xl">
+          <SheetContent
+            side="bottom"
+            className="max-h-[92dvh] overflow-y-auto rounded-t-xl"
+            // NADA ABRE ENFOCADO. Radix enfoca el primer elemento enfocable al
+            // abrir la hoja, y desde que el nombre es un campo editable ese
+            // primero es el nombre: la hoja abria con el nombre seleccionado y
+            // el teclado fuera, a una tecla de borrarlo entero sin querer.
+            // Reportado el 2026-10-02 con captura desde el movil.
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <SheetHeader>
               {/* El titulo del panel es la ACCION, no el nombre: el nombre va
                   dentro, en grande, junto a su estado y su boton de quitar. */}
@@ -1447,15 +2025,29 @@ export function ImportFlow({
                 cliente={clienteAbierto}
                 estado={
                   conEstado([clienteAbierto], filas, decisiones, candidatos, {
-                    exigeMoneda: showCurrency,
-                    subidos,
+                    ...opcionesDeEstado,
+                    // El chip del detalle habla de ESTE cliente: una linea
+                    // suelta de otro no es un problema suyo, y pintarsela aqui
+                    // seria decirle que le falta algo que no le falta.
+                    hayLineasSinResolver: false,
                   })[0].estado
                 }
-                candidato={candidatos.get(clienteAbierto.nameKey) ?? null}
-                decision={decisiones[clienteAbierto.nameKey]}
-                onDecidir={(d) =>
-                  setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }))
+                candidatos={candidatos.get(clienteAbierto.nameKey) ?? []}
+                onRenombrar={(nombre) => renombrarCliente(clienteAbierto.nameKey, nombre)}
+                bloqueos={
+                  estadosPendientes.find((c) => c.nameKey === clienteAbierto.nameKey)?.bloqueos ?? []
                 }
+                pasosParaDeshacer={pasado.length}
+                onDeshacer={deshacer}
+                onVerClientes={() => setListaAbierta(clienteAbierto.nameKey)}
+                onConfirmarCon={(candidato) =>
+                  setPorConfirmar({ nameKey: clienteAbierto.nameKey, candidato })
+                }
+                decision={decisiones[clienteAbierto.nameKey]}
+                onDecidir={(d) => {
+                  recordar();
+                  setDecisiones((prev) => ({ ...prev, [clienteAbierto.nameKey]: d }));
+                }}
                 entradas={entradasDelHistorial(clienteAbierto.nameKey)}
                 country={country}
                 showCurrency={showCurrency}
@@ -1465,11 +2057,62 @@ export function ImportFlow({
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
                 onRestaurar={restaurarMovimiento}
-                esAjuste={(rowId) => uidsDeAjuste.has(rowId)}
+                // La apertura tampoco se edita desde la fila: se cambia arriba,
+                // en su panel, que es de donde salio.
+                esAjuste={(rowId) => uidsDeAjuste.has(rowId) || uidsDeApertura.has(rowId)}
                 onEliminarCliente={() =>
                   eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
                 }
-                onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
+                // CT-21: las filas las decide el detalle, que es quien sabe si
+                // hay seleccion. `aplicarMonedaAlCliente` ya aceptaba una lista
+                // arbitraria de rowIds, asi que no hubo que tocarla.
+                onAplicarMoneda={(rowIds, moneda) => aplicarMonedaAlCliente(rowIds, moneda)}
+                // UNA llamada con todos los ids = UN paso de deshacer. Llamar a
+                // `removeMovement` doce veces dejaria doce pasos en la pila y
+                // obligaria a pulsar doce veces para volver de una sola decision.
+                onEliminarVarios={removeMovements}
+                // CT-12. Una entrada por libro: dos monedas del mismo cliente
+                // son dos cadenas y cada una arranca donde quiera.
+                aperturas={clienteAbierto.libros.map((l) => {
+                  const clave = `${clienteAbierto.nameKey}|${l.currency ?? "COP"}`;
+                  const suyas = filasSinApertura.filter(
+                    (f) =>
+                      f.client_name.trim().toLowerCase() === clienteAbierto.nameKey &&
+                      (f.currency ?? null) === l.currency,
+                  );
+                  const p = suyas[0];
+                  return {
+                    currency: l.currency,
+                    detectada: aperturasDetectadas.get(clave) ?? null,
+                    primerApunte: p
+                      ? { descripcion: p.description, importe: p.amount, tipo: p.type }
+                      : null,
+                    aceptada: aperturas[clave] ?? null,
+                    fechaPorDefecto:
+                      aperturas[clave]?.fecha ??
+                      fechaDeApertura(movimientosBase ?? [], clienteAbierto.nameKey, l.currency),
+                  };
+                })}
+                onAceptarApertura={(currency, importe, fecha) => {
+                  recordar();
+                  setAperturas((prev) => ({
+                    ...prev,
+                    [`${clienteAbierto.nameKey}|${currency ?? "COP"}`]: { importe, fecha },
+                  }));
+                }}
+                onQuitarApertura={(currency) => {
+                  recordar();
+                  setAperturas((prev) => ({
+                    ...prev,
+                    [`${clienteAbierto.nameKey}|${currency ?? "COP"}`]: undefined,
+                  }));
+                }}
+                esApertura={(rowId) => uidsDeApertura.has(rowId)}
+                seleccion={seleccionDeMovimientos}
+                setSeleccion={setSeleccionDeMovimientos}
+                duplicadosPorDocumento={duplicadosPorDocumento.get(clienteAbierto.nameKey) ?? []}
+                cuentaSeparada={cuentasSeparadas.has(clienteAbierto.nameKey)}
+                onCuentaSeparada={() => confirmarCuentaSeparada(clienteAbierto.nameKey)}
                 decisionesDeTotal={Object.fromEntries(
                   clienteAbierto.libros.map((l) => {
                     const clave = `${clienteAbierto.nameKey}|${l.currency ?? "COP"}`;
@@ -1567,6 +2210,7 @@ export function ImportFlow({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
       {/* Los tres pasos viven aquí y no en la página porque solo valen para
           este momento: explican cómo se importa, y una vez la libreta está
           leída y el dueño está corrigiendo montos, describen algo que ya
@@ -1643,55 +2287,14 @@ export function ImportFlow({
           libreta, y meterlo de golpe en la de ayer sería desconcertante.
           Se dice que las fotos no vuelven, porque es lo que va a ver. */}
       {borrador && !borradorDescartado && !reviewMovements && !hasJobs ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
-          {/* DOS AVISOS, PORQUE SON DOS COSAS DISTINTAS (CT-26).
-              `revisada` dice si el dueño llegó a abrir la revisión o si la
-              pantalla se cerró con la foto recién leída. Contarle que "las
-              correcciones siguen ahí" a quien no llegó a corregir nada es
-              mentirle, y encima le hace buscar un trabajo que no existe. */}
-          <p className="flex items-start gap-1.5 text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            {borrador.revisada ? (
-              <span>
-                Dejaste una revisión a medias con{" "}
-                <strong>
-                  {borrador.movimientos.length}{" "}
-                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
-                </strong>
-                . Puedes seguir donde la dejaste: las correcciones y las decisiones siguen ahí. Las
-                fotos no, así que la tira saldrá vacía.
-              </span>
-            ) : (
-              <span>
-                Ya leímos tu libreta:{" "}
-                <strong>
-                  {borrador.movimientos.length}{" "}
-                  {borrador.movimientos.length === 1 ? "movimiento" : "movimientos"}
-                </strong>
-                . La pantalla se cerró antes de que los revisaras, pero no hace falta volver a subir
-                la foto: sigue desde aquí. La tira de fotos saldrá vacía, nada más.
-              </span>
-            )}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={retomarBorrador}>
-              {borrador.revisada
-                ? "Seguir con esa revisión"
-                : `Revisar ${borrador.movimientos.length === 1 ? "ese movimiento" : `esos ${borrador.movimientos.length} movimientos`}`}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                olvidarRevision();
-                setBorradorDescartado(true);
-              }}
-            >
-              Descartarla
-            </Button>
-          </div>
-        </div>
+        <AvisoDeBorrador
+          borrador={borrador}
+          onSeguir={retomarBorrador}
+          onDescartar={() => {
+            olvidarRevision();
+            setBorradorDescartado(true);
+          }}
+        />
       ) : null}
 
       {/* Sin tope en ningún plan desde el 2026-09-28. Se cae la barra de

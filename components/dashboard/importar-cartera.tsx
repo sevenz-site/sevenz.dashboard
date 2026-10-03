@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Sparkles, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { useTour } from "@/components/dashboard/tour-context";
 import { MAX_IMPORT_PHOTOS } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
+import { AvisoDeBorrador } from "@/components/import/aviso-de-borrador";
+import { cargarRevision, olvidarRevision } from "@/lib/revision-guardada";
 
 // "Subir libreta", al lado del título de Por cobrar en Inicio.
 //
@@ -126,6 +128,15 @@ export function ImportarCartera({
 function Controles({ onDone }: { onDone: () => void }) {
   const router = useRouter();
   const { startImport } = useImportJobs();
+  // EL AVISO DE LA REVISIÓN A MEDIAS TAMBIÉN AQUÍ. Vivía solo en `/import`, así
+  // que desde Inicio se podía arrancar una libreta nueva sin ninguna señal de
+  // que había otra sin terminar — y la nueva pisa el borrador de la vieja.
+  // Reportado el 2026-10-02.
+  //
+  // Se lee una vez al montar, igual que en `/import`: una hoja que se abre y se
+  // cierra vuelve a montar esto, así que no hace falta refrescarlo en vivo.
+  const borrador = useMemo(() => cargarRevision(), []);
+  const [descartado, setDescartado] = useState(false);
   // La cuenta pausada se comprueba ANTES de la foto, igual que en /import:
   // escanearla gasta cuota de Gemini para nada si el dueño no puede escribir.
   const guardia = useGuardiaDeCuentaPausada();
@@ -150,6 +161,27 @@ function Controles({ onDone }: { onDone: () => void }) {
     // mala: flex encoge los hijos para que quepan y la zona de soltar la foto
     // se aplasta hasta dejar de parecer un sitio donde tocar.
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 [&>*]:shrink-0 sm:px-0 sm:pb-0">
+      {/* Arriba del todo: subir una foto nueva es justo lo que pisa el borrador,
+          así que el aviso tiene que leerse ANTES de llegar a la zona de soltar. */}
+      {borrador && !descartado ? (
+        <AvisoDeBorrador
+          borrador={borrador}
+          // Lleva a la revisión, donde el mismo aviso ofrece retomarla con todo
+          // su contexto delante: cuántos clientes salieron y qué falta.
+          onSeguir={() => {
+            onDone();
+            // `?retomar=1`: la revisión se abre sola al llegar. Sin la marca,
+            // aterrizaba en /import y salía el MISMO aviso pidiendo lo mismo
+            // otra vez.
+            router.push("/import?retomar=1");
+          }}
+          onDescartar={() => {
+            olvidarRevision();
+            setDescartado(true);
+          }}
+        />
+      ) : null}
+
       {/* Dos inputs y no uno con interruptor, por lo mismo que en /import: la
           diferencia es el atributo `capture` y no se puede cambiar por clic sin
           volver a montar el input, lo que se come el toque. */}

@@ -5,7 +5,7 @@ import {
   CircleAlert,
   RotateCcw,
   TriangleAlert,
-  UserRoundSearch,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -45,6 +45,13 @@ import type {
   EstadoTarjeta,
   ClienteConEstado,
 } from "@/lib/estado-de-tarjeta";
+import {
+  AvisoDeDocumentoRepetido,
+  AvisoDeDuplicado,
+  FichaDeCliente,
+  loQueDebe,
+} from "@/components/import/emparejar-cliente";
+import type { CandidatoDuplicado } from "@/lib/reconcile";
 
 export const CHIP: Record<EstadoTarjeta, { texto: string; clase: string }> = {
   subido: { texto: "Subido", clase: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400" },
@@ -76,15 +83,34 @@ function TarjetaCliente({
   cliente,
   decision,
   onDecidir,
+  onVerClientes,
+  onConfirmarCon,
   onAbrir,
+  documentoEscrito,
+  cuentaSeparada,
+  onCuentaSeparada,
 }: {
   cliente: ClienteConEstado;
   decision: DecisionDuplicado | undefined;
   onDecidir: (d: DecisionDuplicado) => void;
+  onVerClientes: () => void;
+  onConfirmarCon: (c: CandidatoDuplicado) => void;
   onAbrir: () => void;
   onSubir: () => void;
   subiendo: boolean;
+  // CT-29b. Lo que la dueña tecleó, tal cual, para poder nombrarlo en el aviso.
+  // No se saca de la ficha del cliente que choca: esa guarda SU grafía, y lo
+  // que hay que enseñar es lo que ella acaba de escribir.
+  documentoEscrito: string;
+  cuentaSeparada: boolean;
+  onCuentaSeparada: () => void;
 }) {
+  // Con quien se emparejo, si se emparejo. De el salen la ficha y el sitio del
+  // boton de subir.
+  const emparejado =
+    decision?.cual === "mismo"
+      ? (cliente.candidatosVisibles.find((c) => c.id === decision.clientId) ?? null)
+      : null;
   const chip = CHIP[cliente.estado];
   const desajustado = cliente.libros.find((l) => l.estado === "no_cuadra");
 
@@ -153,8 +179,13 @@ function TarjetaCliente({
           libreta entera este perfecta para empezar a guardar: en cuanto un
           cliente tiene lo suyo, entra. La tarjeta de quien ya entro se queda en
           su sitio, sin boton y en verde apagado, para que se vea lo hecho — y
-          se puede seguir abriendo para mirar lo que se subio. */}
-      {cliente.subido ? null : cliente.puedeSubir ? (
+          se puede seguir abriendo para mirar lo que se subio.
+
+          CUANDO HAY EMPAREJAMIENTO el boton NO sale aqui: baja al final del
+          bloque ambar, debajo de la ficha de con quien se emparejo. Subir es lo
+          ultimo que se hace y tiene que leerse despues de la decision, no
+          encima de ella. */}
+      {cliente.subido || emparejado || cliente.duplicadosPorDocumento.length > 0 ? null : cliente.puedeSubir ? (
         <Button
           type="button"
           variant="outline"
@@ -175,52 +206,101 @@ function TarjetaCliente({
         </p>
       ))}
 
-      {/* El duplicado, con sus datos y sus dos botones. Sin opción marcada por
-          defecto: ver la nota de `DecisionDuplicado`. */}
-      {cliente.candidatoVisible && !decision ? (
-        <div className="flex flex-col gap-2 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
-          <p className="flex items-start gap-1.5 text-sm">
-            <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            <span>
-              Ya tienes un &ldquo;{cliente.candidatoVisible.name}&rdquo; en tus clientes.
-              {cliente.candidatoVisible.document_id ? ` Documento: ${cliente.candidatoVisible.document_id}.` : " Sin documento."}
-              {cliente.candidatoVisible.balance_usd ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_usd, "USD")}.` : ""}
-              {cliente.candidatoVisible.balance_eur ? ` Debe ${formatDisplayCurrency(cliente.candidatoVisible.balance_eur, "EUR")}.` : ""}
-              {!cliente.candidatoVisible.balance_usd && !cliente.candidatoVisible.balance_eur && cliente.candidatoVisible.balance
-                ? ` Debe ${formatCurrency(cliente.candidatoVisible.balance)}.`
-                : ""}
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => onDecidir("mismo")}>
-              Es el mismo
+      {/* El duplicado. Un candidato pregunta directo; varios abren la lista
+          (CT-29). Las opciones son RADIOS y ninguna nace marcada: ver la nota de
+          `AvisoDeDuplicado`.
+
+          YA EMPAREJADO, la tarjeta cambia de forma (2026-10-02): en vez de una
+          frase suelta —"Se sumara al X"— se enseña la FICHA del cliente con el
+          que se emparejo, con su cedula, su WhatsApp y lo que debe. Esos tres
+          datos son los que dejan comprobar de un vistazo que es la persona
+          correcta; un nombre repetido, no. Queda una sola salida, "Es otro
+          cliente", y el boton de subir cierra el bloque. */}
+      {cliente.candidatosVisibles.length > 0 ? (
+        <div className="flex flex-col gap-3 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
+          <AvisoDeDuplicado
+            nombreEnLaLibreta={cliente.name}
+            candidatos={cliente.candidatosVisibles}
+            elegido={decision?.cual}
+            onElegirMismo={() =>
+              cliente.candidatosVisibles.length > 1
+                ? onVerClientes()
+                : onConfirmarCon(cliente.candidatosVisibles[0])
+            }
+            onElegirOtra={() => onDecidir({ cual: "otra" })}
+            fichaEmparejada={
+              emparejado ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    {/* CT-33. Se repite aqui lo que dijo el dialogo de
+                        confirmacion: ese se cierra y la tarjeta se queda, y sin
+                        esta linea la unica pista de que se va a recuperar a
+                        alguien seria una etiqueta gris en la ficha. */}
+                    {emparejado.hidden
+                      ? "Se recuperará y se emparejará con:"
+                      : "Emparejado con:"}
+                  </p>
+                  <FichaDeCliente
+                    nombre={emparejado.name}
+                    documento={emparejado.document_id}
+                    whatsapp={emparejado.whatsapp}
+                    debe={loQueDebe(emparejado)}
+                    oculto={emparejado.hidden ?? null}
+                  />
+                </div>
+              ) : null
+            }
+          />
+
+          {decision?.cual === "otra" ? (
+            <p className="text-sm text-muted-foreground">
+              Se registrará como un cliente nuevo, con su propio documento.
+            </p>
+          ) : null}
+
+          {emparejado && !cliente.subido && cliente.puedeSubir ? (
+            <Button type="button" className="w-full" disabled={subiendo} onClick={onSubir}>
+              <Upload className="size-4" />
+              Subir este cliente
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => onDecidir("otra")}>
-              Es otra persona
-            </Button>
-          </div>
+          ) : null}
         </div>
       ) : null}
 
-      {/* LO DECIDIDO, Y CÓMO DESDECIRSE.
-          Antes solo estaba la frase, sin vuelta atrás: una vez pulsado "es otra
-          persona" o "es el mismo" los botones desaparecían para siempre y la
-          única salida era tirar la revisión entera con "Volver". Y toda la
-          maquinaria de reconciliar contra la lista COMPLETA de clientes existe
-          precisamente para que la tarjeta siga ahí y se pueda cambiar de idea —
-          sin este botón esa maquinaria no servía de nada. */}
-      {cliente.candidatoVisible && decision ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2">
-          <p className="text-sm text-muted-foreground">
-            {decision === "otra"
-              ? "Se registrará como un cliente nuevo, con su propio documento."
-              : `Se sumará al “${cliente.candidatoVisible.name}” que ya tienes.`}
-          </p>
-          <Button type="button" size="sm" variant="ghost" onClick={() => onDecidir(decision === "otra" ? "mismo" : "otra")}>
-            {decision === "otra" ? "Es el mismo" : "Es otra persona"}
-          </Button>
+      {/* CT-29b: la cédula escrita ya es de alguien. Es una pregunta DISTINTA a
+          la del nombre y por eso va en su propio bloque — ver la cabecera de
+          `lib/document-duplicates.ts`. Solo salen aquí los clientes que el aviso
+          del nombre NO está enseñando ya, así que las dos nunca repiten a la
+          misma persona.
+
+          El botón de subir vuelve a ir DEBAJO, por lo mismo que en el bloque de
+          arriba: subir es lo último y tiene que leerse después de la decisión. */}
+      {cliente.duplicadosPorDocumento.length > 0 ? (
+        <div className="flex flex-col gap-3 border-t border-amber-300/60 pt-2 dark:border-amber-500/20">
+          <AvisoDeDocumentoRepetido
+            documento={documentoEscrito}
+            candidatos={cliente.duplicadosPorDocumento}
+            elegido={cuentaSeparada ? "separada" : undefined}
+            onElegirCliente={onConfirmarCon}
+            onElegirSeparada={onCuentaSeparada}
+          />
+
+          {cuentaSeparada ? (
+            <p className="text-sm text-muted-foreground">
+              Se creará una cuenta aparte con la misma cédula. Las dos quedarán en tu lista de
+              clientes.
+            </p>
+          ) : null}
+
+          {!cliente.subido && cliente.puedeSubir ? (
+            <Button type="button" className="w-full" disabled={subiendo} onClick={onSubir}>
+              <Upload className="size-4" />
+              Subir este cliente
+            </Button>
+          ) : null}
         </div>
       ) : null}
+
     </div>
   );
 }
@@ -236,18 +316,30 @@ export function RevisarClientes({
   entradas,
   decisiones,
   onDecidir,
+  onVerClientes,
+  onConfirmarCon,
   onAbrir,
   onRestaurarCliente,
   onSubirCliente,
   subiendo,
+  documentosEscritos,
+  cuentasSeparadas,
+  onCuentaSeparada,
 }: {
   entradas: EntradaDeLaRevision[];
   decisiones: Record<string, DecisionDuplicado>;
   onDecidir: (nameKey: string, d: DecisionDuplicado) => void;
+  onVerClientes: (nameKey: string) => void;
+  onConfirmarCon: (nameKey: string, c: CandidatoDuplicado) => void;
   onAbrir: (nameKey: string) => void;
   onRestaurarCliente: (nameKey: string) => void;
   onSubirCliente: (nameKey: string) => void;
   subiendo: boolean;
+  // CT-29b, los tres por `nameKey`: lo tecleado, quienes ya dijeron que si a
+  // una cuenta aparte, y como se dice que si.
+  documentosEscritos: Record<string, string>;
+  cuentasSeparadas: Set<string>;
+  onCuentaSeparada: (nameKey: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -258,9 +350,14 @@ export function RevisarClientes({
             cliente={e.cliente}
             decision={decisiones[e.cliente.nameKey]}
             onDecidir={(d) => onDecidir(e.cliente.nameKey, d)}
+            onVerClientes={() => onVerClientes(e.cliente.nameKey)}
+            onConfirmarCon={(c) => onConfirmarCon(e.cliente.nameKey, c)}
             onAbrir={() => onAbrir(e.cliente.nameKey)}
             onSubir={() => onSubirCliente(e.cliente.nameKey)}
             subiendo={subiendo}
+            documentoEscrito={documentosEscritos[e.cliente.nameKey] ?? ""}
+            cuentaSeparada={cuentasSeparadas.has(e.cliente.nameKey)}
+            onCuentaSeparada={() => onCuentaSeparada(e.cliente.nameKey)}
           />
         ) : (
           // EL CLIENTE QUITADO SE QUEDA A LA VISTA, en su sitio, hasta que se

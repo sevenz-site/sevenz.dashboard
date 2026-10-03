@@ -78,7 +78,12 @@ export function ConfirmarImportacion({
               <Loader2 className="size-4 animate-spin" /> Guardando...
             </>
           ) : (
-            soloEsteCliente ? `Subir este cliente (${cuantas})` : `Confirmar y subir (${cuantas})`
+            // SIN CUENTA EN EL DE UN SOLO CLIENTE. El numero sigue en el del
+            // lote, donde dice algo —cuantos movimientos entran de toda la
+            // tanda—; aqui repetia lo que el titulo de la hoja ya dice dos
+            // dedos mas arriba ("4 movimientos registrados"). Ajustado el
+            // 2026-10-02.
+            soloEsteCliente ? "Subir este cliente" : `Confirmar y subir (${cuantas})`
           )}
         </Button>
       </AlertDialogTrigger>

@@ -35,7 +35,14 @@ const MAX_HORAS = 24;
 // Si la forma cambia, lo viejo se tira en vez de reventar al leerlo.
 const VERSION = 1 as const;
 
-export type DecisionDuplicadoGuardada = "mismo" | "otra";
+// Lo guardado puede venir de antes de CT-29 ("mismo" | "otra" en texto plano) o
+// de después ({ cual, clientId }). `import-flow` convierte al leerlo: "otra"
+// sigue valiendo, y un "mismo" viejo se descarta porque no dice CON CUÁL.
+export type DecisionDuplicadoGuardada =
+  | "mismo"
+  | "otra"
+  | { cual: "otra" }
+  | { cual: "mismo"; clientId: string };
 
 export type RevisionGuardada = {
   version: typeof VERSION;
@@ -63,6 +70,14 @@ export type RevisionGuardada = {
   // enseñan salen del libro sombra, no de aquí (ver import-flow), así que esto
   // solo sirve para recordar QUÉ se eligió y poder avisar si el ajuste cambió.
   decisionesDeTotal: Record<string, unknown>;
+  // CT-29b. Opcional: un borrador guardado antes de que esto existiera no lo
+  // trae, y entonces vale `{}` y la pregunta de la cédula repetida vuelve a
+  // salir. Vuelve a salir también si la cédula cambió — la respuesta se guarda
+  // junto al documento con el que se dio, no como un "sí" suelto.
+  documentoConfirmado?: Record<string, string>;
+  // CT-12. Por `nameKey|moneda`. Opcional: un borrador de antes no lo trae y
+  // vale `{}` — la deteccion volvera a proponer sola, que es lo correcto.
+  aperturas?: Record<string, { importe: number; fecha: string | null } | undefined>;
   subidos: string[];
   sameClient: boolean;
   sharedName: string;
@@ -153,6 +168,8 @@ export function cargarRevision(ahora = Date.now(), almacen?: Almacen | null): Re
     clientesQuitados: p.clientesQuitados ?? {},
     decisiones: p.decisiones ?? {},
     decisionesDeTotal: p.decisionesDeTotal ?? {},
+    documentoConfirmado: p.documentoConfirmado ?? {},
+    aperturas: p.aperturas ?? {},
     subidos: Array.isArray(p.subidos) ? p.subidos : [],
     sameClient: Boolean(p.sameClient),
     sharedName: typeof p.sharedName === "string" ? p.sharedName : "",

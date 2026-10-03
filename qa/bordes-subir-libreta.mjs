@@ -37,9 +37,24 @@ import {
 } from "../lib/ajuste-de-libreta.ts";
 import { conEstado } from "../lib/estado-de-tarjeta.ts";
 import { guardarRevision, cargarRevision, olvidarRevision } from "../lib/revision-guardada.ts";
-import { reconcileMovements, agruparPorCliente } from "../lib/reconcile.ts";
+import { reconcileMovements, agruparPorCliente, seParecen } from "../lib/reconcile.ts";
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import { normalizeDocumentId } from "../lib/format.ts";
+import { documentAnswerKey, findDocumentDuplicates } from "../lib/document-duplicates.ts";
+import {
+  alternar,
+  podarSeleccion,
+  textoDeEliminar,
+  textoDeMoneda,
+  textoDeSeleccion,
+} from "../lib/seleccion-de-movimientos.ts";
+import { empujar, sacar, textoDeDeshacer, MAX_PASOS } from "../lib/historial-de-revision.ts";
+import {
+  detectarApertura,
+  construirApertura,
+  fechaDeApertura,
+  DESCRIPCION_DE_APERTURA,
+} from "../lib/saldo-de-apertura.ts";
 import {
   esLineaSuelta,
   esLineaSinMonto,
@@ -417,6 +432,103 @@ check("el prefijo V- tampoco", normalizeDocumentId("V-19887766") === "v19887766"
 check("ni las mayusculas", normalizeDocumentId("V-19887766") === normalizeDocumentId("v.19.887.766"));
 check("dos documentos distintos siguen siendo distintos", normalizeDocumentId("19887766") !== normalizeDocumentId("18223344"));
 
+
+// ═════════════════════════════════════════════════════════════════════════
+// VARIAS FICHAS DE LA MISMA PERSONA — CT-29
+//
+// Caso real de produccion: "Karina castillo (negocio lomas)" y "Karina castillo
+// (kari)" comparten la cedula 18356808 a proposito, y la migracion 034 tiro el
+// indice unico para permitirlo. Un renglon que diga solo "Karina castillo" no
+// casaba con ninguna de las dos.
+console.log("");
+console.log("-- Varias fichas de la misma persona (CT-29) -----------------");
+
+check("una grafia contiene a la otra -> se parecen", seParecen("Karina castillo", "Karina castillo (kari)"));
+check("y al reves tambien", seParecen("Karina castillo (kari)", "Karina castillo"));
+check("identicas, obviamente", seParecen("Ana Perez", "  ana perez "));
+// NO inventa parecidos: una letra distinta son dos personas distintas.
+check("Carina y Karina NO se parecen", !seParecen("Carina Lopez", "Karina Lopez"));
+// Por PALABRAS, no por subcadena: "ana" esta dentro de "mariana" y no son la
+// misma persona. La primera version de `seParecen` fallaba justo aqui.
+check("una palabra dentro de otra NO basta", !seParecen("Ana", "Mariana Gomez"));
+check("pero un nombre corto que SI es palabra suya, si", seParecen("Ana", "Ana Gomez"));
+check("los parentesis no estorban", seParecen("Karina castillo", "Karina castillo (negocio lomas)"));
+check("vacio no se parece a nada", !seParecen("", "Karina"));
+
+const lasDosKarinas = [
+  { id: "k1", name: "Karina castillo (negocio lomas)", balance: 0, balance_usd: 120, balance_eur: 0, document_id: "18356808", whatsapp: null },
+  { id: "k2", name: "Karina castillo (kari)", balance: 0, balance_usd: 45, balance_eur: 0, document_id: "18356808", whatsapp: null },
+  { id: "o1", name: "Otilio Prieto", balance: 0, balance_usd: 20, balance_eur: 0, document_id: "16334455", whatsapp: null },
+];
+const renglon = [mov({ client_name: "Karina castillo", amount: 30 })];
+const grupo = agruparPorCliente(reconcileMovements(renglon, lasDosKarinas), lasDosKarinas, { esVE: true })[0];
+check("se proponen LAS DOS, no una", grupo.candidatos.length === 2, `${grupo.candidatos.length}`);
+check("y no se cuela quien no se parece", !grupo.candidatos.some((c) => c.id === "o1"));
+// Orden alfabetico y por tanto estable: "(kari)" antes que "(negocio lomas)".
+// Que sea determinista importa mas que cual vaya primero — una lista que baila
+// entre renders es una lista donde se toca la opcion equivocada.
+check("cada una con su saldo, para poder distinguirlas", grupo.candidatos.map((c) => c.balance_usd).join("/") === "45/120", grupo.candidatos.map((c) => c.balance_usd).join("/"));
+
+// EL EMPAREJAMIENTO EXPLICITO MANDA SOBRE EL NOMBRE. Es lo unico que puede unir
+// "Karina castillo" con una ficha que se llama distinto: ninguna comparacion de
+// nombres las haria la misma.
+const sinElegir = reconcileMovements(renglon, lasDosKarinas)[0];
+check("sin elegir, no hay cliente emparejado", sinElegir.matched_client_id === null, String(sinElegir.matched_client_id));
+const conK2 = reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k2" })[0];
+check("elegida la segunda, la fila apunta a ELLA", conK2.matched_client_id === "k2", String(conK2.matched_client_id));
+check("y deja de pedir cedula, porque esa ficha ya la tiene", conK2.needs_document_id === false);
+const conK1 = reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k1" })[0];
+check("elegida la primera, apunta a la primera", conK1.matched_client_id === "k1", String(conK1.matched_client_id));
+
+// La exacta va primero: es la que el dueño espera ver arriba de la lista.
+const conExacta = [...lasDosKarinas, { id: "k0", name: "Karina castillo", balance: 0, balance_usd: 5, balance_eur: 0, document_id: "18356808", whatsapp: null }];
+const g2 = agruparPorCliente(reconcileMovements(renglon, conExacta), conExacta, { esVE: true })[0];
+check("la coincidencia exacta encabeza la lista", g2.candidatos[0].id === "k0", g2.candidatos[0].id);
+check("y siguen estando las tres", g2.candidatos.length === 3, String(g2.candidatos.length));
+
+// Un duplicado sin decidir sigue bloqueando a ESE cliente, como antes.
+const estadoKarina = conEstado([grupo], reconcileMovements(renglon, lasDosKarinas), {}, new Map([["karina castillo", grupo.candidatos]]), { exigeMoneda: false })[0];
+check("con varios candidatos y sin decidir, no se puede subir", estadoKarina.puedeSubir === false);
+// El chip dice "faltan datos" y no "duplicado" porque la cedula que falta gana:
+// es la regla que ya documenta `conEstado`, y sigue siendo la correcta — sin
+// cedula no se sube ni eligiendo bien.
+check("manda el bloqueo mas duro, la cedula", estadoKarina.estado === "faltan_datos", estadoKarina.estado);
+const yaElegido = conEstado([grupo], reconcileMovements(renglon, lasDosKarinas, { "karina castillo": "k2" }), { "karina castillo": { cual: "mismo", clientId: "k2" } }, new Map([["karina castillo", grupo.candidatos]]), { exigeMoneda: false })[0];
+check("elegida una, ya se puede subir", yaElegido.puedeSubir === true);
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// DESHACER — CT-31
+console.log("");
+console.log("-- Deshacer (CT-31) ------------------------------------------");
+
+const foto = (n) => ({ movimientos: [mov({ amount: n })], eliminados: [], clientesQuitados: {}, decisiones: {}, decisionesDeTotal: {}, sameClient: false, sharedName: "", sharedDocument: "", sharedWhatsapp: "", unlinked: [] });
+
+let pila = [];
+pila = empujar(pila, foto(1));
+pila = empujar(pila, foto(2));
+check("apila en orden", pila.length === 2 && pila[1].movimientos[0].amount === 2);
+
+const sacado = sacar(pila);
+check("sacar devuelve el ultimo", sacado.instantanea.movimientos[0].amount === 2);
+check("y lo quita de la pila", sacado.pasado.length === 1);
+check("la pila original no se muta", pila.length === 2);
+check("sacar de una pila vacia no revienta", sacar([]).instantanea === null);
+
+// EL TOPE. Veinte no es por memoria —veinte copias de sesenta movimientos no es
+// nada— sino por previsibilidad: sin lista visible de que se deshace, mas alla
+// de ahi el dueno ya no sabe a donde vuelve.
+let larga = [];
+for (let i = 0; i < MAX_PASOS + 15; i++) larga = empujar(larga, foto(i));
+check("nunca pasa del tope", larga.length === MAX_PASOS, String(larga.length));
+check("y lo que se tira es lo MAS VIEJO", larga[0].movimientos[0].amount === 15, String(larga[0].movimientos[0].amount));
+check("el ultimo sigue siendo el ultimo", larga[larga.length - 1].movimientos[0].amount === MAX_PASOS + 14);
+
+check("sin pasos, el boton lo dice", textoDeDeshacer(0) === "No hay nada que deshacer", textoDeDeshacer(0));
+check("con uno, en singular", textoDeDeshacer(1).includes("el ultimo cambio".replace("u", "ú")), textoDeDeshacer(1));
+check("con varios, dice cuantos", textoDeDeshacer(7).includes("7 pasos"), textoDeDeshacer(7));
+
+
 // ═════════════════════════════════════════════════════════════════════════
 // 3. QUITAR Y RECUPERAR
 console.log("\n── Quitar y recuperar ───────────────────────────────────────");
@@ -455,7 +567,7 @@ const cliente = (p = {}) => ({
   name: "Ana",
   rowIds: ["r1"],
   movimientos: 1,
-  candidato: null,
+  candidatos: [],
   libros: [{ currency: "USD", totalPagina: 10, saldoPrevio: 0, saldoFinal: 10, estado: "cuadra", escrito: null, calculado: null, filaDelTotal: null }],
   necesitaDocumento: false,
   necesitaMoneda: false,
@@ -483,15 +595,32 @@ check(
 );
 check(
   "la cédula que falta gana al duplicado sin decidir",
-  estadoDe(cliente(), [fila({ needs_document_id: true })], {}, new Map([["ana", candidato]])).estado === "faltan_datos",
+  estadoDe(cliente(), [fila({ needs_document_id: true })], {}, new Map([["ana", [candidato]]])).estado === "faltan_datos",
 );
 check(
   "un duplicado sin decidir bloquea",
-  estadoDe(cliente(), [fila()], {}, new Map([["ana", candidato]])).estado === "duplicado",
+  estadoDe(cliente(), [fila()], {}, new Map([["ana", [candidato]]])).estado === "duplicado",
 );
+
+// ═════════════════════════════════════════════════════════════════════════
+// LOS TRES FALLOS DEL 2026-10-02, reportados probando en un movil de verdad
+console.log("");
+console.log("-- Reportados desde el movil (2026-10-02) --------------------");
+
+// 1. Con el nombre vacio no se sube. El vacio NO se escribe en la fila —eso
+//    convertiria sus renglones en "lineas sin cliente" y la tarjeta
+//    desapareceria con la hoja abierta encima— sino que se apunta aparte.
+const sinNom = conEstado([cliente()], [fila()], {}, new Map(), { sinNombre: new Set(["ana"]) })[0];
+check("sin nombre, no se puede subir", sinNom.puedeSubir === false);
+check("y lo dice como los demas bloqueos", sinNom.bloqueos[0]?.includes("Falta el nombre"), sinNom.bloqueos[0]);
+check("el bloqueo del nombre va PRIMERO", sinNom.bloqueos[0]?.includes("nombre"), sinNom.bloqueos.join(" | "));
+const conNom = conEstado([cliente()], [fila()], {}, new Map(), { sinNombre: new Set(["otro"]) })[0];
+check("con nombre, ningun bloqueo por eso", !conNom.bloqueos.some((b) => b.includes("nombre")));
+
+
 check(
   "decidido, deja de bloquear",
-  estadoDe(cliente(), [fila()], { ana: "mismo" }, new Map([["ana", candidato]])).estado === "cuadra",
+  estadoDe(cliente(), [fila()], { ana: { cual: "mismo", clientId: "c1" } }, new Map([["ana", [candidato]]])).estado === "cuadra",
 );
 check(
   "una suma que no cuadra gana a 'sin verificar'",
@@ -681,12 +810,12 @@ check(
 );
 check(
   "duplicado sin decidir -> no se puede subir",
-  estadoDe(cliente(), [conMoneda()], {}, new Map([["ana", candidato]]), { exigeMoneda: true })
+  estadoDe(cliente(), [conMoneda()], {}, new Map([["ana", [candidato]]]), { exigeMoneda: true })
     .puedeSubir === false,
 );
 check(
   "duplicado ya decidido -> se puede subir",
-  estadoDe(cliente(), [conMoneda()], { ana: "mismo" }, new Map([["ana", candidato]]), {
+  estadoDe(cliente(), [conMoneda()], { ana: { cual: "mismo", clientId: "c1" } }, new Map([["ana", [candidato]]]), {
     exigeMoneda: true,
   }).puedeSubir === true,
 );
@@ -707,6 +836,419 @@ check(
 );
 
 console.log("");
+
+console.log("");
+console.log("-- CT-29b: la cedula que ya es de otro ------------------------");
+// La otra mitad de CT-29. El nombre lo resolvio `CT-29a`; esto es lo que la
+// dueña TECLEA, y hasta hoy era un rechazo del servidor sin salida.
+const karinaKari = {
+  id: "k1",
+  name: "Karina castillo (kari)",
+  document_id: "18356808",
+  whatsapp: null,
+  balance: 0,
+  balance_usd: 0,
+  balance_eur: 0,
+};
+const karinaLomas = { ...karinaKari, id: "k2", name: "Karina castillo (negocio lomas)" };
+const petra = { ...karinaKari, id: "p1", name: "Petra Villalba", document_id: "21054832" };
+const cartera = [karinaKari, karinaLomas, petra];
+const filaDoc = (p = {}) => ({
+  client_name: "Karina castillo",
+  document_id: null,
+  matched_client_id: null,
+  ...p,
+});
+
+check(
+  "la cedula tecleada encuentra a los DOS clientes que la llevan, no al ultimo",
+  (() => {
+    const m = findDocumentDuplicates([filaDoc({ document_id: "18356808" })], cartera, new Map());
+    return m.get("karina castillo")?.length === 2;
+  })(),
+);
+check(
+  "normaliza la puntuacion: '18.356.808' encuentra lo mismo que '18356808'",
+  findDocumentDuplicates([filaDoc({ document_id: "18.356.808" })], cartera, new Map()).get(
+    "karina castillo",
+  )?.length === 2,
+);
+// LAS LETRAS SI CUENTAN, y esto no es un descuido de aqui: `normalizeDocumentId`
+// quita la puntuacion pero NO las letras, y las tres comprobaciones de duplicado
+// de la app —esta, el alta manual y la edicion de un cliente— usan la misma
+// funcion. Cambiarla aqui las separaria, que es peor que la limitacion.
+//
+// Consecuencia real: un cliente guardado como "V-18356808" antes del
+// 2026-09-17 —cuando el campo paso a aceptar solo digitos y la "V-" salio
+// fuera del input— NO lo encuentra una cedula tecleada hoy como "18356808".
+// Queda anotado en PENDIENTES; esta prueba existe para que nadie lo "arregle"
+// aqui solo y deje las otras dos comparando distinto.
+check(
+  "una 'V-' guardada NO casa con digitos pelados — limitacion conocida y compartida",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    [{ ...karinaKari, document_id: "V-18356808" }],
+    new Map(),
+  ).size === 0,
+);
+check(
+  "sin cedula escrita no pregunta nada",
+  findDocumentDuplicates([filaDoc()], cartera, new Map()).size === 0,
+);
+check(
+  "una cedula que no es de nadie no pregunta nada",
+  findDocumentDuplicates([filaDoc({ document_id: "99999999" })], cartera, new Map()).size === 0,
+);
+// Lo que evita DOS recuadros ambar diciendo lo mismo: si el aviso del nombre ya
+// enseña a esas dos personas, la cedula no las repite.
+check(
+  "no repite a quien el aviso del NOMBRE ya esta enseñando",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    cartera,
+    new Map([["karina castillo", [karinaKari, karinaLomas]]]),
+  ).size === 0,
+);
+check(
+  "pero SI pregunta por el que el nombre no enseñaba (tecleo la de Petra)",
+  (() => {
+    const m = findDocumentDuplicates(
+      [filaDoc({ document_id: "21054832" })],
+      cartera,
+      new Map([["karina castillo", [karinaKari, karinaLomas]]]),
+    );
+    return m.get("karina castillo")?.length === 1 && m.get("karina castillo")[0].id === "p1";
+  })(),
+);
+// Una tarjeta ya emparejada NO crea a nadie, asi que no puede chocar.
+check(
+  "emparejada con un cliente que ya existe -> no pregunta",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808", matched_client_id: "k1" })],
+    cartera,
+    new Map(),
+  ).size === 0,
+);
+// Un cliente sin documento guardado nunca es un choque.
+check(
+  "un cliente sin cedula guardada no cuenta como choque",
+  findDocumentDuplicates(
+    [filaDoc({ document_id: "18356808" })],
+    [{ ...karinaKari, document_id: null }],
+    new Map(),
+  ).size === 0,
+);
+
+// ── Y lo que hace con eso la tarjeta ──────────────────────────────────────
+const dupDoc = new Map([["ana", [karinaKari]]]);
+check(
+  "cedula repetida sin responder -> bloquea, y el chip dice 'duplicado'",
+  (() => {
+    const e = estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+      exigeMoneda: true,
+      duplicadosPorDocumento: dupDoc,
+      documentoActual: { ana: "18356808" },
+      documentoConfirmado: {},
+    });
+    return e.puedeSubir === false && e.estado === "duplicado";
+  })(),
+);
+check(
+  "respondida 'cuenta separada' con ESA cedula -> se puede subir",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: dupDoc,
+    documentoActual: { ana: "18356808" },
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === true,
+);
+// EL CASO QUE JUSTIFICA GUARDAR LA CEDULA Y NO UN "SI": responde que si, y
+// despues cambia la cedula por la de OTRA persona. La respuesta vieja no puede
+// seguir valiendo, o entraria un duplicado de alguien que no ha visto nunca.
+check(
+  "cambia la cedula despues de responder -> vuelve a preguntar",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: new Map([["ana", [petra]]]),
+    documentoActual: { ana: "21054832" },
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === false,
+);
+// Fallo de cableado: llegan candidatos y no llega el documento de ahora. La
+// salida segura es preguntar de mas, nunca crear un duplicado de menos.
+check(
+  "sin saber que cedula hay escrita, bloquea en vez de dejar pasar",
+  estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+    exigeMoneda: true,
+    duplicadosPorDocumento: dupDoc,
+    documentoConfirmado: { ana: "18356808" },
+  }).puedeSubir === false,
+);
+// Un cliente ya subido no vuelve a preguntar nada: ya esta en la base.
+check(
+  "un cliente YA subido no pregunta por la cedula repetida",
+  (() => {
+    const e = estadoDe(cliente(), [conMoneda()], {}, new Map(), {
+      exigeMoneda: true,
+      subidos: new Set(["ana"]),
+      duplicadosPorDocumento: dupDoc,
+      documentoActual: { ana: "18356808" },
+      documentoConfirmado: {},
+    });
+    return e.duplicadosPorDocumento.length === 0 && e.puedeSubir === false;
+  })(),
+);
+check(
+  "documentAnswerKey normaliza EXACTAMENTE igual que la deteccion",
+  documentAnswerKey(" 18.356.808 ") === normalizeDocumentId("18356808"),
+);
+check("documentAnswerKey sin nada devuelve cadena vacia", documentAnswerKey(null) === "");
+
+console.log("");
+
+console.log("");
+console.log("-- CT-33: los clientes fuera de la cartera -------------------");
+// Desde CT-33 la revision VE a los de la papelera y a los ocultos
+// definitivamente, para poder preguntar por ellos en vez de mandar a otra
+// pantalla. La salvaguarda de que eso no cambie nada mas vive en `byName`.
+const viva = { id: "v1", name: "Petra Villalba", balance: 0, balance_usd: 100, balance_eur: 0, document_id: "19887766", whatsapp: null };
+const enPapelera = { ...viva, id: "t1", name: "Petra Villalba", document_id: "19887766", hidden: "papelera" };
+const ocultaDef = { ...viva, id: "d1", name: "Hilda Camacho", document_id: "17556644", hidden: "definitivo" };
+
+// LO MAS IMPORTANTE DE TODO ESTE BLOQUE. Si el emparejamiento automatico
+// viera a los ocultos, subir una libreta con un nombre repetido empezaria a
+// cargarle los fiados a alguien que el dueño quito a proposito, en silencio, y
+// con su saldo viejo metido en los totales de la revision.
+check(
+  "el emparejamiento AUTOMATICO por nombre NO toca a un oculto",
+  (() => {
+    const f = reconcileMovements([mov({ client_name: "Hilda Camacho", amount: 10 })], [ocultaDef]);
+    return f[0].matched_client_id === null && f[0].needs_document_id === true;
+  })(),
+);
+check(
+  "pero emparejar A MANO con un oculto SI funciona",
+  (() => {
+    const f = reconcileMovements(
+      [mov({ client_name: "Hilda Camacho", amount: 10 })],
+      [ocultaDef],
+      { "hilda camacho": "d1" },
+    );
+    return f[0].matched_client_id === "d1";
+  })(),
+);
+// Y al emparejarlo a mano, su saldo entra en la cuenta: es el numero que la
+// pantalla promete que volvera a los totales.
+check(
+  "emparejado a mano, su saldo previo cuenta en lo que quedara debiendo",
+  (() => {
+    const f = reconcileMovements(
+      [mov({ client_name: "Hilda Camacho", amount: 10, currency: "USD" })],
+      [{ ...ocultaDef, balance_usd: 100 }],
+      { "hilda camacho": "d1" },
+    );
+    return f[0].computed_balance === 110;
+  })(),
+);
+check(
+  "un oculto SI sale como candidato, y con su marca",
+  (() => {
+    const g = agruparPorCliente(
+      reconcileMovements([mov({ client_name: "Petra Villalba", amount: 10 })], [enPapelera]),
+      [enPapelera],
+      {},
+    )[0];
+    return g.candidatos.length === 1 && g.candidatos[0].hidden === "papelera";
+  })(),
+);
+check(
+  "y por CEDULA tambien, llevando su estado hasta la ficha",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "17556644", matched_client_id: null }],
+      [ocultaDef],
+      new Map(),
+    );
+    return m.get("alguien nuevo")?.[0].hidden === "definitivo";
+  })(),
+);
+// Visible y oculto con la MISMA cedula: la 034 lo permite. Los dos se enseñan,
+// porque elegir por el dueño es lo que CT-22 existe para impedir.
+check(
+  "con una cedula compartida por uno visible y uno oculto, salen LOS DOS",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "19887766", matched_client_id: null }],
+      [viva, enPapelera],
+      new Map(),
+    );
+    const r = m.get("alguien nuevo") ?? [];
+    return r.length === 2 && r.some((c) => c.hidden === "papelera") && r.some((c) => !c.hidden);
+  })(),
+);
+check(
+  "un cliente visible sigue llegando sin marca",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "19887766", matched_client_id: null }],
+      [viva],
+      new Map(),
+    );
+    return m.get("alguien nuevo")?.[0].hidden === null;
+  })(),
+);
+
+console.log("");
+
+console.log("");
+console.log("-- CT-21: seleccion multiple de movimientos ------------------");
+check("marcar una la mete", alternar(new Set(), "a").has("a"));
+check("volver a tocarla la saca", alternar(new Set(["a"]), "a").size === 0);
+check("devuelve un Set NUEVO, no muta el de React", (() => {
+  const antes = new Set(["a"]);
+  const despues = alternar(antes, "b");
+  return antes.size === 1 && despues.size === 2;
+})());
+
+// LA PODA ES LO QUE EVITA LOS FANTASMAS, y es el motivo de que la seleccion no
+// sea estado independiente. Sin ella el contador dice "4 seleccionados" sobre
+// una lista donde no queda ninguno, y el boton de eliminar actuaria sobre ids
+// que ya no existen.
+check(
+  "una fila que desaparece sale sola de la seleccion",
+  (() => {
+    const s = podarSeleccion(new Set(["a", "b", "c"]), ["a", "c"]);
+    return s.size === 2 && s.has("a") && s.has("c") && !s.has("b");
+  })(),
+);
+check(
+  "si no queda ninguna viva, la seleccion se vacia (y el pie vuelve a 'Subir')",
+  podarSeleccion(new Set(["a", "b"]), []).size === 0,
+);
+check("sin seleccion previa, podar no inventa nada", podarSeleccion(new Set(), ["a"]).size === 0);
+
+// Concordancia de numero: una plantilla con la "s" pegada a mano acaba diciendo
+// "1 movimientos", y eso sale en pantalla cada vez que se marca el primero.
+check("1 en singular", textoDeSeleccion(1) === "1 movimiento seleccionado");
+check("3 en plural", textoDeSeleccion(3) === "3 movimientos seleccionados");
+check("el boton destructivo lleva el numero", textoDeEliminar(1) === "Eliminar 1 movimiento");
+check("y en plural tambien", textoDeEliminar(12) === "Eliminar 12 movimientos");
+
+// LA ETIQUETA DE LA MONEDA DICE SOBRE QUE ACTUA. El mismo control hace dos
+// cosas segun haya seleccion o no — decision del usuario del 2026-10-02 — y sin
+// esto el dueño no sabe a cual de las dos acaba de darle.
+check("sin seleccion, la moneda habla de TODO", textoDeMoneda("Dolares", 0) === "Todo Dolares");
+check("con seleccion, habla de los marcados", textoDeMoneda("Euros", 3) === "3 a Euros");
+check("con uno marcado tambien", textoDeMoneda("Euros", 1) === "1 a Euros");
+
+console.log("");
+
+console.log("");
+console.log("-- CT-12: el saldo con el que arranca la libreta --------------");
+// El caso de Mariangel, reducido: la pagina arranca en 99 y Sevenz cuenta desde
+// 0, asi que TODAS las filas comprobables se desfasan en los mismos 99.
+const conDesfase = (k, montos) => {
+  let corrido = 0;
+  return montos.map((a) => {
+    corrido += a;
+    return { amount: Math.abs(a), type: a >= 0 ? "charge" : "payment", description: "x",
+             page_balance: corrido, read_balance: corrido + k, defines_base: false };
+  });
+};
+
+check(
+  "23 filas desfasadas en lo mismo -> propone ese saldo de apertura",
+  (() => {
+    const d = detectarApertura(conDesfase(99, [3.5, 10, 6, 20]));
+    return d?.importe === 99 && d.filas === 4;
+  })(),
+);
+// LA DEFENSA CONTRA CT-13: un monto mal leido EN MEDIO desfasa solo las filas
+// posteriores, asi que los desfases dejan de ser iguales y esto NO dispara.
+check(
+  "un monto mal leido en medio NO se confunde con un saldo de apertura",
+  (() => {
+    const f = conDesfase(99, [3.5, 10, 6, 20]);
+    f[2].page_balance += 5; f[3].page_balance += 5; // la IA leyo 11 donde habia 6
+    return detectarApertura(f) === null;
+  })(),
+);
+// LO QUE LA LOGICA NO PUEDE SEPARAR, y por eso la pantalla ensena el primer
+// apunte al lado de la cifra: un error en la PRIMERA fila desfasa todo igual.
+check(
+  "un error en la PRIMERA fila si se confunde — queda documentado, no arreglado",
+  detectarApertura(conDesfase(99, [3.5, 10, 6, 20]))?.importe === 99,
+);
+check(
+  "con UNA sola fila comprobable no propone nada",
+  detectarApertura([{ amount: 10, type: "charge", description: null, page_balance: 10, read_balance: 109, defines_base: false }]) === null,
+);
+check(
+  "si el desfase es menor que la tolerancia, no hay nada que proponer",
+  detectarApertura(conDesfase(0.5, [3.5, 10, 6])) === null,
+);
+check(
+  "si el cliente YA existia (alguna fila dedujo la base), no propone",
+  (() => {
+    const f = conDesfase(99, [3.5, 10, 6]);
+    f[0].defines_base = true;
+    return detectarApertura(f) === null;
+  })(),
+);
+check("una pagina que cuadra no propone nada", detectarApertura(conDesfase(0, [3.5, 10, 6])) === null);
+// Decision del usuario: se permite negativo, y entra como ABONO.
+check(
+  "un desfase negativo se propone igual",
+  detectarApertura(conDesfase(-40, [3.5, 10]))?.importe === -40,
+);
+
+// ── La linea construida ────────────────────────────────────────────────
+const libretaAp = [
+  mov({ client_name: "Mariangel", amount: 3.5, currency: "USD", uid: "a1", date: "2026-08-30" }),
+  mov({ client_name: "Mariangel", amount: 10, currency: "USD", uid: "a2", date: "2026-09-01" }),
+  mov({ client_name: "Otro", amount: 5, currency: "USD", uid: "b1" }),
+];
+check(
+  "la apertura entra DELANTE del primer renglon de ese libro",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: "2026-08-30", uid: "ap1" })?.indice === 0,
+);
+check(
+  "positiva es un FIADO, por el importe en positivo",
+  (() => {
+    const a = construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" });
+    return a.movimiento.type === "charge" && a.movimiento.amount === 99;
+  })(),
+);
+check(
+  "negativa es un ABONO, y el importe sigue siendo positivo",
+  (() => {
+    const a = construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: -40, fecha: null, uid: "ap1" });
+    return a.movimiento.type === "payment" && a.movimiento.amount === 40;
+  })(),
+);
+check(
+  "hereda la cedula de sus hermanas, o bloquearia la subida pidiendola",
+  construirApertura({ movimientos: [mov({ client_name: "Mariangel", currency: "USD", document_id: "V-1", uid: "a1" })], nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" })?.movimiento.document_id === "V-1",
+);
+check(
+  "el cliente lee 'Saldo anterior' en su enlace, no una frase nuestra",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" })?.movimiento.description === DESCRIPCION_DE_APERTURA,
+);
+check(
+  "un importe por debajo del minimo no construye nada",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 0, fecha: null, uid: "ap1" }) === null,
+);
+// La fecha: la del PRIMER apunte de esa pagina, no la de la subida.
+check(
+  "nace con la fecha del primer apunte del libro",
+  fechaDeApertura(libretaAp, "Mariangel", "USD") === "2026-08-30",
+);
+check(
+  "y respeta la moneda: el libro en euros tiene su propia fecha",
+  fechaDeApertura(libretaAp, "Mariangel", "EUR") === null,
+);
+
+console.log("");
 console.log("-- La revision sobrevive a una recarga -----------------------");
 // sessionStorage no existe en Node, asi que el almacen se inyecta. Es la misma
 // funcion que corre en el navegador, no una copia.
@@ -724,7 +1266,7 @@ const unaRevision = {
   movimientos: [mov({ uid: "a", amount: 50 })],
   eliminados: ["b"],
   clientesQuitados: { ana: ["b"] },
-  decisiones: { ana: "mismo" },
+  decisiones: { ana: { cual: "mismo", clientId: "c1" } },
   decisionesDeTotal: { "ana|USD": { cual: "libreta", escrito: 95, calculado: 70 } },
   subidos: ["otra"],
   sameClient: true,
@@ -742,7 +1284,7 @@ check(
   vuelta &&
     vuelta.movimientos.length === 1 &&
     vuelta.eliminados[0] === "b" &&
-    vuelta.decisiones.ana === "mismo" &&
+    vuelta.decisiones.ana.cual === "mismo" &&
     vuelta.sharedName === "Ana" &&
     vuelta.sameClient === true &&
     vuelta.unlinked[0] === "c",
