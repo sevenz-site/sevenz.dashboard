@@ -186,9 +186,13 @@ begin
     -- quitar.
     v_doc := regexp_replace(lower(v_doc), '[^a-z0-9]', '', 'g');
 
-    -- Contra los que el dueño ya tiene, incluidos los de la papelera: si el
-    -- documento existe ahí, lo correcto es restaurarlo, no crear un segundo
-    -- registro que parta el historial de una persona en dos.
+    -- Contra los que el dueño ya tiene, incluidos los de la papelera.
+    --
+    -- El comentario de la 077 decia aqui que ante un oculto "lo correcto es
+    -- restaurarlo, no crear un segundo registro". Desde CT-33 ya no: la
+    -- pantalla lo enseña con su marca y su saldo, y el dueño elige entre
+    -- recuperarlo o abrirle una cuenta aparte. Se corrige el texto porque un
+    -- comentario que describe una regla que ya no existe es peor que ninguno.
     -- EL `order by` SE QUEDA, aunque desde CT-33 ya no decida si se acepta.
     --
     -- Lo puso la 077, cuando el oculto rechazaba y el vivo no: sin el, Postgres
