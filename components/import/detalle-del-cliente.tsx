@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SaldoDeApertura } from "@/components/import/saldo-de-apertura";
 import { useLongPress } from "@/hooks/use-long-press";
 import {
   alternar,
@@ -46,7 +47,7 @@ import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
-import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
+import type { ExtractedMovement, LedgerCurrency, MovementType, OwnerCountry } from "@/lib/types";
 import {
   AvisoDeDocumentoRepetido,
   AvisoDeDuplicado,
@@ -407,6 +408,10 @@ export function DetalleDelCliente({
   onDeshacer,
   onAplicarMoneda,
   onEliminarVarios,
+  aperturas,
+  onAceptarApertura,
+  onQuitarApertura,
+  esApertura,
   seleccion: seleccionCruda,
   setSeleccion,
   decisionesDeTotal,
@@ -465,6 +470,18 @@ export function DetalleDelCliente({
   onEliminarVarios: (rowIds: string[]) => void;
   // CT-21. Sube al padre para que el «atras» del telefono se resuelva en el
   // guardia que ya existe, sin una segunda entrada en el historial.
+  // ── CT-12 ──
+  // Por moneda, porque dos libros del mismo cliente arrancan donde quieran.
+  aperturas: {
+    currency: LedgerCurrency | null;
+    detectada: import("@/lib/saldo-de-apertura").AperturaDetectada | null;
+    primerApunte: { descripcion: string | null; importe: number; tipo: MovementType } | null;
+    aceptada: { importe: number; fecha: string | null } | null;
+    fechaPorDefecto: string | null;
+  }[];
+  onAceptarApertura: (currency: LedgerCurrency | null, importe: number, fecha: string | null) => void;
+  onQuitarApertura: (currency: LedgerCurrency | null) => void;
+  esApertura: (rowId: string) => boolean;
   seleccion: Set<string>;
   setSeleccion: (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   decisionesDeTotal: Record<string, DecisionDeTotal | undefined>;
@@ -788,6 +805,25 @@ export function DetalleDelCliente({
         </div>
       )}
 
+      {/* ── CT-12: el saldo con el que arranca la página ────────────────
+          ENCIMA de los movimientos, porque explica por qué están todos en rojo.
+          Debajo de ellos, el dueño ya habría sacado su conclusión —«esta app no
+          sabe leer mi libreta»— antes de llegar a la pregunta. */}
+      {subido
+        ? null
+        : aperturas.map((a) => (
+            <SaldoDeApertura
+              key={a.currency ?? "COP"}
+              currency={a.currency}
+              detectada={a.detectada}
+              primerApunte={a.primerApunte}
+              aceptada={a.aceptada}
+              fechaPorDefecto={a.fechaPorDefecto}
+              onAceptar={(importe, fecha) => onAceptarApertura(a.currency, importe, fecha)}
+              onQuitar={() => onQuitarApertura(a.currency)}
+            />
+          ))}
+
       {/* ── Movimientos ────────────────────────────────────────────────── */}
       {/* Era "Historial" hasta el 2026-10-02. El nombre viejo describía una
           lista que solo se lee; desde CT-21 es la lista sobre la que se actúa,
@@ -876,7 +912,13 @@ export function DetalleDelCliente({
               />
               {/* Se dice de dónde salió y cómo quitarla. Un renglón que aparece
                   solo y no se puede tocar, sin explicación, se lee como un fallo. */}
-              {esAjuste(e.fila.rowId) ? (
+              {esApertura(e.fila.rowId) ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  Lo que este cliente ya debía antes de esta página. Lo añadiste tú arriba; para
+                  quitarlo, usa «Quitar» ahí mismo.
+                </p>
+              ) : null}
+              {esAjuste(e.fila.rowId) && !esApertura(e.fila.rowId) ? (
                 <p className="px-1 text-xs text-muted-foreground">
                   Lo agregó Sevenz para cuadrar con tu libreta.
                   {/* SE DICE CUANDO CAMBIA SOLO. El dueño aceptó un importe

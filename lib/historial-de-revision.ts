@@ -25,6 +25,7 @@ import type { ExtractedMovement } from "@/lib/types";
 //   editar un movimiento · aplicar moneda a la tanda · elegir el total ·
 //   emparejar con un cliente existente · decir "es otra persona" ·
 //   decir "es una cuenta separada" ante una cédula repetida ·
+//   aceptar o quitar el saldo con el que arranca la libreta ·
 //   asignar una línea suelta · renombrar a un cliente ·
 //   marcar o desmarcar "todos el mismo cliente"
 //
@@ -57,6 +58,9 @@ export type Instantanea = {
   // vuelve. Preguntar de mas es el fallo barato; el caro es crear un duplicado
   // que nadie confirmo.
   documentoConfirmado?: Record<string, string>;
+  // CT-12. Aceptar o quitar un saldo de apertura cambia lo que se va a escribir
+  // en la deuda de alguien, asi que empuja al historial como cualquier otra.
+  aperturas?: Record<string, { importe: number; fecha: string | null } | undefined>;
   sameClient: boolean;
   sharedName: string;
   sharedDocument: string;

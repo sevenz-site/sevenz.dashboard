@@ -88,6 +88,12 @@ import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
 import { documentAnswerKey, findDocumentDuplicates } from "@/lib/document-duplicates";
+import {
+  construirApertura,
+  detectarApertura,
+  fechaDeApertura,
+  type AperturaDetectada,
+} from "@/lib/saldo-de-apertura";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
@@ -370,6 +376,22 @@ export function ImportFlow({
   // cedula nueva es de otra persona que no ha visto nunca. Con un booleano
   // habria que acordarse de borrarlo, y eso se olvida.
   const [documentoConfirmado, setDocumentoConfirmado] = useState<Record<string, string>>({});
+  // ── CT-12: el saldo con el que arranca la libreta ──────────────────────
+  //
+  // Por `nameKey|moneda`, igual que `decisionesDeTotal`. Guarda el importe Y la
+  // fecha, y no se recalcula — a diferencia del ajuste, que SI es derivado.
+  //
+  // La diferencia no es de estilo: el ajuste es una funcion de los renglones de
+  // ESTA pagina, asi que si uno cambia tiene que cambiar; la apertura es un
+  // hecho sobre la pagina ANTERIOR, y corregir un monto de hoy no cambia lo que
+  // esa persona debia antes de empezar.
+  //
+  // Sirve para los dos caminos a la vez: lo que el dueño acepta de la propuesta
+  // automatica y lo que teclea a mano cuando no hay propuesta. Un solo sitio
+  // donde mirar, en vez de dos mecanismos que acaban discrepando.
+  const [aperturas, setAperturas] = useState<
+    Record<string, { importe: number; fecha: string | null } | undefined>
+  >({});
   // CT-29. `listaAbierta` es el nameKey cuya lista de candidatos esta abierta;
   // `porConfirmar` es el emparejamiento esperando confirmacion. Separados porque
   // el dialogo sale TAMBIEN sin pasar por la lista, cuando el candidato es uno.
@@ -425,6 +447,7 @@ export function ImportFlow({
       decisiones,
       decisionesDeTotal,
       documentoConfirmado,
+      aperturas,
       subidos: [...subidos],
       sameClient,
       sharedName,
@@ -439,6 +462,7 @@ export function ImportFlow({
     decisiones,
     decisionesDeTotal,
     documentoConfirmado,
+    aperturas,
     subidos,
     sameClient,
     sharedName,
@@ -474,6 +498,7 @@ export function ImportFlow({
       decisiones: {},
       decisionesDeTotal: {},
       documentoConfirmado: {},
+      aperturas: {},
       subidos: [],
       sameClient: false,
       sharedName: "",
@@ -507,6 +532,7 @@ export function ImportFlow({
     );
     setDecisionesDeTotal(borrador.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>);
     setDocumentoConfirmado(borrador.documentoConfirmado ?? {});
+    setAperturas(borrador.aperturas ?? {});
     setSubidos(new Set(borrador.subidos));
     setSameClient(borrador.sameClient);
     setSharedName(borrador.sharedName);
@@ -544,6 +570,83 @@ export function ImportFlow({
 
 
 
+  // ── CT-12: LA APERTURA, Y EL ORDEN EN QUE SE CALCULA TODO ──────────────
+  //
+  // Hay tres reconciliaciones y cada una responde a una pregunta distinta. El
+  // orden importa y equivocarlo mete una linea de mas en la deuda de alguien:
+  //
+  //   filasSinApertura  los renglones PELADOS. Es donde se DETECTA el desfase
+  //                     constante — tiene que ignorar la apertura o esta
+  //                     dejaria de detectarse en cuanto se acepta, y la
+  //                     propuesta desapareceria de la pantalla sola.
+  //   conAperturas      los renglones con la apertura ya dentro.
+  //   librosSombra      se reconcilia sobre CON APERTURAS. Si se reconciliara
+  //                     sobre los pelados, el ajuste seguiria creyendo que
+  //                     faltan los 99 que la apertura acaba de poner, y
+  //                     añadiria una SEGUNDA linea por el mismo dinero.
+  const filasSinApertura = useMemo(
+    () =>
+      movimientosBase
+        ? reconcileMovements(movimientosBase, clientesSinLosDescartados, emparejados)
+        : [],
+    [movimientosBase, clientesSinLosDescartados, emparejados],
+  );
+
+  // Lo que se le puede proponer a cada libro, mire o no el dueño. Es una
+  // deduccion, no una decision: hasta que alguien diga que si, no toca nada.
+  const aperturasDetectadas = useMemo(() => {
+    const salida = new Map<string, AperturaDetectada>();
+    const porClave = new Map<string, typeof filasSinApertura>();
+    for (const f of filasSinApertura) {
+      const clave = `${f.client_name.trim().toLowerCase()}|${f.currency ?? "COP"}`;
+      const ya = porClave.get(clave);
+      if (ya) ya.push(f);
+      else porClave.set(clave, [f]);
+    }
+    for (const [clave, filas] of porClave) {
+      const d = detectarApertura(filas);
+      if (d) salida.set(clave, d);
+    }
+    return salida;
+  }, [filasSinApertura]);
+
+  const aperturasDerivadas = useMemo(() => {
+    const salida = new Map<string, { movimiento: ExtractedMovement; indice: number }>();
+    if (!movimientosBase) return salida;
+    for (const [clave, decidida] of Object.entries(aperturas)) {
+      if (!decidida) continue;
+      const corte = clave.lastIndexOf("|");
+      const nombre = clave.slice(0, corte);
+      const monedaTexto = clave.slice(corte + 1);
+      const currency = monedaTexto === "COP" ? null : (monedaTexto as LedgerCurrency);
+      const construida = construirApertura({
+        movimientos: movimientosBase,
+        nombreDelCliente: nombre,
+        currency,
+        importe: decidida.importe,
+        fecha: decidida.fecha,
+        uid: `apertura:${clave}`,
+      });
+      if (construida) salida.set(clave, construida);
+    }
+    return salida;
+  }, [movimientosBase, aperturas]);
+
+  const uidsDeApertura = useMemo(
+    () => new Set([...aperturasDerivadas.values()].map((a) => a.movimiento.uid!)),
+    [aperturasDerivadas],
+  );
+
+  const conAperturas = useMemo(() => {
+    if (!movimientosBase) return null;
+    if (aperturasDerivadas.size === 0) return movimientosBase;
+    // De mayor a menor indice para que insertar una no desplace a la siguiente.
+    const copia = [...movimientosBase];
+    const porIndice = [...aperturasDerivadas.values()].sort((a, b) => b.indice - a.indice);
+    for (const a of porIndice) copia.splice(a.indice, 0, a.movimiento);
+    return copia;
+  }, [movimientosBase, aperturasDerivadas]);
+
   // ── EL AJUSTE ES DERIVADO, NO GUARDADO ────────────────────────────────
   //
   // Antes se creaba una vez al elegir "mi libreta" y se metia en
@@ -564,9 +667,9 @@ export function ImportFlow({
   // no se entera del ajuste y por eso sigue sabiendolo.
   const librosSombra = useMemo(() => {
     const porClave = new Map<string, LibroDelCliente>();
-    if (!movimientosBase) return porClave;
+    if (!conAperturas) return porClave;
     const clientes = agruparPorCliente(
-      reconcileMovements(movimientosBase, clientesSinLosDescartados, emparejados),
+      reconcileMovements(conAperturas, clientesSinLosDescartados, emparejados),
       clientesSinLosDescartados,
       { esVE: showCurrency },
     );
@@ -574,25 +677,25 @@ export function ImportFlow({
       for (const l of c.libros) porClave.set(`${c.nameKey}|${l.currency ?? "COP"}`, l);
     }
     return porClave;
-  }, [movimientosBase, clientesSinLosDescartados, showCurrency, emparejados]);
+  }, [conAperturas, clientesSinLosDescartados, showCurrency, emparejados]);
 
   // Un ajuste por cliente que haya dicho que manda su libreta, con el importe
   // que hace falta AHORA. El uid se deriva de la clave en vez de sortearse:
   // asi es estable entre renders sin guardar nada, y la fila no se remonta sola.
   const ajustesDerivados = useMemo(() => {
     const salida = new Map<string, { movimiento: ExtractedMovement; indice: number }>();
-    if (!movimientosBase) return salida;
+    if (!conAperturas) return salida;
     for (const [clave, decision] of Object.entries(decisionesDeTotal)) {
       if (decision?.cual !== "libreta") continue;
       const sombra = librosSombra.get(clave);
       if (!sombra) continue;
       const nombre = clave.slice(0, clave.lastIndexOf("|"));
-      const cliente = movimientosBase.find(
+      const cliente = conAperturas.find(
         (m) => (m.client_name ?? "").trim().toLowerCase() === nombre,
       );
       if (!cliente) continue;
       const construido = construirAjuste({
-        movimientos: movimientosBase,
+        movimientos: conAperturas,
         nombreDelCliente: cliente.client_name,
         libro: sombra,
         uid: `ajuste:${clave}`,
@@ -600,7 +703,7 @@ export function ImportFlow({
       if (construido) salida.set(clave, construido);
     }
     return salida;
-  }, [movimientosBase, decisionesDeTotal, librosSombra]);
+  }, [conAperturas, decisionesDeTotal, librosSombra]);
 
   const uidsDeAjuste = useMemo(
     () => new Set([...ajustesDerivados.values()].map((a) => a.movimiento.uid!)),
@@ -622,19 +725,26 @@ export function ImportFlow({
   // final de lo suyo" en cuanto se ve.
   const movimientosConAjustes = useMemo(() => {
     if (!reviewMovements) return null;
-    if (ajustesDerivados.size === 0) return reviewMovements;
-    return [...reviewMovements, ...[...ajustesDerivados.values()].map((a) => a.movimiento)];
-  }, [reviewMovements, ajustesDerivados]);
+    if (ajustesDerivados.size === 0 && aperturasDerivadas.size === 0) return reviewMovements;
+    // La apertura DELANTE y el ajuste detras, que es donde van cada uno. La
+    // lista se filtra por cliente antes de pintarse, asi que "la primera de
+    // todas" es "la primera de las suyas" en cuanto se ve.
+    return [
+      ...[...aperturasDerivadas.values()].map((a) => a.movimiento),
+      ...reviewMovements,
+      ...[...ajustesDerivados.values()].map((a) => a.movimiento),
+    ];
+  }, [reviewMovements, ajustesDerivados, aperturasDerivadas]);
 
   const effectiveMovements = useMemo(() => {
-    if (!movimientosBase) return null;
-    if (ajustesDerivados.size === 0) return movimientosBase;
+    if (!conAperturas) return null;
+    if (ajustesDerivados.size === 0) return conAperturas;
     // De mayor a menor indice para que insertar uno no desplace al siguiente.
-    const copia = [...movimientosBase];
+    const copia = [...conAperturas];
     const porIndice = [...ajustesDerivados.values()].sort((a, b) => b.indice - a.indice);
     for (const a of porIndice) copia.splice(a.indice, 0, a.movimiento);
     return copia;
-  }, [movimientosBase, ajustesDerivados]);
+  }, [conAperturas, ajustesDerivados]);
 
   // Una reconciliación contra la lista COMPLETA de clientes, y su único trabajo
   // es detectar los candidatos de CT-22. No se usa para nada más: las filas de
@@ -1028,6 +1138,7 @@ export function ImportFlow({
         decisiones,
         decisionesDeTotal,
         documentoConfirmado,
+        aperturas,
         sameClient,
         sharedName,
         sharedDocument,
@@ -1049,6 +1160,7 @@ export function ImportFlow({
       instantanea.decisionesDeTotal as Record<string, DecisionDeTotal | undefined>,
     );
     setDocumentoConfirmado(instantanea.documentoConfirmado ?? {});
+    setAperturas(instantanea.aperturas ?? {});
     setSameClient(instantanea.sameClient);
     setSharedName(instantanea.sharedName);
     setSharedDocument(instantanea.sharedDocument);
@@ -1164,6 +1276,19 @@ export function ImportFlow({
       if (!(nameKeyViejo in prev)) return prev;
       const { [nameKeyViejo]: suya, ...resto } = prev;
       return nuevo in resto ? resto : { ...resto, [nuevo]: suya };
+    });
+    // CT-12. Misma forma de clave que `decisionesDeTotal`: `nombre|moneda`.
+    setAperturas((prev) => {
+      const salida: typeof prev = {};
+      for (const [clave, a] of Object.entries(prev)) {
+        const i = clave.lastIndexOf("|");
+        const suNombre = i < 0 ? clave : clave.slice(0, i);
+        const moneda = i < 0 ? "" : clave.slice(i);
+        const destino = suNombre === nameKeyViejo ? `${nuevo}${moneda}` : clave;
+        if (destino in salida) continue;
+        salida[destino] = a;
+      }
+      return salida;
     });
     setDecisionesDeTotal((prev) => {
       const salida: typeof prev = {};
@@ -1932,7 +2057,9 @@ export function ImportFlow({
                 onUpdate={updateMovement}
                 onRemove={removeMovement}
                 onRestaurar={restaurarMovimiento}
-                esAjuste={(rowId) => uidsDeAjuste.has(rowId)}
+                // La apertura tampoco se edita desde la fila: se cambia arriba,
+                // en su panel, que es de donde salio.
+                esAjuste={(rowId) => uidsDeAjuste.has(rowId) || uidsDeApertura.has(rowId)}
                 onEliminarCliente={() =>
                   eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
                 }
@@ -1944,6 +2071,43 @@ export function ImportFlow({
                 // `removeMovement` doce veces dejaria doce pasos en la pila y
                 // obligaria a pulsar doce veces para volver de una sola decision.
                 onEliminarVarios={removeMovements}
+                // CT-12. Una entrada por libro: dos monedas del mismo cliente
+                // son dos cadenas y cada una arranca donde quiera.
+                aperturas={clienteAbierto.libros.map((l) => {
+                  const clave = `${clienteAbierto.nameKey}|${l.currency ?? "COP"}`;
+                  const suyas = filasSinApertura.filter(
+                    (f) =>
+                      f.client_name.trim().toLowerCase() === clienteAbierto.nameKey &&
+                      (f.currency ?? null) === l.currency,
+                  );
+                  const p = suyas[0];
+                  return {
+                    currency: l.currency,
+                    detectada: aperturasDetectadas.get(clave) ?? null,
+                    primerApunte: p
+                      ? { descripcion: p.description, importe: p.amount, tipo: p.type }
+                      : null,
+                    aceptada: aperturas[clave] ?? null,
+                    fechaPorDefecto:
+                      aperturas[clave]?.fecha ??
+                      fechaDeApertura(movimientosBase ?? [], clienteAbierto.nameKey, l.currency),
+                  };
+                })}
+                onAceptarApertura={(currency, importe, fecha) => {
+                  recordar();
+                  setAperturas((prev) => ({
+                    ...prev,
+                    [`${clienteAbierto.nameKey}|${currency ?? "COP"}`]: { importe, fecha },
+                  }));
+                }}
+                onQuitarApertura={(currency) => {
+                  recordar();
+                  setAperturas((prev) => ({
+                    ...prev,
+                    [`${clienteAbierto.nameKey}|${currency ?? "COP"}`]: undefined,
+                  }));
+                }}
+                esApertura={(rowId) => uidsDeApertura.has(rowId)}
                 seleccion={seleccionDeMovimientos}
                 setSeleccion={setSeleccionDeMovimientos}
                 duplicadosPorDocumento={duplicadosPorDocumento.get(clienteAbierto.nameKey) ?? []}

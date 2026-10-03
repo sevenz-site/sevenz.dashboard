@@ -75,6 +75,9 @@ export type RevisionGuardada = {
   // salir. Vuelve a salir también si la cédula cambió — la respuesta se guarda
   // junto al documento con el que se dio, no como un "sí" suelto.
   documentoConfirmado?: Record<string, string>;
+  // CT-12. Por `nameKey|moneda`. Opcional: un borrador de antes no lo trae y
+  // vale `{}` — la deteccion volvera a proponer sola, que es lo correcto.
+  aperturas?: Record<string, { importe: number; fecha: string | null } | undefined>;
   subidos: string[];
   sameClient: boolean;
   sharedName: string;
@@ -166,6 +169,7 @@ export function cargarRevision(ahora = Date.now(), almacen?: Almacen | null): Re
     decisiones: p.decisiones ?? {},
     decisionesDeTotal: p.decisionesDeTotal ?? {},
     documentoConfirmado: p.documentoConfirmado ?? {},
+    aperturas: p.aperturas ?? {},
     subidos: Array.isArray(p.subidos) ? p.subidos : [],
     sameClient: Boolean(p.sameClient),
     sharedName: typeof p.sharedName === "string" ? p.sharedName : "",

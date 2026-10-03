@@ -50,6 +50,12 @@ import {
 } from "../lib/seleccion-de-movimientos.ts";
 import { empujar, sacar, textoDeDeshacer, MAX_PASOS } from "../lib/historial-de-revision.ts";
 import {
+  detectarApertura,
+  construirApertura,
+  fechaDeApertura,
+  DESCRIPCION_DE_APERTURA,
+} from "../lib/saldo-de-apertura.ts";
+import {
   esLineaSuelta,
   esLineaSinMonto,
   separarLineasSueltas,
@@ -1134,6 +1140,113 @@ check("y en plural tambien", textoDeEliminar(12) === "Eliminar 12 movimientos");
 check("sin seleccion, la moneda habla de TODO", textoDeMoneda("Dolares", 0) === "Todo Dolares");
 check("con seleccion, habla de los marcados", textoDeMoneda("Euros", 3) === "3 a Euros");
 check("con uno marcado tambien", textoDeMoneda("Euros", 1) === "1 a Euros");
+
+console.log("");
+
+console.log("");
+console.log("-- CT-12: el saldo con el que arranca la libreta --------------");
+// El caso de Mariangel, reducido: la pagina arranca en 99 y Sevenz cuenta desde
+// 0, asi que TODAS las filas comprobables se desfasan en los mismos 99.
+const conDesfase = (k, montos) => {
+  let corrido = 0;
+  return montos.map((a) => {
+    corrido += a;
+    return { amount: Math.abs(a), type: a >= 0 ? "charge" : "payment", description: "x",
+             page_balance: corrido, read_balance: corrido + k, defines_base: false };
+  });
+};
+
+check(
+  "23 filas desfasadas en lo mismo -> propone ese saldo de apertura",
+  (() => {
+    const d = detectarApertura(conDesfase(99, [3.5, 10, 6, 20]));
+    return d?.importe === 99 && d.filas === 4;
+  })(),
+);
+// LA DEFENSA CONTRA CT-13: un monto mal leido EN MEDIO desfasa solo las filas
+// posteriores, asi que los desfases dejan de ser iguales y esto NO dispara.
+check(
+  "un monto mal leido en medio NO se confunde con un saldo de apertura",
+  (() => {
+    const f = conDesfase(99, [3.5, 10, 6, 20]);
+    f[2].page_balance += 5; f[3].page_balance += 5; // la IA leyo 11 donde habia 6
+    return detectarApertura(f) === null;
+  })(),
+);
+// LO QUE LA LOGICA NO PUEDE SEPARAR, y por eso la pantalla ensena el primer
+// apunte al lado de la cifra: un error en la PRIMERA fila desfasa todo igual.
+check(
+  "un error en la PRIMERA fila si se confunde — queda documentado, no arreglado",
+  detectarApertura(conDesfase(99, [3.5, 10, 6, 20]))?.importe === 99,
+);
+check(
+  "con UNA sola fila comprobable no propone nada",
+  detectarApertura([{ amount: 10, type: "charge", description: null, page_balance: 10, read_balance: 109, defines_base: false }]) === null,
+);
+check(
+  "si el desfase es menor que la tolerancia, no hay nada que proponer",
+  detectarApertura(conDesfase(0.5, [3.5, 10, 6])) === null,
+);
+check(
+  "si el cliente YA existia (alguna fila dedujo la base), no propone",
+  (() => {
+    const f = conDesfase(99, [3.5, 10, 6]);
+    f[0].defines_base = true;
+    return detectarApertura(f) === null;
+  })(),
+);
+check("una pagina que cuadra no propone nada", detectarApertura(conDesfase(0, [3.5, 10, 6])) === null);
+// Decision del usuario: se permite negativo, y entra como ABONO.
+check(
+  "un desfase negativo se propone igual",
+  detectarApertura(conDesfase(-40, [3.5, 10]))?.importe === -40,
+);
+
+// ── La linea construida ────────────────────────────────────────────────
+const libretaAp = [
+  mov({ client_name: "Mariangel", amount: 3.5, currency: "USD", uid: "a1", date: "2026-08-30" }),
+  mov({ client_name: "Mariangel", amount: 10, currency: "USD", uid: "a2", date: "2026-09-01" }),
+  mov({ client_name: "Otro", amount: 5, currency: "USD", uid: "b1" }),
+];
+check(
+  "la apertura entra DELANTE del primer renglon de ese libro",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: "2026-08-30", uid: "ap1" })?.indice === 0,
+);
+check(
+  "positiva es un FIADO, por el importe en positivo",
+  (() => {
+    const a = construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" });
+    return a.movimiento.type === "charge" && a.movimiento.amount === 99;
+  })(),
+);
+check(
+  "negativa es un ABONO, y el importe sigue siendo positivo",
+  (() => {
+    const a = construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: -40, fecha: null, uid: "ap1" });
+    return a.movimiento.type === "payment" && a.movimiento.amount === 40;
+  })(),
+);
+check(
+  "hereda la cedula de sus hermanas, o bloquearia la subida pidiendola",
+  construirApertura({ movimientos: [mov({ client_name: "Mariangel", currency: "USD", document_id: "V-1", uid: "a1" })], nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" })?.movimiento.document_id === "V-1",
+);
+check(
+  "el cliente lee 'Saldo anterior' en su enlace, no una frase nuestra",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 99, fecha: null, uid: "ap1" })?.movimiento.description === DESCRIPCION_DE_APERTURA,
+);
+check(
+  "un importe por debajo del minimo no construye nada",
+  construirApertura({ movimientos: libretaAp, nombreDelCliente: "Mariangel", currency: "USD", importe: 0, fecha: null, uid: "ap1" }) === null,
+);
+// La fecha: la del PRIMER apunte de esa pagina, no la de la subida.
+check(
+  "nace con la fecha del primer apunte del libro",
+  fechaDeApertura(libretaAp, "Mariangel", "USD") === "2026-08-30",
+);
+check(
+  "y respeta la moneda: el libro en euros tiene su propia fecha",
+  fechaDeApertura(libretaAp, "Mariangel", "EUR") === null,
+);
 
 console.log("");
 console.log("-- La revision sobrevive a una recarga -----------------------");
