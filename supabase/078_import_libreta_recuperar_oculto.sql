@@ -28,7 +28,10 @@
 --      escribe los movimientos. Si la importacion falla, no se restaura a
 --      nadie -- hacerlo antes, desde el server action, dejaria al cliente de
 --      vuelta en la cartera con un "no se guardo nada" en pantalla, que seria
---      mentira.
+--      mentira. Por lo mismo va en la seccion 4b, DESPUES de la ultima
+--      validacion: un `return` de plpgsql no revierte lo ya escrito, asi
+--      que puesto entre las validaciones un rechazo posterior habria
+--      dejado al cliente restaurado igualmente.
 --
 --   2. Un choque de cedula con alguien OCULTO deja de bloquear la cuenta
 --      separada. La 077 lo prohibia aunque viniera confirmado, y el argumento
@@ -146,45 +149,23 @@ begin
     -- En la papelera. Escribirle movimientos sería meterlos en una ficha que
     -- ninguna lista enseña y ningún total cuenta: el tipo de error que no se
     -- ve hasta que alguien reclama.
+    --
+    -- CT-33: SALVO LOS QUE EL DUEÑO PIDIO RECUPERAR. Sin este `not in`, la
+    -- funcion rechazaba aqui y no llegaba nunca a restaurar a nadie: la
+    -- caracteristica entera no habria funcionado, y el sintoma habria sido el
+    -- mensaje de siempre, como si el cambio no se hubiera desplegado.
     select c.name into v_nombre
     from public.clients c
     where c.owner_id = v_owner
       and c.id = any(v_ids)
       and (c.trashed_at is not null or c.deleted_at is not null)
+      and c.id not in (
+        select (value #>> '{}')::uuid from jsonb_array_elements(v_restaurar)
+      )
     limit 1;
     if v_nombre is not null then
       return jsonb_build_object('ok', false, 'code', 'cliente_en_papelera', 'client_name', v_nombre);
     end if;
-  end if;
-
-  -- CT-33: los que el dueño pidio recuperar.
-  --
-  -- Se comprueba la PROPIEDAD en los dos statements. La funcion es SECURITY
-  -- DEFINER, asi que sin ese filtro un payload con el id de un cliente ajeno
-  -- lo sacaria de la papelera de OTRO dueño. Por eso va en los dos, no en uno.
-  if jsonb_array_length(v_restaurar) > 0 then
-    update public.clients c
-       set trashed_at = null,
-           deleted_at = null,
-           trashed_balance = null,
-           trashed_balance_usd = null,
-           trashed_balance_eur = null
-     where c.owner_id = v_owner
-       and c.id in (
-         select (value #>> '{}')::uuid from jsonb_array_elements(v_restaurar)
-       );
-
-    -- Una fila por transicion, como hace `restoreClient`. Sin esto, una
-    -- restauracion hecha desde aqui seria invisible en el historial de
-    -- ocultaciones del cliente, y ese historial es lo que explica por que su
-    -- saldo salio y volvio a los totales.
-    insert into public.client_hides (client_id, owner_id, action)
-    select c.id, v_owner, 'restored'
-      from public.clients c
-     where c.owner_id = v_owner
-       and c.id in (
-         select (value #>> '{}')::uuid from jsonb_array_elements(v_restaurar)
-       );
   end if;
 
   -- ── 3. Los clientes nuevos, antes de crear ninguno ────────────────────
@@ -264,6 +245,46 @@ begin
   end loop;
 
   -- ══ A partir de aquí SE ESCRIBE. Cualquier excepción deshace la tanda ══
+
+  -- ── 4b. CT-33: recuperar a los que el dueño pidio ─────────────────────
+  --
+  -- VA AQUI Y NO ARRIBA, y la diferencia es dinero.
+  --
+  -- Un `return` de plpgsql NO revierte lo que la funcion ya escribio: sale
+  -- normalmente y la transaccion se cierra con el update dentro. Puesto entre
+  -- las validaciones, cualquier rechazo posterior —una cedula repetida en el
+  -- lote, un movimiento mal referenciado— habria dejado al cliente de vuelta
+  -- en la cartera, con su saldo otra vez en los totales, mientras la pantalla
+  -- decia "no se guardo nada". Aqui abajo ya no queda ninguna validacion que
+  -- pueda rechazar: o se escribe todo, o no se escribio nada.
+  --
+  -- Se comprueba la PROPIEDAD en los dos statements. La funcion es SECURITY
+  -- DEFINER, asi que sin ese filtro un payload con el id de un cliente ajeno
+  -- lo sacaria de la papelera de OTRO dueño. Por eso va en los dos, no en uno.
+  if jsonb_array_length(v_restaurar) > 0 then
+    update public.clients c
+       set trashed_at = null,
+           deleted_at = null,
+           trashed_balance = null,
+           trashed_balance_usd = null,
+           trashed_balance_eur = null
+     where c.owner_id = v_owner
+       and c.id in (
+         select (value #>> '{}')::uuid from jsonb_array_elements(v_restaurar)
+       );
+
+    -- Una fila por transicion, como hace `restoreClient`. Sin esto, una
+    -- restauracion hecha desde aqui seria invisible en el historial de
+    -- ocultaciones del cliente, y ese historial es lo que explica por que su
+    -- saldo salio y volvio a los totales.
+    insert into public.client_hides (client_id, owner_id, action)
+    select c.id, v_owner, 'restored'
+      from public.clients c
+     where c.owner_id = v_owner
+       and c.id in (
+         select (value #>> '{}')::uuid from jsonb_array_elements(v_restaurar)
+       );
+  end if;
 
   -- ── 5. Los clientes nuevos ────────────────────────────────────────────
   for v_item in select * from jsonb_array_elements(v_nuevos) loop
@@ -406,7 +427,7 @@ grant execute on function public.import_libreta(jsonb) to authenticated;
 insert into public.schema_migrations (key, description)
 values (
   '078_import_libreta_recuperar_oculto',
-  'import_libreta acepta restore_clients: los clientes de la papelera (o ocultos definitivamente) que el dueno pidio recuperar salen de ese estado EN LA MISMA TRANSACCION que escribe los movimientos, asi que una importacion fallida no restaura a nadie. Replica exactamente lo que hace restoreClient: trashed_at y deleted_at a null, las tres columnas trashed_balance a null, is_flagged intacto (quien era mala paga vuelve siendo mala paga) y una fila en client_hides con action restored. Comprueba owner_id en los dos statements porque la funcion es SECURITY DEFINER y sin eso un payload con un id ajeno sacaria de la papelera al cliente de otro dueno. Ademas quita la prohibicion que la 077 ponia a crear una cuenta separada cuando la cedula era de alguien oculto: la premisa era que la pantalla no podia ensenarlo, y desde CT-33 la revision lee client_summary_all y lo ensena como candidato con su marca y su saldo, asi que la confirmacion ya no es a ciegas. El order by oculto desc se mantiene aunque ya no decida si se acepta: ahora solo fija que nombre sale en el error, y un mensaje que nombra a alguien distinto en cada intento no se puede comprobar.'
+  'import_libreta acepta restore_clients: los clientes de la papelera (o ocultos definitivamente) que el dueno pidio recuperar salen de ese estado EN LA MISMA TRANSACCION que escribe los movimientos, asi que una importacion fallida no restaura a nadie. Replica exactamente lo que hace restoreClient: trashed_at y deleted_at a null, las tres columnas trashed_balance a null, is_flagged intacto (quien era mala paga vuelve siendo mala paga) y una fila en client_hides con action restored. El update va en la seccion 4b, despues de la ultima validacion, porque un return de plpgsql no revierte lo ya escrito: entre las validaciones, un rechazo posterior habria dejado al cliente restaurado con un no se guardo nada en pantalla. Y el guard de cliente_en_papelera excluye a los de restore_clients, sin lo cual la funcion rechazaba antes de llegar a restaurar y la caracteristica entera no habria funcionado. Comprueba owner_id en los dos statements porque la funcion es SECURITY DEFINER y sin eso un payload con un id ajeno sacaria de la papelera al cliente de otro dueno. Ademas quita la prohibicion que la 077 ponia a crear una cuenta separada cuando la cedula era de alguien oculto: la premisa era que la pantalla no podia ensenarlo, y desde CT-33 la revision lee client_summary_all y lo ensena como candidato con su marca y su saldo, asi que la confirmacion ya no es a ciegas. El order by oculto desc se mantiene aunque ya no decida si se acepta: ahora solo fija que nombre sale en el error, y un mensaje que nombra a alguien distinto en cada intento no se puede comprobar.'
 )
 on conflict (key) do nothing;
 
