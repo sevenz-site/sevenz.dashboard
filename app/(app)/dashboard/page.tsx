@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
@@ -22,6 +21,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
+import { HomeHeader } from "@/components/dashboard/home-header";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -110,6 +110,13 @@ export default async function DashboardPage({
   const pedirAvisos =
     owner !== null && tocaPreguntarAvisos(owner, totalCop > 0 || totalUsd > 0 || totalEur > 0);
 
+  // CUAL DE LOS DOS LIBROS VA GRANDE. Lo decide la pantalla porque es la que
+  // tiene los dos totales; la tarjeta solo los pinta. El empate manda a USD a
+  // proposito: el caso normal de empate es el cero-cero de un dueno que acaba
+  // de registrarse, y en un negocio venezolano el dolar es el libro principal.
+  // Un dueno sin ningun fiado tiene que ver la moneda en la que va a trabajar.
+  const usdIsLarger = totalUsd >= totalEur;
+
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
@@ -140,6 +147,25 @@ export default async function DashboardPage({
   const weeklyLendingCop = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => !m.currency));
   const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
   const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
+  // Los tres libros posibles, cada uno con su gráfico. Se arman aquí y no en
+  // el JSX porque ahí abajo lo único que tiene que leerse es cuál va grande.
+  const usdLedger = {
+    balance: totalUsd,
+    currency: "USD" as const,
+    chartData: weeklyLendingUsd,
+    chartTitle: "Fiado vs. Abono (USD)",
+  };
+  const eurLedger = {
+    balance: totalEur,
+    currency: "EUR" as const,
+    chartData: weeklyLendingEur,
+    chartTitle: "Fiado vs. Abono (EUR)",
+  };
+  const copLedger = {
+    balance: totalCop,
+    currency: null,
+    chartData: weeklyLendingCop,
+  };
 
   // Both values ride along on work this page already does: first_name is one
   // more column on the owners query above, and last_sign_in_at is already in
@@ -167,58 +193,39 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Arriba del todo y solo en teléfono. Sevenz es instalable desde agosto
-          —manifest, service worker e iconos están puestos— y ningún tendero se
-          enteró: Android enseña su propio aviso, discreto y fácil de ignorar, y
-          en iPhone no aparece nunca. Por eso preguntan por la Play Store; no es
-          que quieran la tienda, es que no saben que ya se puede. */}
-      <InstallAppBanner />
-      {/* Solo para los dueños que ya estaban cuando esto se construyó y nunca
-          vieron nada: a los nuevos se les pregunta en el registro. No se les
-          enciende por migración — Meta exige consentimiento afirmativo, y con
-          un solo número para toda la plataforma, tres dueños marcando el
-          mensaje como no deseado bajan el rating de los 24 a la vez. */}
-      {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          {/* first_name is required by both the signup form and "Mi negocio",
-              server-side as well as in the browser, so it is treated as present.
-              The guard is only for a row that predates that rule — rendering
-              "¡Hola !" would be worse than dropping the name. */}
-          <p className="text-2xl font-semibold">
-            ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
-          </p>
-          {/* Phone only: the header still carries the business name from md up,
-              and showing it twice on one screen reads as a mistake. Below that
-              the header is just the wordmark and the sidebar trigger, so this
-              is the only place the owner sees which business they're in. */}
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground md:hidden">
-            <Store className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{owner?.business_name || "Mi negocio"}</span>
-          </p>
-        </div>
-        {lastSignIn ? (
-          /* shrink-0 and nowrap together are what keep this at two lines. As a
-             plain flex child it gets squeezed by a longer name and wraps to
-             four: "Último inicio de / sesión: / 12 sept. 2026, 11:45 p. / m."
-             The greeting wraps instead, which reads fine; this does not. */
-          <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-muted-foreground">
-            Última conexión:
-            <br />
-            {lastSignIn}
-          </p>
-        ) : null}
-      </div>
+      {/* Un solo estado de filtros para toda la pantalla: el buscador va dentro
+          de la cabecera, arriba del todo, y la lista que filtra está al final,
+          detrás de las tarjetas de capital. Dos estados separados dejarían al
+          dueño con una lista filtrada de una manera y un buscador diciendo otra.
 
-      {/* Un solo estado de filtros para toda la pantalla: el buscador va
-          justo aquí arriba y la lista que filtra está al final, detrás de las
-          tarjetas de capital. Dos estados separados dejarían al dueño con una
-          lista filtrada de una manera y un buscador diciendo otra. */}
+          Envuelve TAMBIÉN a la cabecera, que es el cambio del 2026-10-03: el
+          campo vive dentro de ella y necesita este estado. El proveedor no pinta
+          nada, así que la cabecera sigue siendo el primer elemento del
+          documento — que es lo que su `-mt-4` da por supuesto. */}
       <ClientFilterProvider rows={visibleRows} rateContext={ownerRate}>
-        {/* Debajo del nombre y del negocio, antes que nada más. Buscar a una
-            persona es lo que el tendero viene a hacer la mayoría de las veces,
-            y hasta ahora exigía bajar toda la pantalla hasta la lista. */}
-        <ClientSearchCartera />
+        {/* LA CABECERA, PEGADA ARRIBA Y DE BORDE A BORDE. Se trae el saludo, el
+            negocio y la última conexión, que hasta el 2026-10-03 eran una fila
+            más del cuerpo de la pantalla, y se queda con el buscador dentro.
+
+            Va primera a propósito, por delante del aviso de instalación: su
+            `-mt-4` cancela el relleno de `AppMain` y eso solo funciona si no hay
+            nada por encima. Y buscar a una persona es lo que el tendero viene a
+            hacer la mayoría de las veces, así que el campo tiene que ser lo
+            primero que encuentra, no algo detrás de un banner. */}
+        <HomeHeader
+          firstName={owner?.first_name ?? null}
+          businessName={owner?.business_name || "Mi negocio"}
+          lastSignIn={lastSignIn}
+        >
+          <ClientSearchCartera />
+        </HomeHeader>
+
+        {/* Solo para los dueños que ya estaban cuando esto se construyó y nunca
+            vieron nada: a los nuevos se les pregunta en el registro. No se les
+            enciende por migración — Meta exige consentimiento afirmativo, y con
+            un solo número para toda la plataforma, tres dueños marcando el
+            mensaje como no deseado bajan el rating de los 24 a la vez. */}
+        {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
 
         {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
             al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
@@ -259,50 +266,46 @@ export default async function DashboardPage({
         </div>
 
 
-        {/* Se apartan con "Agregar movimiento", bajo la misma condición: la
-            lista de coincidencias cae justo encima de ellas.
+        {/* Se aparta con "Agregar movimiento", bajo la misma condición: la lista
+            de coincidencias cae justo encima de ella.
 
-            Se va el bloque entero, también la tarjeta única de un negocio
-            colombiano. El encargo nombró las dos de un negocio venezolano
-            —USD y Euro—, pero la colombiana ocupa el mismo sitio y la lista la
-            tapa igual: dejarla puesta sería arreglar el estorbo en Venezuela y
-            conservarlo en Colombia.
-
-            Stacked on a phone, side by side once there is room — the cards are
-            two independent ledgers, not a sequence, so they read better abreast
-            than stacked on a wide screen. */}
+            UNA SOLA TARJETA desde el 2026-10-03, también para un negocio
+            venezolano. Antes eran dos —USD y Euro— una al lado de la otra, y el
+            problema no era el sitio que ocupaban: dos cifras del mismo tamaño,
+            con el mismo rótulo y el mismo color, obligan a leer las dos para
+            saber cuál es tu cartera. Ahora la mayor va grande y la menor en una
+            línea pequeña debajo; cuál es cuál lo decide esta pantalla, que es la
+            que tiene los dos totales. El porqué completo, en `balance-card.tsx`. */}
         <HideWhileResults>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            {rateContext ? (
-              <>
-                <BalanceCard
-                  label="Capital por cobrar en USD"
-                  balance={totalUsd}
-                  currency="USD"
-                  ledger={ledger}
-                  chartData={weeklyLendingUsd}
-                  chartTitle="Fiado vs. Abono (USD)"
-                />
-                <BalanceCard
-                  label="Capital por cobrar en Euro"
-                  balance={totalEur}
-                  currency="EUR"
-                  ledger={ledger}
-                  chartData={weeklyLendingEur}
-                  chartTitle="Fiado vs. Abono (EUR)"
-                />
-              </>
-            ) : (
-              <BalanceCard
-                label="Capital por cobrar"
-                balance={totalCop}
-                currency={null}
-                ledger={null}
-                chartData={weeklyLendingCop}
-              />
-            )}
-          </div>
+          <BalanceCard
+            label="Capital por cobrar"
+            ledger={ledger}
+            {...(rateContext
+              ? {
+                  main: usdIsLarger ? usdLedger : eurLedger,
+                  secondary: usdIsLarger ? eurLedger : usdLedger,
+                }
+              : { main: copLedger, secondary: null })}
+          />
         </HideWhileResults>
+
+        {/* AQUÍ ABAJO Y NO ARRIBA DEL TODO, desde el 2026-10-03. Este aviso es
+            una tarjeta oscura a propósito — `DESIGN-SYSTEM.md` lo explica así:
+            "una pieza oscura en medio de una pantalla clara está diciendo esto
+            de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
+            que la rodea.
+
+            Con la cabecera nueva dejó de contrastar: era un bloque oscuro pegado
+            a otro bloque oscuro, separados por 16px de blanco, y los dos se
+            leían como una sola mancha. El aviso no desapareció, pero dejó de
+            destacar, que para un aviso es lo mismo.
+
+            Debajo del capital sigue estando alto — lo primero después de la
+            cifra que el dueño viene a ver — y vuelve a estar rodeado de blanco.
+            Solo en teléfono, como siempre: Sevenz es instalable desde agosto y
+            ningún tendero se enteró porque Android enseña su propio aviso,
+            discreto y fácil de ignorar, y en iPhone no aparece nunca. */}
+        <InstallAppBanner />
 
         {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición
             del dueño. Antes iba delante, con el argumento de que el

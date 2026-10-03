@@ -158,20 +158,22 @@ for (const [etiqueta, T] of [["ANTES", ANTES], ["DESPUES", DESPUES]]) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// LA CABECERA OSCURA DEL INICIO — medida ANTES de construirla
+// ────────────────────────────────────────────────────────────────────────
+// LA CABECERA OSCURA DEL INICIO — ya construida (Entrega 2, 2026-10-03)
 //
-// El diseño del 2026-10-03 pone la cabecera sobre `--brand-primary` con el
-// buscador dentro: relleno `chart-3`, borde `ring` de 2px, texto `#DADADA`.
-// Estas filas son su especificación, no una comprobación posterior: dos de
-// ellas deciden cómo hay que escribir el componente.
+// Estas filas eran la ESPECIFICACION del componente antes de escribirlo: dos de
+// ellas decidieron como habia que escribirlo y siguen aqui para que se note si
+// alguien las deshace. Ahora miden lo que `home-header.tsx` y
+// `client-search-cartera.tsx` dibujan de verdad, con los tokens finales.
 console.log("");
 console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #272727");
 {
-  const cab = hexASrgb("#272727");
-  const campo = ok(0.439);            // --chart-3, el relleno del buscador
-  const sec = hexASrgb("#dadada");    // --secondary, el texto segun el diseno
+  const cab = hexASrgb("#272727");          // --brand-primary
+  const campo = hexASrgb("#525252");        // --brand-field
+  const borde = hexASrgb("#a1a1a1");        // --brand-field-border
+  const sec = hexASrgb("#dadada");          // --brand-secondary
   const blanco = [1, 1, 1];
+  const rojo = ok(0.577, 0.245, 27.325);    // --destructive, el contador
 
   const f = (nombre, r, piso, nota = "") => {
     const pasa = r >= piso;
@@ -181,31 +183,55 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
     );
   };
 
-  f("titulo en blanco", ratio(blanco, cab), AA_TEXTO);
-  f("white/70", ratio(sobre(blanco, cab, 0.7), cab), AA_TEXTO);
-  f("white/60", ratio(sobre(blanco, cab, 0.6), cab), AA_TEXTO);
-  f("--brand naranja", ratio(hexASrgb("#f66b02"), cab), AA_TEXTO, "el mas justo de la cabecera");
+  f("saludo en blanco, text-2xl", ratio(blanco, cab), AA_TEXTO);
+  f("negocio y ultima conexion, white/70", ratio(sobre(blanco, cab, 0.7), cab), AA_TEXTO);
+  f("Notificaciones y menu, blanco", ratio(blanco, cab), AA_TEXTO);
+  f("anillo de foco white/40 sobre la cabecera", ratio(sobre(blanco, cab, 0.4), cab), AA_NO_TEXTO,
+    "el de los tres controles de la cabecera");
+  f("hover white/10 sobre la cabecera", ratio(sobre(blanco, cab, 0.1), cab), 1,
+    "solo informativo: un hover no tiene piso, pero tiene que notarse");
+  f("--brand naranja (en el logo)", ratio(hexASrgb("#f66b02"), cab), AA_TEXTO, "el mas justo de la cabecera");
+
+  // EL CONTADOR DE AVISOS SIN LEER. Es un grafico que significa algo —"tienes
+  // avisos"— asi que WCAG 1.4.11 le pide 3:1 contra lo que tiene detras. El
+  // rojo no llega, y no se cambia: es el mismo rojo de la barra de abajo y
+  // tiene que seguir siendolo. Lo separa un ring-2 del color de la cabecera.
+  f("contador rojo contra la cabecera, SIN anillo", ratio(rojo, cab), AA_NO_TEXTO,
+    "por eso lleva ring-2 ring-brand-primary");
+  f("numero blanco dentro del contador", ratio(blanco, rojo), AA_TEXTO);
 
   // EL BORDE DEL BUSCADOR CARGA PESO. El relleno del campo apenas se despega
-  // de la cabecera: lo que lo hace perceptible es el anillo de 2px, no el
+  // de la cabecera: lo que lo hace perceptible es el borde de 2px, no el
   // fondo. Quien quite ese borde deja un campo invisible, y el fallo se vera
   // como "el buscador no esta" en vez de como un problema de color.
   f("relleno del campo contra la cabecera", ratio(campo, cab), AA_NO_TEXTO,
     "por eso el borde de 2px NO es decorativo");
-  f("borde ring de 2px contra la cabecera (tema claro)", ratio(ok(0.62), cab), AA_NO_TEXTO);
-  f("borde ring de 2px contra la cabecera (tema oscuro)", ratio(ok(0.708), cab), AA_NO_TEXTO);
+  f("borde #a1a1a1 de 2px contra la cabecera", ratio(borde, cab), AA_NO_TEXTO,
+    "--brand-field-border, fijo en los dos temas");
+  f("borde blanco al enfocar", ratio(blanco, cab), AA_NO_TEXTO);
 
   console.log("");
-  console.log("   dentro del buscador (relleno chart-3 = " + srgbAHex(campo) + ")");
+  console.log("   dentro del buscador (relleno --brand-field #525252)");
   f("texto escrito, #DADADA", ratio(sec, campo), AA_TEXTO);
+  f("placeholder #DADADA a opacidad completa", ratio(sec, campo), AA_TEXTO,
+    "es la razon de no usar placeholder:text-muted-foreground");
+  f("lupa y aspa, #DADADA", ratio(sec, campo), AA_NO_TEXTO);
   // EL PLACEHOLDER NO SE PUEDE ATENUAR. Es lo que hace por defecto cualquier
-  // input, y aqui falla a CUALQUIER opacidad — incluso al 80%. Va a opacidad
-  // completa, o en blanco.
+  // input de este repo, y aqui falla a CUALQUIER opacidad — incluso al 80%.
   for (const a of [0.5, 0.6, 0.7, 0.8]) {
-    f(`placeholder #DADADA al ${a * 100}%`, ratio(sobre(sec, campo, a), campo), AA_TEXTO,
-      "atenuarlo NO es una opcion");
+    f(`si se atenuara al ${a * 100}%`, ratio(sobre(sec, campo, a), campo), AA_TEXTO,
+      "NO es una opcion");
   }
-  f("placeholder en blanco, la alternativa", ratio(blanco, campo), AA_TEXTO);
+  // La sombra interior 0/4/4 oscurece el borde superior del relleno. Oscurecer
+  // el fondo de un texto CLARO le sube el contraste, no se lo baja: la sombra
+  // no puede romper el texto. Lo que empeora es la separacion del relleno
+  // contra la cabecera, y de esa se encarga el borde.
+  f("texto #DADADA sobre el relleno con la sombra interior",
+    ratio(sec, sobre([0, 0, 0], campo, 0.25)), AA_TEXTO,
+    "la sombra SUBE este contraste");
+  f("relleno con sombra interior contra la cabecera",
+    ratio(sobre([0, 0, 0], campo, 0.25), cab), AA_NO_TEXTO,
+    "empeora, y es justo lo que el borde cubre");
 }
 
 console.log("");

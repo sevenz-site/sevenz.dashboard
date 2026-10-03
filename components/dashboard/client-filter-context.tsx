@@ -64,7 +64,16 @@ export function ClientFilterProvider({
   // criterio para acabar con el botón visible bajo una lista abierta, que es
   // exactamente el toque por error que queremos impedir.
   const open = focused && filters.controls.nameQuery.trim() !== "";
-  const searchOpen = useMemo(() => ({ open, setFocused }), [open, setFocused]);
+  // `focused` tambien sale, y no es un extra: la cabecera del Inicio congela su
+  // colapso mientras el dueño escribe. Si lo dedujera por su cuenta —de un
+  // onFocus propio en el campo, por ejemplo— habria dos ideas de "esta
+  // buscando" en la misma pantalla, y el dia que una se adelantara 150ms a la
+  // otra el buscador se movería debajo del dedo. Es el mismo argumento que ya
+  // sostiene `open`, aplicado una vez mas.
+  const searchOpen = useMemo(
+    () => ({ open, focused, setFocused }),
+    [open, focused, setFocused],
+  );
 
   return (
     <FilterContext.Provider value={filters}>
@@ -74,8 +83,13 @@ export function ClientFilterProvider({
 }
 
 // ¿Hay una lista de coincidencias abierta sobre la pantalla de Cartera?
-const SearchOpenContext = createContext<{ open: boolean; setFocused: (v: boolean) => void }>({
+const SearchOpenContext = createContext<{
+  open: boolean;
+  focused: boolean;
+  setFocused: (v: boolean) => void;
+}>({
   open: false,
+  focused: false,
   setFocused: () => {},
 });
 

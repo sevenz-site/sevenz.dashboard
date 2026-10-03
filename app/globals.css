@@ -32,6 +32,8 @@
   --color-brand: var(--brand);
   --color-brand-primary: var(--brand-primary);
   --color-brand-secondary: var(--brand-secondary);
+  --color-brand-field: var(--brand-field);
+  --color-brand-field-border: var(--brand-field-border);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -83,6 +85,26 @@
   --brand-primary: #272727;
   --brand-secondary: #dadada;
   --brand: #f66b02;
+  /* Los dos de la cabecera del Inicio, y estan aqui —fijos— por la misma razon
+     que los tres de arriba: esa cabecera no se invierte con el tema, asi que
+     un token que si lo haga le rompe el contraste sin que nadie se entere.
+
+     `--brand-field` vale lo mismo que `--chart-3` resuelve hoy (#525252). No se
+     usa `--chart-3` directamente porque es un color de GRAFICO: el dia que
+     alguien retoque la escala de las barras, el relleno del buscador se iria
+     con ella.
+
+     `--brand-field-border` CARGA PESO, no decora. El relleno del campo queda a
+     1,92:1 contra la cabecera —por debajo del 3:1 de WCAG 1.4.11— asi que lo
+     que hace visible el buscador es este borde de 2px, no su fondo. Quien lo
+     quite deja un campo invisible, y el fallo se leera como "el buscador no
+     esta" en vez de como un problema de color. Vale #a1a1a1 (5,78:1 contra la
+     cabecera), que es lo que `--ring` vale EN OSCURO: en claro vale #868686 y
+     daria 4,10:1 — tambien pasa, pero cambiaria de un tema a otro.
+
+     Medido con `npm run qa:contraste`. */
+  --brand-field: #525252;
+  --brand-field-border: #a1a1a1;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -150,6 +172,9 @@
   --brand-primary: #272727;
   --brand-secondary: #dadada;
   --brand: #f66b02;
+  /* Mismos valores que en claro, a proposito: ver el comentario de :root. */
+  --brand-field: #525252;
+  --brand-field-border: #a1a1a1;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);

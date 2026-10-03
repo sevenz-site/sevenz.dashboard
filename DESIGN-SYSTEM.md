@@ -475,6 +475,15 @@ oscuro:
 | `--brand-primary` | `#272727` | el gris oscuro de la marca |
 | `--brand-secondary` | `#DADADA` | el gris claro |
 | `--brand` | `#F66B02` | el naranja |
+| `--brand-field` | `#525252` | el relleno del buscador de la cabecera |
+| `--brand-field-border` | `#A1A1A1` | su borde — **no es decoración**, ver abajo |
+
+Los dos últimos se añadieron el 2026-10-03 con la cabecera del Inicio. No son
+colores de marca en el sentido de "irían en una tarjeta impresa": están en esta
+capa porque **van sobre una superficie que no se invierte**, que es lo único que
+decide. `--brand-field` vale lo mismo que `--chart-3` resuelve hoy, y aun así es
+un token aparte: `--chart-3` es un color de GRÁFICO, y el día que alguien retoque
+la escala de las barras se llevaría el buscador con ella.
 
 **Los tokens semánticos** —`--primary`, `--secondary`, `--background`,
 `--card`…— describen un ROL, no un color, y se invierten con el tema.
@@ -516,9 +525,10 @@ hay que oscurecerlo en `globals.css` primero, no en el componente.
 
 ## Las tarjetas oscuras son oscuras en los dos temas
 
-Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
+Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
+(`components/dashboard/home-header.tsx`), el aviso "Instala Sevenz en tu
 teléfono" (`components/install-app.tsx`) y el globo del recorrido de
-bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
+bienvenida (`components/dashboard/tour-tooltip.tsx`). Las tres usan
 `bg-brand-primary` y colores de texto `white/N`, no tokens de tema.
 
 **`--brand-primary` vale `#272727` y vale LO MISMO en los dos temas**, igual que
@@ -534,6 +544,17 @@ No es descuido. Una pieza oscura en medio de una pantalla clara está diciendo
 "esto de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
 que la rodea. Con `bg-popover` el globo sería blanco sobre blanco en tema
 claro y dejaría de hacer lo único que tiene que hacer.
+
+**Y esa frase tiene una consecuencia que costó descubrir el mismo día que se
+escribió: "en medio de una pantalla clara" es una condición, no un adorno.** Al
+estrenar la cabecera del Inicio, el aviso de instalación quedó justo debajo de
+ella — bloque oscuro, 16px de blanco, bloque oscuro — y los dos se leían como una
+sola mancha. El aviso seguía ahí y seguía siendo oscuro; lo que había perdido era
+lo único que lo hacía un aviso. Se bajó a debajo de la tarjeta de capital, donde
+vuelve a estar rodeado de blanco.
+
+La regla, entonces: **antes de añadir una cuarta pieza oscura, mira qué tiene al
+lado.** Dos de estas pegadas no suman énfasis, se lo quitan la una a la otra.
 
 Y por eso el texto tampoco puede ir en tokens: **sobre un fondo fijo, un token
 que cambia con el tema es exactamente lo que rompe el contraste sin que nadie
@@ -554,6 +575,82 @@ que cae: vuelve a medirlo antes de tocarlo.
 **El globo del recorrido es solo para onboarding.** No es un tooltip de uso
 general: para una ayuda contextual normal está el popover del sistema, que sí
 sigue el tema.
+
+## La cabecera del Inicio: dos cosas que no se pueden tocar
+
+`components/dashboard/home-header.tsx` y el campo de
+`components/dashboard/client-search-cartera.tsx`, desde el 2026-10-03. Es el
+único sitio de la app donde un campo de formulario vive sobre una superficie
+oscura, y por eso tiene reglas propias. Todo lo de abajo sale de
+`npm run qa:contraste`, no de mirarlo.
+
+**1. El borde de 2px del buscador no es decoración.** El relleno del campo queda
+a **1,91:1** contra la cabecera, por debajo del 3:1 que WCAG 1.4.11 pide a un
+borde con significado. Lo que hace que el buscador se vea NO es su fondo: es el
+borde. Quien lo quite por limpiar deja un campo invisible — y el fallo se
+reportará como "el buscador no está", no como un problema de color.
+
+**2. El placeholder no se puede atenuar.** Es lo que hace por defecto cualquier
+otro input de este repo (`placeholder:text-muted-foreground`), y aquí falla a
+CUALQUIER opacidad: 2,64:1 al 50%, 3,65:1 al 70% y todavía **4,24:1 al 80%**,
+por debajo del 4,5:1 de texto normal. Va a opacidad completa o no va.
+
+Que el placeholder y el texto escrito sean el mismo `#DADADA` es deliberado y
+tiene un coste conocido: por color no se distingue un campo vacío de uno
+escrito. Lo que los distingue es el icono — lupa cuando está vacío, aspa cuando
+hay texto. La alternativa era el placeholder en blanco (7,71:1), que lo dejaría
+MÁS brillante que el valor: justo al revés de lo que significa.
+
+Medido sobre `#272727`:
+
+| | Ratio | Piso | |
+|---|---|---|---|
+| saludo en blanco | 14,94:1 | 4,5 | pass |
+| negocio y última conexión, `white/70` | 8,05:1 | 4,5 | pass |
+| anillo de foco `white/40` | 3,65:1 | 3 | pass |
+| contador rojo de avisos | 3,14:1 | 3 | pass, **justo** |
+| número blanco dentro del contador | 4,76:1 | 4,5 | pass, **justo** |
+| relleno del campo | 1,91:1 | 3 | **falla** — lo cubre el borde |
+| borde `--brand-field-border` | 5,78:1 | 3 | pass |
+| texto y placeholder `#DADADA` en el campo | 5,59:1 | 4,5 | pass |
+
+**La sombra interior no es un riesgo.** Oscurece el borde superior del relleno,
+y oscurecer el fondo de un texto CLARO le sube el contraste (de 5,59 a 7,71), no
+se lo baja. Lo que empeora es la separación del relleno contra la cabecera — y de
+esa, otra vez, se encarga el borde.
+
+## La cabecera del Inicio se pega entera, y hay una razón
+
+El primer intento fue sin JavaScript: `sticky` en la fila de la marca y `sticky`
+en el buscador, dejando que el saludo se fuera solo entre las dos. Cero estado,
+cero salto. **No funciona**, y el motivo es el que más cuesta ver de `sticky`:
+
+> Un elemento `sticky` solo se pega **dentro de su bloque contenedor**.
+
+Si ese contenedor es el div oscuro —168px de alto—, al pasar de 168px de scroll
+las dos filas se despegan y se van con él. La cabecera se quedaría arriba
+exactamente hasta el momento en que empieza a hacer falta.
+
+Pegando el bloque ENTERO, su contenedor pasa a ser la columna de la pantalla, que
+llega hasta el final. El precio es que el saludo se esconde con estado, y eso
+trae dos guardias que no son afinado fino:
+
+- **Histéresis** (colapsa a 64px, se expande por debajo de 24). Con un solo
+  umbral, el salto que produce el propio colapso puede devolver el scroll justo
+  por debajo de él, que vuelve a expandir, que vuelve a saltar.
+- **No colapsa si la página no tiene hacia dónde bajar.** Esconder el saludo
+  acorta el documento ~56px; en la cartera de un dueño con dos clientes eso basta
+  para que el navegador recorte el scroll y la cabecera se reabra sola.
+
+Y una tercera cosa, que es de iPhone: **mientras el buscador tiene el foco, el
+scroll no cuenta.** En iOS, abrir el teclado redimensiona la ventana y desplaza
+la página para traer el campo a la vista — un scroll que el dueño no ha hecho.
+Sin ese congelado, tocar el buscador colapsa la cabecera y mueve el campo justo
+cuando el dedo acaba de aterrizar en él. El `focused` que lo decide es **el
+mismo** que decide si se pinta la lista de coincidencias
+(`client-filter-context.tsx`), no uno nuevo: dos ideas de "está buscando" en la
+misma pantalla acaban desincronizadas, y el síntoma sería el campo moviéndose
+bajo el dedo.
 
 ## Una elección se marca; una acción se pulsa
 

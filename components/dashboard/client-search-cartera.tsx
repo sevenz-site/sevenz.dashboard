@@ -36,6 +36,34 @@ import { clientHref } from "@/lib/client-origin";
 // El efecto secundario que conviene conocer: al terminar de buscar hay que
 // vaciar el campo para recuperar la cartera entera. Por eso el aspa está
 // siempre a mano en cuanto hay texto.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// VA DENTRO DE LA CABECERA OSCURA, Y DE AHÍ SALE TODO SU ASPECTO
+//
+// Desde el 2026-10-03 este campo no vive sobre el fondo de la página: vive
+// sobre `--brand-primary` (#272727), que vale lo mismo en los dos temas. Por
+// eso ni un solo color suyo es un token semántico — en tema oscuro `--input` y
+// `--ring` se invierten y lo dejarían invisible sobre un fondo que no se
+// invierte. Esa es la regla de las dos capas de `DESIGN-SYSTEM.md`.
+//
+// DOS COSAS QUE NO SE PUEDEN TOCAR, las dos medidas con `npm run qa:contraste`:
+//
+//   1. EL BORDE DE 2px NO ES DECORACIÓN. El relleno del campo queda a 1,92:1
+//      contra la cabecera, por debajo del 3:1 que pide WCAG 1.4.11. Lo que hace
+//      que el buscador se vea es el borde, no su fondo. Quitarlo deja un campo
+//      invisible, y el fallo se lee como "el buscador no está".
+//
+//   2. EL PLACEHOLDER NO SE PUEDE ATENUAR. Es lo que hace por defecto cualquier
+//      input de este repo (`placeholder:text-muted-foreground`), y aquí falla a
+//      CUALQUIER opacidad: 2,64:1 al 50%, y todavía 4,23:1 al 80%, por debajo
+//      del 4,5:1 de texto. Va a opacidad completa o no va.
+//
+// Que el placeholder y el texto escrito sean el mismo #DADADA es deliberado y
+// tiene un coste conocido: de un vistazo no se distingue un campo vacío de uno
+// escrito por el color. Lo que los distingue es el icono — lupa cuando está
+// vacío, aspa cuando hay texto. La alternativa era el placeholder en blanco
+// (7,80:1), que lo dejaría MÁS brillante que el valor: al revés de lo que
+// significa.
 
 export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeholder?: string }) {
   const router = useRouter();
@@ -59,7 +87,13 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
       <div className="relative">
         {/* 40px y `text-base` en teléfono, como los otros tres buscadores. Lo
             segundo no es cosmético: iOS Safari hace zoom al enfocar cualquier
-            campo por debajo de 16px. */}
+            campo por debajo de 16px.
+
+            Las dos sombras del diseño: una interior y una exterior, las dos
+            0/4/4. La interior oscurece el borde superior del relleno, que SUBE
+            el contraste del texto claro que lleva encima — no lo baja. Lo que
+            empeora es la separación del relleno contra la cabecera, y de esa no
+            se encarga el fondo sino el borde. */}
         <input
           type="text"
           value={c.nameQuery}
@@ -72,21 +106,21 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           // además evitan robar el foco en mousedown, pero un toque en el
           // borde de la lista sí lo quita.
           onBlur={() => setFocused(false)}
-          className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+          className="h-10 w-full min-w-0 rounded-lg border-2 border-brand-field-border bg-brand-field px-3 pr-9 text-base text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 md:text-sm"
         />
         {c.nameQuery ? (
           <button
             type="button"
             onClick={() => c.setNameQuery("")}
             aria-label="Borrar búsqueda"
-            className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute top-1/2 right-2 -translate-y-1/2 rounded text-brand-secondary outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
           >
             <X className="size-4" />
           </button>
         ) : (
           <Search
             aria-hidden="true"
-            className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
+            className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-brand-secondary"
           />
         )}
       </div>

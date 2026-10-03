@@ -26,6 +26,18 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
   // belongs in this list too. /papelera shipped without it and rendered both
   // bars on a phone — the copied comment says "replaces the app header", but
   // nothing enforces it from that end.
+  // INICIO NO LLEVA ESTA BARRA EN NINGUNA ANCHURA, y es el unico caso asi.
+  //
+  // `hasOwnBar` de abajo esconde la barra solo en telefono porque esas
+  // pantallas traen su propia fila de "← volver" ahi y de sm hacia arriba
+  // sobra sitio para las dos. Inicio es distinto: desde el 2026-10-03 su
+  // cabecera oscura (`HomeHeader`) trae la marca, el menu y Notificaciones ella
+  // misma, en las dos anchuras. Dejar esta encima seria la marca dos veces y
+  // dos accesos al menu, uno sobre el otro.
+  //
+  // Quien quite `HomeHeader` tiene que quitar esta linea en el mismo cambio, o
+  // Inicio se queda sin ninguna cabecera y sin forma de abrir el menu.
+  const esInicio = pathname === "/dashboard";
   const hasOwnBar =
     pathname.startsWith("/clients/") ||
     pathname === "/clients" ||
@@ -42,7 +54,7 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
         // debajo al hacer scroll. z-20 la pone sobre la página y por debajo
         // de diálogos y sheets, que viven en z-50.
         "sticky top-0 z-20 h-14 shrink-0 items-center gap-2 border-b bg-background px-4",
-        hasOwnBar ? "hidden sm:flex" : "flex",
+        esInicio ? "hidden" : hasOwnBar ? "hidden sm:flex" : "flex",
       )}
     >
       {children}
