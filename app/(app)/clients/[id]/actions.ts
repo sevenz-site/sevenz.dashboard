@@ -60,7 +60,13 @@ export async function updateClient(
   const clientId = String(formData.get("client_id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
-  const documentId = String(formData.get("document_id") ?? "").trim();
+  // SOLO DIGITOS, por lo mismo que en el alta: el filtro del navegador no es
+  // una defensa del servidor. Ver la migracion 079.
+  //
+  // Y tiene un efecto util aqui: si una ficha vieja guarda "V-123", al
+  // editarla `documentChanged` sale true contra el "123" filtrado, asi que
+  // la comprobacion de duplicados corre y la ficha queda normalizada sola.
+  const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
   const address = String(formData.get("address") ?? "").trim();
 
   if (!clientId) return { error: "Cliente inválido.", success: false };
