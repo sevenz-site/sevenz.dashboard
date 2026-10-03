@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, UserRoundSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,23 @@ import {
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+// La misma ficha que usan la revision de la libreta y el emparejamiento. Vive
+// en `components/import/` por donde nacio, no por a quien pertenece: es la
+// forma en que Sevenz presenta "este cliente que ya tienes" en cualquier sitio
+// donde haya que reconocerlo, y una segunda copia aqui se separaria de aquella
+// en cuanto alguien retocara una.
+import { FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente";
 
 const initialState: EditClientState = { error: null, success: false };
 
@@ -72,6 +89,22 @@ export function EditClientDialog({
     setSeenClientId(client.id);
     setDocumentIdValue(client.document_id ?? "");
   }
+  // CT-28. Lee el formulario VIVO en vez de reusar el FormData de hace un
+  // momento: el mismo motivo que `confirmDuplicateAndSubmit` en el alta — entre
+  // que salta el aviso y se confirma, el dueño puede haber corregido un dígito,
+  // y reenviar la foto vieja guardaría lo que ya no está en pantalla.
+  function confirmarDuplicadoYGuardar() {
+    if (!formRef.current) return;
+    if (!validate(formRef.current)) return;
+    const data = new FormData(formRef.current);
+    data.set("confirm_duplicate", "true");
+    formAction(data);
+  }
+
+  // Lo que el servidor devolvio: quienes llevan ya esa cedula. Vacio mientras
+  // no haya choque, que es el caso normal.
+  const duplicados = state.duplicados ?? [];
+
   const { errors, validate, recheck, reset } = useFieldErrors({
     name: required,
     document_id: required,
@@ -184,8 +217,98 @@ export function EditClientDialog({
 
           ) : null}
 
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
+          {/* ── CT-28: la cédula ya es de otro, y eso deja de ser un muro ──
+              Era el ÚNICO de los tres sitios donde se teclea una cédula que no
+              daba salida: el alta ofrece «Crear cuenta separada» desde la 034 y
+              la importación lo ofrece desde CT-29b. Lo que esto rompía, medido
+              el 2026-10-02: una ficha creada deprisa sin cédula a la que tres
+              semanas después se le quiere poner la suya. No se podía, y la
+              única salida visible era borrarla y rehacerla — perdiendo sus
+              movimientos, que son deudas.
+
+              LA FICHA ENTERA Y CON EL SALDO, no una frase con un nombre. Es lo
+              que convierte esto en una decisión informada en vez de un botón que
+              se pulsa sin leer: nadie confirma «es otra cuenta de la misma
+              persona» viendo que la otra debe $3.016 y no la reconoce. */}
+          {duplicados.length > 0 ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+              <p className="flex items-start gap-1.5 text-sm">
+                <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                <span>
+                  {duplicados.length > 1
+                    ? `Esa cédula ya es de ${duplicados.length} clientes tuyos.`
+                    : `Esa cédula ya es de “${duplicados[0].name}”.`}
+                  <span className="mt-1 block text-muted-foreground">
+                    Revísala, o confirma que le estás abriendo una cuenta aparte a la misma
+                    persona.
+                  </span>
+                </span>
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {duplicados.map((d) => (
+                  <div key={d.id} className="flex flex-col gap-1.5">
+                    <FichaDeCliente
+                      nombre={d.name}
+                      documento={d.document_id}
+                      whatsapp={d.whatsapp}
+                      debe={loQueDebe(d)}
+                      oculto={d.hidden}
+                    />
+                    {/* Misma salida que ofrece el alta: poder ir a mirar la otra
+                        ficha antes de decidir. */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      onClick={() => {
+                        setOpen(false);
+                        router.push(`/clients/${d.id}`);
+                      }}
+                    >
+                      Ver cuenta de {d.name}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className={duplicados.length > 0 ? "flex-col gap-2 sm:flex-col" : undefined}>
+            {duplicados.length > 0 ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button type="button" className="w-full" disabled={pending}>
+                    Sí, es otra cuenta de la misma persona
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Dos cuentas con la misma cédula?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {duplicados.length > 1
+                        ? `Ya tienes ${duplicados.length} clientes con esta cédula.`
+                        : `Ya tienes a ${duplicados[0].name} con esta cédula.`}{" "}
+                      Solo continúa si es a propósito — por ejemplo, llevarle la cuenta personal
+                      y la del negocio por separado a un mismo cliente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={confirmarDuplicadoYGuardar}>
+                      Sí, son cuentas separadas
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
+            <Button
+              type="submit"
+              disabled={pending}
+              variant={duplicados.length > 0 ? "outline" : "default"}
+              className={duplicados.length > 0 ? "w-full" : undefined}
+            >
               {pending ? "Guardando..." : "Guardar cambios"}
             </Button>
           </DialogFooter>
