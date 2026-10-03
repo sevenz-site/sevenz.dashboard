@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -181,9 +181,41 @@ export function ImportFlow({
   const [reviewMovements, setReviewMovements] = useState<ExtractedMovement[] | null>(null);
   const { setDirty, guard } = useUnsavedChangesGuard();
   const { setRevisando } = useRevisionEnCurso();
+
+  // ── CT-21: la seleccion de movimientos, y por que vive aqui ────────────
+  //
+  // La pinta el detalle, pero el estado esta aqui por el boton «atras»: hace
+  // falta decidir, DENTRO del guardia que ya existe, si ese atras deshace la
+  // seleccion o pregunta si se sale de la revision. Una segunda trampa de
+  // historial propia despertaba a esta y sacaba «¿Salir sin subir la libreta?»
+  // al deseleccionar — visto en dev el 2026-10-02.
+  const [seleccionDeMovimientos, setSeleccionDeMovimientos] = useState<Set<string>>(new Set());
+  // Un espejo en ref porque `guardConSeleccion` TIENE que ser estable: es
+  // dependencia del efecto de `useTrampaDeAtras`, y ese efecto empuja una
+  // entrada al historial cada vez que corre. Con la seleccion en las
+  // dependencias, marcar un movimiento empujaria una entrada por toque.
+  const seleccionRef = useRef(seleccionDeMovimientos);
+  useEffect(() => {
+    seleccionRef.current = seleccionDeMovimientos;
+  }, [seleccionDeMovimientos]);
   // El botón atrás del teléfono y el gesto de deslizar: la salida más probable
   // en un móvil, y la única que no pasa por ningún onClick nuestro.
-  const consumirCentinela = useTrampaDeAtras(reviewMovements !== null, guard);
+  // «Atras» con movimientos marcados DESHACE LA SELECCION y no sale.
+  //
+  // Devolver sin llamar a `proceed` basta: `useTrampaDeAtras` repone su
+  // centinela ANTES de llamar aqui, asi que la trampa sigue armada para el
+  // siguiente atras y no queda ninguna entrada suelta que gastar.
+  const guardConSeleccion = useCallback(
+    (proceed: () => void) => {
+      if (seleccionRef.current.size > 0) {
+        setSeleccionDeMovimientos(new Set());
+        return;
+      }
+      guard(proceed);
+    },
+    [guard],
+  );
+  const consumirCentinela = useTrampaDeAtras(reviewMovements !== null, guardConSeleccion);
 
   // Entrar y salir de la revisión, en un solo sitio. Los tres estados van
   // juntos siempre —hay filas, hay que avisar al salir, la barra se esconde—
@@ -1296,6 +1328,17 @@ export function ImportFlow({
     setEliminados((prev) => new Set(prev).add(rowId));
   }
 
+  // CT-21. Varios de golpe, con UNA sola foto para el historial.
+  function removeMovements(rowIds: string[]) {
+    if (rowIds.length === 0) return;
+    recordar();
+    setEliminados((prev) => {
+      const siguiente = new Set(prev);
+      for (const id of rowIds) siguiente.add(id);
+      return siguiente;
+    });
+  }
+
   // CT-25. Escribir el nombre en la fila la saca de "sin cliente" y la mete en
   // la tuberia normal: a partir de ahi es un renglon como cualquier otro, con su
   // tarjeta, su saldo corrido y su comprobacion contra el total escrito.
@@ -1893,7 +1936,16 @@ export function ImportFlow({
                 onEliminarCliente={() =>
                   eliminarCliente(clienteAbierto.nameKey, clienteAbierto.rowIds)
                 }
-                onAplicarMoneda={(moneda) => aplicarMonedaAlCliente(clienteAbierto.rowIds, moneda)}
+                // CT-21: las filas las decide el detalle, que es quien sabe si
+                // hay seleccion. `aplicarMonedaAlCliente` ya aceptaba una lista
+                // arbitraria de rowIds, asi que no hubo que tocarla.
+                onAplicarMoneda={(rowIds, moneda) => aplicarMonedaAlCliente(rowIds, moneda)}
+                // UNA llamada con todos los ids = UN paso de deshacer. Llamar a
+                // `removeMovement` doce veces dejaria doce pasos en la pila y
+                // obligaria a pulsar doce veces para volver de una sola decision.
+                onEliminarVarios={removeMovements}
+                seleccion={seleccionDeMovimientos}
+                setSeleccion={setSeleccionDeMovimientos}
                 duplicadosPorDocumento={duplicadosPorDocumento.get(clienteAbierto.nameKey) ?? []}
                 cuentaSeparada={cuentasSeparadas.has(clienteAbierto.nameKey)}
                 onCuentaSeparada={() => confirmarCuentaSeparada(clienteAbierto.nameKey)}

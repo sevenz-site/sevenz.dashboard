@@ -41,6 +41,13 @@ import { reconcileMovements, agruparPorCliente, seParecen } from "../lib/reconci
 import { ErrorParaElDueno, mensajeDeError } from "../lib/errores-legibles.ts";
 import { normalizeDocumentId } from "../lib/format.ts";
 import { documentAnswerKey, findDocumentDuplicates } from "../lib/document-duplicates.ts";
+import {
+  alternar,
+  podarSeleccion,
+  textoDeEliminar,
+  textoDeMoneda,
+  textoDeSeleccion,
+} from "../lib/seleccion-de-movimientos.ts";
 import { empujar, sacar, textoDeDeshacer, MAX_PASOS } from "../lib/historial-de-revision.ts";
 import {
   esLineaSuelta,
@@ -1084,6 +1091,49 @@ check(
     return m.get("alguien nuevo")?.[0].hidden === null;
   })(),
 );
+
+console.log("");
+
+console.log("");
+console.log("-- CT-21: seleccion multiple de movimientos ------------------");
+check("marcar una la mete", alternar(new Set(), "a").has("a"));
+check("volver a tocarla la saca", alternar(new Set(["a"]), "a").size === 0);
+check("devuelve un Set NUEVO, no muta el de React", (() => {
+  const antes = new Set(["a"]);
+  const despues = alternar(antes, "b");
+  return antes.size === 1 && despues.size === 2;
+})());
+
+// LA PODA ES LO QUE EVITA LOS FANTASMAS, y es el motivo de que la seleccion no
+// sea estado independiente. Sin ella el contador dice "4 seleccionados" sobre
+// una lista donde no queda ninguno, y el boton de eliminar actuaria sobre ids
+// que ya no existen.
+check(
+  "una fila que desaparece sale sola de la seleccion",
+  (() => {
+    const s = podarSeleccion(new Set(["a", "b", "c"]), ["a", "c"]);
+    return s.size === 2 && s.has("a") && s.has("c") && !s.has("b");
+  })(),
+);
+check(
+  "si no queda ninguna viva, la seleccion se vacia (y el pie vuelve a 'Subir')",
+  podarSeleccion(new Set(["a", "b"]), []).size === 0,
+);
+check("sin seleccion previa, podar no inventa nada", podarSeleccion(new Set(), ["a"]).size === 0);
+
+// Concordancia de numero: una plantilla con la "s" pegada a mano acaba diciendo
+// "1 movimientos", y eso sale en pantalla cada vez que se marca el primero.
+check("1 en singular", textoDeSeleccion(1) === "1 movimiento seleccionado");
+check("3 en plural", textoDeSeleccion(3) === "3 movimientos seleccionados");
+check("el boton destructivo lleva el numero", textoDeEliminar(1) === "Eliminar 1 movimiento");
+check("y en plural tambien", textoDeEliminar(12) === "Eliminar 12 movimientos");
+
+// LA ETIQUETA DE LA MONEDA DICE SOBRE QUE ACTUA. El mismo control hace dos
+// cosas segun haya seleccion o no — decision del usuario del 2026-10-02 — y sin
+// esto el dueño no sabe a cual de las dos acaba de darle.
+check("sin seleccion, la moneda habla de TODO", textoDeMoneda("Dolares", 0) === "Todo Dolares");
+check("con seleccion, habla de los marcados", textoDeMoneda("Euros", 3) === "3 a Euros");
+check("con uno marcado tambien", textoDeMoneda("Euros", 1) === "1 a Euros");
 
 console.log("");
 console.log("-- La revision sobrevive a una recarga -----------------------");
