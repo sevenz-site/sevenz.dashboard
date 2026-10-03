@@ -47,6 +47,14 @@ import { FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente
 
 const initialState: EditClientState = { error: null, success: false };
 
+// Lo mismo que hace `DocumentIdInput` al teclear, y lo mismo que hace el
+// servidor al guardar. Tres sitios con la misma regla: si uno enseña algo que
+// los otros dos van a tirar, el dueño se queda sin entender por que no puede
+// guardar.
+function soloDigitos(v: string | null | undefined): string {
+  return (v ?? "").replace(/[^0-9]/g, "");
+}
+
 // ownerCountry only decides where the picker STARTS. A client who already
 // has a number keeps whatever prefix it was saved with, since splitPhoneNumber
 // wins over preferredDialCode — editing an address must never silently
@@ -83,11 +91,23 @@ export function EditClientDialog({
   // not guarantee this content unmounts, so the value is re-seeded whenever the
   // dialog is opened for a DIFFERENT client; without that, opening the second
   // client's dialog would show the first one's document.
-  const [documentIdValue, setDocumentIdValue] = useState(client.document_id ?? "");
+  // EL CAMPO ENSEÑA LO QUE DE VERDAD SE VA A GUARDAR.
+  //
+  // Sin esto, una ficha vieja con un documento sin digitos —en produccion hay
+  // dos clientes reales guardados como "V", de cuando el campo aceptaba
+  // cualquier cosa— enseñaba "V" en el campo, el dueño cambiaba solo la
+  // direccion, y el servidor contestaba "Escribe la cedula o documento del
+  // cliente" señalando un campo que a la vista tiene algo escrito. Callejon sin
+  // salida, y lo creaba el filtro de digitos del servidor que cierra CT-32.
+  //
+  // Comprobado en dev el 2026-10-03 reproduciendo esa ficha: pasaba tal cual.
+  const [documentIdValue, setDocumentIdValue] = useState(
+    soloDigitos(client.document_id),
+  );
   const [seenClientId, setSeenClientId] = useState(client.id);
   if (client.id !== seenClientId) {
     setSeenClientId(client.id);
-    setDocumentIdValue(client.document_id ?? "");
+    setDocumentIdValue(soloDigitos(client.document_id));
   }
   // CT-28. Lee el formulario VIVO en vez de reusar el FormData de hace un
   // momento: el mismo motivo que `confirmDuplicateAndSubmit` en el alta — entre
@@ -136,7 +156,7 @@ export function EditClientDialog({
           reset();
           // Same reason: a half-typed document must not survive into the next
           // time this dialog opens.
-          setDocumentIdValue(client.document_id ?? "");
+          setDocumentIdValue(soloDigitos(client.document_id));
         }
       }}
     >
