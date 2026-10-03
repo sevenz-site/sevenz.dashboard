@@ -206,10 +206,14 @@ export function InstallAppBanner() {
           volvería blanca y gritaría más de lo que toca.
 
           El #272727 no es un color elegido al azar: es el fondo del propio
-          icon.svg. Por eso el icono se apoya sin recorte ni marco — su cuadrado
-          se funde con la tarjeta y solo queda la S. Era un literal
-          `bg-[#272727]` hasta el 2026-10-03; pasó a token al necesitar la
-          cabecera del Inicio ese mismo gris.
+          `fav-icon-primary.svg`. Por eso el icono se apoya sin recorte ni marco
+          — su cuadrado se funde con la tarjeta y solo queda la S.
+
+          Y hasta el 2026-10-03 eso era una intención, no un hecho: el icono
+          venía dibujado en #171717 sobre una tarjeta de #272727, con la costura
+          a la vista. Los dos valores eran los de la paleta vieja. Al entrar la
+          nueva —y con ella los logos redibujados— coinciden de verdad por
+          primera vez.
 
           Medido: naranja sobre este fondo da 5.0:1 y el gris 5.7:1, los dos por
           encima del 4.5:1 que pide AA. El blanco del título, 14.9:1. */}
