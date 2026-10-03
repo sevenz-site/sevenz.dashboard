@@ -14,6 +14,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatCurrency, formatDocumentId } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { CandidatoDuplicado } from "@/lib/reconcile";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -53,23 +54,49 @@ export function loQueDebe(c: Pick<CandidatoDuplicado, "balance" | "balance_usd" 
 // La ficha de un cliente, igual en la lista y en la confirmación. Se escribe una
 // vez porque en la confirmación aparecen DOS, una encima de otra, y que no se
 // vean idénticas sería justo lo que haría dudar de cuál es cuál.
+// CT-33. Dos estados, dos frases, porque mandan a sitios distintos: la papelera
+// se abre desde Papelera y "oculto definitivamente" NO sale ahi. Decir "esta en
+// la papelera" de quien no esta es mandar a buscar a un sitio vacio, que era
+// justo el callejon.
+export const ETIQUETA_OCULTO = {
+  papelera: "En la papelera",
+  definitivo: "Oculto",
+} as const;
+
 export function FichaDeCliente({
   nombre,
   documento,
   whatsapp,
   debe,
   conInicial = true,
+  oculto = null,
 }: {
   nombre: string;
   documento: string | null;
   whatsapp: string | null;
   debe: string;
   conInicial?: boolean;
+  oculto?: "papelera" | "definitivo" | null;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-l-4 border-l-primary bg-background p-3">
+    <div
+      className={cn(
+        "flex items-start justify-between gap-3 rounded-lg border border-l-4 bg-background p-3",
+        // El borde cambia de color, no solo se añade una etiqueta: una ficha
+        // oculta y una activa tienen que distinguirse ANTES de leer nada, que
+        // es como se leen cuatro fichas en un telefono.
+        oculto ? "border-l-muted-foreground/50" : "border-l-primary",
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-semibold">{nombre}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-semibold">{nombre}</span>
+          {oculto ? (
+            <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {ETIQUETA_OCULTO[oculto]}
+            </span>
+          ) : null}
+        </span>
         <span className="text-xs text-muted-foreground">
           Cédula: {documento ? formatDocumentId(documento) : "—"}
         </span>
@@ -262,6 +289,7 @@ export function AvisoDeDocumentoRepetido({
                 documento={c.document_id}
                 whatsapp={c.whatsapp}
                 debe={loQueDebe(c)}
+                oculto={c.hidden ?? null}
               />
             </span>
           </label>
@@ -329,6 +357,7 @@ export function ListaDeCandidatos({
                       documento={c.document_id}
                       whatsapp={c.whatsapp}
                       debe={loQueDebe(c)}
+                      oculto={c.hidden ?? null}
                     />
                   </button>
                 </li>
@@ -400,7 +429,21 @@ export function ConfirmarEmparejamiento({
               documento={candidato.document_id}
               whatsapp={candidato.whatsapp}
               debe={loQueDebe(candidato)}
+              oculto={candidato.hidden ?? null}
             />
+          ) : null}
+
+          {/* CT-33. SE DICE AQUI Y CON LA CIFRA DELANTE.
+              Emparejar con alguien oculto lo RESTAURA, y restaurar devuelve su
+              saldo a "Capital por cobrar" — el dueño ve subir un total que no
+              subio por esta libreta. Un aviso sin el numero no deja comprobar
+              nada; con el numero, la sorpresa desaparece. */}
+          {candidato?.hidden ? (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/20 dark:bg-amber-500/10">
+              {candidato.hidden === "papelera"
+                ? `${candidato.name} está en la papelera. Al subir estos movimientos se restaurará, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`
+                : `${candidato.name} lo ocultaste definitivamente. Al subir estos movimientos volverá a tu cartera, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`}
+            </p>
           ) : null}
         </div>
 

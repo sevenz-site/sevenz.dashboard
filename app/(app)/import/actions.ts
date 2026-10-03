@@ -69,6 +69,15 @@ export type ImportRow = {
   // segundo registro partiria el historial de alguien que sigue existiendo, y
   // lo correcto es restaurarlo. Esa puerta se queda cerrada.
   confirm_duplicate?: boolean;
+  // CT-33. "Si, se que esta en la papelera (o que lo oculte); restauralo al
+  // subir esto."
+  //
+  // Lo manda la revision cuando el dueño emparejo con un cliente oculto
+  // HABIENDO VISTO su marca y la cifra que vuelve a sus totales. Nunca se
+  // deduce en el servidor: restaurar devuelve un saldo a "Capital por cobrar",
+  // y eso no puede pasar porque un payload viejo apuntara a alguien que entre
+  // tanto se oculto.
+  confirm_restore?: boolean;
 };
 
 export type ConfirmImportState = { error: string | null; imported: number };
@@ -162,10 +171,27 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       if (c.trashed_at || c.deleted_at) hiddenClientNames.set(c.id as string, c.name as string);
     }
   }
-  if (hiddenClientNames.size > 0) {
-    const names = [...hiddenClientNames.values()].join(", ");
+  // ── CT-33: EMPAREJAR CON UN OCULTO LO RESTAURA, si el dueño lo confirmo ──
+  //
+  // Antes esto paraba la tanda y mandaba a Papelera: salir de la revision, ir
+  // a otra pantalla, restaurar, volver. Y para un cliente "oculto
+  // definitivamente" el mensaje era directamente falso — ese no sale ni en
+  // Papelera, asi que mandaba a buscarlo a un sitio vacio.
+  //
+  // Ahora la revision lo enseña con su marca, el dialogo de confirmacion dice
+  // que se va a restaurar y CON QUE SALDO vuelve a los totales, y aqui solo se
+  // comprueba que esa confirmacion viajo. Sin ella sigue parando: restaurar
+  // devuelve dinero a "Capital por cobrar" y eso no puede pasar por accidente.
+  const restoreClientIds = new Set<string>();
+  const sinConfirmar: string[] = [];
+  for (const [id, nombre] of hiddenClientNames) {
+    const confirmada = rows.some((r) => r.client_id === id && r.confirm_restore);
+    if (confirmada) restoreClientIds.add(id);
+    else sinConfirmar.push(nombre);
+  }
+  if (sinConfirmar.length > 0) {
     return {
-      error: `${names} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`,
+      error: `${sinConfirmar.join(", ")} está fuera de tu cartera. Vuelve a abrir la revisión y dinos si quieres recuperarlo con esta libreta.`,
       imported: 0,
     };
   }
@@ -276,15 +302,19 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
 
       const normalizedDocumentId = normalizeDocumentId(documentId);
       const choques = clientsByNormalizedDocumentId.get(normalizedDocumentId) ?? [];
-      // La papelera manda sobre la confirmacion: ver la nota de
-      // `confirm_duplicate` en `ImportRow`.
-      const enPapelera = choques.find((c) => c.hidden);
-      if (enPapelera) {
-        return {
-          error: `${enPapelera.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera para poder subir esta libreta.`,
-          imported: 0,
-        };
-      }
+      // CT-33: UN CLIENTE OCULTO YA NO ES UN MURO.
+      //
+      // La 077 lo bloqueaba aunque viniera confirmado, con el argumento de que
+      // un segundo registro parte un historial. El argumento era bueno MIENTRAS
+      // la pantalla no pudiera enseñarlo: la revision leia `client_summary`, que
+      // esconde a los ocultos, asi que el aviso nombraba a alguien que no se
+      // veia por ningun lado y mandaba a otra pantalla a arreglarlo.
+      //
+      // Ahora la revision lee `client_summary_all` y el oculto sale como
+      // candidato, con su marca y su saldo. Con la ficha delante, decir "es una
+      // cuenta separada" es una decision informada, igual que con un cliente
+      // vivo — y tratarla distinto seria paternalismo con una pantalla que ya
+      // no hace falta. Decidido con el usuario el 2026-10-02.
       // DOS CLIENTES DE ESTA MISMA LIBRETA CON LA MISMA CÉDULA se bloquean
       // SIEMPRE, con confirmación o sin ella, porque la propia `import_libreta`
       // los rechaza (`documento_repetido_en_lote`) y dejarlos pasar aquí sería
@@ -386,6 +416,11 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
   // ── La única escritura, y es una ──────────────────────────────────────
   const { data, error: rpcError } = await supabase.rpc("import_libreta", {
     p_payload: {
+      // CT-33. Los que se restauran en la misma transaccion que la escritura:
+      // si la importacion falla, no se restaura a nadie. Hacerlo antes, desde
+      // aqui, dejaria al cliente de vuelta en la cartera con un "no se guardo
+      // nada" en pantalla — que seria mentira.
+      restore_clients: [...restoreClientIds],
       clients_new: clientsNew,
       client_documents: clientDocuments,
       client_whatsapps: clientWhatsapps,
@@ -457,7 +492,10 @@ function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?:
     case "cliente_invalido":
       return "Uno de los clientes de esta libreta ya no está disponible. Vuelve a abrir la revisión.";
     case "cliente_en_papelera":
-      return `${r.client_name ?? "Un cliente"} está en la papelera. Restáuralo desde Papelera para continuar con esta libreta.`;
+      // CT-33: ya no manda a Papelera. Aqui solo se llega por una carrera —se
+      // oculto en otra pestaña mientras la revision estaba abierta—, y la
+      // salida util es volver a abrirla, donde ahora saldra la pregunta.
+      return `${r.client_name ?? "Un cliente"} salió de tu cartera mientras revisabas. Vuelve a abrir la revisión para decidir qué hacer con él.`;
     case "falta_nombre":
       return "Hay una fila sin nombre de cliente.";
     case "falta_documento":

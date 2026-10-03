@@ -992,6 +992,100 @@ check(
 check("documentAnswerKey sin nada devuelve cadena vacia", documentAnswerKey(null) === "");
 
 console.log("");
+
+console.log("");
+console.log("-- CT-33: los clientes fuera de la cartera -------------------");
+// Desde CT-33 la revision VE a los de la papelera y a los ocultos
+// definitivamente, para poder preguntar por ellos en vez de mandar a otra
+// pantalla. La salvaguarda de que eso no cambie nada mas vive en `byName`.
+const viva = { id: "v1", name: "Petra Villalba", balance: 0, balance_usd: 100, balance_eur: 0, document_id: "19887766", whatsapp: null };
+const enPapelera = { ...viva, id: "t1", name: "Petra Villalba", document_id: "19887766", hidden: "papelera" };
+const ocultaDef = { ...viva, id: "d1", name: "Hilda Camacho", document_id: "17556644", hidden: "definitivo" };
+
+// LO MAS IMPORTANTE DE TODO ESTE BLOQUE. Si el emparejamiento automatico
+// viera a los ocultos, subir una libreta con un nombre repetido empezaria a
+// cargarle los fiados a alguien que el dueño quito a proposito, en silencio, y
+// con su saldo viejo metido en los totales de la revision.
+check(
+  "el emparejamiento AUTOMATICO por nombre NO toca a un oculto",
+  (() => {
+    const f = reconcileMovements([mov({ client_name: "Hilda Camacho", amount: 10 })], [ocultaDef]);
+    return f[0].matched_client_id === null && f[0].needs_document_id === true;
+  })(),
+);
+check(
+  "pero emparejar A MANO con un oculto SI funciona",
+  (() => {
+    const f = reconcileMovements(
+      [mov({ client_name: "Hilda Camacho", amount: 10 })],
+      [ocultaDef],
+      { "hilda camacho": "d1" },
+    );
+    return f[0].matched_client_id === "d1";
+  })(),
+);
+// Y al emparejarlo a mano, su saldo entra en la cuenta: es el numero que la
+// pantalla promete que volvera a los totales.
+check(
+  "emparejado a mano, su saldo previo cuenta en lo que quedara debiendo",
+  (() => {
+    const f = reconcileMovements(
+      [mov({ client_name: "Hilda Camacho", amount: 10, currency: "USD" })],
+      [{ ...ocultaDef, balance_usd: 100 }],
+      { "hilda camacho": "d1" },
+    );
+    return f[0].computed_balance === 110;
+  })(),
+);
+check(
+  "un oculto SI sale como candidato, y con su marca",
+  (() => {
+    const g = agruparPorCliente(
+      reconcileMovements([mov({ client_name: "Petra Villalba", amount: 10 })], [enPapelera]),
+      [enPapelera],
+      {},
+    )[0];
+    return g.candidatos.length === 1 && g.candidatos[0].hidden === "papelera";
+  })(),
+);
+check(
+  "y por CEDULA tambien, llevando su estado hasta la ficha",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "17556644", matched_client_id: null }],
+      [ocultaDef],
+      new Map(),
+    );
+    return m.get("alguien nuevo")?.[0].hidden === "definitivo";
+  })(),
+);
+// Visible y oculto con la MISMA cedula: la 034 lo permite. Los dos se enseñan,
+// porque elegir por el dueño es lo que CT-22 existe para impedir.
+check(
+  "con una cedula compartida por uno visible y uno oculto, salen LOS DOS",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "19887766", matched_client_id: null }],
+      [viva, enPapelera],
+      new Map(),
+    );
+    const r = m.get("alguien nuevo") ?? [];
+    return r.length === 2 && r.some((c) => c.hidden === "papelera") && r.some((c) => !c.hidden);
+  })(),
+);
+check(
+  "un cliente visible sigue llegando sin marca",
+  (() => {
+    const m = findDocumentDuplicates(
+      [{ client_name: "Alguien Nuevo", document_id: "19887766", matched_client_id: null }],
+      [viva],
+      new Map(),
+    );
+    return m.get("alguien nuevo")?.[0].hidden === null;
+  })(),
+);
+
+console.log("");
 console.log("-- La revision sobrevive a una recarga -----------------------");
 // sessionStorage no existe en Node, asi que el almacen se inyecta. Es la misma
 // funcion que corre en el navegador, no una copia.

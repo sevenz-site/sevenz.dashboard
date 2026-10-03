@@ -851,6 +851,12 @@ export function ImportFlow({
   // Juntarlas no es estetica: tres copias de una lista de opciones se separan en
   // cuanto alguien añade la cuarta, y el sintoma —dos partes de la pantalla
   // discrepando sobre si se puede subir— no se parece a su causa.
+  // Los que estan fuera de la cartera, por `id`. CT-33.
+  const ocultos = useMemo(
+    () => new Set(existingClients.filter((c) => c.hidden).map((c) => c.id)),
+    [existingClients],
+  );
+
   const opcionesDeEstado = {
     exigeMoneda: showCurrency,
     subidos,
@@ -1437,6 +1443,15 @@ export function ImportFlow({
       // Sin eso, cambiar un digito despues de responder colaria un duplicado de
       // alguien que ella no ha visto nunca.
       confirm_duplicate: cuentasSeparadas.has(r.client_name.trim().toLowerCase()),
+      // CT-33. "Si, recuperalo al subir esto."
+      //
+      // Se DEDUCE de que el cliente emparejado este oculto, y eso basta porque
+      // a un oculto no se llega por accidente: el emparejamiento automatico por
+      // nombre los excluye a proposito (ver `byName` en `lib/reconcile.ts`), asi
+      // que `matched_client_id` solo puede apuntar a uno si la dueña lo eligio
+      // a mano — y ese camino pasa SIEMPRE por `ConfirmarEmparejamiento`, que
+      // le dice que se va a restaurar y con que saldo vuelve a sus totales.
+      confirm_restore: Boolean(r.matched_client_id && ocultos.has(r.matched_client_id)),
     }));
   }
 

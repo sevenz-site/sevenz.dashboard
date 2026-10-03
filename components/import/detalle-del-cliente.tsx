@@ -570,12 +570,21 @@ export function DetalleDelCliente({
             fichaEmparejada={
               emparejadoCon ? (
                 <div className="flex flex-col gap-1.5">
-                  <p className="text-xs text-muted-foreground">Emparejado con:</p>
+                  <p className="text-xs text-muted-foreground">
+                    {/* CT-33. Se repite aqui lo que dijo el dialogo de
+                        confirmacion: ese se cierra y la tarjeta se queda, y sin
+                        esta linea la unica pista de que se va a recuperar a
+                        alguien seria una etiqueta gris en la ficha. */}
+                    {emparejadoCon.hidden
+                      ? "Se recuperará y se emparejará con:"
+                      : "Emparejado con:"}
+                  </p>
                   <FichaDeCliente
                     nombre={emparejadoCon.name}
                     documento={emparejadoCon.document_id}
                     whatsapp={emparejadoCon.whatsapp}
                     debe={loQueDebe(emparejadoCon)}
+                    oculto={emparejadoCon.hidden ?? null}
                   />
                 </div>
               ) : null

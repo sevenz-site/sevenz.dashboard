@@ -52,6 +52,10 @@ export type ReconcileClient = {
   // El que el cliente YA tiene guardado. No lo usa la reconciliación de saldos:
   // existe para que `agruparPorCliente` no pida un teléfono que ya está.
   whatsapp: string | null;
+  // CT-33. `null` = visible. Los dos estados se distinguen porque la pantalla
+  // los nombra distinto: la papelera se deshace desde Papelera, y "oculto
+  // definitivamente" ni siquiera sale ahí.
+  hidden?: "papelera" | "definitivo" | null;
 };
 
 function normalizeName(name: string): string {
@@ -159,7 +163,20 @@ export function reconcileMovements(
   // nombres las uniría. Lo que las une es que alguien lo dijo.
   emparejados: Record<string, string> = {},
 ): ReviewRow[] {
-  const byName = new Map(existingClients.map((c) => [normalizeName(c.name), c]));
+  // ── CT-33: DOS MAPAS CON DOS ALCANCES, y la diferencia es la salvaguarda ──
+  //
+  // Desde CT-33 la lista incluye a los clientes de la papelera y a los ocultos
+  // definitivamente, para poder PREGUNTAR por ellos. Pero emparejar por nombre
+  // es automático y silencioso: si `byName` los viera, subir una libreta con un
+  // nombre repetido empezaría a cargarle los fiados a alguien que el dueño
+  // quitó de su cartera a propósito, sin que nadie lo decidiera — y encima con
+  // su saldo viejo metido en los totales de la revisión.
+  //
+  // Así que el automático mira solo a los visibles, y al oculto se llega solo
+  // por `porId`, que es el emparejamiento que el dueño eligió a mano.
+  const byName = new Map(
+    existingClients.filter((c) => !c.hidden).map((c) => [normalizeName(c.name), c]),
+  );
   const porId = new Map(existingClients.map((c) => [c.id, c]));
 
   // Primero se agrupa por (cliente, moneda) conservando el orden, porque la
@@ -323,6 +340,12 @@ export type CandidatoDuplicado = {
   balance: number;
   balance_usd: number;
   balance_eur: number;
+  // CT-33. Viaja hasta la ficha para poder pintar la marca y avisar de que
+  // elegirlo lo restaura. El saldo que viene arriba es el REAL —
+  // `client_summary_all` lo calcula de los movimientos, no del snapshot de la
+  // papelera—, así que la cifra que se enseña al restaurar es la que volverá a
+  // contar en los totales del dueño.
+  hidden?: "papelera" | "definitivo" | null;
 };
 
 export type ClienteRevisado = {
@@ -439,6 +462,7 @@ export function agruparPorCliente(
         balance: c.balance,
         balance_usd: c.balance_usd,
         balance_eur: c.balance_eur,
+        hidden: c.hidden ?? null,
       })),
       necesitaDocumento: !existente?.document_id,
       necesitaMoneda: opciones.esVE && suyas.some((f) => f.currency === null),

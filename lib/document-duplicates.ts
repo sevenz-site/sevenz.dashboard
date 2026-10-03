@@ -104,6 +104,7 @@ export function findDocumentDuplicates(
         balance: c.balance,
         balance_usd: c.balance_usd,
         balance_eur: c.balance_eur,
+        hidden: c.hidden ?? null,
       })),
     );
   }
