@@ -12,7 +12,7 @@ import { X } from "lucide-react";
 // ─────────────────────────────────────────────────────────────────────────
 // OSCURA EN LOS DOS TEMAS, a propósito.
 //
-// `bg-surface-dark`, el mismo fondo que la tarjeta de "Instala Sevenz en tu
+// `bg-brand-primary`, el mismo fondo que la tarjeta de "Instala Sevenz en tu
 // teléfono" (`components/install-app.tsx`), que también es oscura pase lo que
 // pase con el tema. Si esto usara `bg-popover`, en tema claro el globo sería
 // blanco sobre blanco y dejaría de resaltar — que es lo único que tiene que
@@ -67,7 +67,7 @@ export function TourTooltip({
     <div
       ref={ref}
       style={style}
-      className="fixed z-[60] w-72 rounded-2xl bg-surface-dark p-4 pr-11 text-white shadow-lg"
+      className="fixed z-[60] w-72 rounded-2xl bg-brand-primary p-4 pr-11 text-white shadow-lg"
     >
       <button
         type="button"

@@ -198,7 +198,7 @@ export function InstallAppBanner() {
 
   return (
     <>
-      {/* Tarjeta oscura fija en los dos temas: `--surface-dark` vale lo mismo
+      {/* Tarjeta oscura fija en los dos temas: `--brand-primary` vale lo mismo
           en claro y en oscuro, que es justo lo que la distingue del resto de
           tokens y lo que hace que la medición de abajo siga siendo cierta.
           Es deliberado: esto no es una superficie más de la pantalla, es lo
@@ -213,7 +213,7 @@ export function InstallAppBanner() {
 
           Medido: naranja sobre este fondo da 5.0:1 y el gris 5.7:1, los dos por
           encima del 4.5:1 que pide AA. El blanco del título, 14.9:1. */}
-      <div className="relative flex items-center gap-4 rounded-2xl bg-surface-dark p-4 pr-12">
+      <div className="relative flex items-center gap-4 rounded-2xl bg-brand-primary p-4 pr-12">
         <Image
           src="/fav-icon-primary.svg"
           alt=""

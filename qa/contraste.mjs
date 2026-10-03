@@ -19,6 +19,12 @@
 // borde de una casilla marcada— sí.
 
 const AA_TEXTO = 4.5;
+// WCAG llama "grande" a >=18pt (24px) o >=14pt en negrita, y le baja el piso a
+// 3:1. No es un atajo: a ese tamano el trazo es grueso y se lee con menos
+// contraste. Aplicar 4,5 a un texto de 24px es medir contra un piso que no es
+// el suyo — y esta linea existe porque este script lo hizo, y casi me lleva a
+// "arreglar" un placeholder que ya cumplia con margen.
+const AA_TEXTO_GRANDE = 3;
 // AA_NO_TEXTO cubre tambien el texto grande: WCAG les pide el mismo 3:1. Se
 // deja un solo nombre en vez de dos constantes iguales — dos nombres para el
 // mismo numero invitan a cambiar uno y olvidar el otro.
@@ -122,8 +128,8 @@ for (const [etiqueta, T] of [["ANTES", ANTES], ["DESPUES", DESPUES]]) {
     "placeholder /50 sobre bg-primary",
     sobre(fijo.primaryForeground, T.primary, 0.5),
     T.primary,
-    AA_TEXTO,
-    "exchange-rate-strip",
+    AA_TEXTO_GRANDE,
+    "exchange-rate-strip, text-2xl = 24px = texto grande",
   );
   // `text-primary` se usa como ICONO sobre fondo claro: piso de 3:1.
   check("icono text-primary sobre fondo blanco", T.primary, fijo.background, AA_NO_TEXTO);
@@ -150,6 +156,56 @@ for (const [etiqueta, T] of [["ANTES", ANTES], ["DESPUES", DESPUES]]) {
       `   ${pasa ? "PASA " : "FALLA"}  ${f.r.toFixed(2)}:1  (piso ${f.piso})  margen ${margen >= 0 ? "+" : ""}${margen}  ${f.nombre}${f.nota ? "  — " + f.nota : ""}`,
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA CABECERA OSCURA DEL INICIO — medida ANTES de construirla
+//
+// El diseño del 2026-10-03 pone la cabecera sobre `--brand-primary` con el
+// buscador dentro: relleno `chart-3`, borde `ring` de 2px, texto `#DADADA`.
+// Estas filas son su especificación, no una comprobación posterior: dos de
+// ellas deciden cómo hay que escribir el componente.
+console.log("");
+console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #272727");
+{
+  const cab = hexASrgb("#272727");
+  const campo = ok(0.439);            // --chart-3, el relleno del buscador
+  const sec = hexASrgb("#dadada");    // --secondary, el texto segun el diseno
+  const blanco = [1, 1, 1];
+
+  const f = (nombre, r, piso, nota = "") => {
+    const pasa = r >= piso;
+    const m = (r - piso).toFixed(2);
+    console.log(
+      `   ${pasa ? "PASA " : "FALLA"}  ${r.toFixed(2)}:1  (piso ${piso})  margen ${m >= 0 ? "+" : ""}${m}  ${nombre}${nota ? "  — " + nota : ""}`,
+    );
+  };
+
+  f("titulo en blanco", ratio(blanco, cab), AA_TEXTO);
+  f("white/70", ratio(sobre(blanco, cab, 0.7), cab), AA_TEXTO);
+  f("white/60", ratio(sobre(blanco, cab, 0.6), cab), AA_TEXTO);
+  f("--brand naranja", ratio(hexASrgb("#f66b02"), cab), AA_TEXTO, "el mas justo de la cabecera");
+
+  // EL BORDE DEL BUSCADOR CARGA PESO. El relleno del campo apenas se despega
+  // de la cabecera: lo que lo hace perceptible es el anillo de 2px, no el
+  // fondo. Quien quite ese borde deja un campo invisible, y el fallo se vera
+  // como "el buscador no esta" en vez de como un problema de color.
+  f("relleno del campo contra la cabecera", ratio(campo, cab), AA_NO_TEXTO,
+    "por eso el borde de 2px NO es decorativo");
+  f("borde ring de 2px contra la cabecera (tema claro)", ratio(ok(0.62), cab), AA_NO_TEXTO);
+  f("borde ring de 2px contra la cabecera (tema oscuro)", ratio(ok(0.708), cab), AA_NO_TEXTO);
+
+  console.log("");
+  console.log("   dentro del buscador (relleno chart-3 = " + srgbAHex(campo) + ")");
+  f("texto escrito, #DADADA", ratio(sec, campo), AA_TEXTO);
+  // EL PLACEHOLDER NO SE PUEDE ATENUAR. Es lo que hace por defecto cualquier
+  // input, y aqui falla a CUALQUIER opacidad — incluso al 80%. Va a opacidad
+  // completa, o en blanco.
+  for (const a of [0.5, 0.6, 0.7, 0.8]) {
+    f(`placeholder #DADADA al ${a * 100}%`, ratio(sobre(sec, campo, a), campo), AA_TEXTO,
+      "atenuarlo NO es una opcion");
+  }
+  f("placeholder en blanco, la alternativa", ratio(blanco, campo), AA_TEXTO);
 }
 
 console.log("");

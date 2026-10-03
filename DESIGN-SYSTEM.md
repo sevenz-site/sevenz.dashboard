@@ -465,6 +465,35 @@ en Papelera el subtítulo son tres líneas, más que de sobra.
 
 De md hacia arriba no se oculta nada: sobra sitio y no hay teclado que se coma
 media pantalla.
+## Hay dos capas de color, y elegir la equivocada se ve raro solo en un tema
+
+**La paleta de marca** son tres valores fijos, con el MISMO color en claro y en
+oscuro:
+
+| Token | Valor | |
+|---|---|---|
+| `--brand-primary` | `#272727` | el gris oscuro de la marca |
+| `--brand-secondary` | `#DADADA` | el gris claro |
+| `--brand` | `#F66B02` | el naranja |
+
+**Los tokens semánticos** —`--primary`, `--secondary`, `--background`,
+`--card`…— describen un ROL, no un color, y se invierten con el tema.
+
+Cuál usar se decide con una sola pregunta:
+
+> **¿Va sobre una superficie que NO cambia con el tema?** → la paleta de marca.
+> **¿Es "el botón principal", "la superficie secundaria"?** → la semántica.
+
+El caso que lo obliga, y que es fácil de no ver: el texto del buscador de la
+cabecera va en `#DADADA` sobre `#272727`. Si usara `--secondary`, en tema
+oscuro ese token vale gris oscuro — texto gris oscuro sobre fondo gris oscuro.
+**El fallo no aparece en el tema en el que lo construyes**, que es lo que lo
+hace caro: se descubre cuando alguien cambia el tema, meses después.
+
+Al revés también: `--primary` adopta `#272727` en claro, pero en oscuro se
+invierte a propósito, porque un botón oscuro sobre fondo oscuro no se ve. Si
+una superficie no puede invertirse, no es `--primary`, es `--brand-primary`.
+
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
@@ -490,9 +519,9 @@ hay que oscurecerlo en `globals.css` primero, no en el componente.
 Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
 teléfono" (`components/install-app.tsx`) y el globo del recorrido de
 bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
-`bg-surface-dark` y colores de texto `white/N`, no tokens de tema.
+`bg-brand-primary` y colores de texto `white/N`, no tokens de tema.
 
-**`--surface-dark` vale `#272727` y vale LO MISMO en los dos temas**, igual que
+**`--brand-primary` vale `#272727` y vale LO MISMO en los dos temas**, igual que
 `--brand`. Esa es la propiedad que lo hace seguro: lo que rompe el contraste
 sobre un fondo fijo no es usar un token, es usar uno que cambia con el tema.
 
