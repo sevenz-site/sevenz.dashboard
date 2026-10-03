@@ -38,7 +38,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { cn } from "@/lib/utils";
 import type { ExtractedMovement, LedgerCurrency, OwnerCountry } from "@/lib/types";
-import { AvisoDeDuplicado } from "@/components/import/emparejar-cliente";
+import { AvisoDeDuplicado, FichaDeCliente, loQueDebe } from "@/components/import/emparejar-cliente";
 import { BotonDeshacer } from "@/components/import/boton-deshacer";
 import type {
   CandidatoDuplicado,
@@ -546,6 +546,24 @@ export function DetalleDelCliente({
               candidatos.length > 1 ? onVerClientes() : onConfirmarCon(candidatos[0])
             }
             onElegirOtra={() => onDecidir({ cual: "otra" })}
+            // La misma ficha que la tarjeta de la lista, y por lo mismo: la
+            // cedula y el saldo son lo que deja comprobar que es la persona
+            // correcta cuando el nombre se repite. Aqui SIN boton de subir —
+            // ese ya esta en el pie de la hoja, y dos botones que hacen lo
+            // mismo a dos dedos de distancia es un toque en el equivocado.
+            fichaEmparejada={
+              emparejadoCon ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs text-muted-foreground">Emparejado con:</p>
+                  <FichaDeCliente
+                    nombre={emparejadoCon.name}
+                    documento={emparejadoCon.document_id}
+                    whatsapp={emparejadoCon.whatsapp}
+                    debe={loQueDebe(emparejadoCon)}
+                  />
+                </div>
+              ) : null
+            }
           />
         </div>
       ) : null}
