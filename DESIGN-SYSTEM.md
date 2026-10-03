@@ -490,7 +490,16 @@ hay que oscurecerlo en `globals.css` primero, no en el componente.
 Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
 teléfono" (`components/install-app.tsx`) y el globo del recorrido de
 bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
-`bg-[#272727]` literal y colores de texto `white/N`, no tokens.
+`bg-surface-dark` y colores de texto `white/N`, no tokens de tema.
+
+**`--surface-dark` vale `#272727` y vale LO MISMO en los dos temas**, igual que
+`--brand`. Esa es la propiedad que lo hace seguro: lo que rompe el contraste
+sobre un fondo fijo no es usar un token, es usar uno que cambia con el tema.
+
+Fue `bg-[#272727]` literal en los dos archivos hasta el 2026-10-03. Pasó a
+token cuando la cabecera del Inicio necesitó ese mismo gris: tres copias de un
+hex se separan en cuanto alguien retoca una. La medición de abajo sigue siendo
+válida porque el valor no cambió — solo dejó de estar escrito tres veces.
 
 No es descuido. Una pieza oscura en medio de una pantalla clara está diciendo
 "esto de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
@@ -583,10 +592,17 @@ Measured on white (`#ffffff`) as of 2026-09-08:
 | `--destructive` | `#e7000b` | 4.77:1 | pass, with no margin |
 | `--ring` (light) | `#868686` | 3.64:1 | pass — was `#a1a1a1` at 2.59:1 |
 | `--ring` (dark) | `#a1a1a1` | 7.63:1 | pass — was `#737373`, darker than the light one |
+| `--secondary` (light) | `#dadada` | 12.81:1 con su `-foreground` | pass — era `#f5f5f5` |
 
 `--muted-foreground` clears the bar by 0.24. Do not darken the surface behind
 it or lighten the token without re-measuring; it is the one that will fail
 first.
+
+**No lo midas a mano: `npm run qa:contraste`.** Convierte los tokens de oklch a
+sRGB, aplica la fórmula de WCAG 2.2 y saca el ratio de cada par real —
+incluidos los que llevan opacidad, que son los que mienten. Tarda un segundo y
+no necesita base de datos. Esta tabla se escribió a mano y por eso envejeció:
+el script existe para que no vuelva a pasar.
 
 **Measure the colour that gets DRAWN, not the token.** The ring row above said
 2.58:1 and failed for months, and the real number was worse: every one of the

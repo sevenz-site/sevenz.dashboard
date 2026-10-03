@@ -30,6 +30,7 @@
   --color-destructive: var(--destructive);
   --color-money-in: var(--money-in);
   --color-brand: var(--brand);
+  --color-surface-dark: var(--surface-dark);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -61,13 +62,35 @@
      piso de contraste. No confundir con amber, que en este código ya
      significa "plazo vencido". */
   --brand: #f66b02;
+  /* #272727, el gris con el que Sevenz dice "esto es una superficie oscura".
+     Vivia como literal `bg-[#272727]` en `install-app.tsx` y en
+     `tour-tooltip.tsx`; desde el 2026-10-03 es un token porque la cabecera del
+     Inicio lo necesita tambien, y tres copias de un hex se separan en cuanto
+     alguien retoca una.
+
+     UN SOLO VALOR EN LOS DOS TEMAS, igual que --brand y por la misma razon que
+     DESIGN-SYSTEM.md explica para estas superficies: lo que rompe el contraste
+     sobre un fondo fijo es un token que cambia con el tema. Este no cambia, asi
+     que el texto de encima puede medirse una vez y seguir siendo verdad.
+
+     Medido sobre el: blanco 14,94:1 · white/70 8,04:1 · white/60 6,36:1 ·
+     --brand 5,00:1. El naranja es el que va mas justo; si alguien aclara este
+     valor, es el primero que cae. `npm run qa:contraste` lo vuelve a medir. */
+  --surface-dark: #272727;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  /* #DADADA desde el 2026-10-03, antes oklch(0.97) = #f5f5f5.
+     El motivo no es estetico: un boton secundario a #f5f5f5 sobre el fondo
+     blanco de la app quedaba a 1,09:1 — practicamente invisible, aunque WCAG no
+     lo exija porque es una superficie y no un borde con significado. A #DADADA
+     queda a 1,40:1 contra el fondo y su texto sigue a 12,81:1, muy por encima
+     del piso. Medido con `npm run qa:contraste`.
+     Solo cambia en claro: en oscuro --secondary ya es un gris oscuro propio. */
+  --secondary: #dadada;
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
@@ -111,6 +134,8 @@
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --brand: #f66b02;
+  /* El mismo valor que en claro: ver la nota de :root. */
+  --surface-dark: #272727;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
