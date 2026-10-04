@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ReporteCard } from "@/components/dashboard/reporte-card";
+import { ReporteClienteCard } from "@/components/dashboard/reporte-cliente-card";
 import {
   ReportesClientSearch,
   ReportesPeriodChips,
@@ -116,6 +117,16 @@ export default async function ReportesPage({
       <h2 className="text-base font-semibold">
         {selected ? `Métricas de ${selected.name}` : "Métricas totales"}
       </h2>
+
+      {/* LA FICHA DEL CLIENTE, encima de sus métricas y solo cuando hay filtro.
+          Sin ella la pantalla contestaba «cómo va Petra» y te dejaba buscarla
+          otra vez por otra pantalla para hacer algo al respecto.
+
+          Va fuera del `if` de abajo a propósito: si Petra no tuvo movimientos en
+          el periodo, su ficha es justo lo que hay que poder abrir. */}
+      {selected && rows[0] ? (
+        <ReporteClienteCard row={rows[0]} ledger={ledger} rateContext={ownerRate} />
+      ) : null}
 
       {lending.anyInPeriod ? (
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start">

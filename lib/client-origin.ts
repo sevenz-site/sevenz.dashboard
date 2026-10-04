@@ -18,6 +18,12 @@ export const CLIENT_ORIGINS = {
   clientes: { href: "/clients", label: "Volver a Clientes" },
   malas_pagas: { href: "/malas-pagas", label: "Volver a Malas pagas" },
   papelera: { href: "/papelera", label: "Volver a Papelera" },
+  // Vuelve a Reportes SIN el filtro de cliente que estuviera puesto: estas
+  // entradas son constantes y no saben a quién se estaba mirando. Es una
+  // pérdida pequeña y consciente — quien abre la ficha de Petra desde su
+  // reporte normalmente ha terminado con Petra — y arreglarla significa que
+  // esta tabla deje de ser constante.
+  reportes: { href: "/reportes", label: "Volver a Reportes" },
 } as const;
 
 export type ClientOrigin = keyof typeof CLIENT_ORIGINS;
