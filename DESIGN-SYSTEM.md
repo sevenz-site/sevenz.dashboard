@@ -692,6 +692,56 @@ y oscurecer el fondo de un texto CLARO le sube el contraste (de 5,59 a 7,71), no
 se lo baja. Lo que empeora es la separación del relleno contra la cabecera — y de
 esa, otra vez, se encarga el borde.
 
+## Hay DOS cabeceras oscuras, y comparten la regla del colapso
+
+| Cabecera | Pantallas | Lleva |
+|---|---|---|
+| `home-header.tsx` | Inicio | marca, menú, Notificaciones, saludo, negocio, buscador |
+| `screen-header.tsx` | Clientes, Malas pagas, Papelera | volver, título, subtítulo, buscador, filtros |
+
+**Comparten superficie, no estructura.** Inicio no lleva flecha de volver porque
+es la pantalla a la que se vuelve. Lo que sí comparten es **cuándo colapsan**, y
+eso vive en `hooks/use-collapse-on-scroll.ts` — una copia, no dos. Las tres
+reglas que hay dentro no son obvias y ninguna sobrevive a ser copiada a mano:
+
+- **Histéresis** (colapsa a 64px, se expande por debajo de 24), porque con un
+  solo umbral el salto del propio colapso puede devolver el scroll justo debajo
+  y entrar en bucle.
+- **No colapsa si la página no tiene hacia dónde bajar.** Comprobado el
+  2026-10-04 en una cuenta de tres clientes: la pantalla no da scroll y la
+  cabecera se queda entera, que es lo correcto.
+- **Congelado mientras el buscador tiene el foco**, porque en iOS el teclado
+  desplaza la página solo y eso dispara un scroll que el dueño no ha hecho.
+
+**Qué colapsa en cada una**: en Inicio el saludo; en las otras tres el título y
+el subtítulo. En las dos se quedan arriba el buscador y lo que haya de
+controles — en una lista, filtrar sin tener que subir es lo que se hace una y
+otra vez, y el título dice algo que ya sabes para cuando has bajado.
+
+### El borde de los chips también carga peso
+
+El spec dibujó los chips de filtro con borde `#525252` sobre la cabecera:
+**1,91:1**, el mismo número que hacía invisible el buscador de Inicio. Y un chip
+**no tiene relleno**, así que sin borde visible es una palabra con una flechita
+al lado.
+
+Usan `--brand-field-border` (5,78:1) a **1px**, donde el campo lo lleva a 2px.
+Un solo color de borde para todos los controles de esa superficie, y el grosor
+es lo que dice cuál es el principal.
+
+### El estado de los filtros vive en la pantalla, no en la tabla
+
+Desde el 2026-10-04 las tres montan `ClientFilterProvider`, porque el buscador y
+los chips están en la cabecera y la lista está debajo: dos estados separados
+dejarían una lista filtrada de una manera y unos chips diciendo otra.
+`ClientTable` ya sabía reconocerlo — si el estado le llega por contexto, no monta
+su propio `ClientSearchInline`.
+
+**Papelera filtra por el saldo congelado al ocultar**, no por el actual, para que
+los filtros cuadren con las cifras impresas en sus tarjetas. Eso llega como el
+modo `balances="al-ocultar"` y **no como la función accesora que era**: el
+proveedor lo monta un Server Component, y una función no cruza esa frontera.
+
 ## La cabecera del Inicio se pega entera, y hay una razón
 
 El primer intento fue sin JavaScript: `sticky` en la fila de la marca y `sticky`

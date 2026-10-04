@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Bell, Store } from "lucide-react";
@@ -8,6 +7,7 @@ import { NotificationsButton } from "@/components/dashboard/notifications-button
 import { SidebarMenuTrigger } from "@/components/dashboard/sidebar-menu-trigger";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useSearchResultsOpen } from "@/components/dashboard/client-filter-context";
+import { useCollapseOnScroll } from "@/hooks/use-collapse-on-scroll";
 import { BADGE_MAX } from "@/lib/types";
 
 // THE INICIO HEADER — delivery 2 of the 2026-10-03 redesign
@@ -39,22 +39,9 @@ import { BADGE_MAX } from "@/lib/types";
 //
 // Sticking the WHOLE block makes its containing block the screen's column,
 // which runs to the bottom — so it stays up for the whole page. The price is
-// that the greeting has to hide via state, which is what follows.
-const COLLAPSE_AT = 64; // scrolling down: past this, the greeting goes
-const EXPAND_AT = 24; // scrolling up: and it only returns near the very top
-
-// The hysteresis (64 against 24) is not fine-tuning, it is what prevents
-// flicker. With a single threshold, the jump the collapse itself produces can
-// leave the scroll just below that threshold, which expands, which jumps again.
-//
-// And the other guard, the one that matters: IT ONLY COLLAPSES IF THE PAGE HAS
-// SOMEWHERE TO SCROLL. Hiding the greeting shortens the document by ~56px; in
-// the cartera of an owner with two clients that is enough for the browser to
-// clamp the scroll below EXPAND_AT and reopen the header by itself. If what is
-// left of the page cannot absorb the collapse, there is nothing to gain by
-// collapsing.
-const MIN_SCROLL_ROOM = 160;
-
+// that the greeting has to hide via state, and the rules for that live in
+// `useCollapseOnScroll`, shared with the header of Clientes, Malas pagas and
+// Papelera.
 export function HomeHeader({
   firstName,
   businessName,
@@ -72,41 +59,11 @@ export function HomeHeader({
   // match list and the cartera at the bottom have to filter by the same thing.
   children: React.ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
-  // The same `focused` that decides whether the dropdown is drawn. WHILE THE
-  // OWNER IS TYPING, SCROLL DOES NOT COUNT: on iOS, opening the keyboard
-  // resizes the window and scrolls the page to bring the field into view — that
-  // is, it fires a scroll the owner never made. Without this freeze, tapping
-  // the search field would collapse the header and move the field at the exact
-  // moment the finger has just landed on it.
+  // The same `focused` that decides whether the dropdown is drawn. It freezes
+  // the collapse while the owner types — see `useCollapseOnScroll` for why that
+  // matters on iOS, and for the other two guards the collapse needs.
   const { focused } = useSearchResultsOpen();
-
-  useEffect(() => {
-    if (focused) return;
-
-    let frame = 0;
-    const onScroll = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const y = window.scrollY;
-        const room = document.documentElement.scrollHeight - window.innerHeight;
-        setCollapsed((prev) => {
-          if (room < MIN_SCROLL_ROOM) return false;
-          return prev ? y > EXPAND_AT : y > COLLAPSE_AT;
-        });
-      });
-    };
-
-    // Once on mount: Inicio gets entered from a client's page with the page
-    // already scrolled more often than it seems.
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [focused]);
+  const collapsed = useCollapseOnScroll(focused);
 
   return (
     // `-mx-4 -mt-4` against `AppMain`'s `p-4`: the header runs edge to edge. It

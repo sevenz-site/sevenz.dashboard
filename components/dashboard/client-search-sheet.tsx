@@ -37,14 +37,23 @@ import type { ClientSummary } from "@/lib/types";
 // buscador va a 40 por la regla del sistema de diseño. `text-base` en teléfono
 // no es cosmético — iOS Safari hace zoom al enfocar un campo por debajo de
 // 16px.
-function SearchField({
+// `tone="dark"` is the variant that sits on `--brand-primary`, used by the
+// headers of Clientes, Malas pagas and Papelera since the spec of 2026-10-04.
+// Not one of its colours is a semantic token: on a surface that does not invert
+// with the theme, a colour that does is what breaks the contrast silently. Same
+// rule, and the same two traps, as Inicio's field — the 2px border is what
+// makes the field visible (its fill is 1,91:1 against the header) and the
+// placeholder cannot be dimmed at any opacity.
+export function SearchField({
   value,
   onChange,
   placeholder,
+  tone = "light",
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  tone?: "light" | "dark";
 }) {
   // Mientras se escribe, el título de la pantalla se aparta para dejar
   // sitio a la lista. Ver search-focus-context.tsx.
@@ -60,21 +69,33 @@ function SearchField({
         aria-label={placeholder}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+        className={
+          tone === "dark"
+            ? "h-[50px] w-full min-w-0 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-10 pl-4 text-[17px] text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"
+            : "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+        }
       />
       {value ? (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="Borrar búsqueda"
-          className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          className={
+            tone === "dark"
+              ? "absolute top-1/2 right-3 -translate-y-1/2 rounded text-brand-secondary outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
+              : "absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          }
         >
-          <X className="size-4" />
+          <X className={tone === "dark" ? "size-5" : "size-4"} />
         </button>
       ) : (
         <Search
           aria-hidden="true"
-          className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
+          className={
+            tone === "dark"
+              ? "absolute top-1/2 right-3 size-6 -translate-y-1/2 text-brand-secondary"
+              : "absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
+          }
         />
       )}
     </div>
@@ -108,5 +129,28 @@ export function ClientSearchInline({
       />
       <ClientFilterChips filters={filters} />
     </div>
+  );
+}
+
+// Just the field, reading the shared state, for a Server Component to drop into
+// the dark header. It lives here and NOT in `client-filter-context.tsx` on
+// purpose: that file already warns about the import cycle it would create —
+// this module imports the context, so the context cannot import this one back.
+export function ClientSearchFieldRow({
+  placeholder = "Buscar cliente",
+  tone = "light",
+}: {
+  placeholder?: string;
+  tone?: "light" | "dark";
+}) {
+  const filters = useSharedClientFilters();
+  if (!filters) return null;
+  return (
+    <SearchField
+      value={filters.controls.nameQuery}
+      onChange={filters.controls.setNameQuery}
+      placeholder={placeholder}
+      tone={tone}
+    />
   );
 }

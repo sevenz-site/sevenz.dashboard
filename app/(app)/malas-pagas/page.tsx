@@ -1,10 +1,8 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
-import { ImportarCartera } from "@/components/dashboard/importar-cartera";
-import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
+import { ScreenHeader } from "@/components/dashboard/screen-header";
+import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
+import { ClientSearchFieldRow } from "@/components/dashboard/client-search-sheet";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -67,56 +65,44 @@ export default async function MalasPagasPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
-          one: flush to the top, edge to edge. The negative margins cancel main's
-          p-4 and px-4 restores the inset for the content itself. Hidden from sm
-          up, where the real header returns. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Inicio">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Malas pagas</h1>
-          <HideWhileSearching>
-            <p className="text-sm text-muted-foreground">
-              Clientes marcados como mala paga — no aparecen en Inicio.
-            </p>
-          </HideWhileSearching>
+      {/* El estado de los filtros sube al nivel de la pantalla desde el spec
+          del 2026-10-04: el buscador y los chips viven ahora en la cabecera, y
+          la lista de abajo se filtra con lo mismo. */}
+      <ClientFilterProvider rows={rows} rateContext={ownerRate}>
+        <ScreenHeader
+          title="Malas pagas"
+          /* Dice dónde NO aparecen, y deliberadamente no dice nada del capital
+             por cobrar: un cliente marcado como mala paga SÍ sigue sumando al
+             total de Inicio. El subtítulo de Papelera sí lo dice, porque allí
+             es verdad. */
+          subtitle="Clientes marcados como malas pagas no aparecen en el inicio ni en la sección de clientes."
+          search={<ClientSearchFieldRow tone="dark" />}
+          filters={<ClientFilterChipsRow tone="dark" />}
+        />
+
+        {/* Solo escritorio: en teléfono esta acción vive en el botón flotante
+            de la barra de abajo. */}
+        <div className="hidden md:block">
+          <ClientSearchDialog
+            clients={clients ?? []}
+            ownerId={user!.id}
+            businessName={owner?.business_name || user!.email || "tu negocio"}
+            ownerCountry={ownerCountry}
+            rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
+          />
         </div>
-        {/* A la derecha de la cabecera. `ghost`: aquí importar es una salida
-            secundaria, no la acción de la pantalla, y un recuadro la haría
-            pesar más que el título que tiene al lado. Se ve en las dos
-            anchuras — a diferencia de "Agregar movimiento", que en teléfono
-            vive en la barra de abajo. */}
-        <div className="flex shrink-0 items-center gap-1">
-          <ImportarCartera variant="responsive" />
-          {/* Desktop only, same as Cartera: the phone keeps this action in the
-              bottom bar's "Agregar" instead, which is why there is no
-              sm:hidden counterpart of this trigger the way Cartera has one. */}
-          <div className="hidden sm:block">
-            <ClientSearchDialog
-              clients={clients ?? []}
-              ownerId={user!.id}
-              businessName={owner?.business_name || user!.email || "tu negocio"}
-              ownerCountry={ownerCountry}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
-            />
-          </div>
-        </div>
-      </div>
-      <ClientTable
-        rows={rows}
-        scores={scores}
-        rateContext={ownerRate}
-        emptyMessage="No tienes clientes marcados como mala paga."
-        source="malas_pagas"
-        ownerCountry={ownerCountry}
-      />
+
+        <h2 className="text-base font-semibold">Clientes</h2>
+        <ClientTable
+          rows={rows}
+          scores={scores}
+          rateContext={ownerRate}
+          emptyMessage="No tienes clientes marcados como mala paga."
+          source="malas_pagas"
+          ownerCountry={ownerCountry}
+        />
+      </ClientFilterProvider>
     </div>
   );
 }

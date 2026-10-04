@@ -34,6 +34,7 @@
   --color-brand-secondary: var(--brand-secondary);
   --color-brand-field: var(--brand-field);
   --color-brand-field-border: var(--brand-field-border);
+  --color-brand-muted: var(--brand-muted);
   --color-money-due: var(--money-due);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -106,6 +107,17 @@
      Measured with `npm run qa:contraste`. */
   --brand-field: #525252;
   --brand-field-border: #a1a1a1;
+  /* Secondary text on the dark header: subtitles, the back arrow, the filter
+     chips' labels. 5,31:1 against `--brand-primary`, so it clears the 4,5 of
+     normal text with a little room.
+
+     Inicio's header solves the same problem with `white/70` (8,05:1), which is
+     brighter. Both are correct; this one exists because the spec of 2026-10-04
+     asked for it by value on the screens that carry a subtitle, where a whole
+     paragraph at white/70 competed with the title above it.
+
+     Fixed in both themes, like the rest of this layer. */
+  --brand-muted: #9a9a9a;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -196,6 +208,8 @@
   /* Same values as in light, on purpose: see the note on :root. */
   --brand-field: #525252;
   --brand-field-border: #a1a1a1;
+  /* Same value as in light: see the note on :root. */
+  --brand-muted: #9a9a9a;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);

@@ -1,10 +1,8 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
-import { ImportarCartera } from "@/components/dashboard/importar-cartera";
-import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
+import { ScreenHeader } from "@/components/dashboard/screen-header";
+import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
+import { ClientSearchFieldRow } from "@/components/dashboard/client-search-sheet";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummaryAll } from "@/lib/types";
 
@@ -32,34 +30,25 @@ export default async function PapeleraPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
-          one: flush to the top, edge to edge. The negative margins cancel main's
-          p-4 and px-4 restores the inset for the content itself. Hidden from sm
-          up, where the real header returns. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Inicio">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-      </div>
-      {/* Fila, no bloque suelto: la cabecera pasa a llevar una acción a la
-          derecha, igual que Clientes y Malas pagas. */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Papelera</h1>
-          <HideWhileSearching>
-            <p className="text-sm text-muted-foreground">
-              Clientes que ocultaste. No aparecen en tu Cartera y su saldo no cuenta en los totales, pero su
-              historial se conserva y su enlace de saldo sigue funcionando.
-            </p>
-          </HideWhileSearching>
-        </div>
-        {/* `ghost`: aquí importar es una salida secundaria, no la acción de
-            la pantalla, y un recuadro pesaría más que el título de al lado. */}
-        <ImportarCartera variant="responsive" />
-      </div>
-      <PapeleraTable rows={rows} rateContext={ownerRate} />
+      {/* `balances="al-ocultar"`: los filtros y las ordenaciones leen el saldo
+          congelado al ocultar al cliente, no el actual, para que cuadren con
+          las cifras impresas en estas tarjetas. */}
+      <ClientFilterProvider rows={rows} rateContext={ownerRate} balances="al-ocultar">
+        <ScreenHeader
+          title="Papelera"
+          /* SÍ dice lo del capital, al contrario que el de Malas pagas, porque
+             aquí es verdad: `client_summary` lleva `where trashed_at is null`,
+             y es esa vista la que Inicio suma. Y conserva la frase del enlace a
+             petición del dueño el 2026-10-04 — el spec la quitaba, y es
+             justo lo que un tendero se pregunta al ocultar a alguien. */
+          subtitle="Clientes en papelera no aparecen en la sección de clientes. Tampoco suman al capital por cobrar, pero su historial se conserva y su enlace de saldo sigue funcionando."
+          search={<ClientSearchFieldRow tone="dark" />}
+          filters={<ClientFilterChipsRow tone="dark" />}
+        />
+
+        <h2 className="text-base font-semibold">Clientes</h2>
+        <PapeleraTable rows={rows} rateContext={ownerRate} />
+      </ClientFilterProvider>
     </div>
   );
 }

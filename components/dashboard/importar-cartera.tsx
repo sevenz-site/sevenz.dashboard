@@ -45,7 +45,12 @@ export function ImportarCartera({
   // recuadro en teléfono, donde es una salida secundaria y un recuadro pesaría
   // más que el título de al lado; CON recuadro de `sm:` en adelante, que es la
   // versión web y ahí sí lo lleva en todas partes.
-  variant?: "outline" | "responsive";
+  //
+  // "dark" en la cabecera oscura de Clientes: texto sin recuadro sobre
+  // `--brand-primary`, con los colores fijos de esa superficie. Ni uno de ellos
+  // es un token semantico, por lo de siempre: sobre un fondo que no se invierte
+  // con el tema, un color que si lo hace rompe el contraste en silencio.
+  variant?: "outline" | "responsive" | "dark";
 } = {}) {
   // El recuadro se pone con clases y no cambiando `variant` según
   // `useIsMobile()`, aunque este componente ya use ese hook para elegir entre
@@ -59,6 +64,8 @@ export function ImportarCartera({
     "shrink-0",
     variant === "responsive" &&
       "sm:border-border sm:bg-background sm:dark:border-input sm:dark:bg-input/30",
+    variant === "dark" &&
+      "h-auto px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5",
   );
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -72,7 +79,7 @@ export function ImportarCartera({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
-          variant={variant === "responsive" ? "ghost" : "outline"}
+          variant={variant === "outline" ? "outline" : "ghost"}
           size="sm"
           className={claseBoton}
           data-tour="import-button"
@@ -102,7 +109,7 @@ export function ImportarCartera({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={variant === "responsive" ? "ghost" : "outline"}
+          variant={variant === "outline" ? "outline" : "ghost"}
           size="sm"
           className={claseBoton}
           data-tour="import-button"
