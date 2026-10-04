@@ -96,12 +96,18 @@ function useKeyboardOpen() {
 // than in this bar, and a highlight meaning "somewhere in this section" would
 // apply inconsistently across them.
 //
-// THE MARK IS AN UNDERLINE since 2026-10-03, not the grey pill it was. The pill
-// came from the sidebar, where the active row really is a filled surface; down
-// here it had to fit under a 16px icon with an 11px label, so it ended up as a
-// soft grey box hugging both and reading more like a disabled control than a
-// selected one. A rule under the label says the same thing with one solid
-// shape, and leaves the icon to be an icon.
+// THE MARK IS A PILL **AND** AN UNDERLINE, owner's call on 2026-10-04 when the
+// Figma spec and the shipped code disagreed: the spec drew the grey #f5f5f5
+// pill (which is `--muted`), delivery 3 had shipped an underline, and the
+// answer was both. The pill carries the "you are here" at a glance and the
+// underline survives the case the pill is weakest at — a cheap screen in
+// sunlight, where a 4% grey against white is the first thing to disappear.
+//
+// The underline is ALWAYS in the DOM, transparent when inactive. Rendering it
+// only for the active item would make every label jump 5px the moment it became
+// active, which on a bar of four is four different heights during a single
+// navigation. The pill can afford to come and go because it wraps the content
+// instead of sitting under it.
 function NavItem({
   active,
   children,
@@ -114,17 +120,15 @@ function NavItem({
 } & Record<string, unknown>) {
   return (
     <div className={cn("flex flex-1 items-center justify-center", className)} {...props}>
-      <div
-        className={cn(
-          "flex flex-col items-center gap-1 px-3 pt-1 text-[11px] font-medium transition-colors",
-          active ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {children}
-        {/* Always in the DOM, transparent when inactive. Rendering it only for
-            the active item would make every label jump 5px the moment it
-            became active, which on a bar of four is four different heights
-            during a single navigation. */}
+      <div className="flex flex-col items-center gap-1.5">
+        <div
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors",
+            active ? "bg-muted text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {children}
+        </div>
         <span
           aria-hidden="true"
           className={cn("h-0.5 w-6 rounded-full", active ? "bg-foreground" : "bg-transparent")}
@@ -192,9 +196,9 @@ export function MobileNav() {
 
   const glyph = (href: string, Icon: ComponentType<{ className?: string }>) =>
     isPending && goingTo === href ? (
-      <Loader2 className="size-5 animate-spin" />
+      <Loader2 className="size-6 animate-spin" />
     ) : (
-      <Icon className="size-5" />
+      <Icon className="size-6" />
     );
 
   // The bar's own classes. The layout reserves exactly this much space, and a
@@ -249,19 +253,28 @@ export function MobileNav() {
         }}
         // Sits one gap above the bar, inside the strip `AppMain` already
         // reserves — so it never covers the last row of a list.
+        // Figma spec, 2026-10-04: 56px tall, pill radius, 16 of padding on the
+        // label side and 8 on the glyph side — the plus sits in a 40px box of
+        // its own, so the smaller padding keeps it optically centred instead of
+        // pushed against the edge.
         className={cn(
-          "fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-5",
-          "text-sm font-medium text-primary-foreground shadow-lg transition-colors",
+          "fixed right-4 z-40 flex h-14 items-center gap-1 rounded-full bg-primary py-2 pr-2 pl-4",
+          "text-[17px] font-medium text-primary-foreground shadow-lg transition-colors",
           "active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden",
           "bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
         )}
       >
-        {isPending && goingTo === agregarHref ? (
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-        ) : (
-          <Plus className="size-5" aria-hidden="true" />
-        )}
+        {/* Label first, glyph second, from the spec. It reads as a sentence
+            that way — "Agregar +" — where the other order reads as an icon
+            button that happens to have a word stuck to it. */}
         Agregar
+        <span className="flex size-10 items-center justify-center">
+          {isPending && goingTo === agregarHref ? (
+            <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="size-6" aria-hidden="true" />
+          )}
+        </span>
       </button>
 
       {/* z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The
@@ -303,7 +316,7 @@ export function MobileNav() {
             aria-label="Abrir menú"
           >
             <NavItem active={false} className="w-full">
-              <Menu className="size-5" />
+              <Menu className="size-6" />
               Menú
             </NavItem>
           </button>

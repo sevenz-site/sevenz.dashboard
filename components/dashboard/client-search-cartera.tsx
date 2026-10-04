@@ -85,9 +85,11 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
   return (
     <div className="relative">
       <div className="relative">
-        {/* 40px and `text-base` on a phone, like the other three search fields.
-            The second is not cosmetic: iOS Safari zooms in on focus for any
-            field under 16px.
+        {/* 50px tall, from the Figma spec of 2026-10-04 — the other three
+            search fields in the app are 40px, and this one is deliberately not,
+            because it is the only one that is the main thing on its screen.
+            `text-base` is not cosmetic either: iOS Safari zooms in on focus for
+            any field under 16px.
 
             The design's two shadows: one inset and one drop, both 0/4/4. The
             inset one darkens the fill's top edge, which RAISES the contrast of
@@ -106,7 +108,7 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           // además evitan robar el foco en mousedown, pero un toque en el
           // borde de la lista sí lo quita.
           onBlur={() => setFocused(false)}
-          className="h-10 w-full min-w-0 rounded-lg border-2 border-brand-field-border bg-brand-field px-3 pr-9 text-base text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 md:text-sm"
+          className="h-[50px] w-full min-w-0 rounded-xl border-2 border-brand-field-border bg-brand-field px-3 pr-9 text-base text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 md:text-sm"
         />
         {c.nameQuery ? (
           <button

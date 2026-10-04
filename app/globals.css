@@ -34,6 +34,7 @@
   --color-brand-secondary: var(--brand-secondary);
   --color-brand-field: var(--brand-field);
   --color-brand-field-border: var(--brand-field-border);
+  --color-money-due: var(--money-due);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -139,6 +140,26 @@
      que pide AA para texto.
      El dinero que sale usa --destructive, que ya existia. */
   --money-in: oklch(0.527 0.154 150.069);
+  /* The brand orange, darkened just enough to sit on a LIGHT surface.
+     `--brand` (#F66B02) on white is 2,99:1, and `DESIGN-SYSTEM.md` already
+     warned it would have to be darkened before being used there; this is that
+     day. #EB6100 is the same hue and the same chroma in oklch, with less
+     lightness: 3,36:1 on white.
+
+     ONE VALUE IN BOTH THEMES, and here that is allowed, unlike `--primary` or
+     `--secondary`: the same colour happens to pass on both sides — 3,36:1 on
+     the light theme's white and 5,88:1 on the dark one's background — so
+     inverting it would be moving a piece that does not need moving.
+
+     ONLY FOR THE BIG CAPITAL FIGURE, which is 30px. WCAG calls anything from
+     24px large text and drops its floor to 3:1; at normal text size the floor
+     is 4,5 and this colour does NOT reach it. Shrink that figure below 24px and
+     it stops complying without changing value. Whoever uses it for a 12px label
+     will have picked a colour that fails, and the failure will not show.
+
+     Named like `--money-in` on purpose: it does not decorate, it says which
+     money is being talked about. Measured with `npm run qa:contraste`. */
+  --money-due: #eb6100;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   /* 0.62 y no 0.708. El anillo de foco necesita 3:1 contra el fondo (WCAG
@@ -188,6 +209,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   /* Mas claro en oscuro, o el verde se hunde en el fondo. */
   --money-in: oklch(0.792 0.209 151.711);
+  /* Same value as in light: see the note on :root. */
+  --money-due: #eb6100;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   /* Mas CLARO que el del tema claro, no mas oscuro. Estaba al reves —0.556

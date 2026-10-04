@@ -113,34 +113,47 @@ export function HomeHeader({
     // is the same device the other screens' contextual bars use. `z-20` puts it
     // over the page and under dialogs and sheets, which live at z-50 — same as
     // the `AppHeader` it replaces.
-    <header className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 bg-brand-primary px-4 pt-3 pb-4">
-      <div className="flex items-center gap-2">
-        {/* DESKTOP ONLY since delivery 3. On a phone the bottom bar now carries
-            "Menú", which opens this same sidebar, so a hamburger up here would
-            be the second door to one room.
+    <header className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col bg-brand-primary">
+      {/* NO PADDING AND NO GAP ON THE HEADER ITSELF, which is how the Figma
+          spec of 2026-10-04 builds it: each of the three rows carries its own,
+          and they are not the same. The brand row is 16 all round, the greeting
+          is 12 over 10, and the search field has 24 below it and 16 above. A
+          single gap on the parent cannot express that, and averaging it is how
+          a layout stops matching its design one row at a time. */}
+      <div className="flex items-center justify-between gap-2 px-4 py-4">
+        {/* Trigger and logo in one group, so the logo stays on the left edge on
+            a phone — where there is no trigger — and keeps hugging the trigger
+            from md up. Left as three loose children, `justify-between` centred
+            the wordmark on desktop and only there, which reads as two different
+            headers rather than one. */}
+        <div className="flex min-w-0 items-center gap-2">
+          {/* DESKTOP ONLY since delivery 3. On a phone the bottom bar now
+              carries "Menú", which opens this same sidebar, so a hamburger up
+              here would be the second door to one room.
 
-            It stays from md up because the bottom bar is `md:hidden`: on a
-            desktop there is no bar, and without this the owner could not reopen
-            a collapsed rail from Inicio at all. The two are one control split
-            across the breakpoint, not a leftover.
+              It stays from md up because the bottom bar is `md:hidden`: on a
+              desktop there is no bar, and without this the owner could not
+              reopen a collapsed rail from Inicio at all. The two are one
+              control split across the breakpoint, not a leftover.
 
-            It is the hamburger and not the panel glyph the app uses elsewhere
-            on desktop. One glyph on one surface costs less than two different
-            icons for the same action, and the rail keeps its own control on
-            every other screen. */}
-        <SidebarMenuTrigger className="-ml-2 hidden shrink-0 text-white md:flex hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
-        {/* The secondary variant of the logo: #DADADA plus the brand orange. It
-            has been in `public/` since delivery 1 waiting for exactly this —
-            the primary one is dark grey and would not show on #272727. */}
-        <Image
-          src="/logo-secundary.svg"
-          alt="Sevenz"
-          width={111}
-          height={40}
-          className="h-7 w-auto"
-          priority
-        />
-        <div className="ml-auto shrink-0">
+              It is the hamburger and not the panel glyph the app uses elsewhere
+              on desktop. One glyph on one surface costs less than two different
+              icons for the same action, and the rail keeps its own control on
+              every other screen. */}
+          <SidebarMenuTrigger className="-ml-2 hidden shrink-0 text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 md:flex" />
+          {/* The secondary variant of the logo: #DADADA plus the brand orange.
+              It has been in `public/` since delivery 1 waiting for exactly this
+              — the primary one is dark grey and would not show on #272727. */}
+          <Image
+            src="/logo-secundary.svg"
+            alt="Sevenz"
+            width={111}
+            height={40}
+            className="h-8 w-auto"
+            priority
+          />
+        </div>
+        <div className="shrink-0">
           {/* Desktop: the usual popover, with its list inside. Phone: a link to
               /notificaciones, because a 320px popover anchored to the corner of
               a 375px screen has nowhere to land. It is the same split the app
@@ -151,11 +164,17 @@ export function HomeHeader({
           </div>
           <Link
             href="/notificaciones"
-            className="relative flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-white outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40 md:hidden"
+            className="flex h-[38px] items-center gap-1 rounded-md px-2 text-sm font-medium text-white outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40 md:hidden"
           >
-            <Bell className="size-4 shrink-0" aria-hidden="true" />
+            {/* Label first, bell second. The spec puts the count ON the bell,
+                so the badge needs the icon as its positioning box — anchoring
+                it to the whole link would float the number off the far corner
+                of the text instead. */}
             Notificaciones
-            <UnreadBadge />
+            <span className="relative shrink-0">
+              <Bell className="size-6" aria-hidden="true" />
+              <UnreadBadge />
+            </span>
           </Link>
         </div>
       </div>
@@ -168,8 +187,8 @@ export function HomeHeader({
           it is the price of keeping the search field up top. The two guards
           above exist so it happens ONCE and not in a loop. */}
       {collapsed ? null : (
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-start justify-between gap-0.5 px-4 pt-3 pb-2.5">
+          <div className="flex min-w-0 flex-col gap-0.5">
             {/* `first_name` is required by both signup and "Mi negocio", in the
                 browser and on the server, so it is treated as present. The
                 guard is only for a row that predates that rule: rendering
@@ -200,7 +219,10 @@ export function HomeHeader({
         </div>
       )}
 
-      {children}
+      {/* 24 below and 16 above, from the spec. The gap under the field is the
+          one that is deliberately bigger: it is what separates the dark block
+          from the page, and the collapsed header leans on it too. */}
+      <div className="px-4 pt-4 pb-6">{children}</div>
     </header>
   );
 }

@@ -236,6 +236,54 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
     "empeora, y es justo lo que el borde cubre");
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// THE CAPITAL CARD — the colour of money, after the 2026-10-04 spec
+//
+// The spec asked for the big figure in `--brand` (#F66B02). On the card's white
+// that is 2,99:1, below the 3:1 WCAG asks even of LARGE text — it fails by a
+// hair, but it fails. Hence `--money-due`: the same hue and chroma in oklch,
+// with less lightness.
+console.log("");
+console.log("── LA TARJETA DE CAPITAL (spec del 2026-10-04)");
+{
+  const blanco = [1, 1, 1];
+  const oscuro = ok(0.145);                 // --background en tema oscuro
+  const brand = hexASrgb("#f66b02");
+  const due = hexASrgb("#eb6100");          // --money-due
+
+  const f = (nombre, r, piso, nota = "") => {
+    const pasa = r >= piso;
+    const m = (r - piso).toFixed(2);
+    console.log(
+      `   ${pasa ? "PASA " : "FALLA"}  ${r.toFixed(2)}:1  (piso ${piso})  margen ${m >= 0 ? "+" : ""}${m}  ${nombre}${nota ? "  — " + nota : ""}`,
+    );
+  };
+
+  // THE FIGURE IS 30px, so its floor is 3:1 and not 4,5. Shrink it below 24px
+  // and the colour stops complying without changing value.
+  f("--brand #F66B02, lo que pedia el spec", ratio(brand, blanco), AA_TEXTO_GRANDE,
+    "por esto no se uso tal cual");
+  f("--money-due #EB6100 sobre la tarjeta clara", ratio(due, blanco), AA_TEXTO_GRANDE,
+    "30px = texto grande");
+  f("--money-due #EB6100 sobre el fondo oscuro", ratio(due, oscuro), AA_TEXTO_GRANDE,
+    "mismo valor en los dos temas, y por eso se puede");
+  f("si la cifra bajara a tamano normal", ratio(due, blanco), AA_TEXTO,
+    "NO cumple: --money-due es solo para la cifra grande");
+
+  f("rotulo y 'Ver reportes', foreground", ratio(ok(0.145), blanco), AA_TEXTO);
+  f("linea de la moneda menor, muted-foreground", ratio(ok(0.556), blanco), AA_TEXTO);
+  f("borde de la tarjeta contra la pagina", ratio(ok(0.922), blanco), AA_NO_TEXTO,
+    "informativo: un borde decorativo no tiene piso");
+
+  console.log("");
+  console.log("   la barra de abajo");
+  f("etiqueta activa sobre la pastilla #F5F5F5", ratio(ok(0.145), ok(0.97)), AA_TEXTO);
+  f("etiqueta inactiva sobre blanco", ratio(ok(0.556), blanco), AA_TEXTO);
+  f("subrayado del activo contra blanco", ratio(ok(0.145), blanco), AA_NO_TEXTO);
+  f("pastilla #F5F5F5 contra blanco", ratio(ok(0.97), blanco), AA_NO_TEXTO,
+    "informativo, y es justo por esto que el subrayado acompana a la pastilla");
+}
+
 console.log("");
 console.log("Nota: la ultima fila es informativa. `bg-secondary` es una superficie sin");
 console.log("borde propio, asi que no tiene que separarse del fondo para cumplir WCAG —");

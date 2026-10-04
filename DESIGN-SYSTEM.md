@@ -523,6 +523,31 @@ oscuro; por eso `--brand` tiene el mismo valor en los dos temas. Sobre fondo
 blanco **no pasa el piso de contraste de abajo**: si algún día hace falta ahí,
 hay que oscurecerlo en `globals.css` primero, no en el componente.
 
+## El naranja sobre fondo claro es `--money-due`, no `--brand`
+
+La sección de arriba prometía que si algún día el naranja tenía que ir sobre
+blanco habría que oscurecerlo en `globals.css` primero. El 2026-10-04 llegó ese
+día: el spec de Figma pintó la cifra del capital en `#F66B02`, que sobre el
+blanco de la tarjeta da **2,99:1** — por debajo del 3:1 que WCAG pide **incluso
+al texto grande**. Falla por una centésima, que es la peor forma de fallar,
+porque nadie lo nota mirando.
+
+`--money-due` es `#EB6100`: el mismo tono y el mismo croma en oklch, con menos
+luminosidad. **3,36:1 sobre blanco y 5,88:1 sobre el fondo oscuro**, así que
+vale igual en los dos temas y no hace falta invertirlo — es la excepción, no la
+regla, y vale porque se midió, no porque se supusiera.
+
+**Solo para la cifra grande del capital, que son 30px.** WCAG llama grande a
+≥ 24px y le baja el piso a 3:1. A tamaño de texto normal el piso es 4,5 y este
+color da 3,36 — o sea que **encoger esa cifra por debajo de 24px la deja fuera
+de norma sin tocar el color**. Quien la use para una etiqueta de 12px habrá
+elegido un color que no cumple, y el fallo no se verá.
+
+Se llama como `--money-in` a propósito: no decora, dice de qué dinero se habla.
+Y sustituye al `amber-600` que tenía esa cifra, lo cual **de paso arregla una
+colisión**: en este código `amber` ya significa «plazo vencido», así que el
+total de la cartera se pintaba del color de un aviso de mora.
+
 ## Las tarjetas oscuras son oscuras en los dos temas
 
 Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
@@ -663,16 +688,25 @@ barra futura:
 > formulario, **lo único que escribe se ve igual que lo que solo te mueve.**
 > Flotando, es el único control que evidentemente no es un destino.
 
-**El activo se marca con un subrayado, no con una píldora.** La píldora vino del
-menú lateral, donde la fila activa sí es una superficie rellena; aquí abajo
-tenía que caber bajo un icono de 16px con una etiqueta de 11px, y acababa siendo
-una caja gris blanda que se leía más como «desactivado» que como
-«seleccionado». Una raya bajo la etiqueta dice lo mismo con una sola forma
-sólida, y deja que el icono sea un icono.
+**El activo se marca con pastilla Y subrayado.** La Entrega 3 salió solo con
+subrayado; el spec de Figma del 2026-10-04 pedía solo la pastilla gris
+`#F5F5F5` (que es `--muted`), y el dueño resolvió el choque con «las dos
+cosas». No es indecisión, y medirlo lo explica:
+
+| | Ratio contra el blanco | |
+|---|---|---|
+| La pastilla `#F5F5F5` | **1,09:1** | prácticamente invisible |
+| El subrayado | 19,79:1 | sólido |
+
+**La pastilla sola no marca nada en un teléfono barato al sol** — es un gris al
+4% sobre blanco, lo primero que desaparece. Da la sensación de bloque
+seleccionado cuando se ve, y cuando no se ve, no deja nada. El subrayado es lo
+que carga el significado; la pastilla lo acompaña.
 
 **La raya está siempre en el DOM**, transparente cuando no toca. Pintarla solo
 en el activo subiría 5px todas las etiquetas al cambiar de pantalla — cuatro
-alturas distintas durante una sola navegación.
+alturas distintas durante una sola navegación. La pastilla sí puede ir y venir,
+porque envuelve el contenido en vez de ponerse debajo.
 
 **El botón flotante vive DENTRO de `MobileNav`, no en su propio archivo.** No es
 pereza: las cuatro condiciones que apagan la barra —hay un diálogo abierto, el

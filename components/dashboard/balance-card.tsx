@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { HideableBalance } from "@/components/dashboard/hideable-balance";
 import { useHiddenBalances } from "@/hooks/use-hidden-balances";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -60,60 +60,69 @@ export function BalanceCard({
   const smaller = secondary ? formatLedgerAmount(secondary.balance, secondary.currency, ledger) : null;
 
   return (
-    <div className="flex w-full flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <HideableBalance
-            balance={main.balance}
-            currency={main.currency}
-            ledger={ledger}
-            showToggle={false}
-            mainClassName="text-3xl text-amber-600 dark:text-amber-400"
-          />
-          {smaller ? (
-            <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
-              {hidden ? (
-                "••••••"
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">{smaller.primary}</span>
-                  {smaller.secondary ? ` · ${smaller.secondary} hoy` : null}
-                </>
-              )}
-            </p>
-          ) : null}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Lo que tus clientes te deben en total, sin descontar nada.
+    // Figma spec, 2026-10-04: 1px border, radius 10, padding 8 over 16, and no
+    // fill of its own — it used to carry `bg-muted/30`, which on the near-white
+    // page read as a second surface the design does not have.
+    <div className="flex w-full items-stretch justify-between gap-4 rounded-[10px] border px-4 py-2">
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-xs text-foreground">{label}</p>
+        {/* 30px and `--money-due`. The size matters twice over: it is what the
+            spec asks for, and it is what makes the colour legal — WCAG calls
+            anything from 24px "large text" and drops its floor to 3:1, which
+            this orange clears at 3,36:1. Shrink this figure below 24px and the
+            colour stops complying without changing. */}
+        <HideableBalance
+          balance={main.balance}
+          currency={main.currency}
+          ledger={ledger}
+          showToggle={false}
+          mainClassName="text-[30px] leading-tight text-money-due"
+        />
+        {smaller ? (
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {hidden ? (
+              "••••••"
+            ) : (
+              <>
+                <span className="font-medium text-foreground">{smaller.primary}</span>
+                {smaller.secondary ? ` · ${smaller.secondary} hoy` : null}
+              </>
+            )}
           </p>
-        </div>
+        ) : null}
+      </div>
 
-        {/* Just the eye. The chart toggle sat beside it until delivery 3. */}
+      {/* The spec's "Icons Container": eye pinned to the top, the link pinned to
+          the bottom, both right-aligned. `justify-between` and not a gap, so
+          the two stay on the card's own edges however tall the figures make it
+          — one currency or two. */}
+      <div className="flex shrink-0 flex-col items-end justify-between py-1">
         <button
           type="button"
           onClick={toggleHidden}
           aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
           aria-pressed={!hidden}
-          className="mt-1 shrink-0 rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+          className="rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
         >
           {hidden ? (
-            <Eye className="size-4" aria-hidden="true" />
+            <Eye className="size-6" aria-hidden="true" />
           ) : (
-            <EyeOff className="size-4" aria-hidden="true" />
+            <EyeOff className="size-6" aria-hidden="true" />
           )}
         </button>
-      </div>
 
-      {/* The chart toggle's replacement, not an extra. Moving the charts to
-          /reportes left this card with no way out towards them at all, and an
-          owner who knew they were here would have gone looking where they no
-          longer are. */}
-      <Link
-        href="/reportes"
-        className="self-end text-xs text-muted-foreground underline decoration-1 underline-offset-2 transition-colors hover:text-foreground"
-      >
-        Ver reportes
-      </Link>
+        {/* The chart toggle's replacement, not an extra. Moving the charts to
+            /reportes left this card with no way out towards them at all, and an
+            owner who knew they were here would have gone looking where they no
+            longer are. */}
+        <Link
+          href="/reportes"
+          className="flex items-center gap-0.5 whitespace-nowrap text-xs text-foreground transition-colors hover:text-money-due"
+        >
+          Ver reportes
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Link>
+      </div>
     </div>
   );
 }

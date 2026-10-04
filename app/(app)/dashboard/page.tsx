@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
@@ -125,6 +125,16 @@ export default async function DashboardPage({
   //
   // Built here and not in the JSX because down there the only thing that should
   // be readable is which one goes big.
+  // THE LABEL NAMES THE BIG CURRENCY, also when there are two ledgers. From
+  // the Figma spec of 2026-10-04 plus the owner's call the same day: the figure
+  // underneath is formatted in that currency, so a label that does not say
+  // which one leaves the reader to infer it from a "$" that Colombia uses too.
+  const mainLabel = !rateContext
+    ? "Capital por cobrar"
+    : usdIsLarger
+      ? "Capital por cobrar en USD"
+      : "Capital por cobrar en Euro";
+
   const usdLedger = { balance: totalUsd, currency: "USD" as const };
   const eurLedger = { balance: totalEur, currency: "EUR" as const };
   const copLedger = { balance: totalCop, currency: null };
@@ -198,17 +208,25 @@ export default async function DashboardPage({
             es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
         <CuentaPausada />
 
-        {/* 20px of separation above a section title, measured on screen. The
-            container is a flex column with gap-4, and a margin ADDS to a flex gap
-            rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
-            the 20px. Changing the container's gap changes this too. */}
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Por cobrar</h2>
+        {/* 16px and not 20, from the Figma spec of 2026-10-04: both section
+            titles on this screen are the same size as body text, bold rather
+            than big. The screen already has one large figure and it is the
+            money — a 20px heading above it was competing with it. */}
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Por cobrar</h2>
           <div className="flex shrink-0 items-center gap-2">
             {/* Importar vive aquí, no solo en el menú lateral: es la forma de
                 cargar una cartera entera, y estaba escondida detrás de una
-                navegación que muchos dueños no abren nunca. */}
-            <ImportarCartera />
+                navegación que muchos dueños no abren nunca.
+
+                `responsive` y no `outline` desde el spec del 2026-10-04: ahí
+                "Subir libreta" es texto con su icono, sin recuadro. En teléfono
+                ya no lleva caja — compite menos con la cifra, que es lo único
+                grande que debería haber aquí — y de `sm:` en adelante la
+                conserva, que es lo que esta variante ya hacía en las otras tres
+                pantallas y lo que la versión web necesita. El spec solo cubre el
+                teléfono. */}
+            <ImportarCartera variant="responsive" />
             {/* Desktop only: beside the title, hugging its own width.
                 The breakpoint is `md` and not `sm` since delivery 3, so that it
                 lines up with the bottom bar's: below md the floating "Agregar"
@@ -231,8 +249,11 @@ export default async function DashboardPage({
         </div>
 
 
-        {/* Moves aside with "Agregar movimiento", under the same condition: the
-            match list lands right on top of it.
+        {/* THE CARD AND THE RATE STRIP ARE ONE SECTION, 14px apart, which is
+            the spec's "Summary Section" of 2026-10-04. They used to be split by
+            the install banner, which landed between the figure and the rate
+            that figure converts at — the two things on this screen that are
+            read together.
 
             ONE SINGLE CARD since 2026-10-03, for a Venezuelan business too.
             There used to be two — USD and Euro — side by side, and the problem
@@ -240,46 +261,47 @@ export default async function DashboardPage({
             same label and the same colour, force you to read both to know what
             your cartera is. Now the larger goes big and the smaller on a small
             line below; which is which is decided by this screen, the one that
-            holds both totals. The full reasoning is in `balance-card.tsx`. */}
+            holds both totals. The full reasoning is in `balance-card.tsx`.
+
+            Both move aside with "Agregar movimiento", under the same condition:
+            the match list lands right on top of them. */}
         <HideWhileResults>
-          <BalanceCard
-            label="Capital por cobrar"
-            ledger={ledger}
-            {...(rateContext
-              ? {
-                  main: usdIsLarger ? usdLedger : eurLedger,
-                  secondary: usdIsLarger ? eurLedger : usdLedger,
-                }
-              : { main: copLedger, secondary: null })}
-          />
+          <div className="flex flex-col gap-3.5">
+            <BalanceCard
+              label={mainLabel}
+              ledger={ledger}
+              {...(rateContext
+                ? {
+                    main: usdIsLarger ? usdLedger : eurLedger,
+                    secondary: usdIsLarger ? eurLedger : usdLedger,
+                  }
+                : { main: copLedger, secondary: null })}
+            />
+            {/* The rate goes AFTER the card, at the owner's request on
+                2026-09-20. It used to go before, on the argument that a card's
+                bolívar equivalent cannot be read without knowing what rate it
+                was converted at; the rate is still on the same screen and a
+                finger away, so that weighs less than the order the owner wants
+                to read in. */}
+            {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+          </div>
         </HideWhileResults>
 
-        {/* DOWN HERE AND NOT AT THE VERY TOP, since 2026-10-03. This notice is
-            a dark card on purpose — `DESIGN-SYSTEM.md` puts it this way: "a dark
+        {/* DOWN HERE AND NOT AT THE VERY TOP, since 2026-10-03, and now below
+            the whole summary section rather than inside it. This notice is a
+            dark card on purpose — `DESIGN-SYSTEM.md` puts it this way: "a dark
             piece in the middle of a light screen is saying this here is the new
             thing, look at me", and that only works if it contrasts with what
-            surrounds it.
+            surrounds it. Against the new header it stopped contrasting, and
+            between the capital and its rate it also split a pair that is read
+            together.
 
-            With the new header it stopped contrasting: it was a dark block
-            against another dark block, separated by 16px of white, and the two
-            read as one smudge. The notice did not disappear, but it stopped
-            standing out, which for a notice is the same thing.
-
-            Below the capital it is still high up — the first thing after the
-            figure the owner comes to see — and it is surrounded by white again.
-            Phone only, as always: Sevenz has been installable since August and
-            no shopkeeper found out, because Android shows its own notice,
-            discreet and easy to ignore, and on iPhone it never appears. */}
+            The Figma spec does not model it at all. It stays because leaving it
+            out is a product decision, not a layout one. Phone only, as always:
+            Sevenz has been installable since August and no shopkeeper found
+            out, because Android shows its own notice, discreet and easy to
+            ignore, and on iPhone it never appears. */}
         <InstallAppBanner />
-
-        {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición
-            del dueño. Antes iba delante, con el argumento de que el
-            equivalente en bolívares de una tarjeta no se puede leer sin saber
-            a qué tasa está convertido; la tasa sigue en la misma pantalla y a
-            un dedo de distancia, así que el argumento pesa menos que el orden
-            que el dueño quiere leer. Si vuelve a moverse, esta es la razón que
-            había. */}
-        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
 
         {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
             autoOpen lives here; the desktop one must not also receive it or both
@@ -325,27 +347,22 @@ export default async function DashboardPage({
             Los chips estuvieron un rato en esta misma fila, en el sitio del
             título, y se leía como si "Ordenar por" fuese el nombre de la
             sección. */}
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Clientes</h2>
+        <div className="flex items-center justify-between gap-3 pt-3 pb-2.5">
+          <h2 className="text-base font-semibold">Clientes</h2>
           {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
               en 15—, así que hace falta una salida explícita a la completa. */}
-          {/* Subrayado: es lo único de esta fila que lleva a otra pantalla, y
-              un "ghost" sin subrayar no se distingue de una etiqueta. Va en el
-              <Link> y no en el botón, para que siga al texto en vez de dibujar
-              una raya del ancho de la caja.
-
-              `decoration-1` y `underline-offset-2` no son gusto. Este botón es
-              `size="sm"`, o sea `text-[0.8rem]` — 12,8px. A ese tamaño el
-              grosor `auto` del navegador sale por debajo de 1px y se pinta como
-              una línea gris lavada: el subrayado estaba puesto y no se veía. Y
-              un offset de 4px, que va bien en texto de 14px, aquí separa tanto
-              la raya de la palabra que deja de leerse como suya. Mismo
-              tratamiento que el enlace pequeño de /admin/cuentas. */}
-          <Button variant="ghost" size="sm" asChild className="shrink-0">
-            <Link href="/clients" className="underline decoration-1 underline-offset-2">
-              Ver todos
-            </Link>
-          </Button>
+          {/* 12px with a chevron since the spec of 2026-10-04, instead of the
+              underlined ghost button it was. The underline existed to stop a
+              ghost button reading as a label; a chevron says "this goes
+              somewhere" without borrowing a button's shape at all, and it is
+              the same treatment the capital card's own link uses. */}
+          <Link
+            href="/clients"
+            className="flex shrink-0 items-center gap-0.5 text-xs text-foreground transition-colors hover:text-money-due"
+          >
+            Ver todos
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
         </div>
 
         {/* En su propia fila, debajo de la cabecera y pegados a la lista que
