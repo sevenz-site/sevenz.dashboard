@@ -16,7 +16,6 @@ import { PedirAvisosWhatsappDialog } from "@/components/dashboard/pedir-avisos-w
 import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
-import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
@@ -120,53 +119,15 @@ export default async function DashboardPage({
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
-  // The lending chart sums raw movement amounts, which only means something
-  // within one currency — a VE owner sees one chart per currency (each
-  // filtered to its own movements, no conversion) instead of one mixed total.
-  const clientIds = (clients ?? []).map((c) => c.id);
-  // Only the window the chart actually draws. This query used to have no date
-  // filter at all: it pulled every movement the shop had ever recorded — 411 ms
-  // and climbing forever on a 10,560-movement shop — to render a rolling 7-day
-  // chart.
-  const chartWindowStart = chartFetchWindowStart();
-  const { data: weeklyMovements } =
-    clientIds.length > 0
-      ? await supabase
-          .from("movements")
-          .select("type, amount, currency, created_at")
-          .in("client_id", clientIds)
-          .is("deleted_at", null)
-          .gte("created_at", chartWindowStart)
-      : { data: [] };
-  const weeklyMovementRows = (weeklyMovements ?? []) as {
-    type: "charge" | "payment";
-    amount: number;
-    currency: "USD" | "EUR" | null;
-    created_at: string;
-  }[];
-  const weeklyLendingCop = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => !m.currency));
-  const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
-  const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
-  // The three possible ledgers, each with its chart. Built here and not in the
-  // JSX because down there the only thing that should be readable is which one
-  // goes big.
-  const usdLedger = {
-    balance: totalUsd,
-    currency: "USD" as const,
-    chartData: weeklyLendingUsd,
-    chartTitle: "Fiado vs. Abono (USD)",
-  };
-  const eurLedger = {
-    balance: totalEur,
-    currency: "EUR" as const,
-    chartData: weeklyLendingEur,
-    chartTitle: "Fiado vs. Abono (EUR)",
-  };
-  const copLedger = {
-    balance: totalCop,
-    currency: null,
-    chartData: weeklyLendingCop,
-  };
+  // The three ledgers, figure only. The charts that used to hang off these
+  // objects moved to `/reportes` with delivery 3; this page no longer reads a
+  // single movement to draw them.
+  //
+  // Built here and not in the JSX because down there the only thing that should
+  // be readable is which one goes big.
+  const usdLedger = { balance: totalUsd, currency: "USD" as const };
+  const eurLedger = { balance: totalEur, currency: "EUR" as const };
+  const copLedger = { balance: totalCop, currency: null };
 
   // Both values ride along on work this page already does: first_name is one
   // more column on the owners query above, and last_sign_in_at is already in
@@ -248,12 +209,14 @@ export default async function DashboardPage({
                 cargar una cartera entera, y estaba escondida detrás de una
                 navegación que muchos dueños no abren nunca. */}
             <ImportarCartera />
-            {/* Desktop only: beside the title, hugging its own width. The phone
-                keeps it full width below, which is a different place in the
-                document — so it is rendered in both spots and each is shown at
-                one breakpoint. */}
+            {/* Desktop only: beside the title, hugging its own width.
+                The breakpoint is `md` and not `sm` since delivery 3, so that it
+                lines up with the bottom bar's: below md the floating "Agregar"
+                is the trigger, at md and up there is no bottom bar and this
+                button is the only one. With the old `sm` there was a 128px band
+                — 640 to 768 — where BOTH were on screen. */}
             <HideWhileResults>
-              <div className="hidden sm:block">
+              <div className="hidden md:block">
                 <ClientSearchDialog
                   clients={clients ?? []}
                   ownerId={user!.id}
@@ -322,23 +285,25 @@ export default async function DashboardPage({
             autoOpen lives here; the desktop one must not also receive it or both
             would open and stack.
 
-            Cierra la sección, debajo de las tarjetas y de la tasa. Estuvo
-            arriba, por delante de ellas; se bajó el 2026-09-20 a petición del
-            dueño. En el teléfono lo tiene igual de a mano en la barra de abajo
-            ("Agregar"), así que aquí no es el atajo sino el cierre de lo que
-            acaba de leer.
+            NO VISIBLE BUTTON since delivery 3: the floating "Agregar" took over
+            as the trigger. What stays is the DIALOG, and it has to — the
+            floating button navigates to `?nuevo=1`, and this instance is what
+            reads that marker and opens. Deleting the component instead of its
+            button would leave that button pointing at a screen with nothing to
+            open on it.
 
-            Se aparta mientras la lista de coincidencias está abierta, igual
-            que las tarjetas: un toque que se pase unos píxeles abriría el alta
-            de un movimiento en vez de la ficha del cliente. */}
+            It still moves aside while the match list is open, like the capital
+            card: the dialog is invisible, but a mounted Radix trigger is not
+            the only thing that can swallow a tap near the list's edge. */}
         <HideWhileResults>
-          <div className="sm:hidden">
+          <div className="md:hidden">
             <ClientSearchDialog
               clients={clients ?? []}
               ownerId={user!.id}
               businessName={owner?.business_name || user!.email || "tu negocio"}
               ownerCountry={ownerCountry}
               autoOpen={nuevo === "1"}
+              hideTrigger
               showTourTarget={false}
               rateContext={rateContext}
               monedaHabitual={monedaHabitual}

@@ -652,6 +652,57 @@ mismo** que decide si se pinta la lista de coincidencias
 misma pantalla acaban desincronizadas, y el síntoma sería el campo moviéndose
 bajo el dedo.
 
+## La barra de abajo: tres destinos, un menú, y nada que escriba
+
+`components/dashboard/mobile-nav.tsx`. Cuatro huecos — Inicio, Reportes,
+Clientes, Menú — y **ninguno de ellos escribe nada**. Agregar salió de la barra
+el 2026-10-03 y pasó a un botón flotante, por una razón que vale para cualquier
+barra futura:
+
+> En una fila de cuatro cajas idénticas, tres que navegan y una que abre un
+> formulario, **lo único que escribe se ve igual que lo que solo te mueve.**
+> Flotando, es el único control que evidentemente no es un destino.
+
+**El activo se marca con un subrayado, no con una píldora.** La píldora vino del
+menú lateral, donde la fila activa sí es una superficie rellena; aquí abajo
+tenía que caber bajo un icono de 16px con una etiqueta de 11px, y acababa siendo
+una caja gris blanda que se leía más como «desactivado» que como
+«seleccionado». Una raya bajo la etiqueta dice lo mismo con una sola forma
+sólida, y deja que el icono sea un icono.
+
+**La raya está siempre en el DOM**, transparente cuando no toca. Pintarla solo
+en el activo subiría 5px todas las etiquetas al cambiar de pantalla — cuatro
+alturas distintas durante una sola navegación.
+
+**El botón flotante vive DENTRO de `MobileNav`, no en su propio archivo.** No es
+pereza: las cuatro condiciones que apagan la barra —hay un diálogo abierto, el
+teclado está arriba, hay una libreta en revisión, estamos en la ficha de un
+cliente— le aplican exactamente igual. Un componente aparte tendría que copiar
+las cuatro, y el día que una cambiara, el botón sobreviviría a un teclado del
+que la barra sí se apartó.
+
+**Y una consecuencia que hay que respetar al añadir un hueco:** desde que la
+barra lleva «Menú», la cabecera del Inicio ya no lleva hamburguesa en teléfono
+—solo de `md` hacia arriba, donde no hay barra— y `/reportes` se salió de la
+barra superior en teléfono por lo mismo. Dos puertas al mismo cajón en la misma
+pantalla no es redundancia útil, es una de las dos sin explicación.
+
+## `flex-1` dentro de una columna estira a lo alto, y eso rompió un gráfico
+
+Vale para cualquier componente que se mueva de sitio. `WeeklyLendingChart` lleva
+`flex-1` en su caja exterior porque nació compartiendo una FILA dentro de la
+tarjeta de capital. Puesto tal cual en `/reportes`, que es una columna
+`flex flex-1 flex-col`, ese mismo `flex-1` creció **a lo alto**: un gráfico con
+180px de dibujo se convirtió en una tarjeta de 560px, casi toda vacía.
+
+No es un fallo del gráfico — es que `flex-1` no significa «ancho», significa
+«reparte el eje principal», y el eje principal cambia con el contenedor. La
+solución fue envolver cada gráfico en su propia fila
+(`<div className="flex">`), para que ese `flex-1` siempre reparta anchura.
+
+**La regla general:** antes de mover un componente con `flex-1` a otra pantalla,
+mira en qué dirección fluye el contenedor nuevo. Si no es la misma, envúelvelo.
+
 ## Una elección se marca; una acción se pulsa
 
 Si dos botones representan **un valor elegido** —no dos acciones distintas—,

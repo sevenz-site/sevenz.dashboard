@@ -115,18 +115,20 @@ export function HomeHeader({
     // the `AppHeader` it replaces.
     <header className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 bg-brand-primary px-4 pt-3 pb-4">
       <div className="flex items-center gap-2">
-        {/* STILL HERE ON PURPOSE, even though the design does not draw it. The
-            bottom bar does not carry "Menú" yet — that is delivery 3 — and the
-            `AppHeader` that used to carry this trigger is hidden on this
-            screen: without this button the owner is left on Inicio with no way
-            at all to open the menu. It comes out when "Menú" reaches the bar,
-            not before.
+        {/* DESKTOP ONLY since delivery 3. On a phone the bottom bar now carries
+            "Menú", which opens this same sidebar, so a hamburger up here would
+            be the second door to one room.
 
-            It is the hamburger at both widths, desktop included, where the app
-            uses the panel glyph instead. One glyph on one surface costs less
-            than two different icons for the same action, and the desktop rail
-            keeps its own control on every other screen. */}
-        <SidebarMenuTrigger className="-ml-2 shrink-0 text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
+            It stays from md up because the bottom bar is `md:hidden`: on a
+            desktop there is no bar, and without this the owner could not reopen
+            a collapsed rail from Inicio at all. The two are one control split
+            across the breakpoint, not a leftover.
+
+            It is the hamburger and not the panel glyph the app uses elsewhere
+            on desktop. One glyph on one surface costs less than two different
+            icons for the same action, and the rail keeps its own control on
+            every other screen. */}
+        <SidebarMenuTrigger className="-ml-2 hidden shrink-0 text-white md:flex hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
         {/* The secondary variant of the logo: #DADADA plus the brand orange. It
             has been in `public/` since delivery 1 waiting for exactly this —
             the primary one is dark grey and would not show on #272727. */}

@@ -17,26 +17,34 @@ import { cn } from "@/lib/utils";
 // in the sidebar menu now, so it isn't affected by this at all.
 export function AppHeader({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // Screens that carry their own contextual bar on a phone: a client, the
-  // Clientes list, Malas pagas, Papelera, Importar cartera, and Mi negocio.
-  // All of these replace this header below sm rather than stacking a second
-  // bar on top of it.
+  // INICIO DOES NOT CARRY THIS BAR AT ANY WIDTH, and it is the only such case.
+  // Since 2026-10-03 its dark header (`HomeHeader`) carries the brand, the menu
+  // and Notificaciones itself, at both widths. Leaving this one on top would be
+  // the brand twice and two ways into the menu, stacked.
+  //
+  // Whoever removes `HomeHeader` has to remove this line in the same change, or
+  // Inicio is left with no header at all and no way to open the menu.
+  const isHome = pathname === "/dashboard";
+  // Screens that do not need this bar on a phone. Two different reasons, one
+  // list, because the effect is the same:
+  //
+  //   * most of them carry their own contextual row — a client, the Clientes
+  //     list, Malas pagas, Papelera, Subir libreta, Mi negocio, Notificaciones
+  //     — and stacking a second bar on top of it costs ~110px of a 667px
+  //     screen;
+  //   * `/reportes` carries nothing of its own, but the bottom bar serves it
+  //     completely: it is one of the bar's own destinations, so there is
+  //     nowhere to go "back" to, and since delivery 3 the bar also carries
+  //     "Menú". Leaving this header on would put a hamburger in the top bar and
+  //     a "Menú" in the bottom one, on the same screen, opening the same sheet.
+  //
+  // From sm up they all get it back, because there is room for both and from md
+  // up there is no bottom bar at all.
   //
   // Any new screen that copies the "-mx-4 -mt-4 … sm:hidden" back-arrow row
   // belongs in this list too. /papelera shipped without it and rendered both
   // bars on a phone — the copied comment says "replaces the app header", but
   // nothing enforces it from that end.
-  // INICIO DOES NOT CARRY THIS BAR AT ANY WIDTH, and it is the only such case.
-  //
-  // `hasOwnBar` below hides the bar on phones only, because those screens bring
-  // their own "← back" row there and from sm up there is room for both. Inicio
-  // is different: since 2026-10-03 its dark header (`HomeHeader`) carries the
-  // brand, the menu and Notificaciones itself, at both widths. Leaving this one
-  // on top would be the brand twice and two ways into the menu, stacked.
-  //
-  // Whoever removes `HomeHeader` has to remove this line in the same change, or
-  // Inicio is left with no header at all and no way to open the menu.
-  const isHome = pathname === "/dashboard";
   const hasOwnBar =
     pathname.startsWith("/clients/") ||
     pathname === "/clients" ||
@@ -44,7 +52,8 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/papelera") ||
     pathname.startsWith("/import") ||
     pathname.startsWith("/profile") ||
-    pathname.startsWith("/notificaciones");
+    pathname.startsWith("/notificaciones") ||
+    pathname === "/reportes";
 
   return (
     <header

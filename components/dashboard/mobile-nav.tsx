@@ -3,23 +3,33 @@
 import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Home, Loader2, Plus, Users } from "lucide-react";
+import { ChartColumn, Home, Loader2, Menu, Plus, Users } from "lucide-react";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
-import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { cn } from "@/lib/utils";
-import { BADGE_MAX } from "@/lib/types";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
-// The three places the bar navigates to, in order, before Agregar. Exact
-// pathname matching, not startsWith: a client's own screen replaces this
-// whole bar anyway (see onClientDetail below), so there is no case where a
-// child route should light up its parent here.
+// The three places the bar navigates to, in order, before Menú. Exact pathname
+// matching, not startsWith: a client's own screen replaces this whole bar
+// anyway (see onClientDetail below), so there is no case where a child route
+// should light up its parent here.
+//
+// NOTIFICACIONES LEFT THIS BAR on 2026-10-03, with delivery 3 of the redesign.
+// It is not gone: it moved to the Inicio header, where it sits with its own
+// unread badge, and `/notificaciones` is still a page the sidebar reaches. What
+// it stopped being is one of the four things a thumb can reach without reading
+// — and that is the whole budget this bar has.
+//
+// Reportes took the slot. The trade is deliberate: a notification is something
+// you are told about (the badge does that from the header), while a report is
+// something you have to decide to go and look at, which is exactly what a
+// navigation bar is for.
 const DESTINATIONS = [
   { href: "/dashboard", label: "Inicio", icon: Home },
+  { href: "/reportes", label: "Reportes", icon: ChartColumn },
   { href: "/clients", label: "Clientes", icon: Users },
-  { href: "/notificaciones", label: "Notificaciones", icon: Bell },
 ] as const;
 
 // Shown only below md. Deliberately a CSS media query rather than the
@@ -80,11 +90,18 @@ function useKeyboardOpen() {
   return open;
 }
 
-// Only the three destinations carry the "selected" pill — Agregar is an
-// action, not a place, so "selected" has no meaning for it. Deliberately
-// exact-match only: Malas pagas, Importar cartera and Mi negocio live in the
-// sidebar rather than in this bar, and a highlight meaning "somewhere in this
-// section" would apply inconsistently across them.
+// Only the three destinations can be marked — Menú opens a sheet and Agregar is
+// an action, so "selected" has no meaning for either. Deliberately exact-match
+// only: Malas pagas, Subir libreta and Mi negocio live in the sidebar rather
+// than in this bar, and a highlight meaning "somewhere in this section" would
+// apply inconsistently across them.
+//
+// THE MARK IS AN UNDERLINE since 2026-10-03, not the grey pill it was. The pill
+// came from the sidebar, where the active row really is a filled surface; down
+// here it had to fit under a 16px icon with an 11px label, so it ended up as a
+// soft grey box hugging both and reading more like a disabled control than a
+// selected one. A rule under the label says the same thing with one solid
+// shape, and leaves the icon to be an icon.
 function NavItem({
   active,
   children,
@@ -99,16 +116,19 @@ function NavItem({
     <div className={cn("flex flex-1 items-center justify-center", className)} {...props}>
       <div
         className={cn(
-          "flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors",
-          // Soft gray pill behind icon+label together, not just the icon —
-          // reads as one unit and matches how the sidebar already marks its
-          // own active item. Text stays foreground-dark rather than switching
-          // to the muted color the inactive items use, since the pill itself
-          // is what signals selection here.
-          active ? "bg-muted text-foreground" : "text-muted-foreground",
+          "flex flex-col items-center gap-1 px-3 pt-1 text-[11px] font-medium transition-colors",
+          active ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {children}
+        {/* Always in the DOM, transparent when inactive. Rendering it only for
+            the active item would make every label jump 5px the moment it
+            became active, which on a bar of four is four different heights
+            during a single navigation. */}
+        <span
+          aria-hidden="true"
+          className={cn("h-0.5 w-6 rounded-full", active ? "bg-foreground" : "bg-transparent")}
+        />
       </div>
     </div>
   );
@@ -118,7 +138,7 @@ export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { guard } = useUnsavedChangesGuard();
-  const { unreadCount } = useUnreadNotifications();
+  const { toggleSidebar } = useSidebar();
   const tour = useTour();
   const overlayOpen = useOverlayOpen();
   const keyboardOpen = useKeyboardOpen();
@@ -161,7 +181,7 @@ export function MobileNav() {
       before?.();
       setGoingTo(href);
       startTransition(() => {
-        // Replace, never push: for Cartera it keeps the home screen from
+        // Replace, never push: for Inicio it keeps the home screen from
         // stacking behind wherever the owner came from (matching the sidebar),
         // and for a client's page it keeps the marked URL out of history, so
         // Back can't land on it and reopen the dialog.
@@ -177,95 +197,118 @@ export function MobileNav() {
       <Icon className="size-5" />
     );
 
-  // The bar's own classes, shared by both variants so the height and the
-  // safe-area padding stay identical — the layout reserves exactly this much
-  // space, and a variant that measured differently would strand the last row
-  // of content on one route but not another.
+  // The bar's own classes. The layout reserves exactly this much space, and a
+  // variant that measured differently would strand the last row of content.
   const navClass = cn(
     "fixed inset-x-0 bottom-0 z-40 border-t bg-background touch-manipulation md:hidden",
     "pb-[env(safe-area-inset-bottom)]",
   );
 
-  // Nothing at all on a client's own screen. The bar used to carry "Agregar
-  // abono" / "Agregar fiado" here, but a phone's own browser chrome — the
-  // native notification and address bars — sits in exactly that strip and
-  // covered them, so the two actions an owner comes to this screen for could
-  // be unreachable. They now live in the page itself, under "Marcar como mala
-  // paga", where nothing can overlap them. The screen keeps its own back
-  // chevron at the top for getting out.
+  // Nothing at all on a client's own screen — neither the bar nor the floating
+  // button. The bar used to carry "Agregar abono" / "Agregar fiado" here, but a
+  // phone's own browser chrome — the native notification and address bars —
+  // sits in exactly that strip and covered them, so the two actions an owner
+  // comes to this screen for could be unreachable. They now live in the page
+  // itself, under "Marcar como mala paga", where nothing can overlap them. The
+  // screen keeps its own back chevron at the top for getting out.
   if (onClientDetail) return null;
 
   return (
-    // z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The bar
-    // also unmounts while one is open, so this is belt and braces.
-    // touch-action: manipulation drops the browser's wait for a possible
-    // double-tap-to-zoom, which otherwise delays every single tap.
-    <nav className={navClass} aria-label="Navegación principal">
-      <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
-        {/* The three destinations, then Agregar. All anchors rather than
-            buttons: Next prefetches a Link's href while it is on screen, and
-            this bar always is, so each destination is preloaded before the
-            owner ever taps. Menú is gone from here — the sidebar opens from
-            the header's own trigger now, which is why that trigger exists on
-            a phone at all. */}
-        {DESTINATIONS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={(e) => navigate(e, item.href)}
-            className="flex flex-1"
-          >
-            <NavItem active={pathname === item.href} className="w-full">
-              {/* The unread badge hangs off the icon, so it needs a
-                  positioned box of its own — the pill around icon+label is
-                  the wrong anchor, it would float the count out over the
-                  neighbouring item. */}
-              <span className="relative">
-                {glyph(item.href, item.icon)}
-                {item.href === "/notificaciones" && unreadCount > 0 ? (
-                  <span className="absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
-                    {unreadCount > BADGE_MAX ? `${BADGE_MAX}+` : unreadCount}
-                  </span>
-                ) : null}
-              </span>
-              {item.label}
-            </NavItem>
-          </Link>
-        ))}
+    <>
+      {/* AGREGAR, FLOATING ABOVE THE BAR since 2026-10-03.
 
-        {/* Agregar. Never carries the active pill — it's an action, not a
-            place, so "selected" has no meaning for it. */}
-        <Link
-          href={agregarHref}
-          // Its own marker, not the one the page CTA uses. The tour finds its
-          // target with querySelector, which returns whichever matches first
-          // in the DOM — two elements sharing a marker means it can highlight
-          // the wrong one, or one that isn't on screen.
-          data-tour="new-client-button-mobile"
-          onClick={(e) => {
-            if (guardia()) {
-              e.preventDefault();
-              return;
-            }
-            navigate(e, agregarHref, () => {
-              // Step 1's tooltip only renders on the dashboard. This code is
-              // unreachable from a client's page now that the bar returns null
-              // there, but the guard stays cheap and correct if that changes.
-              if (tour.step === 1) tour.advance();
-            });
-          }}
-          className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent"
-        >
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            {isPending && goingTo === agregarHref ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : (
-              <Plus className="size-5" />
-            )}
-          </span>
-          Agregar
-        </Link>
-      </div>
-    </nav>
+          It lives inside this component and not in its own file on purpose:
+          every condition above — a dialog is open, the keyboard is up, a
+          libreta is being reviewed, we are on a client's screen — applies to it
+          exactly as it applies to the bar. A second component would have to
+          copy all four, and the day one of them changed, the button would
+          survive a keyboard that the bar correctly got out of the way of.
+
+          Why it left the bar: it was the fourth of four equal-looking slots,
+          three of which navigate. The only thing on this screen that WRITES
+          looked like the three that only move you. Floating, it is the one
+          control that is obviously not a destination. */}
+      <button
+        type="button"
+        // Its own marker, not the one the page CTA uses. The tour finds its
+        // target with querySelector, which returns whichever matches first in
+        // the DOM — two elements sharing a marker means it can highlight the
+        // wrong one, or one that isn't on screen.
+        data-tour="new-client-button-mobile"
+        aria-label="Agregar movimiento"
+        onClick={() => {
+          if (guardia()) return;
+          guard(() => {
+            // Step 1's tooltip only renders on the dashboard. This code is
+            // unreachable from a client's page now that this returns null
+            // there, but the guard stays cheap and correct if that changes.
+            if (tour.step === 1) tour.advance();
+            setGoingTo(agregarHref);
+            startTransition(() => router.replace(agregarHref));
+          });
+        }}
+        // Sits one gap above the bar, inside the strip `AppMain` already
+        // reserves — so it never covers the last row of a list.
+        className={cn(
+          "fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-5",
+          "text-sm font-medium text-primary-foreground shadow-lg transition-colors",
+          "active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden",
+          "bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
+        )}
+      >
+        {isPending && goingTo === agregarHref ? (
+          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+        ) : (
+          <Plus className="size-5" aria-hidden="true" />
+        )}
+        Agregar
+      </button>
+
+      {/* z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The
+          bar also unmounts while one is open, so this is belt and braces.
+          touch-action: manipulation drops the browser's wait for a possible
+          double-tap-to-zoom, which otherwise delays every single tap. */}
+      <nav className={navClass} aria-label="Navegación principal">
+        <div className={cn("flex items-stretch", NAV_HEIGHT_CLASS)}>
+          {/* The three destinations, then Menú. All three are anchors rather
+              than buttons: Next prefetches a Link's href while it is on screen,
+              and this bar always is, so each destination is preloaded before
+              the owner ever taps. */}
+          {DESTINATIONS.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={(e) => navigate(e, item.href)}
+              className="flex flex-1"
+            >
+              <NavItem active={pathname === item.href} className="w-full">
+                {glyph(item.href, item.icon)}
+                {item.label}
+              </NavItem>
+            </Link>
+          ))}
+
+          {/* Menú. A button and not a link, because it opens the sidebar sheet
+              rather than going anywhere — and never marked, for the same
+              reason. It is also why it cannot look "active": the sheet is a
+              Radix dialog, so opening it unmounts this whole bar.
+
+              THIS IS WHAT LETS THE INICIO HEADER DROP ITS HAMBURGER on a phone.
+              The header kept one through delivery 2 precisely because this slot
+              did not exist yet; the two must not both ship. */}
+          <button
+            type="button"
+            onClick={() => guard(() => toggleSidebar())}
+            className="flex flex-1"
+            aria-label="Abrir menú"
+          >
+            <NavItem active={false} className="w-full">
+              <Menu className="size-5" />
+              Menú
+            </NavItem>
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }
