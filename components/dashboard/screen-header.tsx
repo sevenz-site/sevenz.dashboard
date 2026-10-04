@@ -60,7 +60,7 @@ export function ScreenHeader({
           and they differ. 16 all round for the back arrow, 8 over nothing for
           the title and the subtitle, 16 for the field, and 0/16/16/16 for the
           chips. */}
-      <div className="flex items-center px-4 py-4">
+      <div className="flex items-center justify-between gap-3 px-4 py-4">
         <Link
           href="/dashboard"
           aria-label="Volver a Inicio"
@@ -68,6 +68,16 @@ export function ScreenHeader({
         >
           <ArrowLeft className="size-6" aria-hidden="true" />
         </Link>
+        {/* THE ACTION MOVES UP HERE WHEN THE HEADER COLLAPSES, so it does not
+            leave with the title it was sitting next to. Only Clientes has one;
+            on the other two `action` is undefined and this row keeps the arrow
+            alone on the left.
+
+            It is rendered in one place or the other, never both: two instances
+            of `ImportarCartera` would mean two `data-tour="import-button"`
+            markers, and the tour finds its target with `querySelector`, which
+            takes whichever comes first in the DOM — possibly the hidden one. */}
+        {collapsed ? action : null}
       </div>
 
       {/* One wrapper around everything that disappears, because the hook
