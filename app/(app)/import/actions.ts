@@ -287,7 +287,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       // already have one — never overwrite an existing value.
       if (!existingDocumentIds.get(clientId)) {
         if (!documentId) {
-          return { error: `Falta la cédula/documento de "${row.client_name}".`, imported: 0 };
+          return { error: `Falta la cédula de "${row.client_name}".`, imported: 0 };
         }
         clientDocuments.push({ client_id: clientId, document_id: documentId });
         // Para que una segunda fila del mismo cliente no lo pida otra vez.
@@ -297,7 +297,7 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
       clientKey = keyByName.get(cacheKey)!;
     } else {
       if (!documentId) {
-        return { error: `Falta la cédula/documento de "${row.client_name}".`, imported: 0 };
+        return { error: `Falta la cédula de "${row.client_name}".`, imported: 0 };
       }
 
       const normalizedDocumentId = normalizeDocumentId(documentId);
@@ -499,7 +499,7 @@ function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?:
     case "falta_nombre":
       return "Hay una fila sin nombre de cliente.";
     case "falta_documento":
-      return `Falta la cédula/documento de "${r.client_name ?? "un cliente"}".`;
+      return `Falta la cédula de "${r.client_name ?? "un cliente"}".`;
     case "documento_de_otro_cliente":
       // CT-30: igual que su gemelo de arriba, ya no manda a una tabla que se
       // borro en `7274c93`. Este lado es el de la carrera pura —alguien creo

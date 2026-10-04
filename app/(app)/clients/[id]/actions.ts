@@ -80,7 +80,7 @@ export async function updateClient(
   // que un cliente importado sin número no se podía ni editar la dirección.
   // Guardar vacío escribe null, que es lo que la columna admite y lo que el
   // resto del app ya sabe manejar (ver pedir-whatsapp-dialog.tsx).
-  if (!documentId) return { error: "Escribe la cédula o documento del cliente.", success: false };
+  if (!documentId) return { error: "Escribe la cédula del cliente.", success: false };
 
   // THE ORIGIN IS ONLY TOUCHED WHEN THE DOCUMENT ACTUALLY CHANGES.
   //

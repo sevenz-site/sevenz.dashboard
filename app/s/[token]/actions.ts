@@ -67,7 +67,7 @@ export type SubmitDocumentIdState = { error: string | null };
 export async function submitDocumentId(token: string, documentId: string): Promise<SubmitDocumentIdState> {
   const trimmed = documentId.trim();
   if (!trimmed) {
-    return { error: "Escribe tu número de documento." };
+    return { error: "Escribe tu número de cédula." };
   }
 
   if (!(await withinQuota(token, "document_id", DOCUMENT_ID_LIMIT))) {
@@ -82,7 +82,7 @@ export async function submitDocumentId(token: string, documentId: string): Promi
 
   if (error) {
     console.error("[submitDocumentId] rpc failed:", error.message);
-    return { error: "No pudimos guardar tu documento. Intenta de nuevo." };
+    return { error: "No pudimos guardar tu cédula. Intenta de nuevo." };
   }
 
   const result = data as { error: string | null };

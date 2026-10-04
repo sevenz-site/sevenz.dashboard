@@ -36,6 +36,7 @@
   --color-brand-field-border: var(--brand-field-border);
   --color-brand-muted: var(--brand-muted);
   --color-money-due: var(--money-due);
+  --color-brand-whatsapp: var(--brand-whatsapp);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -118,6 +119,24 @@
 
      Fixed in both themes, like the rest of this layer. */
   --brand-muted: #9a9a9a;
+  /* THE WHATSAPP GREEN, and it is in this layer because of where it is drawn.
+     From the Figma spec of 2026-10-04 (frame `1082:6047`), which puts the
+     "Compartir saldo vía WhatsApp" button INSIDE the client detail's dark
+     header. That surface is `--brand-primary` and does not invert, so a colour
+     that does is exactly what breaks here without anyone noticing.
+
+     That is not hypothetical: the button carried
+     `text-[#128C4A] dark:text-[#25D366]`, and #128C4A on #272727 is 3,47:1 —
+     below the 4,5:1 of its 17px label. The light theme's value would have
+     failed the moment the button moved onto the header, in the theme most
+     owners use.
+
+     #7EC070 is 6,87:1 against the header, one value in both themes.
+
+     THE LIMIT, said out loud: on white it is 2,17:1. This token works on the
+     dark header and nowhere light. A green button on a light surface needs its
+     own darker value — the same problem `--money-due` solves for the orange. */
+  --brand-whatsapp: #7ec070;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -210,6 +229,8 @@
   --brand-field-border: #a1a1a1;
   /* Same value as in light: see the note on :root. */
   --brand-muted: #9a9a9a;
+  /* Same value as in light: see the note on :root. */
+  --brand-whatsapp: #7ec070;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);

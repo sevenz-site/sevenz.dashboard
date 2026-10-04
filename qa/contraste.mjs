@@ -284,6 +284,70 @@ console.log("── LA TARJETA DE CAPITAL (spec del 2026-10-04)");
     "informativo, y es justo por esto que el subrayado acompana a la pastilla");
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// LA CABECERA DE LA FICHA DEL CLIENTE (spec del 2026-10-04, frame 1082:6047)
+//
+// La cuarta cabecera oscura, y la primera que mete un boton y una foto dentro.
+// Dos piezas de esta pantalla fallaban al subir a #272727 y ninguna lo habria
+// dicho en voz alta:
+//
+//   1. El verde de "Compartir saldo via WhatsApp" era un par que se invertia
+//      —#128C4A en claro, #25D366 en oscuro— y el valor del tema CLARO queda a
+//      3,47:1 contra la cabecera, con una etiqueta de 17px. El tema que usa la
+//      mayoria era el que fallaba.
+//   2. El relleno del avatar venia de `bg-muted`, que en claro es gris claro:
+//      un disco casi blanco donde el spec dibuja #404040.
+console.log("");
+console.log("── LA CABECERA DE LA FICHA DEL CLIENTE (spec del 2026-10-04)");
+{
+  const cab = hexASrgb("#272727");          // --brand-primary
+  const blanco = [1, 1, 1];
+  const wa = hexASrgb("#7ec070");           // --brand-whatsapp
+  const waClaroViejo = hexASrgb("#128c4a");
+  const waOscuroViejo = hexASrgb("#25d366");
+  const disco = hexASrgb("#404040");
+  const iniciales = hexASrgb("#a0a0a0");
+
+  const f = (nombre, r, piso, nota = "") => {
+    const pasa = r >= piso;
+    const m = (r - piso).toFixed(2);
+    console.log(
+      `   ${pasa ? "PASA " : "FALLA"}  ${r.toFixed(2)}:1  (piso ${piso})  margen ${m >= 0 ? "+" : ""}${m}  ${nombre}${nota ? "  — " + nota : ""}`,
+    );
+  };
+
+  console.log("   el boton de WhatsApp");
+  f("--brand-whatsapp #7EC070 sobre la cabecera", ratio(wa, cab), AA_TEXTO,
+    "etiqueta de 17px, piso normal");
+  f("el viejo #128C4A (tema claro) sobre la cabecera", ratio(waClaroViejo, cab), AA_TEXTO,
+    "esto es lo que se arreglo");
+  f("el viejo #25D366 (tema oscuro) sobre la cabecera", ratio(waOscuroViejo, cab), AA_TEXTO,
+    "pasaba, pero solo en un tema de los dos");
+  f("borde #DADADA del boton contra la cabecera", ratio(hexASrgb("#dadada"), cab), AA_NO_TEXTO,
+    "el boton no tiene relleno: el borde SI tiene piso");
+  f("#7EC070 si el boton volviera a una superficie clara", ratio(wa, blanco), AA_TEXTO,
+    "NO cumple: este token es solo para la cabecera");
+
+  console.log("");
+  console.log("   la foto y los datos");
+  f("iniciales #A0A0A0 sobre el disco #404040", ratio(iniciales, disco), AA_TEXTO_GRANDE,
+    "36px = texto grande; a tamano normal no cumpliria");
+  f("si las iniciales bajaran a tamano normal", ratio(iniciales, disco), AA_TEXTO,
+    "NO: el tamano es lo que hace legal este par");
+  // Separa de sobra, y ese no era el problema: el problema es que #F5F5F5 es un
+  // disco casi blanco donde el spec dibuja uno #404040, y que cambia con el
+  // tema sobre una superficie que no cambia. Se mide para dejar claro que lo
+  // que descarta `bg-muted` aqui no es el contraste.
+  f("bg-muted en claro, que es lo que traia el avatar", ratio(ok(0.97), cab), AA_NO_TEXTO,
+    "informativo: contrasta, pero es el color equivocado y se invierte");
+  f("disco #404040 contra la cabecera", ratio(disco, cab), AA_NO_TEXTO,
+    "informativo: decorativo, lo que informa son las iniciales");
+  f("nombre #F5F5F5 sobre la cabecera", ratio(hexASrgb("#f5f5f5"), cab), AA_TEXTO);
+  f("Cedula/Telefono/Direccion, --brand-muted", ratio(hexASrgb("#9a9a9a"), cab), AA_TEXTO);
+  f("flecha de volver, --brand-muted", ratio(hexASrgb("#9a9a9a"), cab), AA_NO_TEXTO);
+  f("iconos de Chat y Mas, --brand-secondary", ratio(hexASrgb("#dadada"), cab), AA_NO_TEXTO);
+}
+
 console.log("");
 console.log("Nota: la ultima fila es informativa. `bg-secondary` es una superficie sin");
 console.log("borde propio, asi que no tiene que separarse del fondo para cumplir WCAG —");

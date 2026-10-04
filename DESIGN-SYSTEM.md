@@ -314,6 +314,13 @@ Every place that asks for a client's cédula uses `DocumentIdInput`, never a
 bare `Input`. There are four: registering a client, editing one, the import
 review table, and the modal on the public share link.
 
+**Its label is "Cédula", in every one of them, since 2026-10-04.** It used to be
+"Documento" in some and "Cédula/documento" in others, and the error messages
+said "la cédula o documento". One word, chosen because it is what both markets
+call the thing. A new screen that asks for it writes "Cédula" too — and if the
+word ever changes again, `Web/lib/soporte.ts` quotes the label verbatim and has
+to change in the same session, in its own repo, with its own deploy.
+
 **The stored value is digits.** No prefix, no dots, no letters. That is what
 keeps "pendiente" and "no tiene" out of the column — a shopkeeper in a hurry
 will type anything to get past a required field, and junk there is what breaks
@@ -631,6 +638,29 @@ Y sustituye al `amber-600` que tenía esa cifra, lo cual **de paso arregla una
 colisión**: en este código `amber` ya significa «plazo vencido», así que el
 total de la cartera se pintaba del color de un aviso de mora.
 
+## El verde de WhatsApp es `--brand-whatsapp`, y solo sirve sobre la cabecera
+
+`#7EC070`, un valor en los dos temas, de la capa de marca. Vive ahí por dónde se
+dibuja: desde el spec del 2026-10-04 el botón "Compartir saldo vía WhatsApp"
+está DENTRO de la cabecera oscura de la ficha, que es `--brand-primary` y no se
+invierte.
+
+**Lo que había era un par que se invertía**, `text-[#128C4A] dark:text-[#25D366]`,
+y el valor del tema claro queda a **3,47:1** contra `#272727` con una etiqueta de
+17px. O sea: el tema que usa la mayoría era el que fallaba, y nada lo habría
+dicho. `#7EC070` queda a 6,87:1.
+
+**El límite, dicho por delante: sobre blanco es 2,17:1.** Este token es para la
+cabecera y para nada más. Un botón verde sobre superficie clara necesita su
+propio valor más oscuro — el mismo problema que `--money-due` resuelve para el
+naranja.
+
+**Y por eso ese botón no es `Button variant="outline"`.** Esa variante trae
+`bg-background` —blanco en claro— y su borde es `--border`, que en oscuro es
+blanco al 10% y sobre `#272727` se compone en un gris que no se ve. Es un
+elemento propio con clases explícitas, igual que los chips de filtro y la flecha
+de volver de las otras cabeceras, y por la misma razón.
+
 ## Las tarjetas oscuras son oscuras en los dos temas
 
 Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
@@ -727,15 +757,28 @@ y oscurecer el fondo de un texto CLARO le sube el contraste (de 5,59 a 7,71), no
 se lo baja. Lo que empeora es la separación del relleno contra la cabecera — y de
 esa, otra vez, se encarga el borde.
 
-## Hay DOS cabeceras oscuras, y comparten la regla del colapso
+## Hay TRES cabeceras oscuras, y comparten la regla del colapso
 
-| Cabecera | Pantallas | Lleva |
-|---|---|---|
-| `home-header.tsx` | Inicio | marca, menú, Notificaciones, saludo, negocio, buscador |
-| `screen-header.tsx` | Clientes, Malas pagas, Papelera | volver, título, subtítulo, buscador, filtros |
+| Cabecera | Pantallas | Lleva | Qué colapsa |
+|---|---|---|---|
+| `home-header.tsx` | Inicio | marca, menú, Notificaciones, saludo, negocio, buscador | el saludo y el negocio |
+| `screen-header.tsx` | Clientes, Malas pagas, Papelera, Reportes | volver, título, subtítulo, buscador, filtros | el título y el subtítulo |
+| `client-detail-header.tsx` | la ficha del cliente | volver, ⋮, foto, nombre, Cédula/Teléfono/Dirección, botón de WhatsApp | la foto, el nombre y los datos |
 
 **Comparten superficie, no estructura.** Inicio no lleva flecha de volver porque
-es la pantalla a la que se vuelve. Lo que sí comparten es **cuándo colapsan**, y
+es la pantalla a la que se vuelve.
+
+**La ficha del cliente es la única que SUBE el título al colapsar**, y la razón
+es la diferencia entre los dos títulos. En Clientes el título dice "Clientes",
+que ya lo sabes cuando llevas tres pantallazos. En la ficha dice de quién es la
+cuenta que estás leyendo, que es justo lo único que no puedes reconstruir
+mirando las filas. Se dibuja en un sitio o en el otro, **nunca en los dos**: dos
+`h1` están mal como marcado y peor como cosa que mantener sincronizada.
+
+**Las cinco rutas de cabecera oscura están listadas en `app-header.tsx`.** Esa
+barra se esconde a TODOS los anchos en las cinco, no solo en teléfono. Quien
+quite una de las tres componentes tiene que quitar su ruta de esa lista en el
+mismo cambio, o esa pantalla se queda sin cabecera ninguna. Lo que sí comparten es **cuándo colapsan**, y
 eso vive en `hooks/use-collapse-on-scroll.ts` — una copia, no dos. Las tres
 reglas que hay dentro no son obvias y ninguna sobrevive a ser copiada a mano:
 
@@ -935,7 +978,8 @@ tienen que moverse juntos.
 
 **Por qué, y no es purismo.** El mismo icono sale hoy en cinco sitios con
 cuatro colores distintos: verde esmeralda en "Contactar vía WhatsApp" del
-enlace público, el verde de marca `#128C4A` en "Compartir saldo", y el color
+enlace público, `--brand-whatsapp` en "Compartir saldo" desde el
+2026-10-04 —antes `#128C4A`—, y el color
 del texto en el botón de la cabecera del cliente y en "Escríbenos para
 reactivarla". Con el color clavado, los cinco serían el mismo verde oscuro —
 y en tema oscuro ese verde cae sobre un fondo casi negro, que es justo el sitio

@@ -494,7 +494,7 @@ function ClientSearchDialogBody({
             Con el WhatsApp en medio, el formulario pedía obligatorio,
             opcional, obligatorio. */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="document_id">Documento</Label>
+          <Label htmlFor="document_id">Cédula</Label>
           <DocumentIdInput
             id="document_id"
             country={ownerCountry}
@@ -663,7 +663,7 @@ function ClientSearchDialogBody({
           errors={errors}
           etiquetas={{
             new_client_name: "Nombre",
-            document_id: "Documento",
+            document_id: "Cédula",
             whatsapp: "WhatsApp",
             amount: "Monto",
           }}
