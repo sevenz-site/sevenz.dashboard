@@ -131,6 +131,54 @@ same rows, the same filters and sorting above them, switched with CSS.
   amounts directly with `formatLedgerAmount` instead of that component, since
   its label-above-amount shape doesn't fit a single inline row.
 
+## La tarjeta de cliente son DOS cajas, no una
+
+`components/dashboard/client-card.tsx`, desde el spec de Figma del 2026-10-04
+(frame `1071:18173`). La de fuera lleva el estado como **borde izquierdo de
+4px** y radio **10**; la de dentro es la tarjeta blanca, radio **14**, con borde
+en los otros tres lados.
+
+**Que el radio de dentro sea MAYOR es el truco, no un descuido.** Las esquinas
+blancas se separan del borde exterior y dejan ver el color como una pestaña. Con
+una sola caja — que es como estaba — el color era una raya dentro del relleno,
+que es otra cosa.
+
+Consecuencias que hay que respetar al tocarla:
+
+- **La carcasa es una función, `clientCardShell(status)`**, no una constante: el
+  color del borde depende del estado. Los dos sitios que la montan ya tenían el
+  estado a mano.
+- **Lo que deba verse sobre la superficie blanca va DENTRO de
+  `CLIENT_CARD_INNER`.** La papelera mete ahí sus botones de Restaurar y
+  Ocultar; si se quedaran fuera, flotarían sobre el borde de color.
+- **`group-active` y no `active`** para el estado pulsado. Lo que se pulsa es el
+  botón de fuera, y `:active` en CSS alcanza a los ancestros, nunca a los
+  descendientes: en la caja interior no se dispararía jamás.
+
+**El color de la barra no necesita 3:1** aunque codifique el estado — queda a
+2,13:1 contra el blanco — porque el mismo estado va escrito en palabras en el
+badge de al lado. Es la excepción que WCAG 1.4.11 contempla: la información no
+depende solo del color. Quien quite ese badge convierte la barra en el único
+portador y la deja fuera de norma.
+
+### Una cifra, y una señal cuando hay otra
+
+La tarjeta enseña **un** monto — el mayor — con su código de moneda. Apilaba los
+dos libros hasta el 2026-10-04.
+
+Pero un cliente puede deber en los dos, y entonces una sola cifra esconde
+dinero. **Medido en dev ese mismo día: 4 de los 45 clientes con deuda debían en
+dos monedas, y uno de ellos debía $102,22 junto a €4.000.** Por eso va un `+`
+discreto detrás del código, con su texto para lector de pantalla. No está para
+leerse: está para que la cifra de al lado no parezca la deuda entera.
+
+**«El mayor» compara los importes en bruto y NO convierte a bolívares primero**,
+que es la misma regla que usa la tarjeta de capital — las dos tienen que
+coincidir o la lista y el total destacarían monedas distintas para el mismo
+negocio. Límite conocido: las dos tasas andan un 12% separadas, así que bruto y
+convertido solo discrepan cuando las dos deudas están dentro de ese margen, y lo
+que cambia entonces es cuál va primero, nunca lo que se enseña.
+
 ## Buttons
 
 **Estas reglas aplican a los DOS repos: `Sevenz/dashboard` y `Sevenz/Web`

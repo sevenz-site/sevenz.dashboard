@@ -17,12 +17,12 @@ import {
 // translate directly to a 3px stripe, so this is its own map, not a literal
 // reuse of the chip classes) rather than diverging for dentro_del_plazo.
 const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
-  sin_deuda: "bg-muted-foreground/30",
-  a_favor: "bg-emerald-500",
-  dentro_del_plazo: "bg-sky-500",
-  plazo_vencido: "bg-amber-500",
-  sin_plazo: "bg-amber-500",
-  critico: "bg-red-500",
+  sin_deuda: "border-l-muted-foreground/30",
+  a_favor: "border-l-emerald-500",
+  dentro_del_plazo: "border-l-sky-500",
+  plazo_vencido: "border-l-amber-500",
+  sin_plazo: "border-l-amber-500",
+  critico: "border-l-red-500",
 };
 
 // The phone card used for a client wherever one is listed — Cartera, Clientes,
@@ -35,9 +35,26 @@ const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
 // caller's. Clientes wraps this in a <button>; Papelera needs action buttons
 // inside the same card, and a <button> inside a <button> is invalid HTML, so
 // it uses a div and stacks this row above its own actions.
-export const CLIENT_CARD_SHELL =
-  "w-full rounded-[14px] border bg-background px-4 py-3.5 text-left transition-colors active:bg-accent";
-export const CLIENT_CARD_ROW = "flex items-center gap-3.5";
+// TWO BOXES AND NOT ONE, from the Figma spec of 2026-10-04 (frame
+// 1071:18173). The outer one carries the status as a 4px left border and a
+// radius of 10; the inner one is the white card, radius 14, bordered on the
+// other three sides. The inner radius being LARGER is the whole point: the
+// white corners curve away from the outer edge and let the colour show through
+// as a tab, instead of a stripe sitting inside the card's padding.
+//
+// It takes the status, so it is a function and not a constant. Both call sites
+// already had `status` in scope.
+export function clientCardShell(status: ClientStatus): string {
+  return `group block w-full rounded-[10px] border-l-4 text-left ${CLIENT_STATUS_ACCENT_CLASS[status]}`;
+}
+
+// `group-active` and not `active`: the pressed element is the caller's button,
+// and CSS `:active` reaches ancestors, never descendants. On the inner box it
+// would simply never fire.
+export const CLIENT_CARD_INNER =
+  "rounded-[14px] border-y border-r bg-background transition-colors group-active:bg-accent";
+
+export const CLIENT_CARD_ROW = "flex items-center gap-1.5 px-4 py-2";
 
 export function ClientCardBody({
   name,
@@ -71,33 +88,33 @@ export function ClientCardBody({
   const eur = formatLedgerAmount(balanceEur, "EUR", ledger);
   const cop = formatLedgerAmount(balance, null, null);
 
+  // ONE FIGURE, THE BIGGER ONE, from the spec of 2026-10-04 plus the owner's
+  // call the same day. The card used to stack both ledgers; now the larger one
+  // carries the row and the other is reduced to a mark.
+  //
+  // "Bigger" compares the raw amounts and does NOT convert to bolívares first,
+  // which is the same rule the capital card uses — the two must agree or the
+  // list and the total would foreground different currencies for the same
+  // shop. Known limit: the two rates sit about 12% apart, so raw and converted
+  // only disagree when the two debts are within that of each other, and what
+  // changes then is which one goes first, never what is shown — both carry
+  // their code and the mark says the other exists.
+  const twoLedgers = ledger !== null && balanceUsd > 0 && balanceEur > 0;
+  const bigger = ledger === null ? null : balanceUsd >= balanceEur ? "USD" : "EUR";
+  const amount = ledger === null ? cop : bigger === "USD" ? usd : eur;
+
   return (
     <>
-      <span
-        aria-hidden="true"
-        className={`w-[3px] shrink-0 self-stretch rounded-full ${CLIENT_STATUS_ACCENT_CLASS[status]}`}
-      />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-baseline gap-1.5">
-          <span className="min-w-[64px] flex-1 truncate text-[15.5px] font-semibold tracking-[-0.01em] text-foreground">
-            {name}
-          </span>
-          {hasPendingReview ? (
-            <Badge variant="outline" className="shrink-0 align-middle text-[10px]">
-              revisar
-            </Badge>
-          ) : null}
-          {/* Bounded and shrinkable, not shrink-0 — a long name plus a real
-              document number plus the (rare) "revisar" badge all competing for
-              one row would otherwise leave the name crushed to a couple of
-              letters, since everything else marked shrink-0 pushes 100% of the
-              squeeze onto the one flexible item. The name's own min-w-[64px]
-              is what actually protects it — this cap just means the document
-              is what gives way first, not the name. */}
-          <span className="min-w-0 max-w-10 shrink truncate font-mono text-[11.5px] text-muted-foreground">
-            · {formatDocumentId(documentId)}
-          </span>
-        </div>
+        {/* Name, document and status on three lines, from the spec. They shared
+            one row until 2026-10-04, which needed a tuned pecking order for who
+            gave way when a long name, a real document and the "revisar" badge
+            all competed for the same line. Stacking them removes the problem
+            rather than balancing it. */}
+        <span className="truncate text-lg font-medium text-foreground">{name}</span>
+        <span className="truncate text-[13px] text-muted-foreground">
+          {formatDocumentId(documentId)}
+        </span>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
             {CLIENT_STATUS_LABEL[status]}
@@ -107,34 +124,34 @@ export function ClientCardBody({
               Mala paga
             </Badge>
           ) : null}
+          {hasPendingReview ? (
+            <Badge variant="outline" className="text-[10px]">
+              revisar
+            </Badge>
+          ) : null}
         </div>
         {note ? <p className="text-[11.5px] text-muted-foreground">{note}</p> : null}
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
-        {ledger ? (
-          <>
-            <p className="flex items-baseline gap-1">
-              <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
-                {usd.primary}
-              </span>
-              <span className="text-[11px] font-medium text-muted-foreground">USD</span>
-            </p>
-            <p className="flex items-baseline gap-1">
-              <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
-                {eur.primary}
-              </span>
-              <span className="text-[11px] font-medium text-muted-foreground">EUR</span>
-            </p>
-          </>
-        ) : (
-          <p className="flex items-baseline gap-1">
-            <span className="text-[18px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
-              {cop.primary}
-            </span>
-          </p>
-        )}
-      </div>
-      <ChevronRight className="size-[17px] shrink-0 text-muted-foreground/60" aria-hidden="true" />
+
+      <p className="flex shrink-0 items-baseline gap-1">
+        <span className="text-xl text-foreground tabular-nums">{amount.primary}</span>
+        {bigger ? (
+          <span className="text-[11px] font-medium text-muted-foreground">{bigger}</span>
+        ) : null}
+        {/* THE MARK, when the client owes in both ledgers. Measured in dev on
+            2026-10-04: 4 of the 45 clients with debt owe in two currencies, and
+            one of them owes $102,22 next to €4.000 — with a single figure and
+            no mark, those $102 would simply vanish from the list. It is not
+            there to be read, it is there so the figure beside it does not look
+            like the whole debt. */}
+        {twoLedgers ? (
+          <span className="text-[11px] font-medium text-muted-foreground">
+            +<span className="sr-only">y también debe en la otra moneda</span>
+          </span>
+        ) : null}
+      </p>
+
+      <ChevronRight className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
     </>
   );
 }

@@ -25,7 +25,8 @@ import { ShareActions } from "@/components/dashboard/share-actions";
 import {
   ClientCardBody,
   CLIENT_CARD_ROW,
-  CLIENT_CARD_SHELL,
+  clientCardShell,
+  CLIENT_CARD_INNER,
 } from "@/components/dashboard/client-card";
 import { ClientStatusLegend, useClientFilters } from "@/components/dashboard/client-filters";
 import { ClientSearchInline } from "@/components/dashboard/client-search-sheet";
@@ -167,8 +168,12 @@ export function ClientTable({
                       track("Client Details Opened", { client_id: row.client_id, source });
                       router.push(clientHref(row.client_id, source));
                     }}
-                    className={cn(CLIENT_CARD_SHELL, CLIENT_CARD_ROW)}
+                    className={clientCardShell(status)}
                   >
+                    {/* The inner white card. Separate from the shell since the
+                        spec of 2026-10-04: the shell is only the coloured edge
+                        the status paints, and this is the surface. */}
+                    <div className={cn(CLIENT_CARD_INNER, CLIENT_CARD_ROW)}>
                     <ClientCardBody
                       name={row.name}
                       documentId={row.document_id}
@@ -180,6 +185,7 @@ export function ClientTable({
                       balanceEur={row.balance_eur}
                       ledger={ledger}
                     />
+                    </div>
                   </button>
                 );
               })}

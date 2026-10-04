@@ -18,7 +18,8 @@ import {
 import {
   ClientCardBody,
   CLIENT_CARD_ROW,
-  CLIENT_CARD_SHELL,
+  clientCardShell,
+  CLIENT_CARD_INNER,
 } from "@/components/dashboard/client-card";
 import {
   ClientStatusLegend,
@@ -144,7 +145,7 @@ export function PapeleraTable({
               // The whole card opens the client, matching the rows in Cartera
               // and Clientes — on a phone the name alone is a small target,
               // and a card that looks like a row should behave like one.
-              className={cn(CLIENT_CARD_SHELL, "flex cursor-pointer flex-col gap-3")}
+              className={clientCardShell(status)}
               role="link"
               tabIndex={0}
               onClick={() => {
@@ -161,6 +162,11 @@ export function PapeleraTable({
                 router.push(clientHref(row.client_id, "papelera"));
               }}
             >
+              {/* The inner white card wraps the row AND the actions: since the
+                  spec of 2026-10-04 the shell is only the coloured edge, so
+                  anything that should sit on the card's surface goes in here or
+                  it ends up floating outside it. */}
+              <div className={cn(CLIENT_CARD_INNER, "flex cursor-pointer flex-col pb-3")}>
               <div className={CLIENT_CARD_ROW}>
                 <ClientCardBody
                   name={row.name}
@@ -182,7 +188,7 @@ export function PapeleraTable({
                   would also navigate away from the screen that was about to
                   show the result, and Ocultar would open its confirmation on
                   top of a page that is already leaving. */}
-              <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="flex flex-wrap gap-2 px-4" onClick={(e) => e.stopPropagation()}>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleRestore(row)}>
                   <RotateCcw className="size-4" />
                   Restaurar
@@ -194,6 +200,7 @@ export function PapeleraTable({
                   <EyeOff className="size-4" />
                   Ocultar definitivamente
                 </Button>
+              </div>
               </div>
             </div>
           );
