@@ -48,7 +48,7 @@ export function ScreenHeader({
   // `ClientFilterProvider`; the default value is `focused: false`, so a screen
   // that has not mounted one simply never freezes.
   const { focused } = useSearchResultsOpen();
-  const collapsed = useCollapseOnScroll(focused);
+  const { collapsed, collapsibleRef } = useCollapseOnScroll(focused);
 
   return (
     // One sticky element, not four. A `sticky` child only sticks inside its
@@ -70,8 +70,11 @@ export function ScreenHeader({
         </Link>
       </div>
 
+      {/* One wrapper around everything that disappears, because the hook
+          measures it: the threshold that keeps the collapse from oscillating is
+          derived from this element's height. See `useCollapseOnScroll`. */}
       {collapsed ? null : (
-        <>
+        <div ref={collapsibleRef}>
           <div className="flex items-center justify-between gap-3.5 px-4 pt-2">
             <h1 className="truncate text-2xl font-medium text-white">{title}</h1>
             {action}
@@ -79,7 +82,7 @@ export function ScreenHeader({
           <div className="px-4 pt-2">
             <p className="text-sm text-brand-muted">{subtitle}</p>
           </div>
-        </>
+        </div>
       )}
 
       <div className="px-4 py-4">{search}</div>

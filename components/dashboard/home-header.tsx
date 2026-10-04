@@ -63,7 +63,7 @@ export function HomeHeader({
   // the collapse while the owner types — see `useCollapseOnScroll` for why that
   // matters on iOS, and for the other two guards the collapse needs.
   const { focused } = useSearchResultsOpen();
-  const collapsed = useCollapseOnScroll(focused);
+  const { collapsed, collapsibleRef } = useCollapseOnScroll(focused);
 
   return (
     // `-mx-4 -mt-4` against `AppMain`'s `p-4`: the header runs edge to edge. It
@@ -144,7 +144,7 @@ export function HomeHeader({
           it is the price of keeping the search field up top. The two guards
           above exist so it happens ONCE and not in a loop. */}
       {collapsed ? null : (
-        <div className="flex items-start justify-between gap-0.5 px-4 pt-3 pb-2.5">
+        <div ref={collapsibleRef} className="flex items-start justify-between gap-0.5 px-4 pt-3 pb-2.5">
           <div className="flex min-w-0 flex-col gap-0.5">
             {/* `first_name` is required by both signup and "Mi negocio", in the
                 browser and on the server, so it is treated as present. The

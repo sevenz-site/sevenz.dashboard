@@ -704,14 +704,49 @@ es la pantalla a la que se vuelve. Lo que sí comparten es **cuándo colapsan**,
 eso vive en `hooks/use-collapse-on-scroll.ts` — una copia, no dos. Las tres
 reglas que hay dentro no son obvias y ninguna sobrevive a ser copiada a mano:
 
-- **Histéresis** (colapsa a 64px, se expande por debajo de 24), porque con un
-  solo umbral el salto del propio colapso puede devolver el scroll justo debajo
-  y entrar en bucle.
-- **No colapsa si la página no tiene hacia dónde bajar.** Comprobado el
-  2026-10-04 en una cuenta de tres clientes: la pantalla no da scroll y la
-  cabecera se queda entera, que es lo correcto.
+- **El umbral de colapso se MIDE, no se elige** — ver abajo, es lo que impide el
+  parpadeo.
 - **Congelado mientras el buscador tiene el foco**, porque en iOS el teclado
   desplaza la página solo y eso dispara un scroll que el dueño no ha hecho.
+
+### El parpadeo del 2026-10-04, y por qué el umbral no es una constante
+
+Reportado en una lista corta y medido el mismo día. La cabecera oscilaba a ~1 Hz,
+para siempre:
+
+| ms | alto | scrollY |
+|---|---|---|
+| 26 | 268 | 80 |
+| 53 | 198 | **10** |
+| 99 | 268 | 78 |
+| 126 | 198 | **8** |
+
+Esos 70px que pierde el scroll al colapsar son exactamente el alto del bloque que
+se oculta, y **no** es la página quedándose sin recorrido: es **scroll
+anchoring**. Cuando el contenido por encima del viewport se encoge, Chrome y
+Firefox desplazan el scroll lo mismo para que lo que estás mirando no salte. El
+hook leía ese scroll ya desplazado, lo veía por debajo del umbral de expansión,
+expandía — lo que devolvía los 70px, lo que devolvía el scroll, lo que colapsaba
+otra vez. **La decisión cambiaba su propia entrada.**
+
+**La cura es aritmética, no una zona muerta más ancha.** Colapsar mueve el scroll
+hacia abajo como mucho el alto `h` del bloque, así que si solo se colapsa por
+encima de `h + umbral_de_expansión`, la posición después del desplazamiento nunca
+cae bajo ese umbral y el bucle no puede arrancar. Eso hace que el umbral dependa
+del contenido — por eso se mide: el subtítulo ocupa dos líneas en Malas pagas y
+Papelera y una en Clientes.
+
+**La intuición de «hacerlo más inmediato» empeoraba el fallo**: bajar el umbral
+mete el colapso más adentro de la banda que produce el bucle.
+
+En iOS vale por otro motivo: **Safari no implementa scroll anchoring**, así que
+allí la posición simplemente no se mueve. En los dos casos el estado es estable
+tras un solo cambio.
+
+**Lo que se probó y NO está**: un guardia que se negaba a colapsar en páginas
+cortas. Tenía su propio bucle — colapsar acortaba el documento, lo que metía la
+página por debajo del guardia, lo que la forzaba abierta, lo que la volvía larga
+otra vez. Un guardia contra la oscilación que oscilaba.
 
 **Qué colapsa en cada una**: en Inicio el saludo; en las otras tres el título y
 el subtítulo. En las dos se quedan arriba el buscador y lo que haya de
