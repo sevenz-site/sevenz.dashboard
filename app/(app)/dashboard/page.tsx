@@ -110,11 +110,11 @@ export default async function DashboardPage({
   const pedirAvisos =
     owner !== null && tocaPreguntarAvisos(owner, totalCop > 0 || totalUsd > 0 || totalEur > 0);
 
-  // CUAL DE LOS DOS LIBROS VA GRANDE. Lo decide la pantalla porque es la que
-  // tiene los dos totales; la tarjeta solo los pinta. El empate manda a USD a
-  // proposito: el caso normal de empate es el cero-cero de un dueno que acaba
-  // de registrarse, y en un negocio venezolano el dolar es el libro principal.
-  // Un dueno sin ningun fiado tiene que ver la moneda en la que va a trabajar.
+  // WHICH OF THE TWO LEDGERS GOES BIG. The screen decides because the screen is
+  // what holds both totals; the card only draws them. A tie goes to USD on
+  // purpose: the normal tie is the zero-zero of an owner who has just signed
+  // up, and in a Venezuelan business the dollar is the main ledger. An owner
+  // with no fiado yet has to see the currency they are about to work in.
   const usdIsLarger = totalUsd >= totalEur;
 
   const visibleRows = rows.filter((r) => !r.is_flagged);
@@ -147,8 +147,9 @@ export default async function DashboardPage({
   const weeklyLendingCop = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => !m.currency));
   const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
   const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
-  // Los tres libros posibles, cada uno con su gráfico. Se arman aquí y no en
-  // el JSX porque ahí abajo lo único que tiene que leerse es cuál va grande.
+  // The three possible ledgers, each with its chart. Built here and not in the
+  // JSX because down there the only thing that should be readable is which one
+  // goes big.
   const usdLedger = {
     balance: totalUsd,
     currency: "USD" as const,
@@ -193,25 +194,26 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Un solo estado de filtros para toda la pantalla: el buscador va dentro
-          de la cabecera, arriba del todo, y la lista que filtra está al final,
-          detrás de las tarjetas de capital. Dos estados separados dejarían al
-          dueño con una lista filtrada de una manera y un buscador diciendo otra.
+      {/* One filter state for the whole screen: the search field lives inside
+          the header, at the very top, and the list it filters is at the bottom,
+          behind the capital card. Two separate states would leave the owner
+          with a list filtered one way and a search box claiming another.
 
-          Envuelve TAMBIÉN a la cabecera, que es el cambio del 2026-10-03: el
-          campo vive dentro de ella y necesita este estado. El proveedor no pinta
-          nada, así que la cabecera sigue siendo el primer elemento del
-          documento — que es lo que su `-mt-4` da por supuesto. */}
+          It wraps the HEADER TOO, which is the 2026-10-03 change: the field
+          lives inside it and needs this state. The provider renders no DOM, so
+          the header is still the first element in the document — which is what
+          its `-mt-4` assumes. */}
       <ClientFilterProvider rows={visibleRows} rateContext={ownerRate}>
-        {/* LA CABECERA, PEGADA ARRIBA Y DE BORDE A BORDE. Se trae el saludo, el
-            negocio y la última conexión, que hasta el 2026-10-03 eran una fila
-            más del cuerpo de la pantalla, y se queda con el buscador dentro.
+        {/* THE HEADER, PINNED AT THE TOP AND EDGE TO EDGE. It takes over the
+            greeting, the business name and the last sign-in, which until
+            2026-10-03 were one more row of the screen's body, and it keeps the
+            search field inside it.
 
-            Va primera a propósito, por delante del aviso de instalación: su
-            `-mt-4` cancela el relleno de `AppMain` y eso solo funciona si no hay
-            nada por encima. Y buscar a una persona es lo que el tendero viene a
-            hacer la mayoría de las veces, así que el campo tiene que ser lo
-            primero que encuentra, no algo detrás de un banner. */}
+            It goes first on purpose, ahead of the install banner: its `-mt-4`
+            cancels `AppMain`'s padding, and that only works if nothing sits
+            above it. And searching for a person is what the shopkeeper comes to
+            do most of the time, so the field has to be the first thing they
+            find, not something behind a banner. */}
         <HomeHeader
           firstName={owner?.first_name ?? null}
           businessName={owner?.business_name || "Mi negocio"}
@@ -266,16 +268,16 @@ export default async function DashboardPage({
         </div>
 
 
-        {/* Se aparta con "Agregar movimiento", bajo la misma condición: la lista
-            de coincidencias cae justo encima de ella.
+        {/* Moves aside with "Agregar movimiento", under the same condition: the
+            match list lands right on top of it.
 
-            UNA SOLA TARJETA desde el 2026-10-03, también para un negocio
-            venezolano. Antes eran dos —USD y Euro— una al lado de la otra, y el
-            problema no era el sitio que ocupaban: dos cifras del mismo tamaño,
-            con el mismo rótulo y el mismo color, obligan a leer las dos para
-            saber cuál es tu cartera. Ahora la mayor va grande y la menor en una
-            línea pequeña debajo; cuál es cuál lo decide esta pantalla, que es la
-            que tiene los dos totales. El porqué completo, en `balance-card.tsx`. */}
+            ONE SINGLE CARD since 2026-10-03, for a Venezuelan business too.
+            There used to be two — USD and Euro — side by side, and the problem
+            was not the room they took: two figures of the same size, with the
+            same label and the same colour, force you to read both to know what
+            your cartera is. Now the larger goes big and the smaller on a small
+            line below; which is which is decided by this screen, the one that
+            holds both totals. The full reasoning is in `balance-card.tsx`. */}
         <HideWhileResults>
           <BalanceCard
             label="Capital por cobrar"
@@ -289,22 +291,22 @@ export default async function DashboardPage({
           />
         </HideWhileResults>
 
-        {/* AQUÍ ABAJO Y NO ARRIBA DEL TODO, desde el 2026-10-03. Este aviso es
-            una tarjeta oscura a propósito — `DESIGN-SYSTEM.md` lo explica así:
-            "una pieza oscura en medio de una pantalla clara está diciendo esto
-            de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
-            que la rodea.
+        {/* DOWN HERE AND NOT AT THE VERY TOP, since 2026-10-03. This notice is
+            a dark card on purpose — `DESIGN-SYSTEM.md` puts it this way: "a dark
+            piece in the middle of a light screen is saying this here is the new
+            thing, look at me", and that only works if it contrasts with what
+            surrounds it.
 
-            Con la cabecera nueva dejó de contrastar: era un bloque oscuro pegado
-            a otro bloque oscuro, separados por 16px de blanco, y los dos se
-            leían como una sola mancha. El aviso no desapareció, pero dejó de
-            destacar, que para un aviso es lo mismo.
+            With the new header it stopped contrasting: it was a dark block
+            against another dark block, separated by 16px of white, and the two
+            read as one smudge. The notice did not disappear, but it stopped
+            standing out, which for a notice is the same thing.
 
-            Debajo del capital sigue estando alto — lo primero después de la
-            cifra que el dueño viene a ver — y vuelve a estar rodeado de blanco.
-            Solo en teléfono, como siempre: Sevenz es instalable desde agosto y
-            ningún tendero se enteró porque Android enseña su propio aviso,
-            discreto y fácil de ignorar, y en iPhone no aparece nunca. */}
+            Below the capital it is still high up — the first thing after the
+            figure the owner comes to see — and it is surrounded by white again.
+            Phone only, as always: Sevenz has been installable since August and
+            no shopkeeper found out, because Android shows its own notice,
+            discreet and easy to ignore, and on iPhone it never appears. */}
         <InstallAppBanner />
 
         {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición

@@ -37,7 +37,7 @@ const WeeklyLendingChart = dynamic(
   },
 );
 
-// Un libro de la cartera: su saldo y el gráfico de esa misma moneda.
+// One of the cartera's ledgers: its balance and that same currency's chart.
 export type LedgerTotal = {
   balance: number;
   currency: LedgerCurrency | null;
@@ -45,32 +45,32 @@ export type LedgerTotal = {
   chartTitle?: string;
 };
 
-// "Capital por cobrar" — UNA tarjeta, aunque el negocio lleve dos monedas.
+// "Capital por cobrar" — ONE card, even when the business runs two currencies.
 //
-// ─────────────────────────────────────────────────────────────────────────
-// ANTES ERAN DOS TARJETAS, Y POR QUÉ AHORA ES UNA
+// ──────────────────────────────────────────────────────────────────────
+// IT USED TO BE TWO CARDS, AND WHY IT IS ONE NOW
 //
-// Hasta el 2026-10-03 un negocio venezolano veía dos tarjetas iguales, USD y
-// Euro, una al lado de la otra. El problema no era el sitio que ocupaban: es
-// que pedían comparar. Dos cifras del mismo tamaño, con el mismo rótulo y el
-// mismo color, obligan a leer las dos para saber cuál es su cartera — y en la
-// práctica una de las dos es casi siempre marginal (un par de clientes en
-// euros frente a sesenta en dólares).
+// Until 2026-10-03 a Venezuelan business saw two identical cards, USD and Euro,
+// side by side. The problem was not the room they took up: it is that they
+// asked to be compared. Two figures of the same size, with the same label and
+// the same colour, force you to read both to find out what your cartera is —
+// and in practice one of them is nearly always marginal (a couple of clients in
+// euros against sixty in dollars).
 //
-// Decisión del dueño, 2026-10-03: "la mayor grande, la menor en una línea
-// pequeña debajo". Así la cifra grande responde sola a "cuánto me deben", y la
-// pequeña sigue estando, que es lo que importa cuando un día deja de ser
-// marginal.
+// Owner's decision, 2026-10-03: "the larger one big, the smaller one on a small
+// line underneath". That way the big figure answers "how much am I owed" by
+// itself, and the small one is still there, which is what matters on the day it
+// stops being marginal.
 //
-// QUÉ DECIDE CUÁL ES LA MAYOR: lo decide la pantalla, no esta tarjeta, porque
-// es ella la que tiene los dos totales. Y en el empate —los dos iguales, con
-// el cero-cero como caso normal de un dueño que acaba de registrarse— manda
-// USD. No es una preferencia estética: en un negocio venezolano el dólar es el
-// libro principal, y un dueño sin ningún fiado todavía tiene que ver la moneda
-// en la que va a trabajar, no la otra.
+// WHAT DECIDES WHICH IS LARGER: the screen does, not this card, because the
+// screen is what holds both totals. And on a tie — both equal, with zero-zero
+// as the normal case for an owner who has just signed up — USD wins. That is
+// not an aesthetic preference: in a Venezuelan business the dollar is the main
+// ledger, and an owner with no fiado yet has to see the currency they are about
+// to work in, not the other one.
 //
-// EL OJO TAPA LAS DOS CIFRAS. Media cartera oculta no es cartera oculta: quien
-// tapa los montos lo hace porque hay alguien mirando la pantalla.
+// THE EYE HIDES BOTH FIGURES. Half a hidden cartera is not a hidden cartera:
+// whoever hides the amounts does it because someone is looking at the screen.
 export function BalanceCard({
   label,
   main,
@@ -79,7 +79,7 @@ export function BalanceCard({
 }: {
   label: string;
   main: LedgerTotal;
-  // `null` para un negocio colombiano, que tiene un solo ledger.
+  // `null` for a Colombian business, which has a single ledger.
   secondary?: LedgerTotal | null;
   ledger: LedgerDisplay | null;
 }) {
@@ -93,15 +93,15 @@ export function BalanceCard({
   const iconButton =
     "shrink-0 rounded outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring";
 
-  // Los dos ledgers, para los gráficos. Mientras "Reportes" no exista (Entrega
-  // 3), este botón es la ÚNICA forma de llegar a ellos, así que abre los dos y
-  // no solo el de la moneda grande: dejar el gráfico de euros inalcanzable
-  // sería perder una función por el camino de un cambio de maquetación.
+  // Both ledgers, for the charts. Until "Reportes" exists (delivery 3) this
+  // button is the ONLY way to reach them, so it opens both and not just the
+  // larger currency's: leaving the euro chart unreachable would be losing a
+  // feature along the way of a layout change.
   const ledgers = secondary ? [main, secondary] : [main];
 
-  // La línea pequeña. Se formatea aquí y no con `ExchangeRateBalanceDisplay`
-  // porque ese componente pinta DOS líneas —la cifra y su equivalente en
-  // bolívares debajo—, y el encargo es una sola.
+  // The small line. Formatted here rather than with
+  // `ExchangeRateBalanceDisplay` because that component renders TWO lines — the
+  // figure and its bolívar equivalent below it — and the brief is one.
   const smaller = secondary ? formatLedgerAmount(secondary.balance, secondary.currency, ledger) : null;
 
   return (

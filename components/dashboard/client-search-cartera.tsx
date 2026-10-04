@@ -38,32 +38,32 @@ import { clientHref } from "@/lib/client-origin";
 // siempre a mano en cuanto hay texto.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// VA DENTRO DE LA CABECERA OSCURA, Y DE AHÍ SALE TODO SU ASPECTO
+// IT LIVES INSIDE THE DARK HEADER, AND THAT IS WHERE ITS WHOLE LOOK COMES FROM
 //
-// Desde el 2026-10-03 este campo no vive sobre el fondo de la página: vive
-// sobre `--brand-primary` (#272727), que vale lo mismo en los dos temas. Por
-// eso ni un solo color suyo es un token semántico — en tema oscuro `--input` y
-// `--ring` se invierten y lo dejarían invisible sobre un fondo que no se
-// invierte. Esa es la regla de las dos capas de `DESIGN-SYSTEM.md`.
+// Since 2026-10-03 this field does not sit on the page background: it sits on
+// `--brand-primary` (#272727), which is the same value in both themes. That is
+// why not one of its colours is a semantic token — in the dark theme `--input`
+// and `--ring` invert and would leave it invisible on a background that does
+// not. That is the two-layer rule in `DESIGN-SYSTEM.md`.
 //
-// DOS COSAS QUE NO SE PUEDEN TOCAR, las dos medidas con `npm run qa:contraste`:
+// TWO THINGS THAT CANNOT BE TOUCHED, both measured with `npm run qa:contraste`:
 //
-//   1. EL BORDE DE 2px NO ES DECORACIÓN. El relleno del campo queda a 1,92:1
-//      contra la cabecera, por debajo del 3:1 que pide WCAG 1.4.11. Lo que hace
-//      que el buscador se vea es el borde, no su fondo. Quitarlo deja un campo
-//      invisible, y el fallo se lee como "el buscador no está".
+//   1. THE 2px BORDER IS NOT DECORATION. The field's fill sits at 1,91:1
+//      against the header, below the 3:1 WCAG 1.4.11 asks for. What makes the
+//      search field visible is the border, not its background. Removing it
+//      leaves an invisible field, and the failure reads as "the search box is
+//      missing".
 //
-//   2. EL PLACEHOLDER NO SE PUEDE ATENUAR. Es lo que hace por defecto cualquier
-//      input de este repo (`placeholder:text-muted-foreground`), y aquí falla a
-//      CUALQUIER opacidad: 2,64:1 al 50%, y todavía 4,23:1 al 80%, por debajo
-//      del 4,5:1 de texto. Va a opacidad completa o no va.
+//   2. THE PLACEHOLDER CANNOT BE DIMMED. That is what every other input in this
+//      repo does by default (`placeholder:text-muted-foreground`), and here it
+//      fails at ANY opacity: 2,64:1 at 50%, and still 4,23:1 at 80%, below the
+//      4,5:1 for text. Full opacity or nothing.
 //
-// Que el placeholder y el texto escrito sean el mismo #DADADA es deliberado y
-// tiene un coste conocido: de un vistazo no se distingue un campo vacío de uno
-// escrito por el color. Lo que los distingue es el icono — lupa cuando está
-// vacío, aspa cuando hay texto. La alternativa era el placeholder en blanco
-// (7,80:1), que lo dejaría MÁS brillante que el valor: al revés de lo que
-// significa.
+// That the placeholder and the typed value are the same #DADADA is deliberate
+// and has a known cost: at a glance, colour does not tell an empty field from a
+// filled one. What tells them apart is the icon — magnifier when empty, cross
+// when there is text. The alternative was a white placeholder (7,80:1), which
+// would leave it BRIGHTER than the value: the opposite of what it means.
 
 export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeholder?: string }) {
   const router = useRouter();
@@ -85,15 +85,15 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
   return (
     <div className="relative">
       <div className="relative">
-        {/* 40px y `text-base` en teléfono, como los otros tres buscadores. Lo
-            segundo no es cosmético: iOS Safari hace zoom al enfocar cualquier
-            campo por debajo de 16px.
+        {/* 40px and `text-base` on a phone, like the other three search fields.
+            The second is not cosmetic: iOS Safari zooms in on focus for any
+            field under 16px.
 
-            Las dos sombras del diseño: una interior y una exterior, las dos
-            0/4/4. La interior oscurece el borde superior del relleno, que SUBE
-            el contraste del texto claro que lleva encima — no lo baja. Lo que
-            empeora es la separación del relleno contra la cabecera, y de esa no
-            se encarga el fondo sino el borde. */}
+            The design's two shadows: one inset and one drop, both 0/4/4. The
+            inset one darkens the fill's top edge, which RAISES the contrast of
+            the light text on top of it — it does not lower it. What it worsens
+            is the fill's separation from the header, and that is the border's
+            job, not the background's. */}
         <input
           type="text"
           value={c.nameQuery}

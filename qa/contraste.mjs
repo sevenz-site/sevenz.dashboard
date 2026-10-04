@@ -159,12 +159,12 @@ for (const [etiqueta, T] of [["ANTES", ANTES], ["DESPUES", DESPUES]]) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// LA CABECERA OSCURA DEL INICIO — ya construida (Entrega 2, 2026-10-03)
+// THE DARK INICIO HEADER — as built (delivery 2, 2026-10-03)
 //
-// Estas filas eran la ESPECIFICACION del componente antes de escribirlo: dos de
-// ellas decidieron como habia que escribirlo y siguen aqui para que se note si
-// alguien las deshace. Ahora miden lo que `home-header.tsx` y
-// `client-search-cartera.tsx` dibujan de verdad, con los tokens finales.
+// These rows were the component's SPECIFICATION before it was written: two of
+// them decided how it had to be written, and they stay here so it shows if
+// anyone undoes them. They now measure what `home-header.tsx` and
+// `client-search-cartera.tsx` actually draw, with the final tokens.
 console.log("");
 console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #272727");
 {
@@ -173,7 +173,7 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
   const borde = hexASrgb("#a1a1a1");        // --brand-field-border
   const sec = hexASrgb("#dadada");          // --brand-secondary
   const blanco = [1, 1, 1];
-  const rojo = ok(0.577, 0.245, 27.325);    // --destructive, el contador
+  const rojo = ok(0.577, 0.245, 27.325);    // --destructive, the unread badge
 
   const f = (nombre, r, piso, nota = "") => {
     const pasa = r >= piso;
@@ -192,18 +192,20 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
     "solo informativo: un hover no tiene piso, pero tiene que notarse");
   f("--brand naranja (en el logo)", ratio(hexASrgb("#f66b02"), cab), AA_TEXTO, "el mas justo de la cabecera");
 
-  // EL CONTADOR DE AVISOS SIN LEER. Es un grafico que significa algo —"tienes
-  // avisos"— asi que WCAG 1.4.11 le pide 3:1 contra lo que tiene detras. El
-  // rojo no llega, y no se cambia: es el mismo rojo de la barra de abajo y
-  // tiene que seguir siendolo. Lo separa un ring-2 del color de la cabecera.
+  // THE UNREAD BADGE. It is a graphic that means something — "you have
+  // notifications" — so WCAG 1.4.11 asks it for 3:1 against what is behind it.
+  // It passes on its own, which is why it carries no ring: an earlier version
+  // added one "because the red did not reach 3:1", and that was wrong twice —
+  // the red does reach it, and the ring was the header's exact colour.
   f("contador rojo contra la cabecera, SIN anillo", ratio(rojo, cab), AA_NO_TEXTO,
     "por eso lleva ring-2 ring-brand-primary");
   f("numero blanco dentro del contador", ratio(blanco, rojo), AA_TEXTO);
 
-  // EL BORDE DEL BUSCADOR CARGA PESO. El relleno del campo apenas se despega
-  // de la cabecera: lo que lo hace perceptible es el borde de 2px, no el
-  // fondo. Quien quite ese borde deja un campo invisible, y el fallo se vera
-  // como "el buscador no esta" en vez de como un problema de color.
+  // THE SEARCH FIELD'S BORDER CARRIES WEIGHT. The field's fill barely separates
+  // from the header: what makes it perceptible is the 2px border, not the
+  // background. Whoever removes that border leaves an invisible field, and the
+  // failure will look like "the search box is missing" rather than a colour
+  // problem.
   f("relleno del campo contra la cabecera", ratio(campo, cab), AA_NO_TEXTO,
     "por eso el borde de 2px NO es decorativo");
   f("borde #a1a1a1 de 2px contra la cabecera", ratio(borde, cab), AA_NO_TEXTO,
@@ -216,16 +218,16 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
   f("placeholder #DADADA a opacidad completa", ratio(sec, campo), AA_TEXTO,
     "es la razon de no usar placeholder:text-muted-foreground");
   f("lupa y aspa, #DADADA", ratio(sec, campo), AA_NO_TEXTO);
-  // EL PLACEHOLDER NO SE PUEDE ATENUAR. Es lo que hace por defecto cualquier
-  // input de este repo, y aqui falla a CUALQUIER opacidad — incluso al 80%.
+  // THE PLACEHOLDER CANNOT BE DIMMED. It is what every input in this repo does
+  // by default, and here it fails at ANY opacity — even at 80%.
   for (const a of [0.5, 0.6, 0.7, 0.8]) {
     f(`si se atenuara al ${a * 100}%`, ratio(sobre(sec, campo, a), campo), AA_TEXTO,
       "NO es una opcion");
   }
-  // La sombra interior 0/4/4 oscurece el borde superior del relleno. Oscurecer
-  // el fondo de un texto CLARO le sube el contraste, no se lo baja: la sombra
-  // no puede romper el texto. Lo que empeora es la separacion del relleno
-  // contra la cabecera, y de esa se encarga el borde.
+  // The 0/4/4 inset shadow darkens the fill's top edge. Darkening the
+  // background of LIGHT text raises its contrast rather than lowering it: the
+  // shadow cannot break the text. What it worsens is the fill's separation from
+  // the header, and the border takes care of that.
   f("texto #DADADA sobre el relleno con la sombra interior",
     ratio(sec, sobre([0, 0, 0], campo, 0.25)), AA_TEXTO,
     "la sombra SUBE este contraste");

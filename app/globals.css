@@ -85,24 +85,24 @@
   --brand-primary: #272727;
   --brand-secondary: #dadada;
   --brand: #f66b02;
-  /* Los dos de la cabecera del Inicio, y estan aqui —fijos— por la misma razon
-     que los tres de arriba: esa cabecera no se invierte con el tema, asi que
-     un token que si lo haga le rompe el contraste sin que nadie se entere.
+  /* The two from the Inicio header, and they are here — fixed — for the same
+     reason as the three above: that header does not invert with the theme, so a
+     token that does breaks its contrast without anyone noticing.
 
-     `--brand-field` vale lo mismo que `--chart-3` resuelve hoy (#525252). No se
-     usa `--chart-3` directamente porque es un color de GRAFICO: el dia que
-     alguien retoque la escala de las barras, el relleno del buscador se iria
-     con ella.
+     `--brand-field` is the same value `--chart-3` resolves to today (#525252).
+     `--chart-3` is not used directly because it is a CHART colour: the day
+     someone retouches the bar scale, the search field's fill would go with it.
 
-     `--brand-field-border` CARGA PESO, no decora. El relleno del campo queda a
-     1,92:1 contra la cabecera —por debajo del 3:1 de WCAG 1.4.11— asi que lo
-     que hace visible el buscador es este borde de 2px, no su fondo. Quien lo
-     quite deja un campo invisible, y el fallo se leera como "el buscador no
-     esta" en vez de como un problema de color. Vale #a1a1a1 (5,78:1 contra la
-     cabecera), que es lo que `--ring` vale EN OSCURO: en claro vale #868686 y
-     daria 4,10:1 — tambien pasa, pero cambiaria de un tema a otro.
+     `--brand-field-border` CARRIES WEIGHT, it does not decorate. The field's
+     fill sits at 1,91:1 against the header — below the 3:1 of WCAG 1.4.11 — so
+     what makes the search field visible is this 2px border, not its background.
+     Whoever removes it leaves an invisible field, and the failure will read as
+     "the search box is missing" rather than as a colour problem. It is #a1a1a1
+     (5,78:1 against the header), which is what `--ring` is worth IN DARK: in
+     light it is #868686 and would give 4,10:1 — it passes too, but it would
+     change from one theme to the other.
 
-     Medido con `npm run qa:contraste`. */
+     Measured with `npm run qa:contraste`. */
   --brand-field: #525252;
   --brand-field-border: #a1a1a1;
   --card: oklch(1 0 0);
@@ -172,7 +172,7 @@
   --brand-primary: #272727;
   --brand-secondary: #dadada;
   --brand: #f66b02;
-  /* Mismos valores que en claro, a proposito: ver el comentario de :root. */
+  /* Same values as in light, on purpose: see the note on :root. */
   --brand-field: #525252;
   --brand-field-border: #a1a1a1;
   --popover: oklch(0.205 0 0);

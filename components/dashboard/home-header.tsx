@@ -10,51 +10,49 @@ import { useUnreadNotifications } from "@/components/dashboard/unread-notificati
 import { useSearchResultsOpen } from "@/components/dashboard/client-filter-context";
 import { BADGE_MAX } from "@/lib/types";
 
-// LA CABECERA DEL INICIO — Entrega 2 del rediseño del 2026-10-03
+// THE INICIO HEADER — delivery 2 of the 2026-10-03 redesign
 //
-// Un solo bloque oscuro que se come a la barra de la app en esta pantalla:
-// marca, notificaciones, saludo, negocio, última conexión y buscador. En
-// `/dashboard` la `AppHeader` del layout se esconde a propósito (ver su propia
-// nota), porque dos barras pegadas en un teléfono son ~110px de los 667 que hay.
-//
-// ─────────────────────────────────────────────────────────────────────────
-// NI UN TOKEN SEMÁNTICO EN TODO EL ARCHIVO, y no es purismo
-//
-// El fondo es `--brand-primary`, que vale lo mismo en claro y en oscuro. Sobre
-// una superficie que NO se invierte, un color que SÍ lo hace es exactamente lo
-// que rompe el contraste sin que nadie se entere: `text-muted-foreground` sobre
-// este gris es gris sobre gris en tema claro. De ahí `white/70` y
-// `--brand-secondary` en lugar de tokens. Es la regla de las dos capas de
-// `DESIGN-SYSTEM.md`, y las cifras están en `npm run qa:contraste`.
+// One dark block that swallows the app bar on this screen: brand, menu,
+// notifications, greeting, business name, last sign-in and the search field. On
+// `/dashboard` the layout's `AppHeader` hides itself on purpose (see its own
+// note), because two stacked bars on a phone cost ~110px of the 667 there are.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// POR QUÉ ES UN SOLO ELEMENTO `sticky` Y NO TRES
+// NOT ONE SEMANTIC TOKEN IN THIS FILE, and that isn't purism
 //
-// La primera versión hacía `sticky` la fila de la marca y el buscador por
-// separado, dejando que el saludo se fuera solo entre las dos: cero JavaScript
-// y cero salto. No funciona, y el motivo es fácil de no ver: **un elemento
-// `sticky` solo se pega dentro de su bloque contenedor**. Si ese bloque es el
-// div oscuro —168px de alto—, al pasar de 168px de scroll las dos filas se
-// despegan y se van con él. La cabecera se quedaría pegada exactamente hasta
-// que empieza a hacer falta.
+// The background is `--brand-primary`, which is the same value in light and in
+// dark. On a surface that does NOT invert, a colour that DOES is exactly what
+// breaks contrast without anyone noticing: `text-muted-foreground` on this grey
+// is grey on grey in the light theme. Hence `white/70` and `--brand-secondary`
+// instead of tokens. It is the two-layer rule in `DESIGN-SYSTEM.md`, and the
+// numbers come from `npm run qa:contraste`.
 //
-// Pegando el bloque ENTERO, su contenedor es la columna de la pantalla, que
-// llega hasta el final — así que se mantiene arriba toda la página. El precio
-// es que el saludo tiene que esconderse con estado, que es lo de abajo.
-const COLLAPSE_AT = 64; // bajando: a partir de aquí se va el saludo
-const EXPAND_AT = 24; // subiendo: y no vuelve hasta casi arriba del todo
+// ─────────────────────────────────────────────────────────────────────────
+// WHY THIS IS ONE `sticky` ELEMENT AND NOT THREE
+//
+// The first version made the brand row and the search field sticky separately,
+// letting the greeting scroll away between them: zero JavaScript and zero jump.
+// It does not work, and the reason is easy to miss: **a `sticky` element only
+// sticks inside its containing block**. If that block is the dark div — 168px
+// tall — then past 168px of scroll both rows come unstuck and leave with it.
+// The header would stay pinned exactly until it starts to be needed.
+//
+// Sticking the WHOLE block makes its containing block the screen's column,
+// which runs to the bottom — so it stays up for the whole page. The price is
+// that the greeting has to hide via state, which is what follows.
+const COLLAPSE_AT = 64; // scrolling down: past this, the greeting goes
+const EXPAND_AT = 24; // scrolling up: and it only returns near the very top
 
-// La histéresis (64 contra 24) no es afinado fino, es lo que impide el
-// parpadeo. Con un solo umbral, el salto que produce el propio colapso puede
-// devolver el scroll justo por debajo de él, que vuelve a expandir, que vuelve
-// a saltar.
+// The hysteresis (64 against 24) is not fine-tuning, it is what prevents
+// flicker. With a single threshold, the jump the collapse itself produces can
+// leave the scroll just below that threshold, which expands, which jumps again.
 //
-// Y el otro guardia, el de verdad: SOLO COLLAPSE_AT SI LA PANTALLA TIENE HACIA
-// DÓNDE BAJAR. Al esconder el saludo el documento se acorta ~56px; en la
-// cartera de un dueño con dos clientes eso basta para que el navegador recorte
-// el scroll por debajo de EXPAND_AT y la cabecera se abra sola acto seguido. Si
-// lo que sobra de página no da para el colapso, no hay nada que ganar
-// colapsando.
+// And the other guard, the one that matters: IT ONLY COLLAPSES IF THE PAGE HAS
+// SOMEWHERE TO SCROLL. Hiding the greeting shortens the document by ~56px; in
+// the cartera of an owner with two clients that is enough for the browser to
+// clamp the scroll below EXPAND_AT and reopen the header by itself. If what is
+// left of the page cannot absorb the collapse, there is nothing to gain by
+// collapsing.
 const MIN_SCROLL_ROOM = 160;
 
 export function HomeHeader({
@@ -65,22 +63,22 @@ export function HomeHeader({
 }: {
   firstName: string | null;
   businessName: string;
-  // Ya formateada en el servidor, con la zona horaria del país del dueño:
-  // Vercel corre en UTC y formatear aquí le enseñaría a un colombiano las 12:15
-  // p. m. de un inicio de sesión de las 7:15 a. m.
+  // Already formatted on the server, in the owner's country's timezone: Vercel
+  // runs in UTC, and formatting here would show a Colombian owner 12:15 p. m.
+  // for a sign-in that happened at 7:15 a. m. their time.
   lastSignIn: string | null;
-  // El buscador. Llega como hijo y no importado aquí porque necesita el estado
-  // de `ClientFilterProvider`, que lo monta la pantalla: la lista de
-  // coincidencias y la cartera del final tienen que filtrar por lo mismo.
+  // The search field. It arrives as a child rather than being imported here
+  // because it needs `ClientFilterProvider`'s state, which the page mounts: the
+  // match list and the cartera at the bottom have to filter by the same thing.
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  // El mismo `focused` que decide si se pinta el desplegable. MIENTRAS SE
-  // ESCRIBE, EL SCROLL NO CUENTA: en iOS, abrir el teclado redimensiona la
-  // ventana y desplaza la página para traer el campo a la vista — es decir,
-  // dispara un scroll que el dueño no ha hecho. Sin este congelado, tocar el
-  // buscador colapsaría la cabecera y movería el campo justo cuando el dedo
-  // acaba de aterrizar en él.
+  // The same `focused` that decides whether the dropdown is drawn. WHILE THE
+  // OWNER IS TYPING, SCROLL DOES NOT COUNT: on iOS, opening the keyboard
+  // resizes the window and scrolls the page to bring the field into view — that
+  // is, it fires a scroll the owner never made. Without this freeze, tapping
+  // the search field would collapse the header and move the field at the exact
+  // moment the finger has just landed on it.
   const { focused } = useSearchResultsOpen();
 
   useEffect(() => {
@@ -100,8 +98,8 @@ export function HomeHeader({
       });
     };
 
-    // Una vez al montar: se entra en Inicio desde una ficha de cliente con la
-    // página ya desplazada más veces de las que parece.
+    // Once on mount: Inicio gets entered from a client's page with the page
+    // already scrolled more often than it seems.
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
@@ -111,27 +109,27 @@ export function HomeHeader({
   }, [focused]);
 
   return (
-    // `-mx-4 -mt-4` contra el `p-4` de `AppMain`: la cabecera va de borde a
-    // borde. Es el mismo recurso que usan las barras contextuales de las otras
-    // pantallas. `z-20` la pone sobre la página y por debajo de diálogos y
-    // hojas, que viven en z-50 — igual que la `AppHeader` a la que sustituye.
+    // `-mx-4 -mt-4` against `AppMain`'s `p-4`: the header runs edge to edge. It
+    // is the same device the other screens' contextual bars use. `z-20` puts it
+    // over the page and under dialogs and sheets, which live at z-50 — same as
+    // the `AppHeader` it replaces.
     <header className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 bg-brand-primary px-4 pt-3 pb-4">
       <div className="flex items-center gap-2">
-        {/* SIGUE AQUÍ A PROPÓSITO, aunque el diseño no lo dibuje. La barra de
-            abajo no lleva "Menú" todavía —eso es la Entrega 3— y la `AppHeader`
-            que lo traía está escondida en esta pantalla: sin este botón, el
-            dueño se queda en Inicio sin ninguna forma de abrir el menú. Se
-            quita cuando "Menú" llegue a la barra, no prev.
+        {/* STILL HERE ON PURPOSE, even though the design does not draw it. The
+            bottom bar does not carry "Menú" yet — that is delivery 3 — and the
+            `AppHeader` that used to carry this trigger is hidden on this
+            screen: without this button the owner is left on Inicio with no way
+            at all to open the menu. It comes out when "Menú" reaches the bar,
+            not before.
 
-            Es la hamburguesa en las dos anchuras, también en escritorio, donde
-            la app usa el glifo de panel. Un solo glifo en una sola superficie
-            pesa menos que dos iconos distintos para la misma acción, y el rail
-            de escritorio conserva su propio control en todas las demás
-            pantallas. */}
+            It is the hamburger at both widths, desktop included, where the app
+            uses the panel glyph instead. One glyph on one surface costs less
+            than two different icons for the same action, and the desktop rail
+            keeps its own control on every other screen. */}
         <SidebarMenuTrigger className="-ml-2 shrink-0 text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
-        {/* La variante secundaria del logo: #DADADA y el naranja de la marca.
-            Está en `public/` desde la Entrega 1 esperando exactamente esto — la
-            primaria es gris oscuro y sobre #272727 no se vería. */}
+        {/* The secondary variant of the logo: #DADADA plus the brand orange. It
+            has been in `public/` since delivery 1 waiting for exactly this —
+            the primary one is dark grey and would not show on #272727. */}
         <Image
           src="/logo-secundary.svg"
           alt="Sevenz"
@@ -141,11 +139,11 @@ export function HomeHeader({
           priority
         />
         <div className="ml-auto shrink-0">
-          {/* Escritorio: el popover de siempre, con su lista dentro. Teléfono:
-              un enlace a /notificaciones, porque un popover de 320px anclado a
-              la esquina de una pantalla de 375 no tiene dónde caer. Es el mismo
-              reparto que ya hacía la app, solo que ahora el teléfono también
-              tiene una puerta en la cabecera y no solo en la barra de abajo. */}
+          {/* Desktop: the usual popover, with its list inside. Phone: a link to
+              /notificaciones, because a 320px popover anchored to the corner of
+              a 375px screen has nowhere to land. It is the same split the app
+              already made, except the phone now has a door in the header too
+              and not only in the bottom bar. */}
           <div className="hidden md:block">
             <NotificationsButton className="text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
           </div>
@@ -160,39 +158,37 @@ export function HomeHeader({
         </div>
       </div>
 
-      {/* Lo que se va al bajar. Desaparece de golpe, sin animar: animar la
-          salida desplaza la pantalla mientras el dueño ya está leyendo, y en un
-          teléfono barato se ve a trompicones. Mismo criterio que
-          `HideWhileSearching`.
+      {/* What goes away on scroll. It disappears at once, unanimated: animating
+          the exit moves the screen while the owner is already reading, and on a
+          cheap phone it stutters. Same call as `HideWhileSearching`.
 
-          El salto de ~56px al colapsar es inherente a cualquier cabecera que se
-          encoja, y es el precio de que el buscador se quede arriba. Los dos
-          guardias de más arriba son para que ocurra UNA vez y no en bucle. */}
+          The ~56px jump on collapse is inherent to any header that shrinks, and
+          it is the price of keeping the search field up top. The two guards
+          above exist so it happens ONCE and not in a loop. */}
       {collapsed ? null : (
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
-            {/* `first_name` lo exige el registro y "Mi negocio", en el navegador
-                y en el servidor, así que se da por presente. El guardia es solo
-                para una fila anterior a esa regla: pintar "¡Hola !" sería peor
-                que soltar el nombre. */}
+            {/* `first_name` is required by both signup and "Mi negocio", in the
+                browser and on the server, so it is treated as present. The
+                guard is only for a row that predates that rule: rendering
+                "¡Hola !" would be worse than dropping the name. */}
             <p className="text-2xl font-semibold text-white">
               ¡Hola{firstName ? ` ${firstName}` : ""}!
             </p>
-            {/* En las dos anchuras ahora. Antes era `md:hidden` porque la barra
-                de la app llevaba el nombre del negocio de md hacia arriba y
-                repetirlo se leía como un error; en esta pantalla esa barra ya no
-                está, así que este es el único sitio donde el dueño ve en qué
-                negocio está. */}
+            {/* At both widths now. It used to be `md:hidden` because the app bar
+                carried the business name from md up and showing it twice read
+                as a mistake; on this screen that bar is gone, so this is the
+                only place the owner sees which business they are in. */}
             <p className="flex items-center gap-1.5 text-sm text-white/70">
               <Store className="size-4 shrink-0" aria-hidden="true" />
               <span className="truncate">{businessName}</span>
             </p>
           </div>
           {lastSignIn ? (
-            /* `shrink-0` y `whitespace-nowrap` juntos son lo que lo mantiene en
-               dos líneas. Como hijo flex normal, un nombre largo lo aplasta y
-               sale en cuatro: "Última conexión: / 12 sept. 2026, 11:45 p. / m."
-               El saludo se parte en su lugar, y eso sí se lee bien. */
+            /* `shrink-0` and `whitespace-nowrap` together are what keep this at
+               two lines. As a plain flex child a long name squeezes it into
+               four: "Última conexión: / 12 sept. 2026, 11:45 p. / m." The
+               greeting wraps instead, and that reads fine. */
             <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-white/70">
               Última conexión:
               <br />
@@ -207,26 +203,24 @@ export function HomeHeader({
   );
 }
 
-// El contador, en su propio componente por una razón concreta: suscribirse al
-// contexto aquí dentro y no en la cabecera. Si `HomeHeader` leyera
-// `useUnreadNotifications()`, cada vez que ese número cambia se volvería a
-// renderizar la cabecera entera — incluido el buscador, con el dueño
-// escribiendo dentro.
+// The badge, in its own component for one concrete reason: to subscribe to the
+// context in here and not in the header. If `HomeHeader` read
+// `useUnreadNotifications()`, every change to that number would re-render the
+// whole header — search field included, with the owner typing in it.
 function UnreadBadge() {
   const { unreadCount } = useUnreadNotifications();
   if (unreadCount <= 0) return null;
   return (
-    // Idéntico al de la barra de abajo, a propósito: es el mismo aviso visto
-    // desde dos sitios y tiene que ser el mismo punto rojo.
+    // Identical to the bottom bar's, on purpose: it is the same notice seen
+    // from two places and it has to be the same red dot.
     //
-    // Llevó un `ring-2 ring-brand-primary` durante media hora, con el argumento
-    // de que el rojo no llegaba al 3:1 que WCAG 1.4.11 pide a un gráfico con
-    // significado. Dos cosas estaban mal y las dos las dijo `npm run
-    // qa:contraste`: el rojo contra #272727 da 3,14:1 — pasa solo — y un anillo
-    // del color exacto de la cabecera sobre la que se dibuja no se ve, así que
-    // no estaba arreglando nada. El número blanco de dentro queda a 4,76:1,
-    // que es el que de verdad va justo: si alguien aclara ese rojo, es el
-    // primero que cae.
+    // It carried a `ring-2 ring-brand-primary` for half an hour, on the grounds
+    // that the red did not reach the 3:1 WCAG 1.4.11 asks of a graphic that
+    // means something. Two things were wrong and `npm run qa:contraste` said
+    // both: the red against #272727 is 3,14:1 — it passes on its own — and a
+    // ring in the exact colour of the header it is drawn on is invisible, so it
+    // was fixing nothing. The white number inside sits at 4,76:1, which is the
+    // one that is genuinely tight: if anyone lightens that red, it falls first.
     <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
       {unreadCount > BADGE_MAX ? `${BADGE_MAX}+` : unreadCount}
     </span>

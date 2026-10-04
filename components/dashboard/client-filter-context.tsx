@@ -64,12 +64,12 @@ export function ClientFilterProvider({
   // criterio para acabar con el botón visible bajo una lista abierta, que es
   // exactamente el toque por error que queremos impedir.
   const open = focused && filters.controls.nameQuery.trim() !== "";
-  // `focused` tambien sale, y no es un extra: la cabecera del Inicio congela su
-  // colapso mientras el dueño escribe. Si lo dedujera por su cuenta —de un
-  // onFocus propio en el campo, por ejemplo— habria dos ideas de "esta
-  // buscando" en la misma pantalla, y el dia que una se adelantara 150ms a la
-  // otra el buscador se movería debajo del dedo. Es el mismo argumento que ya
-  // sostiene `open`, aplicado una vez mas.
+  // `focused` comes out too, and it is not an extra: the Inicio header freezes
+  // its collapse while the owner is typing. If it worked that out on its own —
+  // from an `onFocus` of its own on the field, say — there would be two ideas of
+  // "is searching" on the same screen, and the day one ran 150ms ahead of the
+  // other the search field would move under the finger. Same argument that
+  // already holds up `open`, applied once more.
   const searchOpen = useMemo(
     () => ({ open, focused, setFocused }),
     [open, focused, setFocused],
