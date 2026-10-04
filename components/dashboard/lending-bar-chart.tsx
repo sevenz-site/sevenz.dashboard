@@ -22,14 +22,27 @@ const chartConfig = {
 export function WeeklyLendingChart({
   data,
   title = "Fiado vs. Abono de la semana",
+  bare = false,
 }: {
   data: WeeklyLendingPoint[];
   title?: string;
+  // `bare` drops the chart's own card: no border, no padding, no `flex-1`, and
+  // the 212px plot the Figma spec of 2026-10-04 asks for. It is for `/reportes`,
+  // where the chart sits INSIDE the ledger's card — left as it was, it would
+  // draw a second border inside the first, and its `flex-1` would grow down the
+  // card's column instead of across a row.
+  bare?: boolean;
 }) {
   return (
-    <div className="flex min-w-64 flex-1 flex-col gap-2 rounded-lg border p-4">
+    <div
+      className={
+        bare
+          ? "flex w-full min-w-0 flex-col gap-2"
+          : "flex min-w-64 flex-1 flex-col gap-2 rounded-lg border p-4"
+      }
+    >
       <p className="text-sm font-medium text-muted-foreground">{title}</p>
-      <ChartContainer config={chartConfig} className="h-[180px] w-full">
+      <ChartContainer config={chartConfig} className={bare ? "h-[212px] w-full" : "h-[180px] w-full"}>
         <BarChart data={data} margin={{ top: 10 }}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />

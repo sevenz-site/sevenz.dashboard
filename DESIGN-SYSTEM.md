@@ -179,6 +179,41 @@ negocio. Límite conocido: las dos tasas andan un 12% separadas, así que bruto 
 convertido solo discrepan cuando las dos deudas están dentro de ese margen, y lo
 que cambia entonces es cuál va primero, nunca lo que se enseña.
 
+## Reportes: los controles viven en la URL, no en el estado
+
+`/reportes` tiene dos: el periodo (**7 días** / **30 días**) y un filtro por
+cliente. Los dos son `?periodo=` y `?cliente=`, leídos por el Server Component y
+aplicados **antes** de agrupar una sola barra.
+
+No es purismo de URLs. Las series se agrupan en el servidor, así que un cambio
+tiene que llegar hasta allí de todas formas; la alternativa — mandar los
+movimientos al navegador y filtrarlos ahí — pondría el mes entero de una bodega
+en un teléfono para tirar la mayoría. De paso, el botón atrás recorre lo que el
+dueño miró y un enlace compartido enseña lo mismo.
+
+**Los dos parámetros degradan en silencio.** Un `periodo` desconocido cae a 7
+días y un `cliente` que no existe o está oculto se comporta como «sin filtro».
+Son valores de una URL que alguien puede editar, heredar o teclear mal, y un
+reporte no merece una pantalla de error por eso. Comprobado con
+`?cliente=0000…&periodo=zzz`.
+
+**30 días se agrupa por semanas, y no es pereza.** A 375px el dibujo tiene unos
+310px: siete barras respiran, treinta serían 10px cada una contando el hueco —
+una textura, no un gráfico. Son **cinco cubos de seis días**, y seis y no siete
+para que el último cubo termine **hoy**: con semanas de calendario la última
+barra sería una semana a medias y se leería como un desplome de actividad todos
+los lunes. La etiqueta es el día en que empieza el cubo («12 oct»), porque un
+nombre de día no significa nada cuando la barra cubre seis.
+
+Comprobado con aritmética y no mirando barras: un cargo por día durante 30 días
+da **6 en cada cubo y 30 en total**, uno de hace 29 días cae solo en el primero,
+uno de hoy solo en el último, y uno de hace 30 no cae en ninguno.
+
+**«Métricas totales» cambia a «Métricas de ‹nombre›»** con el filtro puesto. La
+palabra «totales» del spec es justo lo que hace legible el estado filtrado: sin
+ella, los números de una persona se enseñarían bajo un título que dice cubrir a
+todos.
+
 ## Buttons
 
 **Estas reglas aplican a los DOS repos: `Sevenz/dashboard` y `Sevenz/Web`

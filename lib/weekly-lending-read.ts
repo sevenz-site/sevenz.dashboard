@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  chartFetchWindowStart,
+  computeMonthlyFiadoAbono,
   computeWeeklyFiadoAbono,
+  lendingFetchWindowStart,
+  type LendingPeriod,
   type WeeklyLendingPoint,
 } from "@/lib/lending-charts";
 
@@ -40,18 +42,21 @@ export type WeeklyLending = {
   // it from the series removes the question instead of answering it: the flag
   // now means "at least one bar is above zero", which is the only thing the
   // empty state is ever deciding about.
-  anyThisWeek: boolean;
+  anyInPeriod: boolean;
 };
 
-const EMPTY: WeeklyLending = { cop: [], usd: [], eur: [], anyThisWeek: false };
+const EMPTY: WeeklyLending = { cop: [], usd: [], eur: [], anyInPeriod: false };
 
 export async function readWeeklyLending(
   supabase: SupabaseClient,
-  // The owner's client ids. Passed in rather than queried here because both
-  // callers already have them for their own reasons, and a second round trip
-  // to re-read what the page is holding would be a page-load cost paid for
-  // tidiness.
+  // The client ids in scope. Passed in rather than queried here because both
+  // callers already have them for their own reasons — and because `/reportes`
+  // narrows this list to one client when the owner filters by name.
   clientIds: string[],
+  // Which window, and therefore how the bars are grouped: a bar per day over 7
+  // days, or five six-day buckets over 30. Carried in the URL, so the server
+  // does the work and the back button behaves.
+  period: LendingPeriod,
 ): Promise<WeeklyLending> {
   if (clientIds.length === 0) return EMPTY;
 
@@ -64,7 +69,7 @@ export async function readWeeklyLending(
     .select("type, amount, currency, created_at")
     .in("client_id", clientIds)
     .is("deleted_at", null)
-    .gte("created_at", chartFetchWindowStart());
+    .gte("created_at", lendingFetchWindowStart(period));
 
   const rows = (data ?? []) as {
     type: "charge" | "payment";
@@ -76,15 +81,16 @@ export async function readWeeklyLending(
   // The chart sums raw movement amounts, which only means something within one
   // currency — a VE owner gets one chart per currency, each filtered to its own
   // movements and never converted, instead of one mixed total.
-  const cop = computeWeeklyFiadoAbono(rows.filter((m) => !m.currency));
-  const usd = computeWeeklyFiadoAbono(rows.filter((m) => m.currency === "USD"));
-  const eur = computeWeeklyFiadoAbono(rows.filter((m) => m.currency === "EUR"));
+  const bucket = period === "30d" ? computeMonthlyFiadoAbono : computeWeeklyFiadoAbono;
+  const cop = bucket(rows.filter((m) => !m.currency));
+  const usd = bucket(rows.filter((m) => m.currency === "USD"));
+  const eur = bucket(rows.filter((m) => m.currency === "EUR"));
 
   return {
     cop,
     usd,
     eur,
-    anyThisWeek: [cop, usd, eur].some((series) =>
+    anyInPeriod: [cop, usd, eur].some((series) =>
       series.some((point) => point.fiado > 0 || point.abono > 0),
     ),
   };

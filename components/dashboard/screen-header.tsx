@@ -37,7 +37,9 @@ export function ScreenHeader({
   filters,
 }: {
   title: string;
-  subtitle: string;
+  // Optional since 2026-10-04: the spec turns this layer off on `/reportes`,
+  // where the period chip underneath already says what window the bars cover.
+  subtitle?: string;
   // The slot beside the title. Only Clientes fills it, with "Subir libreta";
   // the spec leaves it empty on Malas pagas and Papelera.
   action?: React.ReactNode;
@@ -89,9 +91,11 @@ export function ScreenHeader({
             <h1 className="truncate text-2xl font-medium text-white">{title}</h1>
             {action}
           </div>
-          <div className="px-4 pt-2">
-            <p className="text-sm text-brand-muted">{subtitle}</p>
-          </div>
+          {subtitle ? (
+            <div className="px-4 pt-2">
+              <p className="text-sm text-brand-muted">{subtitle}</p>
+            </div>
+          ) : null}
         </div>
       )}
 
