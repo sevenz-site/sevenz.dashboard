@@ -18,6 +18,7 @@ export function HideableBalance({
   ledger,
   mainClassName,
   showToggle = true,
+  leading,
 }: {
   balance: number;
   currency: LedgerCurrency | null;
@@ -27,6 +28,10 @@ export function HideableBalance({
   // toggle, so the two controls sit together. State is still shared through
   // useHiddenBalances, so both stay in sync either way.
   showToggle?: boolean;
+  // La bandera de la moneda, cuando la hay. Se dibuja también con los montos
+  // ocultos: no enseña ninguna cifra, y quitarla movería la línea justo
+  // cuando el dueño acaba de taparla.
+  leading?: React.ReactNode;
 }) {
   const [hidden, toggle] = useHiddenBalances();
 
@@ -34,14 +39,23 @@ export function HideableBalance({
     <div className="flex items-start justify-between gap-2">
       {hidden ? (
         <div className="flex flex-col gap-0.5">
-          <p className={cn("text-2xl font-semibold tabular-nums", mainClassName)}>••••••</p>
+          <p className={cn("flex items-center gap-2 text-2xl font-semibold tabular-nums", mainClassName)}>
+            {leading}
+            ••••••
+          </p>
           {/* Matches ExchangeRateBalanceDisplay's own condition for the
               secondary "hoy" line — a COP owner (no ledger/currency) never
               has one to mask either. */}
           {ledger && currency ? <p className="text-xs text-muted-foreground tabular-nums">•••••• hoy</p> : null}
         </div>
       ) : (
-        <ExchangeRateBalanceDisplay balance={balance} currency={currency} ledger={ledger} mainClassName={mainClassName} />
+        <ExchangeRateBalanceDisplay
+          balance={balance}
+          currency={currency}
+          ledger={ledger}
+          mainClassName={mainClassName}
+          leading={leading}
+        />
       )}
       {showToggle ? (
         <button

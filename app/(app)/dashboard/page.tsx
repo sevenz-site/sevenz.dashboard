@@ -24,7 +24,7 @@ import { HomeHeader } from "@/components/dashboard/home-header";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { ledgerLabel, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function DashboardPage({
@@ -129,11 +129,10 @@ export default async function DashboardPage({
   // the Figma spec of 2026-10-04 plus the owner's call the same day: the figure
   // underneath is formatted in that currency, so a label that does not say
   // which one leaves the reader to infer it from a "$" that Colombia uses too.
-  const mainLabel = !rateContext
-    ? "Capital por cobrar"
-    : usdIsLarger
-      ? "Capital por cobrar en USD"
-      : "Capital por cobrar en Euro";
+  // Lo construye `ledgerLabel`, el mismo que usa la línea pequeña de la
+  // tarjeta. Escrito a mano aquí, las dos convenciones se separaron en cuanto
+  // alguien tocó una sola — ver la nota en `balance-card.tsx`.
+  const mainLabel = !rateContext ? ledgerLabel(null) : ledgerLabel(usdIsLarger ? "USD" : "EUR");
 
   const usdLedger = { balance: totalUsd, currency: "USD" as const };
   const eurLedger = { balance: totalEur, currency: "EUR" as const };

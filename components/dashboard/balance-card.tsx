@@ -3,8 +3,13 @@
 import Link from "next/link";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { HideableBalance } from "@/components/dashboard/hideable-balance";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { useHiddenBalances } from "@/hooks/use-hidden-balances";
-import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import {
+  formatLedgerAmount,
+  ledgerLabel,
+  type LedgerDisplay,
+} from "@/lib/exchange-rate/movement-display";
 import type { LedgerCurrency } from "@/lib/types";
 
 // One of the cartera's ledgers. Just the figure since delivery 3: the charts
@@ -71,22 +76,38 @@ export function BalanceCard({
             anything from 24px "large text" and drops its floor to 3:1, which
             this orange clears at 3,36:1. Shrink this figure below 24px and the
             colour stops complying without changing. */}
+        {/* LA BANDERA VA PEGADA A LA CIFRA, no al rótulo. El rótulo ya nombra
+            la moneda con todas sus letras; la bandera es para quien baraja
+            dos libros y reconoce antes el icono que la palabra. Solo cuando
+            hay moneda: un dueño colombiano tiene un libro, su rótulo no
+            nombra ninguna, y no existe bandera que poner. */}
         <HideableBalance
           balance={main.balance}
           currency={main.currency}
           ledger={ledger}
           showToggle={false}
           mainClassName="text-[30px] leading-tight text-money-due"
+          leading={
+            main.currency ? (
+              <CurrencyFlagIcon currency={main.currency} className="size-6 shrink-0" />
+            ) : null
+          }
         />
         {/* LA LÍNEA PEQUEÑA DICE DE QUÉ MONEDA ES, desde el 2026-10-08.
+            `truncate` y no envolver, a 375px: con el rótulo delante, la cifra
+            y su equivalente en bolívares no caben en un renglón, y partiendo
+            en dos se come una línea de alto y empuja "Ver todo" fuera de su
+            esquina. El spec anotado del dueño la dibuja cortada con puntos
+            suspensivos, así que el bolívar es lo que cede. La cifra en euros
+            —la que importa— entra entera antes del corte.
             Antes era una cifra suelta —"€35.00"— debajo de un rótulo que
             nombra la OTRA moneda, así que la única pista de a qué libro
             pertenecía era el símbolo. Para un dueño venezolano que maneja los
             dos, leer "$" arriba y "€" abajo sin más obliga a deducirlo; y el
             símbolo es justo lo que se parece entre monedas. */}
         {smaller && secondary ? (
-          <p className="text-sm tabular-nums text-muted-foreground">
-            Capital por cobrar en {secondary.currency}:{" "}
+          <p className="truncate text-sm tabular-nums text-muted-foreground">
+            {ledgerLabel(secondary.currency)}:{" "}
             {hidden ? (
               "••••••"
             ) : (

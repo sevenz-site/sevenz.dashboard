@@ -15,6 +15,7 @@ export function ExchangeRateBalanceDisplay({
   mainClassName,
   align = "start",
   showSecondary = true,
+  leading,
 }: {
   balance: number;
   currency: LedgerCurrency | null;
@@ -30,6 +31,11 @@ export function ExchangeRateBalanceDisplay({
   // silently reformat a USD figure with the COP formatter — a money-display
   // bug, not a styling choice.
   showSecondary?: boolean;
+  // Algo que va PEGADO a la cifra, no encima ni debajo: hoy la bandera de la
+  // moneda en la tarjeta de capital. Va aquí dentro y no envolviendo este
+  // componente a propósito — envolviéndolo, la línea de bolívares quedaría
+  // sangrada bajo la cifra en vez de alineada al borde de la tarjeta.
+  leading?: React.ReactNode;
 }) {
   const mainClass = cn(
     size === "lg" ? "text-2xl font-semibold tabular-nums" : "text-lg font-semibold tabular-nums",
@@ -37,13 +43,24 @@ export function ExchangeRateBalanceDisplay({
   );
   const { primary, secondary } = formatLedgerAmount(balance, currency, ledger);
 
+  // `flex` solo cuando hay algo que alinear: sin esto, un `<p>` que antes era
+  // bloque pasaría a ser contenedor flex en los seis sitios que ya lo usan.
+  const mainWithLeading = leading ? (
+    <p className={cn("flex items-center gap-2", mainClass)}>
+      {leading}
+      {primary}
+    </p>
+  ) : (
+    <p className={mainClass}>{primary}</p>
+  );
+
   if (!ledger || !currency || !showSecondary) {
-    return <p className={mainClass}>{primary}</p>;
+    return mainWithLeading;
   }
 
   return (
     <div className={cn("flex flex-col gap-0.5", align === "end" && "items-end")}>
-      <p className={mainClass}>{primary}</p>
+      {mainWithLeading}
       {secondary ? <p className="text-xs text-muted-foreground tabular-nums">{secondary} hoy</p> : null}
     </div>
   );
