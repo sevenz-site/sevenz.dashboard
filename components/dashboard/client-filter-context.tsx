@@ -30,13 +30,46 @@ export function useSharedClientFilters() {
 export function ClientFilterProvider({
   rows,
   rateContext,
+  balances = "actuales",
   children,
 }: {
   rows: ClientSummary[];
   rateContext: OwnerRateContext | null;
+  // WHICH BALANCE THE FILTERS AND SORTS READ. Papelera needs the snapshot taken
+  // when each client was hidden, not their live balance, so that "Monto desde",
+  // the status filter and the amount sorts agree with the figures printed on
+  // its cards — filtering by an amount the card does not show is the kind of
+  // mismatch nobody reports and everybody distrusts.
+  //
+  // It is a MODE and not the accessor function Papelera used to pass, because
+  // this provider is mounted by a Server Component and a function cannot cross
+  // that boundary. The accessor is built here instead.
+  balances?: "actuales" | "al-ocultar";
   children: React.ReactNode;
 }) {
-  const filters = useClientFilters(rows, rateContext);
+  const filters = useClientFilters(
+    rows,
+    rateContext,
+    balances === "al-ocultar"
+      ? {
+          // The cast is contained and safe: only Papelera passes this mode, and
+          // the rows it hands over are `ClientSummaryAll`, which is
+          // `ClientSummary` plus exactly these three fields.
+          balancesOf: (row) => {
+            const r = row as ClientSummary & {
+              trashed_balance: number | null;
+              trashed_balance_usd: number | null;
+              trashed_balance_eur: number | null;
+            };
+            return {
+              cop: r.trashed_balance ?? 0,
+              usd: r.trashed_balance_usd ?? 0,
+              eur: r.trashed_balance_eur ?? 0,
+            };
+          },
+        }
+      : undefined,
+  );
   const [focused, setFocusedState] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,7 +97,16 @@ export function ClientFilterProvider({
   // criterio para acabar con el botón visible bajo una lista abierta, que es
   // exactamente el toque por error que queremos impedir.
   const open = focused && filters.controls.nameQuery.trim() !== "";
-  const searchOpen = useMemo(() => ({ open, setFocused }), [open, setFocused]);
+  // `focused` comes out too, and it is not an extra: the Inicio header freezes
+  // its collapse while the owner is typing. If it worked that out on its own —
+  // from an `onFocus` of its own on the field, say — there would be two ideas of
+  // "is searching" on the same screen, and the day one ran 150ms ahead of the
+  // other the search field would move under the finger. Same argument that
+  // already holds up `open`, applied once more.
+  const searchOpen = useMemo(
+    () => ({ open, focused, setFocused }),
+    [open, focused, setFocused],
+  );
 
   return (
     <FilterContext.Provider value={filters}>
@@ -74,8 +116,13 @@ export function ClientFilterProvider({
 }
 
 // ¿Hay una lista de coincidencias abierta sobre la pantalla de Cartera?
-const SearchOpenContext = createContext<{ open: boolean; setFocused: (v: boolean) => void }>({
+const SearchOpenContext = createContext<{
+  open: boolean;
+  focused: boolean;
+  setFocused: (v: boolean) => void;
+}>({
   open: false,
+  focused: false,
   setFocused: () => {},
 });
 
@@ -103,8 +150,14 @@ export function HideWhileResults({ children }: { children: React.ReactNode }) {
 //
 // La página es un Server Component y no puede leer el contexto, de ahí este
 // envoltorio de una línea.
-export function ClientFilterChipsRow({ className }: { className?: string }) {
+export function ClientFilterChipsRow({
+  className,
+  tone = "light",
+}: {
+  className?: string;
+  tone?: "light" | "dark";
+}) {
   const filters = useSharedClientFilters();
   if (!filters) return null;
-  return <ClientFilterChips filters={filters} className={className} />;
+  return <ClientFilterChips filters={filters} className={className} tone={tone} />;
 }

@@ -74,8 +74,7 @@ export function DocumentIdDialog({
         <DialogHeader>
           <DialogTitle>¡Hola {clientName}, confirma tu cédula!</DialogTitle>
           <DialogDescription>
-            Para ayudarte a encontrar tu cuenta más fácilmente en el futuro, indícanos tu cédula o
-            documento de identidad.
+            Para ayudarte a encontrar tu cuenta más fácilmente en el futuro, indícanos tu cédula.
           </DialogDescription>
         </DialogHeader>
         <form ref={setFormRef} onSubmit={handleSubmit} className="flex flex-col gap-3">

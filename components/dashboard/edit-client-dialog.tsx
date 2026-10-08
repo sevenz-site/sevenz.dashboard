@@ -210,7 +210,7 @@ export function EditClientDialog({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit_document_id">Cédula/documento</Label>
+            <Label htmlFor="edit_document_id">Cédula</Label>
             <DocumentIdInput
               id="edit_document_id"
               country={ownerCountry}

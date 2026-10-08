@@ -59,7 +59,7 @@ export function DocumentIdInput({
           required={required}
         />
         <p className="text-xs text-muted-foreground">
-          Documento guardado con otro formato. Se queda como está; si lo reescribes, admite solo
+          Cédula guardada con otro formato. Se queda como está; si la reescribes, admite solo
           números.
         </p>
       </>

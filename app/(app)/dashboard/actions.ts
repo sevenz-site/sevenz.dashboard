@@ -164,7 +164,7 @@ export async function createClientWithMovement(
   // nunca lo pidió, así que esto alinea las dos puertas de alta en vez de
   // abrir una nueva.
   if (!documentId) {
-    return { error: "Escribe la cédula o documento del cliente.", clientId: null };
+    return { error: "Escribe la cédula del cliente.", clientId: null };
   }
 
   const fields = parseMovementFields(formData);

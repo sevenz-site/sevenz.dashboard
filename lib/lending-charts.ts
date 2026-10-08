@@ -45,6 +45,66 @@ export function chartFetchWindowStart(now: Date = new Date()): string {
   return new Date(now.getTime() - 9 * 24 * 60 * 60 * 1000).toISOString();
 }
 
+// THE TWO PERIODS /reportes OFFERS, since 2026-10-04.
+//
+// Why two and not three, and why 30 days is weekly: at 375px the plot has about
+// 310px to work with. Seven bars breathe; thirty would be 10px each including
+// the gap, which is a texture, not a chart. Weekly buckets give five, and five
+// is also how a shopkeeper talks about a month.
+export type LendingPeriod = "7d" | "30d";
+
+const PERIOD_DAYS: Record<LendingPeriod, number> = { "7d": 7, "30d": 30 };
+
+// Same slack as the weekly window and for the same reason: the buckets are
+// Bogota calendar days while this cutoff is UTC, so two days of margin keep a
+// movement near either boundary from falling outside the fetch.
+export function lendingFetchWindowStart(period: LendingPeriod, now: Date = new Date()): string {
+  return new Date(now.getTime() - (PERIOD_DAYS[period] + 2) * DAY_MS).toISOString();
+}
+
+// Rolling 30 days ending today, grouped into 5 buckets of 6 days. Six and not
+// seven so the newest bucket always ends today: with calendar weeks the last
+// bar would be a partial week and would read as a collapse in activity every
+// Monday.
+//
+// The label is the day the bucket starts, as "12 oct" — a weekday name means
+// nothing once a bar covers six of them.
+export function computeMonthlyFiadoAbono(
+  movements: MovementInput[],
+  now: Date = new Date(),
+): WeeklyLendingPoint[] {
+  const todayKey = bogotaDateKey(now.toISOString());
+  const todayMs = new Date(`${todayKey}T00:00:00Z`).getTime();
+  const BUCKETS = 5;
+  const SPAN = 6;
+
+  const points: WeeklyLendingPoint[] = [];
+  for (let b = BUCKETS - 1; b >= 0; b--) {
+    const startMs = todayMs - (b * SPAN + SPAN - 1) * DAY_MS;
+    const endMs = todayMs - b * SPAN * DAY_MS;
+    let fiado = 0;
+    let abono = 0;
+    for (const m of movements) {
+      const ms = new Date(`${bogotaDateKey(m.created_at)}T00:00:00Z`).getTime();
+      if (ms < startMs || ms > endMs) continue;
+      if (m.type === "charge") fiado += m.amount;
+      else abono += m.amount;
+    }
+    const d = new Date(startMs);
+    points.push({
+      day: `${d.getUTCDate()} ${MONTH_LABELS[d.getUTCMonth()]}`,
+      fiado,
+      abono,
+    });
+  }
+  return points;
+}
+
+const MONTH_LABELS = [
+  "ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic",
+];
+
 // Rolling 7 days ending today (Bogota calendar days), oldest to newest —
 // not the calendar week, so it never shows empty future days. Fiado
 // (charges) and abono (payments) are totaled separately per day so the

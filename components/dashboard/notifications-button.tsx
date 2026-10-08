@@ -8,11 +8,17 @@ import { NotificationList } from "@/components/dashboard/notification-list";
 import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
 import { getNotifications, type NotificationItem } from "@/app/(app)/actions";
 import { BADGE_MAX } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Desktop only — a phone reaches the same notifications through the bottom
 // bar and the /notificaciones page instead, where a popover anchored to a
 // header button would have nowhere useful to sit.
-export function NotificationsButton() {
+//
+// `className` exists for one caller: the Inicio header, which is dark in both
+// themes. The ghost variant's hover is `bg-accent`, a light grey — on #272727
+// that flashes a pale box with pale text inside it. The dark surface has to be
+// able to override it, and the default call site passes nothing.
+export function NotificationsButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +45,7 @@ export function NotificationsButton() {
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="relative">
+        <Button variant="ghost" size="sm" className={cn("relative", className)}>
           <Bell className="size-4" />
           Notificaciones
           {unreadCount > 0 ? (

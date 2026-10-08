@@ -30,6 +30,13 @@
   --color-destructive: var(--destructive);
   --color-money-in: var(--money-in);
   --color-brand: var(--brand);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-field: var(--brand-field);
+  --color-brand-field-border: var(--brand-field-border);
+  --color-brand-muted: var(--brand-muted);
+  --color-money-due: var(--money-due);
+  --color-brand-whatsapp: var(--brand-whatsapp);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -60,14 +67,97 @@
      fondo claro, hay que oscurecerlo aquí antes — sobre blanco no pasa el
      piso de contraste. No confundir con amber, que en este código ya
      significa "plazo vencido". */
+  /* ── LA PALETA DE MARCA ──────────────────────────────────────────────
+     Tres colores fijos, con el MISMO valor en claro y en oscuro. No son roles,
+     son la marca: el dia que Sevenz imprima una tarjeta, estos tres son los
+     que van.
+
+     Que sean fijos no es un detalle, es lo unico que los hace utilizables
+     sobre una superficie que tampoco cambia. El texto del buscador de la
+     cabecera va en #DADADA sobre #272727; si usara el token semantico
+     `--secondary`, en tema oscuro valdria gris oscuro y quedaria invisible.
+
+     La capa semantica —`--primary`, `--secondary`, `--background`…— sigue
+     describiendo ROLES y sigue invirtiendose con el tema. Las dos capas
+     conviven a proposito, y cual usar se decide asi:
+
+       ¿va sobre una superficie que NO cambia con el tema?  -> la de marca
+       ¿es "el boton principal", "la superficie secundaria"? -> la semantica
+
+     Medido con `npm run qa:contraste`. */
+  --brand-primary: #272727;
+  --brand-secondary: #dadada;
   --brand: #f66b02;
+  /* The two from the Inicio header, and they are here — fixed — for the same
+     reason as the three above: that header does not invert with the theme, so a
+     token that does breaks its contrast without anyone noticing.
+
+     `--brand-field` is the same value `--chart-3` resolves to today (#525252).
+     `--chart-3` is not used directly because it is a CHART colour: the day
+     someone retouches the bar scale, the search field's fill would go with it.
+
+     `--brand-field-border` CARRIES WEIGHT, it does not decorate. The field's
+     fill sits at 1,91:1 against the header — below the 3:1 of WCAG 1.4.11 — so
+     what makes the search field visible is this 2px border, not its background.
+     Whoever removes it leaves an invisible field, and the failure will read as
+     "the search box is missing" rather than as a colour problem. It is #a1a1a1
+     (5,78:1 against the header), which is what `--ring` is worth IN DARK: in
+     light it is #868686 and would give 4,10:1 — it passes too, but it would
+     change from one theme to the other.
+
+     Measured with `npm run qa:contraste`. */
+  --brand-field: #525252;
+  --brand-field-border: #a1a1a1;
+  /* Secondary text on the dark header: subtitles, the back arrow, the filter
+     chips' labels. 5,31:1 against `--brand-primary`, so it clears the 4,5 of
+     normal text with a little room.
+
+     Inicio's header solves the same problem with `white/70` (8,05:1), which is
+     brighter. Both are correct; this one exists because the spec of 2026-10-04
+     asked for it by value on the screens that carry a subtitle, where a whole
+     paragraph at white/70 competed with the title above it.
+
+     Fixed in both themes, like the rest of this layer. */
+  --brand-muted: #9a9a9a;
+  /* THE WHATSAPP GREEN, and it is in this layer because of where it is drawn.
+     From the Figma spec of 2026-10-04 (frame `1082:6047`), which puts the
+     "Compartir saldo vía WhatsApp" button INSIDE the client detail's dark
+     header. That surface is `--brand-primary` and does not invert, so a colour
+     that does is exactly what breaks here without anyone noticing.
+
+     That is not hypothetical: the button carried
+     `text-[#128C4A] dark:text-[#25D366]`, and #128C4A on #272727 is 3,47:1 —
+     below the 4,5:1 of its 17px label. The light theme's value would have
+     failed the moment the button moved onto the header, in the theme most
+     owners use.
+
+     #7EC070 is 6,87:1 against the header, one value in both themes.
+
+     THE LIMIT, said out loud: on white it is 2,17:1. This token works on the
+     dark header and nowhere light. A green button on a light surface needs its
+     own darker value — the same problem `--money-due` solves for the orange. */
+  --brand-whatsapp: #7ec070;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  /* Adopta el primario de la marca desde el 2026-10-03; antes oklch(0.205) =
+     #171717. El boton principal de la app lleva el color primario de la marca,
+     que es lo que significa llamarlo primario.
+     Solo en claro: en oscuro este token se invierte, como todos los
+     semanticos, y ahi el boton tiene que ser claro. Para una superficie que no
+     debe invertirse — la cabecera del Inicio — esta `--brand-primary`.
+     Texto encima: 14,31:1. Medido con `npm run qa:contraste`. */
+  --primary: #272727;
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  /* #DADADA desde el 2026-10-03, antes oklch(0.97) = #f5f5f5.
+     El motivo no es estetico: un boton secundario a #f5f5f5 sobre el fondo
+     blanco de la app quedaba a 1,09:1 — practicamente invisible, aunque WCAG no
+     lo exija porque es una superficie y no un borde con significado. A #DADADA
+     queda a 1,40:1 contra el fondo y su texto sigue a 12,81:1, muy por encima
+     del piso. Medido con `npm run qa:contraste`.
+     Solo cambia en claro: en oscuro --secondary ya es un gris oscuro propio. */
+  --secondary: #dadada;
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
@@ -81,6 +171,26 @@
      que pide AA para texto.
      El dinero que sale usa --destructive, que ya existia. */
   --money-in: oklch(0.527 0.154 150.069);
+  /* The brand orange, darkened just enough to sit on a LIGHT surface.
+     `--brand` (#F66B02) on white is 2,99:1, and `DESIGN-SYSTEM.md` already
+     warned it would have to be darkened before being used there; this is that
+     day. #EB6100 is the same hue and the same chroma in oklch, with less
+     lightness: 3,36:1 on white.
+
+     ONE VALUE IN BOTH THEMES, and here that is allowed, unlike `--primary` or
+     `--secondary`: the same colour happens to pass on both sides — 3,36:1 on
+     the light theme's white and 5,88:1 on the dark one's background — so
+     inverting it would be moving a piece that does not need moving.
+
+     ONLY FOR THE BIG CAPITAL FIGURE, which is 30px. WCAG calls anything from
+     24px large text and drops its floor to 3:1; at normal text size the floor
+     is 4,5 and this colour does NOT reach it. Shrink that figure below 24px and
+     it stops complying without changing value. Whoever uses it for a 12px label
+     will have picked a colour that fails, and the failure will not show.
+
+     Named like `--money-in` on purpose: it does not decorate, it says which
+     money is being talked about. Measured with `npm run qa:contraste`. */
+  --money-due: #eb6100;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   /* 0.62 y no 0.708. El anillo de foco necesita 3:1 contra el fondo (WCAG
@@ -110,7 +220,17 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
+  /* La paleta de marca vale LO MISMO que en claro: ver la nota de :root. */
+  --brand-primary: #272727;
+  --brand-secondary: #dadada;
   --brand: #f66b02;
+  /* Same values as in light, on purpose: see the note on :root. */
+  --brand-field: #525252;
+  --brand-field-border: #a1a1a1;
+  /* Same value as in light: see the note on :root. */
+  --brand-muted: #9a9a9a;
+  /* Same value as in light: see the note on :root. */
+  --brand-whatsapp: #7ec070;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
@@ -124,6 +244,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   /* Mas claro en oscuro, o el verde se hunde en el fondo. */
   --money-in: oklch(0.792 0.209 151.711);
+  /* Same value as in light: see the note on :root. */
+  --money-due: #eb6100;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   /* Mas CLARO que el del tema claro, no mas oscuro. Estaba al reves —0.556

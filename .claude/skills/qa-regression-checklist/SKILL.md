@@ -28,7 +28,19 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
   auth) even if the change looks unrelated, since those are exactly the
   places a small change breaks something distant.
 
-## 2. Core money-path flows (COP owners)
+## 2. Core money-path flows
+
+Run these against a **CO owner and a VE owner**, not just whichever account
+is handy. The only thing that genuinely differs between them is currency
+resolution — a CO owner must resolve to `null` — but "only one thing differs"
+is a reason to check it, not to skip it.
+
+This used to say "(COP owners)" and in practice got run on whatever account
+had a password to hand, which for a long stretch was the VE fixture. The
+result was a caveat — *"this row was tested in VE"* — rewritten into several
+consecutive launch reports and never closed. A caveat that repeats is a gap
+with good manners. It was finally closed on 2026-10-03 by running the whole
+path in both, in production (`CT-35`).
 
 - Create a new client with a first movement (charge). Balance appears
   correctly.
@@ -38,6 +50,18 @@ informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
 - Delete a movement, then restore it. Balance recalculates correctly both
   times (`recalc_client_running_balance`).
 - Mala paga flag/unflag cycle still works and affects status correctly.
+- **Register a charge AND a payment on a client who is currently flagged as
+  mala paga.** Flagging someone makes every new charge ask for an extra
+  confirmation — a branch of its own, inside the money path, that the five
+  checks above never walk. It breaks in two directions and both are bad: an
+  owner who *cannot* lend to a flagged client, or one the app lets lend with
+  no warning at all, which is the one thing the flag exists to prevent.
+
+  Added 2026-10-03, and not by anyone reading this file. The user tested it
+  on his own initiative while closing the gap that became `CT-35`, in VE and
+  in CO, and it turned out the checklist had never asked for it. Every hole
+  this section has ever had was found the same way — by someone touching the
+  app, not by someone re-reading the list.
 
 ## 3. Per-currency (VE owner) flows
 

@@ -612,6 +612,27 @@ nobody noticed until the codebase read as Spanglish.
 - **Domain words already in the product's vocabulary** when quoted inside an
   English sentence in a comment — fiado, abono, mala paga, bodega.
 
+### Comments included, and that is not obvious — so it is written down
+
+**"Code comments" above means comments. All of them, from now on.** Confirmed
+by the user on 2026-10-03, after a delivery shipped with English identifiers and
+Spanish comments, and the question was put to them instead of decided alone.
+
+It needed confirming because the pull is real and it is not laziness: the file
+you are editing is usually commented in Spanish, and "write code that reads like
+the surrounding code" is otherwise good advice. It does not win here.
+
+The boundary is the same as for names: **existing Spanish comments are not
+translated.** A file keeps whatever prose it already has, and what you add to it
+is English. So a mixed file is the expected outcome of editing an old one, not a
+mistake to go back and fix. What is NOT acceptable is writing a NEW Spanish
+comment because the ones around it are Spanish — exactly the rule for names, for
+exactly the same reason.
+
+Strings the user reads are unaffected: `console.log` output in a `qa/` script is
+read by the user, so it stays Spanish, in the same file whose comments are
+English. That is the rule working, not a contradiction.
+
 ### The boundary, because the codebase is now mixed
 
 Existing Spanish names are NOT renamed. The cost of touching

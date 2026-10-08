@@ -18,13 +18,12 @@ import {
 import {
   ClientCardBody,
   CLIENT_CARD_ROW,
-  CLIENT_CARD_SHELL,
+  clientCardShell,
+  CLIENT_CARD_INNER,
 } from "@/components/dashboard/client-card";
 import {
   ClientStatusLegend,
-  useClientFilters,
 } from "@/components/dashboard/client-filters";
-import { ClientSearchInline } from "@/components/dashboard/client-search-sheet";
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate } from "@/lib/format";
@@ -35,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { getClientStatus, type ClientSummaryAll } from "@/lib/types";
 import { track } from "@/lib/mixpanel";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
+import { useSharedClientFilters } from "@/components/dashboard/client-filter-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
 export function PapeleraTable({
@@ -59,13 +59,16 @@ export function PapeleraTable({
   // with the figures printed on these cards — filtering by an amount the card
   // does not show is the kind of mismatch nobody reports and everybody
   // distrusts.
-  const filters = useClientFilters(rows, rateContext, {
-    balancesOf: (row) => ({
-      cop: row.trashed_balance ?? 0,
-      usd: row.trashed_balance_usd ?? 0,
-      eur: row.trashed_balance_eur ?? 0,
-    }),
-  });
+  // El estado llega del proveedor que monta la pantalla, porque desde el spec
+  // del 2026-10-04 el buscador y los chips viven en la cabecera oscura, encima
+  // de esta tabla. El proveedor recibe `balances="al-ocultar"`, que es lo que
+  // apunta los filtros al saldo congelado y no al actual.
+  //
+  // El cast de vuelta es seguro: la pantalla le pasa al proveedor exactamente
+  // estas filas, y `ClientSummaryAll` es `ClientSummary` mas tres campos.
+  const compartido = useSharedClientFilters();
+  const filters = compartido;
+  const sortedRows = (filters?.sortedRows ?? []) as ClientSummaryAll[];
 
   async function handleRestore(row: ClientSummaryAll) {
     if (guardia()) return;
@@ -107,9 +110,7 @@ export function PapeleraTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <ClientSearchInline filters={filters} className="order-1" />
-
-      {filters.sortedRows.length === 0 ? (
+      {sortedRows.length === 0 ? (
         <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
           Ningún cliente coincide con estos filtros.
         </p>
@@ -120,7 +121,7 @@ export function PapeleraTable({
           are a <button>, and this one carries two action buttons inside the
           card, which a <button> cannot legally contain. */}
       <div className="order-2 flex flex-col gap-3">
-        {filters.sortedRows.map((row) => {
+        {sortedRows.map((row) => {
           // Everything here reads the snapshot taken when the client was
           // hidden, not today's ledger. Today's is the same number, but the
           // snapshot is what left the totals, and it is what a report will
@@ -144,7 +145,7 @@ export function PapeleraTable({
               // The whole card opens the client, matching the rows in Cartera
               // and Clientes — on a phone the name alone is a small target,
               // and a card that looks like a row should behave like one.
-              className={cn(CLIENT_CARD_SHELL, "flex cursor-pointer flex-col gap-3")}
+              className={clientCardShell(status)}
               role="link"
               tabIndex={0}
               onClick={() => {
@@ -161,6 +162,11 @@ export function PapeleraTable({
                 router.push(clientHref(row.client_id, "papelera"));
               }}
             >
+              {/* The inner white card wraps the row AND the actions: since the
+                  spec of 2026-10-04 the shell is only the coloured edge, so
+                  anything that should sit on the card's surface goes in here or
+                  it ends up floating outside it. */}
+              <div className={cn(CLIENT_CARD_INNER, "flex cursor-pointer flex-col pb-3")}>
               <div className={CLIENT_CARD_ROW}>
                 <ClientCardBody
                   name={row.name}
@@ -182,7 +188,7 @@ export function PapeleraTable({
                   would also navigate away from the screen that was about to
                   show the result, and Ocultar would open its confirmation on
                   top of a page that is already leaving. */}
-              <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="flex flex-wrap gap-2 px-4" onClick={(e) => e.stopPropagation()}>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleRestore(row)}>
                   <RotateCcw className="size-4" />
                   Restaurar
@@ -194,6 +200,7 @@ export function PapeleraTable({
                   <EyeOff className="size-4" />
                   Ocultar definitivamente
                 </Button>
+              </div>
               </div>
             </div>
           );

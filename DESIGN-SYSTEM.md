@@ -131,6 +131,89 @@ same rows, the same filters and sorting above them, switched with CSS.
   amounts directly with `formatLedgerAmount` instead of that component, since
   its label-above-amount shape doesn't fit a single inline row.
 
+## La tarjeta de cliente son DOS cajas, no una
+
+`components/dashboard/client-card.tsx`, desde el spec de Figma del 2026-10-04
+(frame `1071:18173`). La de fuera lleva el estado como **borde izquierdo de
+4px** y radio **10**; la de dentro es la tarjeta blanca, radio **14**, con borde
+en los otros tres lados.
+
+**Que el radio de dentro sea MAYOR es el truco, no un descuido.** Las esquinas
+blancas se separan del borde exterior y dejan ver el color como una pestaña. Con
+una sola caja — que es como estaba — el color era una raya dentro del relleno,
+que es otra cosa.
+
+Consecuencias que hay que respetar al tocarla:
+
+- **La carcasa es una función, `clientCardShell(status)`**, no una constante: el
+  color del borde depende del estado. Los dos sitios que la montan ya tenían el
+  estado a mano.
+- **Lo que deba verse sobre la superficie blanca va DENTRO de
+  `CLIENT_CARD_INNER`.** La papelera mete ahí sus botones de Restaurar y
+  Ocultar; si se quedaran fuera, flotarían sobre el borde de color.
+- **`group-active` y no `active`** para el estado pulsado. Lo que se pulsa es el
+  botón de fuera, y `:active` en CSS alcanza a los ancestros, nunca a los
+  descendientes: en la caja interior no se dispararía jamás.
+
+**El color de la barra no necesita 3:1** aunque codifique el estado — queda a
+2,13:1 contra el blanco — porque el mismo estado va escrito en palabras en el
+badge de al lado. Es la excepción que WCAG 1.4.11 contempla: la información no
+depende solo del color. Quien quite ese badge convierte la barra en el único
+portador y la deja fuera de norma.
+
+### Una cifra, y una señal cuando hay otra
+
+La tarjeta enseña **un** monto — el mayor — con su código de moneda. Apilaba los
+dos libros hasta el 2026-10-04.
+
+Pero un cliente puede deber en los dos, y entonces una sola cifra esconde
+dinero. **Medido en dev ese mismo día: 4 de los 45 clientes con deuda debían en
+dos monedas, y uno de ellos debía $102,22 junto a €4.000.** Por eso va un `+`
+discreto detrás del código, con su texto para lector de pantalla. No está para
+leerse: está para que la cifra de al lado no parezca la deuda entera.
+
+**«El mayor» compara los importes en bruto y NO convierte a bolívares primero**,
+que es la misma regla que usa la tarjeta de capital — las dos tienen que
+coincidir o la lista y el total destacarían monedas distintas para el mismo
+negocio. Límite conocido: las dos tasas andan un 12% separadas, así que bruto y
+convertido solo discrepan cuando las dos deudas están dentro de ese margen, y lo
+que cambia entonces es cuál va primero, nunca lo que se enseña.
+
+## Reportes: los controles viven en la URL, no en el estado
+
+`/reportes` tiene dos: el periodo (**7 días** / **30 días**) y un filtro por
+cliente. Los dos son `?periodo=` y `?cliente=`, leídos por el Server Component y
+aplicados **antes** de agrupar una sola barra.
+
+No es purismo de URLs. Las series se agrupan en el servidor, así que un cambio
+tiene que llegar hasta allí de todas formas; la alternativa — mandar los
+movimientos al navegador y filtrarlos ahí — pondría el mes entero de una bodega
+en un teléfono para tirar la mayoría. De paso, el botón atrás recorre lo que el
+dueño miró y un enlace compartido enseña lo mismo.
+
+**Los dos parámetros degradan en silencio.** Un `periodo` desconocido cae a 7
+días y un `cliente` que no existe o está oculto se comporta como «sin filtro».
+Son valores de una URL que alguien puede editar, heredar o teclear mal, y un
+reporte no merece una pantalla de error por eso. Comprobado con
+`?cliente=0000…&periodo=zzz`.
+
+**30 días se agrupa por semanas, y no es pereza.** A 375px el dibujo tiene unos
+310px: siete barras respiran, treinta serían 10px cada una contando el hueco —
+una textura, no un gráfico. Son **cinco cubos de seis días**, y seis y no siete
+para que el último cubo termine **hoy**: con semanas de calendario la última
+barra sería una semana a medias y se leería como un desplome de actividad todos
+los lunes. La etiqueta es el día en que empieza el cubo («12 oct»), porque un
+nombre de día no significa nada cuando la barra cubre seis.
+
+Comprobado con aritmética y no mirando barras: un cargo por día durante 30 días
+da **6 en cada cubo y 30 en total**, uno de hace 29 días cae solo en el primero,
+uno de hoy solo en el último, y uno de hace 30 no cae en ninguno.
+
+**«Métricas totales» cambia a «Métricas de ‹nombre›»** con el filtro puesto. La
+palabra «totales» del spec es justo lo que hace legible el estado filtrado: sin
+ella, los números de una persona se enseñarían bajo un título que dice cubrir a
+todos.
+
 ## Buttons
 
 **Estas reglas aplican a los DOS repos: `Sevenz/dashboard` y `Sevenz/Web`
@@ -230,6 +313,13 @@ phone or address is itself visible rather than silently absent.
 Every place that asks for a client's cédula uses `DocumentIdInput`, never a
 bare `Input`. There are four: registering a client, editing one, the import
 review table, and the modal on the public share link.
+
+**Its label is "Cédula", in every one of them, since 2026-10-04.** It used to be
+"Documento" in some and "Cédula/documento" in others, and the error messages
+said "la cédula o documento". One word, chosen because it is what both markets
+call the thing. A new screen that asks for it writes "Cédula" too — and if the
+word ever changes again, `Web/lib/soporte.ts` quotes the label verbatim and has
+to change in the same session, in its own repo, with its own deploy.
 
 **The stored value is digits.** No prefix, no dots, no letters. That is what
 keeps "pendiente" and "no tiene" out of the column — a shopkeeper in a hurry
@@ -465,6 +555,44 @@ en Papelera el subtítulo son tres líneas, más que de sobra.
 
 De md hacia arriba no se oculta nada: sobra sitio y no hay teclado que se coma
 media pantalla.
+## Hay dos capas de color, y elegir la equivocada se ve raro solo en un tema
+
+**La paleta de marca** son tres valores fijos, con el MISMO color en claro y en
+oscuro:
+
+| Token | Valor | |
+|---|---|---|
+| `--brand-primary` | `#272727` | el gris oscuro de la marca |
+| `--brand-secondary` | `#DADADA` | el gris claro |
+| `--brand` | `#F66B02` | el naranja |
+| `--brand-field` | `#525252` | el relleno del buscador de la cabecera |
+| `--brand-field-border` | `#A1A1A1` | su borde — **no es decoración**, ver abajo |
+
+Los dos últimos se añadieron el 2026-10-03 con la cabecera del Inicio. No son
+colores de marca en el sentido de "irían en una tarjeta impresa": están en esta
+capa porque **van sobre una superficie que no se invierte**, que es lo único que
+decide. `--brand-field` vale lo mismo que `--chart-3` resuelve hoy, y aun así es
+un token aparte: `--chart-3` es un color de GRÁFICO, y el día que alguien retoque
+la escala de las barras se llevaría el buscador con ella.
+
+**Los tokens semánticos** —`--primary`, `--secondary`, `--background`,
+`--card`…— describen un ROL, no un color, y se invierten con el tema.
+
+Cuál usar se decide con una sola pregunta:
+
+> **¿Va sobre una superficie que NO cambia con el tema?** → la paleta de marca.
+> **¿Es "el botón principal", "la superficie secundaria"?** → la semántica.
+
+El caso que lo obliga, y que es fácil de no ver: el texto del buscador de la
+cabecera va en `#DADADA` sobre `#272727`. Si usara `--secondary`, en tema
+oscuro ese token vale gris oscuro — texto gris oscuro sobre fondo gris oscuro.
+**El fallo no aparece en el tema en el que lo construyes**, que es lo que lo
+hace caro: se descubre cuando alguien cambia el tema, meses después.
+
+Al revés también: `--primary` adopta `#272727` en claro, pero en oscuro se
+invierte a propósito, porque un botón oscuro sobre fondo oscuro no se ve. Si
+una superficie no puede invertirse, no es `--primary`, es `--brand-primary`.
+
 ## El naranja de la marca es `--brand`, y no es `amber`
 
 `#F66B02` — el mismo de `logo.svg` y de `icon.svg`. Vive en `globals.css` como
@@ -485,17 +613,86 @@ oscuro; por eso `--brand` tiene el mismo valor en los dos temas. Sobre fondo
 blanco **no pasa el piso de contraste de abajo**: si algún día hace falta ahí,
 hay que oscurecerlo en `globals.css` primero, no en el componente.
 
+## El naranja sobre fondo claro es `--money-due`, no `--brand`
+
+La sección de arriba prometía que si algún día el naranja tenía que ir sobre
+blanco habría que oscurecerlo en `globals.css` primero. El 2026-10-04 llegó ese
+día: el spec de Figma pintó la cifra del capital en `#F66B02`, que sobre el
+blanco de la tarjeta da **2,99:1** — por debajo del 3:1 que WCAG pide **incluso
+al texto grande**. Falla por una centésima, que es la peor forma de fallar,
+porque nadie lo nota mirando.
+
+`--money-due` es `#EB6100`: el mismo tono y el mismo croma en oklch, con menos
+luminosidad. **3,36:1 sobre blanco y 5,88:1 sobre el fondo oscuro**, así que
+vale igual en los dos temas y no hace falta invertirlo — es la excepción, no la
+regla, y vale porque se midió, no porque se supusiera.
+
+**Solo para la cifra grande del capital, que son 30px.** WCAG llama grande a
+≥ 24px y le baja el piso a 3:1. A tamaño de texto normal el piso es 4,5 y este
+color da 3,36 — o sea que **encoger esa cifra por debajo de 24px la deja fuera
+de norma sin tocar el color**. Quien la use para una etiqueta de 12px habrá
+elegido un color que no cumple, y el fallo no se verá.
+
+Se llama como `--money-in` a propósito: no decora, dice de qué dinero se habla.
+Y sustituye al `amber-600` que tenía esa cifra, lo cual **de paso arregla una
+colisión**: en este código `amber` ya significa «plazo vencido», así que el
+total de la cartera se pintaba del color de un aviso de mora.
+
+## El verde de WhatsApp es `--brand-whatsapp`, y solo sirve sobre la cabecera
+
+`#7EC070`, un valor en los dos temas, de la capa de marca. Vive ahí por dónde se
+dibuja: desde el spec del 2026-10-04 el botón "Compartir saldo vía WhatsApp"
+está DENTRO de la cabecera oscura de la ficha, que es `--brand-primary` y no se
+invierte.
+
+**Lo que había era un par que se invertía**, `text-[#128C4A] dark:text-[#25D366]`,
+y el valor del tema claro queda a **3,47:1** contra `#272727` con una etiqueta de
+17px. O sea: el tema que usa la mayoría era el que fallaba, y nada lo habría
+dicho. `#7EC070` queda a 6,87:1.
+
+**El límite, dicho por delante: sobre blanco es 2,17:1.** Este token es para la
+cabecera y para nada más. Un botón verde sobre superficie clara necesita su
+propio valor más oscuro — el mismo problema que `--money-due` resuelve para el
+naranja.
+
+**Y por eso ese botón no es `Button variant="outline"`.** Esa variante trae
+`bg-background` —blanco en claro— y su borde es `--border`, que en oscuro es
+blanco al 10% y sobre `#272727` se compone en un gris que no se ve. Es un
+elemento propio con clases explícitas, igual que los chips de filtro y la flecha
+de volver de las otras cabeceras, y por la misma razón.
+
 ## Las tarjetas oscuras son oscuras en los dos temas
 
-Dos piezas de la app son oscuras a propósito: el aviso "Instala Sevenz en tu
+Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
+(`components/dashboard/home-header.tsx`), el aviso "Instala Sevenz en tu
 teléfono" (`components/install-app.tsx`) y el globo del recorrido de
-bienvenida (`components/dashboard/tour-tooltip.tsx`). Las dos usan
-`bg-[#272727]` literal y colores de texto `white/N`, no tokens.
+bienvenida (`components/dashboard/tour-tooltip.tsx`). Las tres usan
+`bg-brand-primary` y colores de texto `white/N`, no tokens de tema.
+
+**`--brand-primary` vale `#272727` y vale LO MISMO en los dos temas**, igual que
+`--brand`. Esa es la propiedad que lo hace seguro: lo que rompe el contraste
+sobre un fondo fijo no es usar un token, es usar uno que cambia con el tema.
+
+Fue `bg-[#272727]` literal en los dos archivos hasta el 2026-10-03. Pasó a
+token cuando la cabecera del Inicio necesitó ese mismo gris: tres copias de un
+hex se separan en cuanto alguien retoca una. La medición de abajo sigue siendo
+válida porque el valor no cambió — solo dejó de estar escrito tres veces.
 
 No es descuido. Una pieza oscura en medio de una pantalla clara está diciendo
 "esto de aquí es lo nuevo, mírame", y eso solo funciona si contrasta con lo
 que la rodea. Con `bg-popover` el globo sería blanco sobre blanco en tema
 claro y dejaría de hacer lo único que tiene que hacer.
+
+**Y esa frase tiene una consecuencia que costó descubrir el mismo día que se
+escribió: "en medio de una pantalla clara" es una condición, no un adorno.** Al
+estrenar la cabecera del Inicio, el aviso de instalación quedó justo debajo de
+ella — bloque oscuro, 16px de blanco, bloque oscuro — y los dos se leían como una
+sola mancha. El aviso seguía ahí y seguía siendo oscuro; lo que había perdido era
+lo único que lo hacía un aviso. Se bajó a debajo de la tarjeta de capital, donde
+vuelve a estar rodeado de blanco.
+
+La regla, entonces: **antes de añadir una cuarta pieza oscura, mira qué tiene al
+lado.** Dos de estas pegadas no suman énfasis, se lo quitan la una a la otra.
 
 Y por eso el texto tampoco puede ir en tokens: **sobre un fondo fijo, un token
 que cambia con el tema es exactamente lo que rompe el contraste sin que nadie
@@ -516,6 +713,240 @@ que cae: vuelve a medirlo antes de tocarlo.
 **El globo del recorrido es solo para onboarding.** No es un tooltip de uso
 general: para una ayuda contextual normal está el popover del sistema, que sí
 sigue el tema.
+
+## La cabecera del Inicio: dos cosas que no se pueden tocar
+
+`components/dashboard/home-header.tsx` y el campo de
+`components/dashboard/client-search-cartera.tsx`, desde el 2026-10-03. Es el
+único sitio de la app donde un campo de formulario vive sobre una superficie
+oscura, y por eso tiene reglas propias. Todo lo de abajo sale de
+`npm run qa:contraste`, no de mirarlo.
+
+**1. El borde de 2px del buscador no es decoración.** El relleno del campo queda
+a **1,91:1** contra la cabecera, por debajo del 3:1 que WCAG 1.4.11 pide a un
+borde con significado. Lo que hace que el buscador se vea NO es su fondo: es el
+borde. Quien lo quite por limpiar deja un campo invisible — y el fallo se
+reportará como "el buscador no está", no como un problema de color.
+
+**2. El placeholder no se puede atenuar.** Es lo que hace por defecto cualquier
+otro input de este repo (`placeholder:text-muted-foreground`), y aquí falla a
+CUALQUIER opacidad: 2,64:1 al 50%, 3,65:1 al 70% y todavía **4,24:1 al 80%**,
+por debajo del 4,5:1 de texto normal. Va a opacidad completa o no va.
+
+Que el placeholder y el texto escrito sean el mismo `#DADADA` es deliberado y
+tiene un coste conocido: por color no se distingue un campo vacío de uno
+escrito. Lo que los distingue es el icono — lupa cuando está vacío, aspa cuando
+hay texto. La alternativa era el placeholder en blanco (7,71:1), que lo dejaría
+MÁS brillante que el valor: justo al revés de lo que significa.
+
+Medido sobre `#272727`:
+
+| | Ratio | Piso | |
+|---|---|---|---|
+| saludo en blanco | 14,94:1 | 4,5 | pass |
+| negocio y última conexión, `white/70` | 8,05:1 | 4,5 | pass |
+| anillo de foco `white/40` | 3,65:1 | 3 | pass |
+| contador rojo de avisos | 3,14:1 | 3 | pass, **justo** |
+| número blanco dentro del contador | 4,76:1 | 4,5 | pass, **justo** |
+| relleno del campo | 1,91:1 | 3 | **falla** — lo cubre el borde |
+| borde `--brand-field-border` | 5,78:1 | 3 | pass |
+| texto y placeholder `#DADADA` en el campo | 5,59:1 | 4,5 | pass |
+
+**La sombra interior no es un riesgo.** Oscurece el borde superior del relleno,
+y oscurecer el fondo de un texto CLARO le sube el contraste (de 5,59 a 7,71), no
+se lo baja. Lo que empeora es la separación del relleno contra la cabecera — y de
+esa, otra vez, se encarga el borde.
+
+## Hay TRES cabeceras oscuras, y comparten la regla del colapso
+
+| Cabecera | Pantallas | Lleva | Qué colapsa |
+|---|---|---|---|
+| `home-header.tsx` | Inicio | marca, menú, Notificaciones, saludo, negocio, buscador | el saludo y el negocio |
+| `screen-header.tsx` | Clientes, Malas pagas, Papelera, Reportes | volver, título, subtítulo, buscador, filtros | el título y el subtítulo |
+| `client-detail-header.tsx` | la ficha del cliente | volver, ⋮, foto, nombre, Cédula/Teléfono/Dirección, botón de WhatsApp | la foto, el nombre y los datos |
+
+**Comparten superficie, no estructura.** Inicio no lleva flecha de volver porque
+es la pantalla a la que se vuelve.
+
+**La ficha del cliente es la única que SUBE el título al colapsar**, y la razón
+es la diferencia entre los dos títulos. En Clientes el título dice "Clientes",
+que ya lo sabes cuando llevas tres pantallazos. En la ficha dice de quién es la
+cuenta que estás leyendo, que es justo lo único que no puedes reconstruir
+mirando las filas. Se dibuja en un sitio o en el otro, **nunca en los dos**: dos
+`h1` están mal como marcado y peor como cosa que mantener sincronizada.
+
+**Las cinco rutas de cabecera oscura están listadas en `app-header.tsx`.** Esa
+barra se esconde a TODOS los anchos en las cinco, no solo en teléfono. Quien
+quite una de las tres componentes tiene que quitar su ruta de esa lista en el
+mismo cambio, o esa pantalla se queda sin cabecera ninguna. Lo que sí comparten es **cuándo colapsan**, y
+eso vive en `hooks/use-collapse-on-scroll.ts` — una copia, no dos. Las tres
+reglas que hay dentro no son obvias y ninguna sobrevive a ser copiada a mano:
+
+- **El umbral de colapso se MIDE, no se elige** — ver abajo, es lo que impide el
+  parpadeo.
+- **Congelado mientras el buscador tiene el foco**, porque en iOS el teclado
+  desplaza la página solo y eso dispara un scroll que el dueño no ha hecho.
+
+### El parpadeo del 2026-10-04, y por qué el umbral no es una constante
+
+Reportado en una lista corta y medido el mismo día. La cabecera oscilaba a ~1 Hz,
+para siempre:
+
+| ms | alto | scrollY |
+|---|---|---|
+| 26 | 268 | 80 |
+| 53 | 198 | **10** |
+| 99 | 268 | 78 |
+| 126 | 198 | **8** |
+
+Esos 70px que pierde el scroll al colapsar son exactamente el alto del bloque que
+se oculta, y **no** es la página quedándose sin recorrido: es **scroll
+anchoring**. Cuando el contenido por encima del viewport se encoge, Chrome y
+Firefox desplazan el scroll lo mismo para que lo que estás mirando no salte. El
+hook leía ese scroll ya desplazado, lo veía por debajo del umbral de expansión,
+expandía — lo que devolvía los 70px, lo que devolvía el scroll, lo que colapsaba
+otra vez. **La decisión cambiaba su propia entrada.**
+
+**La cura es aritmética, no una zona muerta más ancha.** Colapsar mueve el scroll
+hacia abajo como mucho el alto `h` del bloque, así que si solo se colapsa por
+encima de `h + umbral_de_expansión`, la posición después del desplazamiento nunca
+cae bajo ese umbral y el bucle no puede arrancar. Eso hace que el umbral dependa
+del contenido — por eso se mide: el subtítulo ocupa dos líneas en Malas pagas y
+Papelera y una en Clientes.
+
+**La intuición de «hacerlo más inmediato» empeoraba el fallo**: bajar el umbral
+mete el colapso más adentro de la banda que produce el bucle.
+
+En iOS vale por otro motivo: **Safari no implementa scroll anchoring**, así que
+allí la posición simplemente no se mueve. En los dos casos el estado es estable
+tras un solo cambio.
+
+**Lo que se probó y NO está**: un guardia que se negaba a colapsar en páginas
+cortas. Tenía su propio bucle — colapsar acortaba el documento, lo que metía la
+página por debajo del guardia, lo que la forzaba abierta, lo que la volvía larga
+otra vez. Un guardia contra la oscilación que oscilaba.
+
+**Qué colapsa en cada una**: en Inicio el saludo; en las otras tres el título y
+el subtítulo. En las dos se quedan arriba el buscador y lo que haya de
+controles — en una lista, filtrar sin tener que subir es lo que se hace una y
+otra vez, y el título dice algo que ya sabes para cuando has bajado.
+
+### El borde de los chips también carga peso
+
+El spec dibujó los chips de filtro con borde `#525252` sobre la cabecera:
+**1,91:1**, el mismo número que hacía invisible el buscador de Inicio. Y un chip
+**no tiene relleno**, así que sin borde visible es una palabra con una flechita
+al lado.
+
+Usan `--brand-field-border` (5,78:1) a **1px**, donde el campo lo lleva a 2px.
+Un solo color de borde para todos los controles de esa superficie, y el grosor
+es lo que dice cuál es el principal.
+
+### El estado de los filtros vive en la pantalla, no en la tabla
+
+Desde el 2026-10-04 las tres montan `ClientFilterProvider`, porque el buscador y
+los chips están en la cabecera y la lista está debajo: dos estados separados
+dejarían una lista filtrada de una manera y unos chips diciendo otra.
+`ClientTable` ya sabía reconocerlo — si el estado le llega por contexto, no monta
+su propio `ClientSearchInline`.
+
+**Papelera filtra por el saldo congelado al ocultar**, no por el actual, para que
+los filtros cuadren con las cifras impresas en sus tarjetas. Eso llega como el
+modo `balances="al-ocultar"` y **no como la función accesora que era**: el
+proveedor lo monta un Server Component, y una función no cruza esa frontera.
+
+## La cabecera del Inicio se pega entera, y hay una razón
+
+El primer intento fue sin JavaScript: `sticky` en la fila de la marca y `sticky`
+en el buscador, dejando que el saludo se fuera solo entre las dos. Cero estado,
+cero salto. **No funciona**, y el motivo es el que más cuesta ver de `sticky`:
+
+> Un elemento `sticky` solo se pega **dentro de su bloque contenedor**.
+
+Si ese contenedor es el div oscuro —168px de alto—, al pasar de 168px de scroll
+las dos filas se despegan y se van con él. La cabecera se quedaría arriba
+exactamente hasta el momento en que empieza a hacer falta.
+
+Pegando el bloque ENTERO, su contenedor pasa a ser la columna de la pantalla, que
+llega hasta el final. El precio es que el saludo se esconde con estado, y eso
+trae dos guardias que no son afinado fino:
+
+- **Histéresis** (colapsa a 64px, se expande por debajo de 24). Con un solo
+  umbral, el salto que produce el propio colapso puede devolver el scroll justo
+  por debajo de él, que vuelve a expandir, que vuelve a saltar.
+- **No colapsa si la página no tiene hacia dónde bajar.** Esconder el saludo
+  acorta el documento ~56px; en la cartera de un dueño con dos clientes eso basta
+  para que el navegador recorte el scroll y la cabecera se reabra sola.
+
+Y una tercera cosa, que es de iPhone: **mientras el buscador tiene el foco, el
+scroll no cuenta.** En iOS, abrir el teclado redimensiona la ventana y desplaza
+la página para traer el campo a la vista — un scroll que el dueño no ha hecho.
+Sin ese congelado, tocar el buscador colapsa la cabecera y mueve el campo justo
+cuando el dedo acaba de aterrizar en él. El `focused` que lo decide es **el
+mismo** que decide si se pinta la lista de coincidencias
+(`client-filter-context.tsx`), no uno nuevo: dos ideas de "está buscando" en la
+misma pantalla acaban desincronizadas, y el síntoma sería el campo moviéndose
+bajo el dedo.
+
+## La barra de abajo: tres destinos, un menú, y nada que escriba
+
+`components/dashboard/mobile-nav.tsx`. Cuatro huecos — Inicio, Reportes,
+Clientes, Menú — y **ninguno de ellos escribe nada**. Agregar salió de la barra
+el 2026-10-03 y pasó a un botón flotante, por una razón que vale para cualquier
+barra futura:
+
+> En una fila de cuatro cajas idénticas, tres que navegan y una que abre un
+> formulario, **lo único que escribe se ve igual que lo que solo te mueve.**
+> Flotando, es el único control que evidentemente no es un destino.
+
+**El activo se marca con pastilla Y subrayado.** La Entrega 3 salió solo con
+subrayado; el spec de Figma del 2026-10-04 pedía solo la pastilla gris
+`#F5F5F5` (que es `--muted`), y el dueño resolvió el choque con «las dos
+cosas». No es indecisión, y medirlo lo explica:
+
+| | Ratio contra el blanco | |
+|---|---|---|
+| La pastilla `#F5F5F5` | **1,09:1** | prácticamente invisible |
+| El subrayado | 19,79:1 | sólido |
+
+**La pastilla sola no marca nada en un teléfono barato al sol** — es un gris al
+4% sobre blanco, lo primero que desaparece. Da la sensación de bloque
+seleccionado cuando se ve, y cuando no se ve, no deja nada. El subrayado es lo
+que carga el significado; la pastilla lo acompaña.
+
+**La raya está siempre en el DOM**, transparente cuando no toca. Pintarla solo
+en el activo subiría 5px todas las etiquetas al cambiar de pantalla — cuatro
+alturas distintas durante una sola navegación. La pastilla sí puede ir y venir,
+porque envuelve el contenido en vez de ponerse debajo.
+
+**El botón flotante vive DENTRO de `MobileNav`, no en su propio archivo.** No es
+pereza: las cuatro condiciones que apagan la barra —hay un diálogo abierto, el
+teclado está arriba, hay una libreta en revisión, estamos en la ficha de un
+cliente— le aplican exactamente igual. Un componente aparte tendría que copiar
+las cuatro, y el día que una cambiara, el botón sobreviviría a un teclado del
+que la barra sí se apartó.
+
+**Y una consecuencia que hay que respetar al añadir un hueco:** desde que la
+barra lleva «Menú», la cabecera del Inicio ya no lleva hamburguesa en teléfono
+—solo de `md` hacia arriba, donde no hay barra— y `/reportes` se salió de la
+barra superior en teléfono por lo mismo. Dos puertas al mismo cajón en la misma
+pantalla no es redundancia útil, es una de las dos sin explicación.
+
+## `flex-1` dentro de una columna estira a lo alto, y eso rompió un gráfico
+
+Vale para cualquier componente que se mueva de sitio. `WeeklyLendingChart` lleva
+`flex-1` en su caja exterior porque nació compartiendo una FILA dentro de la
+tarjeta de capital. Puesto tal cual en `/reportes`, que es una columna
+`flex flex-1 flex-col`, ese mismo `flex-1` creció **a lo alto**: un gráfico con
+180px de dibujo se convirtió en una tarjeta de 560px, casi toda vacía.
+
+No es un fallo del gráfico — es que `flex-1` no significa «ancho», significa
+«reparte el eje principal», y el eje principal cambia con el contenedor. La
+solución fue envolver cada gráfico en su propia fila
+(`<div className="flex">`), para que ese `flex-1` siempre reparta anchura.
+
+**La regla general:** antes de mover un componente con `flex-1` a otra pantalla,
+mira en qué dirección fluye el contenedor nuevo. Si no es la misma, envúelvelo.
 
 ## Una elección se marca; una acción se pulsa
 
@@ -547,7 +978,8 @@ tienen que moverse juntos.
 
 **Por qué, y no es purismo.** El mismo icono sale hoy en cinco sitios con
 cuatro colores distintos: verde esmeralda en "Contactar vía WhatsApp" del
-enlace público, el verde de marca `#128C4A` en "Compartir saldo", y el color
+enlace público, `--brand-whatsapp` en "Compartir saldo" desde el
+2026-10-04 —antes `#128C4A`—, y el color
 del texto en el botón de la cabecera del cliente y en "Escríbenos para
 reactivarla". Con el color clavado, los cinco serían el mismo verde oscuro —
 y en tema oscuro ese verde cae sobre un fondo casi negro, que es justo el sitio
@@ -583,10 +1015,17 @@ Measured on white (`#ffffff`) as of 2026-09-08:
 | `--destructive` | `#e7000b` | 4.77:1 | pass, with no margin |
 | `--ring` (light) | `#868686` | 3.64:1 | pass — was `#a1a1a1` at 2.59:1 |
 | `--ring` (dark) | `#a1a1a1` | 7.63:1 | pass — was `#737373`, darker than the light one |
+| `--secondary` (light) | `#dadada` | 12.81:1 con su `-foreground` | pass — era `#f5f5f5` |
 
 `--muted-foreground` clears the bar by 0.24. Do not darken the surface behind
 it or lighten the token without re-measuring; it is the one that will fail
 first.
+
+**No lo midas a mano: `npm run qa:contraste`.** Convierte los tokens de oklch a
+sRGB, aplica la fórmula de WCAG 2.2 y saca el ratio de cada par real —
+incluidos los que llevan opacidad, que son los que mienten. Tarda un segundo y
+no necesita base de datos. Esta tabla se escribió a mano y por eso envejeció:
+el script existe para que no vuelva a pasar.
 
 **Measure the colour that gets DRAWN, not the token.** The ring row above said
 2.58:1 and failed for months, and the real number was worse: every one of the

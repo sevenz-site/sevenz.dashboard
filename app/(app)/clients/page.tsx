@@ -1,10 +1,9 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { ScreenHeader } from "@/components/dashboard/screen-header";
+import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
+import { ClientSearchFieldRow } from "@/components/dashboard/client-search-sheet";
 import { ImportarCartera } from "@/components/dashboard/importar-cartera";
-import { HideWhileSearching } from "@/components/dashboard/search-focus-context";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -70,57 +69,51 @@ export default async function ClientsPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Replaces the app header on a phone (see AppHeader), so it behaves like
-          one: flush to the top, edge to edge. The negative margins cancel main's
-          p-4 and px-4 restores the inset for the content itself. Hidden from sm
-          up, where the real header returns. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/dashboard" aria-label="Volver a Inicio">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
-          <HideWhileSearching>
-            <p className="text-sm text-muted-foreground">
-              Todos tus clientes registrados, con su saldo actual.
-            </p>
-          </HideWhileSearching>
+      {/* El estado de los filtros sube al nivel de la pantalla desde el spec
+          del 2026-10-04: el buscador y los chips viven ahora en la cabecera, y
+          la lista de abajo tiene que filtrarse con lo mismo. `ClientTable`
+          reconoce que el estado le llega por contexto y deja de montar su
+          propio `ClientSearchInline`. */}
+      <ClientFilterProvider rows={rows} rateContext={ownerRate}>
+        <ScreenHeader
+          title="Clientes"
+          subtitle="Todos tus clientes registrados, con su saldo actual."
+          /* La única de las tres que lleva acción en el título, decisión del
+             dueño el 2026-10-04. */
+          action={<ImportarCartera variant="dark" />}
+          search={<ClientSearchFieldRow tone="dark" />}
+          filters={<ClientFilterChipsRow tone="dark" />}
+        />
+
+        {/* Solo escritorio: en teléfono esta acción vive en el botón flotante
+            de la barra de abajo. Sale de la fila del título, donde estaba,
+            porque esa fila ahora vive dentro de la cabecera oscura y el spec
+            solo pone "Subir libreta" ahí. */}
+        <div className="hidden md:block">
+          <ClientSearchDialog
+            clients={clients ?? []}
+            ownerId={user!.id}
+            businessName={owner?.business_name || user!.email || "tu negocio"}
+            ownerCountry={ownerCountry}
+            rateContext={rateContext}
+            monedaHabitual={monedaHabitual}
+          />
         </div>
-        {/* A la derecha de la cabecera. `ghost`: aquí importar es una salida
-            secundaria, no la acción de la pantalla, y un recuadro la haría
-            pesar más que el título que tiene al lado. Se ve en las dos
-            anchuras — a diferencia de "Agregar movimiento", que en teléfono
-            vive en la barra de abajo. */}
-        <div className="flex shrink-0 items-center gap-1">
-          <ImportarCartera variant="responsive" />
-          {/* Desktop only, same as Cartera and Malas pagas: the phone keeps
-              this action in the bottom bar's "Agregar" instead. */}
-          <div className="hidden sm:block">
-            <ClientSearchDialog
-              clients={clients ?? []}
-              ownerId={user!.id}
-              businessName={owner?.business_name || user!.email || "tu negocio"}
-              ownerCountry={ownerCountry}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
-            />
-          </div>
-        </div>
-      </div>
-      {/* No second "Clientes" heading here: the h1 above already names what
-          this whole screen is, unlike Malas pagas where the h1 names a filter
-          and the h2 names the list underneath it. */}
-      <ClientTable
-        rows={rows}
-        scores={scores}
-        rateContext={ownerRate}
-        ownerCountry={ownerCountry}
-        source="clientes"
-      />
+
+        {/* El rótulo vuelve, decisión del dueño el 2026-10-04. El comentario
+            que estaba aquí defendía lo contrario —que el h1 ya nombra la
+            pantalla— y era cierto mientras el h1 estaba a dos centímetros.
+            Ahora el h1 vive en un bloque oscuro que se va al hacer scroll, así
+            que a media lista no queda nada diciendo qué son estas tarjetas. */}
+        <h2 className="text-base font-semibold">Clientes</h2>
+        <ClientTable
+          rows={rows}
+          scores={scores}
+          rateContext={ownerRate}
+          ownerCountry={ownerCountry}
+          source="clientes"
+        />
+      </ClientFilterProvider>
     </div>
   );
 }

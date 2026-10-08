@@ -125,15 +125,36 @@ export function ShareActions({
   if (variant === "whatsapp-button") {
     return (
       <>
-      <Button
-        variant="outline"
-        className="w-full text-[#128C4A] dark:text-[#25D366]"
+      {/* NOT `Button variant="outline"`, AND THAT IS THE POINT.
+          Since the spec of 2026-10-04 this button lives INSIDE the client
+          detail's dark header, on `--brand-primary`, which does not invert
+          with the theme. `outline` brings `bg-background` — white in the light
+          theme — so the variant would paint a white slab on a #272727 header.
+          Its border is `--border` too, which in dark resolves to white at 10%
+          and composites to ~#3f3f3f against this header: a button with no
+          visible edge.
+
+          Both colours come from the brand layer instead, which is the same
+          reason the filter chips and the back arrow of the other dark headers
+          are plain elements with explicit classes rather than variants.
+
+          What it was: `text-[#128C4A] dark:text-[#25D366]`. #128C4A on #272727
+          is 3,47:1 and its label is 17px, so the light theme failed the 4,5:1
+          floor the moment the button moved up here. `--brand-whatsapp` is
+          6,87:1 and the same value in both themes — see `globals.css`. */}
+      <button
+        type="button"
         disabled={pending}
         onClick={handleRemind}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-brand-secondary px-4 text-[17px] text-brand-whatsapp outline-none transition-colors hover:bg-white/10 focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 disabled:pointer-events-none disabled:opacity-50"
       >
         Compartir saldo vía WhatsApp
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <WhatsappIcon className="size-4" />}
-      </Button>
+        {pending ? (
+          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+        ) : (
+          <WhatsappIcon className="size-5" />
+        )}
+      </button>
       {dialogo}
       </>
     );

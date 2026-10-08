@@ -259,9 +259,13 @@ function FilterChip({
   label,
   active,
   children,
+  tone = "light",
 }: {
   label: string;
   active: boolean;
+  // `dark` is the variant that sits on `--brand-primary`, in the headers of
+  // Clientes, Malas pagas and Papelera since the spec of 2026-10-04.
+  tone?: "light" | "dark";
   // A function when picking an option should dismiss the popover — the chip
   // hands it `close`. A plain node when it should stay open: "Monto" holds two
   // inputs, and closing on the first keystroke would make the second
@@ -287,10 +291,21 @@ function FilterChip({
           // The active state carries in colour AND in the label below, never
           // colour alone: on a phone in sunlight a subtle border change is
           // invisible, and the label is what tells you the list is filtered.
-          className={`shrink-0 ${active ? "border-foreground font-medium" : ""}`}
+          className={
+            tone === "dark"
+              ? // THE BORDER IS THE WHOLE CHIP. It has no fill, so without a
+                // visible edge it is a word with an arrow next to it. The spec
+                // drew it in #525252, which is 1,91:1 against the header — the
+                // same number that made Inicio's search field invisible. It
+                // reuses `--brand-field-border` (5,78:1) at 1px instead of the
+                // field's 2px: one colour for every control on this surface,
+                // and the weight is what says which one is primary.
+                `h-[38px] shrink-0 rounded-[10px] border border-brand-field-border bg-transparent px-4 text-sm text-brand-muted hover:bg-white/10 hover:text-white ${active ? "border-white font-medium text-white" : ""}`
+              : `shrink-0 ${active ? "border-foreground font-medium" : ""}`
+          }
         >
           {label}
-          <ChevronDown className="size-4 opacity-60" />
+          <ChevronDown className={tone === "dark" ? "size-4" : "size-4 opacity-60"} />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64">
@@ -303,9 +318,11 @@ function FilterChip({
 export function ClientFilterChips({
   filters,
   className,
+  tone = "light",
 }: {
   filters: ClientFilterState;
   className?: string;
+  tone?: "light" | "dark";
 }) {
   const c = filters.controls;
 
@@ -328,7 +345,7 @@ export function ClientFilterChips({
     // overflow-x-auto so four chips never push the sheet sideways on a narrow
     // phone; they scroll within their own row instead.
     <div className={`flex items-center gap-2 overflow-x-auto pb-1 ${className ?? ""}`}>
-      <FilterChip label={c.sortBy === "nombre" ? "Ordenar por" : (sortLabel ?? "Ordenar por")} active={c.sortBy !== "nombre"}>
+      <FilterChip tone={tone} label={c.sortBy === "nombre" ? "Ordenar por" : (sortLabel ?? "Ordenar por")} active={c.sortBy !== "nombre"}>
         {(close) => (
           <div className="flex flex-col gap-1">
             {SORT_OPTIONS.map((opt) => (
@@ -350,7 +367,7 @@ export function ClientFilterChips({
         )}
       </FilterChip>
 
-      <FilterChip
+      <FilterChip tone={tone}
         label={c.statusFilter === "todos" ? "Estado" : (statusLabel ?? "Estado")}
         active={c.statusFilter !== "todos"}
       >
@@ -375,7 +392,7 @@ export function ClientFilterChips({
         )}
       </FilterChip>
 
-      <FilterChip label={amountLabel} active={amountActive}>
+      <FilterChip tone={tone} label={amountLabel} active={amountActive}>
         <div className="flex flex-col gap-2">
           <Input
             type="number"

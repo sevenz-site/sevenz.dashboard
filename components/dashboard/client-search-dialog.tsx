@@ -75,6 +75,7 @@ export function ClientSearchDialog({
   businessName,
   ownerCountry,
   autoOpen,
+  hideTrigger = false,
   showTourTarget = true,
   rateContext,
   monedaHabitual,
@@ -87,6 +88,13 @@ export function ClientSearchDialog({
   ownerCountry: OwnerCountry;
   // True when the mobile bar navigated here asking for the dialog.
   autoOpen?: boolean;
+  // Mounts the dialog WITHOUT its button. Inicio uses it on a phone since
+  // delivery 3 of the redesign: the floating "Agregar" took over as the
+  // trigger, but something still has to host the dialog that `?nuevo=1` opens,
+  // and that is this instance. Dropping the component instead of its button
+  // would leave the floating button navigating to a screen with nothing to
+  // open.
+  hideTrigger?: boolean;
   // Cartera renders this trigger twice — beside the section title on
   // desktop, below the rate card on a phone — because the two sit in
   // different places in the document and CSS alone cannot move an element
@@ -200,19 +208,21 @@ export function ClientSearchDialog({
           closeAndReset();
         }}
       >
-        <DialogTrigger asChild>
-          <Button
-            size="sm"
-            className="w-full sm:w-auto"
-            data-tour={showTourTarget ? "new-client-button" : undefined}
-            onClick={() => {
-              if (tour.step === 1) tour.advance();
-            }}
-          >
-            <Plus className="size-4" />
-            Agregar movimiento
-          </Button>
-        </DialogTrigger>
+        {hideTrigger ? null : (
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              className="w-full sm:w-auto"
+              data-tour={showTourTarget ? "new-client-button" : undefined}
+              onClick={() => {
+                if (tour.step === 1) tour.advance();
+              }}
+            >
+              <Plus className="size-4" />
+              Agregar movimiento
+            </Button>
+          </DialogTrigger>
+        )}
         {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
           del navegador estuviera escondida— así que en un teléfono con la barra
           a la vista el 90% de esa medida es más alto que la pantalla, y el
@@ -484,7 +494,7 @@ function ClientSearchDialogBody({
             Con el WhatsApp en medio, el formulario pedía obligatorio,
             opcional, obligatorio. */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="document_id">Documento</Label>
+          <Label htmlFor="document_id">Cédula</Label>
           <DocumentIdInput
             id="document_id"
             country={ownerCountry}
@@ -653,7 +663,7 @@ function ClientSearchDialogBody({
           errors={errors}
           etiquetas={{
             new_client_name: "Nombre",
-            document_id: "Documento",
+            document_id: "Cédula",
             whatsapp: "WhatsApp",
             amount: "Monto",
           }}

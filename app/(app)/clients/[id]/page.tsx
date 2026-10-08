@@ -1,15 +1,10 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ClientHeaderActions } from "@/components/dashboard/client-header-actions";
 import { AddMovementDialog } from "@/components/dashboard/add-movement-dialog";
-import { ClientAvatar } from "@/components/dashboard/client-avatar";
-import { ShareActions } from "@/components/dashboard/share-actions";
+import { ClientDetailHeader } from "@/components/dashboard/client-detail-header";
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
@@ -18,7 +13,7 @@ import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
-import { formatDateTime, formatDocumentId } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
@@ -164,45 +159,30 @@ export default async function ClientDetailPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Sticky solo por debajo de sm. Esta barra es la única de las siete que
-          sigue existiendo en escritorio, y ahí arriba ya está la cabecera de la
-          app: dos pegadas a top-0 se solaparían. Por eso sm:static.
+      {/* LA CABECERA OSCURA, desde el spec del 2026-10-04 (`1082:6047`).
 
-          On a phone this IS the header, so it has to behave like one: flush to
-          the top and edge to edge. main wraps children in p-4, so the negative
-          margins cancel that padding and px-4 puts the content back where it
-          was — otherwise the rule stops 16px short of both edges and the bar
-          floats below the top. Undone from sm up, where the real header is back
-          above it and this is just a row inside the page. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between gap-4 border-b bg-background px-4 py-3 sm:static sm:z-auto sm:mx-0 sm:mt-0 sm:border-0 sm:px-0 sm:py-0">
-        {/* Icon only. The destination is named by the screen it returns to, and
-            the label lives in aria-label rather than on screen — the bar is
-            the phone's header here, where width is scarcest.
+          Se come lo que antes eran dos cosas pegadas: la barra de volver —
+          sticky en teléfono, estática desde sm— y la columna centrada con la
+          foto, el nombre y los datos de contacto. Ahora es una superficie
+          sola, y por eso `app-header.tsx` esconde la barra de la app en esta
+          ruta a TODOS los anchos, como ya hacía con las otras cuatro
+          pantallas de cabecera oscura.
 
-            A client in the Papelera came from the Papelera: sending them back
-            to Cartera would drop the owner on a list this client is not on,
-            with nothing saying why. A client hidden definitivamente is on
-            neither list, so Cartera is the only honest destination for them. */}
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href={backHref} aria-label={backLabel}>
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-        <ClientHeaderActions
-          clientId={client.id}
-          clientName={client.name}
-          whatsapp={client.whatsapp}
-          balanceText={balanceText}
-          // A VE client owes money if either independent balance is positive.
-          // The two are never summed — that is what rateContext being non-null
-          // means on this page.
-          owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
-          hasMovements={(movementCount ?? 0) > 0}
-          trashedAt={client.trashed_at}
-          client={client as Client}
-          ownerCountry={ownerCountry}
-        />
-      </div>
+          El aviso de papelera y el botón de registrar movimiento se quedan
+          fuera, debajo: el frame los dibuja fuera del nodo `header`. */}
+      <ClientDetailHeader
+        client={client as Client}
+        ownerCountry={ownerCountry}
+        backHref={backHref}
+        backLabel={backLabel}
+        balanceText={balanceText}
+        // A VE client owes money if either independent balance is positive.
+        // The two are never summed — that is what rateContext being non-null
+        // means on this page.
+        owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
+        hasMovements={(movementCount ?? 0) > 0}
+        ownerId={user!.id}
+      />
 
       {/* A client reached from the Papelera looks identical to a live one
           otherwise — same name, same balance, same history — and an owner who
@@ -218,44 +198,7 @@ export default async function ClientDetailPage({
         </div>
       ) : null}
 
-      {/* Una sola maquetación para teléfono y computador.
-
-          Antes había dos bloques hermanos, cada uno oculto en el tamaño del
-          otro, con el nombre, los datos de contacto, los saldos y las insignias
-          duplicados en ambos: dos copias de lo mismo que había que acordarse de
-          cambiar a la vez. El diseño centrado funciona en los dos anchos, así
-          que ahora es una sola y esa clase de desincronización deja de ser
-          posible. */}
       <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 text-center">
-        <ClientAvatar
-          clientId={client.id}
-          clientName={client.name}
-          ownerId={user!.id}
-          picturePath={client.profile_picture_path}
-          editable={!client.trashed_at}
-        />
-
-        <div className="flex w-full flex-col gap-1">
-          <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-          <ClientInfoRows
-            documentId={client.document_id}
-            whatsapp={client.whatsapp}
-            address={client.address}
-          />
-        </div>
-
-        {/* El lápiz de "Editar" vivía aquí, al lado del nombre. Con el nombre
-            centrado bajo la foto ya no cabe sin romper el eje, así que se fue
-            al menú de tres puntos de la cabecera. */}
-        <ShareActions
-          clientId={client.id}
-          clientName={client.name}
-          whatsapp={client.whatsapp}
-          balanceText={balanceText}
-          variant="whatsapp-button"
-          ownerCountry={ownerCountry}
-        />
-
         {/* Un cliente en la papelera no acepta movimientos nuevos —addMovement
             los rechaza en el servidor—, y ofrecer un botón que siempre falla es
             peor que no ofrecerlo. El aviso de arriba dice cómo recuperarlo. */}
@@ -353,39 +296,6 @@ function BalanceRowCard({ label, children }: { label: string; children: React.Re
         {children}
       </div>
     </div>
-  );
-}
-
-// Documento, teléfono and dirección as labelled icon rows under the client's
-// name. Empty values keep their row and show a dash, so every client's card
-// has the same shape and the absence of a phone or an address is itself
-// visible. The labels are on screen, not just in `dt`'s screen-reader text —
-// an icon alone tells you it's an address only once you already know.
-function ClientInfoRows({
-  documentId,
-  whatsapp,
-  address,
-}: {
-  documentId: string | null;
-  whatsapp: string | null;
-  address: string | null;
-}) {
-  const rows = [
-    { label: "Documento", value: formatDocumentId(documentId) },
-    { label: "Teléfono", value: whatsapp || "—" },
-    { label: "Dirección", value: address || "—" },
-  ];
-  // Sin iconos: bajo un nombre centrado, tres iconos alineados a la izquierda
-  // rompen el eje y no aportan nada que la etiqueta no diga ya.
-  return (
-    <dl className="flex flex-col gap-0.5 text-sm text-muted-foreground">
-      {rows.map((row) => (
-        <div key={row.label} className="flex items-center justify-center gap-1.5">
-          <dt>{row.label}:</dt>
-          <dd className="min-w-0 truncate">{row.value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }
 

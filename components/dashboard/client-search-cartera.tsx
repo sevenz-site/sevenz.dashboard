@@ -36,6 +36,34 @@ import { clientHref } from "@/lib/client-origin";
 // El efecto secundario que conviene conocer: al terminar de buscar hay que
 // vaciar el campo para recuperar la cartera entera. Por eso el aspa está
 // siempre a mano en cuanto hay texto.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// IT LIVES INSIDE THE DARK HEADER, AND THAT IS WHERE ITS WHOLE LOOK COMES FROM
+//
+// Since 2026-10-03 this field does not sit on the page background: it sits on
+// `--brand-primary` (#272727), which is the same value in both themes. That is
+// why not one of its colours is a semantic token — in the dark theme `--input`
+// and `--ring` invert and would leave it invisible on a background that does
+// not. That is the two-layer rule in `DESIGN-SYSTEM.md`.
+//
+// TWO THINGS THAT CANNOT BE TOUCHED, both measured with `npm run qa:contraste`:
+//
+//   1. THE 2px BORDER IS NOT DECORATION. The field's fill sits at 1,91:1
+//      against the header, below the 3:1 WCAG 1.4.11 asks for. What makes the
+//      search field visible is the border, not its background. Removing it
+//      leaves an invisible field, and the failure reads as "the search box is
+//      missing".
+//
+//   2. THE PLACEHOLDER CANNOT BE DIMMED. That is what every other input in this
+//      repo does by default (`placeholder:text-muted-foreground`), and here it
+//      fails at ANY opacity: 2,64:1 at 50%, and still 4,23:1 at 80%, below the
+//      4,5:1 for text. Full opacity or nothing.
+//
+// That the placeholder and the typed value are the same #DADADA is deliberate
+// and has a known cost: at a glance, colour does not tell an empty field from a
+// filled one. What tells them apart is the icon — magnifier when empty, cross
+// when there is text. The alternative was a white placeholder (7,80:1), which
+// would leave it BRIGHTER than the value: the opposite of what it means.
 
 export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeholder?: string }) {
   const router = useRouter();
@@ -57,9 +85,17 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
   return (
     <div className="relative">
       <div className="relative">
-        {/* 40px y `text-base` en teléfono, como los otros tres buscadores. Lo
-            segundo no es cosmético: iOS Safari hace zoom al enfocar cualquier
-            campo por debajo de 16px. */}
+        {/* 50px tall, from the Figma spec of 2026-10-04 — the other three
+            search fields in the app are 40px, and this one is deliberately not,
+            because it is the only one that is the main thing on its screen.
+            `text-base` is not cosmetic either: iOS Safari zooms in on focus for
+            any field under 16px.
+
+            The design's two shadows: one inset and one drop, both 0/4/4. The
+            inset one darkens the fill's top edge, which RAISES the contrast of
+            the light text on top of it — it does not lower it. What it worsens
+            is the fill's separation from the header, and that is the border's
+            job, not the background's. */}
         <input
           type="text"
           value={c.nameQuery}
@@ -72,21 +108,21 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           // además evitan robar el foco en mousedown, pero un toque en el
           // borde de la lista sí lo quita.
           onBlur={() => setFocused(false)}
-          className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+          className="h-[50px] w-full min-w-0 rounded-xl border-2 border-brand-field-border bg-brand-field px-3 pr-9 text-base text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 md:text-sm"
         />
         {c.nameQuery ? (
           <button
             type="button"
             onClick={() => c.setNameQuery("")}
             aria-label="Borrar búsqueda"
-            className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute top-1/2 right-2 -translate-y-1/2 rounded text-brand-secondary outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
           >
             <X className="size-4" />
           </button>
         ) : (
           <Search
             aria-hidden="true"
-            className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-muted-foreground"
+            className="absolute top-1/2 right-3 -translate-y-1/2 size-4 text-brand-secondary"
           />
         )}
       </div>

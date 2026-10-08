@@ -51,6 +51,7 @@ export function ClientHeaderActions({
   trashedAt,
   client,
   ownerCountry,
+  onDark = false,
 }: {
   clientId: string;
   clientName: string;
@@ -72,6 +73,11 @@ export function ClientHeaderActions({
   // el nombre centrado bajo la foto ya no cabe ahí sin romper el centro.
   client: Client;
   ownerCountry: OwnerCountry;
+  // Drawn on the client detail's dark header since 2026-10-04. `ghost` has no
+  // colour of its own, so the icons would inherit `--foreground` — dark grey
+  // on a #272727 header in the light theme — and its hover paints `bg-muted`
+  // over `text-foreground`, which on this surface flashes an inverted chip.
+  onDark?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -190,6 +196,12 @@ export function ClientHeaderActions({
     router.replace("/dashboard");
   }
 
+  // One class for both buttons: they are the same control on the same surface,
+  // and two copies of it is how one of them gets fixed and the other does not.
+  const botonClase = onDark
+    ? "text-brand-secondary hover:bg-white/10 hover:text-white focus-visible:border-white focus-visible:ring-white/40"
+    : undefined;
+
   return (
     <div className="flex items-center gap-1">
       {/* Fuera del menú a propósito: ver el comentario de modo controlado en
@@ -200,14 +212,21 @@ export function ClientHeaderActions({
         open={editando}
         onOpenChange={setEditando}
       />
-      <Button variant="ghost" size="icon" disabled={pending} onClick={handleChat} title="Chat">
+      <Button
+        variant="ghost"
+        size="icon"
+        className={botonClase}
+        disabled={pending}
+        onClick={handleChat}
+        title="Chat"
+      >
         <WhatsappIcon className="size-5" />
         <span className="sr-only">Chat por WhatsApp</span>
       </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" disabled={pending} title="Más">
+          <Button variant="ghost" size="icon" className={botonClase} disabled={pending} title="Más">
             <MoreVertical className="size-5" />
             <span className="sr-only">Más opciones</span>
           </Button>

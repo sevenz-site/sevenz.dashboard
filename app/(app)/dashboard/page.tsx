@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Store } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
@@ -17,11 +16,11 @@ import { PedirAvisosWhatsappDialog } from "@/components/dashboard/pedir-avisos-w
 import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
-import { chartFetchWindowStart, computeWeeklyFiadoAbono } from "@/lib/lending-charts";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
+import { HomeHeader } from "@/components/dashboard/home-header";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -110,36 +109,35 @@ export default async function DashboardPage({
   const pedirAvisos =
     owner !== null && tocaPreguntarAvisos(owner, totalCop > 0 || totalUsd > 0 || totalEur > 0);
 
+  // WHICH OF THE TWO LEDGERS GOES BIG. The screen decides because the screen is
+  // what holds both totals; the card only draws them. A tie goes to USD on
+  // purpose: the normal tie is the zero-zero of an owner who has just signed
+  // up, and in a Venezuelan business the dollar is the main ledger. An owner
+  // with no fiado yet has to see the currency they are about to work in.
+  const usdIsLarger = totalUsd >= totalEur;
+
   const visibleRows = rows.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, visibleRows, ownerRate?.effectiveRate ?? null);
 
-  // The lending chart sums raw movement amounts, which only means something
-  // within one currency — a VE owner sees one chart per currency (each
-  // filtered to its own movements, no conversion) instead of one mixed total.
-  const clientIds = (clients ?? []).map((c) => c.id);
-  // Only the window the chart actually draws. This query used to have no date
-  // filter at all: it pulled every movement the shop had ever recorded — 411 ms
-  // and climbing forever on a 10,560-movement shop — to render a rolling 7-day
-  // chart.
-  const chartWindowStart = chartFetchWindowStart();
-  const { data: weeklyMovements } =
-    clientIds.length > 0
-      ? await supabase
-          .from("movements")
-          .select("type, amount, currency, created_at")
-          .in("client_id", clientIds)
-          .is("deleted_at", null)
-          .gte("created_at", chartWindowStart)
-      : { data: [] };
-  const weeklyMovementRows = (weeklyMovements ?? []) as {
-    type: "charge" | "payment";
-    amount: number;
-    currency: "USD" | "EUR" | null;
-    created_at: string;
-  }[];
-  const weeklyLendingCop = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => !m.currency));
-  const weeklyLendingUsd = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "USD"));
-  const weeklyLendingEur = computeWeeklyFiadoAbono(weeklyMovementRows.filter((m) => m.currency === "EUR"));
+  // The three ledgers, figure only. The charts that used to hang off these
+  // objects moved to `/reportes` with delivery 3; this page no longer reads a
+  // single movement to draw them.
+  //
+  // Built here and not in the JSX because down there the only thing that should
+  // be readable is which one goes big.
+  // THE LABEL NAMES THE BIG CURRENCY, also when there are two ledgers. From
+  // the Figma spec of 2026-10-04 plus the owner's call the same day: the figure
+  // underneath is formatted in that currency, so a label that does not say
+  // which one leaves the reader to infer it from a "$" that Colombia uses too.
+  const mainLabel = !rateContext
+    ? "Capital por cobrar"
+    : usdIsLarger
+      ? "Capital por cobrar en USD"
+      : "Capital por cobrar en Euro";
+
+  const usdLedger = { balance: totalUsd, currency: "USD" as const };
+  const eurLedger = { balance: totalEur, currency: "EUR" as const };
+  const copLedger = { balance: totalCop, currency: null };
 
   // Both values ride along on work this page already does: first_name is one
   // more column on the owners query above, and last_sign_in_at is already in
@@ -167,58 +165,40 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Arriba del todo y solo en teléfono. Sevenz es instalable desde agosto
-          —manifest, service worker e iconos están puestos— y ningún tendero se
-          enteró: Android enseña su propio aviso, discreto y fácil de ignorar, y
-          en iPhone no aparece nunca. Por eso preguntan por la Play Store; no es
-          que quieran la tienda, es que no saben que ya se puede. */}
-      <InstallAppBanner />
-      {/* Solo para los dueños que ya estaban cuando esto se construyó y nunca
-          vieron nada: a los nuevos se les pregunta en el registro. No se les
-          enciende por migración — Meta exige consentimiento afirmativo, y con
-          un solo número para toda la plataforma, tres dueños marcando el
-          mensaje como no deseado bajan el rating de los 24 a la vez. */}
-      {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          {/* first_name is required by both the signup form and "Mi negocio",
-              server-side as well as in the browser, so it is treated as present.
-              The guard is only for a row that predates that rule — rendering
-              "¡Hola !" would be worse than dropping the name. */}
-          <p className="text-2xl font-semibold">
-            ¡Hola{owner?.first_name ? ` ${owner.first_name}` : ""}!
-          </p>
-          {/* Phone only: the header still carries the business name from md up,
-              and showing it twice on one screen reads as a mistake. Below that
-              the header is just the wordmark and the sidebar trigger, so this
-              is the only place the owner sees which business they're in. */}
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground md:hidden">
-            <Store className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{owner?.business_name || "Mi negocio"}</span>
-          </p>
-        </div>
-        {lastSignIn ? (
-          /* shrink-0 and nowrap together are what keep this at two lines. As a
-             plain flex child it gets squeezed by a longer name and wraps to
-             four: "Último inicio de / sesión: / 12 sept. 2026, 11:45 p. / m."
-             The greeting wraps instead, which reads fine; this does not. */
-          <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-muted-foreground">
-            Última conexión:
-            <br />
-            {lastSignIn}
-          </p>
-        ) : null}
-      </div>
+      {/* One filter state for the whole screen: the search field lives inside
+          the header, at the very top, and the list it filters is at the bottom,
+          behind the capital card. Two separate states would leave the owner
+          with a list filtered one way and a search box claiming another.
 
-      {/* Un solo estado de filtros para toda la pantalla: el buscador va
-          justo aquí arriba y la lista que filtra está al final, detrás de las
-          tarjetas de capital. Dos estados separados dejarían al dueño con una
-          lista filtrada de una manera y un buscador diciendo otra. */}
+          It wraps the HEADER TOO, which is the 2026-10-03 change: the field
+          lives inside it and needs this state. The provider renders no DOM, so
+          the header is still the first element in the document — which is what
+          its `-mt-4` assumes. */}
       <ClientFilterProvider rows={visibleRows} rateContext={ownerRate}>
-        {/* Debajo del nombre y del negocio, antes que nada más. Buscar a una
-            persona es lo que el tendero viene a hacer la mayoría de las veces,
-            y hasta ahora exigía bajar toda la pantalla hasta la lista. */}
-        <ClientSearchCartera />
+        {/* THE HEADER, PINNED AT THE TOP AND EDGE TO EDGE. It takes over the
+            greeting, the business name and the last sign-in, which until
+            2026-10-03 were one more row of the screen's body, and it keeps the
+            search field inside it.
+
+            It goes first on purpose, ahead of the install banner: its `-mt-4`
+            cancels `AppMain`'s padding, and that only works if nothing sits
+            above it. And searching for a person is what the shopkeeper comes to
+            do most of the time, so the field has to be the first thing they
+            find, not something behind a banner. */}
+        <HomeHeader
+          firstName={owner?.first_name ?? null}
+          businessName={owner?.business_name || "Mi negocio"}
+          lastSignIn={lastSignIn}
+        >
+          <ClientSearchCartera />
+        </HomeHeader>
+
+        {/* Solo para los dueños que ya estaban cuando esto se construyó y nunca
+            vieron nada: a los nuevos se les pregunta en el registro. No se les
+            enciende por migración — Meta exige consentimiento afirmativo, y con
+            un solo número para toda la plataforma, tres dueños marcando el
+            mensaje como no deseado bajan el rating de los 24 a la vez. */}
+        {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
 
         {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
             al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya
@@ -228,23 +208,33 @@ export default async function DashboardPage({
             es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
         <CuentaPausada />
 
-        {/* 20px of separation above a section title, measured on screen. The
-            container is a flex column with gap-4, and a margin ADDS to a flex gap
-            rather than collapsing into it — so mt-1 (4px) plus that 16px gap is
-            the 20px. Changing the container's gap changes this too. */}
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Por cobrar</h2>
+        {/* 16px and not 20, from the Figma spec of 2026-10-04: both section
+            titles on this screen are the same size as body text, bold rather
+            than big. The screen already has one large figure and it is the
+            money — a 20px heading above it was competing with it. */}
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Por cobrar</h2>
           <div className="flex shrink-0 items-center gap-2">
             {/* Importar vive aquí, no solo en el menú lateral: es la forma de
                 cargar una cartera entera, y estaba escondida detrás de una
-                navegación que muchos dueños no abren nunca. */}
-            <ImportarCartera />
-            {/* Desktop only: beside the title, hugging its own width. The phone
-                keeps it full width below, which is a different place in the
-                document — so it is rendered in both spots and each is shown at
-                one breakpoint. */}
+                navegación que muchos dueños no abren nunca.
+
+                `responsive` y no `outline` desde el spec del 2026-10-04: ahí
+                "Subir libreta" es texto con su icono, sin recuadro. En teléfono
+                ya no lleva caja — compite menos con la cifra, que es lo único
+                grande que debería haber aquí — y de `sm:` en adelante la
+                conserva, que es lo que esta variante ya hacía en las otras tres
+                pantallas y lo que la versión web necesita. El spec solo cubre el
+                teléfono. */}
+            <ImportarCartera variant="responsive" />
+            {/* Desktop only: beside the title, hugging its own width.
+                The breakpoint is `md` and not `sm` since delivery 3, so that it
+                lines up with the bottom bar's: below md the floating "Agregar"
+                is the trigger, at md and up there is no bottom bar and this
+                button is the only one. With the old `sm` there was a 128px band
+                — 640 to 768 — where BOTH were on screen. */}
             <HideWhileResults>
-              <div className="hidden sm:block">
+              <div className="hidden md:block">
                 <ClientSearchDialog
                   clients={clients ?? []}
                   ownerId={user!.id}
@@ -259,81 +249,83 @@ export default async function DashboardPage({
         </div>
 
 
-        {/* Se apartan con "Agregar movimiento", bajo la misma condición: la
-            lista de coincidencias cae justo encima de ellas.
+        {/* THE CARD AND THE RATE STRIP ARE ONE SECTION, 14px apart, which is
+            the spec's "Summary Section" of 2026-10-04. They used to be split by
+            the install banner, which landed between the figure and the rate
+            that figure converts at — the two things on this screen that are
+            read together.
 
-            Se va el bloque entero, también la tarjeta única de un negocio
-            colombiano. El encargo nombró las dos de un negocio venezolano
-            —USD y Euro—, pero la colombiana ocupa el mismo sitio y la lista la
-            tapa igual: dejarla puesta sería arreglar el estorbo en Venezuela y
-            conservarlo en Colombia.
+            ONE SINGLE CARD since 2026-10-03, for a Venezuelan business too.
+            There used to be two — USD and Euro — side by side, and the problem
+            was not the room they took: two figures of the same size, with the
+            same label and the same colour, force you to read both to know what
+            your cartera is. Now the larger goes big and the smaller on a small
+            line below; which is which is decided by this screen, the one that
+            holds both totals. The full reasoning is in `balance-card.tsx`.
 
-            Stacked on a phone, side by side once there is room — the cards are
-            two independent ledgers, not a sequence, so they read better abreast
-            than stacked on a wide screen. */}
+            Both move aside with "Agregar movimiento", under the same condition:
+            the match list lands right on top of them. */}
         <HideWhileResults>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            {rateContext ? (
-              <>
-                <BalanceCard
-                  label="Capital por cobrar en USD"
-                  balance={totalUsd}
-                  currency="USD"
-                  ledger={ledger}
-                  chartData={weeklyLendingUsd}
-                  chartTitle="Fiado vs. Abono (USD)"
-                />
-                <BalanceCard
-                  label="Capital por cobrar en Euro"
-                  balance={totalEur}
-                  currency="EUR"
-                  ledger={ledger}
-                  chartData={weeklyLendingEur}
-                  chartTitle="Fiado vs. Abono (EUR)"
-                />
-              </>
-            ) : (
-              <BalanceCard
-                label="Capital por cobrar"
-                balance={totalCop}
-                currency={null}
-                ledger={null}
-                chartData={weeklyLendingCop}
-              />
-            )}
+          <div className="flex flex-col gap-3.5">
+            <BalanceCard
+              label={mainLabel}
+              ledger={ledger}
+              {...(rateContext
+                ? {
+                    main: usdIsLarger ? usdLedger : eurLedger,
+                    secondary: usdIsLarger ? eurLedger : usdLedger,
+                  }
+                : { main: copLedger, secondary: null })}
+            />
+            {/* The rate goes AFTER the card, at the owner's request on
+                2026-09-20. It used to go before, on the argument that a card's
+                bolívar equivalent cannot be read without knowing what rate it
+                was converted at; the rate is still on the same screen and a
+                finger away, so that weighs less than the order the owner wants
+                to read in. */}
+            {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
           </div>
         </HideWhileResults>
 
-        {/* La tasa va DESPUÉS de las tarjetas desde el 2026-09-20, a petición
-            del dueño. Antes iba delante, con el argumento de que el
-            equivalente en bolívares de una tarjeta no se puede leer sin saber
-            a qué tasa está convertido; la tasa sigue en la misma pantalla y a
-            un dedo de distancia, así que el argumento pesa menos que el orden
-            que el dueño quiere leer. Si vuelve a moverse, esta es la razón que
-            había. */}
-        {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+        {/* DOWN HERE AND NOT AT THE VERY TOP, since 2026-10-03, and now below
+            the whole summary section rather than inside it. This notice is a
+            dark card on purpose — `DESIGN-SYSTEM.md` puts it this way: "a dark
+            piece in the middle of a light screen is saying this here is the new
+            thing, look at me", and that only works if it contrasts with what
+            surrounds it. Against the new header it stopped contrasting, and
+            between the capital and its rate it also split a pair that is read
+            together.
+
+            The Figma spec does not model it at all. It stays because leaving it
+            out is a product decision, not a layout one. Phone only, as always:
+            Sevenz has been installable since August and no shopkeeper found
+            out, because Android shows its own notice, discreet and easy to
+            ignore, and on iPhone it never appears. */}
+        <InstallAppBanner />
 
         {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
             autoOpen lives here; the desktop one must not also receive it or both
             would open and stack.
 
-            Cierra la sección, debajo de las tarjetas y de la tasa. Estuvo
-            arriba, por delante de ellas; se bajó el 2026-09-20 a petición del
-            dueño. En el teléfono lo tiene igual de a mano en la barra de abajo
-            ("Agregar"), así que aquí no es el atajo sino el cierre de lo que
-            acaba de leer.
+            NO VISIBLE BUTTON since delivery 3: the floating "Agregar" took over
+            as the trigger. What stays is the DIALOG, and it has to — the
+            floating button navigates to `?nuevo=1`, and this instance is what
+            reads that marker and opens. Deleting the component instead of its
+            button would leave that button pointing at a screen with nothing to
+            open on it.
 
-            Se aparta mientras la lista de coincidencias está abierta, igual
-            que las tarjetas: un toque que se pase unos píxeles abriría el alta
-            de un movimiento en vez de la ficha del cliente. */}
+            It still moves aside while the match list is open, like the capital
+            card: the dialog is invisible, but a mounted Radix trigger is not
+            the only thing that can swallow a tap near the list's edge. */}
         <HideWhileResults>
-          <div className="sm:hidden">
+          <div className="md:hidden">
             <ClientSearchDialog
               clients={clients ?? []}
               ownerId={user!.id}
               businessName={owner?.business_name || user!.email || "tu negocio"}
               ownerCountry={ownerCountry}
               autoOpen={nuevo === "1"}
+              hideTrigger
               showTourTarget={false}
               rateContext={rateContext}
               monedaHabitual={monedaHabitual}
@@ -355,27 +347,22 @@ export default async function DashboardPage({
             Los chips estuvieron un rato en esta misma fila, en el sitio del
             título, y se leía como si "Ordenar por" fuese el nombre de la
             sección. */}
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Clientes</h2>
+        <div className="flex items-center justify-between gap-3 pt-3 pb-2.5">
+          <h2 className="text-base font-semibold">Clientes</h2>
           {/* Esta lista está recortada —oculta las malas pagas y pagina de 15
               en 15—, así que hace falta una salida explícita a la completa. */}
-          {/* Subrayado: es lo único de esta fila que lleva a otra pantalla, y
-              un "ghost" sin subrayar no se distingue de una etiqueta. Va en el
-              <Link> y no en el botón, para que siga al texto en vez de dibujar
-              una raya del ancho de la caja.
-
-              `decoration-1` y `underline-offset-2` no son gusto. Este botón es
-              `size="sm"`, o sea `text-[0.8rem]` — 12,8px. A ese tamaño el
-              grosor `auto` del navegador sale por debajo de 1px y se pinta como
-              una línea gris lavada: el subrayado estaba puesto y no se veía. Y
-              un offset de 4px, que va bien en texto de 14px, aquí separa tanto
-              la raya de la palabra que deja de leerse como suya. Mismo
-              tratamiento que el enlace pequeño de /admin/cuentas. */}
-          <Button variant="ghost" size="sm" asChild className="shrink-0">
-            <Link href="/clients" className="underline decoration-1 underline-offset-2">
-              Ver todos
-            </Link>
-          </Button>
+          {/* 12px with a chevron since the spec of 2026-10-04, instead of the
+              underlined ghost button it was. The underline existed to stop a
+              ghost button reading as a label; a chevron says "this goes
+              somewhere" without borrowing a button's shape at all, and it is
+              the same treatment the capital card's own link uses. */}
+          <Link
+            href="/clients"
+            className="flex shrink-0 items-center gap-0.5 text-xs text-foreground transition-colors hover:text-money-due"
+          >
+            Ver todos
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
         </div>
 
         {/* En su propia fila, debajo de la cabecera y pegados a la lista que

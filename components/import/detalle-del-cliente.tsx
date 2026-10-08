@@ -720,7 +720,7 @@ export function DetalleDelCliente({
         <div className="flex flex-col gap-3 rounded-lg border p-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="detalle-documento" className="text-xs">
-              Documento
+              Cédula
             </Label>
             {/* La de un cliente que ya existe SE ENSEÑA, no se edita: la 073
                 solo rellena documentos que estén en null, así que un campo

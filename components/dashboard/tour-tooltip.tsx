@@ -12,11 +12,17 @@ import { X } from "lucide-react";
 // ─────────────────────────────────────────────────────────────────────────
 // OSCURA EN LOS DOS TEMAS, a propósito.
 //
-// `bg-[#272727]` literal y no un token: es el mismo fondo que la tarjeta de
-// "Instala Sevenz en tu teléfono" (`components/install-app.tsx`), que también
-// es oscura pase lo que pase con el tema. Si esto usara `bg-popover`, en tema
-// claro el globo sería blanco sobre blanco y dejaría de resaltar — que es lo
-// único que tiene que hacer.
+// `bg-brand-primary`, el mismo fondo que la tarjeta de "Instala Sevenz en tu
+// teléfono" (`components/install-app.tsx`), que también es oscura pase lo que
+// pase con el tema. Si esto usara `bg-popover`, en tema claro el globo sería
+// blanco sobre blanco y dejaría de resaltar — que es lo único que tiene que
+// hacer.
+//
+// Fue `bg-[#272727]` literal hasta el 2026-10-03. Pasó a token cuando la
+// cabecera del Inicio necesitó ese mismo gris: tres copias de un hex se separan
+// en cuanto alguien retoca una. El token vale LO MISMO en los dos temas, que es
+// lo que lo distingue de los demás y lo que permite que la medición de abajo
+// siga siendo cierta.
 //
 // Por eso también los colores del texto son `white/N` y no tokens: sobre un
 // fondo fijo, un token que cambia con el tema es justo lo que rompe el
@@ -61,7 +67,7 @@ export function TourTooltip({
     <div
       ref={ref}
       style={style}
-      className="fixed z-[60] w-72 rounded-2xl bg-[#272727] p-4 pr-11 text-white shadow-lg"
+      className="fixed z-[60] w-72 rounded-2xl bg-brand-primary p-4 pr-11 text-white shadow-lg"
     >
       <button
         type="button"

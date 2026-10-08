@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { fileToResizedBlob } from "@/lib/image";
 import { getPublicClientProfilePictureUrl } from "@/lib/supabase/storage";
@@ -53,6 +54,7 @@ export function ClientAvatar({
   ownerId,
   picturePath,
   editable = true,
+  onDark = false,
 }: {
   clientId: string;
   clientName: string;
@@ -61,6 +63,14 @@ export function ClientAvatar({
   // Un cliente en la papelera no acepta cambios; ofrecer un botón que siempre
   // falla es peor que no ofrecerlo.
   editable?: boolean;
+  // Drawn on the client detail's dark header (`--brand-primary`), which does
+  // NOT invert with the theme. One boolean rather than three className props
+  // because it is one decision: every colour in here that comes from the
+  // semantic layer has to come from the brand layer instead. `bg-muted` and
+  // `text-muted-foreground` are a LIGHT grey circle with mid-grey initials in
+  // the light theme — on #272727 that is a white blob where the spec draws a
+  // #404040 disc.
+  onDark?: boolean;
 }) {
   const router = useRouter();
   const galeriaRef = useRef<HTMLInputElement>(null);
@@ -120,9 +130,24 @@ export function ClientAvatar({
   const foto = picturePath ? getPublicClientProfilePictureUrl(picturePath) : null;
 
   const avatar = (
-    <Avatar className="size-28">
+    // 80px on the dark header, 112px everywhere else: the spec of 2026-10-04
+    // sizes it against a header that also has to fit a name, three lines of
+    // contact data and a button on a 375px screen.
+    <Avatar className={onDark ? "size-20" : "size-28"}>
       {foto ? <AvatarImage src={foto} alt={clientName} /> : null}
-      <AvatarFallback className="text-3xl font-semibold text-muted-foreground">
+      <AvatarFallback
+        className={
+          onDark
+            ? // #404040 and #A0A0A0, from the spec. The initials are 3,96:1
+              // against the disc, which passes because 36px is large text —
+              // WCAG drops the floor to 3:1 from 24px up. Shrink this text and
+              // it stops complying without changing colour. The disc itself is
+              // 1,44:1 against the header and that is fine: it carries no
+              // meaning the initials inside do not already carry.
+              "bg-[#404040] text-4xl font-semibold text-[#a0a0a0]"
+            : "text-3xl font-semibold text-muted-foreground"
+        }
+      >
         {initials(clientName)}
       </AvatarFallback>
     </Avatar>
@@ -139,7 +164,10 @@ export function ClientAvatar({
         <button
           type="button"
           disabled={ocupado}
-          className="group relative rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          className={cn(
+            "group relative rounded-full outline-none focus-visible:ring-[3px]",
+            onDark ? "focus-visible:ring-white/40" : "focus-visible:ring-ring",
+          )}
           aria-label={foto ? `Cambiar la foto de ${clientName}` : `Agregar una foto de ${clientName}`}
         >
           {avatar}
@@ -153,7 +181,12 @@ export function ClientAvatar({
           {/* En un teléfono no hay hover, así que la cámara vive siempre visible
               en la esquina: sin ella el círculo no se anuncia como pulsable y la
               función queda escondida para quien más la va a usar. */}
-          <span className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted sm:hidden">
+          <span
+            className={cn(
+              "absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 sm:hidden",
+              onDark ? "border-brand-primary bg-brand-field text-white" : "border-background bg-muted",
+            )}
+          >
             {ocupado ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
           </span>
         </button>

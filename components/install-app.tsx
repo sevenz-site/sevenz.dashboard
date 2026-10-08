@@ -198,18 +198,26 @@ export function InstallAppBanner() {
 
   return (
     <>
-      {/* Tarjeta oscura fija en los dos temas, no derivada de los tokens.
+      {/* Tarjeta oscura fija en los dos temas: `--brand-primary` vale lo mismo
+          en claro y en oscuro, que es justo lo que la distingue del resto de
+          tokens y lo que hace que la medición de abajo siga siendo cierta.
           Es deliberado: esto no es una superficie más de la pantalla, es lo
           único que la interrumpe, y en modo oscuro una tarjeta "invertida" se
           volvería blanca y gritaría más de lo que toca.
 
           El #272727 no es un color elegido al azar: es el fondo del propio
-          icon.svg. Por eso el icono se apoya sin recorte ni marco — su cuadrado
-          se funde con la tarjeta y solo queda la S.
+          `fav-icon-primary.svg`. Por eso el icono se apoya sin recorte ni marco
+          — su cuadrado se funde con la tarjeta y solo queda la S.
+
+          Y hasta el 2026-10-03 eso era una intención, no un hecho: el icono
+          venía dibujado en #171717 sobre una tarjeta de #272727, con la costura
+          a la vista. Los dos valores eran los de la paleta vieja. Al entrar la
+          nueva —y con ella los logos redibujados— coinciden de verdad por
+          primera vez.
 
           Medido: naranja sobre este fondo da 5.0:1 y el gris 5.7:1, los dos por
           encima del 4.5:1 que pide AA. El blanco del título, 14.9:1. */}
-      <div className="relative flex items-center gap-4 rounded-2xl bg-[#272727] p-4 pr-12">
+      <div className="relative flex items-center gap-4 rounded-2xl bg-brand-primary p-4 pr-12">
         <Image
           src="/fav-icon-primary.svg"
           alt=""

@@ -1060,8 +1060,8 @@ export function ImportFlow({
     ? "Escribe el nombre del cliente antes de continuar."
     : missingDocumentId
       ? sameClient
-        ? "Falta la cédula/documento del cliente — complétala antes de continuar."
-        : "Falta la cédula/documento de uno o más clientes nuevos — complétala antes de continuar."
+        ? "Falta la cédula del cliente — complétala antes de continuar."
+        : "Falta la cédula de uno o más clientes nuevos — complétala antes de continuar."
       : sinDecidir
         ? `Dinos si ${duplicados.filter((c) => !decisiones[c.nameKey]).length === 1 ? "el cliente repetido es" : "los clientes repetidos son"} la misma persona que ya tienes, o alguien distinto.`
         : missingCurrency
@@ -1772,7 +1772,7 @@ export function ImportFlow({
               </div>
               <div className="flex flex-1 flex-col gap-1.5">
                 <Label htmlFor="shared-document" className="text-xs">
-                  Cédula/documento
+                  Cédula
                 </Label>
                 <DocumentIdInput
                   id="shared-document"

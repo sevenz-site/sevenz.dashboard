@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
+import { Home, ChartColumn, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,7 @@ import { InstallAppDialog } from "@/components/install-app";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Inicio", icon: Home, dataTour: undefined },
+  { href: "/reportes", label: "Reportes", icon: ChartColumn, dataTour: undefined },
   { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
   // Directly below Malas pagas: the two screens answer the same question at

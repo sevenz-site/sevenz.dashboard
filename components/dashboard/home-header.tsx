@@ -1,0 +1,209 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { Bell, Store } from "lucide-react";
+import { NotificationsButton } from "@/components/dashboard/notifications-button";
+import { SidebarMenuTrigger } from "@/components/dashboard/sidebar-menu-trigger";
+import { useUnreadNotifications } from "@/components/dashboard/unread-notifications-context";
+import { useSearchResultsOpen } from "@/components/dashboard/client-filter-context";
+import { useCollapseOnScroll } from "@/hooks/use-collapse-on-scroll";
+import { BADGE_MAX } from "@/lib/types";
+
+// THE INICIO HEADER — delivery 2 of the 2026-10-03 redesign
+//
+// One dark block that swallows the app bar on this screen: brand, menu,
+// notifications, greeting, business name, last sign-in and the search field. On
+// `/dashboard` the layout's `AppHeader` hides itself on purpose (see its own
+// note), because two stacked bars on a phone cost ~110px of the 667 there are.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// NOT ONE SEMANTIC TOKEN IN THIS FILE, and that isn't purism
+//
+// The background is `--brand-primary`, which is the same value in light and in
+// dark. On a surface that does NOT invert, a colour that DOES is exactly what
+// breaks contrast without anyone noticing: `text-muted-foreground` on this grey
+// is grey on grey in the light theme. Hence `white/70` and `--brand-secondary`
+// instead of tokens. It is the two-layer rule in `DESIGN-SYSTEM.md`, and the
+// numbers come from `npm run qa:contraste`.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// WHY THIS IS ONE `sticky` ELEMENT AND NOT THREE
+//
+// The first version made the brand row and the search field sticky separately,
+// letting the greeting scroll away between them: zero JavaScript and zero jump.
+// It does not work, and the reason is easy to miss: **a `sticky` element only
+// sticks inside its containing block**. If that block is the dark div — 168px
+// tall — then past 168px of scroll both rows come unstuck and leave with it.
+// The header would stay pinned exactly until it starts to be needed.
+//
+// Sticking the WHOLE block makes its containing block the screen's column,
+// which runs to the bottom — so it stays up for the whole page. The price is
+// that the greeting has to hide via state, and the rules for that live in
+// `useCollapseOnScroll`, shared with the header of Clientes, Malas pagas and
+// Papelera.
+export function HomeHeader({
+  firstName,
+  businessName,
+  lastSignIn,
+  children,
+}: {
+  firstName: string | null;
+  businessName: string;
+  // Already formatted on the server, in the owner's country's timezone: Vercel
+  // runs in UTC, and formatting here would show a Colombian owner 12:15 p. m.
+  // for a sign-in that happened at 7:15 a. m. their time.
+  lastSignIn: string | null;
+  // The search field. It arrives as a child rather than being imported here
+  // because it needs `ClientFilterProvider`'s state, which the page mounts: the
+  // match list and the cartera at the bottom have to filter by the same thing.
+  children: React.ReactNode;
+}) {
+  // The same `focused` that decides whether the dropdown is drawn. It freezes
+  // the collapse while the owner types — see `useCollapseOnScroll` for why that
+  // matters on iOS, and for the other two guards the collapse needs.
+  const { focused } = useSearchResultsOpen();
+  const { collapsed, collapsibleRef } = useCollapseOnScroll(focused);
+
+  return (
+    // `-mx-4 -mt-4` against `AppMain`'s `p-4`: the header runs edge to edge. It
+    // is the same device the other screens' contextual bars use. `z-20` puts it
+    // over the page and under dialogs and sheets, which live at z-50 — same as
+    // the `AppHeader` it replaces.
+    <header className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col bg-brand-primary">
+      {/* NO PADDING AND NO GAP ON THE HEADER ITSELF, which is how the Figma
+          spec of 2026-10-04 builds it: each of the three rows carries its own,
+          and they are not the same. The brand row is 16 all round, the greeting
+          is 12 over 10, and the search field has 24 below it and 16 above. A
+          single gap on the parent cannot express that, and averaging it is how
+          a layout stops matching its design one row at a time. */}
+      <div className="flex items-center justify-between gap-2 px-4 py-4">
+        {/* Trigger and logo in one group, so the logo stays on the left edge on
+            a phone — where there is no trigger — and keeps hugging the trigger
+            from md up. Left as three loose children, `justify-between` centred
+            the wordmark on desktop and only there, which reads as two different
+            headers rather than one. */}
+        <div className="flex min-w-0 items-center gap-2">
+          {/* DESKTOP ONLY since delivery 3. On a phone the bottom bar now
+              carries "Menú", which opens this same sidebar, so a hamburger up
+              here would be the second door to one room.
+
+              It stays from md up because the bottom bar is `md:hidden`: on a
+              desktop there is no bar, and without this the owner could not
+              reopen a collapsed rail from Inicio at all. The two are one
+              control split across the breakpoint, not a leftover.
+
+              It is the hamburger and not the panel glyph the app uses elsewhere
+              on desktop. One glyph on one surface costs less than two different
+              icons for the same action, and the rail keeps its own control on
+              every other screen. */}
+          <SidebarMenuTrigger className="-ml-2 hidden shrink-0 text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 md:flex" />
+          {/* The secondary variant of the logo: #DADADA plus the brand orange.
+              It has been in `public/` since delivery 1 waiting for exactly this
+              — the primary one is dark grey and would not show on #272727. */}
+          <Image
+            src="/logo-secundary.svg"
+            alt="Sevenz"
+            width={111}
+            height={40}
+            className="h-8 w-auto"
+            priority
+          />
+        </div>
+        <div className="shrink-0">
+          {/* Desktop: the usual popover, with its list inside. Phone: a link to
+              /notificaciones, because a 320px popover anchored to the corner of
+              a 375px screen has nowhere to land. It is the same split the app
+              already made, except the phone now has a door in the header too
+              and not only in the bottom bar. */}
+          <div className="hidden md:block">
+            <NotificationsButton className="text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40" />
+          </div>
+          <Link
+            href="/notificaciones"
+            className="flex h-[38px] items-center gap-1 rounded-md px-2 text-sm font-medium text-white outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40 md:hidden"
+          >
+            {/* Label first, bell second. The spec puts the count ON the bell,
+                so the badge needs the icon as its positioning box — anchoring
+                it to the whole link would float the number off the far corner
+                of the text instead. */}
+            Notificaciones
+            <span className="relative shrink-0">
+              <Bell className="size-6" aria-hidden="true" />
+              <UnreadBadge />
+            </span>
+          </Link>
+        </div>
+      </div>
+
+      {/* What goes away on scroll. It disappears at once, unanimated: animating
+          the exit moves the screen while the owner is already reading, and on a
+          cheap phone it stutters. Same call as `HideWhileSearching`.
+
+          The ~56px jump on collapse is inherent to any header that shrinks, and
+          it is the price of keeping the search field up top. The two guards
+          above exist so it happens ONCE and not in a loop. */}
+      {collapsed ? null : (
+        <div ref={collapsibleRef} className="flex items-start justify-between gap-0.5 px-4 pt-3 pb-2.5">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            {/* `first_name` is required by both signup and "Mi negocio", in the
+                browser and on the server, so it is treated as present. The
+                guard is only for a row that predates that rule: rendering
+                "¡Hola !" would be worse than dropping the name. */}
+            <p className="text-2xl font-semibold text-white">
+              ¡Hola{firstName ? ` ${firstName}` : ""}!
+            </p>
+            {/* At both widths now. It used to be `md:hidden` because the app bar
+                carried the business name from md up and showing it twice read
+                as a mistake; on this screen that bar is gone, so this is the
+                only place the owner sees which business they are in. */}
+            <p className="flex items-center gap-1.5 text-sm text-white/70">
+              <Store className="size-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{businessName}</span>
+            </p>
+          </div>
+          {lastSignIn ? (
+            /* `shrink-0` and `whitespace-nowrap` together are what keep this at
+               two lines. As a plain flex child a long name squeezes it into
+               four: "Última conexión: / 12 sept. 2026, 11:45 p. / m." The
+               greeting wraps instead, and that reads fine. */
+            <p className="shrink-0 text-right text-xs leading-tight whitespace-nowrap text-white/70">
+              Última conexión:
+              <br />
+              {lastSignIn}
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      {/* 24 below and 16 above, from the spec. The gap under the field is the
+          one that is deliberately bigger: it is what separates the dark block
+          from the page, and the collapsed header leans on it too. */}
+      <div className="px-4 pt-4 pb-6">{children}</div>
+    </header>
+  );
+}
+
+// The badge, in its own component for one concrete reason: to subscribe to the
+// context in here and not in the header. If `HomeHeader` read
+// `useUnreadNotifications()`, every change to that number would re-render the
+// whole header — search field included, with the owner typing in it.
+function UnreadBadge() {
+  const { unreadCount } = useUnreadNotifications();
+  if (unreadCount <= 0) return null;
+  return (
+    // Identical to the bottom bar's, on purpose: it is the same notice seen
+    // from two places and it has to be the same red dot.
+    //
+    // It carried a `ring-2 ring-brand-primary` for half an hour, on the grounds
+    // that the red did not reach the 3:1 WCAG 1.4.11 asks of a graphic that
+    // means something. Two things were wrong and `npm run qa:contraste` said
+    // both: the red against #272727 is 3,14:1 — it passes on its own — and a
+    // ring in the exact colour of the header it is drawn on is invisible, so it
+    // was fixing nothing. The white number inside sits at 4,76:1, which is the
+    // one that is genuinely tight: if anyone lightens that red, it falls first.
+    <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
+      {unreadCount > BADGE_MAX ? `${BADGE_MAX}+` : unreadCount}
+    </span>
+  );
+}

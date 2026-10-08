@@ -254,7 +254,7 @@ function TarjetaCliente({
 
           {decision?.cual === "otra" ? (
             <p className="text-sm text-muted-foreground">
-              Se registrará como un cliente nuevo, con su propio documento.
+              Se registrará como un cliente nuevo, con su propia cédula.
             </p>
           ) : null}
 
