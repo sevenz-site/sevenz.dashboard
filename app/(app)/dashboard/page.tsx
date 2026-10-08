@@ -283,7 +283,21 @@ export default async function DashboardPage({
                 was converted at; the rate is still on the same screen and a
                 finger away, so that weighs less than the order the owner wants
                 to read in. */}
-            {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+            {/* "Calculadora" encima de la franja, desde el spec anotado del
+                2026-10-08. La franja llevaba desde siempre sin rótulo: dos
+                tasas y un botón sueltos debajo del capital, que se leen como
+                una nota al pie de la tarjeta de arriba en vez de como su
+                propia sección. El rótulo es lo que las separa.
+
+                Mismo tamaño y peso que "Por cobrar" y "Clientes", porque es
+                la tercera sección de esta pantalla y no un subtítulo de la
+                primera. */}
+            {rateContext ? (
+              <div className="flex flex-col gap-2">
+                <h2 className="text-base font-semibold">Calculadora</h2>
+                <ExchangeRateStrip rateContext={rateContext} />
+              </div>
+            ) : null}
           </div>
         </HideWhileResults>
 

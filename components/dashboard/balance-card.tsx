@@ -78,8 +78,15 @@ export function BalanceCard({
           showToggle={false}
           mainClassName="text-[30px] leading-tight text-money-due"
         />
-        {smaller ? (
+        {/* LA LÍNEA PEQUEÑA DICE DE QUÉ MONEDA ES, desde el 2026-10-08.
+            Antes era una cifra suelta —"€35.00"— debajo de un rótulo que
+            nombra la OTRA moneda, así que la única pista de a qué libro
+            pertenecía era el símbolo. Para un dueño venezolano que maneja los
+            dos, leer "$" arriba y "€" abajo sin más obliga a deducirlo; y el
+            símbolo es justo lo que se parece entre monedas. */}
+        {smaller && secondary ? (
           <p className="text-sm tabular-nums text-muted-foreground">
+            Capital por cobrar en {secondary.currency}:{" "}
             {hidden ? (
               "••••••"
             ) : (
@@ -114,12 +121,18 @@ export function BalanceCard({
         {/* The chart toggle's replacement, not an extra. Moving the charts to
             /reportes left this card with no way out towards them at all, and an
             owner who knew they were here would have gone looking where they no
-            longer are. */}
+            longer are.
+
+            It says "Ver todo" and not "Ver reportes" since the owner's call of
+            2026-10-08, matching the link above the client list. The
+            destination is still /reportes; what changed is that both "see the
+            rest of this" links on the screen now read the same, instead of one
+            naming the section it opens and the other naming the action. */}
         <Link
           href="/reportes"
           className="flex items-center gap-0.5 whitespace-nowrap text-xs text-foreground transition-colors hover:text-money-due"
         >
-          Ver reportes
+          Ver todo
           <ChevronRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
