@@ -482,6 +482,25 @@ movement — each of those is a paragraph somewhere, or should be.
 Two surfaces, two deploys: a dashboard merge does not publish the website. A
 release that changes both has to merge both, and the checklist says which.
 
+### `Web/` ships a BUILD, not a branch — build it, then verify the live page
+
+`npx wrangler deploy` uploads whatever is sitting in `Web/out/`. It does not
+build. Merging to `main` does not build either. So the sequence is **`npm run
+build` and then `npx wrangler deploy`**, in that order, every time.
+
+Skipping the build does not fail. It prints `No updated asset files to upload`
+and `✨ Success`, redeploys the previous build, and exits 0 — a deploy that
+looks exactly like a correct one and changed nothing. It happened on
+2026-10-08: the merge was right, the text was right in git, and the live Ayuda
+kept describing the old screen while the log said success. `out/index.html` was
+five days old.
+
+**And the live page is what gets checked, not the log.** Fetch it with
+`cache: 'no-store'` and assert on both sides: the new sentence present AND the
+old one absent. A normal page load can show a cached copy and send you looking
+for a deploy problem that is not there — which also happened the same day,
+one minute after the real one.
+
 ## Explain bugs in two languages: dev and plain
 
 Whenever explaining a bug, a fix, or a technical finding — by default,
