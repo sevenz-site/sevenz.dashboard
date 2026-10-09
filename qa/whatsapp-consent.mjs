@@ -90,8 +90,16 @@ try {
   for (const v of variantes) {
     const { data, error } = await admin.rpc("normalize_whatsapp_phone", { p_raw: v });
     if (error) {
-      console.error(`\nFALTA LA MIGRACIÓN 081. normalize_whatsapp_phone no responde: ${error.message}`);
-      console.error("Córrela en la rama DEV (vzqppwrwnmlbrxizskdh) y vuelve a intentarlo.");
+      // DOS CAUSAS QUE NO SE PARECEN EN NADA, y hasta el 2026-10-09 este
+      // bloque culpaba siempre a la primera. Un "fetch failed" de red salió
+      // como "falta la migración 081" estando la 081 corrida — mandar a buscar
+      // donde no es cuesta más que no decir nada.
+      const noExiste = /PGRST202|could not find|does not exist|schema cache/i.test(error.message);
+      console.error(
+        noExiste
+          ? `\nFALTA LA MIGRACIÓN 081: ${error.message}\nCórrela en la rama DEV (vzqppwrwnmlbrxizskdh) y vuelve a intentarlo.`
+          : `\nNO PUDE HABLAR CON LA BASE DE DATOS: ${error.message}\nEsto NO dice nada sobre si la migración está corrida. Comprueba la conexión y reintenta.`,
+      );
       process.exit(1);
     }
     normalizadas.push(data);
