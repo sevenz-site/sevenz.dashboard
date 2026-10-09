@@ -247,9 +247,20 @@ export default async function SharedBalancePage({
           non-dismissible — no X, no Escape, no click-outside — so stacking a
           second dialog on top of it would put the client behind two layers,
           one of which has no exit, over the balance they opened the link to
-          read. A client who has neither thing on file gets asked for their
-          cédula today and about WhatsApp on their next visit, which this
-          dialog is built for: it comes back every visit until accepted.
+          read.
+
+          THEY STILL ARRIVE BACK TO BACK, AND THAT WAS NOT THE INTENTION —
+          measured in dev on 2026-10-09, not reasoned. Saving a cédula calls
+          router.refresh(), the Server Component re-renders with
+          has_document_id true, and this dialog mounts the moment the other one
+          closes. So a client with neither thing on file answers two questions
+          in a row before reaching their balance.
+
+          Left as it is for now, because the alternative is worse for the thing
+          this exists to collect: many clients open their link exactly once, and
+          deferring the question to a second visit that never comes means never
+          asking at all. If it has to change, the fix is a flag the document
+          dialog raises on success, not a timer.
 
           `consent === null` means the read failed, and then nothing is shown —
           see the comment where it is fetched. */}
