@@ -533,6 +533,39 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
 
+## Toda plantilla de WhatsApp lleva el pie antifraude
+
+```
+Sevenz no pide códigos ni pagos. Aquí solo ves tu saldo.
+```
+
+**56 de los 60 caracteres que admite un pie de Meta. Sin variables.** Decisión
+del dueño el 2026-10-08, y aplica a **todas** de aquí en adelante — de cliente
+y de dueño.
+
+**No es cortesía legal.** Sevenz hace exactamente lo que hace un estafador:
+manda un mensaje sobre dinero, con un enlace, desde un número que el
+destinatario no tiene agendado. En Venezuela esa secuencia es la estafa más
+corriente que existe. Una plantilla sin el pie enseña que los mensajes de
+Sevenz a veces no lo llevan, y ese es el hueco por el que entra quien los
+imita.
+
+Va en el **pie** y no en el cuerpo: sale en gris y separado, así que se lee
+como aviso del sistema y no como algo que escribió el tendero. Ese formato es
+parte de la defensa — quien copie el texto no lo reproduce.
+
+**Las aprobadas no se tocan solo por esto**, porque un pie no se añade sin
+volver a pasar por Meta. Entra la próxima vez que cada una haya que rehacerla
+por otro motivo.
+
+**Y el pie no es la defensa principal.** Lo que hace que el mensaje parezca una
+estafa es que sale de un número de EE. UU. (`MS-17`). El pie refuerza; lo que
+resuelve es un número local, que es la oportunidad abierta en `MS-24`.
+
+La especificación completa de cada plantilla vive en
+`../docs/WHATSAPP-PLANTILLAS.md`, que es la fuente de verdad y se escribe
+**antes** de enviar nada a Meta.
+
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 
 **Si una decisión no está escrita, dentro de seis meses no se tomó: solo pasó.**
