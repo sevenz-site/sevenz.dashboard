@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
@@ -18,6 +19,7 @@ import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { DocumentIdDialog } from "@/components/public/document-id-dialog";
+import { WhatsappConsentDialog } from "@/components/public/whatsapp-consent-dialog";
 
 // La vista previa que ve quien recibe el enlace por WhatsApp.
 //
@@ -146,6 +148,59 @@ export default async function SharedBalancePage({
   const shared = data as SharedBalance;
   const movements = [...shared.movements].reverse();
 
+  // Pulled out of the JSX because TWO dialogs now depend on it: this decides
+  // whether the cédula is asked for, and the WhatsApp permission waits its turn
+  // behind that answer. See the mount site below.
+  //
+  // Deliberately tolerant of three payload shapes, because neither deploy order
+  // is safe otherwise. Migration first and the old code reads a field that has
+  // vanished; code first and the new field does not exist yet. Both collapse to
+  // Boolean(undefined) === false, which opens a dialog that cannot be closed —
+  // no close button, no Escape, no click-outside — over the balance every client
+  // came to read.
+  //
+  // So the fallback is `true`: when the page cannot tell, it does NOT ask. The
+  // cost of that is one client not being prompted for a cédula. The cost of the
+  // other default is every client locked out.
+  const hasDocumentId =
+    shared.has_document_id ??
+    (shared.document_id !== undefined ? Boolean(shared.document_id) : true);
+
+  // MS-25. A second RPC rather than a field on get_shared_balance(): that one
+  // is called by this unauthenticated page on every visit, and changing its
+  // signature means drop + create plus the deploy-order rule — on 2026-09-04
+  // adding an argument to it would have 404ed every share link if the code had
+  // shipped first. A separate function cannot break the page that works.
+  //
+  // The service client and not the anon one the page already holds:
+  // client_whatsapp_consent_state() is granted to service_role only, by the
+  // same reasoning as its write sibling. The anon key reaches the browser.
+  //
+  // FAILS TOWARD NOT ASKING, like hasDocumentId above and for a milder version
+  // of the same reason: if this read is unavailable — mid-deploy, or the
+  // migration not run in this environment yet — a client who sees no dialog
+  // loses nothing they came for. Showing one on a guess would be a question we
+  // cannot record the answer to.
+  const consent = await (async () => {
+    try {
+      const { data: state, error: consentError } = await createServiceClient().rpc(
+        "client_whatsapp_consent_state",
+        { p_token: token },
+      );
+      if (consentError) {
+        console.error("[sharedBalance] consent state failed:", consentError.message);
+        return null;
+      }
+      return state as { can_consent: boolean; granted: boolean } | null;
+    } catch (consentError) {
+      console.error(
+        "[sharedBalance] consent state threw:",
+        consentError instanceof Error ? consentError.message : consentError,
+      );
+      return null;
+    }
+  })();
+
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
   const logoUrl = shared.owner_logo_path ? getPublicLogoUrl(shared.owner_logo_path) : "/fav-icon-primary.svg";
 
@@ -185,21 +240,22 @@ export default async function SharedBalancePage({
         token={token}
         clientName={shared.client_name}
         ownerCountry={shared.owner_country ?? null}
-        hasDocumentId={
-          // Deliberately tolerant of three payload shapes, because neither
-          // deploy order is safe otherwise. Migration first and the old code
-          // reads a field that has vanished; code first and the new field does
-          // not exist yet. Both collapse to Boolean(undefined) === false, which
-          // opens a dialog that cannot be closed — no close button, no Escape,
-          // no click-outside — over the balance every client came to read.
-          //
-          // So the fallback is `true`: when the page cannot tell, it does NOT
-          // ask. The cost of that is one client not being prompted for a
-          // cédula. The cost of the other default is every client locked out.
-          shared.has_document_id ??
-          (shared.document_id !== undefined ? Boolean(shared.document_id) : true)
-        }
+        hasDocumentId={hasDocumentId}
       />
+      {/* ONE DIALOG AT A TIME, AND THE CÉDULA GOES FIRST.
+          `hasDocumentId` is in this condition on purpose. DocumentIdDialog is
+          non-dismissible — no X, no Escape, no click-outside — so stacking a
+          second dialog on top of it would put the client behind two layers,
+          one of which has no exit, over the balance they opened the link to
+          read. A client who has neither thing on file gets asked for their
+          cédula today and about WhatsApp on their next visit, which this
+          dialog is built for: it comes back every visit until accepted.
+
+          `consent === null` means the read failed, and then nothing is shown —
+          see the comment where it is fetched. */}
+      {hasDocumentId && consent?.can_consent && !consent.granted ? (
+        <WhatsappConsentDialog token={token} whatsappLast4={shared.whatsapp_last4} />
+      ) : null}
       {/* Not a card: no border, no padding of its own, so the logo and the
           business name start on the page's own inset, in line with
           "Pendiente" and the edges of the balance cards below. */}

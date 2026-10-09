@@ -37,6 +37,33 @@ export const TEXTO_AVISOS_WHATSAPP_REGISTRO =
   "Al crear tu cuenta aceptas recibir un resumen semanal de tu cartera en tu " +
   "WhatsApp. Puedes desactivarlo cuando quieras en Mi negocio.";
 
+// ── El del CLIENTE FINAL, que no es usuario de Sevenz ────────────────────
+//
+// Third surface, third constant, same rule: this is shown on /s/[token] and
+// stored verbatim by migration 081. MS-25.
+//
+// THREE THINGS IN THIS SENTENCE ARE LOAD-BEARING, and none of them is style.
+//
+// 1. "Sevenz me escriba". The message leaves Sevenz's WhatsApp number, not the
+//    shop's. Meta requires consent to receive messages FROM THE SENDER, so a
+//    sentence saying "my shopkeeper may message me" would be evidence for a
+//    thing that is not what happens.
+//
+// 2. "los negocios donde tengo cuenta", plural. The permission is stored
+//    against the PHONE NUMBER and covers every shop that person owes money to,
+//    present and future — owner's decision, 2026-10-09, see 081's header. A
+//    sentence promising only "this shop" would make the evidence narrower than
+//    the behaviour, which is the one way this text can be actively harmful.
+//
+// 3. IT PROMISES NO WAY OUT, deliberately, because there is none yet. MS-31 is
+//    the ticket; until it ships, "puedes desactivarlo cuando quieras" would be
+//    a sentence the product cannot honour. When MS-31 lands this does NOT get
+//    edited — a new constant is added beside it, per the rule above, and the
+//    append-only ledger keeps both readable.
+export const TEXTO_AVISOS_WHATSAPP_CLIENTE =
+  "Acepto que Sevenz me escriba por WhatsApp para avisarme de mi saldo y de " +
+  "mis plazos de pago en los negocios donde tengo cuenta.";
+
 // La única función que decide si a un dueño se le puede escribir.
 //
 // No basta con `whatsapp_opt_in_at is not null`: al desactivar NO se borra esa
