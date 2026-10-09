@@ -495,6 +495,28 @@ looks exactly like a correct one and changed nothing. It happened on
 kept describing the old screen while the log said success. `out/index.html` was
 five days old.
 
+**Y `wrangler deploy` no basta: `main` hay que EMPUJARLO.** Medido el 2026-10-09. `npx wrangler deploy` subió 74 archivos y dijo
+`✨ Success`; la URL del worker
+(`sevenz-web.sevenz-mvp.workers.dev`) enseñaba lo nuevo al instante. **`sevenz.site`
+siguió enseñando lo viejo durante más de dos minutos**, incluso pidiéndolo con un
+`?cb=<timestamp>` que debería romper cualquier caché. Al empujar `main` —que
+estaba 6 commits por detrás, porque el merge se había hecho solo en local— el
+dominio se actualizó en menos de un minuto.
+
+La explicación más probable es que `sevenz.site` lo sirve una compilación de
+Cloudflare conectada a la rama `main` del repo, y que el `wrangler deploy` de
+la línea de comandos publica en otro sitio. **No está confirmado**: cuatro
+minutos de caché expirando explicarían lo mismo, y es una sola observación. Lo
+que sí es seguro es la secuencia que funcionó, y que seguir esta regla tal como
+estaba escrita —construir y desplegar— dejaba el sitio sin cambiar con el log
+diciendo que todo fue bien.
+
+Así que el orden completo es **`npm run build` → `npx wrangler deploy` →
+`git push origin main`**, y la comprobación en vivo va después de las tres. Si
+alguna vez se quiere saber cuál de las dos publica de verdad, la prueba es
+barata: desplegar, mirar la URL del worker (debería cambiar ya) y el dominio
+(no debería), empujar, y volver a mirar el dominio.
+
 **And the live page is what gets checked, not the log.** Fetch it with
 `cache: 'no-store'` and assert on both sides: the new sentence present AND the
 old one absent. A normal page load can show a cached copy and send you looking
