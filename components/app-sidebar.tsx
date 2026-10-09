@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, ChartColumn, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
+import { Home, ChartColumn, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone, Package } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +28,11 @@ const NAV_ITEMS = [
   { href: "/reportes", label: "Reportes", icon: ChartColumn, dataTour: undefined },
   { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
+  // Catálogo entra aquí y no en la barra de abajo: la barra tiene cuatro
+  // huecos y los tres destinos ya están tomados por lo que se abre a
+  // diario. Un catálogo que nace vacío y se llena solo no es una pantalla
+  // de todos los días — todavía.
+  { href: "/productos", label: "Catálogo", icon: Package, dataTour: undefined },
   // Directly below Malas pagas: the two screens answer the same question at
   // different strengths, and an owner looking for a client they can no longer
   // find will try both in order.

@@ -1,4 +1,5 @@
-import type { LedgerCurrency } from "@/lib/types";
+import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatCurrency } from "@/lib/format";
 
 // EL PRECIO DE UN PRODUCTO EN CADA MONEDA.
 //
@@ -168,4 +169,66 @@ export function suggestedPrice(cost: number, marginPct: number): number | null {
 export function marginFromPrice(cost: number | null, price: number): number | null {
   if (cost == null || !(cost > 0) || !(price > 0)) return null;
   return redondear(((price - cost) / cost) * 100);
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────
+//
+// Reuses the formatters the rest of the product already uses, instead of
+// building a second style for the catalogue. `formatBs` exists because ICU
+// renders the VES symbol differently across environments and the design doc
+// always shows a literal "Bs. "; `formatCurrency` is the Colombian peso.
+//
+// USDT gets its unit AFTER the number — "12,00 USDT" — and not a symbol. The
+// ₮ sign is unknown to almost everybody, and DESIGN-SYSTEM.md's rule is that
+// the unit travels on the amount so a bare number beside a percentage is not
+// read as a second percentage.
+export function formatPriceAmount(amount: number, currency: PriceCurrency): string {
+  switch (currency) {
+    case "COP":
+      return formatCurrency(amount);
+    case "VES":
+      return formatBs(amount);
+    case "USD":
+    case "EUR":
+      return formatDisplayCurrency(amount, currency);
+    case "USDT":
+      return `${formatBsAmount(amount)} USDT`;
+  }
+}
+
+// UN PORCENTAJE TAMBIÉN SE FORMATEA, y esto ya mordió aquí.
+//
+// `{margen}%` en crudo imprime "33.33%" — punto inglés — justo al lado de las
+// cifras que el resto de la pantalla formatea en español. Es literalmente la
+// trampa que DESIGN-SYSTEM.md describe: «un `toFixed()` al lado de un número
+// formateado imprime un punto decimal inglés junto a una coma española».
+// Encontrado rindiendo la ficha el 2026-10-09.
+//
+// Sin decimales cuando son redondos: «30 %» y no «30,00 %», porque el margen
+// se piensa en números enteros y dos ceros fijos lo hacen parecer medido.
+const percentFormatter = new Intl.NumberFormat("es-VE", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+export function formatPercent(value: number): string {
+  return `${percentFormatter.format(value)} %`;
+}
+
+// EL RÓTULO DE CADA FILA, y la palabra importa.
+//
+// Decisión del dueño, 2026-10-09: las monedas calculadas se llaman
+// **equivalencias**, no precios. El caso que lo motivó: con el BCV a 160 y el
+// USDT a 200, un producto de $12 enseña 9,60 USDT. Es correcto —$12 al BCV son
+// Bs. 1.920, y con eso se compran 9,60 USDT porque el USDT está más caro— pero
+// un tendero lo lee como un error, porque en su cabeza un USDT es un dólar.
+//
+// La palabra «equivalencia» es lo que lo arregla: no dice «esto cuesta 9,60
+// USDT», dice «esto equivale hoy a 9,60 USDT». Se descartó esconder la fila a
+// quien esté en BCV automático, porque sería esconder información cierta.
+export function priceRowLabel(currency: PriceCurrency, origin: PriceInCurrency["origin"]): string {
+  const name = currency === "VES" ? "bolívares" : currency === "USDT" ? "USDT" : currency;
+  if (origin === "base") return `Precio en ${name}`;
+  if (origin === "manual") return `Precio fijado en ${name}`;
+  return `Equivalencia en ${name}`;
 }
