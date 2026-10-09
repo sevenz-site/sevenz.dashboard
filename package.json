@@ -24,6 +24,7 @@
     "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs",
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
     "qa:pausados": "node qa/whatsapp-pausados.mjs",
+    "qa:consent": "node qa/whatsapp-consent.mjs",
     "qa:plantillas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-plantillas.mjs",
     "qa:import": "node qa/import-libreta.mjs",
     "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
