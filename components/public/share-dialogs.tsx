@@ -87,7 +87,7 @@ export function ShareDialogs({
   //
   // "Later visits" is the whole point, though. Reading the live prop instead
   // would mean revoking from Configuración drops `consentGranted` to false,
-  // the server re-renders, and the "¿Te avisamos de tu saldo?" dialog opens on
+  // the server re-renders, and the "Te avisamos de tu saldo" dialog opens on
   // top of someone who just finished saying no. Freezing it at arrival makes
   // the rule what it says: not this visit, the next one.
   const [grantedOnArrival] = useState(consentGranted);

@@ -17,18 +17,21 @@ import {
 import { acceptWhatsappConsent } from "@/app/s/[token]/actions";
 import { TEXTO_AVISOS_WHATSAPP_CLIENTE } from "@/lib/whatsapp-opt-in";
 
-// "¿Te avisamos de tu saldo?" — the permission the final customer gives, on
+// "Te avisamos de tu saldo" — the permission the final customer gives, on
 // the only Sevenz surface they ever touch. MS-25, mockup of 2026-10-08,
 // extended with the switch on 2026-10-09 (frame 1156:5063).
 //
 // ─────────────────────────────────────────────────────────────────────────
 // ONE DIALOG, TWO MODES, AND WHY IT IS NOT TWO COMPONENTS
 //
-// "ask"    — the first-visit question. No switch; "Aceptar" / "Dejar para
-//            luego". Comes back every visit until answered.
+// "ask"    — the first-visit question. No switch: "Aceptar" is what grants,
+//            and the X postpones. Comes back every visit until answered.
 // "manage" — reached on purpose from Configuración › Notificaciones. The
 //            switch shows the current state and IS the only control that does
 //            anything; "Aceptar" merely closes.
+//
+// The footer is the same in both since 2026-10-09 — one button and the X. What
+// still differs is the switch, and what "Aceptar" does: grant, or just close.
 //
 // They share the sentence in the box, and that sentence is the evidence stored
 // in the ledger. Two components would be two places for it to drift, and the
@@ -136,7 +139,7 @@ export function WhatsappConsentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <WhatsappIcon className="size-5 shrink-0 text-brand-whatsapp" aria-hidden="true" />
-            ¿Te avisamos de tu saldo?
+            Te avisamos de tu saldo
           </DialogTitle>
           <DialogDescription>
             Te escribimos cuando se acerque la fecha de pago, para que no se te pase.
@@ -183,24 +186,15 @@ export function WhatsappConsentDialog({
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
-          {/* "Dejar para luego" and the X do the same thing, and both are
-              offered on purpose: the X is a 24px target in a corner and this
-              is a question about money on a cheap phone. The visible verb is
-              what most people will reach for.
+          {/* ONE BUTTON AND THE X, in both modes. "Dejar para luego" sat here
+              until 2026-10-09, when the owner removed it: two ways to say the
+              same no, one of them dressed as a button of equal weight to
+              "Aceptar", made the pair read as a real choice between two
+              outcomes when only one of them does anything.
 
-              In "manage" there is nothing to postpone — the person came here
-              deliberately — so the pair collapses to one button that closes,
-              matching the mockup. */}
-          {mode === "ask" ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={saving}
-              onClick={() => setOpen(false)}
-            >
-              Dejar para luego
-            </Button>
-          ) : null}
+              The X stays, so postponing is still possible — along with Escape
+              and tapping outside. All three write nothing, which is what lets
+              the question come back next visit. */}
           <Button
             type="button"
             disabled={saving}
