@@ -18,8 +18,7 @@ import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/mo
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
-import { DocumentIdDialog } from "@/components/public/document-id-dialog";
-import { WhatsappConsentDialog } from "@/components/public/whatsapp-consent-dialog";
+import { ShareDialogs } from "@/components/public/share-dialogs";
 
 // La vista previa que ve quien recibe el enlace por WhatsApp.
 //
@@ -233,40 +232,30 @@ export default async function SharedBalancePage({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
-      {/* A boolean, not the value: this is a client component, so anything
-          passed here is serialised into the RSC payload and readable in
-          devtools. The dialog only ever needed to know whether to ask. */}
-      <DocumentIdDialog
+      {/* ONE QUESTION PER VISIT. The two dialogs are mounted together, by a
+          client component, because the rule that orders them needs to remember
+          something the server cannot: whether the cédula was asked for on THIS
+          visit. `router.refresh()` erases that from the server's view the
+          instant it is answered. See share-dialogs.tsx.
+
+          BOOLEANS, NOT VALUES. This is a client component, so every prop here
+          is serialised into the RSC payload and readable by anyone who opens
+          devtools on a link that travelled through WhatsApp. The cédula is
+          never passed, only whether one exists. `whatsappLast4` is the one
+          exception and it is not a new one: get_shared_balance has always
+          returned it and VerifyBadge already shows it. */}
+      <ShareDialogs
         token={token}
         clientName={shared.client_name}
         ownerCountry={shared.owner_country ?? null}
         hasDocumentId={hasDocumentId}
+        // `consent === null` means the read failed — see where it is fetched.
+        // Collapses to "do not ask", the same direction as hasDocumentId's own
+        // fallback.
+        canConsent={consent?.can_consent === true}
+        consentGranted={consent?.granted === true}
+        whatsappLast4={shared.whatsapp_last4}
       />
-      {/* ONE DIALOG AT A TIME, AND THE CÉDULA GOES FIRST.
-          `hasDocumentId` is in this condition on purpose. DocumentIdDialog is
-          non-dismissible — no X, no Escape, no click-outside — so stacking a
-          second dialog on top of it would put the client behind two layers,
-          one of which has no exit, over the balance they opened the link to
-          read.
-
-          THEY STILL ARRIVE BACK TO BACK, AND THAT WAS NOT THE INTENTION —
-          measured in dev on 2026-10-09, not reasoned. Saving a cédula calls
-          router.refresh(), the Server Component re-renders with
-          has_document_id true, and this dialog mounts the moment the other one
-          closes. So a client with neither thing on file answers two questions
-          in a row before reaching their balance.
-
-          Left as it is for now, because the alternative is worse for the thing
-          this exists to collect: many clients open their link exactly once, and
-          deferring the question to a second visit that never comes means never
-          asking at all. If it has to change, the fix is a flag the document
-          dialog raises on success, not a timer.
-
-          `consent === null` means the read failed, and then nothing is shown —
-          see the comment where it is fetched. */}
-      {hasDocumentId && consent?.can_consent && !consent.granted ? (
-        <WhatsappConsentDialog token={token} whatsappLast4={shared.whatsapp_last4} />
-      ) : null}
       {/* Not a card: no border, no padding of its own, so the logo and the
           business name start on the page's own inset, in line with
           "Pendiente" and the edges of the balance cards below. */}
