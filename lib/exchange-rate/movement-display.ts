@@ -58,3 +58,24 @@ export function formatBalanceSummary(
   if (parts.length === 0) return formatDisplayCurrency(0, "USD");
   return parts.join(" y ");
 }
+
+// CÓMO SE LLAMA CADA MONEDA EN LA TARJETA DE CAPITAL, en un solo sitio.
+//
+// "USD" en siglas y "Euro" en palabra, que es lo que pidió el dueño y lo que
+// ya decía el rótulo grande. Que viva aquí y no en `balance-card.tsx` no es
+// organización: ese archivo es `"use client"`, y el rótulo grande lo arma la
+// página, que es un Server Component. Llamarlo desde allí revienta en
+// ejecución con "Attempted to call ledgerLabel() from the server but
+// ledgerLabel is on the client" — pasó el 2026-10-08 al escribirlo.
+//
+// Y tiene que ser uno solo: la línea pequeña y el rótulo grande estuvieron un
+// rato diciendo "en Euro" arriba y "en EUR" abajo, dos convenciones pegadas
+// en la misma tarjeta, porque cada uno construía su texto por su cuenta.
+export const LEDGER_NAME: Record<LedgerCurrency, string> = {
+  USD: "USD",
+  EUR: "Euro",
+};
+
+export function ledgerLabel(currency: LedgerCurrency | null): string {
+  return currency ? `Capital por cobrar en ${LEDGER_NAME[currency]}` : "Capital por cobrar";
+}

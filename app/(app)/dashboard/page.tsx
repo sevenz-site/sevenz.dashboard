@@ -24,7 +24,7 @@ import { HomeHeader } from "@/components/dashboard/home-header";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { ledgerLabel, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function DashboardPage({
@@ -129,11 +129,10 @@ export default async function DashboardPage({
   // the Figma spec of 2026-10-04 plus the owner's call the same day: the figure
   // underneath is formatted in that currency, so a label that does not say
   // which one leaves the reader to infer it from a "$" that Colombia uses too.
-  const mainLabel = !rateContext
-    ? "Capital por cobrar"
-    : usdIsLarger
-      ? "Capital por cobrar en USD"
-      : "Capital por cobrar en Euro";
+  // Lo construye `ledgerLabel`, el mismo que usa la línea pequeña de la
+  // tarjeta. Escrito a mano aquí, las dos convenciones se separaron en cuanto
+  // alguien tocó una sola — ver la nota en `balance-card.tsx`.
+  const mainLabel = !rateContext ? ledgerLabel(null) : ledgerLabel(usdIsLarger ? "USD" : "EUR");
 
   const usdLedger = { balance: totalUsd, currency: "USD" as const };
   const eurLedger = { balance: totalEur, currency: "EUR" as const };
@@ -207,6 +206,32 @@ export default async function DashboardPage({
             Se dibuja siempre y decide el solo: lee del contexto del layout, que
             es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
         <CuentaPausada />
+
+        {/* BETWEEN THE HEADER AND "Por cobrar", moved here on 2026-10-08 at
+            the owner's request, and it is a genuine trade.
+
+            WHAT IT FIXES, and it is not cosmetic: at the bottom of the screen
+            this card sat under the floating "Agregar" button, which is fixed
+            to the lower right. The button covered "Ver cómo" — the only link
+            the banner has — so the one action it exists to offer could not be
+            tapped on a phone.
+
+            WHAT IT COSTS, written down because `DESIGN-SYSTEM.md` argues the
+            other way: this is a dark card, and a dark card works by contrast
+            with a light screen. Directly under the dark header it no longer
+            has that contrast, and the two can read as one block. It was moved
+            down on 2026-10-03 for exactly this reason. The overlap wins
+            because it breaks a function and the contrast only weakens an
+            effect — but if the two ever look welded together, this is the note
+            that says why, and the answer is to separate them visually, not to
+            move the card back under the button.
+
+            The Figma spec does not model it at all. It stays because leaving it
+            out is a product decision, not a layout one. Phone only, as always:
+            Sevenz has been installable since August and no shopkeeper found
+            out, because Android shows its own notice, discreet and easy to
+            ignore, and on iPhone it never appears. */}
+        <InstallAppBanner />
 
         {/* 16px and not 20, from the Figma spec of 2026-10-04: both section
             titles on this screen are the same size as body text, bold rather
@@ -283,25 +308,23 @@ export default async function DashboardPage({
                 was converted at; the rate is still on the same screen and a
                 finger away, so that weighs less than the order the owner wants
                 to read in. */}
-            {rateContext ? <ExchangeRateStrip rateContext={rateContext} /> : null}
+            {/* "Calculadora" encima de la franja, desde el spec anotado del
+                2026-10-08. La franja llevaba desde siempre sin rótulo: dos
+                tasas y un botón sueltos debajo del capital, que se leen como
+                una nota al pie de la tarjeta de arriba en vez de como su
+                propia sección. El rótulo es lo que las separa.
+
+                Mismo tamaño y peso que "Por cobrar" y "Clientes", porque es
+                la tercera sección de esta pantalla y no un subtítulo de la
+                primera. */}
+            {rateContext ? (
+              <div className="flex flex-col gap-2">
+                <h2 className="text-base font-semibold">Calculadora</h2>
+                <ExchangeRateStrip rateContext={rateContext} />
+              </div>
+            ) : null}
           </div>
         </HideWhileResults>
-
-        {/* DOWN HERE AND NOT AT THE VERY TOP, since 2026-10-03, and now below
-            the whole summary section rather than inside it. This notice is a
-            dark card on purpose — `DESIGN-SYSTEM.md` puts it this way: "a dark
-            piece in the middle of a light screen is saying this here is the new
-            thing, look at me", and that only works if it contrasts with what
-            surrounds it. Against the new header it stopped contrasting, and
-            between the capital and its rate it also split a pair that is read
-            together.
-
-            The Figma spec does not model it at all. It stays because leaving it
-            out is a product decision, not a layout one. Phone only, as always:
-            Sevenz has been installable since August and no shopkeeper found
-            out, because Android shows its own notice, discreet and easy to
-            ignore, and on iPhone it never appears. */}
-        <InstallAppBanner />
 
         {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
             autoOpen lives here; the desktop one must not also receive it or both

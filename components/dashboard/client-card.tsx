@@ -17,12 +17,12 @@ import {
 // translate directly to a 3px stripe, so this is its own map, not a literal
 // reuse of the chip classes) rather than diverging for dentro_del_plazo.
 const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
-  sin_deuda: "border-l-muted-foreground/30",
-  a_favor: "border-l-emerald-500",
-  dentro_del_plazo: "border-l-sky-500",
-  plazo_vencido: "border-l-amber-500",
-  sin_plazo: "border-l-amber-500",
-  critico: "border-l-red-500",
+  sin_deuda: "bg-muted-foreground/30",
+  a_favor: "bg-emerald-500",
+  dentro_del_plazo: "bg-sky-500",
+  plazo_vencido: "bg-amber-500",
+  sin_plazo: "bg-amber-500",
+  critico: "bg-red-500",
 };
 
 // The phone card used for a client wherever one is listed — Cartera, Clientes,
@@ -36,23 +36,43 @@ const CLIENT_STATUS_ACCENT_CLASS: Record<ClientStatus, string> = {
 // inside the same card, and a <button> inside a <button> is invalid HTML, so
 // it uses a div and stacks this row above its own actions.
 // TWO BOXES AND NOT ONE, from the Figma spec of 2026-10-04 (frame
-// 1071:18173). The outer one carries the status as a 4px left border and a
-// radius of 10; the inner one is the white card, radius 14, bordered on the
-// other three sides. The inner radius being LARGER is the whole point: the
-// white corners curve away from the outer edge and let the colour show through
-// as a tab, instead of a stripe sitting inside the card's padding.
+// 1071:18173). The outer one carries the status colour and a radius of 10; the
+// inner one is the white card, bordered on three sides. The inner's LEFT
+// corners are rounder than the outer's: that is the whole point, because it is
+// what makes the white curve away and let the colour show through as a tab,
+// instead of a stripe sitting inside the card's padding.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// EL COLOR ES RELLENO Y 4px DE PADDING, NO `border-l-4`
+//
+// Era un borde de un solo lado hasta el 2026-10-08, y así se rompía la
+// esquina. Un `border-left: 4px` junto a un `border-top: 0` **no puede**
+// doblar el radio: CSS degrada el grosor en diagonal de 4 a 0, así que la
+// franja termina en punta y por el hueco que deja se ve el fondo de la
+// página. A tamaño real son dos muescas oscuras, una arriba y otra abajo, y
+// es justo lo que se ve ampliado.
+//
+// Con relleno no hay transición de grosor que degradar: la franja es parte de
+// una forma rellena y sus extremos siguen el radio de la caja, enteros.
+//
+// LAS ESQUINAS DERECHAS DE LA INTERNA VALEN 10, LAS IZQUIERDAS 14, y eso ya no
+// es estética. Ahora que la externa está rellena de color, cualquier sitio
+// donde la interna se curve más que ella deja ver color — y a la derecha no
+// hay franja que enseñar, sería una medialuna de color donde no toca. A la
+// derecha coinciden las dos y no se ve nada; a la izquierda la interna se
+// curva más y enseña la pestaña, que es lo que se busca.
 //
 // It takes the status, so it is a function and not a constant. Both call sites
 // already had `status` in scope.
 export function clientCardShell(status: ClientStatus): string {
-  return `group block w-full rounded-[10px] border-l-4 text-left ${CLIENT_STATUS_ACCENT_CLASS[status]}`;
+  return `group block w-full rounded-[10px] pl-1 text-left ${CLIENT_STATUS_ACCENT_CLASS[status]}`;
 }
 
 // `group-active` and not `active`: the pressed element is the caller's button,
 // and CSS `:active` reaches ancestors, never descendants. On the inner box it
 // would simply never fire.
 export const CLIENT_CARD_INNER =
-  "rounded-[14px] border-y border-r bg-background transition-colors group-active:bg-accent";
+  "rounded-l-[14px] rounded-r-[10px] border-y border-r bg-background transition-colors group-active:bg-accent";
 
 export const CLIENT_CARD_ROW = "flex items-center gap-1.5 px-4 py-2";
 

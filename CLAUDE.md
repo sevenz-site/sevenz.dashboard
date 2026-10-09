@@ -482,6 +482,25 @@ movement — each of those is a paragraph somewhere, or should be.
 Two surfaces, two deploys: a dashboard merge does not publish the website. A
 release that changes both has to merge both, and the checklist says which.
 
+### `Web/` ships a BUILD, not a branch — build it, then verify the live page
+
+`npx wrangler deploy` uploads whatever is sitting in `Web/out/`. It does not
+build. Merging to `main` does not build either. So the sequence is **`npm run
+build` and then `npx wrangler deploy`**, in that order, every time.
+
+Skipping the build does not fail. It prints `No updated asset files to upload`
+and `✨ Success`, redeploys the previous build, and exits 0 — a deploy that
+looks exactly like a correct one and changed nothing. It happened on
+2026-10-08: the merge was right, the text was right in git, and the live Ayuda
+kept describing the old screen while the log said success. `out/index.html` was
+five days old.
+
+**And the live page is what gets checked, not the log.** Fetch it with
+`cache: 'no-store'` and assert on both sides: the new sentence present AND the
+old one absent. A normal page load can show a cached copy and send you looking
+for a deploy problem that is not there — which also happened the same day,
+one minute after the real one.
+
 ## Explain bugs in two languages: dev and plain
 
 Whenever explaining a bug, a fix, or a technical finding — by default,
@@ -513,6 +532,71 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   moments ago, it quietly flips the screen back to "register a new
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
+
+## Toda decisión se documenta, y cada tipo tiene su sitio
+
+**Si una decisión no está escrita, dentro de seis meses no se tomó: solo pasó.**
+Y lo que se pierde primero no es qué se hizo —eso se ve en el código— sino
+**por qué**, y sobre todo **qué se descartó y a cambio de qué**.
+
+Esto ya se hacía en este proyecto. Lo que faltaba era la regla que dice cuál va
+dónde, porque meterlo todo en el mismo sitio es la forma de que no se lea
+ninguno.
+
+| Qué estás documentando | Dónde va |
+|---|---|
+| Por qué este código es así, y qué pasa si se toca | **Comentario, pegado al código** |
+| Una regla para la próxima pantalla | `DESIGN-SYSTEM.md` |
+| Una regla de proceso, para cualquier trabajo futuro | este archivo |
+| Algo que falta, o que se decidió NO hacer | `../docs/PENDIENTES.md` |
+| La forma de algo que vive fuera del repo | su plan en `../docs` |
+| Qué se probó y qué no | la tabla de QA en el chat, y el mensaje del commit |
+
+### El comentario y el mensaje del commit NO son intercambiables
+
+Es la confusión que hace que esto falle. **Los dos hacen falta y dicen cosas
+distintas:**
+
+- El **mensaje del commit** explica **el cambio**: qué había antes, qué hay
+  ahora, por qué se movió. Se lee una vez, buscándolo a propósito, normalmente
+  porque algo se rompió.
+- El **comentario** explica **el estado**: por qué el código es así hoy. Lo lee
+  quien abre el archivo, sin buscarlo, que es la única forma en que alguien se
+  entera de algo que no sabía que tenía que preguntar.
+
+Quien va a romper una decisión dentro de un año está editando el archivo, no
+leyendo el historial. Si la razón solo está en el commit, no la va a ver.
+
+### Qué merece un comentario y qué es ruido
+
+No es «comentar más». Un comentario que repite lo que el código ya dice estorba
+y envejece mal. **Se comenta lo que el código no puede decir:**
+
+- ✅ **Lo que ya falló.** *«Era un borde de un solo lado hasta el 2026-10-08, y
+  así se rompía la esquina»*. El código nuevo no puede contar el bug viejo.
+- ✅ **Lo que se descartó y por qué.** *«Envolviendo este componente, la línea
+  de bolívares quedaba sangrada»*. Sin eso, el siguiente lo intenta otra vez.
+- ✅ **El límite de la decisión.** *«Sobre blanco es 2,17:1, este token es solo
+  para la cabecera»*. Es lo que impide usarlo mal.
+- ✅ **La medición.** *«38px de holgura, medido con la página al final del
+  todo»*. Un número medido se puede comprobar; «se ve bien» no.
+- ❌ Lo que el código ya dice literalmente.
+
+### Una decisión del dueño se marca como suya, con fecha
+
+*«Decisión del dueño el 2026-10-08»*, *«a petición»*. No es burocracia: separa
+lo que es criterio del producto de lo que es criterio técnico. Lo segundo se
+puede cambiar discutiéndolo con quien edite; lo primero hay que preguntarlo. Y
+cuando una decisión del dueño va en contra de algo escrito antes —pasó con el
+aviso de instalar y el contraste—, **se anotan las dos**: la decisión nueva y
+la razón vieja que desplaza. Si algún día se revierte, la razón ya está ahí.
+
+### Dos repos, una sesión
+
+Ya está dicho más abajo y se repite aquí porque es donde esto se rompe: un
+cambio que toca código y documento se commitea **en los dos, en la misma
+sesión**. «Lo apunto luego» es como `PENDIENTES.md` acaba describiendo una app
+que ya no existe.
 
 ## Los pendientes y los planes viven en `../docs`
 
