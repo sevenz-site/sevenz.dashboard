@@ -24,7 +24,12 @@
 //   4. Que aceptar dos veces escriba UNA fila. La tabla es la evidencia, y una
 //      fila duplicada se lee como dos decisiones separadas.
 //
-//   5. Que la puerta esté cerrada. Si `anon` pudiera llamar a la función de
+//   5. Que darse de baja NO borre el alta. El alta es la evidencia que
+//      ampara los mensajes YA enviados a esa persona; borrarla al apagar
+//      destruiria justo la prueba que haria falta si alguien pregunta por uno
+//      de ellos. El par se lee como historia: alta el 9, baja el 20.
+//
+//   6. Que la puerta esté cerrada. Si `anon` pudiera llamar a la función de
 //      escritura, cualquiera con un token escribiría su propia frase en la
 //      evidencia — una prueba que nadie vio, que es peor que no tener ninguna.
 //
@@ -228,25 +233,79 @@ try {
   });
   check("7. un texto en blanco se rechaza: la evidencia no puede estar vacía", okVacio === false);
 
-  // ── 8. La puerta cerrada ───────────────────────────────────────────────
+  // ── 8. DARSE DE BAJA (migración 082, MS-31) ────────────────────────────
+  // El permiso vuelve a estar puesto: el paso 6 lo dejó así.
+  const { data: okBaja } = await admin.rpc("revoke_client_whatsapp_consent", { p_token: token });
+  check("8a. darse de baja devuelve true", okBaja === true);
+  check("8b. la puerta de envío dice NO", (await acepta(clienteId)) === false);
+
+  const trasBaja = await estado(token);
+  check(
+    "8c. y el estado lo refleja",
+    trasBaja?.can_consent === true && trasBaja?.granted === false,
+    JSON.stringify(trasBaja),
+  );
+
+  // LO QUE DE VERDAD IMPORTA DE LA BAJA. Si el alta se borrara, se perdería la
+  // evidencia que ampara los mensajes YA enviados a esa persona — que es justo
+  // la que haría falta si alguien pregunta por uno de ellos.
+  const { data: historia } = await admin
+    .from("client_whatsapp_consents")
+    .select("event, consent_text")
+    .eq("phone", TELEFONO)
+    .order("occurred_at");
+  check(
+    "8d. el alta NO se borra: quedan las dos filas, en orden",
+    historia?.length === 2 &&
+      historia[0].event === "granted" &&
+      historia[0].consent_text === TEXTO &&
+      historia[1].event === "revoked",
+    historia?.map((h) => h.event).join(" → "),
+  );
+
+  await admin.rpc("revoke_client_whatsapp_consent", { p_token: token });
+  const { count: trasDoble } = await admin
+    .from("client_whatsapp_consents")
+    .select("id", { count: "exact", head: true })
+    .eq("phone", TELEFONO);
+  check("8e. darse de baja dos veces no escribe otra fila", trasDoble === 2, `filas: ${trasDoble}`);
+
+  // Volver a aceptar después de la baja. Es el camino de quien lo apagó sin
+  // querer, y tiene que escribir un alta NUEVA, no resucitar la vieja.
+  await admin.rpc("record_client_whatsapp_consent", { p_token: token, p_consent_text: TEXTO });
+  const { data: historia2 } = await admin
+    .from("client_whatsapp_consents")
+    .select("event")
+    .eq("phone", TELEFONO)
+    .order("occurred_at");
+  check(
+    "8f. volver a aceptar añade un alta nueva y vuelve a valer",
+    historia2?.length === 3 &&
+      historia2[2].event === "granted" &&
+      (await acepta(clienteId)) === true,
+    historia2?.map((h) => h.event).join(" → "),
+  );
+
+  // ── 9. La puerta cerrada ───────────────────────────────────────────────
   const fuera = [
     ["record_client_whatsapp_consent", { p_token: token, p_consent_text: "pirata" }],
+    ["revoke_client_whatsapp_consent", { p_token: token }],
     ["client_whatsapp_consent_state", { p_token: token }],
     ["client_accepts_whatsapp", { p_client_id: clienteId }],
   ];
   for (const [fn, args] of fuera) {
     const { error } = await anon.rpc(fn, args);
-    check(`8. anon NO puede llamar a ${fn}()`, error !== null, error?.message?.slice(0, 60));
+    check(`9. anon NO puede llamar a ${fn}()`, error !== null, error?.message?.slice(0, 60));
   }
 
   const { error: eLectura } = await anon.from("client_whatsapp_consents").select("phone").limit(1);
-  check("8d. anon NO puede leer la tabla de permisos", eLectura !== null, eLectura?.message?.slice(0, 60));
+  check("9b. anon NO puede leer la tabla de permisos", eLectura !== null, eLectura?.message?.slice(0, 60));
 
   const { data: pirata } = await admin
     .from("client_whatsapp_consents")
     .select("id")
     .eq("consent_text", "pirata");
-  check("8e. y el intento de anon no escribió nada", (pirata?.length ?? 0) === 0);
+  check("9c. y el intento de anon no escribió nada", (pirata?.length ?? 0) === 0);
 } finally {
   // Borra exactamente lo que creó, por id. El cliente se lleva su enlace por
   // cascada; las filas de permiso NO cuelgan del cliente a propósito (su
@@ -261,7 +320,7 @@ try {
   const { count: clientesQuedan } = clienteId
     ? await admin.from("clients").select("id", { count: "exact", head: true }).eq("id", clienteId)
     : { count: 0 };
-  check("9. limpieza: no queda nada de la prueba en dev", quedan === 0 && clientesQuedan === 0);
+  check("10. limpieza: no queda nada de la prueba en dev", quedan === 0 && clientesQuedan === 0);
 
   const fallos = filas.filter((f) => !f.pasa).length;
   console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);

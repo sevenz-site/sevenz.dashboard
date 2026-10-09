@@ -75,6 +75,23 @@ export function ShareDialogs({
   // visit and not a piece of state that evolves.
   const [askedForDocument] = useState(!hasDocumentId);
 
+  // Captured for the same reason, and it closes a trap that only appears once
+  // the client can switch the notifications OFF (MS-31).
+  //
+  // Owner's decision, 2026-10-09: after revoking, the question DOES come back
+  // on later visits. That overrides the rule written for the owner in
+  // lib/whatsapp-opt-in.ts, where `whatsapp_opt_out_at` ends the asking for
+  // good — both are recorded because if this is ever reverted, the older
+  // reasoning is already here: a person who said no and keeps being asked has
+  // only one way to make it stop, and that way is blocking the number.
+  //
+  // "Later visits" is the whole point, though. Reading the live prop instead
+  // would mean revoking from Configuración drops `consentGranted` to false,
+  // the server re-renders, and the "¿Te avisamos de tu saldo?" dialog opens on
+  // top of someone who just finished saying no. Freezing it at arrival makes
+  // the rule what it says: not this visit, the next one.
+  const [grantedOnArrival] = useState(consentGranted);
+
   return (
     <>
       <DocumentIdDialog
@@ -83,7 +100,7 @@ export function ShareDialogs({
         ownerCountry={ownerCountry}
         hasDocumentId={hasDocumentId}
       />
-      {!askedForDocument && canConsent && !consentGranted ? (
+      {!askedForDocument && canConsent && !grantedOnArrival ? (
         <WhatsappConsentDialog token={token} whatsappLast4={whatsappLast4} />
       ) : null}
     </>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,23 @@ import { acceptWhatsappConsent } from "@/app/s/[token]/actions";
 import { TEXTO_AVISOS_WHATSAPP_CLIENTE } from "@/lib/whatsapp-opt-in";
 
 // "¿Te avisamos de tu saldo?" — the permission the final customer gives, on
-// the only Sevenz surface they ever touch. MS-25, mockup of 2026-10-08.
+// the only Sevenz surface they ever touch. MS-25, mockup of 2026-10-08,
+// extended with the switch on 2026-10-09 (frame 1156:5063).
+//
+// ─────────────────────────────────────────────────────────────────────────
+// ONE DIALOG, TWO MODES, AND WHY IT IS NOT TWO COMPONENTS
+//
+// "ask"    — the first-visit question. No switch; "Aceptar" / "Dejar para
+//            luego". Comes back every visit until answered.
+// "manage" — reached on purpose from Configuración › Notificaciones. The
+//            switch shows the current state and IS the only control that does
+//            anything; "Aceptar" merely closes.
+//
+// They share the sentence in the box, and that sentence is the evidence stored
+// in the ledger. Two components would be two places for it to drift, and the
+// day they drift is the day what we could show Meta stops matching what the
+// person read. The copy lives in one constant precisely so this cannot happen,
+// and splitting the component would walk it back.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // IT COMES BACK ON EVERY VISIT, AND THAT IS THE DECISION
@@ -44,10 +61,6 @@ import { TEXTO_AVISOS_WHATSAPP_CLIENTE } from "@/lib/whatsapp-opt-in";
 // asking and is needed to find their own record. This one asks permission to
 // send them messages, and a permission dialog you cannot refuse is not asking.
 // The X, Escape and tapping outside all mean "later" and write nothing.
-//
-// The page also will not mount both at once — see the comment at the mount
-// site. A non-dismissible dialog underneath a dismissible one would trap the
-// client behind two layers over the balance they came to read.
 export function WhatsappConsentDialog({
   token,
   // Already in the payload and already shown by VerifyBadge, so no new
@@ -56,21 +69,45 @@ export function WhatsappConsentDialog({
   // notice their shopkeeper wrote down the wrong one — and a wrong number
   // means a stranger receives their balance.
   whatsappLast4,
+  mode = "ask",
+  // "manage" only: whether permission is currently given, which is what the
+  // switch shows.
+  granted = false,
+  // "manage" only: the switch moving to off does not revoke here. It asks the
+  // parent to put the confirmation in front of the person first, because the
+  // consequence is not obvious from the control.
+  onRequestDeactivate,
+  open = true,
+  onOpenChange,
 }: {
   token: string;
   whatsappLast4: string;
+  mode?: "ask" | "manage";
+  granted?: boolean;
+  onRequestDeactivate?: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(true);
+  const [selfOpen, setSelfOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [saving, startTransition] = useTransition();
+
+  // "ask" owns its own open state (the page mounts it and walks away);
+  // "manage" is driven by Configuración, which has to survive the dialog
+  // closing to show the confirmation on top of itself.
+  const isOpen = mode === "manage" ? open : selfOpen;
+  const setOpen = (next: boolean) => {
+    if (mode === "manage") onOpenChange?.(next);
+    else setSelfOpen(next);
+  };
 
   // Not `return null` on close: Radix needs the Dialog mounted to run its exit
   // animation, and unmounting mid-animation is what leaves a stuck overlay
   // (DESIGN-SYSTEM.md). After accepting, `router.refresh()` re-renders the
   // Server Component, which then stops mounting this at all.
-  if (accepted && !open) return null;
+  if (mode === "ask" && accepted && !selfOpen) return null;
 
   function accept() {
     setError(null);
@@ -82,17 +119,13 @@ export function WhatsappConsentDialog({
       }
       setAccepted(true);
       setOpen(false);
-      // The parent Server Component decided whether to mount this from data
-      // fetched at page load, so without this the page keeps believing there
-      // is no permission until a manual reload — and would ask again on the
-      // next navigation within the page.
       router.refresh();
     });
   }
 
   return (
     <Dialog
-      open={open}
+      open={isOpen}
       // Plain setter: the X, Escape and tapping outside all mean "later". They
       // write nothing, which is why the question can come back next visit.
       onOpenChange={(next) => {
@@ -111,12 +144,28 @@ export function WhatsappConsentDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3 rounded-lg border p-4">
-          {/* THE EXACT STRING THAT GETS STORED. Not a paraphrase of the
-              consent: it IS the consent. If this line and
-              TEXTO_AVISOS_WHATSAPP_CLIENTE ever stopped matching, the evidence
-              we would show Meta would be false — which is worse than having
-              none, because it reads as proof. */}
-          <p className="text-sm leading-relaxed">{TEXTO_AVISOS_WHATSAPP_CLIENTE}</p>
+          <div className="flex items-start justify-between gap-4">
+            {/* THE EXACT STRING THAT GETS STORED. Not a paraphrase of the
+                consent: it IS the consent. If this line and
+                TEXTO_AVISOS_WHATSAPP_CLIENTE ever stopped matching, the
+                evidence we would show Meta would be false — which is worse
+                than having none, because it reads as proof. */}
+            <p className="text-sm leading-relaxed">{TEXTO_AVISOS_WHATSAPP_CLIENTE}</p>
+            {mode === "manage" ? (
+              <Switch
+                checked={granted}
+                disabled={saving}
+                aria-label="Recibir avisos por WhatsApp"
+                onCheckedChange={(next) => {
+                  // Turning it ON is immediate: saying yes needs no
+                  // confirmation. Turning it OFF goes through the parent,
+                  // which shows what is lost first.
+                  if (next) accept();
+                  else onRequestDeactivate?.();
+                }}
+              />
+            ) : null}
+          </div>
 
           {/* Empty when the shopkeeper never wrote the number down. The page
               does not mount the dialog in that case, so this should be
@@ -137,11 +186,26 @@ export function WhatsappConsentDialog({
           {/* "Dejar para luego" and the X do the same thing, and both are
               offered on purpose: the X is a 24px target in a corner and this
               is a question about money on a cheap phone. The visible verb is
-              what most people will reach for. */}
-          <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
-            Dejar para luego
-          </Button>
-          <Button type="button" disabled={saving} onClick={accept}>
+              what most people will reach for.
+
+              In "manage" there is nothing to postpone — the person came here
+              deliberately — so the pair collapses to one button that closes,
+              matching the mockup. */}
+          {mode === "ask" ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => setOpen(false)}
+            >
+              Dejar para luego
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            disabled={saving}
+            onClick={mode === "manage" ? () => setOpen(false) : accept}
+          >
             {saving ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> Guardando...
