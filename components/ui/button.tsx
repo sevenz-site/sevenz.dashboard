@@ -18,6 +18,21 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        // Rojo sin fondo. Es `destructive` quitándole el relleno, y existe por
+        // una razón de jerarquía y no de gusto: se usa junto a un botón
+        // relleno que es la salida segura, y tiene que pesar menos que él.
+        // `destructive` con su `bg-destructive/10` pesa lo mismo o más, y en
+        // un par "Regresar / Desactivar" eso empuja hacia lo irreversible.
+        //
+        // Añadida el 2026-10-09 para el apagado de notificaciones del cliente,
+        // desde el componente `button_text_destructive` de Figma. El color NO
+        // es nuevo: `#e7000b` del diseño es exactamente el `--destructive` que
+        // ya estaba aquí.
+        //
+        // Conserva los 40px de alto de `size`, así que sigue cumpliendo la
+        // regla del objetivo táctil aunque no se vea ningún recuadro.
+        destructiveText:
+          "text-destructive hover:bg-destructive/10 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:hover:bg-destructive/20 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       // Every size that carries a label is 40px tall, matching the mobile

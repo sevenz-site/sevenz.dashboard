@@ -19,6 +19,7 @@ import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { ShareDialogs } from "@/components/public/share-dialogs";
+import { ShareSettings } from "@/components/public/share-settings";
 
 // La vista previa que ve quien recibe el enlace por WhatsApp.
 //
@@ -256,6 +257,23 @@ export default async function SharedBalancePage({
         consentGranted={consent?.granted === true}
         whatsappLast4={shared.whatsapp_last4}
       />
+
+      {/* The top bar this page never had. One control, pushed right, because
+          the back arrow the mockup drew beside it was dropped — see the
+          comment in share-settings.tsx. `-mb-2` because the block below
+          already carries `mt-2`, and two stacked margins would open a gap
+          nobody asked for. */}
+      <div className="-mb-2 flex items-center justify-end">
+        <ShareSettings
+          token={token}
+          whatsappLast4={shared.whatsapp_last4}
+          canConsent={consent?.can_consent === true}
+          // Live, unlike the frozen copy ShareDialogs holds: this is the switch
+          // the person came to look at, so it has to show what is true now.
+          granted={consent?.granted === true}
+        />
+      </div>
+
       {/* Not a card: no border, no padding of its own, so the logo and the
           business name start on the page's own inset, in line with
           "Pendiente" and the edges of the balance cards below. */}

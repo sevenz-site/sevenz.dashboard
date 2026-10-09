@@ -192,6 +192,46 @@ export async function acceptWhatsappConsent(token: string): Promise<AcceptWhatsa
   }
 }
 
+export type RevokeWhatsappConsentState = { error: string | null };
+
+// MS-31, the way out. Public and unauthenticated, same trust model as the
+// grant above.
+//
+// NO CONSENT TEXT HERE, and the asymmetry is the point: a grant has to evidence
+// what the person read, a withdrawal does not. Nobody ever has to prove that
+// someone asked us to stop — we just stop.
+//
+// Service client for the same reason as the grant: the function is granted to
+// service_role only, so a browser holding the anon key cannot reach it
+// directly and switch off a number it happens to hold a token for.
+export async function revokeWhatsappConsent(token: string): Promise<RevokeWhatsappConsentState> {
+  if (!(await withinQuota(token, "whatsapp_revoke", WHATSAPP_CONSENT_LIMIT))) {
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde." };
+  }
+
+  try {
+    const service = createServiceClient();
+    const { data, error } = await service.rpc("revoke_client_whatsapp_consent", {
+      p_token: token,
+    });
+
+    if (error) {
+      console.error("[revokeWhatsappConsent] rpc failed:", error.message);
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+    if (data !== true) {
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+    return { error: null };
+  } catch (error) {
+    console.error(
+      "[revokeWhatsappConsent] threw:",
+      error instanceof Error ? error.message : error,
+    );
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
+}
+
 export type UploadProfilePictureState = { error: string | null; path: string | null };
 
 // Public, unauthenticated action — same trust model as submitDocumentId
