@@ -6,7 +6,7 @@ import { puedeCompartirArchivos, tarjetaDeTasa } from "@/lib/share-card";
 import dynamic from "next/dynamic";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getRateHistory } from "@/lib/exchange-rate/rate-history";
 import {
@@ -68,8 +68,20 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
   // monta la calculadora ya abierta y la primera petición falla.
   if (pair === "USDT" && !usdt) setPair("USD");
 
-  // The rate figures are plain display text — only the "Calcular" button
-  // opens the calculator, so it's unambiguous what's tappable.
+  // TODA LA FILA ABRE LA CALCULADORA, no solo el botón. Decisión del dueño el
+  // 2026-10-08, y el motivo no es comodidad.
+  //
+  // El botón flotante "Agregar" es una caja fija de 132x56 abajo a la derecha
+  // de la VENTANA, así que a cada altura de scroll tapa lo que tenga debajo.
+  // A scrollY 0 —la posición en la que se abre la app— tapaba "Calcular"
+  // entero: 72px de solape sobre 72 de ancho, y `elementFromPoint` devolvía
+  // "Agregar" hasta en su borde izquierdo. El control estaba muerto justo en
+  // la primera pantalla.
+  //
+  // Mover el botón dentro de la tarjeta solo cambia a qué altura ocurre. Que
+  // la fila entera sea el disparador resuelve la clase entera: quedan ~200px
+  // de superficie a la izquierda, fuera del alcance del flotante, pase lo que
+  // pase con el orden de la pantalla.
   const rateInfo = (
     <span className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
       <span className="flex items-center gap-1.5">
@@ -95,11 +107,22 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
       rateFetchedAt={rateContext.rateFetchedAt}
     />
   );
-  const trigger = (
-    <Button type="button" size="sm" variant="outline">
+  // `span` con el aspecto de un botón, no un `Button`. La fila entera ya es el
+  // `<button>`, y un botón dentro de otro es HTML inválido: el navegador lo
+  // reescribe como hermanos y el de dentro deja de disparar al de fuera.
+  // `buttonVariants` da exactamente las mismas clases, así que no se ve
+  // distinto ni se separa del resto de botones el día que cambien.
+  const calcularBadge = (
+    <span className={cn(buttonVariants({ size: "sm", variant: "outline" }), "pointer-events-none")}>
       Calcular
-    </Button>
+    </span>
   );
+
+  // Las clases de la fila. Una sola copia para las dos ramas —teléfono y
+  // escritorio— porque son la misma tarjeta vista en dos anchos, y dos copias
+  // se separan a la primera.
+  const filaClase =
+    "flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none";
 
   if (isMobile) {
     // A Sheet (Radix Dialog) rather than vaul's Drawer. The Drawer positions
@@ -116,10 +139,15 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
     // than assumed from vh units.
     return (
       <Sheet open={open} onOpenChange={setOpen}>
-        <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-          {rateInfo}
-          <SheetTrigger asChild>{trigger}</SheetTrigger>
-        </div>
+        {/* Sin `aria-label`: el nombre accesible sale del contenido y queda
+            "$1 = Bs. ... €1 = Bs. ... Calcular" — las tasas y la acción, en
+            ese orden. Un rótulo propio las borraría del anuncio. */}
+        <SheetTrigger asChild>
+          <button type="button" className={filaClase}>
+            {rateInfo}
+            {calcularBadge}
+          </button>
+        </SheetTrigger>
         <SheetContent
           side="bottom"
           className="max-h-[85dvh] rounded-t-xl"
@@ -150,10 +178,12 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 sm:w-auto">
-        {rateInfo}
-        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      </div>
+      <PopoverTrigger asChild>
+        <button type="button" className={cn(filaClase, "sm:w-auto")}>
+          {rateInfo}
+          {calcularBadge}
+        </button>
+      </PopoverTrigger>
       {/* The 90-day table made this panel taller than the screen, so Radix
           pushed it up to fit and the calculator's own inputs ended up above the
           top edge — reachable by nobody. Radix publishes how much room it
