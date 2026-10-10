@@ -253,7 +253,31 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
   // Optimista: el interruptor se mueve en el acto y se revierte si el servidor
   // dice que no. Sin esto el gesto tarda un viaje de ida y vuelta, y en un
   // telefono barato eso se siente como que no respondio y se vuelve a tocar.
-  const [published, setPublished] = useState(isPublished(product));
+  // EL INTERRUPTOR SE DERIVA DE LOS DATOS, NO LOS SUPLANTA.
+  //
+  // Esto era `useState(isPublished(product))`, y `useState` solo mira su
+  // argumento en el PRIMER render. Reportado por el dueño el 2026-10-10:
+  // publicó «Alicate» desde su ficha, la base quedó en `true, true` — está
+  // comprobado— y la tarjeta siguió enseñando el interruptor apagado.
+  //
+  // El motivo: guardar hace `router.refresh()`, llegan datos nuevos y la
+  // tarjeta se vuelve a renderizar, pero NO se vuelve a montar — misma clave,
+  // misma posición. Así que su estado se quedó con el valor del día que se
+  // montó, y a partir de ahí la pantalla contradecía a la base.
+  //
+  // Lo que manda ahora es la prop. `optimista` solo existe durante el viaje de
+  // ida y vuelta de un toque, y se descarta en cuanto el servidor contesta con
+  // un valor distinto del que había — que es la señal de que ya no hace falta
+  // adivinar.
+  const real = isPublished(product);
+  const [optimista, setOptimista] = useState<boolean | null>(null);
+  const [realPrevio, setRealPrevio] = useState(real);
+  if (real !== realPrevio) {
+    setRealPrevio(real);
+    setOptimista(null);
+  }
+  const published = optimista ?? real;
+  const setPublished = setOptimista;
 
   // EL INTERRUPTOR DE LA TARJETA ES UNO Y LOS ESCALONES SON DOS, asi que
   // encender tiene que decidir cual. Encender pone DETAL, que es lo que la

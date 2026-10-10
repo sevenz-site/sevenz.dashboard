@@ -140,7 +140,10 @@ export function CatalogProductDialog({
   const [costCurrency, setCostCurrency] = useState<CostCurrency>(
     (product?.cost_currency as CostCurrency | null) ?? lastCostCurrency ?? defaultCurrency,
   );
-  const [costOther, setCostOther] = useState(product?.cost_currency_other ?? "");
+  // «OTRO» SE QUEDA EN «OTRO», Y NO SE PREGUNTA CUAL. Decisión del dueño el
+  // 2026-10-10. Lo que se escribía ahí no servía para nada — no tenemos tasa
+  // de esa moneda la llame como la llame— y en dev acabó guardando un «Gjrj».
+  // La migración 089 relaja el check que la 087 había puesto para exigirlo.
   // Se enciende al intentar elegir un margen sin costo. Ver `pedirCosto`.
   const [costoFaltante, setCostoFaltante] = useState(false);
 
@@ -173,8 +176,16 @@ export function CatalogProductDialog({
     ),
   });
 
-  const [pubRetail, setPubRetail] = useState(product?.published_retail ?? false);
-  const [pubWholesale, setPubWholesale] = useState(product?.published_wholesale ?? false);
+  // UN PRODUCTO NUEVO NACE PUBLICADO EN LOS DOS ESCALONES. Decisión del dueño
+  // el 2026-10-10, y va de la mano con que la tarjeta del cliente enseñe el
+  // precio más bajo: el caso corriente es querer que se vea.
+  //
+  // El DEFAULT DE LA BASE sigue siendo `false` (migración 084) y eso no es una
+  // incoherencia: ahí protege contra una fila creada por cualquier otra vía
+  // —un import, un script— que acabaría publicada sin que nadie lo decidiera.
+  // Aquí lo decide el formulario, que es donde hay alguien decidiendo.
+  const [pubRetail, setPubRetail] = useState(product?.published_retail ?? true);
+  const [pubWholesale, setPubWholesale] = useState(product?.published_wholesale ?? true);
   const publishOn = pubRetail || pubWholesale;
 
   const [photoPath, setPhotoPath] = useState<string | null>(product?.photo_path ?? null);
@@ -213,8 +224,12 @@ export function CatalogProductDialog({
   function handleCost(next: string) {
     setCost(next);
     if (next.trim() !== "") setCostoFaltante(false);
-    const c = parseAmount(next);
-    if (c == null || c <= 0 || costCurrency === "OTHER" || !rates) return;
+    recalcularDesdeCosto(next, costCurrency);
+  }
+
+  function recalcularDesdeCosto(texto: string, moneda: CostCurrency) {
+    const c = parseAmount(texto);
+    if (c == null || c <= 0 || moneda === "OTHER" || !rates) return;
 
     // RECALCULA SIEMPRE, no solo los precios vacíos. Lo pidió el dueño el
     // 2026-10-10 tras ver la pantalla: con el costo en 50 y un 6,5 viejo en el
@@ -237,7 +252,7 @@ export function CatalogProductDialog({
     ) => {
       const hayFijos = currencies.some((x) => x !== base && (fijos[x] ?? "").trim() !== "");
       if (hayFijos) return;
-      const p = priceFromCost(c, costCurrency, Number(margen), base, rates);
+      const p = priceFromCost(c, moneda, Number(margen), base, rates);
       if (p != null) set(formatAmountForInput(p));
     };
     recalcular(marginRetail, fixed.retail, setPriceRetail);
@@ -296,7 +311,8 @@ export function CatalogProductDialog({
     fixedWholesale: fixed.wholesale,
     cost: cost || null,
     costCurrency: cost.trim() === "" ? null : costCurrency,
-    costCurrencyOther: costCurrency === "OTHER" ? costOther : null,
+    // Nada lo escribe desde el 2026-10-10. Ver la migración 089.
+    costCurrencyOther: null,
     marginRetailPct: marginOf(priceRetail)?.toString() ?? null,
     marginWholesalePct: marginOf(priceWholesale)?.toString() ?? null,
     stockOpening: stock || null,
@@ -405,22 +421,17 @@ export function CatalogProductDialog({
                 onChange={(v) => {
                   setCostCurrency(v);
                   setCostoFaltante(false);
+                  // Cambiar a una moneda que SI convierte recalcula los
+                  // precios: el costo es el mismo número pero ya no significa
+                  // lo mismo, así que dejar los precios quietos los dejaría
+                  // describiendo una conversión que nadie hizo.
+                  recalcularDesdeCosto(cost, v);
                 }}
                 hasRates={Boolean(rates)}
                 businessCurrency={defaultCurrency}
                 disabled={saving}
               />
             </div>
-
-            {costCurrency === "OTHER" ? (
-              <Input
-                value={costOther}
-                onChange={(e) => setCostOther(e.target.value)}
-                placeholder="¿En qué moneda?"
-                aria-label="Escribe la moneda del costo"
-                disabled={saving}
-              />
-            ) : null}
 
             {costoFaltante ? (
               <p className="text-xs leading-relaxed text-destructive">
@@ -829,10 +840,18 @@ function TierSection({
               return;
             }
             onMarginChange(v);
-            if (!costUsable || cost == null || !rates) {
+            if (cost == null) {
+              // FALTA EL COSTO. El campo se pinta en rojo y lo dice.
               onNeedCost();
               return;
             }
+            // HAY COSTO PERO SU MONEDA NO CONVIERTE («Otro»). Aquí NO se pinta
+            // el costo en rojo, y esa distinción es el fallo que reportó el
+            // dueño el 2026-10-10: la pantalla decía «Primero pon el costo»
+            // con un 5 escrito justo encima. El costo está; lo que falta es
+            // una moneda de la que sepamos la tasa, y eso ya lo explica la
+            // línea que hay bajo el desplegable de la moneda.
+            if (!costUsable || !rates) return;
             const siguiente = priceFromCost(cost, costCurrency, Number(v), base, rates);
             if (siguiente != null) onPriceChange(formatAmountForInput(siguiente));
           }}

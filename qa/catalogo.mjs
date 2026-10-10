@@ -180,20 +180,45 @@ try {
     eSinMoneda ? eSinMoneda.code : "entró",
   );
 
-  // Y «Otra» sin decir cuál tampoco: un costo en una moneda sin nombre no se
-  // puede interpretar nunca más.
-  const { error: eOtraSinNombre } = await admin.from("products").insert({
+  // «OTHER» SIN NOMBRE SÍ ENTRA desde la 089: la ficha dejó de preguntar cuál
+  // es, así que exigirlo haría imposible guardar. Lo que sigue sin tener
+  // sentido es una etiqueta colgando de una moneda que SÍ conocemos.
+  //
+  // Hasta el 2026-10-10 esta prueba esperaba lo contrario, y se deja dicho
+  // porque la regla cambió de signo: lo que antes era el error ahora es el
+  // caso normal.
+  const { data: otraSinNombre, error: eOtraSinNombre } = await admin
+    .from("products")
+    .insert({
+      owner_id: ownerId,
+      name: `${MARCA} otra sin nombre`,
+      base_currency: "USD",
+      price_retail: 10,
+      cost: 7,
+      cost_currency: "OTHER",
+    })
+    .select("id")
+    .single();
+  check(
+    "2d. `OTHER` sin el nombre de la moneda SÍ entra",
+    eOtraSinNombre == null,
+    eOtraSinNombre?.code,
+  );
+  if (otraSinNombre) creados.push(otraSinNombre.id);
+
+  const { error: eEtiquetaSuelta } = await admin.from("products").insert({
     owner_id: ownerId,
-    name: `${MARCA} otra sin nombre`,
+    name: `${MARCA} etiqueta suelta`,
     base_currency: "USD",
     price_retail: 10,
     cost: 7,
-    cost_currency: "OTHER",
+    cost_currency: "USD",
+    cost_currency_other: "Reales",
   });
   check(
-    "2d. `OTHER` sin el nombre de la moneda no entra",
-    eOtraSinNombre != null && eOtraSinNombre.code === "23514",
-    eOtraSinNombre ? eOtraSinNombre.code : "entró",
+    "2e. una etiqueta de moneda colgando de una moneda conocida no entra",
+    eEtiquetaSuelta != null && eEtiquetaSuelta.code === "23514",
+    eEtiquetaSuelta ? eEtiquetaSuelta.code : "entró",
   );
 
   // ── 3. DOS enlaces, uno por escalón ────────────────────────────────────
