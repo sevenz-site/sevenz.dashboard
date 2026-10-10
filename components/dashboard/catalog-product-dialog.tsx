@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, Minus, Plus, Sparkles, Unlock } from "lucide-react";
+import { Link2, Link2Off, Loader2, Minus, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import {
   formatPercent,
   priceRowLabel,
   suggestedPrice,
+  VE_PRICE_CURRENCIES,
   marginFromPrice,
   parseAmount,
   formatAmountForInput,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/products/price";
 import { MARGIN_PRESETS, UNIT_OPTIONS, unitPlural } from "@/lib/products/options";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import {
   createProduct,
   updateProduct,
@@ -363,14 +365,18 @@ export function CatalogProductDialog({
                 checked={publishOn}
                 disabled={saving}
                 onCheckedChange={(next) => {
-                  // ENCENDER MARCA «AL DETAL», decision del dueno el
-                  // 2026-10-10. Es el caso corriente y sale de un solo toque;
-                  // y asi el producto nunca queda publicado sin aparecer en
-                  // ningun catalogo, que es el estado del que un tendero no
-                  // puede salir porque no hay nada en pantalla que lo
-                  // explique.
+                  // ENCENDER MARCA LAS DOS, decision del dueno el 2026-10-10
+                  // (antes ese mismo dia era solo «al detal»). Va de la mano
+                  // con que la tarjeta del cliente ensene el precio mas bajo:
+                  // si se publican los dos escalones, el cliente ve el mejor
+                  // de los dos precios y el tendero no tiene que elegir nada
+                  // para el caso corriente.
+                  //
+                  // Apagar quita los dos, porque un interruptor que dice
+                  // «Publicar» y deja el producto en un catalogo miente.
                   if (next) {
                     setPubRetail(true);
+                    setPubWholesale(true);
                   } else {
                     setPubRetail(false);
                     setPubWholesale(false);
@@ -658,12 +664,24 @@ function TierSection({
   // rellena el precio al escribir un costo.
   const derived = priceNumber != null ? marginFromPrice(cost, priceNumber) : null;
   const shown = derived ?? Number(margin);
+
+  // SIN COSTO PERO CON PRECIO, EL DESPLEGABLE DICE «OTRO».
+  //
+  // Reportado por el dueno el 2026-10-10: la pantalla ensenaba «40 %» con el
+  // costo vacio y un precio tecleado a mano. Ese 40 % no era el margen de
+  // nada —sin costo no hay margen que calcular— pero se leia como si el
+  // precio saliera de el.
+  //
+  // El valor por defecto (30/15) solo tiene sentido mientras NO hay precio:
+  // ahi es una promesa de lo que va a pasar al escribir un costo.
   const selectValue =
     derived != null
       ? (MARGIN_PRESETS as readonly number[]).includes(derived)
         ? String(derived)
         : "otro"
-      : margin;
+      : priceNumber != null
+        ? "otro"
+        : margin;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">
@@ -673,7 +691,15 @@ function TierSection({
           value={selectValue}
           disabled={disabled}
           onValueChange={(v) => {
-            if (v === "otro") return;
+            // «Otro» NO estaba habilitado, y el dueno lo reporto el
+            // 2026-10-10: un elemento de lista que no se puede elegir se lee
+            // como roto, no como informativo. Ahora se elige y hace lo unico
+            // coherente — llevar el foco al campo del precio, que es donde
+            // «otro» significa algo.
+            if (v === "otro") {
+              document.getElementById(`precio_${tier}`)?.focus();
+              return;
+            }
             onMarginChange(v);
             // Sin costo no hay de que calcular: el margen queda elegido y el
             // precio se teclea en su fila. Es lo que mantiene vivo el alta
@@ -694,9 +720,7 @@ function TierSection({
             ))}
             {/* Se ensena y no se elige: «Otro» es lo que PASA cuando el precio
                 se teclea a mano, no una opcion que haga nada. */}
-            <SelectItem value="otro" disabled>
-              Otro (escribe el precio)
-            </SelectItem>
+            <SelectItem value="otro">Otro (escribe el precio)</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -777,15 +801,65 @@ function PriceRows({
   startTransition: (cb: () => void) => void;
   router: ReturnType<typeof useRouter>;
 }) {
+  // Los fijados de la base MAS los que se acaban de fijar sin guardar todavia.
+  const effective: Partial<Record<PriceCurrency, number>> = { ...overrides };
+  for (const [currency, amount] of Object.entries(pending)) {
+    const n = parseAmount(amount);
+    if (n != null && n > 0) effective[currency as PriceCurrency] = n;
+  }
+
+  function aplicar(currency: PriceCurrency, valor: string) {
+    const n = parseAmount(valor);
+    if (n == null || n <= 0) {
+      toast.error("Escribe un precio mayor que cero.");
+      return;
+    }
+    if (productId == null) {
+      onPendingChange({ ...pending, [currency]: valor });
+      setDraft({ ...draft, [currency]: valor });
+      return;
+    }
+    startTransition(async () => {
+      const r = await pinPrice(productId, tier, currency, valor);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      setDraft({ ...draft, [currency]: valor });
+      router.refresh();
+    });
+  }
+
+  function soltar(currency: PriceCurrency) {
+    const sinEste = { ...draft };
+    delete sinEste[currency];
+    if (productId == null) {
+      const next = { ...pending };
+      delete next[currency];
+      onPendingChange(next);
+      setDraft(sinEste);
+      return;
+    }
+    startTransition(async () => {
+      const r = await unpinPrice(productId, tier, currency);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      setDraft(sinEste);
+      router.refresh();
+    });
+  }
+
   // COLOMBIA: UNA SOLA FILA, y eso no es un hueco.
   //
   // Un negocio colombiano cobra en pesos y no tiene tasa de ninguna clase —
-  // no existe Bs/COP porque no hay bolivares de por medio. Decision del dueno
-  // el 2026-10-10: la seccion mantiene su forma con una unica fila editable,
-  // en vez de volver al campo suelto que el frame acaba de quitar.
+  // no existe Bs/COP porque no hay bolívares de por medio. Decisión del dueño
+  // el 2026-10-10: la sección mantiene su forma con una única fila editable.
   if (!rates || baseCurrency === "COP") {
     return (
       <PriceField
+        currency="COP"
         label="Precio en pesos"
         value={price}
         onChange={onPriceChange}
@@ -795,24 +869,25 @@ function PriceRows({
     );
   }
 
-  // Los fijados de la base MAS los que se acaban de fijar sin guardar todavia.
-  const effective: Partial<Record<PriceCurrency, number>> = { ...overrides };
-  for (const [currency, amount] of Object.entries(pending)) {
-    const n = parseAmount(amount);
-    if (n != null && n > 0) effective[currency as PriceCurrency] = n;
-  }
-
+  // TODAS LAS MONEDAS SE VEN DE UNA VEZ, pedido del dueño el 2026-10-10.
+  // Antes las filas aparecían solo al escribir un precio, así que el tendero
+  // no sabía que existían hasta después. Sin precio base se enseñan con «—»:
+  // la fila dice que la moneda está, y que todavía no hay número.
   const rows =
     basePrice == null
       ? null
       : allPrices({ amount: basePrice, currency: baseCurrency }, rates, effective);
 
+  const otras = VE_PRICE_CURRENCIES.filter((c) => c !== baseCurrency);
+
   return (
     <div className="flex flex-col gap-3">
-      {/* La moneda del negocio: el precio, siempre editable, con o sin las
-          demas. Va primero y fuera del mapa de `allPrices` justo porque no es
-          una equivalencia — es el numero del que salen las otras. */}
+      {/* La moneda del negocio: el precio, siempre editable y sin control de
+          vínculo. Va primero y fuera del mapa justo porque no es una
+          equivalencia — es el número del que salen las otras, y su vínculo con
+          el costo es el margen de arriba. */}
       <PriceField
+        currency={baseCurrency}
         label={`Precio ${baseCurrency === "USD" ? "Dólar" : baseCurrency}`}
         value={price}
         onChange={onPriceChange}
@@ -820,136 +895,149 @@ function PriceRows({
         inputId={`precio_${tier}`}
       />
 
-      {rows == null ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Escribe un precio para ver las otras monedas.
-        </p>
-      ) : (
-        rows
-          .filter((row) => row.currency !== baseCurrency)
-          .map((row) => {
-            const pinned = row.origin === "manual";
-            // BOLIVARES NO SE FIJA. Decision del dueno el 2026-10-10, y la
-            // migracion 085 lo impide tambien en la base. Se ensena el numero
-            // y una linea que dice por que no hay control, para que no se lea
-            // como una fila rota entre tres editables.
-            const fixable = row.currency !== "VES";
+      {otras.map((currency) => {
+        const row = rows?.find((r) => r.currency === currency) ?? null;
 
-            return (
-              <div key={row.currency} className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate text-xs text-muted-foreground">
-                    {priceRowLabel(row.currency, row.origin)}
-                  </span>
-                  <span className="truncate text-sm tabular-nums">
-                    {/* Un hueco se dice, no se omite: «no tenemos el precio
-                        del USDT ahora» se lee distinto a una moneda que no
-                        aparece. */}
-                    {row.amount == null ? "—" : formatPriceAmount(row.amount, row.currency)}
-                  </span>
-                </div>
+        // VINCULADO = calculado con la tasa del día. DESVINCULADO = un número
+        // que puso el tendero a mano.
+        //
+        // El icono y su sentido son del dueño, 2026-10-10, y el sentido es el
+        // CONTRARIO del que tenía: antes un candado cerrado significaba
+        // «fijado». Ahora la cadena entera significa «enganchado al cálculo» y
+        // la rota, «suelto». Es lo que dibuja el frame y se lee mejor: lo que
+        // se rompe es el vínculo, no el precio.
+        const linked = row == null || row.origin !== "manual";
 
-                {fixable ? (
-                  <div className="flex shrink-0 items-center gap-1">
-                    {pinned ? null : (
-                      <Input
-                        inputMode="decimal"
-                        value={draft[row.currency] ?? ""}
-                        onChange={(e) => setDraft({ ...draft, [row.currency]: e.target.value })}
-                        placeholder="Fijar"
-                        className="h-10 w-24"
-                        aria-label={`Fijar el precio en ${row.currency}`}
-                      />
-                    )}
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      disabled={disabled}
-                      aria-label={
-                        pinned
-                          ? `Volver a calcular el precio en ${row.currency}`
-                          : `Fijar el precio en ${row.currency}`
+        // Bolívares no se desvincula nunca — decisión del dueño, y la 085 lo
+        // impide también en el esquema porque es el único precio de la ficha
+        // que se vuelve falso solo al moverse la tasa.
+        const fixable = currency !== "VES";
+
+        return (
+          <PriceField
+            key={currency}
+            currency={currency}
+            label={priceRowLabel(currency, row?.origin ?? "derived")}
+            value={
+              linked
+                ? row?.amount == null
+                  ? "—"
+                  : formatPriceAmount(row.amount, currency)
+                : (draft[currency] ?? formatAmountForInput(effective[currency]))
+            }
+            readOnly={linked}
+            disabled={disabled}
+            inputId={`precio_${tier}_${currency}`}
+            onChange={(next) => setDraft({ ...draft, [currency]: next })}
+            onCommit={() => {
+              if (linked) return;
+              const v = draft[currency];
+              if (v == null) return;
+              aplicar(currency, v);
+            }}
+            link={
+              fixable
+                ? {
+                    linked,
+                    // Sin número no hay nada que desvincular: desvincular
+                    // siembra con lo que se está viendo, y lo que se ve es «—».
+                    disabled: disabled || (linked && row?.amount == null),
+                    onToggle: () => {
+                      if (linked) {
+                        if (row?.amount == null) return;
+                        // Se siembra con lo que se está viendo, para que el
+                        // número no salte al tocar el icono.
+                        aplicar(currency, String(row.amount));
+                      } else {
+                        soltar(currency);
                       }
-                      onClick={() => {
-                        // Sin producto todavia: solo estado local, y la ficha
-                        // lo escribe al guardar.
-                        if (productId == null) {
-                          const next = { ...pending };
-                          if (pinned) delete next[row.currency];
-                          else next[row.currency] = draft[row.currency] ?? "";
-                          onPendingChange(next);
-                          setDraft({ ...draft, [row.currency]: "" });
-                          return;
-                        }
-                        startTransition(async () => {
-                          const r = pinned
-                            ? await unpinPrice(productId, tier, row.currency)
-                            : await pinPrice(
-                                productId,
-                                tier,
-                                row.currency,
-                                draft[row.currency] ?? "",
-                              );
-                          if (r.error) {
-                            toast.error(r.error);
-                            return;
-                          }
-                          setDraft({ ...draft, [row.currency]: "" });
-                          router.refresh();
-                        });
-                      }}
-                    >
-                      {pinned ? <Lock className="size-4" /> : <Unlock className="size-4" />}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })
-      )}
+                    },
+                  }
+                : null
+            }
+          />
+        );
+      })}
 
-      {rows ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {/* NO dice «dólar»: esa fila es el precio y no lleva candado. Lo
-              decía, y era una frase que describe un control que no está —
-              encontrado mirando la pantalla el 2026-10-10. */}
-          Las equivalencias se calculan con la tasa del día. Puedes fijar la de euro o la de
-          USDT; la de bolívares no, porque la tasa se mueve y ese número dejaría de cuadrar con
-          los demás al día siguiente.
-        </p>
-      ) : null}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {/* NO dice «dólar»: esa fila es el precio y no lleva vínculo. */}
+        Las equivalencias se calculan con la tasa del día. Puedes desvincular la de euro o la de
+        USDT y escribir tu propio precio; la de bolívares no, porque la tasa se mueve y ese
+        número dejaría de cuadrar con los demás al día siguiente.
+      </p>
     </div>
   );
 }
 
+// UNA FILA: bandera, etiqueta y una caja con el importe. El control de vínculo
+// vive DENTRO de la caja, como en el frame, y no como un botón suelto al lado.
 function PriceField({
+  currency,
   label,
   value,
   onChange,
+  onCommit,
+  readOnly,
   disabled,
   inputId,
+  link,
 }: {
+  currency: PriceCurrency;
   label: string;
   value: string;
-  onChange: (next: string) => void;
+  onChange?: (next: string) => void;
+  onCommit?: () => void;
+  readOnly?: boolean;
   disabled: boolean;
   inputId: string;
+  link?: {
+    linked: boolean;
+    disabled: boolean;
+    onToggle: () => void;
+  } | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <Label htmlFor={inputId} className="shrink-0 text-xs font-normal text-muted-foreground">
-        {label}
+      <Label
+        htmlFor={inputId}
+        className="flex min-w-0 shrink items-center gap-1.5 text-xs font-normal text-muted-foreground"
+      >
+        {currency === "COP" ? null : (
+          <CurrencyFlagIcon currency={currency as "USD" | "EUR" | "VES" | "USDT"} />
+        )}
+        <span className="truncate">{label}</span>
       </Label>
-      <Input
-        id={inputId}
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="00.00"
-        disabled={disabled}
-        className="h-10 w-36 text-right tabular-nums"
-      />
+
+      <div className="relative shrink-0">
+        <Input
+          id={inputId}
+          inputMode="decimal"
+          value={value}
+          readOnly={readOnly}
+          disabled={disabled}
+          onChange={(e) => onChange?.(e.target.value)}
+          onBlur={() => onCommit?.()}
+          placeholder="00.00"
+          className={`h-10 w-36 text-right tabular-nums ${link ? "pr-9" : ""} ${
+            readOnly ? "bg-muted/50" : ""
+          }`}
+        />
+        {link ? (
+          <button
+            type="button"
+            disabled={link.disabled}
+            onClick={link.onToggle}
+            aria-label={
+              link.linked
+                ? `Desvincular el precio en ${currency} y escribirlo a mano`
+                : `Volver a calcular el precio en ${currency}`
+            }
+            className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+          >
+            {link.linked ? <Link2 className="size-4" /> : <Link2Off className="size-4" />}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

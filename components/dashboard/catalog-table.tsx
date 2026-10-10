@@ -294,12 +294,18 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
           <span className="text-sm tabular-nums">
             {formatPriceAmount(price.amount, product.base_currency)}
           </span>
-          {/* DICE DE QUE PRECIO SE TRATA cuando no es el de detal. Un numero
-              sin etiqueta al lado de otro que resulta ser el de mayor es
-              exactamente como se canta el precio equivocado leyendo la propia
-              pantalla. */}
-          <span className="text-xs text-muted-foreground">
-            {price.tier === "wholesale" ? "al mayor" : product.unit ? product.unit : "al detal"}
+          {/* DICE SIEMPRE DE QUE PRECIO SE TRATA, y desde el 2026-10-10 hace
+              mas falta: la tarjeta ensena el MAS BAJO de los dos, asi que en
+              un producto con los dos precios lo normal es que sea el de mayor.
+              Un numero sin etiqueta al lado de otro que resulta ser el de
+              mayor es exactamente como se canta el precio equivocado leyendo
+              la propia pantalla.
+
+              La unidad se queda detras en vez de desaparecer: antes se perdia
+              en cuanto el escalon era "al mayor". */}
+          <span className="truncate text-xs text-muted-foreground">
+            {price.tier === "wholesale" ? "al mayor" : "al detal"}
+            {product.unit ? ` · ${product.unit}` : ""}
           </span>
         </div>
       </button>

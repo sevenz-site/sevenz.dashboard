@@ -260,16 +260,17 @@ export default async function CatalogoPublicoPage({
                       {formatBs(bs.amount)}
                     </span>
                   ) : null}
-                  {/* Solo cuando el numero NO es del escalon del enlace. En un
-                      enlace de detal, repetir «al detal» en cada tarjeta es
-                      ruido; decirlo cuando es el precio de mayor no lo es. */}
-                  {p.price_tier !== shared.tier ? (
-                    <span className="text-xs text-muted-foreground">
-                      {p.price_tier === "wholesale" ? "precio al mayor" : "precio al detal"}
-                    </span>
-                  ) : p.unit ? (
-                    <span className="text-xs text-muted-foreground">{p.unit}</span>
-                  ) : null}
+                  {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA. Antes solo
+                      cuando no coincidia con el escalon del enlace, y eso
+                      dejo de tener sentido con la migracion 086: la tarjeta
+                      ensena el MAS BAJO de los escalones publicados, asi que
+                      en el enlace de detal lo normal pasa a ser el precio de
+                      mayor. Callarlo seria dejar al cliente adivinando a que
+                      precio le estan ofreciendo la cosa. */}
+                  <span className="text-xs text-muted-foreground">
+                    {p.price_tier === "wholesale" ? "precio al mayor" : "precio al detal"}
+                    {p.unit ? ` · ${p.unit}` : ""}
+                  </span>
                   {p.description ? (
                     <span className="line-clamp-3 pt-1 text-xs leading-relaxed text-muted-foreground">
                       {p.description}

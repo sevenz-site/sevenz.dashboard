@@ -257,13 +257,23 @@ try {
   const enDetal = (catDetal?.products ?? []).find((p) => p.id === visible.id);
   const enMayor = (catMayor?.products ?? []).find((p) => p.id === visible.id);
 
+  // EL PRECIO MAS BAJO DE LOS ESCALONES PUBLICADOS, en los DOS enlaces.
+  //
+  // Decisión del dueño el 2026-10-10 (migración 086). `visible` tiene 13 al
+  // detal y 11 al mayor y está publicado en los dos, así que los dos enlaces
+  // enseñan 11 y lo dicen con `price_tier`.
+  //
+  // Hasta el 2026-10-10 esta misma prueba esperaba 13 en el de detal: ese era
+  // el diseño anterior, dos listas de precios para dos audiencias. Se deja
+  // dicho aquí porque la diferencia entre los dos enlaces dejó de ser el
+  // precio y pasó a ser qué productos incluye cada uno — ver 7b y 7c.
   check(
-    "4b. el enlace de DETAL enseña el precio de detal",
-    enDetal != null && Number(enDetal.price) === 13 && enDetal.price_tier === "retail",
+    "4b. el enlace de DETAL enseña el precio más bajo de los publicados",
+    enDetal != null && Number(enDetal.price) === 11 && enDetal.price_tier === "wholesale",
     enDetal ? `price=${enDetal.price} tier=${enDetal.price_tier}` : "sin producto",
   );
   check(
-    "4c. el enlace de MAYOR enseña el precio de mayor",
+    "4c. el de MAYOR enseña el mismo, porque también es el más bajo",
     enMayor != null && Number(enMayor.price) === 11 && enMayor.price_tier === "wholesale",
     enMayor ? `price=${enMayor.price} tier=${enMayor.price_tier}` : "sin producto",
   );
@@ -280,6 +290,35 @@ try {
       Number(soloEnDetal.price) === 7 &&
       soloEnDetal.price_tier === "wholesale",
     soloEnDetal ? `tier=${soloEnDetal.price_tier}` : "desapareció",
+  );
+
+  // UN ESCALÓN NO PUBLICADO NO ES CANDIDATO, aunque su precio sea el más bajo.
+  //
+  // Es la mitad de la regla que protege al tendero: «el más bajo» no puede
+  // significar «el más bajo que tengas apuntado», porque entonces publicar al
+  // detal filtraría el precio de mayorista a cualquiera con el enlace. Solo
+  // compiten los escalones que él marcó.
+  const { data: mayorOculto } = await admin
+    .from("products")
+    .insert({
+      owner_id: ownerId,
+      name: `${MARCA} zz mayor sin publicar`,
+      base_currency: "USD",
+      price_retail: 20,
+      price_wholesale: 6,
+      published_retail: true,
+      published_wholesale: false,
+    })
+    .select("id")
+    .single();
+  creados.push(mayorOculto.id);
+
+  const { data: catOculto } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
+  const oculto = (catOculto?.products ?? []).find((p) => p.id === mayorOculto.id);
+  check(
+    "4f. un escalón NO publicado no se cuela aunque sea más barato",
+    oculto != null && Number(oculto.price) === 20 && oculto.price_tier === "retail",
+    oculto ? `price=${oculto.price} tier=${oculto.price_tier}` : "desapareció",
   );
 
   const PROHIBIDAS = [
@@ -306,24 +345,30 @@ try {
   // (ver 7e). Pero el candado sí tiene que llegar hasta aquí, porque es lo
   // único que hace que signifique algo — el tendero lo cerró precisamente
   // para que su cliente viera ESE número, no la conversión del día.
+  // Se fija en el escalón DEL PRECIO ELEGIDO, que para este producto es el de
+  // mayor (11 < 13). Es la parte sutil de la 086: los candados se leen del
+  // escalón que ganó, no del escalón del enlace.
   await admin.from("product_price_overrides").upsert(
-    { product_id: visible.id, tier: "retail", currency: "USDT", amount: 11 },
+    { product_id: visible.id, tier: "wholesale", currency: "USDT", amount: 9 },
     { onConflict: "product_id,tier,currency" },
   );
+  // Y uno en el escalón que NO ganó, que no debe aparecer por ningún enlace.
+  await admin.from("product_price_overrides").upsert(
+    { product_id: visible.id, tier: "retail", currency: "EUR", amount: 99 },
+    { onConflict: "product_id,tier,currency" },
+  );
+
   const { data: catPin } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
   const conPin = (catPin?.products ?? []).find((p) => p.id === visible.id);
   check(
     "6a. el precio fijado en USDT llega al catálogo público",
-    conPin != null && Number(conPin.pinned?.USDT) === 11,
+    conPin != null && Number(conPin.pinned?.USDT) === 9,
     conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
-  // Y el del OTRO escalón no se cuela: el candado es por escalón.
-  const { data: catPinMayor } = await anon.rpc("get_shared_catalog", { p_token: mayor.token });
-  const pinMayor = (catPinMayor?.products ?? []).find((p) => p.id === visible.id);
   check(
-    "6b. el candado del otro escalón NO aparece",
-    pinMayor != null && pinMayor.pinned?.USDT === undefined,
-    pinMayor ? JSON.stringify(pinMayor.pinned) : "sin producto",
+    "6b. el candado del escalón que NO ganó no aparece",
+    conPin != null && conPin.pinned?.EUR === undefined,
+    conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
 
   // ── 7. Sin publicar, por escalón, y en la papelera ─────────────────────

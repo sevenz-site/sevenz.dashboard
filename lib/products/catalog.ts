@@ -93,6 +93,24 @@ export async function getBolivarRates(effectiveRate: {
     // A missing equivalence must never take the catalogue down with it.
     console.error("[getBolivarRates] usdt:", error instanceof Error ? error.message : error);
   }
+  // ───────────────────────────────────────────────────────────────────────
+  // CUANDO CRIPTOYA NO RESPONDE, LA FILA DE USDT SE QUEDA EN «—».
+  //
+  // Owner's decision, 2026-10-10, after seeing it happen on screen: the rate
+  // keeps coming from CriptoYa, and a failure keeps showing the dash. He asked
+  // for this to be written down so we can decide what to do about it later —
+  // it is CT-63.
+  //
+  // What was rejected, and why it matters: falling back to 1 USDT = 1 USD. It
+  // is the obvious patch and it is the dangerous one, because the number would
+  // change meaning without saying so — 43,8 one day and 50 the next with
+  // nothing touched, and no way for a shopkeeper to tell which is the real
+  // one. A dash is honest; a wrong number is not.
+  //
+  // What the dash costs today: the shopkeeper filling in a product sees an
+  // empty row and cannot tell whether USDT is unsupported, still loading, or
+  // broken. That is the part worth improving, and the cheapest improvement is
+  // words rather than a number.
   return { usd: effectiveRate.usd, eur: effectiveRate.eur, usdt };
 }
 
@@ -120,14 +138,22 @@ export function isPublished(p: ProductRow): boolean {
 }
 
 /**
- * The price the catalogue list shows for a product, and which tier it is.
+ * The price the catalogue card shows for a product, and which tier it is.
  *
- * Retail when there is one, wholesale otherwise. The table requires one of the
- * two, so there is always an answer — and saying WHICH one matters: a figure
- * labelled nothing, next to a figure that happens to be wholesale, is how a
+ * THE LOWEST OF THE TWO. Owner's decision, 2026-10-10, and the same rule the
+ * public page now follows (migration 086). It used to be "retail if there is
+ * one", which is the HIGHER of the two whenever a product has both.
+ *
+ * Saying WHICH tier it is matters more than ever now: a figure labelled
+ * nothing, next to a figure that happens to be the wholesale one, is how a
  * shopkeeper quotes the wrong price off their own screen.
+ *
+ * The table requires one of the two prices, so there is always an answer.
  */
 export function listPrice(p: ProductRow): { amount: number; tier: PriceTier } {
-  if (p.price_retail != null) return { amount: p.price_retail, tier: "retail" };
-  return { amount: p.price_wholesale!, tier: "wholesale" };
+  if (p.price_retail == null) return { amount: p.price_wholesale!, tier: "wholesale" };
+  if (p.price_wholesale == null) return { amount: p.price_retail, tier: "retail" };
+  return p.price_wholesale < p.price_retail
+    ? { amount: p.price_wholesale, tier: "wholesale" }
+    : { amount: p.price_retail, tier: "retail" };
 }
