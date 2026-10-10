@@ -101,6 +101,8 @@ export type ProductInput = {
   marginRetailPct: string | null;
   marginWholesalePct: string | null;
   stockOpening: string | null;
+  // La cantidad a partir de la cual aplica el precio de mayor (migracion 088).
+  wholesaleMinQuantity: string | null;
   publishedRetail: boolean;
   publishedWholesale: boolean;
   photoPath: string | null;
@@ -143,6 +145,11 @@ function validate(input: ProductInput): { error: string } | Checked {
   const stock = toNumber(input.stockOpening);
   if (stock != null && stock < 0) return { error: "La cantidad no puede ser negativa." };
 
+  const minQty = toNumber(input.wholesaleMinQuantity);
+  if (minQty != null && minQty <= 0) {
+    return { error: "La cantidad mínima para el precio al mayor tiene que ser mayor que cero." };
+  }
+
   return { name, currencies, base };
 }
 
@@ -167,6 +174,9 @@ function rowFrom(input: ProductInput, checked: Checked, userId: string) {
     margin_wholesale_pct: toNumber(input.marginWholesalePct),
     stock_opening: stock,
     stock_opening_at: stock == null ? null : new Date().toISOString(),
+    // `|| null` y no el número tal cual: un 0 significa «sin mínimo», y eso ya
+    // lo dice el null. La 088 lo rechaza con un check por la misma razón.
+    wholesale_min_quantity: toNumber(input.wholesaleMinQuantity) || null,
     published_retail: input.publishedRetail,
     published_wholesale: input.publishedWholesale,
     photo_path: ownPhotoPath(input.photoPath, userId),

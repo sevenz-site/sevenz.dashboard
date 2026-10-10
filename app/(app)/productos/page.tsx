@@ -17,7 +17,7 @@ import {
   type PriceOverrideRow,
   type ProductCurrencyRow,
 } from "@/lib/products/catalog";
-import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import type { BolivarRates, CostCurrency, PriceCurrency } from "@/lib/products/price";
 
 // EL CATÁLOGO. Primera pantalla de la etapa 1 de inventario.
 //
@@ -51,6 +51,7 @@ export default async function ProductosPage({
     { data: products, error: productsError },
     { data: overrides },
     { data: currencies },
+    { data: ultimoCosto },
     { data: owner },
     country,
     rateContext,
@@ -63,6 +64,21 @@ export default async function ProductosPage({
         .order("name"),
       supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
       supabase.from("product_currencies").select("product_id, currency"),
+      // LA ULTIMA MONEDA DE COSTO QUE USO ESTE NEGOCIO.
+      //
+      // Sale de su propio historial y NO del navegador, a proposito: iOS
+      // Safari borra `localStorage` tras un tiempo de inactividad, y entonces
+      // la ficha «olvidaria» lo que el tendero lleva meses haciendo. Es la
+      // regla de CLAUDE.md sobre no apoyarse en el navegador para nada que
+      // importe, y el mismo criterio que `moneda-habitual.ts`.
+      supabase
+        .from("products")
+        .select("cost_currency")
+        .eq("owner_id", user!.id)
+        .not("cost_currency", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
       supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
@@ -131,6 +147,7 @@ export default async function ProductosPage({
           loadFailed={productsError != null}
           overrides={(overrides ?? []) as PriceOverrideRow[]}
           currencies={(currencies ?? []) as ProductCurrencyRow[]}
+          lastCostCurrency={(ultimoCosto?.cost_currency as CostCurrency | null) ?? null}
           rates={rates}
           defaultCurrency={defaultCurrency}
           ownerId={user!.id}

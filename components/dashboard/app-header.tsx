@@ -42,7 +42,17 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     pathname === "/clients" ||
     pathname.startsWith("/clients/") ||
     pathname.startsWith("/malas-pagas") ||
-    pathname.startsWith("/papelera");
+    pathname.startsWith("/papelera") ||
+    // Catálogo, desde el 2026-10-10. Se añadió tarde: la pantalla salió el día
+    // anterior con `ScreenHeader` y SIN tocar esta lista, así que pintaba las
+    // dos barras — exactamente lo que el comentario de abajo cuenta que le
+    // pasó a `/papelera`. Lo reportó el dueño como «te inventaste un header
+    // blanco».
+    //
+    // Es la clase de fallo que no se ve escribiendo la pantalla: la barra de
+    // más la pone OTRO componente, y el que escribe la pantalla nueva no tiene
+    // ninguna razón para abrir este archivo.
+    pathname.startsWith("/productos");
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries

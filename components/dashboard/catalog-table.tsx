@@ -10,7 +10,12 @@ import { Switch } from "@/components/ui/switch";
 import { CatalogProductDialog } from "@/components/dashboard/catalog-product-dialog";
 import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
 import { setProductPublished } from "@/app/(app)/productos/actions";
-import { formatPriceAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import {
+  formatPriceAmount,
+  type BolivarRates,
+  type CostCurrency,
+  type PriceCurrency,
+} from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   currenciesOf,
@@ -55,6 +60,7 @@ import {
 export function CatalogTable({
   overrides,
   currencies,
+  lastCostCurrency,
   rates,
   defaultCurrency,
   ownerId,
@@ -64,6 +70,10 @@ export function CatalogTable({
   overrides: PriceOverrideRow[];
   // Las monedas activas de cada producto. Ver la migración 087.
   currencies: ProductCurrencyRow[];
+  // La ultima moneda de costo que uso este negocio, para que un producto
+  // nuevo abra con ella. Ver la pagina: sale de su historial, no del
+  // navegador.
+  lastCostCurrency: CostCurrency | null;
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
   ownerId: string;
@@ -116,6 +126,7 @@ export function CatalogTable({
       defaultCurrency={defaultCurrency}
       overrides={{ retail: {}, wholesale: {} }}
       initialCurrencies={[defaultCurrency]}
+      lastCostCurrency={lastCostCurrency}
       ownerId={ownerId}
     />
   );
@@ -228,6 +239,7 @@ export function CatalogTable({
           defaultCurrency={defaultCurrency}
           overrides={overridesByTier(overrides, editing.id)}
           initialCurrencies={currenciesOf(currencies, editing.id, editing.base_currency)}
+          lastCostCurrency={lastCostCurrency}
           ownerId={ownerId}
         />
       ) : null}

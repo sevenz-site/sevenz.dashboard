@@ -48,19 +48,27 @@ export function CatalogShare({
 
   return (
     <>
-      {/* Elemento plano con clases explicitas y no `Button variant="outline"`:
-          vive dentro de la cabecera oscura, sobre `--brand-primary`, y
-          `outline` trae `bg-background` —blanco en el tema claro— asi que
-          pintaria una losa blanca sobre #272727. Mismo motivo que el boton de
-          WhatsApp de la ficha del cliente y que los chips de filtro. */}
-      <button
+      {/* MISMO ASPECTO QUE «SUBIR LIBRETA» en la cabecera de Clientes, a
+          petición del dueño el 2026-10-10: texto e icono, sin recuadro. Antes
+          llevaba borde y se leía como la acción principal de la pantalla,
+          cuando la principal es crear un producto.
+
+          Las clases salen de la variante `dark` de `ImportarCartera` y se
+          copian en vez de importarse porque ese componente abre una hoja de
+          subir fotos — lo compartible es el aspecto, no el comportamiento.
+          Ninguno de esos colores es un token semántico, por lo de siempre:
+          sobre un fondo que no se invierte con el tema, un color que sí lo
+          hace rompe el contraste en silencio. */}
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen(true)}
-        className="flex h-10 shrink-0 items-center gap-2 rounded-lg border border-brand-field-border px-3 text-sm text-white outline-none transition-colors hover:bg-white/10 focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"
+        className="h-auto shrink-0 px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
       >
-        <Share2 className="size-4" aria-hidden="true" />
+        <Share2 aria-hidden="true" />
         Compartir
-      </button>
+      </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">

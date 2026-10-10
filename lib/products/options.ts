@@ -6,37 +6,17 @@
 // second vocabulary for the same thing.
 
 // ───────────────────────────────────────────────────────────────────────────
-// UNITS
+// EL CAMPO «UNIDAD» YA NO EXISTE, y aquí estaba su lista.
 //
-// The frame's five: Unidad, Docena, Bulto, Kilo, Otro.
+// Salió del formulario el 2026-10-10 con el frame 1192:4185, decisión del
+// dueño. `UNIT_OPTIONS` y `unitPlural` se borraron con él en vez de quedarse
+// «por si acaso»: código muerto que nadie llama es código que nadie actualiza
+// y que el siguiente lector cree que está en uso.
 //
-// `unit` in the database stays free text (083 did not constrain it), and that
-// is deliberate even now that the UI is a picker: "Otro" has to put SOMETHING
-// in that column, and the shopkeeper's own word for it is better than a bucket
-// label. The picker is guidance; the column is whatever was chosen or typed.
+// LA COLUMNA `products.unit` SE QUEDA. Los productos que ya la tienen la
+// conservan, el catálogo público la sigue enseñando y la ficha la reenvía tal
+// cual al guardar. Lo que desapareció es la pregunta, no el dato.
 //
-// Still no conversion between units — see CT-51. A shopkeeper who buys by the
-// dozen and sells by the unit has to pick which one they count in.
-export const UNIT_OPTIONS = ["Unidad", "Docena", "Bulto", "Kilo"] as const;
-
-// What `(unidad)` reads as beside the quantity stepper. The frame annotates it:
-// «Valor entre paréntesis '(unidad)' depende de la unidad seleccionada».
-//
-// Plural, because it always follows a number greater than one in practice, and
-// because "12 (unidad)" reads as a typo. The singular case is worth less than
-// the plural one looking wrong on every other product.
-const UNIT_PLURALS: Record<string, string> = {
-  Unidad: "unidades",
-  Docena: "docenas",
-  Bulto: "bultos",
-  Kilo: "kilos",
-};
-
-export function unitPlural(unit: string | null): string {
-  if (!unit) return "unidades";
-  return UNIT_PLURALS[unit] ?? unit.toLowerCase();
-}
-
 // ───────────────────────────────────────────────────────────────────────────
 // MARGIN PRESETS
 //

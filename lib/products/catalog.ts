@@ -30,6 +30,8 @@ export type ProductRow = {
   // not decrement it. `_opening` is in the name so that nothing reads it as
   // "the stock right now" — see the migration's own note.
   stock_opening: number | null;
+  // La cantidad desde la que aplica el precio de mayor. Migracion 088.
+  wholesale_min_quantity: number | null;
   stock_opening_at: string | null;
   // PUBLICAR ES POR ESCALON desde la 085. El frame 1187:3728 pone un
   // interruptor y dos casillas: un producto puede estar en el catalogo de
@@ -80,6 +82,7 @@ export const PRODUCT_COLUMNS =
   "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
   "cost_currency, cost_currency_other, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
+  "wholesale_min_quantity, " +
   "published_retail, published_wholesale, photo_path, description";
 
 // THE USDT PRICE IS ASKED FOR ONCE A MINUTE, NOT ONCE PER RENDER.
