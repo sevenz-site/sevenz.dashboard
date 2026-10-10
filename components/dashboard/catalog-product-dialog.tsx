@@ -151,8 +151,17 @@ export function CatalogProductDialog({
   const [priceWholesale, setPriceWholesale] = useState(
     formatAmountForInput(product?.price_wholesale),
   );
-  const [marginRetail, setMarginRetail] = useState(DEFAULT_MARGIN.retail);
-  const [marginWholesale, setMarginWholesale] = useState(DEFAULT_MARGIN.wholesale);
+  // EL MARGEN GUARDADO MANDA SOBRE EL VALOR POR DEFECTO al abrir una ficha que
+  // ya existe. Si no, corregir el costo de un producto con 20 % de margen se
+  // lo subiría a 30 % sin que nadie lo pidiera — ver `handleCost`.
+  const [marginRetail, setMarginRetail] = useState(
+    product?.margin_retail_pct != null ? String(product.margin_retail_pct) : DEFAULT_MARGIN.retail,
+  );
+  const [marginWholesale, setMarginWholesale] = useState(
+    product?.margin_wholesale_pct != null
+      ? String(product.margin_wholesale_pct)
+      : DEFAULT_MARGIN.wholesale,
+  );
   const [minQty, setMinQty] = useState(formatAmountForInput(product?.wholesale_min_quantity));
 
   const [fixed, setFixed] = useState<Record<PriceTier, Partial<Record<PriceCurrency, string>>>>({
@@ -206,17 +215,33 @@ export function CatalogProductDialog({
     if (next.trim() !== "") setCostoFaltante(false);
     const c = parseAmount(next);
     if (c == null || c <= 0 || costCurrency === "OTHER" || !rates) return;
-    // Rellena los precios que estén VACIOS, y solo esos: corregir el costo de
-    // un producto viejo no puede reescribirle por detrás un precio que alguien
-    // puso a mano.
-    if (priceRetail.trim() === "") {
-      const p = priceFromCost(c, costCurrency, Number(marginRetail), base, rates);
-      if (p != null) setPriceRetail(formatAmountForInput(p));
-    }
-    if (priceWholesale.trim() === "") {
-      const p = priceFromCost(c, costCurrency, Number(marginWholesale), base, rates);
-      if (p != null) setPriceWholesale(formatAmountForInput(p));
-    }
+
+    // RECALCULA SIEMPRE, no solo los precios vacíos. Lo pidió el dueño el
+    // 2026-10-10 tras ver la pantalla: con el costo en 50 y un 6,5 viejo en el
+    // precio, el margen salía como «Otro» y la cifra se quedaba ahí sin que
+    // nada la explicara.
+    //
+    // Antes esto solo rellenaba los huecos, para no reescribir un precio
+    // puesto a mano. La contrapartida de cambiarlo, y conviene saberla:
+    // corregir el costo de un producto que ya existe le recalcula los dos
+    // precios. Se recalculan CON SU MARGEN GUARDADO, no con el 30/15 por
+    // defecto, así que un producto al 20 % se queda al 20 % — eso es lo que
+    // hace que esto sea aceptable y no una sorpresa.
+    //
+    // Un escalón con precios fijados a mano por moneda se queda fuera: ahí el
+    // margen no manda, y su desplegable está apagado por lo mismo.
+    const recalcular = (
+      margen: string,
+      fijos: Partial<Record<PriceCurrency, string>>,
+      set: (v: string) => void,
+    ) => {
+      const hayFijos = currencies.some((x) => x !== base && (fijos[x] ?? "").trim() !== "");
+      if (hayFijos) return;
+      const p = priceFromCost(c, costCurrency, Number(margen), base, rates);
+      if (p != null) set(formatAmountForInput(p));
+    };
+    recalcular(marginRetail, fixed.retail, setPriceRetail);
+    recalcular(marginWholesale, fixed.wholesale, setPriceWholesale);
   }
 
   function agregarMoneda(c: PriceCurrency) {
@@ -360,7 +385,11 @@ export function CatalogProductDialog({
           />
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="producto_costo">Costo</Label>
+            {/* «Costo unitario» y no «Costo», a petición del dueño el
+                2026-10-10: el campo de arriba pregunta cuántas unidades hay,
+                así que «Costo» a secas se lee como el costo de todas ellas.
+                Lo que Sevenz necesita para calcular un precio es el de UNA. */}
+            <Label htmlFor="producto_costo">Costo unitario</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="producto_costo"
@@ -767,10 +796,21 @@ function TierSection({
   // salida es volver a enlazarla, que es un gesto visible y no un callejón.
   const hayFijos = currencies.some((c) => c !== base && (fixed[c] ?? "").trim() !== "");
 
-  // El desplegable NO se apaga por falta de costo: el dueño pidió que al
-  // intentarlo se señale el costo en rojo. Apagarlo escondería qué falta.
-  const selectValue =
-    costUsable && derived != null
+  // EL DESPLEGABLE NO ENSEÑA UN PORCENTAJE SI DE AHI NO SALE NINGUN NUMERO.
+  //
+  // Reportado por el dueño el 2026-10-10: con la moneda del costo en «Otro»
+  // —de la que no tenemos tasa— la ficha seguía diciendo «30 %». Ese 30 % no
+  // calculaba nada, pero se leía como si el precio de abajo saliera de él.
+  //
+  // Sin costo pasa lo mismo, así que las dos situaciones comparten respuesta:
+  // «Otro (escribe el precio)», que es exactamente lo que está ocurriendo.
+  //
+  // El desplegable sigue sin apagarse por falta de costo: el dueño pidió que
+  // al intentar elegir se señale el costo en rojo, y un control apagado no
+  // dice qué falta.
+  const selectValue = !costUsable
+    ? "otro"
+    : derived != null
       ? (MARGIN_PRESETS as readonly number[]).includes(derived)
         ? String(derived)
         : "otro"
@@ -975,17 +1015,25 @@ function PriceRows({
             <CurrencyFlagIcon currency={currency as "USD" | "EUR" | "USDT"} />
             <span className="truncate">Precio {CURRENCY_LABEL[currency] ?? currency}</span>
           </Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-10 w-32 shrink-0"
-            disabled={disabled}
-            onClick={() => onAddCurrency(currency)}
-          >
-            <Plus className="size-4" /> Agregar
-          </Button>
-          <span className="inline-block size-6 shrink-0" aria-hidden="true" />
+          {/* EL MISMO ENVOLTORIO QUE UNA FILA ACTIVA, y esto no es cosmética:
+              la fila activa agrupa su campo y el hueco de la papelera con
+              `gap-1`, y esta los tenía sueltos dentro del `gap-2` de la fila.
+              Cuatro píxeles de diferencia, suficientes para que el botón
+              «Agregar» no cuadrara con el campo de arriba. Reportado por el
+              dueño el 2026-10-10 como «alineados a la derecha». */}
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10 w-32 shrink-0"
+              disabled={disabled}
+              onClick={() => onAddCurrency(currency)}
+            >
+              <Plus className="size-4" /> Agregar
+            </Button>
+            <span className="inline-block size-6" aria-hidden="true" />
+          </div>
         </div>
       ))}
 
