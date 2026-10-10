@@ -525,6 +525,35 @@ try {
     (monedas ?? []).map((m) => m.currency).join(","),
   );
 
+  // ── 7h. El rastro de la papelera (migración 090) ───────────────────────
+  //
+  // Es el único camino de vuelta que hoy tiene un producto borrado: la
+  // papelera no sabe pintarlos (CT-44), así que si esta fila no se escribe, el
+  // botón «Restaurar» de la notificación no existe y borrar es una puerta de
+  // un solo sentido.
+  await admin
+    .from("product_hides")
+    .insert({ product_id: visible.id, owner_id: ownerId, action: "trashed" });
+
+  const { error: eAccion } = await admin
+    .from("product_hides")
+    .insert({ product_id: visible.id, owner_id: ownerId, action: "hidden" });
+  check(
+    "7h. `product_hides` solo admite las transiciones que la pantalla sabe pintar",
+    eAccion != null && eAccion.code === "23514",
+    eAccion ? eAccion.code : "entró 'hidden'",
+  );
+
+  const { data: rastros, error: eAnonHides } = await anon
+    .from("product_hides")
+    .select("id")
+    .limit(1);
+  check(
+    "7i. anon NO ve el rastro de la papelera de nadie",
+    eAnonHides != null || (rastros?.length ?? 0) === 0,
+    eAnonHides ? eAnonHides.code : `leyó ${rastros?.length} filas`,
+  );
+
   // ── 8. Un token inexistente ────────────────────────────────────────────
   const { data: nada, error: eNada } = await anon.rpc("get_shared_catalog", {
     p_token: "no-existe-este-token-de-prueba",
@@ -577,6 +606,16 @@ try {
     "12. borrar un producto se lleva sus monedas por cascada",
     monedasHuerfanas === 0,
     `quedan ${monedasHuerfanas}`,
+  );
+
+  const { count: rastrosHuerfanos } = await admin
+    .from("product_hides")
+    .select("product_id", { count: "exact", head: true })
+    .in("product_id", creados.length ? creados : ["00000000-0000-0000-0000-000000000000"]);
+  check(
+    "13. y también su rastro de papelera",
+    rastrosHuerfanos === 0,
+    `quedan ${rastrosHuerfanos}`,
   );
 
   const fallos = filas.filter((f) => !f.pasa).length;

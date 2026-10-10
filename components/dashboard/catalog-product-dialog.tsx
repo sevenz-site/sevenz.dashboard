@@ -18,6 +18,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -167,6 +177,25 @@ export function CatalogProductDialog({
   );
   const [minQty, setMinQty] = useState(formatAmountForInput(product?.wholesale_min_quantity));
 
+  // QUE SE VENDE: AL DETAL, AL MAYOR, O LAS DOS COSAS.
+  //
+  // Decisión del dueño el 2026-10-10. Un producto nuevo nace con las dos
+  // encendidas; uno que ya existe las deduce de si tiene ese precio.
+  //
+  // NO HAY COLUMNA NUEVA, y es deliberado: «no lo vendo al mayor» y «no tiene
+  // precio al mayor» son la misma cosa dicha dos veces, y un booleano aparte
+  // podría acabar contradiciendo al precio — un producto marcado «sí se vende
+  // al mayor» con la columna en null, o al revés. Apagar el interruptor manda
+  // `null` en ese precio; encenderlo deja escribirlo.
+  const [ventaRetail, setVentaRetail] = useState(
+    product == null ? true : product.price_retail != null,
+  );
+  const [ventaWholesale, setVentaWholesale] = useState(
+    product == null ? true : product.price_wholesale != null,
+  );
+
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
+
   const [fixed, setFixed] = useState<Record<PriceTier, Partial<Record<PriceCurrency, string>>>>({
     retail: Object.fromEntries(
       Object.entries(overrides.retail).map(([c, v]) => [c, formatAmountForInput(v)]),
@@ -259,6 +288,23 @@ export function CatalogProductDialog({
     recalcular(marginWholesale, fixed.wholesale, setPriceWholesale);
   }
 
+  // APAGAR LAS DOS DEJARIA UN PRODUCTO SIN NINGUN PRECIO, y la tabla exige
+  // uno (`products_at_least_one_price`). Se impide aquí, con una frase, en vez
+  // de dejar que el guardado falle: cuando falla, los dos campos que harían
+  // falta para arreglarlo están escondidos detrás de los interruptores que el
+  // tendero acaba de apagar.
+  function pedirVenta(tier: PriceTier, activa: boolean) {
+    if (!activa) {
+      const otra = tier === "retail" ? ventaWholesale : ventaRetail;
+      if (!otra) {
+        toast.error("Un producto tiene que venderse de alguna forma: al detal, al mayor o las dos.");
+        return;
+      }
+    }
+    if (tier === "retail") setVentaRetail(activa);
+    else setVentaWholesale(activa);
+  }
+
   function agregarMoneda(c: PriceCurrency) {
     setCurrencies((prev) => (prev.includes(c) ? prev : [...prev, c]));
   }
@@ -305,20 +351,23 @@ export function CatalogProductDialog({
     // la sigue enseñando, pero no se vuelve a pedir.
     unit: product?.unit ?? null,
     activeCurrencies: currencies,
-    priceRetail: priceRetail || null,
-    priceWholesale: priceWholesale || null,
-    fixedRetail: fixed.retail,
-    fixedWholesale: fixed.wholesale,
+    // Un escalón apagado no manda precio, ni precios por moneda, ni queda
+    // publicado. Si no, un producto que «ya no se vende al mayor» seguiría
+    // saliendo en el catálogo de mayorista con su precio de siempre.
+    priceRetail: ventaRetail ? priceRetail || null : null,
+    priceWholesale: ventaWholesale ? priceWholesale || null : null,
+    fixedRetail: ventaRetail ? fixed.retail : {},
+    fixedWholesale: ventaWholesale ? fixed.wholesale : {},
     cost: cost || null,
     costCurrency: cost.trim() === "" ? null : costCurrency,
     // Nada lo escribe desde el 2026-10-10. Ver la migración 089.
     costCurrencyOther: null,
-    marginRetailPct: marginOf(priceRetail)?.toString() ?? null,
-    marginWholesalePct: marginOf(priceWholesale)?.toString() ?? null,
+    marginRetailPct: ventaRetail ? (marginOf(priceRetail)?.toString() ?? null) : null,
+    marginWholesalePct: ventaWholesale ? (marginOf(priceWholesale)?.toString() ?? null) : null,
     stockOpening: stock || null,
     wholesaleMinQuantity: minQty || null,
-    publishedRetail: pubRetail,
-    publishedWholesale: pubWholesale,
+    publishedRetail: ventaRetail && pubRetail,
+    publishedWholesale: ventaWholesale && pubWholesale,
     photoPath,
     description: description || null,
   };
@@ -455,6 +504,9 @@ export function CatalogProductDialog({
             {...tierProps}
             tier="retail"
             label="Margen al detal"
+            ventaLabel="Venta al detal"
+            activa={ventaRetail}
+            onActivaChange={(v) => pedirVenta("retail", v)}
             price={priceRetail}
             onPriceChange={setPriceRetail}
             margin={marginRetail}
@@ -467,6 +519,9 @@ export function CatalogProductDialog({
             {...tierProps}
             tier="wholesale"
             label="Margen al mayor"
+            ventaLabel="Venta al mayor"
+            activa={ventaWholesale}
+            onActivaChange={(v) => pedirVenta("wholesale", v)}
             price={priceWholesale}
             onPriceChange={setPriceWholesale}
             margin={marginWholesale}
@@ -554,15 +609,7 @@ export function CatalogProductDialog({
               type="button"
               variant="destructiveText"
               disabled={saving}
-              onClick={() =>
-                startTransition(async () => {
-                  const r = await trashProduct(product!.id);
-                  if (r.error) return setError(r.error);
-                  onOpenChange(false);
-                  router.refresh();
-                  toast.success("Producto eliminado.");
-                })
-              }
+              onClick={() => setConfirmarBorrado(true)}
             >
               Eliminar producto
             </Button>
@@ -582,6 +629,42 @@ export function CatalogProductDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* BORRAR PREGUNTA ANTES, a petición del dueño el 2026-10-10. El botón
+          vivía junto a «Guardar» y borraba al primer toque, que en un teléfono
+          es un dedo mal puesto de distancia.
+
+          El texto NO dice «esta acción no se puede deshacer», porque sí se
+          puede: el producto va a la papelera y la notificación trae su botón
+          de restaurar (migración 090). Decirlo aquí es lo que convierte la
+          confirmación en información y no solo en un freno. */}
+      <AlertDialog open={confirmarBorrado} onOpenChange={setConfirmarBorrado}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar {product?.name ?? "el producto"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sale de tu catálogo y deja de verse en los enlaces que hayas compartido. Si te
+              arrepientes, puedes restaurarlo desde tus notificaciones.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                startTransition(async () => {
+                  const r = await trashProduct(product!.id);
+                  if (r.error) return setError(r.error);
+                  onOpenChange(false);
+                  router.refresh();
+                  toast.success("Producto eliminado.");
+                })
+              }
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
@@ -758,6 +841,9 @@ function Stepper({
 function TierSection({
   tier,
   label,
+  ventaLabel,
+  activa,
+  onActivaChange,
   price,
   onPriceChange,
   margin,
@@ -777,6 +863,9 @@ function TierSection({
 }: {
   tier: PriceTier;
   label: string;
+  ventaLabel: string;
+  activa: boolean;
+  onActivaChange: (v: boolean) => void;
   price: string;
   onPriceChange: (next: string) => void;
   margin: string;
@@ -829,6 +918,23 @@ function TierSection({
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">
+      {/* EL INTERRUPTOR VA ARRIBA Y MANDA SOBRE TODA LA TARJETA. Apagado, la
+          sección se pliega hasta esta fila — es la tarjeta cerrada del
+          mockup— y lo que hay debajo deja de existir para el guardado. */}
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={`venta_${tier}`} className="text-base">
+          {ventaLabel}
+        </Label>
+        <Switch
+          id={`venta_${tier}`}
+          checked={activa}
+          disabled={disabled}
+          onCheckedChange={onActivaChange}
+        />
+      </div>
+
+      {!activa ? null : (
+      <>
       <div className="flex flex-col gap-2">
         <Label htmlFor={`margen_${tier}`}>{label}</Label>
         <Select
@@ -907,6 +1013,8 @@ function TierSection({
           <strong className="text-foreground">{formatPercent(derived)}</strong>.
         </p>
       ) : null}
+      </>
+      )}
     </div>
   );
 }

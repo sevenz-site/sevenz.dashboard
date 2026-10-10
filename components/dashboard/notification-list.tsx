@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff } from "lucide-react";
+import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
 import type { NotificationItem } from "@/app/(app)/actions";
 import { restoreClient } from "@/app/(app)/clients/[id]/actions";
+import { restoreProduct } from "@/app/(app)/productos/actions";
 import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
 
 // The notification rows themselves, shared by the desktop header's popover
@@ -118,6 +119,8 @@ export function NotificationList({
                     </Button>
                   </div>
                 </>
+              ) : n.kind === "product_hidden" ? (
+                <ProductHideRow notification={n} />
               ) : (
                 <ClientHideRow notification={n} onRestored={handleClientRestored} />
               )}
@@ -172,6 +175,77 @@ function ClientHideRow({
     }
     onRestored(n.clientId);
     toast.success(`${n.clientName} volvió a tus clientes`);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <Icon
+        className={
+          n.action === "restored"
+            ? "mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+            : "mt-0.5 size-4 shrink-0 text-muted-foreground"
+        }
+      />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{formatDateTime(n.occurredAt)}</p>
+        {n.canRestore ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-1.5 h-7"
+            disabled={busy}
+            onClick={() => void handleRestore()}
+          >
+            {busy ? "Restaurando…" : "Restaurar"}
+          </Button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+// UN PRODUCTO A LA PAPELERA, Y DE VUELTA.
+//
+// Decisión del dueño el 2026-10-10. Es el mismo patrón que `ClientHideRow` y
+// no una variante: a un dueño, borrar un producto es el mismo gesto que
+// borrar un cliente a otra escala, así que se cuenta igual y se deshace igual.
+//
+// AQUÍ ESTÁ LA ÚNICA VUELTA QUE HOY TIENE UN PRODUCTO BORRADO. La papelera
+// todavía no sabe pintar productos — ver CT-44 —, así que si este botón no
+// existiera, borrar sería una puerta de un solo sentido. Cuando la papelera
+// los pinte, esto seguirá siendo el atajo, no el único camino.
+//
+// No lleva `onRestored` como la fila de cliente: esa lo necesita para apagar
+// el botón de OTRAS filas del mismo cliente en la misma lista. Un producto
+// borrado dos veces seguidas es mucho más raro, y `router.refresh()` deja la
+// lista correcta de todas formas; añadir el estado compartido sería pagar por
+// un caso que no se da.
+function ProductHideRow({
+  notification: n,
+}: {
+  notification: Extract<NotificationItem, { kind: "product_hidden" }>;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const Icon = n.action === "restored" ? RotateCcw : Package;
+  const label =
+    n.action === "restored"
+      ? `Restauraste ${n.productName}`
+      : `Eliminaste ${n.productName} de tu catálogo`;
+
+  async function handleRestore() {
+    setBusy(true);
+    const result = await restoreProduct(n.productId);
+    setBusy(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(`${n.productName} volvió a tu catálogo`);
     router.refresh();
   }
 

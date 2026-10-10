@@ -343,10 +343,18 @@ export async function setProductPublished(
   return { error: null };
 }
 
-// To the bin, not deleted. Same shape as a client: `trashed_at` instead of a
-// `delete`. See CT-44 — the bin still only knows how to paint clients, so for
-// now a product sent here shows up nowhere. It is done this way anyway because
-// the alternative is a real delete that cannot be undone.
+// A LA PAPELERA, NO BORRADO. Misma forma que un cliente: `trashed_at` en vez
+// de un `delete`. El dato sobrevive porque un producto borrado explica por qué
+// un movimiento viejo menciona algo que ya no está en el catálogo.
+//
+// Y DEJA RASTRO EN NOTIFICACIONES (migración 090), decisión del dueño el
+// 2026-10-10. Es el camino de vuelta: sin él, borrar es una puerta de un solo
+// sentido que el tendero descubre cuando ya no hay nada que hacer.
+//
+// El rastro NO hace fallar el borrado si no se escribe. Es la misma elección
+// que `trashClient`: perder una notificación es perder el atajo para
+// deshacer; hacer fallar el borrado por eso sería perder la acción que el
+// tendero sí pidió.
 export async function trashProduct(productId: string): Promise<ProductResult> {
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
@@ -363,7 +371,51 @@ export async function trashProduct(productId: string): Promise<ProductResult> {
     return { error: "No pudimos eliminar el producto. Intenta de nuevo." };
   }
 
+  const { error: hideError } = await supabase.from("product_hides").insert({
+    product_id: productId,
+    owner_id: user.id,
+    action: "trashed",
+  });
+  if (hideError) console.error("[trashProduct] product_hides insert failed", hideError.message);
+
   revalidatePath("/productos");
+  revalidatePath("/notificaciones");
+  return { error: null };
+}
+
+/**
+ * Devuelve un producto de la papelera al catálogo.
+ *
+ * Se llama desde la notificación, que es el único sitio donde hoy se puede:
+ * la papelera todavía no sabe pintar productos (ver CT-44). Esa es justo la
+ * razón por la que la notificación tiene que llevar el botón — si no, un
+ * producto borrado no tendría ninguna vuelta.
+ */
+export async function restoreProduct(productId: string): Promise<ProductResult> {
+  const { supabase, user, ok } = await ownsProduct(productId);
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  if (!ok) return { error: "No encontramos ese producto." };
+
+  const { error } = await supabase
+    .from("products")
+    .update({ trashed_at: null })
+    .eq("id", productId)
+    .eq("owner_id", user.id);
+
+  if (error) {
+    console.error("[restoreProduct]", error.message);
+    return { error: "No pudimos restaurar el producto. Intenta de nuevo." };
+  }
+
+  const { error: hideError } = await supabase.from("product_hides").insert({
+    product_id: productId,
+    owner_id: user.id,
+    action: "restored",
+  });
+  if (hideError) console.error("[restoreProduct] product_hides insert failed", hideError.message);
+
+  revalidatePath("/productos");
+  revalidatePath("/notificaciones");
   return { error: null };
 }
 
