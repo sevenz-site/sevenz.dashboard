@@ -15,6 +15,7 @@ import {
   PRODUCT_COLUMNS,
   type ProductRow,
   type PriceOverrideRow,
+  type ProductCurrencyRow,
 } from "@/lib/products/catalog";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -49,6 +50,7 @@ export default async function ProductosPage({
   const [
     { data: products, error: productsError },
     { data: overrides },
+    { data: currencies },
     { data: owner },
     country,
     rateContext,
@@ -60,6 +62,7 @@ export default async function ProductosPage({
         .is("trashed_at", null)
         .order("name"),
       supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
+      supabase.from("product_currencies").select("product_id, currency"),
       supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
@@ -127,6 +130,7 @@ export default async function ProductosPage({
         <CatalogTable
           loadFailed={productsError != null}
           overrides={(overrides ?? []) as PriceOverrideRow[]}
+          currencies={(currencies ?? []) as ProductCurrencyRow[]}
           rates={rates}
           defaultCurrency={defaultCurrency}
           ownerId={user!.id}

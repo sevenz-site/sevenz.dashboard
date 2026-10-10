@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseAmount } from "@/lib/products/price";
-import type { PriceCurrency, PriceTier } from "@/lib/products/price";
+import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 
 export type ProductResult = { error: string | null; id?: string };
 
@@ -18,17 +18,17 @@ export type ProductResult = { error: string | null; id?: string };
 // found two functions leaning on it alone.
 //
 // `products` carries `owner_id`, so `.eq("owner_id", user.id)` is enough.
-// `product_price_overrides` does NOT, so it is checked against `products`
-// first, the same way `getOrCreateShareLink` checks against `clients`.
+// `product_price_overrides` and `product_currencies` do NOT, so both are
+// checked against `products` first, the same way `getOrCreateShareLink` checks
+// against `clients`.
 //
 // A STORAGE PATH IS ALSO AN ID FROM THE BROWSER. `photoPath` arrives as a
 // string the client assembled, so it is checked against the caller's own
-// folder before it is written — see `ownPhotoPath`. The storage policy already
-// stops an upload outside that folder, but nothing stops a crafted POST from
-// pointing this COLUMN at somebody else's object.
+// folder before it is written — see `ownPhotoPath`.
 
 const MAX_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_CURRENCY_LABEL = 24;
 
 function cleanName(value: string): string {
   return value.trim().slice(0, MAX_NAME_LENGTH);
@@ -47,16 +47,11 @@ function cleanDescription(value: string | null | undefined): string | null {
 // and saved. Found on 2026-10-10; see `parseAmount` for the rule and the cases.
 const toNumber = parseAmount;
 
-// Rejects a path that is not inside the caller's own folder. Returns undefined
-// for "leave it alone" and null for "clear it", which the callers below pass
-// straight through to the update.
+// Rejects a path that is not inside the caller's own folder.
 function ownPhotoPath(photoPath: string | null | undefined, userId: string): string | null {
   if (!photoPath) return null;
   const path = photoPath.trim();
   if (!path.startsWith(`${userId}/`)) {
-    // Not an error the shopkeeper can act on, and not one a legitimate client
-    // can produce. Dropping the value is enough; the product saves without a
-    // photo rather than failing in front of somebody who did nothing wrong.
     console.error("[products] photo path outside the owner's folder was discarded");
     return null;
   }
@@ -80,16 +75,29 @@ async function ownsProduct(productId: string) {
   return { supabase, user, ok: Boolean(data) };
 }
 
-// What both the full form and the inline shortcut send. Everything but `name`
-// and the two prices is optional, which is what keeps the second path
-// possible: a product born inside a fiado passes a name, a tier and a price,
-// and nothing else (owner's decision 11, 2026-10-09).
+// Las monedas en las que un producto puede llevar precio. VES no está: es la
+// moneda en la que el cliente paga, se enseña siempre calculada y no se
+// agrega ni se quita (migración 087).
+const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
+
+export type FixedPrices = Partial<Record<PriceCurrency, string>>;
+
 export type ProductInput = {
   name: string;
   unit: string | null;
+  // Las monedas que el producto maneja. La PRIMERA es la moneda base: la que
+  // va en `price_retail` / `price_wholesale` y la que lee todo lo de aguas
+  // abajo — la rejilla, el catálogo público, la tarjeta del cliente.
+  activeCurrencies: PriceCurrency[];
+  // El precio en la moneda base, por escalón.
   priceRetail: string | null;
   priceWholesale: string | null;
+  // Lo que el tendero fijó a mano en las OTRAS monedas, por escalón.
+  fixedRetail: FixedPrices;
+  fixedWholesale: FixedPrices;
   cost: string | null;
+  costCurrency: CostCurrency | null;
+  costCurrencyOther: string | null;
   marginRetailPct: string | null;
   marginWholesalePct: string | null;
   stockOpening: string | null;
@@ -99,12 +107,20 @@ export type ProductInput = {
   description: string | null;
 };
 
-// THE RULE THE TABLE ALSO ENFORCES, repeated here so the shopkeeper gets a
-// sentence instead of error 23514. The constraint stays in the database
-// because this is the convenience and that one is the guarantee.
-function validate(input: ProductInput): { error: string } | { name: string } {
+type Checked = { name: string; currencies: PriceCurrency[]; base: PriceCurrency };
+
+// THE RULES THE TABLE ALSO ENFORCES, repeated here so the shopkeeper gets a
+// sentence instead of error 23514. The constraints stay in the database
+// because this is the convenience and those are the guarantee.
+function validate(input: ProductInput): { error: string } | Checked {
   const name = cleanName(input.name);
   if (!name) return { error: "Escribe el nombre del producto." };
+
+  const currencies = input.activeCurrencies.filter((c) => SELLABLE.includes(c));
+  if (currencies.length === 0) {
+    return { error: "Deja al menos una moneda en el producto." };
+  }
+  const base = currencies[0];
 
   const retail = toNumber(input.priceRetail);
   const wholesale = toNumber(input.priceWholesale);
@@ -117,24 +133,36 @@ function validate(input: ProductInput): { error: string } | { name: string } {
 
   const cost = toNumber(input.cost);
   if (cost != null && cost <= 0) return { error: "El costo tiene que ser mayor que cero." };
+  if (cost != null && !input.costCurrency) {
+    return { error: "Dinos en qué moneda está ese costo." };
+  }
+  if (input.costCurrency === "OTHER" && !(input.costCurrencyOther ?? "").trim()) {
+    return { error: "Escribe el nombre de esa moneda." };
+  }
 
   const stock = toNumber(input.stockOpening);
   if (stock != null && stock < 0) return { error: "La cantidad no puede ser negativa." };
 
-  return { name };
+  return { name, currencies, base };
 }
 
-// The columns both writes share. `stock_opening_at` is stamped only when there
-// is a quantity: a date beside an empty number would read as "counted today,
-// found nothing" instead of "not counted".
-function rowFrom(input: ProductInput, name: string, userId: string) {
+function rowFrom(input: ProductInput, checked: Checked, userId: string) {
   const stock = toNumber(input.stockOpening);
+  const cost = toNumber(input.cost);
   return {
-    name,
+    name: checked.name,
     unit: input.unit?.trim() || null,
+    base_currency: checked.base,
     price_retail: toNumber(input.priceRetail),
     price_wholesale: toNumber(input.priceWholesale),
-    cost: toNumber(input.cost),
+    cost,
+    // El par va junto o no va: la 087 lo exige con un check, y aquí se
+    // construye entero para no depender de que el formulario acierte.
+    cost_currency: cost == null ? null : (input.costCurrency ?? null),
+    cost_currency_other:
+      cost != null && input.costCurrency === "OTHER"
+        ? (input.costCurrencyOther ?? "").trim().slice(0, MAX_CURRENCY_LABEL)
+        : null,
     margin_retail_pct: toNumber(input.marginRetailPct),
     margin_wholesale_pct: toNumber(input.marginWholesalePct),
     stock_opening: stock,
@@ -146,9 +174,80 @@ function rowFrom(input: ProductInput, name: string, userId: string) {
   };
 }
 
-export async function createProduct(
-  input: ProductInput & { baseCurrency: PriceCurrency },
-): Promise<ProductResult> {
+// LAS DOS TABLAS SATÉLITE SE REESCRIBEN ENTERAS: borrar y volver a insertar.
+//
+// No es pereza. La alternativa —calcular qué filas sobran y cuáles faltan—
+// tiene que acertar en tres operaciones distintas y deja basura callada en
+// cuanto una falla. Son como mucho cuatro monedas y ocho precios fijos por
+// producto, así que reescribirlas cuesta dos consultas y no puede quedar a
+// medias de una forma rara.
+//
+// LO QUE SÍ PUEDE QUEDAR A MEDIAS, y se dice: `supabase-js` no abre una
+// transacción entre llamadas. Si el producto se guarda y estas fallan, el
+// producto queda con sus monedas viejas. Por eso el error que devuelve lo
+// dice con esas palabras en vez de «no se pudo guardar», que haría pensar que
+// no se guardó nada.
+async function writeSatellites(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productId: string,
+  checked: Checked,
+  input: ProductInput,
+): Promise<string | null> {
+  const { error: eDelCur } = await supabase
+    .from("product_currencies")
+    .delete()
+    .eq("product_id", productId);
+  if (eDelCur) {
+    console.error("[writeSatellites] delete currencies:", eDelCur.message);
+    return "Guardamos el producto, pero no pudimos actualizar sus monedas.";
+  }
+
+  const { error: eInsCur } = await supabase
+    .from("product_currencies")
+    .insert(checked.currencies.map((currency) => ({ product_id: productId, currency })));
+  if (eInsCur) {
+    console.error("[writeSatellites] insert currencies:", eInsCur.message);
+    return "Guardamos el producto, pero no pudimos actualizar sus monedas.";
+  }
+
+  const { error: eDelPrice } = await supabase
+    .from("product_price_overrides")
+    .delete()
+    .eq("product_id", productId);
+  if (eDelPrice) {
+    console.error("[writeSatellites] delete overrides:", eDelPrice.message);
+    return "Guardamos el producto, pero no pudimos actualizar sus precios por moneda.";
+  }
+
+  // Solo las monedas ACTIVAS y distintas de la base: la base ya vive en
+  // `price_retail` / `price_wholesale`, y una moneda que el tendero quitó no
+  // puede dejar su precio escondido detrás.
+  const filas: { product_id: string; tier: PriceTier; currency: PriceCurrency; amount: number }[] =
+    [];
+  for (const [tier, fixed] of [
+    ["retail", input.fixedRetail],
+    ["wholesale", input.fixedWholesale],
+  ] as [PriceTier, FixedPrices][]) {
+    for (const currency of checked.currencies) {
+      if (currency === checked.base) continue;
+      const amount = toNumber(fixed[currency]);
+      if (amount == null || amount <= 0) continue;
+      filas.push({ product_id: productId, tier, currency, amount });
+    }
+  }
+
+  if (filas.length > 0) {
+    const { error } = await supabase.from("product_price_overrides").insert(filas);
+    if (error) {
+      console.error("[writeSatellites] insert overrides:", error.message);
+      return "Guardamos el producto, pero no pudimos actualizar sus precios por moneda.";
+    }
+  }
+
+  return null;
+}
+
+export async function createProduct(input: ProductInput): Promise<ProductResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -160,11 +259,7 @@ export async function createProduct(
 
   const { data, error } = await supabase
     .from("products")
-    .insert({
-      owner_id: user.id,
-      base_currency: input.baseCurrency,
-      ...rowFrom(input, checked.name, user.id),
-    })
+    .insert({ owner_id: user.id, ...rowFrom(input, checked, user.id) })
     .select("id")
     .single();
 
@@ -173,8 +268,9 @@ export async function createProduct(
     return { error: "No pudimos guardar el producto. Intenta de nuevo." };
   }
 
+  const aviso = await writeSatellites(supabase, data.id, checked, input);
   revalidatePath("/productos");
-  return { error: null, id: data.id };
+  return { error: aviso, id: data.id };
 }
 
 export async function updateProduct(
@@ -190,10 +286,7 @@ export async function updateProduct(
 
   const { error } = await supabase
     .from("products")
-    .update({
-      ...rowFrom(input, checked.name, user.id),
-      updated_at: new Date().toISOString(),
-    })
+    .update({ ...rowFrom(input, checked, user.id), updated_at: new Date().toISOString() })
     .eq("id", productId)
     .eq("owner_id", user.id);
 
@@ -202,17 +295,17 @@ export async function updateProduct(
     return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
   }
 
+  const aviso = await writeSatellites(supabase, productId, checked, input);
   revalidatePath("/productos");
-  return { error: null };
+  return { error: aviso };
 }
 
-// PUBLISHING FROM THE CARD, which is the frame's own gesture: «Toggle publica u
-// oculta el producto en el catálogo».
+// PUBLICAR DESDE LA TARJETA.
 //
-// Its own action and not a trip through `updateProduct`, because that one
-// validates and rewrites the whole row. Flipping one boolean through it would
-// mean a product with, say, a blank name could never be unpublished — the
-// validation it has nothing to do with would refuse the save.
+// Su propia acción y no un viaje por `updateProduct`, porque esa valida y
+// reescribe la fila entera. Mover un booleano por ahí significaría que un
+// producto con, pongamos, el nombre en blanco no se podría despublicar nunca:
+// la validación que no tiene nada que ver rechazaría el guardado.
 export async function setProductPublished(
   productId: string,
   tiers: { retail: boolean; wholesale: boolean },
@@ -240,74 +333,10 @@ export async function setProductPublished(
   return { error: null };
 }
 
-// THE PADLOCK, IN TWO ACTIONS AND NO COLUMN.
-//
-// Closing it inserts a row; opening it deletes one. A calculated price is not
-// stored anywhere: it is calculated. That is why there is no "is pinned"
-// boolean here that could drift out of step with the value it describes.
-export async function pinPrice(
-  productId: string,
-  tier: PriceTier,
-  currency: PriceCurrency,
-  amount: string,
-): Promise<ProductResult> {
-  const { supabase, user, ok } = await ownsProduct(productId);
-  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
-  if (!ok) return { error: "No encontramos ese producto." };
-
-  const value = toNumber(amount);
-  if (value == null || value <= 0) return { error: "Escribe un precio mayor que cero." };
-
-  const { error } = await supabase
-    .from("product_price_overrides")
-    .upsert(
-      { product_id: productId, tier, currency, amount: value, set_at: new Date().toISOString() },
-      { onConflict: "product_id,tier,currency" },
-    );
-
-  if (error) {
-    console.error("[pinPrice]", error.message);
-    return { error: "No pudimos fijar ese precio. Intenta de nuevo." };
-  }
-
-  revalidatePath("/productos");
-  return { error: null };
-}
-
-export async function unpinPrice(
-  productId: string,
-  tier: PriceTier,
-  currency: PriceCurrency,
-): Promise<ProductResult> {
-  const { supabase, user, ok } = await ownsProduct(productId);
-  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
-  if (!ok) return { error: "No encontramos ese producto." };
-
-  const { error } = await supabase
-    .from("product_price_overrides")
-    .delete()
-    .eq("product_id", productId)
-    .eq("tier", tier)
-    .eq("currency", currency);
-
-  if (error) {
-    console.error("[unpinPrice]", error.message);
-    return { error: "No pudimos volver a calcular ese precio. Intenta de nuevo." };
-  }
-
-  revalidatePath("/productos");
-  return { error: null };
-}
-
 // To the bin, not deleted. Same shape as a client: `trashed_at` instead of a
 // `delete`. See CT-44 — the bin still only knows how to paint clients, so for
 // now a product sent here shows up nowhere. It is done this way anyway because
-// the alternative is a real delete that cannot be undone, and because the
-// column has existed since 083.
-//
-// It also leaves the catalogue, and that is `get_shared_catalog`'s own
-// `trashed_at is null` doing it rather than a second write here. One place
-// decides what the public page shows.
+// the alternative is a real delete that cannot be undone.
 export async function trashProduct(productId: string): Promise<ProductResult> {
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
@@ -334,18 +363,9 @@ export async function trashProduct(productId: string): Promise<ProductResult> {
 // so `owner_id` comes from `auth.getUser()` and nowhere else.
 //
 // TWO LINKS, NOT ONE, and that is CT-55 and the owner's decision 11 of
-// 2026-10-09: «el dueño querrá varios — uno de mayorista y uno de detal». It
-// is what Tendero 2 asked for in the field. He has wholesale customers and
-// retail customers, and a single catalogue forces him to show one of the two
-// groups the wrong price.
-//
-// `unique (owner_id, tier)` in the table means this is an upsert-shaped
-// get-or-create and there is never a question of which of three retail links
-// is the real one.
-//
-// Created on first use, exactly like `getOrCreateShareLink`. A token minted at
-// signup would put every one of the 24 businesses one URL guess away from a
-// catalogue they never chose to publish.
+// 2026-10-09. Created on first use, exactly like `getOrCreateShareLink`: a
+// token minted at signup would put every one of the 24 businesses one URL
+// guess away from a catalogue they never chose to publish.
 export async function getOrCreateCatalogLink(
   tier: PriceTier,
 ): Promise<{ token: string } | { error: string }> {

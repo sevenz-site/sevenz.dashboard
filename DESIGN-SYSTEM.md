@@ -457,6 +457,40 @@ render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
 `client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
 la página.
 
+### Un `DialogContent` es un `grid`, y su columna `auto` no encoge
+
+`components/ui/dialog.tsx` monta el contenido con `display: grid` y sin
+columnas declaradas. Eso crea una columna `auto`, y una columna `auto` **se
+dimensiona al `max-content` del hijo más ancho**: si un hijo no puede encoger
+por debajo de cierto ancho, la columna entera crece hasta él y arrastra a todos
+los demás.
+
+**Medido el 2026-10-10 en la ficha de producto, a 375px:**
+
+| | |
+|---|---|
+| Ancho útil del diálogo | 343px |
+| Ancho de su columna | **349,75px** |
+| Scroll horizontal, contando el padding | **39px** |
+
+**El síntoma engaña.** No se sale una fila: se salen **todas a la vez**, por los
+mismos 7px, y lo que se ve es que el padding derecho ha desaparecido. Buscar
+«qué fila se sale» no lleva a ningún sitio — hay que mirar la columna del grid.
+
+**El arreglo es `grid-cols-[minmax(0,1fr)]`** en el `DialogContent`. `minmax`
+con mínimo 0 le quita a la columna el suelo de `min-content`, que es justo lo
+que le faltaba para poder encoger.
+
+```tsx
+<DialogContent className="grid-cols-[minmax(0,1fr)] max-h-[85vh] overflow-y-auto">
+```
+
+**Está puesto solo en esa pantalla, no en el componente compartido**, y eso es
+`CT-64`: arreglarlo en `ui/dialog.tsx` lo cerraría para toda la app pero obliga
+a volver a mirar cada diálogo que existe. Mientras tanto, cualquier diálogo con
+una fila ancha —una etiqueta larga junto a un campo de ancho fijo, por
+ejemplo— va a tropezar con esto.
+
 ### Un menú de Radix que se queda montado no devuelve el foco
 
 Hermano del anterior, misma causa de fondo y síntoma distinto. Ya está escrito

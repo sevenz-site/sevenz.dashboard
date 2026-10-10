@@ -13,11 +13,13 @@ import { setProductPublished } from "@/app/(app)/productos/actions";
 import { formatPriceAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
+  currenciesOf,
   isPublished,
   listPrice,
   overridesByTier,
   type ProductRow,
   type PriceOverrideRow,
+  type ProductCurrencyRow,
 } from "@/lib/products/catalog";
 
 // LA REJILLA DEL CATALOGO, segun el frame 1175:5881.
@@ -52,6 +54,7 @@ import {
 // fila al pie. Los dos toques son inconfundibles y ninguno dispara el otro.
 export function CatalogTable({
   overrides,
+  currencies,
   rates,
   defaultCurrency,
   ownerId,
@@ -59,6 +62,8 @@ export function CatalogTable({
   loadFailed,
 }: {
   overrides: PriceOverrideRow[];
+  // Las monedas activas de cada producto. Ver la migración 087.
+  currencies: ProductCurrencyRow[];
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
   ownerId: string;
@@ -110,6 +115,7 @@ export function CatalogTable({
       rates={rates}
       defaultCurrency={defaultCurrency}
       overrides={{ retail: {}, wholesale: {} }}
+      initialCurrencies={[defaultCurrency]}
       ownerId={ownerId}
     />
   );
@@ -221,6 +227,7 @@ export function CatalogTable({
           rates={rates}
           defaultCurrency={defaultCurrency}
           overrides={overridesByTier(overrides, editing.id)}
+          initialCurrencies={currenciesOf(currencies, editing.id, editing.base_currency)}
           ownerId={ownerId}
         />
       ) : null}

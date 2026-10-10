@@ -330,3 +330,44 @@ export function priceRowLabel(currency: PriceCurrency, origin: PriceInCurrency["
   if (origin === "manual") return `Precio fijado en ${name}`;
   return `Equivalencia en ${name}`;
 }
+
+
+// ── El costo y su moneda ────────────────────────────────────────────────
+
+// LA MONEDA EN LA QUE EL TENDERO ESCRIBIO EL COSTO.
+//
+// `"OTHER"` desde la migracion 087: decision del dueno el 2026-10-10, que
+// pidio un chip «Otra» junto a bolivar, dolar, euro y USDT.
+//
+// LO QUE «OTHER» CUESTA, y se dice aqui porque es donde se decide: de una
+// moneda que no sea una de las cuatro **no tenemos tasa**. Sin tasa no hay
+// conversion, asi que un costo en «Otra» no puede calcular el precio de
+// ninguna moneda. Con «Otra» el margen deja de poder trabajar y los precios se
+// escriben a mano; la ficha lo dice en pantalla en vez de dejar cuatro huecos
+// sin explicar.
+export type CostCurrency = PriceCurrency | "OTHER";
+
+/**
+ * El precio de una moneda, calculado desde el costo y el margen.
+ *
+ * Es la otra mitad de `suggestedPrice`: aquella sugiere en la misma moneda del
+ * costo, y esta ademas convierte. Hace falta desde que el producto puede
+ * venderse en euros con el costo apuntado en dolares.
+ *
+ * Devuelve null cuando no se puede: sin tasa para alguna de las dos monedas, o
+ * con el costo en una moneda «Otra» de la que no sabemos nada. Un null se
+ * ensena como «—» y se explica; lo que no se hace nunca es inventar un numero.
+ */
+export function priceFromCost(
+  cost: number,
+  costCurrency: CostCurrency,
+  marginPct: number,
+  target: PriceCurrency,
+  rates: BolivarRates,
+): number | null {
+  if (costCurrency === "OTHER") return null;
+  if (!(cost > 0)) return null;
+  const enDestino = priceIn(target, { amount: cost, currency: costCurrency }, rates).amount;
+  if (enDestino == null) return null;
+  return redondear(enDestino * (1 + marginPct / 100));
+}

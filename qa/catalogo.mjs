@@ -144,6 +144,7 @@ try {
       price_retail: 13,
       price_wholesale: 11,
       cost: 10,
+      cost_currency: "USD",
       margin_retail_pct: 30,
       margin_wholesale_pct: 10,
       stock_opening: 12,
@@ -160,6 +161,40 @@ try {
     eMargenes?.message,
   );
   if (conMargenes) creados.push(conMargenes.id);
+
+  // ── 2c. El costo y su moneda van juntos ────────────────────────────────
+  //
+  // La 087 lo exige con un check, y el primer intento de esa migración se
+  // estrelló justamente contra él: la restricción estaba ANTES del relleno.
+  // Esta comprobación existe para que nadie la quite pensando que sobra.
+  const { error: eSinMoneda } = await admin.from("products").insert({
+    owner_id: ownerId,
+    name: `${MARCA} costo sin moneda`,
+    base_currency: "USD",
+    price_retail: 10,
+    cost: 7,
+  });
+  check(
+    "2c. un costo sin moneda no entra",
+    eSinMoneda != null && eSinMoneda.code === "23514",
+    eSinMoneda ? eSinMoneda.code : "entró",
+  );
+
+  // Y «Otra» sin decir cuál tampoco: un costo en una moneda sin nombre no se
+  // puede interpretar nunca más.
+  const { error: eOtraSinNombre } = await admin.from("products").insert({
+    owner_id: ownerId,
+    name: `${MARCA} otra sin nombre`,
+    base_currency: "USD",
+    price_retail: 10,
+    cost: 7,
+    cost_currency: "OTHER",
+  });
+  check(
+    "2d. `OTHER` sin el nombre de la moneda no entra",
+    eOtraSinNombre != null && eOtraSinNombre.code === "23514",
+    eOtraSinNombre ? eOtraSinNombre.code : "entró",
+  );
 
   // ── 3. DOS enlaces, uno por escalón ────────────────────────────────────
   // Pueden existir de una prueba anterior o de la propia pantalla: se
@@ -216,6 +251,7 @@ try {
       price_retail: 13,
       price_wholesale: 11,
       cost: 10,
+      cost_currency: "USD",
       margin_retail_pct: 30,
       stock_opening: 5,
       published_retail: true,
@@ -437,6 +473,33 @@ try {
     eVes ? eVes.code : "entró",
   );
 
+  // ── 7f. Las monedas activas del producto ───────────────────────────────
+  //
+  // La 087 las saca de `base_currency` a su propia tabla porque el tendero las
+  // agrega y las quita. VES NO puede estar: es la moneda en la que el cliente
+  // paga, se enseña siempre calculada y no se agrega ni se quita.
+  const { error: eVesActiva } = await admin
+    .from("product_currencies")
+    .insert({ product_id: visible.id, currency: "VES" });
+  check(
+    "7f. el bolívar no puede ser una moneda activa del producto",
+    eVesActiva != null && eVesActiva.code === "23514",
+    eVesActiva ? eVesActiva.code : "entró",
+  );
+
+  await admin
+    .from("product_currencies")
+    .upsert({ product_id: visible.id, currency: "EUR" }, { onConflict: "product_id,currency" });
+  const { data: monedas } = await admin
+    .from("product_currencies")
+    .select("currency")
+    .eq("product_id", visible.id);
+  check(
+    "7g. una moneda activa se guarda",
+    (monedas ?? []).some((m) => m.currency === "EUR"),
+    (monedas ?? []).map((m) => m.currency).join(","),
+  );
+
   // ── 8. Un token inexistente ────────────────────────────────────────────
   const { data: nada, error: eNada } = await anon.rpc("get_shared_catalog", {
     p_token: "no-existe-este-token-de-prueba",
@@ -477,6 +540,19 @@ try {
     .select("id", { count: "exact", head: true })
     .like("name", `${MARCA}%`);
   check("11. limpieza: no queda nada de la prueba en dev", quedan === 0, `quedan ${quedan}`);
+
+  // Las monedas y los precios fijos cuelgan del producto con `on delete
+  // cascade`. Si eso se rompiera quedarían filas apuntando a nada, y la
+  // limpieza de arriba no se enteraría.
+  const { count: monedasHuerfanas } = await admin
+    .from("product_currencies")
+    .select("product_id", { count: "exact", head: true })
+    .in("product_id", creados.length ? creados : ["00000000-0000-0000-0000-000000000000"]);
+  check(
+    "12. borrar un producto se lleva sus monedas por cascada",
+    monedasHuerfanas === 0,
+    `quedan ${monedasHuerfanas}`,
+  );
 
   const fallos = filas.filter((f) => !f.pasa).length;
   console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);

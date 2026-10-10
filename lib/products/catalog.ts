@@ -15,6 +15,11 @@ export type ProductRow = {
   price_retail: number | null;
   price_wholesale: number | null;
   cost: number | null;
+  // DESDE LA 087 EL COSTO LLEVA SU MONEDA. Antes estaba implícitamente en
+  // `base_currency`, y eso dejó de valer en cuanto un producto puede venderse
+  // solo en euros con el costo apuntado en dólares.
+  cost_currency: string | null;
+  cost_currency_other: string | null;
   // One margin per tier since 084. The single `margin_pct` of 083 could not
   // represent what Tendero 2 described in the field: 10, 15 or 30 per cent
   // depending on whether he is selling wholesale or retail.
@@ -36,6 +41,30 @@ export type ProductRow = {
   description: string | null;
 };
 
+/** Una moneda que el producto maneja. Ver la migración 087. */
+export type ProductCurrencyRow = {
+  product_id: string;
+  currency: PriceCurrency;
+};
+
+/**
+ * Las monedas activas de un producto, en el orden en que se leen.
+ *
+ * El orden lo fija `VE_PRICE_CURRENCIES` y no el de la base: una lista cuyo
+ * orden depende de en qué orden se insertaron las filas cambia de aspecto
+ * entre dos cargas de la misma pantalla.
+ */
+export function currenciesOf(
+  rows: ProductCurrencyRow[],
+  productId: string,
+  fallback: PriceCurrency,
+): PriceCurrency[] {
+  const mias = new Set(rows.filter((r) => r.product_id === productId).map((r) => r.currency));
+  const orden: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
+  const out = orden.filter((c) => mias.has(c));
+  return out.length > 0 ? out : [fallback];
+}
+
 export type PriceOverrideRow = {
   product_id: string;
   tier: PriceTier;
@@ -49,6 +78,7 @@ export type PriceOverrideRow = {
 // `cost` to any client component that happened to receive a row.
 export const PRODUCT_COLUMNS =
   "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
+  "cost_currency, cost_currency_other, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
   "published_retail, published_wholesale, photo_path, description";
 
