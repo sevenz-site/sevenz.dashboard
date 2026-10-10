@@ -1,197 +1,213 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { ImageOff, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { CatalogProductDialog } from "@/components/dashboard/catalog-product-dialog";
+import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
+import { setProductPublished } from "@/app/(app)/productos/actions";
 import { formatPriceAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
-import { overridesByTier, type ProductRow, type PriceOverrideRow } from "@/lib/products/catalog";
+import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { listPrice, overridesByTier, type ProductRow, type PriceOverrideRow } from "@/lib/products/catalog";
 
-// LA LISTA DEL CATÁLOGO.
+// LA REJILLA DEL CATALOGO, segun el frame 1175:5881.
 //
-// Tarjetas en teléfono, tabla desde `md`, que es la regla del DESIGN-SYSTEM
-// para cualquier lista de registros. La tarjeta entera es un botón que abre la
-// ficha, con su `ChevronRight` para decirlo — sin botones por fila, que
-// compiten con el gesto de tocar en cualquier parte justo en la pantalla más
-// pequeña.
+// ─────────────────────────────────────────────────────────────────────────
+// REJILLA Y NO LISTA, Y ESO SE APARTA DE UNA REGLA ESCRITA
+//
+// El DESIGN-SYSTEM dice: tarjetas por debajo de `md`, tabla desde `md`. Esa
+// regla es para LISTAS DE REGISTROS —clientes, movimientos— donde cada fila es
+// un puñado de campos y la tabla los alinea en columnas que se comparan.
+//
+// Un catalogo no es eso desde que lleva foto. La foto es el dato por el que un
+// producto se reconoce, y una foto dentro de una celda de tabla es una foto
+// pequeña al lado de texto: ni se compara ni se reconoce. Asi que esta
+// pantalla es una rejilla en todos los tamaños, de 2 columnas en telefono a 4
+// en escritorio.
+//
+// Apuntado en DESIGN-SYSTEM.md como excepcion con su alcance, no como permiso
+// general: la siguiente lista de registros sigue siendo tarjetas y tabla.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// LA TARJETA NO ES UN BOTON, AUNQUE LA REGLA DIGA QUE LO SEA
+//
+// «La tarjeta entera es un botón» no se puede cumplir aqui: el frame pone un
+// interruptor DENTRO de la tarjeta («Toggle publica u oculta el producto»), y
+// un control dentro de un `<button>` es HTML invalido — el navegador lo
+// reconstruye como quiera, y en la practica el toque del interruptor burbujea
+// y abre tambien la ficha.
+//
+// Asi que la tarjeta es un `div`: la zona de la foto, el nombre y el precio es
+// el boton que abre la ficha, y el interruptor vive FUERA de el, en su propia
+// fila al pie. Los dos toques son inconfundibles y ninguno dispara el otro.
 export function CatalogTable({
-  products,
   overrides,
   rates,
   defaultCurrency,
+  ownerId,
+  autoOpen,
+  loadFailed,
 }: {
-  products: ProductRow[];
   overrides: PriceOverrideRow[];
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
+  ownerId: string;
+  // `?nuevo=1`, que es lo que pone el boton flotante de la barra de abajo.
+  autoOpen: boolean;
+  // La consulta del catalogo fallo. NO es lo mismo que no tener productos, y
+  // esa diferencia tiene su propia pantalla — ver la pagina.
+  loadFailed: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const { visible, total, query } = useCatalogFilters();
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
-  }, [products, query]);
+  // SE ABRE EN CADA TRANSICION false -> true, no con un pestillo de una sola
+  // vez. Es el mismo mecanismo que `ClientSearchDialog`, y los dos fallos que
+  // documenta ya costaron una entrega:
+  //
+  //   - un pestillo solo dispara una vez, asi que el primer toque del boton
+  //     flotante abria y los siguientes no hacian nada;
+  //   - rearmarlo al cerrar tampoco sirve, porque el marcador sigue en la
+  //     direccion en ese instante y el dialogo se reabre al cerrarse.
+  //
+  // Sembrado en `false` y nunca desde la prop: llegar aqui desde otra pantalla
+  // monta este componente con `autoOpen` YA en true, asi que sembrar desde la
+  // prop no deja transicion que observar y no abre nunca.
+  const [prevAutoOpen, setPrevAutoOpen] = useState(false);
+  if (autoOpen !== prevAutoOpen) {
+    setPrevAutoOpen(autoOpen);
+    if (autoOpen) setCreating(true);
+  }
 
-  // El precio que se enseña en la lista: el de detal si lo tiene, y si no el
-  // de mayor. La tabla exige uno de los dos, así que siempre hay algo.
-  const listPrice = (p: ProductRow) => {
-    if (p.price_retail != null) return { amount: p.price_retail, label: "detal" as const };
-    return { amount: p.price_wholesale!, label: "mayor" as const };
-  };
+  // Y SE LIMPIA EL MARCADOR AL CERRAR, por el router y no por
+  // `history.replaceState`: eso ultimo mueve la barra de direcciones por
+  // detras de Next, el router sigue creyendo que esta en `?nuevo=1`, y el
+  // siguiente toque del flotante es una navegacion a la pagina en la que cree
+  // estar — gira el spinner y no abre nada. Dejarlo sin limpiar es el otro
+  // fallo: un refresco abre el dialogo solo.
+  useEffect(() => {
+    if (autoOpen && !creating) router.replace(pathname, { scroll: false });
+  }, [autoOpen, creating, router, pathname]);
 
-  if (products.length === 0) {
+  const nuevo = (
+    <CatalogProductDialog
+      open={creating}
+      onOpenChange={setCreating}
+      product={null}
+      rates={rates}
+      defaultCurrency={defaultCurrency}
+      overrides={{ retail: {}, wholesale: {} }}
+      ownerId={ownerId}
+    />
+  );
+
+  // Antes que el estado vacio, porque se parecen y no son lo mismo. Sin esto,
+  // un tendero con cuarenta productos y una consulta caida lee «todavia no
+  // tienes productos» y entiende que se le borro el catalogo.
+  if (loadFailed) {
     return (
       <>
-        {/* EL ESTADO VACÍO NO SE DISCULPA NI EMPUJA.
-            Los dos tenderos entrevistados el 2026-10-09 no llevan inventario.
-            Si esto dijera «carga tus productos», ninguno de los dos pasaría de
-            aquí. Dice lo que de verdad va a pasar: se llena solo. */}
+      {/* El dialogo se monta tambien aqui. Sin el, el boton flotante de la
+          barra sigue a la vista, navega a `?nuevo=1` y no abre nada: un
+          control muerto encima de una pantalla que ya esta diciendo que algo
+          fallo. Crear no depende de la lectura que fallo, asi que si la
+          creacion tambien esta rota, el tendero recibe el error de verdad en
+          vez de un boton que no responde. */}
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-6 py-12 text-center">
+        <p className="text-base font-medium">No pudimos cargar tu catálogo</p>
+        <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+          Tus productos siguen ahí. Vuelve a intentarlo en un momento.
+        </p>
+        <Button type="button" variant="outline" onClick={() => router.refresh()}>
+          Reintentar
+        </Button>
+      </div>
+      {nuevo}
+      </>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <>
+        {/* EL ESTADO VACIO NO SE DISCULPA NI EMPUJA.
+            Los dos tenderos entrevistados el 2026-10-09 no llevan inventario
+            y uno ya tiene un sistema que le funciona: mirar. Si esto dijera
+            «carga tus productos», ninguno de los dos pasaria de aqui.
+
+            El texto es el del frame, con dos cambios: «Todavís» era un
+            desliz, y se le añade la frase de que se llena solo — que es el
+            hallazgo de campo y es lo que quita la sensacion de deberle dos
+            horas de trabajo a la pantalla. */}
         <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed px-6 py-12 text-center">
           <p className="text-base font-medium">Todavía no tienes productos</p>
           <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            No hace falta que los cargues ahora. Se van agregando solos cuando fías o vendes algo
-            que no esté en la lista, y después puedes completarles el costo y la unidad.
+            Los productos que agregues acá podrán verse reflejados en el catálogo de producto que
+            ven tus clientes. No hace falta cargarlos ahora: se van agregando solos cuando fías o
+            vendes algo que no esté en la lista.
           </p>
-          <Button type="button" onClick={() => setCreating(true)}>
-            <Plus className="size-4" /> Agregar uno ahora
+          {/* SOLO DESDE `md`, encontrado rindiendo la pantalla el 2026-10-10:
+              por debajo de ahi el boton flotante de la barra ya dice «Crear
+              producto» y hace lo mismo, asi que a 375px habia dos controles
+              con la misma etiqueta en la misma pantalla. Es lo que el frame
+              dibuja —su estado vacio no lleva boton— y lo que el
+              DESIGN-SYSTEM pide. En escritorio no hay flotante, asi que aqui
+              si hace falta. */}
+          <Button
+            type="button"
+            className="hidden md:inline-flex"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="size-4" /> Crear producto
           </Button>
         </div>
-        <CatalogProductDialog
-          open={creating}
-          onOpenChange={setCreating}
-          product={null}
-          rates={rates}
-          defaultCurrency={defaultCurrency}
-          overrides={{ retail: {}, wholesale: {} }}
-        />
+        {nuevo}
       </>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar producto"
-            aria-label="Buscar producto"
-            className="pl-9"
-          />
-        </div>
-        {/* "Agregar producto" y no "Agregar", encontrado rindiendo la
-            pantalla el 2026-10-09. El botón flotante de `MobileNav` dice
-            "Agregar" y abre **Registrar movimiento**: dos controles con la
-            misma palabra a dos sitios distintos, y el flotante es el grande.
-            El DESIGN-SYSTEM ya advierte que dos puertas al mismo cajón en una
-            pantalla son una de las dos sin explicación; dos puertas con la
-            misma etiqueta a cajones DISTINTOS es peor. */}
+      {/* Solo escritorio: en telefono esta accion es el boton flotante de la
+          barra de abajo, que navega a `?nuevo=1`. Dos disparadores visibles a
+          la vez en el mismo tamaño serian dos puertas al mismo cajon. */}
+      <div className="hidden md:flex md:justify-end">
         <Button type="button" onClick={() => setCreating(true)}>
-          <Plus className="size-4" /> Agregar producto
+          <Plus className="size-4" /> Crear producto
         </Button>
       </div>
 
-      {filtered.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          Ningún producto se llama así.
+          {query.trim() === ""
+            ? "Ningún producto cumple con esos filtros."
+            : "Ningún producto se llama así."}
         </p>
-      ) : null}
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {visible.map((p) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              onEdit={() => setEditing(p)}
+            />
+          ))}
+        </ul>
+      )}
 
-      {/* ── Tarjetas, por debajo de md ─────────────────────────────────── */}
-      <ul className="flex flex-col gap-2 md:hidden">
-        {filtered.map((p) => {
-          const price = listPrice(p);
-          return (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => setEditing(p)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border bg-background p-4 text-left transition-colors active:bg-accent"
-              >
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium">{p.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {p.unit ?? "—"} · al {price.label}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-sm tabular-nums">
-                    {formatPriceAmount(price.amount, p.base_currency)}
-                  </span>
-                  <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                </div>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-
-      {/* ── Tabla, desde md ────────────────────────────────────────────── */}
-      <div className="hidden md:block">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="py-2 font-normal">Producto</th>
-              <th className="py-2 font-normal">Unidad</th>
-              <th className="py-2 text-right font-normal">Al detal</th>
-              <th className="py-2 text-right font-normal">Al mayor</th>
-              <th className="py-2 text-right font-normal">Costo</th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => setEditing(p)}
-                className="cursor-pointer border-b transition-colors last:border-0 hover:bg-accent"
-              >
-                <td className="py-3 font-medium">{p.name}</td>
-                {/* Un valor que falta conserva su fila y enseña «—», para que
-                    cada registro tenga la misma forma. */}
-                <td className="py-3 text-muted-foreground">{p.unit ?? "—"}</td>
-                <td className="py-3 text-right tabular-nums">
-                  {p.price_retail == null ? "—" : formatPriceAmount(p.price_retail, p.base_currency)}
-                </td>
-                <td className="py-3 text-right tabular-nums">
-                  {p.price_wholesale == null
-                    ? "—"
-                    : formatPriceAmount(p.price_wholesale, p.base_currency)}
-                </td>
-                <td className="py-3 text-right tabular-nums text-muted-foreground">
-                  {p.cost == null ? "—" : formatPriceAmount(p.cost, p.base_currency)}
-                </td>
-                <td className="py-3 text-right">
-                  <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <CatalogProductDialog
-        open={creating}
-        onOpenChange={setCreating}
-        product={null}
-        rates={rates}
-        defaultCurrency={defaultCurrency}
-        overrides={{ retail: {}, wholesale: {} }}
-      />
+      {nuevo}
       {editing ? (
         <CatalogProductDialog
           // La `key` fuerza una instancia nueva por producto. Sin ella, abrir
-          // un segundo producto reutilizaría los `useState` del primero y la
-          // ficha abriría con el nombre del anterior.
+          // un segundo producto reutilizaria los `useState` del primero y la
+          // ficha abriria con el nombre del anterior.
           key={editing.id}
           open
           onOpenChange={(next) => !next && setEditing(null)}
@@ -199,8 +215,90 @@ export function CatalogTable({
           rates={rates}
           defaultCurrency={defaultCurrency}
           overrides={overridesByTier(overrides, editing.id)}
+          ownerId={ownerId}
         />
       ) : null}
     </div>
+  );
+}
+
+function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  // Optimista: el interruptor se mueve en el acto y se revierte si el servidor
+  // dice que no. Sin esto el gesto tarda un viaje de ida y vuelta, y en un
+  // telefono barato eso se siente como que no respondio y se vuelve a tocar.
+  const [published, setPublished] = useState(product.published);
+
+  const price = listPrice(product);
+
+  return (
+    <li className="flex flex-col overflow-hidden rounded-xl border bg-background">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex flex-col text-left transition-colors active:bg-accent"
+        aria-label={`Editar ${product.name}`}
+      >
+        {/* Cuadrada y no de alto libre: en una rejilla de dos columnas, dos
+            fotos de proporciones distintas dejan las tarjetas de alturas
+            distintas y la rejilla deja de leerse como una rejilla. */}
+        <div className="relative aspect-square w-full bg-muted">
+          {product.photo_path ? (
+            <Image
+              src={getPublicProductPhotoUrl(product.photo_path)}
+              alt=""
+              fill
+              unoptimized
+              sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+              className="object-cover"
+            />
+          ) : (
+            // Un hueco dicho, no un hueco gris. Sin esto, una tarjeta sin
+            // foto parece una foto que no cargo.
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+              <ImageOff className="size-6" aria-hidden="true" />
+              <span className="text-[11px]">Sin foto</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-0.5 p-3">
+          <span className="line-clamp-2 text-sm font-medium">{product.name}</span>
+          <span className="text-sm tabular-nums">
+            {formatPriceAmount(price.amount, product.base_currency)}
+          </span>
+          {/* DICE DE QUE PRECIO SE TRATA cuando no es el de detal. Un numero
+              sin etiqueta al lado de otro que resulta ser el de mayor es
+              exactamente como se canta el precio equivocado leyendo la propia
+              pantalla. */}
+          <span className="text-xs text-muted-foreground">
+            {price.tier === "wholesale" ? "al mayor" : product.unit ? product.unit : "al detal"}
+          </span>
+        </div>
+      </button>
+
+      {/* FUERA DEL BOTON, a proposito. Ver la cabecera del archivo. */}
+      <label className="flex items-center justify-between gap-2 border-t px-3 py-2 text-xs">
+        <span className="text-muted-foreground">Publicar</span>
+        <Switch
+          checked={published}
+          disabled={pending}
+          aria-label={`Publicar ${product.name} en el catálogo`}
+          onCheckedChange={(next) => {
+            setPublished(next);
+            startTransition(async () => {
+              const r = await setProductPublished(product.id, next);
+              if (r.error) {
+                setPublished(!next);
+                toast.error(r.error);
+                return;
+              }
+              router.refresh();
+            });
+          }}
+        />
+      </label>
+    </li>
   );
 }

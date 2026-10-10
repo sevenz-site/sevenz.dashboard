@@ -15,7 +15,20 @@ export type ProductRow = {
   price_retail: number | null;
   price_wholesale: number | null;
   cost: number | null;
-  margin_pct: number | null;
+  // One margin per tier since 084. The single `margin_pct` of 083 could not
+  // represent what Tendero 2 described in the field: 10, 15 or 30 per cent
+  // depending on whether he is selling wholesale or retail.
+  margin_retail_pct: number | null;
+  margin_wholesale_pct: number | null;
+  // THE QUANTITY THAT NOTHING MOVES YET. Owner's decision, 2026-10-09: the
+  // field ships now and the event machine later, so selling or lending does
+  // not decrement it. `_opening` is in the name so that nothing reads it as
+  // "the stock right now" — see the migration's own note.
+  stock_opening: number | null;
+  stock_opening_at: string | null;
+  published: boolean;
+  photo_path: string | null;
+  description: string | null;
 };
 
 export type PriceOverrideRow = {
@@ -24,6 +37,15 @@ export type PriceOverrideRow = {
   currency: PriceCurrency;
   amount: number;
 };
+
+// The column list is written once here, because three callers need exactly the
+// same shape — the catalogue page, and soon the movement form and the product
+// selector. A `select("*")` would have worked and would also have shipped
+// `cost` to any client component that happened to receive a row.
+export const PRODUCT_COLUMNS =
+  "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
+  "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
+  "published, photo_path, description";
 
 // THE USDT PRICE IS ASKED FOR ONCE A MINUTE, NOT ONCE PER RENDER.
 //
@@ -85,4 +107,17 @@ export function overridesByTier(
     out[r.tier][r.currency] = r.amount;
   }
   return out;
+}
+
+/**
+ * The price the catalogue list shows for a product, and which tier it is.
+ *
+ * Retail when there is one, wholesale otherwise. The table requires one of the
+ * two, so there is always an answer — and saying WHICH one matters: a figure
+ * labelled nothing, next to a figure that happens to be wholesale, is how a
+ * shopkeeper quotes the wrong price off their own screen.
+ */
+export function listPrice(p: ProductRow): { amount: number; tier: PriceTier } {
+  if (p.price_retail != null) return { amount: p.price_retail, tier: "retail" };
+  return { amount: p.price_wholesale!, tier: "wholesale" };
 }

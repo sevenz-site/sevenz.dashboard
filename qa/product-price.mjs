@@ -25,7 +25,14 @@
 //      30 %», dijeron los dos tenderos. Margen sobre el precio de venta da otro
 //      número y es la confusión clásica de esta cuenta.
 
-import { allPrices, priceIn, suggestedPrice, marginFromPrice } from "../lib/products/price.ts";
+import {
+  allPrices,
+  priceIn,
+  suggestedPrice,
+  marginFromPrice,
+  parseAmount,
+  formatAmountForInput,
+} from "../lib/products/price.ts";
 
 const filas = [];
 function check(nombre, pasa, detalle) {
@@ -128,6 +135,55 @@ check(
   "6e. sin costo no hay margen — el caso de todo producto nacido en un fiado",
   marginFromPrice(null, 13) === null,
 );
+
+// ── 7. El parser de cantidades, que ya rompió el dinero una vez ──────────
+//
+// El 2026-10-10 la ficha guardaba 11,50 al mayor y, al volver a abrirla,
+// enseñaba un margen del 1.050 %. El parser quitaba los puntos como si
+// siempre fueran separadores de miles, así que el "11.5" que devuelve la base
+// —un número de JS se convierte a texto CON PUNTO— se leía como 115. El mismo
+// parser estaba en el servidor: el siguiente guardado habría escrito 115 en la
+// fila. Un producto de $11,50 pasaba a $115 por abrirlo y guardarlo.
+//
+// La regla ahora es una sola: **el último separador es el decimal**. Estos
+// casos son los que la fijan, y el primero es el que falló.
+const CASOS_PARSER = [
+  ["11.5", 11.5, "lo que devuelve la base de datos — EL PRIMER CASO QUE ROMPIÓ"],
+  ["11,5", 11.5, "lo que teclea un venezolano"],
+  ["12.000", 12000, "doce mil bolívares — EL SEGUNDO CASO QUE ROMPIÓ"],
+  ["12,000", 12000, "doce mil con el otro separador"],
+  ["1.234,56", 1234.56, "miles con punto, decimal con coma"],
+  ["1,234.56", 1234.56, "al revés, y también sale bien"],
+  ["1.234.567", 1234567, "varios del mismo tipo: todos son miles"],
+  ["13", 13, "sin separador"],
+  ["0,5", 0.5, "menor que uno"],
+  ["", null, "vacío no es cero"],
+  ["abc", null, "basura no es cero"],
+  [null, null, "ausente no es cero"],
+];
+
+for (const [entrada, esperado, porque] of CASOS_PARSER) {
+  const r = parseAmount(entrada);
+  const pasa = esperado === null ? r === null : Math.abs(r - esperado) < 1e-9;
+  check(`7. parseAmount(${JSON.stringify(entrada)}) → ${esperado} — ${porque}`, pasa, String(r));
+}
+
+// Y la vuelta: lo que se guardó se enseña en el campo como se escribe aquí.
+check("8a. 11,5 se enseña con coma en el campo", formatAmountForInput(11.5) === "11,5");
+check("8b. un entero no gana decimales", formatAmountForInput(13) === "13");
+check("8c. sin valor, campo vacío", formatAmountForInput(null) === "");
+// La ida y vuelta completa, que es lo que la pantalla hace al abrir una ficha.
+// LA IDA Y VUELTA COMPLETA, que es lo que la pantalla hace al abrir una ficha.
+// El caso de 1,125 es el que obliga al cero de más en `formatAmountForInput`:
+// sin él, tres decimales se leerían como miles y 1,125 kilos volverían como
+// 1.125. Es la pareja que sobrevive a que alguien cambie solo una mitad.
+const IDA_Y_VUELTA = [11.5, 1234.56, 12000, 13, 0.5, 1.125, 0.25];
+for (const n of IDA_Y_VUELTA) {
+  check(
+    `8d. ${n} → "${formatAmountForInput(n)}" → ${parseAmount(formatAmountForInput(n))}`,
+    parseAmount(formatAmountForInput(n)) === n,
+  );
+}
 
 const fallos = filas.filter((f) => !f.pasa).length;
 console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);

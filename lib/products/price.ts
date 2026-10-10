@@ -171,6 +171,102 @@ export function marginFromPrice(cost: number | null, price: number): number | nu
   return redondear(((price - cost) / cost) * 100);
 }
 
+// ── Parsing what somebody typed, and what the database returned ──────────
+//
+// TWO RULES, IN THIS ORDER:
+//
+//   1. A separator with EXACTLY THREE DIGITS after it, with no separator of
+//      the other kind anywhere, is a THOUSANDS separator.
+//   2. Otherwise, the LAST separator is the decimal one and the rest are
+//      thousands.
+//
+// Both rules were paid for on 2026-10-10, each by a bug found running the
+// screen.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// RULE 2 EXISTS BECAUSE OF A MONEY BUG
+//
+// The first implementation was `value.replace(/\./g, "").replace(",", ".")`:
+// a dot was ALWAYS thousands. Right for what a Venezuelan types ("1.234,56"),
+// catastrophically wrong for what the database hands back, because a JS number
+// stringifies with a DOT. A wholesale price of 11.5 came back as "11.5", lost
+// its dot, and became 115. The form showed a margin of 1.050 % instead of
+// 15 %, and the same parser on the server would have written 115 into the row:
+// an $11,50 product turned into a $115 one just by being opened and saved.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// AND RULE 1 EXISTS BECAUSE RULE 2 ALONE BROKE BOLÍVARES
+//
+// With only rule 2, "12.000" — twelve thousand bolívares, exactly how it is
+// written here — parsed as 12. That is the wrong trade for THIS product: a
+// bolívar price is always in the thousands, and a price with three decimals is
+// not something anybody types. So a three-digit group wins.
+//
+// What this costs, said out loud: you cannot type "12.000" and mean twelve
+// point zero zero zero. You type "12". Nobody does the former; plenty of
+// people do "12.000" meaning twelve thousand.
+//
+//   "11.5"       → 11.5       the database, and anyone typing in English
+//   "11,5"       → 11.5       what a Venezuelan types
+//   "12.000"     → 12000      twelve thousand bolívares
+//   "12,000"     → 12000      same, other separator
+//   "1.234,56"   → 1234.56    two separators: the last one decides
+//   "1,234.56"   → 1234.56    and it works the other way round too
+//   "1.234.567"  → 1234567    several of the same: all thousands
+//
+// Shared by the form and the server action on purpose. Two copies of a money
+// parser is two chances to fix only one of them.
+export function parseAmount(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (raw === "") return null;
+
+  const lastDot = raw.lastIndexOf(".");
+  const lastComma = raw.lastIndexOf(",");
+  const decimalAt = Math.max(lastDot, lastComma);
+
+  let normalised: string;
+  if (decimalAt === -1) {
+    normalised = raw;
+  } else {
+    const soloUnTipo = lastDot === -1 || lastComma === -1;
+    const digitosDetras = raw.length - decimalAt - 1;
+    if (soloUnTipo && digitosDetras === 3) {
+      // Regla 1: agrupación de miles. El número es entero.
+      normalised = raw.replace(/[.,]/g, "");
+    } else {
+      // Regla 2: el último separador es el decimal.
+      const whole = raw.slice(0, decimalAt).replace(/[.,]/g, "");
+      normalised = `${whole}.${raw.slice(decimalAt + 1)}`;
+    }
+  }
+
+  const n = Number(normalised);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * A stored number put back into a text field, written the way this product
+ * writes numbers everywhere else.
+ *
+ * It also has to survive `parseAmount` reading it back, and that is not free:
+ * a value with EXACTLY THREE decimals — 1,125 kilos, which `stock_opening`
+ * allows since it is numeric(14,3) — would hit rule 1 above and come back as
+ * 1125. So three decimals get a fourth, a zero, which is the same number and
+ * is unambiguous. Four digits after the separator can only be decimals.
+ *
+ * Checked by the round-trip case in `qa/product-price.mjs`, because this is
+ * precisely the kind of pairing that survives one half being changed.
+ */
+export function formatAmountForInput(value: number | null | undefined): string {
+  if (value == null) return "";
+  const texto = String(value);
+  const punto = texto.indexOf(".");
+  const conDecimales =
+    punto !== -1 && texto.length - punto - 1 === 3 ? `${texto}0` : texto;
+  return conDecimales.replace(".", ",");
+}
+
 // ── Formatting ───────────────────────────────────────────────────────────
 //
 // Reuses the formatters the rest of the product already uses, instead of

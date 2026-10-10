@@ -131,6 +131,39 @@ same rows, the same filters and sorting above them, switched with CSS.
   amounts directly with `formatLedgerAmount` instead of that component, since
   its label-above-amount shape doesn't fit a single inline row.
 
+### La excepción: un catálogo con fotos es una rejilla, no una tabla
+
+**Alcance: solo `/productos` y `/c/[token]`.** La siguiente lista de registros
+que se escriba sigue siendo tarjetas y tabla.
+
+Esa regla es para **listas de registros** —clientes, movimientos— donde cada
+fila es un puñado de campos y la tabla los alinea en columnas que se comparan
+de un vistazo. Un catálogo dejó de ser eso el 2026-10-09, cuando el frame
+`1175:5881` le puso foto a cada producto: **la foto es el dato por el que un
+producto se reconoce**, y una foto dentro de una celda de tabla es una foto
+pequeña al lado de texto. Ni se compara ni se reconoce.
+
+Así que es rejilla en todos los tamaños: 2 columnas en teléfono, 3 en `sm`, 4
+en `lg`. Y la foto es **cuadrada**, no de alto libre — en una rejilla de dos
+columnas, dos fotos de proporciones distintas dejan las tarjetas de alturas
+distintas y deja de leerse como una rejilla.
+
+### Una tarjeta que lleva un control DENTRO no puede ser un `<button>`
+
+«La tarjeta entera es un botón» no se puede cumplir cuando hay un interruptor
+dentro, y el frame `1175:5881` pone uno —«Publicar»— en cada tarjeta del
+catálogo.
+
+Un control interactivo dentro de un `<button>` es **HTML inválido**: el
+navegador reconstruye el árbol como quiera, y en la práctica el toque del
+interruptor burbujea y abre también la ficha. El tendero toca «Publicar» y se
+le abre un formulario.
+
+**La forma que sí funciona:** la tarjeta es un `div`; la zona de la foto, el
+nombre y el precio es el `<button>` que abre el registro; y el control vive
+FUERA de él, en su propia fila al pie, separado por un borde. Los dos toques
+son inconfundibles y ninguno dispara el otro.
+
 ## La tarjeta de cliente son DOS cajas, no una
 
 `components/dashboard/client-card.tsx`, desde el spec de Figma del 2026-10-04
@@ -928,10 +961,10 @@ mismo** que decide si se pinta la lista de coincidencias
 misma pantalla acaban desincronizadas, y el síntoma sería el campo moviéndose
 bajo el dedo.
 
-## La barra de abajo: tres destinos, un menú, y nada que escriba
+## La barra de abajo: cuatro destinos, un menú, y nada que escriba
 
-`components/dashboard/mobile-nav.tsx`. Cuatro huecos — Inicio, Reportes,
-Clientes, Menú — y **ninguno de ellos escribe nada**. Agregar salió de la barra
+`components/dashboard/mobile-nav.tsx`. Cinco huecos — Inicio, Reportes,
+Catálogo, Clientes, Menú — y **ninguno de ellos escribe nada**. Agregar salió de la barra
 el 2026-10-03 y pasó a un botón flotante, por una razón que vale para cualquier
 barra futura:
 
@@ -971,6 +1004,54 @@ barra lleva «Menú», la cabecera del Inicio ya no lleva hamburguesa en teléfo
 —solo de `md` hacia arriba, donde no hay barra— y `/reportes` se salió de la
 barra superior en teléfono por lo mismo. Dos puertas al mismo cajón en la misma
 pantalla no es redundancia útil, es una de las dos sin explicación.
+
+### Pasó de cuatro huecos a cinco el 2026-10-09, y lo que eso costó
+
+**Decisión del dueño**, del frame `1175:5881`: Catálogo entra en la barra.
+
+Aquí estaba escrito que la barra tenía cuatro y **por qué cuatro**: cuatro es lo
+que alcanza un pulgar sin leer, y proteger ese presupuesto fue parte del motivo
+por el que «Agregar» se fue a un flotante el 2026-10-03. **Esa razón no se
+borra, se queda anotada debajo de la nueva**, porque era una medida y no un
+gusto — y si algún día esto se revierte, el argumento ya está aquí.
+
+Lo que se midió al cambiarlo:
+
+| | Ancho de cada hueco a 375px |
+|---|---|
+| Cuatro huecos | 93px |
+| **Cinco huecos** | **75px** |
+
+75px sigue por encima del mínimo táctil de 44px con holgura, pero es el número
+que hay que volver a mirar si alguien reporta toques errados. No se añade un
+sexto sin medir otra vez.
+
+**Lo que compró el hueco:** el catálogo es la pantalla que el tendero abre *a
+media venta*, con un cliente delante preguntando un precio. El menú lateral son
+dos toques y una lectura; la barra es uno.
+
+**Y Catálogo SALIÓ del menú lateral en el mismo cambio.** Estuvo ahí un solo
+día. Dejarlo en los dos sitios era el atajo obvio y es exactamente lo que el
+párrafo de arriba desaconseja: dos puertas al mismo cajón.
+
+### El flotante cambia de etiqueta según la pantalla
+
+En `/productos` el botón flotante dice **«Crear producto»** y navega a
+`/productos?nuevo=1`; en el resto dice «Agregar» y navega a
+`/dashboard?nuevo=1`. Sigue siendo **el mismo botón**, por la razón de arriba:
+las cuatro condiciones que lo apagan viven en `MobileNav`.
+
+Esto arregla un fallo encontrado rindiendo la pantalla el 2026-10-09: el
+catálogo tenía su propio botón «Agregar producto» mientras el flotante decía
+«Agregar» y abría **Registrar movimiento**. Dos controles, una palabra, dos
+cajones distintos — y el flotante es el grande.
+
+**La pantalla destino abre su diálogo desde el marcador `?nuevo=1`**, igual que
+Inicio. Ese mecanismo tiene dos trampas ya documentadas en
+`client-search-dialog.tsx` y las dos costaron una entrega: un pestillo de una
+sola vez hace que solo funcione el primer toque, y limpiar el marcador con
+`history.replaceState` en vez del router deja al router creyendo que sigue en
+`?nuevo=1`, así que el siguiente toque gira el spinner y no abre nada.
 
 ## `flex-1` dentro de una columna estira a lo alto, y eso rompió un gráfico
 
