@@ -26,7 +26,12 @@ export type ProductRow = {
   // "the stock right now" — see the migration's own note.
   stock_opening: number | null;
   stock_opening_at: string | null;
-  published: boolean;
+  // PUBLICAR ES POR ESCALON desde la 085. El frame 1187:3728 pone un
+  // interruptor y dos casillas: un producto puede estar en el catalogo de
+  // mayorista, en el de detal, en los dos, o en ninguno. Con un solo booleano
+  // los dos enlaces ensenaban lo mismo a distinto precio.
+  published_retail: boolean;
+  published_wholesale: boolean;
   photo_path: string | null;
   description: string | null;
 };
@@ -45,7 +50,7 @@ export type PriceOverrideRow = {
 export const PRODUCT_COLUMNS =
   "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
-  "published, photo_path, description";
+  "published_retail, published_wholesale, photo_path, description";
 
 // THE USDT PRICE IS ASKED FOR ONCE A MINUTE, NOT ONCE PER RENDER.
 //
@@ -107,6 +112,11 @@ export function overridesByTier(
     out[r.tier][r.currency] = r.amount;
   }
   return out;
+}
+
+/** Si el producto esta en algun catalogo publico. */
+export function isPublished(p: ProductRow): boolean {
+  return p.published_retail || p.published_wholesale;
 }
 
 /**

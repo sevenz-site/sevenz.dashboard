@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -49,40 +50,51 @@ import {
 } from "@/app/(app)/productos/actions";
 import type { ProductRow } from "@/lib/products/catalog";
 
-// LA FICHA DE PRODUCTO, segun el frame 1175:5881.
+// Lo que el frame 1187:3728 pone en cada desplegable al abrir la ficha.
+const DEFAULT_MARGIN: Record<PriceTier, string> = { retail: "30", wholesale: "15" };
+
+// LA FICHA DE PRODUCTO, segun el frame 1187:3728.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// EL MARGEN NO SE GUARDA APARTE DEL PRECIO: SE DERIVA DE EL
+// NO HAY CAMPO «PRECIO AL MAYOR»: EL PRECIO SE TECLEA EN SU MONEDA
 //
-// Esta es la decision de diseño que sostiene toda la pantalla. El frame enseña
-// «Costo», «Margen al mayor» y «Margen al detal» como tres campos, y la
-// tentacion es guardar los tres y que el precio salga de ellos. Con eso, el dia
-// que alguien teclee un precio a mano, el margen guardado pasa a describir otro
-// numero — y no hay forma de saber cual de los dos miente.
+// Lo pidio el dueno el 2026-10-10 y tiene razon: ese campo y la fila «Precio
+// Dólar» de justo debajo ensenaban EL MISMO NUMERO dos veces. Ahora cada
+// escalon es su margen y, debajo, una fila por moneda.
 //
-// Aqui la unica verdad son el COSTO y el PRECIO. El margen es el resultado:
-//
-//   - elegir un margen en el desplegable ESCRIBE el precio,
-//   - editar el precio RECALCULA el margen,
-//   - y lo que se guarda en `margin_*_pct` es siempre el margen de ese precio.
-//
-// Asi los dos no pueden contradecirse, porque solo hay uno.
+// La fila de la moneda del negocio ES el precio; las otras son equivalencias
+// con candado. Esto es lo que mantiene vivo el costo opcional, que es una
+// decision del dueno del 2026-10-09: sin costo no hay nada que calcular, pero
+// la fila del dolar sigue siendo un campo donde escribir.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// EL COSTO ES OPCIONAL — DECISION DEL DUEÑO, 2026-10-09
+// EL MARGEN Y EL PRECIO SIGUEN SIENDO UN SOLO DATO
 //
-// Se le advirtio que una ficha que calcula desde el costo deja medio
-// formulario muerto cuando el costo esta vacio, y lo decidio asi igualmente:
-// exigirlo mataria el alta rapida dentro de un fiado (decision 11), que es el
-// camino por el que esta tabla se va a llenar de verdad.
+// Elegir margen escribe el precio; editar el precio recalcula el margen. Lo
+// que se guarda en `margin_*_pct` es siempre el margen de ese precio, asi que
+// los dos no pueden contradecirse.
 //
-// Lo que esta pantalla hace con eso, para que no haya un hueco mudo: el
-// desplegable del margen se inhabilita **diciendo por que**, y el precio se
-// teclea directo. Nunca hay un control apagado sin explicacion.
+// Lo que anade el frame es un VALOR POR DEFECTO —30 % al detal, 15 % al
+// mayor— y eso obliga a guardar la eleccion aparte mientras no haya precio
+// del que derivar nada. En cuanto hay precio, manda el derivado.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// LA UNIDAD SIGUE SIENDO TEXTO EN LA BASE, aunque aqui sea un desplegable: ver
-// lib/products/options.ts. "Otro" tiene que poder escribir su propia palabra.
+// TRES COSAS EN LAS QUE ESTA PANTALLA SE APARTA DEL FRAME, Y POR QUE
+//
+// 1. La fila de la moneda del negocio NO lleva candado. El frame dibuja uno
+//    en las tres. Pero esa fila es el precio, no una equivalencia de nada, y
+//    su vinculo con el costo es el margen de arriba: un candado ahi seria un
+//    segundo control para la misma decision.
+//
+// 2. Las filas no llevan bandera. El frame pone una por moneda, y para USDT
+//    un logo. Dos banderas y un logo se leen como tres cosas distintas, y el
+//    simbolo ₮ no lo reconoce casi nadie (ya esta razonado en price.ts).
+//
+// 3. Una moneda calculada se llama «Equivalencia», no «Precio». El frame dice
+//    «Precio USDT»; el dueno decidio lo contrario el 2026-10-09 y el caso que
+//    lo motivo sigue en pie: con el BCV a 160 y el USDT a 200, un producto de
+//    $12 ensena 9,60 USDT. Es correcto y se lee como un error. La palabra es
+//    lo unico que lo arregla.
 export function CatalogProductDialog({
   open,
   onOpenChange,
@@ -111,14 +123,14 @@ export function CatalogProductDialog({
 
   const [name, setName] = useState(product?.name ?? "");
 
-  // La unidad llega del frame como lista cerrada mas "Otro". Si lo que hay
-  // guardado no esta en la lista —un producto viejo, o uno creado con "Otro"—
-  // el formulario abre YA en "Otro" con su texto, en vez de perderlo
+  // UNIDAD CON VALOR POR DEFECTO, del frame: un producto nuevo abre ya en
+  // «Unidad». Si lo guardado no esta en la lista —un producto creado con
+  // «Otro»— el formulario abre en «Otro» con su texto, en vez de perderlo
   // silenciosamente al guardar.
   const storedUnit = product?.unit ?? "";
   const unitIsPreset = (UNIT_OPTIONS as readonly string[]).includes(storedUnit);
   const [unitChoice, setUnitChoice] = useState<string>(
-    storedUnit === "" ? "" : unitIsPreset ? storedUnit : "Otro",
+    storedUnit === "" ? (editing ? "" : "Unidad") : unitIsPreset ? storedUnit : "Otro",
   );
   const [unitOther, setUnitOther] = useState(unitIsPreset ? "" : storedUnit);
   const unit = unitChoice === "Otro" ? unitOther : unitChoice;
@@ -129,31 +141,18 @@ export function CatalogProductDialog({
   const [priceWholesale, setPriceWholesale] = useState(
     formatAmountForInput(product?.price_wholesale),
   );
-  const [published, setPublished] = useState(product?.published ?? false);
+  const [marginRetail, setMarginRetail] = useState(DEFAULT_MARGIN.retail);
+  const [marginWholesale, setMarginWholesale] = useState(DEFAULT_MARGIN.wholesale);
+
+  // PUBLICAR, CON SUS DOS CASILLAS. El interruptor es el estado «esto se ve o
+  // no se ve»; las casillas dicen en cual de los dos catalogos.
+  const [pubRetail, setPubRetail] = useState(product?.published_retail ?? false);
+  const [pubWholesale, setPubWholesale] = useState(product?.published_wholesale ?? false);
+  const publishOn = pubRetail || pubWholesale;
+
   const [photoPath, setPhotoPath] = useState<string | null>(product?.photo_path ?? null);
   const [description, setDescription] = useState(product?.description ?? "");
 
-  // Los dos interruptores de «Agregar precio por moneda». Abren si ese escalon
-  // ya tiene algun precio fijado a mano: un candado cerrado que no se ve es un
-  // precio que el tendero no sabe que tiene.
-  const [byCurrencyWholesale, setByCurrencyWholesale] = useState(
-    Object.keys(overrides.wholesale).length > 0,
-  );
-  const [byCurrencyRetail, setByCurrencyRetail] = useState(
-    Object.keys(overrides.retail).length > 0,
-  );
-
-  // Lo que se fija a mano ANTES de que el producto exista. En edicion cada
-  // candado escribe en la base al instante; al crear no hay fila donde
-  // escribir, asi que se guarda aqui y se persiste justo despues del insert.
-  const [pendingPins, setPendingPins] = useState<
-    Record<PriceTier, Partial<Record<PriceCurrency, string>>>
-  >({ retail: {}, wholesale: {} });
-
-  // `parseAmount` y no un parser propio: el que vivía aquí quitaba los puntos
-  // como separadores de miles y convertía el "11.5" que devuelve la base en
-  // 115. Ver su comentario en lib/products/price.ts — hay una sola copia a
-  // propósito.
   const toNumber = (v: string) => {
     const n = parseAmount(v);
     return n != null && n > 0 ? n : null;
@@ -167,20 +166,48 @@ export function CatalogProductDialog({
     return marginFromPrice(costNumber, p);
   };
 
+  // EL COSTO RELLENA LOS PRECIOS QUE ESTAN VACIOS, Y SOLO ESOS.
+  //
+  // Es lo que le da sentido al margen por defecto: escribes 50 de costo y los
+  // dos precios aparecen a 15 % y 30 %. Lo que NO hace es mover un precio que
+  // ya tiene valor — corregir el costo de un producto viejo no puede
+  // reescribirle por detras un precio que alguien puso a mano. El margen de
+  // ese precio simplemente se vuelve a derivar y se ve en pantalla.
+  function handleCost(next: string) {
+    setCost(next);
+    const c = parseAmount(next);
+    if (c == null || c <= 0) return;
+    if (priceRetail.trim() === "") {
+      const p = suggestedPrice(c, Number(marginRetail));
+      if (p != null) setPriceRetail(formatAmountForInput(p));
+    }
+    if (priceWholesale.trim() === "") {
+      const p = suggestedPrice(c, Number(marginWholesale));
+      if (p != null) setPriceWholesale(formatAmountForInput(p));
+    }
+  }
+
   const input: ProductInput = {
     name,
     unit: unit || null,
     priceRetail: priceRetail || null,
     priceWholesale: priceWholesale || null,
     cost: cost || null,
-    // Derivados, nunca tecleados. Ver la cabecera.
     marginRetailPct: marginOf(priceRetail)?.toString() ?? null,
     marginWholesalePct: marginOf(priceWholesale)?.toString() ?? null,
     stockOpening: stock || null,
-    published,
+    publishedRetail: pubRetail,
+    publishedWholesale: pubWholesale,
     photoPath,
     description: description || null,
   };
+
+  // Lo que se fija a mano ANTES de que el producto exista. En edicion cada
+  // candado escribe en la base al instante; al crear no hay fila donde
+  // escribir, asi que se guarda aqui y se persiste justo despues del insert.
+  const [pendingPins, setPendingPins] = useState<
+    Record<PriceTier, Partial<Record<PriceCurrency, string>>>
+  >({ retail: {}, wholesale: {} });
 
   function save() {
     setError(null);
@@ -241,12 +268,11 @@ export function CatalogProductDialog({
               id="producto_nombre"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Bulto de jabón"
+              placeholder="Escribe nombre"
               autoFocus={!editing}
             />
           </div>
 
-          {/* ── Unidad ──────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="producto_unidad">Unidad</Label>
             <Select value={unitChoice} onValueChange={setUnitChoice}>
@@ -272,35 +298,32 @@ export function CatalogProductDialog({
             ) : null}
           </div>
 
-          {/* ── Cantidad ────────────────────────────────────────────────── */}
           <QuantityStepper value={stock} onChange={setStock} unit={unit || null} />
 
-          {/* ── Costo ───────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="producto_costo">Costo (opcional)</Label>
             <Input
               id="producto_costo"
               inputMode="decimal"
               value={cost}
-              onChange={(e) => setCost(e.target.value)}
-              placeholder="—"
+              onChange={(e) => handleCost(e.target.value)}
+              placeholder="00"
             />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Lo que te costó a ti. Con esto calculamos el precio desde el margen y te decimos tu
-              ganancia.
+              Lo que te costó a ti. Con esto calculamos los precios desde el margen y te decimos
+              tu ganancia.
             </p>
           </div>
 
-          {/* ── Los dos escalones ──────────────────────────────────────── */}
-          <TierRow
+          <TierSection
             tier="wholesale"
             label="Margen al mayor"
             price={priceWholesale}
             onPriceChange={setPriceWholesale}
+            margin={marginWholesale}
+            onMarginChange={setMarginWholesale}
             cost={costNumber}
             baseCurrency={baseCurrency}
-            byCurrency={byCurrencyWholesale}
-            onByCurrencyChange={setByCurrencyWholesale}
             rates={rates}
             productId={product?.id ?? null}
             overrides={overrides.wholesale}
@@ -309,15 +332,15 @@ export function CatalogProductDialog({
             disabled={saving}
           />
 
-          <TierRow
+          <TierSection
             tier="retail"
             label="Margen al detal"
             price={priceRetail}
             onPriceChange={setPriceRetail}
+            margin={marginRetail}
+            onMarginChange={setMarginRetail}
             cost={costNumber}
             baseCurrency={baseCurrency}
-            byCurrency={byCurrencyRetail}
-            onByCurrencyChange={setByCurrencyRetail}
             rates={rates}
             productId={product?.id ?? null}
             overrides={overrides.retail}
@@ -326,24 +349,58 @@ export function CatalogProductDialog({
             disabled={saving}
           />
 
-          {/* ── Publicar ───────────────────────────────────────────────── */}
-          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
-            <div className="flex min-w-0 flex-col gap-1">
-              <Label htmlFor="producto_publicar">Publicar en catálogo</Label>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Lo ve cualquiera que abra el enlace de tu catálogo, con su foto y su precio al
-                detal.
-              </p>
+          {/* ── Publicar, con sus dos casillas ─────────────────────────── */}
+          <div className="flex flex-col gap-3 rounded-lg border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-col gap-1">
+                <Label htmlFor="producto_publicar">Publicar producto en catálogo</Label>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Lo ve cualquiera que abra el enlace de tu catálogo, con su foto y su precio.
+                </p>
+              </div>
+              <Switch
+                id="producto_publicar"
+                checked={publishOn}
+                disabled={saving}
+                onCheckedChange={(next) => {
+                  // ENCENDER MARCA «AL DETAL», decision del dueno el
+                  // 2026-10-10. Es el caso corriente y sale de un solo toque;
+                  // y asi el producto nunca queda publicado sin aparecer en
+                  // ningun catalogo, que es el estado del que un tendero no
+                  // puede salir porque no hay nada en pantalla que lo
+                  // explique.
+                  if (next) {
+                    setPubRetail(true);
+                  } else {
+                    setPubRetail(false);
+                    setPubWholesale(false);
+                  }
+                }}
+              />
             </div>
-            <Switch
-              id="producto_publicar"
-              checked={published}
-              onCheckedChange={setPublished}
-              disabled={saving}
-            />
+
+            {publishOn ? (
+              <div className="flex flex-col gap-3 border-t pt-3">
+                <PublishCheck
+                  id="pub_mayor"
+                  label="Incluir precio al mayor"
+                  checked={pubWholesale}
+                  disabled={saving}
+                  // Desmarcar la ultima apaga el interruptor, por lo mismo de
+                  // arriba: «Publicar» encendido y ningun catalogo es mentira.
+                  onChange={(v) => setPubWholesale(v)}
+                />
+                <PublishCheck
+                  id="pub_detal"
+                  label="Incluir precio al detal"
+                  checked={pubRetail}
+                  disabled={saving}
+                  onChange={(v) => setPubRetail(v)}
+                />
+              </div>
+            ) : null}
           </div>
 
-          {/* ── Foto ───────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-2">
             <Label>Foto</Label>
             <ProductPhotoInput
@@ -354,14 +411,13 @@ export function CatalogProductDialog({
             />
           </div>
 
-          {/* ── Descripción ────────────────────────────────────────────── */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="producto_descripcion">Descripción (opcional)</Label>
             <Textarea
               id="producto_descripcion"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Marca, tamaño, color... lo que ayude a reconocerlo."
+              placeholder="Escribe descripción del producto"
               rows={3}
             />
           </div>
@@ -407,15 +463,41 @@ export function CatalogProductDialog({
   );
 }
 
+function PublishCheck({
+  id,
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(v) => onChange(v === true)}
+      />
+      <Label htmlFor={id} className="text-sm font-normal">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
 // LA TARJETA DE LA FOTO CON IA, QUE TODAVIA NO HACE NADA.
 //
 // El frame la pide con una nota: «de momento mostrar mensaje que será una
 // próxima actualización». Se pinta, entonces, y al tocarla lo dice.
 //
-// Un control decorativo es una deuda, asi que lleva su propio limite escrito:
-// es UNO, y es el unico de esta pantalla. El boton "Compartir" del catalogo,
-// que tambien podria haber salido asi, se construyo de verdad — porque dos
-// cosas que no funcionan en la misma pantalla dejan de leerse como «viene
+// Es el unico control decorativo de esta pantalla, y conviene que siga
+// siendolo: dos cosas que no funcionan a la vez dejan de leerse como «viene
 // pronto» y empiezan a leerse como «esta roto».
 //
 // Lo que falta para que funcione: CT-57 (reseña de OpenRouter antes de
@@ -450,18 +532,11 @@ function AiPhotoCard() {
 // El frame: «Botón '-' resta, Botón '+' suma, Valor entre paréntesis
 // '(unidad)' depende de la unidad seleccionada».
 //
-// ─────────────────────────────────────────────────────────────────────────
-// Y DICE QUE TODAVIA NO SE MUEVE SOLO, porque si no, miente.
-//
-// Decision del dueño el 2026-10-09: el campo entra ahora y la maquina de
-// eventos despues. Asi que fiar o vender NO descuenta de aqui. Un numero que
-// no baja parece un inventario llevado al dia hasta el dia que alguien lo
-// compara con el estante — y ese dia se deja de confiar en la pantalla entera,
-// no solo en este campo.
-//
-// La frase de abajo es lo que compra esa confianza por adelantado. Sale cuando
-// hay una cantidad escrita, no siempre: a quien deja el campo vacio no hay
-// nada que advertirle.
+// Y DICE QUE TODAVIA NO SE MUEVE SOLO, porque si no, miente. Decision del
+// dueño el 2026-10-09: el campo entra ahora y la maquina de eventos despues,
+// asi que fiar o vender NO descuenta de aqui. Un numero que no baja parece un
+// inventario al dia hasta el dia que alguien lo compara con el estante — y ese
+// dia se deja de confiar en la pantalla entera, no solo en este campo.
 function QuantityStepper({
   value,
   onChange,
@@ -477,18 +552,10 @@ function QuantityStepper({
   //
   // Antes esto era `onChange(String(n + delta))` con `n` leido de la prop
   // `value`. Encontrado probando la ficha el 2026-10-10: **tres toques
-  // seguidos al «+» dejaban la cantidad en 1**, no en 3.
-  //
-  // El motivo es que React agrupa las actualizaciones de un mismo lote: los
-  // tres manejadores corren antes de que ninguno vuelva a renderizar, asi que
-  // los tres leen el MISMO `value` del render viejo y los tres calculan
-  // 0 + 1. Dos de los tres toques se pierden.
-  //
-  // Con toques lentos no se nota, porque cada uno alcanza a renderizar — por
-  // eso es la clase de fallo que pasa una revision y aparece en un telefono
-  // barato, o con el doble toque que cualquiera le da a un contador. Leyendo
-  // `prev` dentro del propio actualizador, cada uno ve el resultado del
-  // anterior y los tres cuentan.
+  // seguidos al «+» dejaban la cantidad en 1**, no en 3, porque React agrupa
+  // las actualizaciones de un mismo lote y los tres manejadores leian el mismo
+  // `value` del render viejo. Con toques lentos no se nota; con el doble toque
+  // que cualquiera le da a un contador, si.
   const step = (delta: number) =>
     onChange((prev) => {
       const n = Number(String(prev).replace(",", ".")) || 0;
@@ -499,9 +566,6 @@ function QuantityStepper({
     <div className="flex flex-col gap-2">
       <Label htmlFor="producto_cantidad">Cantidad</Label>
       <div className="flex items-center gap-2">
-        {/* 40px, que es el minimo del DESIGN-SYSTEM para un control con
-            etiqueta. Un boton de 32 junto a un campo de 40 tambien se ve raro
-            alineado. */}
         <Button
           type="button"
           variant="outline"
@@ -541,26 +605,23 @@ function QuantityStepper({
   );
 }
 
-// UN ESCALON: SU MARGEN, SU PRECIO Y SUS MONEDAS.
+// UN ESCALON: SU MARGEN Y UNA FILA POR MONEDA.
 //
-// El desplegable del margen y el campo del precio son el MISMO dato visto de
-// dos formas, y el costo es el que los une:
-//
-//   - elegir margen   →  precio = costo × (1 + margen)
-//   - escribir precio →  el desplegable pasa a enseñar ese margen, o "Otro"
-//
-// Sin costo no hay margen que calcular, asi que el desplegable se inhabilita
-// Y LO DICE. Esa frase es la unica razon por la que un control apagado aqui no
-// es un error de la pantalla.
-function TierRow({
+// La fila de la moneda del negocio es EL PRECIO: editable, sin candado,
+// porque su vinculo con el costo es el margen de arriba. Las demas son
+// equivalencias con candado. La de bolivares no lleva ninguno — decision del
+// dueno el 2026-10-10 — y la migracion 085 lo impide tambien en el esquema,
+// porque un precio en bolivares es el unico que se vuelve falso solo cuando
+// la tasa se mueve.
+function TierSection({
   tier,
   label,
   price,
   onPriceChange,
+  margin,
+  onMarginChange,
   cost,
   baseCurrency,
-  byCurrency,
-  onByCurrencyChange,
   rates,
   productId,
   overrides,
@@ -572,179 +633,12 @@ function TierRow({
   label: string;
   price: string;
   onPriceChange: (next: string) => void;
+  margin: string;
+  onMarginChange: (next: string) => void;
   cost: number | null;
   baseCurrency: PriceCurrency;
-  byCurrency: boolean;
-  onByCurrencyChange: (next: boolean) => void;
   rates: BolivarRates | null;
   productId: string | null;
-  overrides: Partial<Record<PriceCurrency, number>>;
-  pending: Partial<Record<PriceCurrency, string>>;
-  onPendingChange: (next: Partial<Record<PriceCurrency, string>>) => void;
-  disabled: boolean;
-}) {
-  const priceNumber = (() => {
-    const n = parseAmount(price);
-    return n != null && n > 0 ? n : null;
-  })();
-
-  const margin = priceNumber != null ? marginFromPrice(cost, priceNumber) : null;
-
-  // El desplegable enseña el preset exacto si el margen cae en uno, y "otro"
-  // en cualquier otro caso. No se redondea para que encaje: un 29,7 % que se
-  // enseñara como 30 % haria pensar que el precio es otro.
-  const presetValue =
-    margin != null && (MARGIN_PRESETS as readonly number[]).includes(margin)
-      ? String(margin)
-      : margin != null
-        ? "otro"
-        : "";
-
-  const currencyLabel = tier === "wholesale" ? "al mayor" : "al detal";
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border p-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`margen_${tier}`}>{label}</Label>
-          <Select
-            value={presetValue}
-            disabled={disabled || cost == null}
-            onValueChange={(v) => {
-              if (v === "otro") return;
-              const next = suggestedPrice(cost!, Number(v));
-              if (next != null) onPriceChange(formatAmountForInput(next));
-            }}
-          >
-            <SelectTrigger id={`margen_${tier}`} className="w-full">
-              <SelectValue placeholder={cost == null ? "—" : "Elige"} />
-            </SelectTrigger>
-            <SelectContent>
-              {MARGIN_PRESETS.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {formatPercent(m)}
-                </SelectItem>
-              ))}
-              {/* Se enseña y no se elige: "Otro" es lo que PASA cuando el
-                  precio se teclea a mano, no una opcion que haga nada. */}
-              <SelectItem value="otro" disabled>
-                Otro (escribe el precio)
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`precio_${tier}`}>Precio {currencyLabel}</Label>
-          <Input
-            id={`precio_${tier}`}
-            inputMode="decimal"
-            value={price}
-            onChange={(e) => onPriceChange(e.target.value)}
-            placeholder="—"
-            disabled={disabled}
-          />
-        </div>
-      </div>
-
-      {cost == null ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Pon el costo arriba y elegimos el precio desde el margen. Sin costo, escribe tú el
-          precio.
-        </p>
-      ) : margin != null && margin < 0 ? (
-        /* UNA PERDIDA SE LLAMA PERDIDA.
-           Encontrado probando la ficha el 2026-10-10: con costo 10 y precio 9
-           la linea decia «tu ganancia es del -10 %», que es una contradiccion
-           —una ganancia negativa— y en una pantalla de dinero se lee como un
-           fallo de cuentas, no como un aviso. Quien se equivoque de tecla no
-           recibia ninguna alarma.
-
-           NO se bloquea: vender bajo costo es un caso real y corriente
-           —liquidacion, mercancia por vencer, una promocion para mover stock
-           parado— y la migracion 084 deja de prohibirlo por eso mismo. Lo que
-           hace falta es que se vea, no que se impida. */
-        <p className="text-xs leading-relaxed text-destructive">
-          A ese precio vendes <strong>por debajo de lo que te costó</strong>: pierdes{" "}
-          {formatPercent(Math.abs(margin))}.
-        </p>
-      ) : margin != null ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          A ese precio tu ganancia es del{" "}
-          <strong className="text-foreground">{formatPercent(margin)}</strong>.
-        </p>
-      ) : null}
-
-      {/* El interruptor por moneda. Solo existe donde hay tasas: un negocio
-          colombiano cobra en pesos y no tiene ninguna. */}
-      {rates ? (
-        <>
-          <div className="flex items-center justify-between gap-4 border-t pt-3">
-            <Label htmlFor={`moneda_${tier}`} className="text-sm font-normal">
-              Agregar precio {currencyLabel} por moneda
-            </Label>
-            <Switch
-              id={`moneda_${tier}`}
-              checked={byCurrency}
-              onCheckedChange={onByCurrencyChange}
-              disabled={disabled}
-            />
-          </div>
-          {byCurrency ? (
-            <EquivalenceRows
-              tier={tier}
-              productId={productId}
-              basePrice={priceNumber}
-              baseCurrency={baseCurrency}
-              rates={rates}
-              overrides={overrides}
-              pending={pending}
-              onPendingChange={onPendingChange}
-              disabled={disabled}
-            />
-          ) : null}
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-// LAS EQUIVALENCIAS, CON SU CANDADO.
-//
-// Cada moneda se enseña calculada y se puede fijar. Cerrar el candado inserta
-// una fila; abrirlo la borra — no hay un booleano «está fijado» que pueda
-// quedar desincronizado del valor, porque un precio calculado no se guarda en
-// ningún sitio: se calcula.
-//
-// LA PALABRA ES «EQUIVALENCIA» Y NO «PRECIO», y eso lo decide `priceRowLabel`.
-// Con el BCV a 160 y el USDT a 200, un producto de $12 enseña 9,60 USDT: es
-// correcto y se lee como un error, porque en la cabeza de cualquiera un USDT
-// es un dólar. La palabra es lo que lo arregla.
-//
-// ─────────────────────────────────────────────────────────────────────────
-// Y FUNCIONA ANTES DE QUE EL PRODUCTO EXISTA
-//
-// Al crear no hay fila donde escribir un override, asi que el candado guarda
-// en `pending` y la ficha lo persiste tras el insert. La alternativa —esconder
-// los candados hasta el segundo guardado— obligaba a abrir el producto otra
-// vez para hacer lo que el frame pide en la pantalla de creacion.
-function EquivalenceRows({
-  tier,
-  productId,
-  basePrice,
-  baseCurrency,
-  rates,
-  overrides,
-  pending,
-  onPendingChange,
-  disabled,
-}: {
-  tier: PriceTier;
-  // null mientras el producto no existe.
-  productId: string | null;
-  basePrice: number | null;
-  baseCurrency: PriceCurrency;
-  rates: BolivarRates;
   overrides: Partial<Record<PriceCurrency, number>>;
   pending: Partial<Record<PriceCurrency, string>>;
   onPendingChange: (next: Partial<Record<PriceCurrency, string>>) => void;
@@ -754,102 +648,308 @@ function EquivalenceRows({
   const [busy, startTransition] = useTransition();
   const [draft, setDraft] = useState<Partial<Record<PriceCurrency, string>>>({});
 
-  if (basePrice == null) {
+  const priceNumber = (() => {
+    const n = parseAmount(price);
+    return n != null && n > 0 ? n : null;
+  })();
+
+  // El margen derivado manda EN CUANTO hay precio. Mientras no lo hay, el
+  // desplegable ensena el valor por defecto del frame, que es lo que despues
+  // rellena el precio al escribir un costo.
+  const derived = priceNumber != null ? marginFromPrice(cost, priceNumber) : null;
+  const shown = derived ?? Number(margin);
+  const selectValue =
+    derived != null
+      ? (MARGIN_PRESETS as readonly number[]).includes(derived)
+        ? String(derived)
+        : "otro"
+      : margin;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-4">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`margen_${tier}`}>{label}</Label>
+        <Select
+          value={selectValue}
+          disabled={disabled}
+          onValueChange={(v) => {
+            if (v === "otro") return;
+            onMarginChange(v);
+            // Sin costo no hay de que calcular: el margen queda elegido y el
+            // precio se teclea en su fila. Es lo que mantiene vivo el alta
+            // minima dentro de un fiado.
+            if (cost == null) return;
+            const next = suggestedPrice(cost, Number(v));
+            if (next != null) onPriceChange(formatAmountForInput(next));
+          }}
+        >
+          <SelectTrigger id={`margen_${tier}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MARGIN_PRESETS.map((m) => (
+              <SelectItem key={m} value={String(m)}>
+                {formatPercent(m)}
+              </SelectItem>
+            ))}
+            {/* Se ensena y no se elige: «Otro» es lo que PASA cuando el precio
+                se teclea a mano, no una opcion que haga nada. */}
+            <SelectItem value="otro" disabled>
+              Otro (escribe el precio)
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <PriceRows
+        tier={tier}
+        price={price}
+        onPriceChange={onPriceChange}
+        basePrice={priceNumber}
+        baseCurrency={baseCurrency}
+        rates={rates}
+        productId={productId}
+        overrides={overrides}
+        pending={pending}
+        onPendingChange={onPendingChange}
+        draft={draft}
+        setDraft={setDraft}
+        disabled={disabled || busy}
+        startTransition={startTransition}
+        router={router}
+      />
+
+      {cost == null ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Pon el costo arriba y calculamos el precio desde el margen. Sin costo, escribe tú el
+          precio.
+        </p>
+      ) : derived != null && derived < 0 ? (
+        /* UNA PERDIDA SE LLAMA PERDIDA. «Tu ganancia es del -10 %» es una
+           contradiccion, y en una pantalla de dinero se lee como un fallo de
+           cuentas en vez de como un aviso. No se bloquea: liquidar o mover
+           mercancia por vencer son casos reales, y la 084 dejo de prohibirlo
+           en el esquema por eso mismo. */
+        <p className="text-xs leading-relaxed text-destructive">
+          A ese precio vendes <strong>por debajo de lo que te costó</strong>: pierdes{" "}
+          {formatPercent(Math.abs(derived))}.
+        </p>
+      ) : derived != null ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          A ese precio tu ganancia es del{" "}
+          <strong className="text-foreground">{formatPercent(shown)}</strong>.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function PriceRows({
+  tier,
+  price,
+  onPriceChange,
+  basePrice,
+  baseCurrency,
+  rates,
+  productId,
+  overrides,
+  pending,
+  onPendingChange,
+  draft,
+  setDraft,
+  disabled,
+  startTransition,
+  router,
+}: {
+  tier: PriceTier;
+  price: string;
+  onPriceChange: (next: string) => void;
+  basePrice: number | null;
+  baseCurrency: PriceCurrency;
+  rates: BolivarRates | null;
+  productId: string | null;
+  overrides: Partial<Record<PriceCurrency, number>>;
+  pending: Partial<Record<PriceCurrency, string>>;
+  onPendingChange: (next: Partial<Record<PriceCurrency, string>>) => void;
+  draft: Partial<Record<PriceCurrency, string>>;
+  setDraft: (d: Partial<Record<PriceCurrency, string>>) => void;
+  disabled: boolean;
+  startTransition: (cb: () => void) => void;
+  router: ReturnType<typeof useRouter>;
+}) {
+  // COLOMBIA: UNA SOLA FILA, y eso no es un hueco.
+  //
+  // Un negocio colombiano cobra en pesos y no tiene tasa de ninguna clase —
+  // no existe Bs/COP porque no hay bolivares de por medio. Decision del dueno
+  // el 2026-10-10: la seccion mantiene su forma con una unica fila editable,
+  // en vez de volver al campo suelto que el frame acaba de quitar.
+  if (!rates || baseCurrency === "COP") {
     return (
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Escribe un precio arriba para ver las equivalencias en otras monedas.
-      </p>
+      <PriceField
+        label="Precio en pesos"
+        value={price}
+        onChange={onPriceChange}
+        disabled={disabled}
+        inputId={`precio_${tier}_COP`}
+      />
     );
   }
 
   // Los fijados de la base MAS los que se acaban de fijar sin guardar todavia.
-  // Los locales mandan: son los mas recientes.
   const effective: Partial<Record<PriceCurrency, number>> = { ...overrides };
   for (const [currency, amount] of Object.entries(pending)) {
     const n = parseAmount(amount);
     if (n != null && n > 0) effective[currency as PriceCurrency] = n;
   }
 
-  const rows = allPrices({ amount: basePrice, currency: baseCurrency }, rates, effective);
+  const rows =
+    basePrice == null
+      ? null
+      : allPrices({ amount: basePrice, currency: baseCurrency }, rates, effective);
 
   return (
     <div className="flex flex-col gap-3">
-      {rows.map((row) => {
-        const pinned = row.origin === "manual";
-        const isBase = row.origin === "base";
-        return (
-          <div key={row.currency} className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-xs text-muted-foreground">
-                {priceRowLabel(row.currency, row.origin)}
-              </span>
-              <span className="truncate text-sm tabular-nums">
-                {/* Un hueco se dice, no se omite: «no tenemos el precio del
-                    USDT ahora» se lee distinto a una moneda que no aparece. */}
-                {row.amount == null ? "—" : formatPriceAmount(row.amount, row.currency)}
-              </span>
-            </div>
+      {/* La moneda del negocio: el precio, siempre editable, con o sin las
+          demas. Va primero y fuera del mapa de `allPrices` justo porque no es
+          una equivalencia — es el numero del que salen las otras. */}
+      <PriceField
+        label={`Precio ${baseCurrency === "USD" ? "Dólar" : baseCurrency}`}
+        value={price}
+        onChange={onPriceChange}
+        disabled={disabled}
+        inputId={`precio_${tier}`}
+      />
 
-            {/* La moneda base no lleva candado: es el precio, no una
-                equivalencia de nada. */}
-            {isBase ? null : (
-              <div className="flex shrink-0 items-center gap-1">
-                {pinned ? null : (
-                  <Input
-                    inputMode="decimal"
-                    value={draft[row.currency] ?? ""}
-                    onChange={(e) => setDraft({ ...draft, [row.currency]: e.target.value })}
-                    placeholder="Fijar"
-                    className="h-10 w-24"
-                    aria-label={`Fijar el precio en ${row.currency}`}
-                  />
-                )}
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  disabled={disabled || busy}
-                  aria-label={
-                    pinned
-                      ? `Volver a calcular el precio en ${row.currency}`
-                      : `Fijar el precio en ${row.currency}`
-                  }
-                  onClick={() => {
-                    // Sin producto todavia: solo estado local, y la ficha lo
-                    // escribe al guardar.
-                    if (productId == null) {
-                      const next = { ...pending };
-                      if (pinned) delete next[row.currency];
-                      else next[row.currency] = draft[row.currency] ?? "";
-                      onPendingChange(next);
-                      setDraft({ ...draft, [row.currency]: "" });
-                      return;
-                    }
-                    startTransition(async () => {
-                      const r = pinned
-                        ? await unpinPrice(productId, tier, row.currency)
-                        : await pinPrice(productId, tier, row.currency, draft[row.currency] ?? "");
-                      if (r.error) {
-                        toast.error(r.error);
-                        return;
+      {rows == null ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Escribe un precio para ver las otras monedas.
+        </p>
+      ) : (
+        rows
+          .filter((row) => row.currency !== baseCurrency)
+          .map((row) => {
+            const pinned = row.origin === "manual";
+            // BOLIVARES NO SE FIJA. Decision del dueno el 2026-10-10, y la
+            // migracion 085 lo impide tambien en la base. Se ensena el numero
+            // y una linea que dice por que no hay control, para que no se lea
+            // como una fila rota entre tres editables.
+            const fixable = row.currency !== "VES";
+
+            return (
+              <div key={row.currency} className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-xs text-muted-foreground">
+                    {priceRowLabel(row.currency, row.origin)}
+                  </span>
+                  <span className="truncate text-sm tabular-nums">
+                    {/* Un hueco se dice, no se omite: «no tenemos el precio
+                        del USDT ahora» se lee distinto a una moneda que no
+                        aparece. */}
+                    {row.amount == null ? "—" : formatPriceAmount(row.amount, row.currency)}
+                  </span>
+                </div>
+
+                {fixable ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    {pinned ? null : (
+                      <Input
+                        inputMode="decimal"
+                        value={draft[row.currency] ?? ""}
+                        onChange={(e) => setDraft({ ...draft, [row.currency]: e.target.value })}
+                        placeholder="Fijar"
+                        className="h-10 w-24"
+                        aria-label={`Fijar el precio en ${row.currency}`}
+                      />
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled={disabled}
+                      aria-label={
+                        pinned
+                          ? `Volver a calcular el precio en ${row.currency}`
+                          : `Fijar el precio en ${row.currency}`
                       }
-                      setDraft({ ...draft, [row.currency]: "" });
-                      router.refresh();
-                    });
-                  }}
-                >
-                  {pinned ? <Lock className="size-4" /> : <Unlock className="size-4" />}
-                </Button>
+                      onClick={() => {
+                        // Sin producto todavia: solo estado local, y la ficha
+                        // lo escribe al guardar.
+                        if (productId == null) {
+                          const next = { ...pending };
+                          if (pinned) delete next[row.currency];
+                          else next[row.currency] = draft[row.currency] ?? "";
+                          onPendingChange(next);
+                          setDraft({ ...draft, [row.currency]: "" });
+                          return;
+                        }
+                        startTransition(async () => {
+                          const r = pinned
+                            ? await unpinPrice(productId, tier, row.currency)
+                            : await pinPrice(
+                                productId,
+                                tier,
+                                row.currency,
+                                draft[row.currency] ?? "",
+                              );
+                          if (r.error) {
+                            toast.error(r.error);
+                            return;
+                          }
+                          setDraft({ ...draft, [row.currency]: "" });
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      {pinned ? <Lock className="size-4" /> : <Unlock className="size-4" />}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })
+      )}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Las equivalencias se calculan con la tasa del día. Si fijas una, se queda como la dejaste
-        hasta que vuelvas a abrir el candado.
-      </p>
+      {rows ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {/* NO dice «dólar»: esa fila es el precio y no lleva candado. Lo
+              decía, y era una frase que describe un control que no está —
+              encontrado mirando la pantalla el 2026-10-10. */}
+          Las equivalencias se calculan con la tasa del día. Puedes fijar la de euro o la de
+          USDT; la de bolívares no, porque la tasa se mueve y ese número dejaría de cuadrar con
+          los demás al día siguiente.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function PriceField({
+  label,
+  value,
+  onChange,
+  disabled,
+  inputId,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  disabled: boolean;
+  inputId: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label htmlFor={inputId} className="shrink-0 text-xs font-normal text-muted-foreground">
+        {label}
+      </Label>
+      <Input
+        id={inputId}
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="00.00"
+        disabled={disabled}
+        className="h-10 w-36 text-right tabular-nums"
+      />
     </div>
   );
 }

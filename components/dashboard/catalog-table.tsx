@@ -12,7 +12,13 @@ import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
 import { setProductPublished } from "@/app/(app)/productos/actions";
 import { formatPriceAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { listPrice, overridesByTier, type ProductRow, type PriceOverrideRow } from "@/lib/products/catalog";
+import {
+  isPublished,
+  listPrice,
+  overridesByTier,
+  type ProductRow,
+  type PriceOverrideRow,
+} from "@/lib/products/catalog";
 
 // LA REJILLA DEL CATALOGO, segun el frame 1175:5881.
 //
@@ -228,7 +234,27 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
   // Optimista: el interruptor se mueve en el acto y se revierte si el servidor
   // dice que no. Sin esto el gesto tarda un viaje de ida y vuelta, y en un
   // telefono barato eso se siente como que no respondio y se vuelve a tocar.
-  const [published, setPublished] = useState(product.published);
+  const [published, setPublished] = useState(isPublished(product));
+
+  // EL INTERRUPTOR DE LA TARJETA ES UNO Y LOS ESCALONES SON DOS, asi que
+  // encender tiene que decidir cual. Encender pone DETAL, que es lo que la
+  // ficha marca por defecto y el caso corriente; apagar quita los dos, porque
+  // un interruptor que dice «Publicar» y deja el producto en el catalogo de
+  // mayorista miente.
+  //
+  // Lo que esto arregla, encontrado mirando la pantalla el 2026-10-10: un
+  // producto publicado SOLO al mayor se quedaba en «al detal» al apagarlo y
+  // volverlo a encender aqui. Su lista de mayorista pasaba a estar a la vista
+  // de cualquier cliente sin que nada lo dijera. Ahora se recuerda el par de
+  // esta sesion y se restaura tal cual.
+  //
+  // Tras recargar la pagina no hay nada que recordar y vuelve a ser detal:
+  // esto cubre el toque equivocado, que es el caso real, no una memoria
+  // permanente que habria que guardar en algun sitio.
+  const [ultimo, setUltimo] = useState<{ retail: boolean; wholesale: boolean }>({
+    retail: product.published_retail,
+    wholesale: product.published_wholesale,
+  });
 
   const price = listPrice(product);
 
@@ -287,8 +313,14 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
           aria-label={`Publicar ${product.name} en el catálogo`}
           onCheckedChange={(next) => {
             setPublished(next);
+            const tiers = next
+              ? ultimo.retail || ultimo.wholesale
+                ? ultimo
+                : { retail: true, wholesale: false }
+              : { retail: false, wholesale: false };
+            if (!next) setUltimo({ retail: product.published_retail, wholesale: product.published_wholesale });
             startTransition(async () => {
-              const r = await setProductPublished(product.id, next);
+              const r = await setProductPublished(product.id, tiers);
               if (r.error) {
                 setPublished(!next);
                 toast.error(r.error);

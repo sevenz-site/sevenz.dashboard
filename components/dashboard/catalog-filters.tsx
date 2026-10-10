@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
-import { listPrice, type ProductRow } from "@/lib/products/catalog";
+import { isPublished, listPrice, type ProductRow } from "@/lib/products/catalog";
 
 // EL BUSCADOR Y LOS CHIPS DEL CATALOGO.
 //
@@ -114,8 +114,11 @@ export function CatalogFilterProvider({
 
     const filtered = rows.filter((p) => {
       if (q && !p.name.toLowerCase().includes(q)) return false;
-      if (status === "publicados" && !p.published) return false;
-      if (status === "sin-publicar" && p.published) return false;
+      // «Publicado» es estar en ALGUN catalogo, de mayor o de detal. Separar
+      // el filtro en dos haria tres estados donde el tendero piensa en uno:
+      // «esto se ve o no se ve».
+      if (status === "publicados" && !isPublished(p)) return false;
+      if (status === "sin-publicar" && isPublished(p)) return false;
       const value = comparable.get(p.id) ?? 0;
       if (min != null && Number.isFinite(min) && value < min) return false;
       if (max != null && Number.isFinite(max) && value > max) return false;

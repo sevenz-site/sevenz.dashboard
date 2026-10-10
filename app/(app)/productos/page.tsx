@@ -11,6 +11,7 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
   getBolivarRates,
+  isPublished,
   PRODUCT_COLUMNS,
   type ProductRow,
   type PriceOverrideRow,
@@ -99,7 +100,11 @@ export default async function ProductosPage({
   // Se cuenta aquí y no en el diálogo de compartir: ese es un componente de
   // cliente y tendría que pedir la lista otra vez para saber un número que
   // esta consulta ya trajo.
-  const publishedCount = rows.filter((p) => p.published).length;
+  const publishedCount = {
+    retail: rows.filter((p) => p.published_retail).length,
+    wholesale: rows.filter((p) => p.published_wholesale).length,
+    any: rows.filter(isPublished).length,
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-4">

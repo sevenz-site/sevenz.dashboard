@@ -93,7 +93,8 @@ export type ProductInput = {
   marginRetailPct: string | null;
   marginWholesalePct: string | null;
   stockOpening: string | null;
-  published: boolean;
+  publishedRetail: boolean;
+  publishedWholesale: boolean;
   photoPath: string | null;
   description: string | null;
 };
@@ -138,7 +139,8 @@ function rowFrom(input: ProductInput, name: string, userId: string) {
     margin_wholesale_pct: toNumber(input.marginWholesalePct),
     stock_opening: stock,
     stock_opening_at: stock == null ? null : new Date().toISOString(),
-    published: input.published,
+    published_retail: input.publishedRetail,
+    published_wholesale: input.publishedWholesale,
     photo_path: ownPhotoPath(input.photoPath, userId),
     description: cleanDescription(input.description),
   };
@@ -213,7 +215,7 @@ export async function updateProduct(
 // validation it has nothing to do with would refuse the save.
 export async function setProductPublished(
   productId: string,
-  published: boolean,
+  tiers: { retail: boolean; wholesale: boolean },
 ): Promise<ProductResult> {
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
@@ -221,7 +223,11 @@ export async function setProductPublished(
 
   const { error } = await supabase
     .from("products")
-    .update({ published, updated_at: new Date().toISOString() })
+    .update({
+      published_retail: tiers.retail,
+      published_wholesale: tiers.wholesale,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", productId)
     .eq("owner_id", user.id);
 

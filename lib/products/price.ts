@@ -56,7 +56,9 @@ export type PriceInCurrency = {
 
 // Las monedas que una ficha venezolana enseña, en el orden en que se leen.
 // COP no está: un negocio colombiano no convive con ninguna de estas.
-export const VE_PRICE_CURRENCIES: PriceCurrency[] = ["USD", "USDT", "EUR", "VES"];
+// Orden del frame 1187:3728: Dólar, Euro, USDT. Bolívares va al final, que
+// es donde cae lo que solo se calcula.
+export const VE_PRICE_CURRENCIES: PriceCurrency[] = ["USD", "EUR", "USDT", "VES"];
 
 // Bolívares por una unidad de `currency`. 1 para el propio bolívar.
 function bolivaresPorUnidad(currency: PriceCurrency, rates: BolivarRates): number | null {

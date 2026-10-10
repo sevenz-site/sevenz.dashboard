@@ -8,10 +8,10 @@
 //
 // LO QUE VIGILA, y por qué cada cosa:
 //
-//   1. Que `published` nazca en FALSE. Si el día que esto cambie nadie se da
-//      cuenta, el primer producto que escriba cualquiera de los 24 dueños
-//      queda publicado en internet sin que lo haya pedido. Es la comprobación
-//      más barata de la lista y la que más daño evita.
+//   1. Que los dos `published_*` nazcan en FALSE. Si el día que esto cambie
+//      nadie se da cuenta, el primer producto que escriba cualquiera de los 24
+//      dueños queda publicado en internet sin que lo haya pedido. Es la
+//      comprobación más barata de la lista y la que más daño evita.
 //
 //   2. Que `stock_opening` rechace un negativo, y que los dos márgenes nuevos
 //      entren. Es lo que la 084 añadió a la ficha.
@@ -103,19 +103,23 @@ try {
       base_currency: "USD",
       price_retail: 10,
     })
-    .select("id, published")
+    .select("id, published_retail, published_wholesale")
     .single();
   // Se para aquí y lo dice, en vez de reventar quince líneas más abajo con un
   // `null`: si la 084 no ha corrido en este entorno, TODO lo que sigue falla
   // por la misma causa y el informe se llena de ruido que no apunta a ella.
   if (ePub || !pub) {
-    check("1. `published` nace en false", false, ePub?.message ?? "el insert no devolvió fila");
+    check("1. los dos `published_*` nacen en false", false, ePub?.message ?? "el insert no devolvió fila");
     throw new Error(
       "La migración 084 parece no haber corrido en este entorno. Córrela antes de seguir.",
     );
   }
   creados.push(pub.id);
-  check("1. `published` nace en false", pub.published === false, `nació ${pub.published}`);
+  check(
+    "1. los dos `published_*` nacen en false",
+    pub.published_retail === false && pub.published_wholesale === false,
+    `detal=${pub.published_retail} mayor=${pub.published_wholesale}`,
+  );
 
   // ── 2. Cantidad negativa y márgenes ────────────────────────────────────
   const { error: eNeg } = await admin.from("products").insert({
@@ -214,7 +218,8 @@ try {
       cost: 10,
       margin_retail_pct: 30,
       stock_opening: 5,
-      published: true,
+      published_retail: true,
+      published_wholesale: true,
       description: "visible en el catálogo",
     })
     .select("id")
@@ -230,7 +235,8 @@ try {
       name: `${MARCA} zz solo mayor`,
       base_currency: "USD",
       price_wholesale: 7,
-      published: true,
+      published_retail: true,
+      published_wholesale: true,
     })
     .select("id")
     .single();
@@ -295,15 +301,20 @@ try {
   );
 
   // ── 6. Un precio fijado a mano llega a la página pública ───────────────
+  //
+  // En USDT y no en bolívares: desde la 085 los bolívares no se pueden fijar
+  // (ver 7e). Pero el candado sí tiene que llegar hasta aquí, porque es lo
+  // único que hace que signifique algo — el tendero lo cerró precisamente
+  // para que su cliente viera ESE número, no la conversión del día.
   await admin.from("product_price_overrides").upsert(
-    { product_id: visible.id, tier: "retail", currency: "VES", amount: 2500 },
+    { product_id: visible.id, tier: "retail", currency: "USDT", amount: 11 },
     { onConflict: "product_id,tier,currency" },
   );
   const { data: catPin } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
   const conPin = (catPin?.products ?? []).find((p) => p.id === visible.id);
   check(
-    "6a. el precio fijado en Bs. llega al catálogo público",
-    conPin != null && Number(conPin.pinned?.VES) === 2500,
+    "6a. el precio fijado en USDT llega al catálogo público",
+    conPin != null && Number(conPin.pinned?.USDT) === 11,
     conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
   // Y el del OTRO escalón no se cuela: el candado es por escalón.
@@ -311,14 +322,44 @@ try {
   const pinMayor = (catPinMayor?.products ?? []).find((p) => p.id === visible.id);
   check(
     "6b. el candado del otro escalón NO aparece",
-    pinMayor != null && pinMayor.pinned?.VES === undefined,
+    pinMayor != null && pinMayor.pinned?.USDT === undefined,
     pinMayor ? JSON.stringify(pinMayor.pinned) : "sin producto",
   );
 
-  // ── 7. Sin publicar y en la papelera no salen ──────────────────────────
+  // ── 7. Sin publicar, por escalón, y en la papelera ─────────────────────
   check(
     "7a. un producto sin publicar no sale",
     !(catDetal?.products ?? []).some((p) => p.id === pub.id),
+  );
+
+  // EL CASO QUE ESTRENA LA 085, y es la razón de ser de las dos columnas: un
+  // producto publicado SOLO al detal no puede aparecer en el enlace de
+  // mayorista. Con el `published` único de la 084 aparecía en los dos, con el
+  // precio del enlace — o sea, su lista de mayorista en manos de cualquiera.
+  const { data: soloDetal } = await admin
+    .from("products")
+    .insert({
+      owner_id: ownerId,
+      name: `${MARCA} zz solo publicado al detal`,
+      base_currency: "USD",
+      price_retail: 9,
+      price_wholesale: 8,
+      published_retail: true,
+      published_wholesale: false,
+    })
+    .select("id")
+    .single();
+  creados.push(soloDetal.id);
+
+  const { data: cat2Detal } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
+  const { data: cat2Mayor } = await anon.rpc("get_shared_catalog", { p_token: mayor.token });
+  check(
+    "7b. publicado solo al detal SÍ sale en el enlace de detal",
+    (cat2Detal?.products ?? []).some((p) => p.id === soloDetal.id),
+  );
+  check(
+    "7c. publicado solo al detal NO sale en el de mayor",
+    !(cat2Mayor?.products ?? []).some((p) => p.id === soloDetal.id),
   );
 
   await admin
@@ -327,10 +368,29 @@ try {
     .eq("id", visible.id);
   const { data: catTrash } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
   check(
-    "7b. un producto en la papelera sale del catálogo",
+    "7d. un producto en la papelera sale del catálogo",
     !(catTrash?.products ?? []).some((p) => p.id === visible.id),
   );
   await admin.from("products").update({ trashed_at: null }).eq("id", visible.id);
+
+  // ── 7e. Un candado en bolívares ya no entra ────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-10: la fila de bolívares se enseña calculada
+  // y sin candado. La 085 lo lleva al esquema en vez de dejarlo solo en la
+  // pantalla, porque lo que una pantalla decide, otra lo deshace — y un precio
+  // en bolívares es el único de la ficha que se vuelve falso solo al moverse
+  // la tasa.
+  const { error: eVes } = await admin.from("product_price_overrides").insert({
+    product_id: visible.id,
+    tier: "retail",
+    currency: "VES",
+    amount: 12000,
+  });
+  check(
+    "7e. un precio fijado en bolívares lo rechaza la base",
+    eVes != null && eVes.code === "23514",
+    eVes ? eVes.code : "entró",
+  );
 
   // ── 8. Un token inexistente ────────────────────────────────────────────
   const { data: nada, error: eNada } = await anon.rpc("get_shared_catalog", {
