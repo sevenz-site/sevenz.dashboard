@@ -294,10 +294,150 @@ try {
     historia2?.map((h) => h.event).join(" → "),
   );
 
+  // ── 8 bis. DE DONDE SALIO CADA PERMISO (migracion 091, MS-34) ───────
+  //
+  // Lo que las pruebas de arriba NO pueden ver: todas pasan por el camino del
+  // cliente, que escribe `client_self` siempre. La via del tendero es nueva y
+  // hasta aqui no la habia llamado nadie.
+  //
+  // Se prueba lo que puede hacer dano, no lo que es comodo de probar:
+  //   - que un tendero NO pueda escribir un permiso para el cliente de otro.
+  //     `p_client_id` llega del navegador y aqui RLS no vigila nada (security
+  //     definer sobre una tabla con cero politicas), asi que el predicado de
+  //     `owner_id` dentro de la funcion es la unica defensa de la base.
+  //   - que NO pueda marcar `client_self`. Si pudiera, el camino debil
+  //     escribiria la etiqueta fuerte y la columna dejaria de medir nada.
+  //   - que no pueda DEGRADAR un permiso que el cliente ya se dio solo.
+  const historiaDe = async (tel) =>
+    (
+      await admin
+        .from("client_whatsapp_consents")
+        .select("event, source, occurred_at, id")
+        .eq("phone", tel)
+        .order("occurred_at", { ascending: true })
+        .order("id", { ascending: true })
+    ).data ?? [];
+
+  const declara = async (clientId, ownerId, texto, source) =>
+    (
+      await admin.rpc("record_owner_declared_whatsapp_consent", {
+        p_client_id: clientId,
+        p_owner_id: ownerId,
+        p_consent_text: texto,
+        p_source: source,
+      })
+    ).data;
+
+  // Partimos de limpio: el bloque 8 dejo granted -> revoked -> granted.
+  await admin.from("client_whatsapp_consents").delete().eq("phone", TELEFONO);
+
+  const TEXTO_TENDERO = "QA 091: Pedro acepta recibir avisos de su saldo por WhatsApp.";
+
+  check(
+    "11a. el tendero declara el permiso de SU cliente: true",
+    (await declara(clienteId, owners[0].id, TEXTO_TENDERO, "owner_movement_form")) === true,
+  );
+
+  const h1 = await historiaDe(TELEFONO);
+  check(
+    "11b. y la fila queda marcada con SU origen, no con client_self",
+    h1.length === 1 && h1[0].event === "granted" && h1[0].source === "owner_movement_form",
+    h1.map((h) => `${h.event}/${h.source}`).join(" \u2192 "),
+  );
+
+  check("11c. y la puerta de envio dice SI", (await acepta(clienteId)) === true);
+
+  check(
+    "11d. la misma casilla marcada otra vez NO escribe una segunda fila",
+    (await declara(clienteId, owners[0].id, TEXTO_TENDERO, "owner_movement_form")) === true &&
+      (await historiaDe(TELEFONO)).length === 1,
+    `filas: ${(await historiaDe(TELEFONO)).length}`,
+  );
+
+  check(
+    "11e. el origen de la libreta tambien vale",
+    (await declara(clienteId, owners[0].id, `${TEXTO_TENDERO} (libreta)`, "owner_import")) === true &&
+      (await historiaDe(TELEFONO)).some((h) => h.source === "owner_import"),
+  );
+
+  // ── lo que NO debe poder hacer ─────────────────────────────────
+  const antesDelAtaque = (await historiaDe(TELEFONO)).length;
+
+  // Un uuid que no es dueno de nadie. Es el ataque realista: un tendero con
+  // sesion valida pasando el id de un cliente que no es suyo.
+  const OTRO_DUENO = "00000000-0000-4000-8000-000000000000";
+  check(
+    "11f. un dueno que NO es el suyo: false",
+    (await declara(clienteId, OTRO_DUENO, TEXTO_TENDERO + " ajeno", "owner_movement_form")) === false,
+  );
+
+  check(
+    "11g. y NO escribio nada",
+    (await historiaDe(TELEFONO)).length === antesDelAtaque,
+    `filas: ${(await historiaDe(TELEFONO)).length} (antes ${antesDelAtaque})`,
+  );
+
+  check(
+    "11h. el tendero NO puede marcar client_self: false",
+    (await declara(clienteId, owners[0].id, TEXTO_TENDERO + " falso", "client_self")) === false,
+  );
+
+  check(
+    "11i. ni un origen inventado",
+    (await declara(clienteId, owners[0].id, TEXTO_TENDERO + " raro", "lo_que_sea")) === false,
+  );
+
+  check(
+    "11j. ni un texto vacio: la evidencia no puede estar en blanco",
+    (await declara(clienteId, owners[0].id, "   ", "owner_movement_form")) === false,
+  );
+
+  check(
+    "11k. y despues de los cuatro intentos, la tabla sigue igual",
+    (await historiaDe(TELEFONO)).length === antesDelAtaque,
+    `filas: ${(await historiaDe(TELEFONO)).length} (antes ${antesDelAtaque})`,
+  );
+
+  // ── que no degrade lo que el cliente se dio solo ──────────────────
+  await admin.from("client_whatsapp_consents").delete().eq("phone", TELEFONO);
+  await admin.rpc("record_client_whatsapp_consent", { p_token: token, p_consent_text: TEXTO });
+
+  check(
+    "11l. si el cliente ya acepto solo, la casilla del tendero no lo pisa",
+    (await declara(clienteId, owners[0].id, TEXTO, "owner_movement_form")) === true &&
+      (await historiaDe(TELEFONO)).every((h) => h.source === "client_self"),
+    (await historiaDe(TELEFONO)).map((h) => `${h.event}/${h.source}`).join(" \u2192 "),
+  );
+
+  // ── la columna misma ─────────────────────────────────────
+  // Nada puede entrar sin origen. Se intenta por la puerta de atras -- un
+  // insert directo con la clave de servicio -- porque las funciones ya lo
+  // rellenan y nunca probarian el not null.
+  const { error: eSinSource } = await admin
+    .from("client_whatsapp_consents")
+    .insert({ phone: TELEFONO, event: "granted", consent_text: "sin origen" });
+  check(
+    "11m. una fila sin `source` es imposible, venga de donde venga",
+    eSinSource !== null,
+    eSinSource?.message?.slice(0, 50),
+  );
+
   // ── 9. La puerta cerrada ───────────────────────────────────────────────
   const fuera = [
     ["record_client_whatsapp_consent", { p_token: token, p_consent_text: "pirata" }],
     ["revoke_client_whatsapp_consent", { p_token: token }],
+    // La via del tendero NO lleva token: su credencial es el dueno
+    // autenticado. Si anon pudiera llamarla, bastaria adivinar dos uuid para
+    // escribir un permiso a nombre de un desconocido.
+    [
+      "record_owner_declared_whatsapp_consent",
+      {
+        p_client_id: clienteId,
+        p_owner_id: owners[0].id,
+        p_consent_text: "pirata",
+        p_source: "owner_movement_form",
+      },
+    ],
     ["client_whatsapp_consent_state", { p_token: token }],
     ["client_accepts_whatsapp", { p_client_id: clienteId }],
   ];
