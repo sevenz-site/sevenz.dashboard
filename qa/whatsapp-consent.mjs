@@ -422,6 +422,60 @@ try {
     eSinSource?.message?.slice(0, 50),
   );
 
+  // ── 12. DOS FICHAS, UN SOLO TELEFONO ──────────────────────────
+  //
+  // Pedro y el hijo de Pedro comparten telefono. Son dos fichas en la misma
+  // bodega y una sola persona a la que escribirle, asi que el permiso tiene
+  // que ser el mismo para las dos: si Pedro dijo que si, no hay a quien
+  // volver a preguntarle, y si Pedro se da de baja, no se le puede seguir
+  // escribiendo por la ficha del hijo.
+  //
+  // NO ES UN CASO RARO. Medido en dev el 2026-10-10: 32 clientes vivos con
+  // numero y solo 16 telefonos distintos -- la mitad de las fichas comparten
+  // numero con otra, y un numero lo comparten NUEVE. Es la situacion normal
+  // de un barrio, no una esquina del dominio.
+  //
+  // Sale gratis porque la 081 eligio el telefono normalizado como clave en vez
+  // de columnas en `clients`, y esto lo deja clavado: cambiar esa clave por
+  // algo por ficha rompe estas tres y dice por que.
+  let hijoId = null;
+  try {
+    const { data: hijo } = await admin
+      .from("clients")
+      .insert({ owner_id: owners[0].id, name: "QA 091 mismo numero", whatsapp: TELEFONO })
+      .select("id")
+      .single();
+    hijoId = hijo?.id ?? null;
+
+    // El bloque 11 dejo a TELEFONO con un `granted` de `client_self`.
+    check(
+      "12a. una ficha NUEVA con el mismo numero hereda el permiso, sin preguntar",
+      (await acepta(hijoId)) === true,
+    );
+
+    await admin.rpc("revoke_client_whatsapp_consent", { p_token: token });
+
+    check(
+      "12b. y una baja desde ese numero apaga LAS DOS fichas",
+      (await acepta(clienteId)) === false && (await acepta(hijoId)) === false,
+    );
+
+    // Lo que NO comparten: a quien se le ha preguntado ya. Es estado de
+    // interfaz por ficha (093), no evidencia por persona, y por eso vive en
+    // `clients`. La consecuencia esta anotada en MS-34.
+    const { data: fichas } = await admin
+      .from("clients")
+      .select("whatsapp_consent_asked_at")
+      .in("id", [clienteId, hijoId]);
+    check(
+      "12c. pero `asked_at` NO se comparte: es por ficha, no por persona",
+      (fichas ?? []).every((f) => f.whatsapp_consent_asked_at === null),
+      "las dos sin preguntar: la casilla saldria dos veces por el mismo telefono",
+    );
+  } finally {
+    if (hijoId) await admin.from("clients").delete().eq("id", hijoId);
+  }
+
   // ── 9. La puerta cerrada ───────────────────────────────────────────────
   const fuera = [
     ["record_client_whatsapp_consent", { p_token: token, p_consent_text: "pirata" }],
