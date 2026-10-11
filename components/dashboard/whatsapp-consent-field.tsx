@@ -33,11 +33,23 @@ import { textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 export function WhatsappConsentField({
   clientName,
   hasWhatsapp,
+  yaTienePermiso,
   checked,
   onCheckedChange,
   disabled,
 }: {
   clientName: string;
+  // Si el TELEFONO de este cliente ya acepto -- no la ficha. Son cosas
+  // distintas y la diferencia es grande: medido en dev el 2026-10-10, la
+  // mitad de las fichas comparten numero con otra y una de ellas lo comparte
+  // con ocho mas. Preguntar por ficha seria preguntar nueve veces por la misma
+  // persona, y ocho de esas marcas no escribirian nada.
+  //
+  // Lo contesta `client_accepts_whatsapp`, la misma funcion que usa la puerta
+  // de envio. Una segunda consulta que respondiera "casi" lo mismo acabaria
+  // discrepando, y la discrepancia seria mensajes a quien no acepto, o
+  // silencio hacia quien si.
+  yaTienePermiso?: boolean;
   // Si el cliente no tiene número guardado. NO esconde la casilla: la deja
   // marcable y explica qué falta. Esconderla perdería el único momento en que
   // el tendero está pensando en esto -- propuesta del dueño el 2026-10-10,
@@ -48,6 +60,21 @@ export function WhatsappConsentField({
   disabled?: boolean;
 }) {
   const id = useId();
+
+  // YA ACEPTO: ni casilla ni pregunta, solo el estado. Se ensena en vez de
+  // esconderse del todo porque el tendero si quiere saber si ese cliente esta
+  // cubierto -- decision del dueno el 2026-10-10, sobre la alternativa de no
+  // pintar nada. Quitarlo se hace desde la ficha del cliente (MS-35), no desde
+  // aqui: este formulario es para registrar dinero, no para administrar
+  // permisos.
+  if (yaTienePermiso) {
+    return (
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {clientName.trim() || "Este cliente"} ya tiene activada las notificaciones vía WhatsApp
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
       <div className="flex items-start gap-3">

@@ -63,6 +63,7 @@ export default async function ClientDetailPage({
     { data: ownerRow },
     { count: movementCount },
     monedaHabitual,
+    { data: aceptaAvisos },
   ] =
     await Promise.all([
       supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
@@ -75,6 +76,18 @@ export default async function ClientDetailPage({
       // getOwnerRateContext reads owners.country too, but discards it for a CO
       // owner. Asking again here is cheaper than widening its contract.
       supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+      // Si el TELEFONO de este cliente ya acepta avisos -- no la ficha. Decide
+      // si el formulario de movimiento ensena la casilla del permiso o solo la
+      // linea de estado (MS-34).
+      //
+      // Es `client_accepts_whatsapp` y no una consulta propia a proposito: es
+      // la misma funcion que usara la puerta de envio, y dos predicados que
+      // responden "casi" lo mismo acaban discrepando -- y la discrepancia
+      // seria mensajes a quien no acepto, o silencio hacia quien si.
+      //
+      // La 095 le dio `execute` a `authenticated` y le metio dentro la
+      // comprobacion de dueno, porque hasta entonces era solo para
+      // `service_role` y esta pagina habla con la sesion del tendero.
       // Only ever compared against zero — it decides which of the three
       // "mover a papelera" confirmations the owner sees. head:true so Postgres
       // returns the count without the rows.
@@ -86,6 +99,7 @@ export default async function ClientDetailPage({
       // En que moneda escribio la ultima vez, para que el formulario abra ahi.
       // Va la ultima: el orden de este array es el de la linea de arriba.
       getMonedaHabitual(supabase, user!.id),
+      supabase.rpc("client_accepts_whatsapp", { p_client_id: id }),
     ]);
 
   if (!client) notFound();
@@ -219,6 +233,7 @@ export default async function ClientDetailPage({
               // seguro: la casilla se enseña.
               Boolean(client.whatsapp_consent_asked_at)
             }
+            consentGranted={aceptaAvisos === true}
             triggerClassName="w-full"
             autoOpen={autoOpenType}
             rateContext={rateContext}
