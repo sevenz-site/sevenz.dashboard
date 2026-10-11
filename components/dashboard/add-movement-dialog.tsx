@@ -81,6 +81,7 @@ export function AddMovementDialog({
   currentDebtEur,
   isFlagged,
   consentAsked,
+  consentGranted,
   triggerClassName,
   autoOpen,
   hideTriggers,
@@ -116,6 +117,12 @@ export function AddMovementDialog({
   // disappears after the first save. Reading the real state here needs an RPC
   // the session key cannot call, which is not worth it for one wrong label.
   consentAsked: boolean;
+  // Whether this client's PHONE already granted permission -- not this client
+  // row. They differ, and the difference is big: half the client rows in dev
+  // share a number with another, and one number is shared by nine. Asking per
+  // row would ask nine times about one person. Answered by
+  // `client_accepts_whatsapp`, the send gate's own function.
+  consentGranted: boolean;
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
@@ -161,7 +168,13 @@ export function AddMovementDialog({
 
   // EL PERMISO DE WHATSAPP (MS-34). `pedirPermiso` decide si la casilla
   // existe; si no existe, nada de esto se monta y el formulario no cambia.
-  const pedirPermiso = !consentAsked;
+  //
+  // PEDIR y MOSTRAR no son lo mismo. Si el teléfono ya aceptó no hay nada que
+  // preguntar, pero sí algo que decir -- el tendero quiere saber que ese
+  // cliente está cubierto, y si no se dijera, la ausencia de la casilla se
+  // leería como que la función no existe para él.
+  const pedirPermiso = !consentAsked && !consentGranted;
+  const mostrarPermiso = pedirPermiso || consentGranted;
   const [consent, setConsent] = useState(false);
   const [consentDialog, setConsentDialog] = useState(false);
   // Deja pasar el envio que sale del dialogo. Sin esto, `requestSubmit()`
@@ -622,10 +635,11 @@ export function AddMovementDialog({
 
           {/* ENCIMA DE "Guardar fiado/abono", donde el dueno esta mirando
               cuando decide. Debajo del boton no lo veria nadie. */}
-          {pedirPermiso ? (
+          {mostrarPermiso ? (
             <WhatsappConsentField
               clientName={clientName}
               hasWhatsapp={hayWhatsapp}
+              yaTienePermiso={consentGranted}
               checked={consent}
               onCheckedChange={setConsent}
               disabled={pending}

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -82,7 +83,27 @@ export type ImportRow = {
 
 export type ConfirmImportState = { error: string | null; imported: number };
 
-export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportState> {
+// EL PERMISO DE WHATSAPP EN LA LIBRETA (MS-34, tercer camino).
+//
+// `permiso` llega del detalle de UNA persona, nunca del boton del lote: una
+// marca antes de "Confirmar y subir (N)" declararia el consentimiento de
+// veinte personas de un clic, sin nombrar a ninguna. Decision explicita del
+// dueno el 2026-10-10.
+//
+// Y NO TIENE NADA QUE VER CON MS-7, aunque la pantalla sea la misma. Son dos
+// preguntas distintas y las dos tienen que responderse que si antes de que
+// salga un mensaje:
+//   - el permiso (esto): ¿se le puede escribir a Pedro?
+//   - MS-7: ¿este movimiento concreto debe generar un mensaje? Nunca si viene
+//     de una foto. Doña Rosa sube un ano de libreta y Pedro recibiria catorce
+//     WhatsApps en un minuto por fiados que ya pago.
+// Marcar la casilla NO abre esa compuerta, y MS-7 sigue entera y abierta.
+export type PermisoImportado = { seMostro: boolean; acepta: boolean };
+
+export async function confirmImport(
+  rows: ImportRow[],
+  permiso?: PermisoImportado,
+): Promise<ConfirmImportState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -465,6 +486,23 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     { movements_imported: imported, clients_created: resultado.clients_created ?? 0 },
     user.email,
   );
+
+  // Una llamada sube UN cliente -- `subirClientes` recorre los nombres y llama
+  // aqui una vez por cada uno -- asi que el permiso es de esa persona y basta
+  // con el primer id que se haya resuelto.
+  if (permiso?.seMostro) {
+    const clientIdDeLaTanda = (movements.find((m) => m.client_id)?.client_id ?? null) as string | null;
+    if (clientIdDeLaTanda) {
+      await guardarPermisoDeclarado(supabase, {
+        clientId: clientIdDeLaTanda,
+        ownerId: user.id,
+        clientName: rows[0]?.client_name?.trim() ?? "",
+        source: "owner_import",
+        seMostro: permiso.seMostro,
+        acepta: permiso.acepta,
+      });
+    }
+  }
 
   revalidatePath("/dashboard");
   return { error: null, imported };
