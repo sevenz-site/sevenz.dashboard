@@ -7,6 +7,12 @@ import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
+import {
+  CONSENT_FIELD,
+  CONSENT_SHOWN_FIELD,
+  textoPermisoDeclarado,
+  type OrigenPermisoDeclarado,
+} from "@/lib/whatsapp-opt-in";
 import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
@@ -103,6 +109,75 @@ function parseMovementFields(formData: FormData): ParsedMovement {
 }
 
 // Creates a brand-new client together with their first movement.
+// EL PERMISO QUE EL TENDERO DECLARA, GUARDADO DESDE LAS DOS ALTAS (MS-34).
+//
+// Vive aqui y no dentro de cada accion porque `createClientWithMovement` y
+// `addMovement` hacen exactamente lo mismo con el: dos copias de una escritura
+// de consentimiento es como acaban guardando cosas distintas.
+//
+// NO DEVUELVE ERROR, Y ESO ES UNA DECISION, no un descuido. El tendero vino a
+// registrar un fiado; hacer fallar el fiado porque no se pudo anotar un
+// permiso le quita lo que si pidio para castigarle por lo que era un extra.
+// Misma eleccion que `trashProduct` con sus notificaciones.
+//
+// La contrapartida, dicha en voz alta: si esto falla, el tendero cree que a
+// Pedro le van a llegar avisos y no le van a llegar, sin que nada lo diga. Se
+// acepta porque hoy no sale ni un mensaje -- MS-3 esta bloqueada -- y porque
+// la ficha del cliente (MS-35) va a ensenar el estado real, que es donde se
+// nota. Si algun dia se envia de verdad, esto merece revisarse.
+async function guardarPermisoDeclarado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData,
+  clientId: string,
+  ownerId: string,
+  clientName: string,
+  source: OrigenPermisoDeclarado,
+): Promise<void> {
+  // La casilla ni siquiera se enseno: no hay nada que guardar y, sobre todo,
+  // NO se marca al cliente como preguntado. Marcarlo se comeria la unica
+  // oportunidad de preguntar por el.
+  if (formData.get(CONSENT_SHOWN_FIELD) == null) return;
+
+  // Se enseno. Preguntado queda, haya marcado o no -- es justo lo que evita el
+  // modal en cada movimiento. Condicionado a que siga en null para no escribir
+  // en `clients` en cada alta: a partir de la primera, esto no toca nada.
+  const { error: askedError } = await supabase
+    .from("clients")
+    .update({ whatsapp_consent_asked_at: new Date().toISOString() })
+    .eq("id", clientId)
+    .eq("owner_id", ownerId)
+    .is("whatsapp_consent_asked_at", null);
+  if (askedError) console.error("[guardarPermisoDeclarado] asked_at", askedError.message);
+
+  if (formData.get(CONSENT_FIELD) == null) return;
+
+  // El texto que se guarda es el MISMO que pinto la casilla, generado por la
+  // misma funcion. Esa cadena es la evidencia ante Meta: dos textos distintos
+  // la convertirian en una reconstruccion.
+  //
+  // `p_owner_id` sale de `auth.getUser()`, nunca del formulario, y la funcion
+  // lo comprueba contra `clients.owner_id` por su cuenta -- `clientId` llega
+  // del navegador y aqui RLS no vigila nada (security definer sobre una tabla
+  // sin politicas). La comprobacion explicita de CLAUDE.md es la de arriba, en
+  // el update; esta es la segunda capa.
+  const { data: guardado, error: consentError } = await supabase.rpc(
+    "record_owner_declared_whatsapp_consent",
+    {
+      p_client_id: clientId,
+      p_owner_id: ownerId,
+      p_consent_text: textoPermisoDeclarado(clientName),
+      p_source: source,
+    },
+  );
+
+  if (consentError) console.error("[guardarPermisoDeclarado] rpc", consentError.message);
+  else if (guardado !== true) {
+    // false tiene causas reales y ninguna es un fallo tecnico: el cliente no
+    // es suyo, o no tiene numero utilizable. Se registra para poder verlo.
+    console.error("[guardarPermisoDeclarado] rechazado", { clientId, source });
+  }
+}
+
 export async function createClientWithMovement(
   _prevState: MovementFormState,
   formData: FormData,
@@ -298,6 +373,15 @@ export async function createClientWithMovement(
   // version.
   trackServer("Client Created", user.id, { client_id: newClient.id }, user.email);
 
+  await guardarPermisoDeclarado(
+    supabase,
+    formData,
+    newClient.id,
+    user.id,
+    name,
+    "owner_movement_form",
+  );
+
   revalidatePath("/dashboard");
   return { error: null, clientId: newClient.id };
 }
@@ -466,6 +550,19 @@ export async function addMovement(
   }
 
   trackServer("Movement Added", user.id, { client_id: clientId, movement_type: type }, user.email);
+
+  // El nombre llega del formulario porque la accion no lee el cliente: un
+  // SELECT mas en el camino caliente del alta, solo para componer una frase.
+  // Si no viene, la funcion de lib/ cae en "El cliente", que es feo pero sigue
+  // siendo literalmente lo que se enseno.
+  await guardarPermisoDeclarado(
+    supabase,
+    formData,
+    clientId,
+    user.id,
+    String(formData.get("client_name") ?? ""),
+    "owner_movement_form",
+  );
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${clientId}`);

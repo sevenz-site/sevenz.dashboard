@@ -213,6 +213,12 @@ export default async function ClientDetailPage({
             currentDebtUsd={balanceUsd}
             currentDebtEur={balanceEur}
             isFlagged={client.is_flagged}
+            consentAsked={
+              // Migración 093, llega por el select("*") de arriba. Mientras
+              // la migración no esté corrida vale undefined, que cae del lado
+              // seguro: la casilla se enseña.
+              Boolean(client.whatsapp_consent_asked_at)
+            }
             triggerClassName="w-full"
             autoOpen={autoOpenType}
             rateContext={rateContext}
