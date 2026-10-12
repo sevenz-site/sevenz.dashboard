@@ -487,7 +487,7 @@ try {
   // sobre un numero perfectamente bueno.
   //
   // Los casos cortos no son inventados: "581", "582", "583" y "570" son
-  // telefonos REALES de 19 clientes de produccion, medidos el 2026-10-12. Un
+  // telefonos REALES de 20 clientes de produccion, contados el 2026-10-12. Un
   // prefijo y un digito suelto, de alguien que empezo a teclear y guardo.
   const casosClave = [
     "581",
