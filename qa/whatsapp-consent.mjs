@@ -38,6 +38,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { consentPhoneKey } from "@/lib/phone";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -475,6 +476,49 @@ try {
   } finally {
     if (hijoId) await admin.from("clients").delete().eq("id", hijoId);
   }
+
+  // ── 13. EL ESPEJO EN JS NO SE SEPARA DE POSTGRES ──────────────────
+  //
+  // `consentPhoneKey` en lib/phone.ts copia la regla de
+  // `normalize_whatsapp_phone()`, porque la pantalla tiene que saber si marcar
+  // la casilla va a servir de algo y no puede preguntarselo a Postgres en cada
+  // tecla. Dos copias de una regla acaban discrepando, y la discrepancia aqui
+  // seria una casilla que se ve funcional y no escribe nada -- o un aviso rojo
+  // sobre un numero perfectamente bueno.
+  //
+  // Los casos cortos no son inventados: "581", "582", "583" y "570" son
+  // telefonos REALES de 19 clientes de produccion, medidos el 2026-10-12. Un
+  // prefijo y un digito suelto, de alguien que empezo a teclear y guardo.
+  const casosClave = [
+    "581",
+    "582",
+    "583",
+    "570",
+    "",
+    "0",
+    "abc",
+    "4149900094",
+    "04149900094",
+    "584149900094",
+    "+58 414-9900094",
+    "58416111111",
+    "571234567890",
+    "573238130265",
+    "1234567890123456",
+  ];
+  const discrepan = [];
+  for (const caso of casosClave) {
+    const { data: sql } = await admin.rpc("normalize_whatsapp_phone", { p_raw: caso });
+    const js = consentPhoneKey(caso);
+    if ((sql ?? null) !== js) {
+      discrepan.push(caso + ": sql=" + JSON.stringify(sql) + " js=" + JSON.stringify(js));
+    }
+  }
+  check(
+    "13. consentPhoneKey (JS) y normalize_whatsapp_phone (SQL) coinciden",
+    discrepan.length === 0,
+    discrepan.length ? discrepan.join(" | ") : casosClave.length + " casos iguales",
+  );
 
   // ── 9. La puerta cerrada ───────────────────────────────────────────────
   const fuera = [

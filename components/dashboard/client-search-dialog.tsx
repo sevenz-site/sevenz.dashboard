@@ -6,6 +6,7 @@ import {
   WhatsappConsentField,
 } from "@/components/dashboard/whatsapp-consent-field";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
+import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -725,7 +726,7 @@ function ClientSearchDialogBody({
             campo que se está tecleando y la frase se arma con él. */}
         <WhatsappConsentField
           clientName={nameValue}
-          hasWhatsapp={Boolean(whatsappValue.trim())}
+          hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
           checked={consent}
           onCheckedChange={setConsent}
           disabled={pending}
@@ -766,7 +767,7 @@ function ClientSearchDialogBody({
         open={consentDialog}
         onOpenChange={setConsentDialog}
         clientName={nameValue}
-        hasWhatsapp={Boolean(whatsappValue.trim())}
+        hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
         checked={consent}
         onCheckedChange={setConsent}
         onContinue={() => {

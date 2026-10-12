@@ -6,6 +6,7 @@ import {
   WhatsappConsentField,
 } from "@/components/dashboard/whatsapp-consent-field";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
+import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -186,7 +187,11 @@ export function AddMovementDialog({
   // casilla dijera "falta registrar el WhatsApp" con el numero recien escrito
   // dos dedos mas arriba. Visto a 375px el 2026-10-10, antes de que saliera.
   const [whatsappTecleado, setWhatsappTecleado] = useState("");
-  const hayWhatsapp = Boolean(clientWhatsapp?.trim() || whatsappTecleado.trim());
+  // USABLE, no solo presente. Un "581" guardado es un numero y no sirve para
+  // nada: la base lo normaliza a null y el permiso no se puede escribir. Ver
+  // consentPhoneKey; en produccion hay 19 clientes asi.
+  const hayWhatsapp =
+    consentPhoneKey(clientWhatsapp) !== null || consentPhoneKey(whatsappTecleado) !== null;
   const [prevOpen, setPrevOpen] = useState(open);
 
   // The debt each currency owes is independent — no conversion, since the
