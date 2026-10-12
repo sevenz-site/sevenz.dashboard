@@ -488,10 +488,51 @@ export async function confirmImport(
   );
 
   // Una llamada sube UN cliente -- `subirClientes` recorre los nombres y llama
-  // aqui una vez por cada uno -- asi que el permiso es de esa persona y basta
-  // con el primer id que se haya resuelto.
+  // aqui una vez por cada uno -- asi que el permiso es de esa persona.
+  //
+  // RESOLVER SU ID TIENE DOS CAMINOS, Y EL SEGUNDO ES EL QUE IMPORTA. Si el
+  // cliente YA EXISTIA, las filas traen su uuid y basta con leerlo. Si es
+  // NUEVO no hay uuid que leer: el movimiento viaja con una clave temporal y
+  // es `import_libreta` quien crea la fila y traduce la clave dentro de la
+  // transaccion, sin devolver el id.
+  //
+  // Esto se escribio mirando solo el primer caso, y la consecuencia era que el
+  // permiso se guardaba para los clientes que ya estaban y se perdia EN
+  // SILENCIO para los nuevos -- que son la mayoria de una libreta, porque
+  // subirla es justo lo que hace un tendero el primer dia. Medido el
+  // 2026-10-12 subiendo una libreta real: los 4 movimientos entraron, el
+  // telefono se guardo, y la fila de permiso no existia.
+  //
+  // Para el cliente nuevo se busca la fila recien creada de ese dueno. Y se
+  // COMPRUEBA EL NOMBRE antes de usarla: si no coincide, no se escribe nada.
+  // Un permiso atribuido a la persona equivocada es peor que un permiso
+  // perdido -- el perdido se vuelve a pedir, el equivocado ampara mensajes a
+  // alguien que nunca dijo que si.
   if (permiso?.seMostro) {
-    const clientIdDeLaTanda = (movements.find((m) => m.client_id)?.client_id ?? null) as string | null;
+    let clientIdDeLaTanda = (movements.find((m) => m.client_id)?.client_id ?? null) as
+      | string
+      | null;
+
+    if (!clientIdDeLaTanda) {
+      const nombreEsperado = rows[0]?.client_name?.trim().toLowerCase() ?? "";
+      const { data: reciente } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("owner_id", user.id)
+        .is("trashed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (reciente && reciente.name.trim().toLowerCase() === nombreEsperado) {
+        clientIdDeLaTanda = reciente.id;
+      } else {
+        console.error("[confirmImport] no pude resolver el cliente nuevo para el permiso", {
+          nombreEsperado,
+          encontrado: reciente?.name ?? null,
+        });
+      }
+    }
+
     if (clientIdDeLaTanda) {
       await guardarPermisoDeclarado(supabase, {
         clientId: clientIdDeLaTanda,
