@@ -85,6 +85,7 @@ const TEXTO_SALIR_DE_LA_REVISION = {
 };
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
+import { consentPhoneKey } from "@/lib/phone";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
@@ -2175,7 +2176,7 @@ export function ImportFlow({
                       hasWhatsapp={filas.some(
                         (r) =>
                           r.client_name.trim().toLowerCase() === clienteAbierto.nameKey &&
-                          Boolean(r.whatsapp?.trim()),
+                          consentPhoneKey(r.whatsapp) !== null,
                       )}
                       checked={permisoLibreta[clienteAbierto.nameKey] === true}
                       onCheckedChange={(v) =>

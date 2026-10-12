@@ -24,7 +24,7 @@
     "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs",
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
     "qa:pausados": "node qa/whatsapp-pausados.mjs",
-    "qa:consent": "node qa/whatsapp-consent.mjs",
+    "qa:consent": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-consent.mjs",
     "qa:precio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/product-price.mjs",
     "qa:productos": "node qa/products.mjs",
     "qa:catalogo": "node qa/catalogo.mjs",

@@ -137,3 +137,31 @@ export function splitForInput(
   const parsed = splitPhoneNumber(clean);
   return { dialCode: parsed.country.dialCode, local: parsed.local };
 }
+
+// ESPEJO EN JS DE `normalize_whatsapp_phone()` (migración 081).
+//
+// Devuelve la clave bajo la que se guardaría el permiso de WhatsApp de este
+// número, o null si no serviría para nada. La regla de la base es
+// deliberadamente tonta: quitar todo lo que no sea dígito, quitar el 0 de
+// troncal, y aceptar entre 10 y 15 dígitos. Ni más listo ni más estricto.
+//
+// POR QUÉ HACE FALTA UNA COPIA AQUÍ. La pantalla tiene que saber, ANTES de
+// enviar, si marcar la casilla del permiso va a servir de algo — y no puede
+// preguntárselo a Postgres en cada tecla. Sin esto, `hasWhatsapp` era
+// `Boolean(whatsapp.trim())`, una comprobación de PRESENCIA y no de validez.
+//
+// Lo que eso provocaba, medido contra producción el 2026-10-12: hay 19
+// clientes reales cuyo teléfono guardado es "581", "582", "583" o "570" — un
+// prefijo y un dígito suelto, de alguien que empezó a teclear y guardó. La
+// base los normaliza a null, así que no se les puede escribir ni pueden
+// consentir. Pero la casilla se veía perfectamente funcional, sin el aviso
+// rojo, y marcarla devolvía `false` sin escribir nada y sin decir nada.
+//
+// DOS COPIAS DE UNA REGLA ACABAN DISCREPANDO, así que `qa:consent` compara
+// esta función con la de Postgres sobre una lista de casos. Si alguien cambia
+// una y no la otra, esa prueba lo dice.
+export function consentPhoneKey(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : null;
+}
