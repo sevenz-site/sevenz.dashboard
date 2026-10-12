@@ -44,12 +44,36 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // read; the bar is one tap. The entry was in the sidebar until today and comes
 // OUT of it in the same change — two doors to the same drawer is the thing
 // DESIGN-SYSTEM.md warns about, and it would have been the obvious shortcut.
-const DESTINATIONS = [
-  { href: "/dashboard", label: "Inicio", icon: Home },
-  { href: "/reportes", label: "Reportes", icon: ChartColumn },
-  { href: "/productos", label: "Catálogo", icon: Package },
-  { href: "/clients", label: "Clientes", icon: Users },
-] as const;
+//
+// ───────────────────────────────────────────────────────────────────────────
+// Y OCULTO OTRA VEZ, QUE NO ES LO MISMO QUE DESHECHO
+//
+// Decisión del dueño el 2026-10-12: el catálogo se esconde de la navegación
+// mientras no se lance. La pantalla, sus migraciones y sus enlaces públicos
+// siguen existiendo y `/productos` responde si se escribe la URL — es una
+// función terminada esperando turno, no una revertida.
+//
+// Un interruptor y no borrar las líneas, a propósito: volver a enseñarlo es
+// cambiar `false` por `true`, y borrarlas se habría llevado por delante el
+// porqué de abajo, que es una medición y no una opinión.
+//
+// EFECTO LATERAL QUE CONVIENE SABER: la barra vuelve a cuatro huecos, así que
+// cada uno recupera sus 93px a 375px en vez de 75px. O sea que el presupuesto
+// de pulgar que la quinta ranura gastó vuelve a estar entero mientras dure
+// esto, y si alguien había reportado toques fallidos, aquí dejan de ocurrir.
+//
+// El lateral NO hace falta tocarlo: su entrada ya salió el 2026-10-09, cuando
+// el catálogo entró en la barra, para no tener dos puertas al mismo cajón.
+const CATALOGO_VISIBLE = false;
+
+const DESTINATIONS = (
+  [
+    { href: "/dashboard", label: "Inicio", icon: Home },
+    { href: "/reportes", label: "Reportes", icon: ChartColumn },
+    { href: "/productos", label: "Catálogo", icon: Package },
+    { href: "/clients", label: "Clientes", icon: Users },
+  ] as const
+).filter((d) => CATALOGO_VISIBLE || d.href !== "/productos");
 
 // Shown only below md. Deliberately a CSS media query rather than the
 // useIsMobile hook: the hook resolves after hydration, so the bar would pop in
