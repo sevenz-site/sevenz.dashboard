@@ -1,12 +1,20 @@
 // SOLO LA RAMA DEV (vzqppwrwnmlbrxizskdh) — lee .env.local.
 //
-// Comprueba la migración 096: la puerta de envío cuenta DESTINATARIOS, no
-// cuentas, y reserva cupo para los dueños (MS-21, MS-37).
+// La puerta de envío: migraciones 096 (contar destinatarios y reservar cupo
+// para los dueños, MS-21 y MS-37) y 097 (un movimiento que viene de una foto
+// no avisa nunca, MS-7).
 //
 // SÍ ESCRIBE en dev, a propósito: lo único que importa aquí son los efectos, y
-// la puerta no se puede comprobar leyéndola. Todo lo que crea lleva una
-// plantilla con prefijo propio y se borra por ese prefijo en el `finally`, pase
-// lo que pase.
+// una puerta no se puede comprobar leyéndola. Todo lo que crea lleva el prefijo
+// `qa096_` o uno de los dos teléfonos de prueba, y se borra en el `finally`
+// pase lo que pase.
+//
+// EL ORDEN NO ES CASUAL. Los topes van AL FINAL porque la única forma de
+// probarlos es llenar la ventana de 24 h con 150 destinatarios, y eso deja la
+// puerta cerrada para todo lo que venga después. La primera versión los tenía
+// en medio, y el resultado fue un `tope_diario_clientes` en una prueba de MS-7
+// que se leía como que la puerta rechaza un movimiento manual — justo lo
+// contrario de lo que pasa.
 //
 // LO QUE VIGILA, y por qué cada cosa:
 //
@@ -15,18 +23,15 @@
 //      código, así que durante un rato la producción desplegada llama así. Si
 //      esto se rompe, ese rato son los avisos de los 24 dueños cayendo.
 //
-//   2. Que la cuenta sea por destinatario. Dos clientes de la misma bodega son
-//      DOS, y la cuenta vieja decía uno. Dos bodegas que comparten un cliente
-//      son UNO, y la vieja decía dos. Meta cuenta personas.
+//   2. MS-7 por los DOS caminos: la fuente de verdad y la puerta. La segunda
+//      capa existe justo para el día que alguien se salte la primera.
 //
-//   3. Que el tope de clientes frene a los clientes y NO a los dueños. Es la
-//      reserva, y es la razón de ser de la 096: los recibos salen toda la
-//      semana y el resumen de los dueños sale un día. Si esto falla, el síntoma
-//      es silencio — 24 dueños que dejan de recibirlo, sin error en ningún lado.
+//   3. Que la cuenta sea por destinatario. Dos clientes de la misma bodega son
+//      DOS, y la cuenta vieja decía uno. Meta cuenta personas, no cuentas.
 //
-//   4. Que a quien ya se le escribió en la ventana no se le frene. No gasta
-//      cupo nuevo, así que frenarlo sería perder un mensaje por un tope que esa
-//      persona no está consumiendo.
+//   4. Que el tope de clientes frene a los clientes y NO a los dueños. Si esto
+//      falla, el síntoma es silencio: 24 dueños que dejan de recibir su resumen
+//      sin que haya un error en ninguna parte.
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -59,25 +64,59 @@ function check(nombre, pasa, detalle) {
   console.log(`${pasa ? "PASS" : "FAIL"}  ${nombre}${detalle ? `  — ${detalle}` : ""}`);
 }
 
-// Todo lo que este script escriba lleva esto delante. Es la red de limpieza.
 const PREFIJO = "qa096_";
+const TEL = "584129700097";
+const TEL2 = "584129700098";
 
 const begin = (args) => admin.rpc("whatsapp_send_begin", args);
+const target = async (id) =>
+  (await admin.rpc("movement_notice_target", { p_movement_id: id })).data;
 
-let owners = [];
+let clienteId = null;
+let cliente2Id = null;
 
 try {
   const { data: o } = await admin.from("owners").select("id").limit(2);
-  owners = o ?? [];
-  if (owners.length < 2) throw new Error("hacen falta 2 dueños en dev");
-  const [A, B] = owners.map((x) => x.id);
+  if ((o ?? []).length < 2) throw new Error("hacen falta 2 dueños en dev");
+  const [A, B] = o.map((x) => x.id);
 
-  // ── 1. La llamada de tres argumentos, que es la del código desplegado ──
-  const vieja = await begin({
-    p_owner_id: A,
-    p_template: `${PREFIJO}vieja`,
-    p_period_key: "k1",
-  });
+  // ── fixtures ───────────────────────────────────────────────────────────
+  await admin.from("client_whatsapp_consents").delete().in("phone", [TEL, TEL2]);
+
+  const { data: c1 } = await admin
+    .from("clients")
+    .insert({ owner_id: A, name: `${PREFIJO}cliente`, whatsapp: TEL })
+    .select("id")
+    .single();
+  clienteId = c1.id;
+
+  const { data: c2 } = await admin
+    .from("clients")
+    .insert({ owner_id: A, name: `${PREFIJO}cliente2`, whatsapp: TEL2 })
+    .select("id")
+    .single();
+  cliente2Id = c2.id;
+
+  const base = { created_by: A, type: "charge", amount: 10, currency: "USD" };
+  const { data: movManual, error: eMov } = await admin
+    .from("movements")
+    .insert({ ...base, client_id: clienteId, source: "manual" })
+    .select("id")
+    .single();
+  if (eMov) throw new Error(`no pude crear el movimiento: ${eMov.message}`);
+  const { data: movFoto } = await admin
+    .from("movements")
+    .insert({ ...base, client_id: clienteId, source: "photo_import" })
+    .select("id")
+    .single();
+  const { data: movOtro } = await admin
+    .from("movements")
+    .insert({ ...base, client_id: cliente2Id, source: "manual" })
+    .select("id")
+    .single();
+
+  // ── 1. La llamada del código desplegado ───────────────────────────────
+  const vieja = await begin({ p_owner_id: A, p_template: `${PREFIJO}vieja`, p_period_key: "k1" });
   check(
     "1a. una llamada de TRES argumentos sigue reservando turno",
     Boolean(vieja.data?.id),
@@ -86,7 +125,7 @@ try {
 
   const { data: filaVieja } = await admin
     .from("whatsapp_sends")
-    .select("audience, recipient, client_id")
+    .select("audience, recipient")
     .eq("template", `${PREFIJO}vieja`)
     .single();
   check(
@@ -95,37 +134,86 @@ try {
     JSON.stringify(filaVieja),
   );
 
-  // ── 2. La idempotencia de siempre no se toca ──────────────────────────
-  const repetida = await begin({
-    p_owner_id: A,
-    p_template: `${PREFIJO}vieja`,
-    p_period_key: "k1",
-  });
   check(
-    "2. la misma clave dos veces sigue devolviendo 'ya_enviado'",
-    repetida.data?.skip === "ya_enviado",
-    JSON.stringify(repetida.data),
+    "1c. la misma clave dos veces sigue devolviendo 'ya_enviado'",
+    (await begin({ p_owner_id: A, p_template: `${PREFIJO}vieja`, p_period_key: "k1" })).data
+      ?.skip === "ya_enviado",
   );
 
-  // ── 3. Un envío a cliente se registra como tal ────────────────────────
-  const cli = await begin({
-    p_owner_id: A,
-    p_template: `${PREFIJO}recibo`,
-    p_period_key: "mov-1",
-    p_audience: "client",
-    p_recipient: "584120000001",
-  });
-  check("3a. un envío a cliente reserva turno", Boolean(cli.data?.id), JSON.stringify(cli.data));
-
-  const { data: filaCli } = await admin
-    .from("whatsapp_sends")
-    .select("audience, recipient")
-    .eq("template", `${PREFIJO}recibo`)
-    .single();
+  // ── 2. MS-7, la fuente única de verdad ────────────────────────────────
   check(
-    "3b. y queda marcado como 'client' con su teléfono",
-    filaCli?.audience === "client" && filaCli?.recipient === "584120000001",
-    JSON.stringify(filaCli),
+    "2a. sin permiso, el movimiento manual no avisa — y dice por qué",
+    (await target(movManual.id))?.reason === "no_consent",
+    JSON.stringify(await target(movManual.id)),
+  );
+
+  for (const id of [clienteId, cliente2Id]) {
+    await admin.rpc("record_owner_declared_whatsapp_consent", {
+      p_client_id: id,
+      p_owner_id: A,
+      p_consent_text: "QA 097: acepta.",
+      p_source: "owner_movement_form",
+    });
+  }
+
+  const ok = await target(movManual.id);
+  check(
+    "2b. con permiso, el manual SÍ avisa y trae lo que el remitente necesita",
+    ok?.ok === true && ok?.phone === TEL && ok?.client_id === clienteId,
+    JSON.stringify(ok),
+  );
+
+  // LA REGLA DURA. Mismo cliente, mismo permiso, mismo teléfono: lo único que
+  // cambia es que esta fila vino de una foto.
+  check(
+    "2c. el de la FOTO no avisa, aunque el cliente haya aceptado",
+    (await target(movFoto.id))?.reason === "photo_import",
+    JSON.stringify(await target(movFoto.id)),
+  );
+
+  check(
+    "2d. un movimiento que no existe se rechaza sin reventar",
+    (await target("00000000-0000-4000-8000-000000000000"))?.reason === "not_found",
+  );
+
+  await admin
+    .from("movements")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", movManual.id);
+  check(
+    "2e. un movimiento borrado deja de avisar",
+    (await target(movManual.id))?.reason === "deleted",
+    JSON.stringify(await target(movManual.id)),
+  );
+  await admin.from("movements").update({ deleted_at: null }).eq("id", movManual.id);
+
+  // ── 3. MS-7, la segunda capa ──────────────────────────────────────────
+  check(
+    "3a. la puerta rechaza un envío a cliente SIN movimiento",
+    (
+      await begin({
+        p_owner_id: A,
+        p_template: `${PREFIJO}sinmov`,
+        p_period_key: "x",
+        p_audience: "client",
+        p_recipient: TEL,
+      })
+    ).data?.skip === "sin_movimiento",
+  );
+
+  check(
+    "3b. y rechaza el de la foto, aunque el remitente insista",
+    (
+      await begin({
+        p_owner_id: A,
+        p_template: `${PREFIJO}foto`,
+        p_period_key: "y",
+        p_audience: "client",
+        p_recipient: TEL,
+        p_client_id: clienteId,
+        p_movement_id: movFoto.id,
+      })
+    ).data?.skip === "photo_import",
   );
 
   check(
@@ -134,18 +222,39 @@ try {
       await begin({
         p_owner_id: A,
         p_template: `${PREFIJO}raro`,
-        p_period_key: "x",
+        p_period_key: "z",
         p_audience: "lo_que_sea",
-        p_recipient: "584120000002",
+        p_recipient: TEL,
       })
     ).data?.skip === "audiencia_invalida",
   );
 
-  // ── 4. LA RESERVA DE LOS DUEÑOS ───────────────────────────────────────
-  //
-  // Se llena la ventana con 150 destinatarios de cliente distintos, metiéndolos
-  // directo en la tabla: lo que se prueba es la CUENTA, no el camino de
-  // inserción, y 150 llamadas a la función tardarían un minuto.
+  // ── 4. Un envío a cliente de verdad ───────────────────────────────────
+  const recibo = await begin({
+    p_owner_id: A,
+    p_template: `${PREFIJO}recibo`,
+    p_period_key: movManual.id,
+    p_audience: "client",
+    p_recipient: TEL,
+    p_client_id: clienteId,
+    p_movement_id: movManual.id,
+  });
+  check("4a. el manual sí pasa la puerta", Boolean(recibo.data?.id), JSON.stringify(recibo.data));
+
+  const { data: filaCli } = await admin
+    .from("whatsapp_sends")
+    .select("audience, recipient, client_id")
+    .eq("template", `${PREFIJO}recibo`)
+    .single();
+  check(
+    "4b. y queda marcado como 'client', con su teléfono y su cliente",
+    filaCli?.audience === "client" &&
+      filaCli?.recipient === TEL &&
+      filaCli?.client_id === clienteId,
+    JSON.stringify(filaCli),
+  );
+
+  // ── 5. LOS TOPES. Van al final: llenan la ventana ─────────────────────
   const relleno = Array.from({ length: 150 }, (_, i) => ({
     owner_id: B,
     template: `${PREFIJO}relleno`,
@@ -157,17 +266,19 @@ try {
   const { error: eRelleno } = await admin.from("whatsapp_sends").insert(relleno);
   if (eRelleno) throw new Error(`no pude rellenar la ventana: ${eRelleno.message}`);
 
-  const clienteFrenado = await begin({
-    p_owner_id: A,
-    p_template: `${PREFIJO}recibo2`,
-    p_period_key: "mov-2",
-    p_audience: "client",
-    p_recipient: "584120000003",
-  });
   check(
-    "4a. con 150 clientes en la ventana, un cliente NUEVO se frena",
-    clienteFrenado.data?.skip === "tope_diario_clientes",
-    JSON.stringify(clienteFrenado.data),
+    "5a. con 150 clientes en la ventana, un cliente NUEVO se frena",
+    (
+      await begin({
+        p_owner_id: A,
+        p_template: `${PREFIJO}recibo2`,
+        p_period_key: movOtro.id,
+        p_audience: "client",
+        p_recipient: TEL2,
+        p_client_id: cliente2Id,
+        p_movement_id: movOtro.id,
+      })
+    ).data?.skip === "tope_diario_clientes",
   );
 
   const duenoPasa = await begin({
@@ -176,48 +287,61 @@ try {
     p_period_key: "sem-1",
   });
   check(
-    "4b. y el aviso al DUEÑO pasa igual: la reserva funciona",
+    "5b. y el aviso al DUEÑO pasa igual: la reserva funciona",
     Boolean(duenoPasa.data?.id),
     JSON.stringify(duenoPasa.data),
   );
 
-  // ── 5. A quien ya se le escribió no se le frena ───────────────────────
+  // Al del punto 4 ya se le escribió en la ventana, así que no gasta cupo
+  // nuevo. Frenarlo sería perder un mensaje por un tope que él no consume.
   const yaEscrito = await begin({
     p_owner_id: A,
     p_template: `${PREFIJO}recibo3`,
-    p_period_key: "mov-3",
+    p_period_key: `${movManual.id}-2`,
     p_audience: "client",
-    p_recipient: "584120000001", // el del punto 3, ya en la ventana
+    p_recipient: TEL,
+    p_client_id: clienteId,
+    p_movement_id: movManual.id,
   });
   check(
-    "5. un cliente que YA recibió algo hoy no gasta cupo nuevo, así que pasa",
+    "5c. un cliente que YA recibió algo hoy no gasta cupo nuevo, así que pasa",
     Boolean(yaEscrito.data?.id),
     JSON.stringify(yaEscrito.data),
   );
 
-  // ── 6. La cuenta es por persona, no por cuenta ────────────────────────
-  //
-  // Dos bodegas distintas escribiendo al MISMO teléfono son un destinatario.
-  // Con la cuenta vieja (por owner_id) habrían sido dos.
-  const { data: antes } = await admin
+  const { data: conTel } = await admin
     .from("whatsapp_sends")
     .select("recipient")
     .like("template", `${PREFIJO}%`)
     .not("recipient", "is", null);
-  const unicos = new Set(antes.map((r) => r.recipient)).size;
-  const filasConTelefono = antes.length;
+  const unicos = new Set(conTel.map((r) => r.recipient)).size;
   check(
-    "6. varias filas al mismo teléfono son UN destinatario",
-    filasConTelefono > unicos,
-    `${filasConTelefono} filas · ${unicos} destinatarios distintos`,
+    "5d. varias filas al mismo teléfono son UN destinatario",
+    conTel.length > unicos,
+    `${conTel.length} filas · ${unicos} destinatarios distintos`,
   );
 } finally {
-  const { error } = await admin.from("whatsapp_sends").delete().like("template", `${PREFIJO}%`);
-  const { count } = await admin
+  await admin.from("whatsapp_sends").delete().like("template", `${PREFIJO}%`);
+  for (const id of [clienteId, cliente2Id]) {
+    if (!id) continue;
+    await admin.from("movements").delete().eq("client_id", id);
+    await admin.from("clients").delete().eq("id", id);
+  }
+  await admin.from("client_whatsapp_consents").delete().in("phone", [TEL, TEL2]);
+
+  const { count: sends } = await admin
     .from("whatsapp_sends")
     .select("id", { count: "exact", head: true })
     .like("template", `${PREFIJO}%`);
-  check("7. limpieza: no queda nada de la prueba en dev", !error && count === 0, `quedan ${count}`);
+  const { count: clientes } = await admin
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .like("name", `${PREFIJO}%`);
+  check(
+    "6. limpieza: no queda nada de la prueba en dev",
+    sends === 0 && clientes === 0,
+    `${sends} envíos · ${clientes} clientes`,
+  );
 
   const fallos = filas.filter((f) => !f.pasa).length;
   console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);
