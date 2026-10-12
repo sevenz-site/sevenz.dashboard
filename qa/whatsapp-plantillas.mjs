@@ -79,7 +79,12 @@ globalThis.fetch = async (url, init) => {
     return fetchReal(url, init);
   }
   if (String(url).includes("kapso.ai")) {
-    interceptados.push(JSON.parse(init.body));
+    // Se guarda tambien la URL: lleva dentro el phone_number_id, o sea DESDE
+    // QUE NUMERO sale el mensaje. Desde MS-24 son dos, uno por audiencia, y
+    // mandar un aviso de dueno por el numero de clientes arriesgaria la
+    // reputacion limpia que lleva los avisos que ya funcionan en produccion.
+    // No se veria en ninguna parte: el mensaje llegaria igual.
+    interceptados.push({ ...JSON.parse(init.body), __url: String(url) });
     // Una respuesta creíble, para que el resto del camino —whatsapp_send_finish,
     // el contador de la tanda— se ejecute igual que en producción.
     return new Response(JSON.stringify({ messages: [{ id: "wamid.QA" }] }), {
@@ -232,6 +237,18 @@ try {
   }
 
   check("ningún mensaje salió de verdad a Kapso", true, `${interceptados.length} interceptados, 0 enviados`);
+
+  // MS-24: todo lo de esta suite es para DUEÑOS, así que todo tiene que salir
+  // por su número. El de clientes no puede aparecer aquí ni una vez.
+  const PHONE_ID_OWNERS = "1373508439159674";
+  const PHONE_ID_CLIENTS = "1329482340254222";
+  const porElDeDuenos = interceptados.filter((m) => m.__url.includes(PHONE_ID_OWNERS)).length;
+  const porElDeClientes = interceptados.filter((m) => m.__url.includes(PHONE_ID_CLIENTS)).length;
+  check(
+    "y todos salieron por el número de DUEÑOS, ninguno por el de clientes",
+    porElDeDuenos === interceptados.length && porElDeClientes === 0,
+    `${porElDeDuenos}/${interceptados.length} por el de dueños · ${porElDeClientes} por el de clientes`,
+  );
 } finally {
   // ── devolver dev como estaba ──────────────────────────────────────────
   if (subPrevia) {
