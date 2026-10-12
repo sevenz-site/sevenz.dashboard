@@ -6,6 +6,7 @@ import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 import { normalizeDocumentId } from "@/lib/format";
 
 // TODAS LAS ACCIONES DE ESTE ARCHIVO ESCRIBEN EN `clients`, y la politica de
@@ -561,5 +562,78 @@ export async function setClientProfilePicture(
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/dashboard");
+  return { error: null };
+}
+
+/**
+ * Enciende o apaga los avisos de WhatsApp de un cliente, desde su ficha
+ * (MS-35).
+ *
+ * META EXIGE HONRAR LA BAJA, y hasta la migración 098 solo podía dársela el
+ * cliente, desde su propio enlace. Pero quien recibe el «ya no me mandes más
+ * eso» es el tendero, en el mostrador, de viva voz — y no tenía dónde
+ * apuntarlo.
+ *
+ * LO QUE SE GUARDA AL ENCENDER ES UNA DECLARACIÓN DEL TENDERO, igual que la
+ * casilla del formulario de movimiento: el texto que se almacena es el mismo
+ * que la pantalla le enseñó, porque esa cadena es la evidencia.
+ *
+ * La comprobación de propiedad va aquí Y dentro de la función de Postgres.
+ * CLAUDE.md pide la explícita en el código; la de la base es la que sigue en
+ * pie el día que alguien se olvide de esta.
+ */
+export async function setClientWhatsappNotices(
+  clientId: string,
+  activar: boolean,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { data: cliente, error: errorCliente } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .is("trashed_at", null)
+    .maybeSingle();
+
+  if (errorCliente) {
+    console.error("[setClientWhatsappNotices] lectura", errorCliente.message);
+    return { error: "No pudimos guardar el cambio. Intenta de nuevo." };
+  }
+  if (!cliente) return { error: "No encontramos ese cliente." };
+
+  const { data, error } = activar
+    ? await supabase.rpc("record_owner_declared_whatsapp_consent", {
+        p_client_id: clientId,
+        p_owner_id: user.id,
+        p_consent_text: textoPermisoDeclarado(cliente.name),
+        p_source: "owner_client_profile",
+      })
+    : await supabase.rpc("revoke_owner_declared_whatsapp_consent", {
+        p_client_id: clientId,
+        p_owner_id: user.id,
+      });
+
+  if (error) {
+    console.error("[setClientWhatsappNotices] rpc", error.message);
+    return { error: "No pudimos guardar el cambio. Intenta de nuevo." };
+  }
+
+  // `false` tiene una causa real y accionable, y es la única que el tendero
+  // puede arreglar: el cliente no tiene un número utilizable. Decirlo es la
+  // diferencia entre un interruptor que no hace nada y uno que explica.
+  if (data !== true) {
+    return {
+      error: activar
+        ? `Falta registrar el WhatsApp de ${cliente.name}. Sin número no podemos avisarle.`
+        : "No pudimos guardar el cambio. Intenta de nuevo.",
+    };
+  }
+
+  revalidatePath(`/clients/${clientId}`);
   return { error: null };
 }
