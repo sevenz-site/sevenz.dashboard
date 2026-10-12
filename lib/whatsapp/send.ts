@@ -77,6 +77,7 @@ export async function enviarAvisoAlDueno(opciones: {
   }
 
   const envio = await enviarPlantilla({
+    audience: "owner",
     to: opciones.to,
     plantilla: opciones.plantilla,
     parametrosCuerpo: opciones.parametrosCuerpo,
