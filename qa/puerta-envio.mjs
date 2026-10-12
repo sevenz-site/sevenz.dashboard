@@ -74,6 +74,7 @@ const target = async (id) =>
 
 let clienteId = null;
 let cliente2Id = null;
+let cliente3Id = null;
 
 try {
   const { data: o } = await admin.from("owners").select("id").limit(2);
@@ -320,14 +321,117 @@ try {
     conTel.length > unicos,
     `${conTel.length} filas · ${unicos} destinatarios distintos`,
   );
+
+  // ── 6. MS-27: EL TOPE DE RECORDATORIOS POR NEGOCIO ────────────────
+  //
+  // MS-7 apaga los mensajes que se disparan AL GUARDAR. Los recordatorios de
+  // plazo se disparan después, mirando qué fechas vencen — así que una libreta
+  // de cuarenta fiados a 7 días no explota el lunes, explota el sábado. El tope
+  // los reparte.
+  //
+  // Va al final de todo porque llena la ventana con 20 recordatorios de un
+  // negocio, igual que el bloque 5 la llena con 150 clientes.
+  //
+  // LO QUE MÁS IMPORTA AQUÍ ES 6b: el tope NO frena a los recibos. Un recibo
+  // sale cuando el cliente acaba de pagar, delante del tendero; frenarlo sería
+  // dejar sin confirmación a quien más se la ha ganado.
+  await admin.from("whatsapp_sends").delete().like("template", `${PREFIJO}%`);
+
+  const recordatorios = Array.from({ length: 20 }, (_, i) => ({
+    owner_id: A,
+    template: `${PREFIJO}recordatorio`,
+    period_key: `rec${i}`,
+    audience: "client",
+    recipient: `5841288${String(i).padStart(5, "0")}`,
+    reminder: true,
+    ok: true,
+  }));
+  const { error: eRec } = await admin.from("whatsapp_sends").insert(recordatorios);
+  if (eRec) throw new Error(`no pude rellenar los recordatorios: ${eRec.message}`);
+
+  check(
+    "6a. con 20 recordatorios hoy, ESE negocio no manda otro",
+    (
+      await begin({
+        p_owner_id: A,
+        p_template: `${PREFIJO}rec21`,
+        p_period_key: `${movManual.id}-rec`,
+        p_audience: "client",
+        p_recipient: TEL,
+        p_client_id: clienteId,
+        p_movement_id: movManual.id,
+        p_reminder: true,
+      })
+    ).data?.skip === "tope_recordatorios_negocio",
+  );
+
+  const reciboPasa = await begin({
+    p_owner_id: A,
+    p_template: `${PREFIJO}recibo4`,
+    p_period_key: `${movManual.id}-recibo`,
+    p_audience: "client",
+    p_recipient: TEL,
+    p_client_id: clienteId,
+    p_movement_id: movManual.id,
+    p_reminder: false,
+  });
+  check(
+    "6b. pero un RECIBO del mismo negocio pasa igual",
+    Boolean(reciboPasa.data?.id),
+    JSON.stringify(reciboPasa.data),
+  );
+
+  // El tope es POR NEGOCIO: que una bodega haya gastado su tanda no puede
+  // dejar sin recordatorios a la de al lado.
+  const { data: otroCliente } = await admin
+    .from("clients")
+    .insert({ owner_id: B, name: `${PREFIJO}cliente3`, whatsapp: "584129700099" })
+    .select("id")
+    .single();
+  cliente3Id = otroCliente.id;
+  const { data: movB } = await admin
+    .from("movements")
+    .insert({ created_by: B, type: "charge", amount: 10, currency: "USD", client_id: cliente3Id, source: "manual" })
+    .select("id")
+    .single();
+  await admin.rpc("record_owner_declared_whatsapp_consent", {
+    p_client_id: cliente3Id,
+    p_owner_id: B,
+    p_consent_text: "QA 099: acepta.",
+    p_source: "owner_movement_form",
+  });
+
+  const otroNegocio = await begin({
+    p_owner_id: B,
+    p_template: `${PREFIJO}recB`,
+    p_period_key: movB.id,
+    p_audience: "client",
+    p_recipient: "584129700099",
+    p_client_id: cliente3Id,
+    p_movement_id: movB.id,
+    p_reminder: true,
+  });
+  check(
+    "6c. y OTRO negocio sigue pudiendo mandar los suyos",
+    Boolean(otroNegocio.data?.id),
+    JSON.stringify(otroNegocio.data),
+  );
+
+  const { data: marcadas } = await admin
+    .from("whatsapp_sends")
+    .select("reminder")
+    .eq("template", `${PREFIJO}recB`)
+    .single();
+  check("6d. y la fila queda marcada como recordatorio", marcadas?.reminder === true);
+
 } finally {
   await admin.from("whatsapp_sends").delete().like("template", `${PREFIJO}%`);
-  for (const id of [clienteId, cliente2Id]) {
+  for (const id of [clienteId, cliente2Id, cliente3Id]) {
     if (!id) continue;
     await admin.from("movements").delete().eq("client_id", id);
     await admin.from("clients").delete().eq("id", id);
   }
-  await admin.from("client_whatsapp_consents").delete().in("phone", [TEL, TEL2]);
+  await admin.from("client_whatsapp_consents").delete().in("phone", [TEL, TEL2, "584129700099"]);
 
   const { count: sends } = await admin
     .from("whatsapp_sends")
