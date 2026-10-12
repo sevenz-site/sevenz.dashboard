@@ -6,10 +6,9 @@ import { CountryCodeSelect } from "@/components/country-code-select";
 import {
   DEFAULT_COUNTRY_ISO2,
   COUNTRIES,
-  splitPhoneNumber,
   exampleLocalNumber,
 } from "@/lib/countries";
-import { normalizePhone, phoneWarning } from "@/lib/phone";
+import { normalizePhone, phoneWarning, splitForInput } from "@/lib/phone";
 
 export function WhatsappInput({
   name,
@@ -50,9 +49,24 @@ export function WhatsappInput({
   // tiene ninguno, asi que editarlo sobre uno ya guardado no haria nada.
   disabled?: boolean;
 }) {
-  const parsed = defaultValue ? splitPhoneNumber(defaultValue) : null;
+  // ABRIR UN NUMERO GUARDADO NO ES PARTIRLO POR EL PREFIJO MAS LARGO.
+  //
+  // Esto llamaba a `splitPhoneNumber` directamente, y esa funcion casa
+  // prefijos por coincidencia: un movil venezolano "4149900094" se leia como
+  // +41 Suiza, y uno colombiano "3001112233" como +30 Grecia. Lo que se
+  // guardaba eran "5849900094" y "571112233" -- numeros que no existen.
+  //
+  // Ademas `splitPhoneNumber` NUNCA devuelve "no se": cae siempre en Colombia,
+  // asi que `preferredDialCode` no llegaba a consultarse jamas y un numero sin
+  // prefijo en un negocio venezolano se guardaba como colombiano.
+  //
+  // `splitForInput` aplica la regla que faltaba: un numero completo del pais
+  // del negocio gana a cualquier coincidencia de prefijo. Medido y clavado en
+  // `npm run qa:telefono` el 2026-10-10, despues de encontrarlo subiendo una
+  // libreta de verdad.
+  const parsed = defaultValue ? splitForInput(defaultValue, preferredDialCode) : null;
   const defaultDialCode =
-    parsed?.country.dialCode ??
+    parsed?.dialCode ??
     preferredDialCode ??
     COUNTRIES.find((c) => c.iso2 === DEFAULT_COUNTRY_ISO2)!.dialCode;
 
