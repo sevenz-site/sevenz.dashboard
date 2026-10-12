@@ -1,4 +1,4 @@
-import { COUNTRIES } from "@/lib/countries";
+import { COUNTRIES, splitPhoneNumber } from "@/lib/countries";
 
 // Countries Sevenz has real numbers for: the two it operates in, plus the two
 // its owners actually have clients in (a "Mj" ledger holds valid Peruvian and
@@ -87,4 +87,53 @@ export function phoneWarning(check: PhoneCheck, dialCode: string): string | null
   return (
     `Un número ${where} tiene ${check.expected} dígitos y escribiste ${check.local.length}. ${tail}`
   );
+}
+
+// Las longitudes locales que conocemos, para quien necesite decidir si una
+// cadena de dígitos ES ya un número completo de ese país.
+export function localLengthsFor(dialCode: string): number[] | null {
+  return RULES[dialCode]?.localLengths ?? null;
+}
+
+// CÓMO SE ABRE UN NÚMERO GUARDADO DENTRO DEL CAMPO, y por qué no basta con
+// `splitPhoneNumber`.
+//
+// `splitPhoneNumber` parte un número por el prefijo de país más largo que
+// encaje. Para algo ya guardado en forma internacional es correcto. Para una
+// cadena en forma LOCAL es una trampa, porque casa prefijos por coincidencia:
+//
+//   "4149900094"  (móvil venezolano)  →  +41 Suiza  + "49900094"
+//   "3001112233"  (móvil colombiano)  →  +30 Grecia + "01112233"
+//
+// Y eso acababa guardándose como "5849900094" y "571112233": números que no
+// existen, con el prefijo del negocio pegado a un resto mutilado. Medido con
+// `npm run qa:telefono` el 2026-10-10.
+//
+// Importa más desde la migración 081, que guarda el PERMISO de WhatsApp con el
+// teléfono normalizado como CLAVE. Un permiso escrito bajo una clave rota no
+// lo encuentra ningún envío: el tendero marca la casilla, la fila se escribe,
+// y al cliente no le llega nada nunca. Sin un solo error por ninguna parte.
+//
+// El camino que lo hace probable es la libreta: la OCR lee lo que hay escrito
+// en el cuaderno, y en un cuaderno eso es "0414-9900094".
+//
+// LA REGLA, en una frase: **un número completo del país del negocio gana a
+// cualquier coincidencia de prefijo.** Solo si la cadena NO es un local válido
+// se intenta leerla como internacional — que es cuando de verdad lo es.
+export function splitForInput(
+  stored: string,
+  preferredDialCode?: string,
+): { dialCode: string; local: string } {
+  const clean = stored.replace(/\D/g, "");
+  const sinTroncal = clean.replace(/^0+/, "");
+
+  if (preferredDialCode) {
+    const lengths = localLengthsFor(preferredDialCode);
+    if (lengths?.includes(sinTroncal.length)) {
+      return { dialCode: preferredDialCode, local: sinTroncal };
+    }
+  }
+
+  const parsed = splitPhoneNumber(clean);
+  return { dialCode: parsed.country.dialCode, local: parsed.local };
 }
