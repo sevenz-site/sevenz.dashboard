@@ -185,6 +185,7 @@ export default async function ClientDetailPage({
           El aviso de papelera y el botón de registrar movimiento se quedan
           fuera, debajo: el frame los dibuja fuera del nodo `header`. */}
       <ClientDetailHeader
+        aceptaAvisos={aceptaAvisos === true}
         client={client as Client}
         ownerCountry={ownerCountry}
         backHref={backHref}

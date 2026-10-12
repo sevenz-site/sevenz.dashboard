@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, MoreVertical, Pencil, RotateCcw, Share2, Trash2 } from "lucide-react";
+import { BellRing, EyeOff, MoreVertical, Pencil, RotateCcw, Share2, Trash2 } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ClientNoticesDialog } from "@/components/dashboard/client-notices-dialog";
+import { consentPhoneKey } from "@/lib/phone";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,11 +53,16 @@ export function ClientHeaderActions({
   trashedAt,
   client,
   ownerCountry,
+  aceptaAvisos,
   onDark = false,
 }: {
   clientId: string;
   clientName: string;
   whatsapp: string | null;
+  // Si el TELÉFONO de este cliente acepta avisos hoy. Sale de
+  // `client_accepts_whatsapp`, la misma función que usará la puerta de envío:
+  // una segunda consulta que respondiera «casi» lo mismo acabaría discrepando.
+  aceptaAvisos: boolean;
   // Pre-formatted by the caller — "$47.000,00" for a COP client, or
   // "$50.00 y €20.00" for a VE client with debt in both currencies. Keeps this
   // component currency-agnostic rather than re-deriving formatting logic that
@@ -85,6 +92,7 @@ export function ClientHeaderActions({
   // The confirmations live outside DropdownMenu on purpose. Selecting an item
   // closes the menu and unmounts its children, so an AlertDialog nested inside
   // one disappears in the same frame it was asked to open.
+  const [avisosAbierto, setAvisosAbierto] = useState(false);
   const [confirming, setConfirming] = useState<Confirming>("none");
   const [busy, setBusy] = useState(false);
   // Cuenta pausada: ni se abre la confirmacion.
@@ -247,6 +255,24 @@ export function ClientHeaderActions({
             <Share2 />
             Compartir enlace
           </DropdownMenuItem>
+          {/* MS-35. Se llama «Notificaciones» SIEMPRE, encendidas o apagadas:
+              una entrada de menú que se renombra sola no se encuentra dos veces
+              en el mismo sitio. Y no aparece para un cliente en la papelera,
+              donde la única acción con sentido es restaurarlo.
+
+              `onSelect` cierra el menú y el diálogo abre un frame después, que
+              es lo que lo mantiene montado cuando su disparador ya no existe. */}
+          {isTrashed ? null : (
+            <DropdownMenuItem
+              onSelect={() => {
+                if (guardia()) return;
+                setAvisosAbierto(true);
+              }}
+            >
+              <BellRing />
+              Notificaciones
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           {isTrashed ? (
             <>
@@ -279,6 +305,15 @@ export function ClientHeaderActions({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <ClientNoticesDialog
+        open={avisosAbierto}
+        onOpenChange={setAvisosAbierto}
+        clientId={clientId}
+        clientName={clientName}
+        activo={aceptaAvisos}
+        hasWhatsapp={consentPhoneKey(whatsapp) !== null}
+      />
 
       <AlertDialog
         open={confirming === "trash"}
