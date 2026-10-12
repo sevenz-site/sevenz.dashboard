@@ -150,7 +150,7 @@ export function splitForInput(
 // preguntárselo a Postgres en cada tecla. Sin esto, `hasWhatsapp` era
 // `Boolean(whatsapp.trim())`, una comprobación de PRESENCIA y no de validez.
 //
-// Lo que eso provocaba, medido contra producción el 2026-10-12: hay 19
+// Lo que eso provocaba, medido contra producción el 2026-10-12: hay 20
 // clientes reales cuyo teléfono guardado es "581", "582", "583" o "570" — un
 // prefijo y un dígito suelto, de alguien que empezó a teclear y guardó. La
 // base los normaliza a null, así que no se les puede escribir ni pueden

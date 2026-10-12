@@ -189,7 +189,7 @@ export function AddMovementDialog({
   const [whatsappTecleado, setWhatsappTecleado] = useState("");
   // USABLE, no solo presente. Un "581" guardado es un numero y no sirve para
   // nada: la base lo normaliza a null y el permiso no se puede escribir. Ver
-  // consentPhoneKey; en produccion hay 19 clientes asi.
+  // consentPhoneKey; en produccion hay 20 clientes asi.
   const hayWhatsapp =
     consentPhoneKey(clientWhatsapp) !== null || consentPhoneKey(whatsappTecleado) !== null;
   const [prevOpen, setPrevOpen] = useState(open);
