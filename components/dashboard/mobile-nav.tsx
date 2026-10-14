@@ -64,7 +64,19 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 //
 // El lateral NO hace falta tocarlo: su entrada ya salió el 2026-10-09, cuando
 // el catálogo entró en la barra, para no tener dos puertas al mismo cajón.
-const CATALOGO_VISIBLE = false;
+//
+// ───────────────────────────────────────────────────────────────────────────
+// Y VISIBLE OTRA VEZ — 2026-10-14
+//
+// Decisión del dueño al retomar el catálogo con el frame 1192:4185: vuelve a
+// la navegación, aquí Y en el menú lateral. Esto último desplaza la decisión
+// del 2026-10-09 que lo sacó del lateral para no tener dos puertas al mismo
+// cajón; la razón vieja se deja escrita arriba, entera, porque sigue siendo
+// cierta como argumento y es lo que haría falta si algún día se revierte.
+//
+// Vuelve también el efecto de la quinta ranura: a 375px cada hueco de la barra
+// pasa de 93px a 75px. La medida está en DESIGN-SYSTEM.md.
+const CATALOGO_VISIBLE = true;
 
 const DESTINATIONS = (
   [

@@ -1068,6 +1068,29 @@ dos toques y una lectura; la barra es uno.
 día. Dejarlo en los dos sitios era el atajo obvio y es exactamente lo que el
 párrafo de arriba desaconseja: dos puertas al mismo cajón.
 
+#### Fue y volvió dos veces más. Las tres decisiones, con su fecha
+
+Lo de arriba sigue siendo el argumento; lo de abajo es lo que hay hoy.
+
+| Cuándo | Qué | Por qué |
+|---|---|---|
+| 2026-10-09 | Entra en la barra, sale del lateral | Es la pantalla que se abre a media venta: la barra es un toque |
+| 2026-10-12 | **Se esconde de las dos** | No se lanza todavía. `CATALOGO_VISIBLE = false`, un interruptor y no borrar líneas |
+| 2026-10-14 | **Vuelve, y a los DOS sitios** | Decisión del dueño al retomarlo con el frame `1192:4185` |
+
+**La decisión del 14 desplaza la del 9, no la anula.** El catálogo es hoy la
+única pantalla con dos puertas, y es deliberado: en el teléfono se llega por la
+barra, de un toque, y el lateral es por donde se busca lo que todavía no se usa
+a diario — que es exactamente donde mira un tendero que aún no tiene el hábito
+de una función nueva. Cuando lo tenga, la del lateral sobra, y ese es el
+momento de volver a leer el párrafo de arriba.
+
+Medido otra vez el 2026-10-14 al devolverlo: cinco huecos, **75px cada uno a
+375px**, el mismo número de la tabla. Y en el lateral va **entre Malas pagas y
+Papelera**, no al final: el `gapBefore` de Papelera marca dónde acaban las
+pantallas del día a día y empiezan las ocasionales, y el catálogo es de las
+primeras.
+
 ### El flotante cambia de etiqueta según la pantalla
 
 En `/productos` el botón flotante dice **«Crear producto»** y navega a
