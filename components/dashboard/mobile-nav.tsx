@@ -225,6 +225,31 @@ export function MobileNav() {
   const enCatalogo = pathname === "/productos";
   const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/dashboard?nuevo=1";
   const agregarLabel = enCatalogo ? "Crear producto" : "Agregar";
+
+  // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
+  // 2026-10-14, con una captura de la pantalla de carga de la foto.
+  //
+  // `revisando`, mas abajo, ya escondia este boton Y la barra -- pero solo
+  // desde que la libreta esta leida y esperando confirmacion. El flujo empieza
+  // mucho antes: elegir la foto, verla procesar, abrir los resultados, entrar
+  // al detalle de una persona. En todo ese tramo el boton seguia ahi.
+  //
+  // POR QUE ESTORBA, y no es cuestion de gusto: subir una libreta ES registrar
+  // movimientos, veinte de una vez. Un boton que dice "Agregar" encima de esa
+  // pantalla ofrece la version de uno en uno de lo que el tendero ya esta
+  // haciendo en lote, y al tocarlo se SALE del flujo --con la libreta a medio
+  // revisar detras-- hacia un dialogo que hace lo mismo peor.
+  //
+  // UNA RUTA BASTA. El flujo entero vive en /import, dentro de `ImportFlow`:
+  // las tres pantallas que el dueno nombro --la foto, los movimientos y el
+  // detalle del cliente-- son estados de ese componente y no rutas propias.
+  // `startsWith` cubre ademas cualquier subruta que se anada despues.
+  //
+  // ESCONDE SOLO EL BOTON, NO LA BARRA. La barra sigue siendo la via de salida
+  // y el dueno no pidio quitarla; por eso esto va aqui y no en el `return null`
+  // de mas abajo, que se lleva las dos por delante.
+  const enSubirLibreta = pathname.startsWith("/import");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
@@ -297,7 +322,10 @@ export function MobileNav() {
           Why it left the bar: it was the fourth of four equal-looking slots,
           three of which navigate. The only thing on this screen that WRITES
           looked like the three that only move you. Floating, it is the one
-          control that is obviously not a destination. */}
+          control that is obviously not a destination.
+
+          Y no sale en /import: ver `enSubirLibreta` arriba. */}
+      {!enSubirLibreta && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
@@ -346,6 +374,7 @@ export function MobileNav() {
           )}
         </span>
       </button>
+      )}
 
       {/* z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The
           bar also unmounts while one is open, so this is belt and braces.
