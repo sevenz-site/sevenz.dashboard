@@ -100,18 +100,25 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
   // recibieron enlace (CT-1). `movement_notice_target` no puede crearlo
   // —es `stable`— así que se crea aquí, que es el único momento en que de
   // verdad hace falta.
+  //
+  // THROUGH A FUNCTION, NOT THE TABLE. This was an `insert into share_links`
+  // with the service-role key until 2026-10-14, which works in the dev branch
+  // and CANNOT work in production: it grants service_role nothing on that
+  // table (045_dev_grant_parity). The receipt would have gone out for every
+  // client who already had a link and failed silently for exactly the ones
+  // who never had one. See migration 102; `npm run qa:service-role` is what
+  // keeps it from coming back.
   let token: string = objetivo.share_token ?? "";
   if (token === "") {
-    const { data: link, error: errorLink } = await supabase
-      .from("share_links")
-      .insert({ client_id: objetivo.client_id })
-      .select("token")
-      .single();
-    if (errorLink || !link) {
+    const { data: creado, error: errorLink } = await supabase.rpc(
+      "whatsapp_share_token_for_client",
+      { p_client_id: objetivo.client_id },
+    );
+    if (errorLink || !creado) {
       console.error("[recibo] no pude crear el enlace:", errorLink?.message);
       return { estado: "fallido", error: "No se pudo preparar el enlace del saldo." };
     }
-    token = link.token;
+    token = creado as string;
   }
 
   // LA CLAVE DE IDEMPOTENCIA ES EL MOVIMIENTO, no una semana. Un recibo habla

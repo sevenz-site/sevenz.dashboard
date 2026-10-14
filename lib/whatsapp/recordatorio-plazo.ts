@@ -128,20 +128,21 @@ export async function enviarRecordatoriosDePlazo(): Promise<ResumenRecordatorios
     }
 
     // El botón exige un token y hay clientes que nunca recibieron enlace
-    // (CT-1). Se crea aquí, igual que en el recibo.
+    // (CT-1). Se crea aquí, igual que en el recibo, y por la misma función:
+    // escribir en `share_links` con la clave de service_role funciona en dev y
+    // no en producción (migración 102, y la razón entera está allí).
     let token: string = objetivo.share_token ?? "";
     if (token === "") {
-      const { data: link, error: errorLink } = await supabase
-        .from("share_links")
-        .insert({ client_id: d.client_id })
-        .select("token")
-        .single();
-      if (errorLink || !link) {
+      const { data: creado, error: errorLink } = await supabase.rpc(
+        "whatsapp_share_token_for_client",
+        { p_client_id: d.client_id },
+      );
+      if (errorLink || !creado) {
         console.error("[recordatorio] no pude crear el enlace:", errorLink?.message);
         resumen.fallidos++;
         continue;
       }
-      token = link.token;
+      token = creado as string;
     }
 
     // LA CLAVE DE IDEMPOTENCIA ES EL CARGO QUE VENCE. Un cliente recibe un
