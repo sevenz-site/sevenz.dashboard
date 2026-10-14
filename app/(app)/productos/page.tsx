@@ -17,7 +17,7 @@ import {
   type PriceOverrideRow,
   type ProductCurrencyRow,
 } from "@/lib/products/catalog";
-import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import type { BolivarRates, CostCurrency, PriceCurrency } from "@/lib/products/price";
 
 // EL CATÁLOGO. Primera pantalla de la etapa 1 de inventario.
 //
@@ -51,6 +51,7 @@ export default async function ProductosPage({
     { data: products, error: productsError },
     { data: overrides },
     { data: currencies },
+    { data: ultimoProducto },
     { data: owner },
     country,
     rateContext,
@@ -63,6 +64,39 @@ export default async function ProductosPage({
         .order("name"),
       supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
       supabase.from("product_currencies").select("product_id, currency"),
+      // LAS DOS MONEDAS DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
+      //
+      // Decisión del dueño el 2026-10-14: «las monedas en la opción de costo y
+      // en la sección de precio aparecerán por defecto según el último
+      // producto creado». Si el último lo creó con el costo en USDT y el
+      // precio en euros, eso es lo que abre el siguiente.
+      //
+      // DESPLAZA LO QUE ÉL MISMO DECIDIÓ ESE MISMO DÍA unas horas antes, que
+      // era «siempre dólares» (y pesos en Colombia). La razón de entonces
+      // queda escrita porque es la que haría falta para revertir esto: el
+      // dólar es la moneda en que se piensa el precio en Venezuela, y arrancar
+      // en otra porque UNA vez se compró en euros convierte un caso raro en el
+      // valor por defecto de todos los productos siguientes. Lo que la
+      // desplaza es que un tendero que compra en USDT lo hace SIEMPRE, no una
+      // vez, y entonces el caso raro es el dólar.
+      //
+      // `created_at` y no `updated_at`, que es lo que la versión anterior de
+      // esta consulta usaba: el dueño dijo «el último producto CREADO», y son
+      // preguntas distintas — corregirle el precio a un producto de hace tres
+      // meses no dice nada sobre en qué moneda compra hoy.
+      //
+      // SALE DE SU PROPIO HISTORIAL Y NO DEL NAVEGADOR, a propósito: iOS
+      // Safari borra `localStorage` tras un tiempo de inactividad, y entonces
+      // la ficha «olvidaría» lo que el tendero lleva meses haciendo. Es la
+      // regla de CLAUDE.md sobre no apoyarse en el navegador para nada que
+      // importe, y el mismo criterio que `moneda-habitual.ts`.
+      supabase
+        .from("products")
+        .select("cost_currency, base_currency")
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
       supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
@@ -147,6 +181,8 @@ export default async function ProductosPage({
           overrides={(overrides ?? []) as PriceOverrideRow[]}
           currencies={(currencies ?? []) as ProductCurrencyRow[]}
           supplierSuggestions={supplierSuggestions}
+          lastCostCurrency={(ultimoProducto?.cost_currency as CostCurrency | null) ?? null}
+          lastBaseCurrency={(ultimoProducto?.base_currency as PriceCurrency | null) ?? null}
           rates={rates}
           defaultCurrency={defaultCurrency}
           ownerId={user!.id}

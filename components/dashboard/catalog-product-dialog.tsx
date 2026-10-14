@@ -114,6 +114,7 @@ export function CatalogProductDialog({
   overrides,
   initialCurrencies,
   supplierSuggestions,
+  lastCostCurrency,
   onSaved,
   ownerId,
 }: {
@@ -128,6 +129,10 @@ export function CatalogProductDialog({
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
+  // La moneda del costo del ULTIMO producto creado por este negocio, o
+  // null si todavia no tiene ninguno. Solo la usa el dialogo de alta: al
+  // editar manda la del producto que se esta abriendo.
+  lastCostCurrency?: CostCurrency | null;
   // Se llama SOLO cuando el guardado sale bien, nunca al cerrar sin guardar.
   onSaved?: () => void;
   ownerId: string;
@@ -157,44 +162,32 @@ export function CatalogProductDialog({
   // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
   const [supplier, setSupplier] = useState(product?.supplier ?? "");
 
-  // LA MONEDA DEL COSTO. Por defecto la última que este negocio usó, igual que
-  // el formulario de movimientos recuerda la suya — y por el mismo motivo: un
-  // tendero compra casi siempre en la misma moneda, así que preguntárselo cada
-  // vez es una decisión que ya tomó.
+  // LA MONEDA DEL COSTO DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
   //
-  // Sale del historial del propio negocio y NO del navegador: iOS Safari borra
-  // `localStorage` tras un tiempo de inactividad, y entonces la pantalla
-  // «olvidaría» lo que el tendero lleva meses haciendo. Es la regla de
-  // CLAUDE.md sobre no apoyarse en el navegador para nada que importe.
-  // SIEMPRE DÓLARES EN UN PRODUCTO NUEVO. Decisión del dueño, 2026-10-14.
+  // Decisión del dueño el 2026-10-14, y la TERCERA de ese día sobre este mismo
+  // campo. Las tres se dejan escritas porque cada una desplaza a la anterior y
+  // ninguna era mala — lo que cambió es qué caso se considera el corriente:
   //
-  // Desplaza lo del 2026-10-10, que arrancaba con la ÚLTIMA moneda que este
-  // negocio usó. La razón vieja se deja escrita porque era buena y es lo que
-  // haría falta si esto se revierte: un tendero compra casi siempre en la
-  // misma moneda, así que preguntárselo cada vez era una decisión ya tomada —
-  // y salía de su propio historial y no del navegador, porque iOS Safari borra
-  // `localStorage` y la pantalla habría «olvidado» lo que lleva meses haciendo.
+  //   1. «La última moneda usada» (2026-10-10). Un tendero compra casi siempre
+  //      en la misma moneda, así que preguntárselo cada vez es una decisión que
+  //      ya tomó.
+  //   2. «Siempre dólares» (2026-10-14, por la mañana), y pesos en Colombia. El
+  //      dólar es la moneda en que se piensa el precio en Venezuela, y arrancar
+  //      en otra porque UNA vez se compró en euros convierte un caso raro en el
+  //      valor por defecto de todos los productos siguientes.
+  //   3. **La del último producto CREADO** (2026-10-14, por la tarde), que es
+  //      lo que hay hoy. Lo que desplaza al 2: un tendero que compra en USDT lo
+  //      hace SIEMPRE, no una vez, y para él el caso raro es el dólar.
   //
-  // Lo que la desplaza: el dólar es la moneda en que se piensa el precio en
-  // Venezuela, y arrancar en otra porque una vez se compró en euros convierte
-  // un caso raro en el valor por defecto de todos los productos siguientes.
+  // Vuelve a salir de su propio historial y NO del navegador: iOS Safari borra
+  // `localStorage` y la ficha «olvidaría» lo que lleva meses haciendo.
   //
-  // `lastCostCurrency` se quitó entera —la prop, su hilo por la tabla y la
-  // consulta de la página—, y no por limpieza: dejarla sin usar dejaba un
-  // aviso del lint permanente, que es la clase de alarma que enseña a no leer
-  // los avisos. Cómo rehacerla está en el historial y en el párrafo de arriba.
-  //
-  // COLOMBIA EN PESOS, resuelto por el dueño el 2026-10-14 al preguntárselo:
-  // «en negocio colombiano solo es peso». Así que «siempre dólares» es la
-  // regla de Venezuela, no de la pantalla, y lo que decide es el país.
-  //
-  // `defaultCurrency` ya vale COP para un negocio colombiano y USD para uno
-  // venezolano, que es exactamente esta regla. La diferencia con lo que había
-  // antes del 2026-10-14 no es esta línea: es que ya no se consulta la última
-  // moneda usada, que era lo que hacía que un producto nuevo abriera en euros
-  // porque una vez se compró en euros.
+  // SIN PRODUCTOS TODAVÍA, `lastCostCurrency` llega null y cae en la moneda del
+  // negocio — que es la decisión 2, intacta para el primer producto de una
+  // cuenta nueva. No hay historial del que tirar, y el país es lo único que se
+  // sabe de ese negocio.
   const [costCurrency, setCostCurrency] = useState<CostCurrency>(
-    (product?.cost_currency as CostCurrency | null) ?? defaultCurrency,
+    (product?.cost_currency as CostCurrency | null) ?? lastCostCurrency ?? defaultCurrency,
   );
   // «OTRO» SE QUEDA EN «OTRO», Y NO SE PREGUNTA CUAL. Decisión del dueño el
   // 2026-10-10. Lo que se escribía ahí no servía para nada — no tenemos tasa
