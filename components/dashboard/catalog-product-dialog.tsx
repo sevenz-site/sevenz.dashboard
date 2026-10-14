@@ -831,9 +831,57 @@ function CostCurrencySelect({
   businessCurrency: PriceCurrency;
   disabled: boolean;
 }) {
-  const opciones: CostCurrency[] = hasRates
-    ? ["USD", "EUR", "USDT", "OTHER"]
-    : [businessCurrency, "OTHER"];
+  // ═══════════════════════════════════════════════════════════════════════
+  // «OTRO» SALIÓ DE LA LISTA EL 2026-10-14. DECISIÓN DEL DUEÑO.
+  //
+  // Existió entre el 2026-10-10 (migración 087) y hoy. Se retira porque tenía
+  // un fallo real, y se deja escrito entero porque la idea volverá — un
+  // tendero que compra en pesos colombianos para vender en Venezuela es un
+  // caso corriente, y el día que se retome conviene saber con qué se chocó.
+  //
+  // EL FALLO, medido el 2026-10-14 reproduciéndolo: elegir «Otro» y guardar
+  // SIN COSTO perdía la moneda en silencio. Al reabrir el producto decía
+  // «Dólares».
+  //
+  // La causa no está en el selector sino en cómo se guarda el par, en
+  // `rowFrom()` del server action:
+  //
+  //     cost_currency: cost == null ? null : (input.costCurrency ?? null)
+  //
+  // Es decir: SIN COSTO NO HAY MONEDA. Y eso es correcto para las otras tres
+  // —una moneda sin importe no significa nada y la 087 exige el par con un
+  // `check`— pero con «Otro» el tendero cree estar diciendo algo más: «mi
+  // costo está en una moneda rara». Si además deja el importe vacío, lo único
+  // que había dicho se tira.
+  //
+  // LO QUE HACE EL CASO ESPECIALMENTE MALO es que el costo es OPCIONAL. Así
+  // que la combinación que lo rompe —moneda «Otro» + costo vacío— no es un
+  // error del tendero: es exactamente lo que la pantalla le invita a hacer.
+  //
+  // QUÉ HARÍA FALTA PARA DEVOLVERLA, y por qué no se hizo hoy:
+  //
+  //   1. Decidir qué significa «Otro» sin importe. Hoy la 087 y la 089 dicen
+  //      que la moneda acompaña al costo; si «Otro» puede existir sola, eso
+  //      es otro dato —«en qué moneda compro»— y probablemente va en `owners`
+  //      y no en cada producto.
+  //   2. Resolver qué enseña el selector al reabrir cuando el par está a
+  //      medias, en vez de caer al valor por defecto sin avisar.
+  //   3. Lo de siempre: de «Otro» no tenemos tasa, así que el margen no puede
+  //      calcular nada y el precio hay que escribirlo a mano. Eso no es un
+  //      fallo, es el precio de la función, y ya estaba dicho en pantalla.
+  //
+  // Mientras tanto, un tendero que compra en otra moneda apunta el costo en
+  // dólares, que es lo que hacía antes del 2026-10-10.
+  // ═══════════════════════════════════════════════════════════════════════
+  const base: CostCurrency[] = hasRates ? ["USD", "EUR", "USDT"] : [businessCurrency];
+  // UNA FICHA QUE YA TENÍA «Otro» SIGUE ENSEÑÁNDOLO, aunque ya no se pueda
+  // elegir. Sin esto, abrir uno de esos productos dejaría el selector en
+  // blanco: Radix no pinta un valor que no está entre sus opciones, y el
+  // tendero vería un hueco donde antes había una palabra.
+  //
+  // Se puede salir de ahí —eligiendo cualquiera de las otras— pero no volver,
+  // que es justo lo que se busca mientras la opción esté retirada.
+  const opciones: CostCurrency[] = base.includes(value) ? base : [...base, value];
 
   return (
     <Select value={value} disabled={disabled} onValueChange={(v) => onChange(v as CostCurrency)}>
