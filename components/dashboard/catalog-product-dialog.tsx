@@ -113,7 +113,6 @@ export function CatalogProductDialog({
   defaultCurrency,
   overrides,
   initialCurrencies,
-  lastCostCurrency,
   supplierSuggestions,
   ownerId,
 }: {
@@ -125,9 +124,6 @@ export function CatalogProductDialog({
   defaultCurrency: PriceCurrency;
   overrides: Record<PriceTier, Partial<Record<PriceCurrency, number>>>;
   initialCurrencies: PriceCurrency[];
-  // La última que este negocio usó, para que un producto nuevo abra con ella.
-  // Ver la página: sale de su propio historial, no del navegador.
-  lastCostCurrency: CostCurrency | null;
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
@@ -167,8 +163,29 @@ export function CatalogProductDialog({
   // `localStorage` tras un tiempo de inactividad, y entonces la pantalla
   // «olvidaría» lo que el tendero lleva meses haciendo. Es la regla de
   // CLAUDE.md sobre no apoyarse en el navegador para nada que importe.
+  // SIEMPRE DÓLARES EN UN PRODUCTO NUEVO. Decisión del dueño, 2026-10-14.
+  //
+  // Desplaza lo del 2026-10-10, que arrancaba con la ÚLTIMA moneda que este
+  // negocio usó. La razón vieja se deja escrita porque era buena y es lo que
+  // haría falta si esto se revierte: un tendero compra casi siempre en la
+  // misma moneda, así que preguntárselo cada vez era una decisión ya tomada —
+  // y salía de su propio historial y no del navegador, porque iOS Safari borra
+  // `localStorage` y la pantalla habría «olvidado» lo que lleva meses haciendo.
+  //
+  // Lo que la desplaza: el dólar es la moneda en que se piensa el precio en
+  // Venezuela, y arrancar en otra porque una vez se compró en euros convierte
+  // un caso raro en el valor por defecto de todos los productos siguientes.
+  //
+  // `lastCostCurrency` se quitó entera —la prop, su hilo por la tabla y la
+  // consulta de la página—, y no por limpieza: dejarla sin usar dejaba un
+  // aviso del lint permanente, que es la clase de alarma que enseña a no leer
+  // los avisos. Cómo rehacerla está en el historial y en el párrafo de arriba.
+  //
+  // PENDIENTE DEL DUEÑO: qué hace un negocio COLOMBIANO. Aquí «siempre
+  // dólares» también le aplica, y lo normal es que compre en pesos. Antes caía
+  // en `defaultCurrency`, que para él era COP.
   const [costCurrency, setCostCurrency] = useState<CostCurrency>(
-    (product?.cost_currency as CostCurrency | null) ?? lastCostCurrency ?? defaultCurrency,
+    (product?.cost_currency as CostCurrency | null) ?? "USD",
   );
   // «OTRO» SE QUEDA EN «OTRO», Y NO SE PREGUNTA CUAL. Decisión del dueño el
   // 2026-10-10. Lo que se escribía ahí no servía para nada — no tenemos tasa
@@ -176,6 +193,18 @@ export function CatalogProductDialog({
   // La migración 089 relaja el check que la 087 había puesto para exigirlo.
   // Se enciende al intentar elegir un margen sin costo. Ver `pedirCosto`.
   const [costoFaltante, setCostoFaltante] = useState(false);
+  // HERMANO DEL ANTERIOR, PARA EL OTRO MOTIVO. Se enciende al intentar elegir
+  // un margen cuando SÍ hay costo pero su moneda es «Otro», de la que no
+  // tenemos tasa. Decisión del dueño el 2026-10-14: con «Otro» se guarda sin
+  // problema, pero si intenta calcular el margen hay que decírselo en vez de
+  // no hacer nada.
+  //
+  // Son dos estados y no uno con dos valores porque señalan sitios distintos:
+  // «falta el costo» pinta el importe en rojo, y esto pinta el SELECTOR DE
+  // MONEDA, que es lo que hay que cambiar. Pintar el importe aquí sería el
+  // fallo que el dueño reportó el 2026-10-10 — «Primero pon el costo» con un
+  // 35 escrito encima.
+  const [monedaSinTasa, setMonedaSinTasa] = useState(false);
 
   const [currencies, setCurrencies] = useState<PriceCurrency[]>(initialCurrencies);
   const base = currencies[0] ?? defaultCurrency;
@@ -266,6 +295,11 @@ export function CatalogProductDialog({
   // Decisión del dueño el 2026-10-10. Lo alternativo era dejar el desplegable
   // apagado, y es peor: un control apagado no dice qué falta ni dónde está lo
   // que falta. Pintar el costo en rojo señala el sitio exacto.
+  // Lo que pasa cuando el costo está pero su moneda no convierte.
+  function pedirMonedaConTasa() {
+    setMonedaSinTasa(true);
+  }
+
   function pedirCosto() {
     setCostoFaltante(true);
     // SIN `focus()`, y se probó: Radix devuelve el foco a su propio
@@ -424,6 +458,7 @@ export function CatalogProductDialog({
     costCurrency,
     costUsable,
     onNeedCost: pedirCosto,
+    onNeedRateCurrency: pedirMonedaConTasa,
     currencies,
     onAddCurrency: agregarMoneda,
     onRemoveCurrency: quitarMoneda,
@@ -483,7 +518,18 @@ export function CatalogProductDialog({
                 2026-10-10: el campo de arriba pregunta cuántas unidades hay,
                 así que «Costo» a secas se lee como el costo de todas ellas.
                 Lo que Sevenz necesita para calcular un precio es el de UNA. */}
-            <Label htmlFor="producto_costo">Costo unitario</Label>
+            {/* «(opcional)» desde el 2026-10-14, a petición del dueño, y
+                describe lo que el formulario ya hacía: sin costo se puede
+                guardar perfectamente, escribiendo el precio a mano. Lo único
+                que el costo desbloquea es calcularlo desde el margen.
+
+                «Costo unitario» y no «Costo» a secas se queda: lo pidió el
+                dueño el 2026-10-10 porque el campo de arriba pregunta cuántas
+                unidades hay, así que «Costo» se lee como el de todas ellas. El
+                frame 1192:4185 dice «Costo (opcional)» y de las dos mitades se
+                toma la que añade —lo opcional— sin perder la que ya se había
+                razonado. */}
+            <Label htmlFor="producto_costo">Costo unitario (opcional)</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="producto_costo"
@@ -499,6 +545,11 @@ export function CatalogProductDialog({
                 onChange={(v) => {
                   setCostCurrency(v);
                   setCostoFaltante(false);
+                  // El error se apaga en cuanto se toca la moneda, sea cual
+                  // sea la elegida: lo que se pedía era volver a mirar este
+                  // control, y eso ya lo hizo. Si vuelve a elegir «Otro» y a
+                  // intentar un margen, vuelve a salir.
+                  setMonedaSinTasa(false);
                   // Cambiar a una moneda que SI convierte recalcula los
                   // precios: el costo es el mismo número pero ya no significa
                   // lo mismo, así que dejar los precios quietos los dejaría
@@ -514,6 +565,19 @@ export function CatalogProductDialog({
             {costoFaltante ? (
               <p className="text-xs leading-relaxed text-destructive">
                 Primero pon el costo: sin él no podemos calcular el precio desde el margen.
+              </p>
+            ) : monedaSinTasa ? (
+              /* EN ROJO Y SOLO DESPUÉS DE INTENTARLO. La misma frase vive dos
+                 líneas más abajo en gris, como aviso; esto es lo que se enseña
+                 cuando el tendero YA intentó elegir un margen. La diferencia no
+                 es de tono: un aviso describe el estado y un error contesta a
+                 algo que acabas de hacer, y el dueño pidió lo segundo el
+                 2026-10-14 porque el desplegable aceptaba la elección y luego
+                 no cambiaba nada. */
+              <p className="text-xs leading-relaxed text-destructive">
+                Para calcular el margen, elige Dólares, Euros o USDT: de «Otro» no tenemos la
+                tasa. Puedes dejarla en «Otro» y escribir tú los precios abajo — el producto se
+                guarda igual.
               </p>
             ) : costCurrency === "OTHER" ? (
               <p className="text-xs leading-relaxed text-muted-foreground">
@@ -892,6 +956,7 @@ function TierSection({
   costCurrency,
   costUsable,
   onNeedCost,
+  onNeedRateCurrency,
   currencies,
   onAddCurrency,
   onRemoveCurrency,
@@ -914,6 +979,7 @@ function TierSection({
   costCurrency: CostCurrency;
   costUsable: boolean;
   onNeedCost: () => void;
+  onNeedRateCurrency: () => void;
   currencies: PriceCurrency[];
   onAddCurrency: (c: PriceCurrency) => void;
   onRemoveCurrency: (c: PriceCurrency) => void;
@@ -995,9 +1061,17 @@ function TierSection({
             // el costo en rojo, y esa distinción es el fallo que reportó el
             // dueño el 2026-10-10: la pantalla decía «Primero pon el costo»
             // con un 5 escrito justo encima. El costo está; lo que falta es
-            // una moneda de la que sepamos la tasa, y eso ya lo explica la
-            // línea que hay bajo el desplegable de la moneda.
-            if (!costUsable || !rates) return;
+            // una moneda de la que sepamos la tasa.
+            //
+            // Hasta el 2026-10-14 esto se limitaba a NO HACER NADA y confiar en
+            // el texto informativo de debajo del costo. El dueño pidió que se
+            // diga: un desplegable que acepta tu elección y luego no cambia
+            // nada se lee como que la pantalla está rota.
+            if (!costUsable) {
+              onNeedRateCurrency();
+              return;
+            }
+            if (!rates) return;
             const siguiente = priceFromCost(cost, costCurrency, Number(v), base, rates);
             if (siguiente != null) onPriceChange(formatAmountForInput(siguiente));
           }}

@@ -13,7 +13,6 @@ import { setProductPublished } from "@/app/(app)/productos/actions";
 import {
   formatPriceAmount,
   type BolivarRates,
-  type CostCurrency,
   type PriceCurrency,
 } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -60,7 +59,6 @@ import {
 export function CatalogTable({
   overrides,
   currencies,
-  lastCostCurrency,
   supplierSuggestions,
   rates,
   defaultCurrency,
@@ -74,7 +72,6 @@ export function CatalogTable({
   // La ultima moneda de costo que uso este negocio, para que un producto
   // nuevo abra con ella. Ver la pagina: sale de su historial, no del
   // navegador.
-  lastCostCurrency: CostCurrency | null;
   supplierSuggestions: string[];
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
@@ -128,7 +125,6 @@ export function CatalogTable({
       defaultCurrency={defaultCurrency}
       overrides={{ retail: {}, wholesale: {} }}
       initialCurrencies={[defaultCurrency]}
-      lastCostCurrency={lastCostCurrency}
       supplierSuggestions={supplierSuggestions}
       ownerId={ownerId}
     />
@@ -242,7 +238,6 @@ export function CatalogTable({
           defaultCurrency={defaultCurrency}
           overrides={overridesByTier(overrides, editing.id)}
           initialCurrencies={currenciesOf(currencies, editing.id, editing.base_currency)}
-          lastCostCurrency={lastCostCurrency}
           supplierSuggestions={supplierSuggestions}
           ownerId={ownerId}
         />

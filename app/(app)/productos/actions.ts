@@ -157,9 +157,16 @@ function validate(input: ProductInput): { error: string } | Checked {
   if (cost != null && !input.costCurrency) {
     return { error: "Dinos en qué moneda está ese costo." };
   }
-  if (input.costCurrency === "OTHER" && !(input.costCurrencyOther ?? "").trim()) {
-    return { error: "Escribe el nombre de esa moneda." };
-  }
+  // «OTRO» NO PIDE NOMBRE, y aquí había una regla que decía lo contrario.
+  //
+  // Era código muerto desde la 089 (2026-10-10), que relajó el check de la
+  // base porque el dueño decidió que «Otro» se queda en «Otro»: lo que se
+  // escribía ahí no servía para nada —no tenemos la tasa de esa moneda la
+  // llame como la llame— y en dev acabó guardando un «Gjrj». La pantalla dejó
+  // de preguntarlo ese mismo día; esta línea se quedó y bloqueaba el guardado
+  // con la única moneda para la que el formulario ya no tiene qué preguntar.
+  // Confirmado por el dueño el 2026-10-14: con «Otro» SE PUEDE guardar; lo
+  // único que no se puede es calcular el precio desde el margen.
 
   const stock = toNumber(input.stockOpening);
   if (stock != null && stock < 0) return { error: "La cantidad no puede ser negativa." };
@@ -167,6 +174,34 @@ function validate(input: ProductInput): { error: string } | Checked {
   const minQty = toNumber(input.wholesaleMinQuantity);
   if (minQty != null && minQty <= 0) {
     return { error: "La cantidad mínima para el precio al mayor tiene que ser mayor que cero." };
+  }
+
+  // LOS TECHOS DE LAS COLUMNAS, DICHOS EN CASTELLANO ANTES DE QUE POSTGRES LOS
+  // DIGA EN `22003`.
+  //
+  // Encontrado el 2026-10-14 por el dueño: tecleó 1000000000000000 en el
+  // inventario y la pantalla contestó «No pudimos guardar el producto. Intenta
+  // de nuevo» — un mensaje que no dice qué campo ni qué hacer, delante de un
+  // formulario de quince campos con una foto ya subida.
+  //
+  // Es el mismo trato que el resto de este `validate`: la restricción de la
+  // base es la garantía y esto es la cortesía. Sin esta, el único camino era
+  // borrar campos al azar hasta acertar.
+  //
+  // LOS LÍMITES SON LOS DE LAS COLUMNAS, no un tope de producto inventado por
+  // mí. `numeric(14,3)` admite once dígitos enteros y `numeric(14,4)` diez, así
+  // que estos números salen del esquema (083, 084, 088) y no de una opinión
+  // sobre cuánto puede costar algo. Un tope más estrecho —«ningún producto
+  // vale más de X»— sería una decisión del dueño, y no la ha tomado.
+  const demasiadoGrande: Array<[number | null, number, string]> = [
+    [stock, 1e11, "La cantidad en inventario es demasiado grande."],
+    [minQty, 1e11, "La cantidad mínima para el precio al mayor es demasiado grande."],
+    [cost, 1e10, "Ese costo es demasiado grande."],
+    [retail, 1e10, "El precio al detal es demasiado grande."],
+    [wholesale, 1e10, "El precio al mayor es demasiado grande."],
+  ];
+  for (const [valor, techo, mensaje] of demasiadoGrande) {
+    if (valor != null && valor >= techo) return { error: mensaje };
   }
 
   return { name, currencies, base };
@@ -185,10 +220,15 @@ function rowFrom(input: ProductInput, checked: Checked, userId: string) {
     // El par va junto o no va: la 087 lo exige con un check, y aquí se
     // construye entero para no depender de que el formulario acierte.
     cost_currency: cost == null ? null : (input.costCurrency ?? null),
+    // `|| null` al final, y no la cadena tal cual: desde la 089 el formulario
+    // ya no pregunta QUÉ moneda es «Otro», así que esto llegaba vacío y se
+    // guardaba como `""`. Una cadena vacía y un null significan lo mismo aquí
+    // —no hay nombre— pero solo uno de los dos lo dice, y el otro obliga a
+    // quien consulte la tabla a acordarse de comprobar las dos cosas.
     cost_currency_other:
-      cost != null && input.costCurrency === "OTHER"
+      (cost != null && input.costCurrency === "OTHER"
         ? (input.costCurrencyOther ?? "").trim().slice(0, MAX_CURRENCY_LABEL)
-        : null,
+        : "") || null,
     margin_retail_pct: toNumber(input.marginRetailPct),
     margin_wholesale_pct: toNumber(input.marginWholesalePct),
     stock_opening: stock,
