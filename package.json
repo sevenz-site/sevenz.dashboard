@@ -33,6 +33,8 @@
     "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
     "qa:mensaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/mensaje-saldo.mjs",
     "qa:libreta:fixture": "node qa/libreta-fixture.mjs",
+    "qa:recordatorio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/recordatorio-plazo.mjs",
+    "qa:recibo": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/recibo-cliente.mjs",
     "qa:puerta": "node qa/puerta-envio.mjs",
     "qa:telefono": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/telefono-internacional.mjs",
     "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs",

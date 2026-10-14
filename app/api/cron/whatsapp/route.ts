@@ -3,6 +3,7 @@ import { enviarResumenSemanal } from "@/lib/whatsapp/cartera-summary";
 import { enviarAtencionSemanal } from "@/lib/whatsapp/cartera-attention";
 import { diaIsoEnColombia } from "@/lib/whatsapp/send";
 import { registrarLatido } from "@/lib/whatsapp/latido";
+import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,19 @@ export async function GET(request: Request) {
     // el mismo día.
     const atencion = dia >= 4 ? await enviarAtencionSemanal() : null;
 
+    // LOS RECORDATORIOS DE PLAZO, todos los dias (MS-3). A diferencia de las
+    // dos de arriba, esta no tiene dia fijo: la fecha de vencimiento de cada
+    // cliente decide por si sola, y la funcion de la base ya filtra a quien le
+    // toca HOY. Correrla un dia que no le toca a nadie devuelve cero y no
+    // escribe nada.
+    //
+    // VA DESPUES de las del dueno a proposito. Los 250 del portafolio son
+    // compartidos (MS-37) y el resumen semanal es lo que ya funciona en
+    // produccion: si algun dia el cupo escasea, lo que se queda fuera tiene
+    // que ser el recordatorio, no el resumen. La puerta ademas reserva 50 para
+    // duenos, asi que esto es cinturon sobre tirantes.
+    const recordatorios = await enviarRecordatoriosDePlazo();
+
     // Sin `detalle`: lleva ids de dueños y no tiene por qué existir en una
     // respuesta HTTP. Lo que hace falta para saber si la tanda fue bien son
     // los contadores; lo demás está en whatsapp_sends y en el log.
@@ -64,6 +78,7 @@ export async function GET(request: Request) {
         fallidos: resumen.fallidos,
       },
       atencion,
+      recordatorios,
     };
 
     // EL LATIDO, y va aquí aunque no se haya enviado nada. Una tanda sin
