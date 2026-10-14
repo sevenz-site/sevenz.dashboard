@@ -46,7 +46,30 @@ function formatear(monto: number, currency: "USD" | "EUR" | null): string {
   return formatDisplayCurrency(monto, currency);
 }
 
+// EL INTERRUPTOR, Y NO ES PARANOIA.
+//
+// Apagado salvo que `WHATSAPP_CLIENT_NOTICES` valga exactamente `on`. Dos
+// razones, y la segunda vale mas que la primera:
+//
+// 1. En dev hay clientes con permiso y numeros de prueba. Sin interruptor, el
+//    primer abono que alguien registre en dev intenta un envio real: Meta lo
+//    intenta entregar, falla, y ese fallo cuenta contra la cuota y contra el
+//    quality rating del numero nuevo -- que es justo lo que MS-24 separo para
+//    proteger.
+//
+// 2. Es la palanca para APAGARLO en produccion sin desplegar. Si el rating del
+//    numero de clientes empieza a caer, lo que hace falta es parar los envios
+//    hoy, no mañana cuando termine un build. Esta variable es ese freno.
+//
+// Apagado por defecto a proposito: un despliegue no enciende nada. Encender es
+// un acto explicito, con alguien mirando.
+function clientNoticesEnabled(): boolean {
+  return process.env.WHATSAPP_CLIENT_NOTICES === "on";
+}
+
 export async function enviarReciboAlCliente(movementId: string): Promise<ResultadoRecibo> {
+  if (!clientNoticesEnabled()) return { estado: "omitido", motivo: "desactivado" };
+
   const supabase = createServiceClient();
 
   const { data, error } = await supabase.rpc("movement_notice_target", {

@@ -6,7 +6,9 @@ import { formatCurrency, normalizeDocumentId } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import { after } from "next/server";
 import { trackServer } from "@/lib/mixpanel-server";
+import { enviarReciboAlCliente } from "@/lib/whatsapp/recibo-cliente";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { recordMovementRejection } from "@/lib/movement-rejection";
@@ -108,6 +110,32 @@ function parseMovementFields(formData: FormData): ParsedMovement {
 // Lee del formulario lo que el ayudante compartido necesita. La escritura
 // vive en lib/whatsapp/declared-consent.ts porque la subida de libreta hace
 // exactamente lo mismo desde otra accion.
+// EL RECIBO SALE DESPUES DE LA RESPUESTA, NO ANTES (MS-3).
+//
+// `after()` corre el callback cuando la respuesta ya se envio, igual que
+// `trackServer`. Dentro va una llamada a Kapso por internet: hacerla en linea
+// dejaria al tendero mirando una rueda mientras un proveedor externo responde
+// -- y el tendero vino a registrar un abono, no a mandar un WhatsApp.
+//
+// SI FALLA, NO PASA NADA PARA EL MOVIMIENTO. El abono ya esta guardado. Lo que
+// se pierde es el comprobante, y eso se ve en `whatsapp_sends` con su error.
+//
+// LO QUE ESTO NO TIENE, dicho para que no se descubra tarde: si el proceso
+// muere entre la respuesta y el envio, ese recibo NO se reintenta. La clave de
+// idempotencia es el movimiento, asi que un barrido futuro que busque abonos
+// sin recibo podria reintentarlo sin riesgo de duplicar -- pero ese barrido no
+// existe hoy.
+function dispararRecibo(movementId: string, type: string) {
+  if (type !== "payment") return;
+  after(async () => {
+    const r = await enviarReciboAlCliente(movementId);
+    // Un "omitido" normal --sin permiso, sin numero, desactivado-- no es un
+    // error y no ensucia el log. Un fallido si: significa que el cliente
+    // esperaba su comprobante y no le llego.
+    if (r.estado === "fallido") console.error("[recibo]", movementId, r.error);
+  });
+}
+
 function datosDelPermiso(formData: FormData) {
   return {
     seMostro: formData.get(CONSENT_SHOWN_FIELD) != null,
@@ -279,7 +307,7 @@ export async function createClientWithMovement(
     entryCurrency = "VES";
   }
 
-  const { error: movementError } = await supabase.from("movements").insert({
+  const { data: movimiento, error: movementError } = await supabase.from("movements").insert({
     client_id: newClient.id,
     created_by: user.id,
     type,
@@ -298,7 +326,7 @@ export async function createClientWithMovement(
     entry_amount: entryAmount ?? (entryCurrency ? amount : null),
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
-  });
+  }).select("id").single();
 
   if (movementError) {
     return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
@@ -317,6 +345,8 @@ export async function createClientWithMovement(
     source: "owner_movement_form",
     ...datosDelPermiso(formData),
   });
+
+  dispararRecibo(movimiento.id, type);
 
   revalidatePath("/dashboard");
   return { error: null, clientId: newClient.id };
@@ -460,7 +490,7 @@ export async function addMovement(
     }
   }
 
-  const { error: movementError } = await supabase.from("movements").insert({
+  const { data: movimiento, error: movementError } = await supabase.from("movements").insert({
     client_id: clientId,
     created_by: user.id,
     type,
@@ -479,7 +509,7 @@ export async function addMovement(
     entry_amount: entryAmount ?? (entryCurrency ? amount : null),
     rate_usd_at_time: resolved.rateUsdAtTime,
     rate_eur_at_time: resolved.rateEurAtTime,
-  });
+  }).select("id").single();
 
   if (movementError) {
     return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
@@ -500,6 +530,8 @@ export async function addMovement(
     source: "owner_movement_form",
     ...datosDelPermiso(formData),
   });
+
+  dispararRecibo(movimiento.id, type);
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${clientId}`);

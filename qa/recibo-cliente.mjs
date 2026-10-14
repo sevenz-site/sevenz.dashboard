@@ -79,7 +79,11 @@ globalThis.fetch = async (url, init) => {
   return fetchReal(url, init);
 };
 
+// EL INTERRUPTOR SE PRUEBA EN SUS DOS POSICIONES, y se enciende aqui a mano
+// --no en .env.local-- para que correr esta suite nunca pueda dejarlo puesto.
 const { enviarReciboAlCliente } = await import("../lib/whatsapp/recibo-cliente.ts");
+const apagado = await enviarReciboAlCliente("00000000-0000-4000-8000-000000000000");
+process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
 const PHONE_ID_CLIENTS = "1329482340254222";
 const PHONE_ID_OWNERS = "1373508439159674";
@@ -123,6 +127,13 @@ try {
     .insert({ ...base, type: "payment", amount: 5, source: "photo_import" })
     .select("id")
     .single();
+
+  // ── 0. El interruptor ──────────────────────────────────────────────────
+  check(
+    "0. con WHATSAPP_CLIENT_NOTICES apagado no sale NADA",
+    apagado.estado === "omitido" && apagado.motivo === "desactivado",
+    JSON.stringify(apagado),
+  );
 
   // ── 1. Sin permiso no sale nada ────────────────────────────────────────
   const sinPermiso = await enviarReciboAlCliente(abono.id);
