@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Copy, Loader2, Share2 } from "lucide-react";
+import { Copy, Eye, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -200,6 +200,36 @@ function LinkRow({
           <Button type="button" onClick={compartir}>
             <WhatsappIcon className="size-4" /> Compartir
           </Button>
+
+          {/* LA VISTA PREVIA ES LA PÁGINA DE VERDAD, abierta en otra pestaña.
+              No hay una copia del catálogo rindiéndose dentro del panel, y es
+              a propósito: una copia es una cosa más que puede quedarse atrás
+              del original sin que nadie se entere, y entonces el tendero
+              revisaría una pantalla que su cliente no ve.
+
+              Un `iframe` tampoco: esta página mide `min-h-dvh` y se maqueta
+              para un teléfono. Dentro de un marco de 400px de ancho se vería
+              perfecta por accidente, y justo lo que el tendero necesita
+              comprobar —«¿se lee esto en un teléfono?»— es lo que un marco
+              dentro del panel no puede responder.
+
+              Y la previa no miente: `get_shared_catalog` y
+              `get_shared_product` son `security definer` y no miran
+              `auth.uid()` en ningún sitio —comprobado en las migraciones 084 y
+              104—, así que la página se pinta igual con la sesión del dueño
+              abierta que sin ninguna sesión.
+
+              `noopener noreferrer` por costumbre, no por este caso: el destino
+              es nuestro propio dominio. Es la clase de línea que se queda
+              puesta cuando la URL cambia. */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <Eye className="size-4" aria-hidden="true" /> Ver cómo lo ve tu cliente
+          </a>
         </>
       )}
     </div>

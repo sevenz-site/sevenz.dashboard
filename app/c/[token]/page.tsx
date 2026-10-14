@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -218,10 +219,18 @@ export default async function CatalogoPublicoPage({
             // aqui en vez de quedarse en la ficha.
             const bs = bolivares.get(p.id) ?? null;
             return (
-              <li
-                key={p.id}
-                className="flex flex-col overflow-hidden rounded-xl border bg-background"
-              >
+              <li key={p.id} className="flex">
+                {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
+                    entregable B (2026-10-14). Un `Link` y no un `onClick`: así
+                    el cliente puede abrirlo en otra pestaña, copiarlo para
+                    mandárselo a alguien, y el navegador le enseña a dónde va
+                    antes de tocar — tres cosas que un div con manejador no
+                    hace, en una página donde quien mira no conoce a Sevenz y
+                    no tiene por qué fiarse. */}
+                <Link
+                  href={`/c/${token}/${p.id}`}
+                  className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
+                >
                 <div className="relative aspect-square w-full bg-muted">
                   {p.photo_path ? (
                     <Image
@@ -277,6 +286,7 @@ export default async function CatalogoPublicoPage({
                     </span>
                   ) : null}
                 </div>
+                </Link>
               </li>
             );
           })}
