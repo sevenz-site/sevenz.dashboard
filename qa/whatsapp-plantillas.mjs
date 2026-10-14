@@ -19,7 +19,7 @@
 // aprobada cambia de variables —que no puede, hay que crear otra— este archivo
 // es lo que hay que actualizar, no el código.
 //
-//   cartera_summary  -> customer_name, amount_due, overdue_clients
+//   cartera_summary_v2  -> customer_name, amount_due, overdue_clients
 //   cartera_pausada  -> owner_name,    amount_due, overdue_clients
 //   cartera_attention-> owner_name, overdue_clients, due_this_week,
 //                       viewed_no_payment
@@ -103,7 +103,10 @@ const { enviarResumenSemanal } = await import("../lib/whatsapp/cartera-summary.t
 const { enviarAtencionSemanal } = await import("../lib/whatsapp/cartera-attention.ts");
 
 const ESPERADO = {
-  cartera_summary: ["customer_name", "amount_due", "overdue_clients"],
+  // La v2 sustituye a la v1 en produccion desde el 2026-10-14. Mismos tres
+  // parametros de cuerpo: lo que cambia es el pie, el boton (URL fija, sin
+  // parametro) y una linea de texto menos.
+  cartera_summary_v2: ["customer_name", "amount_due", "overdue_clients"],
   cartera_pausada: ["owner_name", "amount_due", "overdue_clients"],
   cartera_attention: ["owner_name", "overdue_clients", "due_this_week", "viewed_no_payment"],
 };
