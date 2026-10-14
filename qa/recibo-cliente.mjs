@@ -35,6 +35,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -85,9 +87,7 @@ const { enviarReciboAlCliente } = await import("../lib/whatsapp/recibo-cliente.t
 const apagado = await enviarReciboAlCliente("00000000-0000-4000-8000-000000000000");
 process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
-const PHONE_ID_CLIENTS = "1329482340254222";
-const PHONE_ID_OWNERS = "1373508439159674";
-const ESPERADO = ["client_name", "payment_amount", "business_display", "new_balance"];
+const ESPERADO = PLANTILLAS_ESPERADAS.abono_confirmation_v2;
 
 const filas = [];
 function check(nombre, pasa, detalle) {

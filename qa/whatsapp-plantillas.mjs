@@ -38,6 +38,8 @@
 // NADA SALE A KAPSO. `fetch` se intercepta antes, y se afirma que salieron cero.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -102,14 +104,7 @@ const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 const { enviarResumenSemanal } = await import("../lib/whatsapp/cartera-summary.ts");
 const { enviarAtencionSemanal } = await import("../lib/whatsapp/cartera-attention.ts");
 
-const ESPERADO = {
-  // La v2 sustituye a la v1 en produccion desde el 2026-10-14. Mismos tres
-  // parametros de cuerpo: lo que cambia es el pie, el boton (URL fija, sin
-  // parametro) y una linea de texto menos.
-  cartera_summary_v2: ["customer_name", "amount_due", "overdue_clients"],
-  cartera_pausada: ["owner_name", "amount_due", "overdue_clients"],
-  cartera_attention: ["owner_name", "overdue_clients", "due_this_week", "viewed_no_payment"],
-};
+const ESPERADO = PLANTILLAS_ESPERADAS;
 
 const filas = [];
 function check(nombre, pasa, detalle) {
@@ -243,8 +238,6 @@ try {
 
   // MS-24: todo lo de esta suite es para DUEÑOS, así que todo tiene que salir
   // por su número. El de clientes no puede aparecer aquí ni una vez.
-  const PHONE_ID_OWNERS = "1373508439159674";
-  const PHONE_ID_CLIENTS = "1329482340254222";
   const porElDeDuenos = interceptados.filter((m) => m.__url.includes(PHONE_ID_OWNERS)).length;
   const porElDeClientes = interceptados.filter((m) => m.__url.includes(PHONE_ID_CLIENTS)).length;
   check(

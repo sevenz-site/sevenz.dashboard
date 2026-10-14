@@ -28,6 +28,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -75,9 +77,7 @@ const { enviarRecordatoriosDePlazo } = await import("../lib/whatsapp/recordatori
 const apagado = await enviarRecordatoriosDePlazo();
 process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
-const PHONE_ID_CLIENTS = "1329482340254222";
-const PHONE_ID_OWNERS = "1373508439159674";
-const ESPERADO = ["client_name", "business_display", "due_date", "amount_due"];
+const ESPERADO = PLANTILLAS_ESPERADAS.payment_due_date;
 const PREFIJO = "QA Recordatorio ";
 
 const filas = [];
