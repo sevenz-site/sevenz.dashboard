@@ -1038,6 +1038,37 @@ reescribir el trazado que mandó diseño.
 en la ficha del cliente ya lo llevaba así: son los dos lados del mismo trato y
 espejados se leían como dos cosas distintas.
 
+## En un canvas no hay `currentColor`: se elige la VARIANTE, no se repinta
+
+La regla de arriba sirve en el DOM. En un `<canvas>` —la tarjeta que se comparte
+desde la calculadora, en los dos repos— no existe: un SVG dibujado con
+`drawImage` llega con los colores que trae escritos, y no hay cascada que los
+cambie.
+
+La tentación es recolorearlo al vuelo: leer el SVG como texto, `replaceAll` del
+hex por el claro, y dibujarlo. **No se hace.** Eso ata un literal hexadecimal
+del código a un literal hexadecimal dentro de un archivo que nadie abre, y los
+dos tienen que seguir siendo iguales para siempre.
+
+**Lo que costó, el 2026-10-14.** El 2026-09-30 se exportó un logo nuevo y se
+cambió la constante del código a `#171717`; el SVG se quedó en `#272727`. El
+`replaceAll` dejó de encontrar nada —sin error, sin aviso— y el logo oscuro se
+pintó sobre la tarjeta oscura: **1,20:1**, ilegible. Lo encontró el dueño
+mirando una imagen ya compartida, que es el único sitio donde se veía.
+
+**La forma correcta**: `public/` ya tiene las dos variantes, y se carga la que
+toca. `logo-secundary.svg` es la de fondos oscuros, `#DADADA`, que sobre
+`#171717` da **12,82:1**. No hay nada que sincronizar, así que no hay nada que
+pueda separarse.
+
+Lo mismo vale para cualquier asset que se dibuje en un canvas: si hace falta en
+dos tonos, son dos archivos.
+
+**Y se comprueba generando la tarjeta de verdad**, no reimplementándola en la
+consola: se intercepta `navigator.share`, se queda uno con el `File` que produjo
+el propio código de la app y se cuentan los píxeles. Una reimplementación prueba
+que el SVG es legible; solo la tarjeta real prueba que el código la usa.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
