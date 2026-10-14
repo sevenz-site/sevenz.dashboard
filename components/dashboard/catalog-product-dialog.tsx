@@ -114,6 +114,7 @@ export function CatalogProductDialog({
   overrides,
   initialCurrencies,
   supplierSuggestions,
+  onSaved,
   ownerId,
 }: {
   open: boolean;
@@ -127,6 +128,8 @@ export function CatalogProductDialog({
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
+  // Se llama SOLO cuando el guardado sale bien, nunca al cerrar sin guardar.
+  onSaved?: () => void;
   ownerId: string;
 }) {
   const router = useRouter();
@@ -181,11 +184,17 @@ export function CatalogProductDialog({
   // aviso del lint permanente, que es la clase de alarma que enseña a no leer
   // los avisos. Cómo rehacerla está en el historial y en el párrafo de arriba.
   //
-  // PENDIENTE DEL DUEÑO: qué hace un negocio COLOMBIANO. Aquí «siempre
-  // dólares» también le aplica, y lo normal es que compre en pesos. Antes caía
-  // en `defaultCurrency`, que para él era COP.
+  // COLOMBIA EN PESOS, resuelto por el dueño el 2026-10-14 al preguntárselo:
+  // «en negocio colombiano solo es peso». Así que «siempre dólares» es la
+  // regla de Venezuela, no de la pantalla, y lo que decide es el país.
+  //
+  // `defaultCurrency` ya vale COP para un negocio colombiano y USD para uno
+  // venezolano, que es exactamente esta regla. La diferencia con lo que había
+  // antes del 2026-10-14 no es esta línea: es que ya no se consulta la última
+  // moneda usada, que era lo que hacía que un producto nuevo abriera en euros
+  // porque una vez se compró en euros.
   const [costCurrency, setCostCurrency] = useState<CostCurrency>(
-    (product?.cost_currency as CostCurrency | null) ?? "USD",
+    (product?.cost_currency as CostCurrency | null) ?? defaultCurrency,
   );
   // «OTRO» SE QUEDA EN «OTRO», Y NO SE PREGUNTA CUAL. Decisión del dueño el
   // 2026-10-10. Lo que se escribía ahí no servía para nada — no tenemos tasa
@@ -448,6 +457,11 @@ export function CatalogProductDialog({
       }
 
       onOpenChange(false);
+      // AVISA DE QUE SE GUARDÓ, y no basta con `onOpenChange(false)` para eso:
+      // cerrar ocurre igual cuando el tendero se arrepiente. Quien monta este
+      // diálogo necesita distinguir las dos cosas para limpiar el formulario
+      // solo en una. Ver `CatalogTable`.
+      onSaved?.();
       router.refresh();
       toast.success(editing ? "Producto actualizado." : "Producto creado.");
     });
@@ -505,10 +519,21 @@ export function CatalogProductDialog({
             label="Disponible en inventario"
             value={stock}
             onChange={setStock}
+            /* EL TECHO SE DICE ANTES DE CHOCAR CON ÉL. Pedido por el dueño el
+               2026-10-14, después de que su 1000000000000000 solo produjera un
+               error al pulsar guardar — con quince campos rellenos y una foto
+               ya subida detrás.
+
+               El aviso sale SOLO cuando el número ya se pasó, no siempre: un
+               «máximo 11 dígitos» permanente bajo un campo que el 99 % de las
+               veces lleva un 1 o un 12 es ruido que se deja de leer, y
+               entonces tampoco se lee el día que importa. */
             hint={
               stock.trim() === ""
                 ? null
-                : "Por ahora esta cantidad no baja sola: cuando fíes o vendas, tendrás que ajustarla tú."
+                : excedeTecho(stock, 1e11)
+                  ? "Esa cantidad es demasiado grande: como mucho 11 dígitos (99.999.999.999)."
+                  : "Por ahora esta cantidad no baja sola: cuando fíes o vendas, tendrás que ajustarla tú."
             }
             disabled={saving}
           />
@@ -874,6 +899,17 @@ function AiPhotoCard() {
 
 // UN CONTADOR CON SUS DOS BOTONES. Lo usan «Disponible en inventario» y
 // «Precio al mayor a partir de cantidad», que son el mismo control.
+// SI UN NUMERO SE PASA DEL TECHO DE SU COLUMNA.
+//
+// Vive junto al formulario y no en `lib/`: aqui solo decide si enseñar un
+// aviso. Quien de verdad rechaza es `validate()` en el server action, con los
+// mismos números y por la razón de siempre -- la restricción de la base es la
+// garantía, y esto y aquello son la cortesía.
+function excedeTecho(valor: string, techo: number): boolean {
+  const n = parseAmount(valor);
+  return n != null && n >= techo;
+}
+
 function Stepper({
   id,
   label,

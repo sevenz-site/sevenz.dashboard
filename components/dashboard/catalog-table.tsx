@@ -87,6 +87,10 @@ export function CatalogTable({
   const { visible, total, query } = useCatalogFilters();
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [creating, setCreating] = useState(false);
+  // Cuántos productos se han creado en esta visita. Solo sirve de clave del
+  // diálogo de alta: cambiarla lo desmonta y lo vuelve a montar vacío. Ver
+  // dónde se usa, abajo.
+  const [altas, setAltas] = useState(0);
 
   // SE ABRE EN CADA TRANSICION false -> true, no con un pestillo de una sola
   // vez. Es el mismo mecanismo que `ClientSearchDialog`, y los dos fallos que
@@ -118,8 +122,20 @@ export function CatalogTable({
 
   const nuevo = (
     <CatalogProductDialog
+      // LA CLAVE ES LO QUE LIMPIA EL FORMULARIO, y hace falta una porque este
+      // diálogo NO se desmonta al cerrarse: solo cambia `open`. Su estado vive
+      // en `useState(...)`, que se evalúa una sola vez, así que tras crear un
+      // producto la siguiente apertura traía los datos del anterior — nombre,
+      // precio, proveedor, foto. Reportado por el dueño el 2026-10-14.
+      //
+      // SOLO AL CREAR, no al cerrar, y eso también lo pidió él: quien cierra
+      // sin guardar casi siempre se equivocó de botón o fue a mirar algo, y
+      // perderle lo escrito sería peor que el problema. Por eso `onSaved` y no
+      // `onOpenChange`: cerrar ocurre en los dos casos, guardar en uno.
+      key={altas}
       open={creating}
       onOpenChange={setCreating}
+      onSaved={() => setAltas((n) => n + 1)}
       product={null}
       rates={rates}
       defaultCurrency={defaultCurrency}
@@ -248,7 +264,9 @@ export function CatalogTable({
 
 function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => void }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  // Sin leer `pending`: era lo que deshabilitaba el interruptor 4,4 segundos.
+  // La transición sigue haciendo falta para el `router.refresh()` de dentro.
+  const [, startTransition] = useTransition();
   // Optimista: el interruptor se mueve en el acto y se revierte si el servidor
   // dice que no. Sin esto el gesto tarda un viaje de ida y vuelta, y en un
   // telefono barato eso se siente como que no respondio y se vuelve a tocar.
@@ -355,9 +373,24 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
       {/* FUERA DEL BOTON, a proposito. Ver la cabecera del archivo. */}
       <label className="flex items-center justify-between gap-2 border-t px-3 py-2 text-xs">
         <span className="text-muted-foreground">Publicar</span>
+        {/* SIN `disabled`, Y ESO ES EL ARREGLO. Medido el 2026-10-14 tras
+            reportarlo el dueño: «se queda pegado cuando se apaga y hay que
+            seleccionarlo varias veces para que se active de nuevo».
+
+            Llevaba `disabled={pending}`, y `pending` no cubría solo la
+            escritura: dentro de la misma transición va un `router.refresh()`
+            que recarga la pantalla entera. Cronometrado en esta rejilla,
+            **4,4 segundos** desde el toque hasta que el control volvía a
+            aceptar otro. El interruptor se apagaba a los 0,28s, así que lo que
+            el tendero ve es un control que ya cambió y no responde — y toca
+            otra vez, y otra.
+
+            No hace falta bloquearlo: `optimista` ya enseña el valor del último
+            toque, un fallo del servidor lo revierte con su aviso, y dos toques
+            seguidos mandan dos escrituras de las que gana la última, que es
+            justo la que el tendero quiso. */}
         <Switch
           checked={published}
-          disabled={pending}
           aria-label={`Publicar ${product.name} en el catálogo`}
           onCheckedChange={(next) => {
             setPublished(next);
