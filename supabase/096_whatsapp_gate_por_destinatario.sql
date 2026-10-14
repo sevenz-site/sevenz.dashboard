@@ -57,6 +57,28 @@
 -- diaria cae del lado de contar duenos. Es el fallo degradado -- «ligeramente
 -- reducido» en vez de «todo el mundo caido».
 --
+-- MEDIDO EN PRODUCCION, no razonado, el 2026-10-14, con las catorce
+-- migraciones ya puestas y el codigo viejo todavia desplegado -- es decir,
+-- dentro de la ventana real y no en una reconstruccion de ella:
+--
+--   begin;
+--   select public.whatsapp_send_begin(
+--     (select id from public.owners order by created_at limit 1),
+--     'prueba_ventana_despliegue', 'ventana-2026-10-14-solo-3');
+--   rollback;
+--
+--   -> {"id":"88084878-...","alarma":false,"enviados_mes":28}
+--
+-- Devolvio un `id`, o sea reservo turno: la llamada de tres argumentos
+-- resuelve contra la firma de ocho. La de cuatro (lo que hara el codigo nuevo
+-- para un aviso de dueno) se probo igual en la misma sesion y devolvio otro
+-- `id`. El `rollback` deshizo las dos reservas, asi que no quedo ninguna fila
+-- falsa ni se gasto cupo.
+--
+-- Se deja escrito aqui porque es facil de razonar y por eso mismo facil de dar
+-- por hecho sin comprobarlo. La duda vale un minuto; la equivocacion vale el
+-- aviso semanal de los 24 duenos.
+--
 -- Y SE DROPEAN LAS DOS FIRMAS, la vieja de 3 y la nueva de 6. Postgres sobrecarga
 -- por tipos: dejar la vieja viva crearia dos funciones y PostgREST resolveria a
 -- la que quisiera. Dropear solo la vieja haria que el archivo funcionara
