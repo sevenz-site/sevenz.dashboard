@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Link2Off, Loader2, Minus, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Link2, Loader2, Minus, Plus, Sparkles, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -350,7 +350,7 @@ export function CatalogProductDialog({
       fijos: Partial<Record<PriceCurrency, string>>,
       set: (v: string) => void,
     ) => {
-      const hayFijos = currencies.some((x) => x !== base && (fijos[x] ?? "").trim() !== "");
+      const hayFijos = currencies.some((x) => x !== base && estaDesvinculada(fijos, x));
       if (hayFijos) return;
       const p = priceFromCost(c, moneda, Number(margen), base, rates);
       if (p != null) set(formatAmountForInput(p));
@@ -958,6 +958,25 @@ function AiPhotoCard() {
 
 // UN CONTADOR CON SUS DOS BOTONES. Lo usan «Disponible en inventario» y
 // «Precio al mayor a partir de cantidad», que son el mismo control.
+// SI EL TENDERO ROMPIO LA CADENA DE ESTA MONEDA.
+//
+// Lo dice que la CLAVE exista en `fixed`, no que tenga texto dentro. Son dos
+// cosas distintas y atarlas fue el fallo que el dueno reporto el 2026-10-14:
+// con la regla vieja, borrar el campo para escribir otro numero contaba como
+// volver a vincularlo, asi que el valor saltaba a la equivalencia calculada y
+// el campo se quedaba en solo lectura. Vaciar es el primer gesto de escribir.
+//
+// Una funcion y no tres copias de la condicion: estaba escrita tres veces
+// --la fila, el recalculo desde el costo y el desplegable del margen-- y tres
+// copias de un predicado acaban discrepando. Aqui la discrepancia seria que la
+// fila se cree desvinculada mientras el margen le pisa el precio.
+function estaDesvinculada(
+  fijos: Partial<Record<PriceCurrency, string>>,
+  currency: PriceCurrency,
+): boolean {
+  return fijos[currency] !== undefined;
+}
+
 // SI UN NUMERO SE PASA DEL TECHO DE SU COLUMNA.
 //
 // Vive junto al formulario y no en `lib/`: aqui solo decide si enseñar un
@@ -1108,7 +1127,7 @@ function TierSection({
   // O HAY MARGEN, O HAY PRECIOS FIJOS POR MONEDA. Basta con que UNA moneda que
   // no sea la base lleve importe a mano para que el margen deje de mandar. La
   // salida es volver a enlazarla, que es un gesto visible y no un callejón.
-  const hayFijos = currencies.some((c) => c !== base && (fixed[c] ?? "").trim() !== "");
+  const hayFijos = currencies.some((c) => c !== base && estaDesvinculada(fixed, c));
 
   // EL DESPLEGABLE NO ENSEÑA UN PORCENTAJE SI DE AHI NO SALE NINGUN NUMERO.
   //
@@ -1291,7 +1310,24 @@ function PriceRows({
     <div className="flex flex-col gap-3">
       {currencies.map((currency) => {
         const esBase = currency === base;
-        const manual = (fixed[currency] ?? "").trim() !== "";
+        // DESVINCULADO LO DICE LA CLAVE, NO EL TEXTO. Reportado por el dueño
+        // el 2026-10-14: al romper la cadena y borrar el campo para escribir
+        // otro número, el valor volvía solo a la equivalencia calculada y el
+        // campo se quedaba en solo lectura.
+        //
+        // La causa era esta línea, que decía `(fixed[currency] ?? "").trim()
+        // !== ""`: el estado «este precio lo pongo yo» y el contenido del
+        // campo eran el MISMO dato, así que vaciar el campo equivalía a volver
+        // a vincularlo. Y vaciarlo es el primer gesto de escribir otro número.
+        //
+        // Ahora el estado vive en si la clave EXISTE en `fixed`. Romper la
+        // cadena la crea, volver a vincular la borra, y lo que haya escrito
+        // dentro —incluido nada— es asunto del tendero mientras escribe.
+        //
+        // El servidor ya lo soportaba: al construir los `product_price_overrides`
+        // descarta los importes nulos o no positivos, así que una clave con el
+        // texto vacío no guarda ninguna fila. No hacía falta tocarlo.
+        const manual = estaDesvinculada(fixed, currency);
         const calculado = esBase
           ? basePrice
           : basePrice == null
@@ -1460,7 +1496,16 @@ function PriceRow({
                 }
                 className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
               >
-                {link.linked ? <Link2 className="size-4" /> : <Link2Off className="size-4" />}
+                {/* CADENA ROTA, NO CADENA TACHADA. Pedido por el dueño el
+                    2026-10-14 con el icono delante: `Unlink` dibuja los dos
+                    eslabones separándose con sus destellos, y `Link2Off` —lo
+                    que había— es la misma cadena entera con una barra encima.
+
+                    La diferencia importa porque la barra es el signo de
+                    «prohibido» o «desactivado» en el resto de la interfaz, y
+                    aquí no hay nada prohibido: el precio está desvinculado y
+                    se puede escribir, que es justo lo contrario. */}
+                {link.linked ? <Link2 className="size-4" /> : <Unlink className="size-4" />}
               </button>
             ) : null}
           </div>
