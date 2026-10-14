@@ -38,7 +38,8 @@
     "qa:puerta": "node qa/puerta-envio.mjs",
     "qa:telefono": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/telefono-internacional.mjs",
     "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs",
-    "qa:contraste": "node qa/contraste.mjs"
+    "qa:contraste": "node qa/contraste.mjs",
+    "qa:proveedor": "node --experimental-strip-types qa/proveedor.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

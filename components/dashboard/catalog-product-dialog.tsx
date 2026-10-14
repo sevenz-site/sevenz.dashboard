@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { SupplierField } from "@/components/dashboard/supplier-field";
 import {
   Select,
   SelectContent,
@@ -113,6 +114,7 @@ export function CatalogProductDialog({
   overrides,
   initialCurrencies,
   lastCostCurrency,
+  supplierSuggestions,
   ownerId,
 }: {
   open: boolean;
@@ -126,6 +128,9 @@ export function CatalogProductDialog({
   // La última que este negocio usó, para que un producto nuevo abra con ella.
   // Ver la página: sale de su propio historial, no del navegador.
   lastCostCurrency: CostCurrency | null;
+  // Los proveedores que este negocio ya escribió, para el autocompletado.
+  // Salen de los productos que la página ya cargó, no de una consulta nueva.
+  supplierSuggestions: string[];
   ownerId: string;
 }) {
   const router = useRouter();
@@ -135,8 +140,23 @@ export function CatalogProductDialog({
   const editing = product != null;
 
   const [name, setName] = useState(product?.name ?? "");
-  const [stock, setStock] = useState(formatAmountForInput(product?.stock_opening));
+
+  // UN PRODUCTO NUEVO ARRANCA CON 1 EN EL INVENTARIO. Frame 1192:4185,
+  // 2026-10-14. Hasta hoy arrancaba vacío.
+  //
+  // El valor sirve porque el caso corriente del alta rápida es «acabo de
+  // recibir uno de estos»; y el que recibió veinte cambia un dígito, que es
+  // menos trabajo que escribirlo desde cero. Lo que NO puede hacer es tocar
+  // una ficha que ya existe: un producto guardado sin cantidad la dejó vacía a
+  // propósito, y abrirlo para corregir el precio no puede inventarle un 1.
+  // Por eso se mira `product` y no `stock`.
+  const [stock, setStock] = useState(
+    product != null ? formatAmountForInput(product.stock_opening) : "1",
+  );
   const [cost, setCost] = useState(formatAmountForInput(product?.cost));
+
+  // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
+  const [supplier, setSupplier] = useState(product?.supplier ?? "");
 
   // LA MONEDA DEL COSTO. Por defecto la última que este negocio usó, igual que
   // el formulario de movimientos recuerda la suya — y por el mismo motivo: un
@@ -175,7 +195,15 @@ export function CatalogProductDialog({
       ? String(product.margin_wholesale_pct)
       : DEFAULT_MARGIN.wholesale,
   );
-  const [minQty, setMinQty] = useState(formatAmountForInput(product?.wholesale_min_quantity));
+  // 6 POR DEFECTO EN UN PRODUCTO NUEVO. Frame 1192:4185, 2026-10-14.
+  //
+  // Misma regla que el inventario de arriba y por la misma razón: se mira
+  // `product`, no el valor. Una ficha guardada sin mínimo lo dejó así porque
+  // su precio de mayor no depende de la cantidad, y abrirla no puede
+  // inventarle un umbral que cambiaría lo que el cliente paga.
+  const [minQty, setMinQty] = useState(
+    product != null ? formatAmountForInput(product.wholesale_min_quantity) : "6",
+  );
 
   // QUE SE VENDE: AL DETAL, AL MAYOR, O LAS DOS COSAS.
   //
@@ -365,6 +393,7 @@ export function CatalogProductDialog({
     marginRetailPct: ventaRetail ? (marginOf(priceRetail)?.toString() ?? null) : null,
     marginWholesalePct: ventaWholesale ? (marginOf(priceWholesale)?.toString() ?? null) : null,
     stockOpening: stock || null,
+    supplier: supplier || null,
     wholesaleMinQuantity: minQty || null,
     publishedRetail: ventaRetail && pubRetail,
     publishedWholesale: ventaWholesale && pubWholesale,
@@ -498,6 +527,17 @@ export function CatalogProductDialog({
               </p>
             )}
           </div>
+
+          {/* EL PROVEEDOR VA DESPUÉS DEL COSTO, que es el orden del frame y
+              también el de la cabeza: las dos preguntas son sobre la compra
+              —cuánto te costó y dónde lo compraste— y van juntas, antes de
+              pasar a las dos de la venta. */}
+          <SupplierField
+            value={supplier}
+            onChange={setSupplier}
+            suggestions={supplierSuggestions}
+            disabled={saving}
+          />
 
           {/* AL DETAL PRIMERO, que es el orden del frame y el del día a día. */}
           <TierSection

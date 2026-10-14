@@ -317,8 +317,20 @@ export default async function CatalogoPublicoPage({
           coherencia, no una regla nueva — si los mensajes lo llevan y la
           pagina a la que llevan no, el aviso enseña a desconfiar del mensaje
           en vez de del impostor. */}
+      {/* LA VERSIÓN LARGA, del frame 1192:4185 (2026-10-14).
+
+          La corta —«Sevenz no pide códigos ni pagos. Aquí solo ves precios»—
+          nació cuando esta página solo enseñaba precios, y esa segunda frase
+          deja de ser cierta en cuanto el cliente puede armar un pedido.
+
+          Lo que añade la nueva no es longitud por longitud: nombra LAS
+          LLAMADAS, que es el canal por el que llega el impostor cuando el
+          mensaje no le funcionó, y dice adónde va el dinero de verdad. Un
+          cliente que acaba de mandar un pedido por WhatsApp es exactamente
+          quien espera una llamada «del negocio» a continuación. */}
       <p className="text-center text-xs text-muted-foreground">
-        Sevenz no pide códigos ni pagos. Aquí solo ves precios.
+        Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos
+        deben hacerse directamente con el dueño del comercio.
       </p>
     </main>
   );

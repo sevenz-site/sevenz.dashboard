@@ -30,6 +30,13 @@ export type ProductRow = {
   // not decrement it. `_opening` is in the name so that nothing reads it as
   // "the stock right now" — see the migration's own note.
   stock_opening: number | null;
+  // Donde compro el tendero este producto. Texto libre, migracion 103.
+  //
+  // Se lee para dos cosas: rellenar el campo al editar, y alimentar las
+  // sugerencias del autocompletado. Lo segundo es la razon de que la pantalla
+  // NO necesite ninguna consulta nueva -- /productos ya carga todos los
+  // productos del dueno, asi que la lista de proveedores sale de aqui.
+  supplier: string | null;
   // La cantidad desde la que aplica el precio de mayor. Migracion 088.
   wholesale_min_quantity: number | null;
   stock_opening_at: string | null;
@@ -82,7 +89,7 @@ export const PRODUCT_COLUMNS =
   "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
   "cost_currency, cost_currency_other, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
-  "wholesale_min_quantity, " +
+  "wholesale_min_quantity, supplier, " +
   "published_retail, published_wholesale, photo_path, description";
 
 // THE USDT PRICE IS ASKED FOR ONCE A MINUTE, NOT ONCE PER RENDER.

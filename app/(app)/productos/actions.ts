@@ -29,6 +29,10 @@ export type ProductResult = { error: string | null; id?: string };
 const MAX_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_CURRENCY_LABEL = 24;
+// Un proveedor es un nombre de comercio, no una direccion. 120 es el mismo
+// techo que el nombre del producto, y recortar en el servidor es lo que impide
+// que un campo de texto libre se convierta en una fila de kilobytes.
+const MAX_SUPPLIER_LENGTH = 120;
 
 function cleanName(value: string): string {
   return value.trim().slice(0, MAX_NAME_LENGTH);
@@ -36,6 +40,19 @@ function cleanName(value: string): string {
 
 function cleanDescription(value: string | null | undefined): string | null {
   const text = (value ?? "").trim().slice(0, MAX_DESCRIPTION_LENGTH);
+  return text === "" ? null : text;
+}
+
+// EL PROVEEDOR SE GUARDA TAL CUAL LO ESCRIBIO, solo recortado por los bordes.
+//
+// No se normaliza la caja ni se busca un nombre parecido ya guardado para
+// reutilizarlo, y es deliberado: es un dato suyo y «Makro» frente a «MAKRO» no
+// le hace dano a nadie. Lo que evita que el mismo proveedor se escriba de tres
+// formas es el AUTOCOMPLETADO del formulario, que sugiere lo que ya existe
+// ignorando la caja -- arreglarlo aqui, reescribiendole el texto, seria
+// corregirle algo que el no pidio corregir.
+function cleanSupplier(value: string | null | undefined): string | null {
+  const text = (value ?? "").trim().slice(0, MAX_SUPPLIER_LENGTH);
   return text === "" ? null : text;
 }
 
@@ -101,6 +118,8 @@ export type ProductInput = {
   marginRetailPct: string | null;
   marginWholesalePct: string | null;
   stockOpening: string | null;
+  // Donde compro el tendero este producto (migracion 103). Texto libre.
+  supplier: string | null;
   // La cantidad a partir de la cual aplica el precio de mayor (migracion 088).
   wholesaleMinQuantity: string | null;
   publishedRetail: boolean;
@@ -174,6 +193,7 @@ function rowFrom(input: ProductInput, checked: Checked, userId: string) {
     margin_wholesale_pct: toNumber(input.marginWholesalePct),
     stock_opening: stock,
     stock_opening_at: stock == null ? null : new Date().toISOString(),
+    supplier: cleanSupplier(input.supplier),
     // `|| null` y no el número tal cual: un 0 significa «sin mínimo», y eso ya
     // lo dice el null. La 088 lo rechaza con un check por la misma razón.
     wholesale_min_quantity: toNumber(input.wholesaleMinQuantity) || null,

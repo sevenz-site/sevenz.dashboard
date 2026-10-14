@@ -61,6 +61,7 @@ export function CatalogTable({
   overrides,
   currencies,
   lastCostCurrency,
+  supplierSuggestions,
   rates,
   defaultCurrency,
   ownerId,
@@ -74,6 +75,7 @@ export function CatalogTable({
   // nuevo abra con ella. Ver la pagina: sale de su historial, no del
   // navegador.
   lastCostCurrency: CostCurrency | null;
+  supplierSuggestions: string[];
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
   ownerId: string;
@@ -127,6 +129,7 @@ export function CatalogTable({
       overrides={{ retail: {}, wholesale: {} }}
       initialCurrencies={[defaultCurrency]}
       lastCostCurrency={lastCostCurrency}
+      supplierSuggestions={supplierSuggestions}
       ownerId={ownerId}
     />
   );
@@ -240,6 +243,7 @@ export function CatalogTable({
           overrides={overridesByTier(overrides, editing.id)}
           initialCurrencies={currenciesOf(currencies, editing.id, editing.base_currency)}
           lastCostCurrency={lastCostCurrency}
+          supplierSuggestions={supplierSuggestions}
           ownerId={ownerId}
         />
       ) : null}

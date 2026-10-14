@@ -116,6 +116,21 @@ export default async function ProductosPage({
   }
 
   const rows = (products ?? []) as unknown as ProductRow[];
+
+  // LOS PROVEEDORES SALEN DE LAS FILAS QUE YA SE LEYERON, y eso es lo que hace
+  // que el autocompletado del formulario no cueste ni una consulta: esta
+  // pantalla trae TODOS los productos del dueño, sin paginar y sin filtrar en
+  // el servidor —el buscador filtra en el navegador— así que la lista completa
+  // de proveedores ya está en memoria.
+  //
+  // La primera versión de la migración 103 traía una función de Postgres para
+  // esto. Se quitó antes de usarla, al mirar esta línea: habría sido una
+  // SECURITY DEFINER que nadie llama, la misma trampa que la 092 documentó
+  // para los valores de enum.
+  //
+  // Duplicados y mayúsculas los resuelve `SupplierField`, que es quien sabe
+  // cómo quiere la lista. Aquí solo se quitan los vacíos.
+  const supplierSuggestions = rows.map((p) => p.supplier ?? "").filter((s) => s.trim() !== "");
   // Se cuenta aquí y no en el diálogo de compartir: ese es un componente de
   // cliente y tendría que pedir la lista otra vez para saber un número que
   // esta consulta ya trajo.
@@ -148,6 +163,7 @@ export default async function ProductosPage({
           overrides={(overrides ?? []) as PriceOverrideRow[]}
           currencies={(currencies ?? []) as ProductCurrencyRow[]}
           lastCostCurrency={(ultimoCosto?.cost_currency as CostCurrency | null) ?? null}
+          supplierSuggestions={supplierSuggestions}
           rates={rates}
           defaultCurrency={defaultCurrency}
           ownerId={user!.id}
