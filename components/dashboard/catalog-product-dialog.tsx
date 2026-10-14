@@ -663,7 +663,18 @@ export function CatalogProductDialog({
                 label="Precio al mayor a partir de cantidad"
                 value={minQty}
                 onChange={setMinQty}
-                hint={null}
+                // El botón «−» no baja de 1. Pedido por el dueño el
+                // 2026-10-14, y coincide con el `check` de la 088, que ya
+                // rechaza cualquier valor que no sea mayor que cero.
+                min={1}
+                hint={
+                  // Solo cuando de verdad hay un cero escrito. Un aviso
+                  // permanente bajo un campo que siempre lleva un 6 es ruido,
+                  // y el ruido se deja de leer antes del día que importa.
+                  minQty.trim() !== "" && (parseAmount(minQty) ?? 1) < 1
+                    ? "Tiene que ser 1 o más: por debajo de eso, el precio al mayor aplicaría siempre."
+                    : null
+                }
                 disabled={saving}
               />
             }
@@ -916,6 +927,7 @@ function Stepper({
   value,
   onChange,
   hint,
+  min = 0,
   disabled,
 }: {
   id: string;
@@ -925,6 +937,18 @@ function Stepper({
   // falta para el `step` de abajo.
   onChange: Dispatch<SetStateAction<string>>;
   hint: string | null;
+  // EL SUELO DEL BOTÓN «−», configurable desde el 2026-10-14.
+  //
+  // Estaba fijo en 0, que es correcto para el inventario —un producto puede
+  // tener cero unidades— y no lo es para la cantidad mínima del precio al
+  // mayor: un umbral de 0 significa «el precio de mayor aplica siempre», que
+  // es justo lo que ese campo existe para no decir. El dueño lo pidió con el
+  // mínimo en 1.
+  //
+  // Solo frena al BOTÓN. Teclear sigue permitido, y si se escribe un 0 lo
+  // dice el `hint` — bloquear el teclado impediría borrar el contenido para
+  // escribir otro número, que es como se corrige un campo en un teléfono.
+  min?: number;
   disabled: boolean;
 }) {
   // ACTUALIZACION FUNCIONAL, Y NO ES PREFERENCIA DE ESTILO. Antes esto leía
@@ -934,7 +958,7 @@ function Stepper({
   const step = (delta: number) =>
     onChange((prev) => {
       const n = Number(String(prev).replace(",", ".")) || 0;
-      return String(Math.max(0, n + delta));
+      return String(Math.max(min, n + delta));
     });
 
   return (
