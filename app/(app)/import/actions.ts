@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -82,7 +83,27 @@ export type ImportRow = {
 
 export type ConfirmImportState = { error: string | null; imported: number };
 
-export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportState> {
+// EL PERMISO DE WHATSAPP EN LA LIBRETA (MS-34, tercer camino).
+//
+// `permiso` llega del detalle de UNA persona, nunca del boton del lote: una
+// marca antes de "Confirmar y subir (N)" declararia el consentimiento de
+// veinte personas de un clic, sin nombrar a ninguna. Decision explicita del
+// dueno el 2026-10-10.
+//
+// Y NO TIENE NADA QUE VER CON MS-7, aunque la pantalla sea la misma. Son dos
+// preguntas distintas y las dos tienen que responderse que si antes de que
+// salga un mensaje:
+//   - el permiso (esto): ¿se le puede escribir a Pedro?
+//   - MS-7: ¿este movimiento concreto debe generar un mensaje? Nunca si viene
+//     de una foto. Doña Rosa sube un ano de libreta y Pedro recibiria catorce
+//     WhatsApps en un minuto por fiados que ya pago.
+// Marcar la casilla NO abre esa compuerta, y MS-7 sigue entera y abierta.
+export type PermisoImportado = { seMostro: boolean; acepta: boolean };
+
+export async function confirmImport(
+  rows: ImportRow[],
+  permiso?: PermisoImportado,
+): Promise<ConfirmImportState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -465,6 +486,64 @@ export async function confirmImport(rows: ImportRow[]): Promise<ConfirmImportSta
     { movements_imported: imported, clients_created: resultado.clients_created ?? 0 },
     user.email,
   );
+
+  // Una llamada sube UN cliente -- `subirClientes` recorre los nombres y llama
+  // aqui una vez por cada uno -- asi que el permiso es de esa persona.
+  //
+  // RESOLVER SU ID TIENE DOS CAMINOS, Y EL SEGUNDO ES EL QUE IMPORTA. Si el
+  // cliente YA EXISTIA, las filas traen su uuid y basta con leerlo. Si es
+  // NUEVO no hay uuid que leer: el movimiento viaja con una clave temporal y
+  // es `import_libreta` quien crea la fila y traduce la clave dentro de la
+  // transaccion, sin devolver el id.
+  //
+  // Esto se escribio mirando solo el primer caso, y la consecuencia era que el
+  // permiso se guardaba para los clientes que ya estaban y se perdia EN
+  // SILENCIO para los nuevos -- que son la mayoria de una libreta, porque
+  // subirla es justo lo que hace un tendero el primer dia. Medido el
+  // 2026-10-12 subiendo una libreta real: los 4 movimientos entraron, el
+  // telefono se guardo, y la fila de permiso no existia.
+  //
+  // Para el cliente nuevo se busca la fila recien creada de ese dueno. Y se
+  // COMPRUEBA EL NOMBRE antes de usarla: si no coincide, no se escribe nada.
+  // Un permiso atribuido a la persona equivocada es peor que un permiso
+  // perdido -- el perdido se vuelve a pedir, el equivocado ampara mensajes a
+  // alguien que nunca dijo que si.
+  if (permiso?.seMostro) {
+    let clientIdDeLaTanda = (movements.find((m) => m.client_id)?.client_id ?? null) as
+      | string
+      | null;
+
+    if (!clientIdDeLaTanda) {
+      const nombreEsperado = rows[0]?.client_name?.trim().toLowerCase() ?? "";
+      const { data: reciente } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("owner_id", user.id)
+        .is("trashed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (reciente && reciente.name.trim().toLowerCase() === nombreEsperado) {
+        clientIdDeLaTanda = reciente.id;
+      } else {
+        console.error("[confirmImport] no pude resolver el cliente nuevo para el permiso", {
+          nombreEsperado,
+          encontrado: reciente?.name ?? null,
+        });
+      }
+    }
+
+    if (clientIdDeLaTanda) {
+      await guardarPermisoDeclarado(supabase, {
+        clientId: clientIdDeLaTanda,
+        ownerId: user.id,
+        clientName: rows[0]?.client_name?.trim() ?? "",
+        source: "owner_import",
+        seMostro: permiso.seMostro,
+        acepta: permiso.acepta,
+      });
+    }
+  }
 
   revalidatePath("/dashboard");
   return { error: null, imported };

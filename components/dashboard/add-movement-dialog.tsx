@@ -1,6 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import {
+  WhatsappConsentDialog,
+  WhatsappConsentField,
+} from "@/components/dashboard/whatsapp-consent-field";
+import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
+import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -75,6 +81,8 @@ export function AddMovementDialog({
   currentDebtUsd,
   currentDebtEur,
   isFlagged,
+  consentAsked,
+  consentGranted,
   triggerClassName,
   autoOpen,
   hideTriggers,
@@ -97,6 +105,25 @@ export function AddMovementDialog({
   currentDebtUsd: number;
   currentDebtEur: number;
   isFlagged: boolean;
+  // Whether this shop has already been shown the WhatsApp consent prompt for
+  // this client (`clients.whatsapp_consent_asked_at`, migration 093). Once it
+  // has, neither the checkbox nor its dialog appear again -- the owner's
+  // decision on 2026-10-10 was once per client, not once per movement.
+  //
+  // KNOWN WART, written down so it is not rediscovered as a bug: a client who
+  // already accepted through their OWN link still sees this, because that
+  // consent lives in a table keyed by phone that this page does not read. It
+  // is confusing, not harmful -- ticking it is a verified no-op that cannot
+  // downgrade the stronger `client_self` row (qa:consent 11l) -- and it
+  // disappears after the first save. Reading the real state here needs an RPC
+  // the session key cannot call, which is not worth it for one wrong label.
+  consentAsked: boolean;
+  // Whether this client's PHONE already granted permission -- not this client
+  // row. They differ, and the difference is big: half the client rows in dev
+  // share a number with another, and one number is shared by nine. Asking per
+  // row would ask nine times about one person. Answered by
+  // `client_accepts_whatsapp`, the send gate's own function.
+  consentGranted: boolean;
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
@@ -139,6 +166,32 @@ export function AddMovementDialog({
   // relevant to what just happened.
   const [paymentBlocked, setPaymentBlocked] = useState(false);
   const [state, formAction, pending] = useActionState(addMovement, initialState);
+
+  // EL PERMISO DE WHATSAPP (MS-34). `pedirPermiso` decide si la casilla
+  // existe; si no existe, nada de esto se monta y el formulario no cambia.
+  //
+  // PEDIR y MOSTRAR no son lo mismo. Si el teléfono ya aceptó no hay nada que
+  // preguntar, pero sí algo que decir -- el tendero quiere saber que ese
+  // cliente está cubierto, y si no se dijera, la ausencia de la casilla se
+  // leería como que la función no existe para él.
+  const pedirPermiso = !consentAsked && !consentGranted;
+  const mostrarPermiso = pedirPermiso || consentGranted;
+  const [consent, setConsent] = useState(false);
+  const [consentDialog, setConsentDialog] = useState(false);
+  // Deja pasar el envio que sale del dialogo. Sin esto, `requestSubmit()`
+  // vuelve a entrar en el mismo onSubmit y el dialogo se reabre para siempre.
+  const [consentResuelto, setConsentResuelto] = useState(false);
+  // EL NUMERO QUE SE ESTA TECLEANDO AHORA MISMO, no solo el que ya estaba
+  // guardado. Cuando el cliente no tiene WhatsApp, ESTE MISMO formulario trae
+  // el campo para ponerlo -- asi que mirar solo `clientWhatsapp` hacia que la
+  // casilla dijera "falta registrar el WhatsApp" con el numero recien escrito
+  // dos dedos mas arriba. Visto a 375px el 2026-10-10, antes de que saliera.
+  const [whatsappTecleado, setWhatsappTecleado] = useState("");
+  // USABLE, no solo presente. Un "581" guardado es un numero y no sirve para
+  // nada: la base lo normaliza a null y el permiso no se puede escribir. Ver
+  // consentPhoneKey; en produccion hay 20 clientes asi.
+  const hayWhatsapp =
+    consentPhoneKey(clientWhatsapp) !== null || consentPhoneKey(whatsappTecleado) !== null;
   const [prevOpen, setPrevOpen] = useState(open);
 
   // The debt each currency owes is independent — no conversion, since the
@@ -408,11 +461,34 @@ export function AddMovementDialog({
           ref={setFormRef}
           action={formAction}
           onSubmit={(e) => {
-            if (!validate(e.currentTarget)) e.preventDefault();
+            if (!validate(e.currentTarget)) {
+              e.preventDefault();
+              return;
+            }
+            // GUARDAR SIN MARCARLA ABRE EL DIALOGO, una sola vez. La friccion
+            // es el punto: es lo que convierte "lo leyo" en algo cierto y no
+            // en algo esperado. Va DESPUES de validate() a proposito -- no
+            // tiene sentido preguntar por el permiso de alguien cuando el
+            // monto todavia esta mal y el formulario no va a enviarse igual.
+            if (pedirPermiso && !consent && !consentResuelto) {
+              e.preventDefault();
+              setConsentDialog(true);
+            }
           }}
           className="flex flex-col gap-8"
         >
           <input type="hidden" name="client_id" value={clientId} />
+          {pedirPermiso ? (
+            <>
+              {/* Marca al cliente como "ya preguntado" aunque no se marque la
+                  casilla. Si no viajara, la accion no podria distinguir "no la
+                  marco" de "ni se le enseno", y dar por preguntado al segundo
+                  se come la unica oportunidad de preguntar por el. */}
+              <input type="hidden" name={CONSENT_SHOWN_FIELD} value="1" />
+              <input type="hidden" name="client_name" value={clientName} />
+              {consent ? <input type="hidden" name={CONSENT_FIELD} value="1" /> : null}
+            </>
+          ) : null}
 
           {!clientWhatsapp ? (
             <div className="flex flex-col gap-2">
@@ -422,7 +498,10 @@ export function AddMovementDialog({
                 name="whatsapp"
                 preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
                 invalid={Boolean(errors.whatsapp)}
-                onValueChange={() => recheck("whatsapp", formRef.current)}
+                onValueChange={(v) => {
+                  setWhatsappTecleado(v ?? "");
+                  recheck("whatsapp", formRef.current);
+                }}
               />
               {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
             </div>
@@ -559,6 +638,19 @@ export function AddMovementDialog({
             etiquetas={{ amount: "Monto", whatsapp: "WhatsApp" }}
           />
 
+          {/* ENCIMA DE "Guardar fiado/abono", donde el dueno esta mirando
+              cuando decide. Debajo del boton no lo veria nadie. */}
+          {mostrarPermiso ? (
+            <WhatsappConsentField
+              clientName={clientName}
+              hasWhatsapp={hayWhatsapp}
+              yaTienePermiso={consentGranted}
+              checked={consent}
+              onCheckedChange={setConsent}
+              disabled={pending}
+            />
+          ) : null}
+
           <DialogFooter>
             {isFlagged && type === "charge" ? (
               <AlertDialog>
@@ -598,6 +690,24 @@ export function AddMovementDialog({
             )}
           </DialogFooter>
         </form>
+
+        <WhatsappConsentDialog
+          open={consentDialog}
+          onOpenChange={setConsentDialog}
+          clientName={clientName}
+          hasWhatsapp={hayWhatsapp}
+          checked={consent}
+          onCheckedChange={setConsent}
+          onContinue={() => {
+            // El estado de React no ha llegado al DOM cuando requestSubmit()
+            // corre en el mismo tick, asi que se cierra el dialogo, se levanta
+            // la bandera, y el envio sale en el siguiente frame con los campos
+            // ocultos ya pintados.
+            setConsentResuelto(true);
+            setConsentDialog(false);
+            requestAnimationFrame(() => formRef.current?.requestSubmit());
+          }}
+        />
       </DialogContent>
       </Dialog>
     </>

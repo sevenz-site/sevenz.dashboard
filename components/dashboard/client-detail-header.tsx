@@ -55,6 +55,7 @@ import type { Client, OwnerCountry } from "@/lib/types";
 // below. It is rendered in one place or the other and never both: two `h1`s
 // would be wrong twice over, as markup and as a thing to keep in sync.
 export function ClientDetailHeader({
+  aceptaAvisos,
   client,
   ownerCountry,
   backHref,
@@ -64,6 +65,10 @@ export function ClientDetailHeader({
   hasMovements,
   ownerId,
 }: {
+  // Si el teléfono de este cliente acepta avisos hoy (MS-35). Llega desde la
+  // página, que lo pregunta a client_accepts_whatsapp, la misma función que
+  // usará la puerta de envío.
+  aceptaAvisos: boolean;
   client: Client;
   ownerCountry: OwnerCountry;
   // Computed by the page from where the owner came in: a client opened from
@@ -109,6 +114,7 @@ export function ClientDetailHeader({
           ) : null}
         </div>
         <ClientHeaderActions
+          aceptaAvisos={aceptaAvisos}
           clientId={client.id}
           clientName={client.name}
           whatsapp={client.whatsapp}

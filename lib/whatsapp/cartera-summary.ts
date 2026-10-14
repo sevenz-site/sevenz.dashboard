@@ -46,7 +46,18 @@ import type { OwnerCountry } from "@/lib/types";
 // motivo: dos datos que tienen que cambiar a la vez no se guardan en dos
 // sitios.
 const PLANTILLAS = {
-  alDia: { nombre: "cartera_summary", parametroDelDueno: "customer_name" },
+  // v2 DESDE EL 2026-10-14. Meta la aprobo y sustituye a la v1 en produccion.
+  // Lo unico que cambia frente a la v1 es el pie antifraude, un boton «Ver mi
+  // cartera» con URL fija --sin parametro-- y una linea de cuerpo menos: la
+  // v1 decia «Puedes ver el detalle en app.sevenz.site», que con el boton
+  // debajo dice lo mismo dos veces.
+  //
+  // EL PARAMETRO SIGUE SIENDO `customer_name` AUNQUE LLEVE EL NOMBRE DEL
+  // DUENO, y no es un descuido: fue la propuesta inicial de Kapso y quedo asi
+  // al aprobarse la v1. Renombrarlo obligaria a cambiar el codigo que lo
+  // rellena, y eso convierte un cambio de pie en un cambio de integracion.
+  // Las otras dos si usan `owner_name`.
+  alDia: { nombre: "cartera_summary_v2", parametroDelDueno: "customer_name" },
   pausado: { nombre: "cartera_pausada", parametroDelDueno: "owner_name" },
 } as const;
 

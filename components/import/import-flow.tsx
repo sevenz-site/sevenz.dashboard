@@ -84,6 +84,8 @@ const TEXTO_SALIR_DE_LA_REVISION = {
     "Tienes movimientos leídos que todavía no se han guardado. Si sales ahora se pierden, junto con las correcciones que hayas hecho.",
 };
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
+import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
+import { consentPhoneKey } from "@/lib/phone";
 import { PasosImportar } from "@/components/dashboard/pasos-importar";
 
 import type { CandidatoDuplicado, ClienteRevisado, LibroDelCliente, ReconcileClient } from "@/lib/reconcile";
@@ -171,6 +173,12 @@ export function ImportFlow({
   const country: OwnerCountry = ownerCountry === "VE" ? "VE" : "CO";
   const { jobs, isProcessing, startImport, removeJob, clearJobs } = useImportJobs();
   const [confirming, setConfirming] = useState(false);
+
+  // EL PERMISO DE WHATSAPP POR PERSONA (MS-34, tercer camino). La casilla vive
+  // SOLO en el detalle de una persona, nunca junto al boton del lote: una
+  // marca antes de "Confirmar y subir (N)" declararia el consentimiento de
+  // veinte personas de un clic. Decision del dueno el 2026-10-10.
+  const [permisoLibreta, setPermisoLibreta] = useState<Record<string, boolean>>({});
   // Cuenta pausada: se para ANTES de la foto. Escanearla gasta cuota de
   // Gemini y veinte minutos de revision para nada.
   const guardia = useGuardiaDeCuentaPausada();
@@ -1630,7 +1638,11 @@ export function ImportFlow({
   // DENTRO de cada persona: si el tercero falla, los dos anteriores ya estan
   // guardados y el tercero no deja nada a medias. Es lo unico que importa aqui,
   // porque lo que no puede quedar partido es la cuenta de alguien.
-  async function subirClientes(nameKeys: string[]) {
+  // `desdeDetalle` dice si la casilla del permiso estuvo en pantalla. Solo el
+  // boton del detalle de una persona la ensena; el del lote no, y ahi no se
+  // declara nada ni se marca a nadie como preguntado -- marcarlo se comeria la
+  // unica oportunidad de preguntar por esa persona mas adelante.
+  async function subirClientes(nameKeys: string[], desdeDetalle = false) {
     if (guardia()) return;
     if (nameKeys.length === 0) return;
     setConfirming(true);
@@ -1640,7 +1652,12 @@ export function ImportFlow({
       for (const nameKey of nameKeys) {
         const suyas = filas.filter((r) => r.client_name.trim().toLowerCase() === nameKey);
         if (suyas.length === 0) continue;
-        const result = await confirmImport(payloadDe(suyas));
+        const result = await confirmImport(
+          payloadDe(suyas),
+          desdeDetalle
+            ? { seMostro: true, acepta: permisoLibreta[nameKey] === true }
+            : undefined,
+        );
         if (result.error) {
           // Se para en el primero que falla: seguir con los demas dejaria al
           // dueno adivinando cuales entraron.
@@ -2144,7 +2161,30 @@ export function ImportFlow({
                 onElegirTotal={(libro, cual) => elegirTotal(clienteAbierto, libro, cual)}
                 subido={subidos.has(clienteAbierto.nameKey)}
                 accionSubir={
-                  <ConfirmarImportacion
+                  <div className="flex w-full flex-col gap-3">
+                    {/* Encima del boton, igual que en el alta de movimiento, y
+                        apagada por defecto. El nombre sale del cliente abierto,
+                        asi que la frase que se guarda nombra a esta persona y
+                        solo a esta.
+
+                        OJO: esto es el PERMISO, no MS-7. Marcarla no autoriza a
+                        notificar los movimientos que se estan subiendo -- esos
+                        vienen de una foto y no deben generar ningun mensaje
+                        nunca. Las dos cosas hacen falta y son independientes. */}
+                    <WhatsappConsentField
+                      clientName={clienteAbierto.name}
+                      hasWhatsapp={filas.some(
+                        (r) =>
+                          r.client_name.trim().toLowerCase() === clienteAbierto.nameKey &&
+                          consentPhoneKey(r.whatsapp) !== null,
+                      )}
+                      checked={permisoLibreta[clienteAbierto.nameKey] === true}
+                      onCheckedChange={(v) =>
+                        setPermisoLibreta((prev) => ({ ...prev, [clienteAbierto.nameKey]: v }))
+                      }
+                      disabled={confirming}
+                    />
+                    <ConfirmarImportacion
                     className="w-full"
                     soloEsteCliente
                     cuantas={
@@ -2160,8 +2200,9 @@ export function ImportFlow({
                       !estadosPendientes.find((c) => c.nameKey === clienteAbierto.nameKey)?.puedeSubir
                     }
                     guardando={confirming}
-                    onConfirm={() => subirClientes([clienteAbierto.nameKey])}
-                  />
+                    onConfirm={() => subirClientes([clienteAbierto.nameKey], true)}
+                    />
+                  </div>
                 }
               />
             ) : null}

@@ -38,12 +38,6 @@ export type DatosDeLaTarjeta = {
 const FONDO = "#171717";
 const TINTA = "#fafafa";
 const TINTA_TENUE = "rgba(250, 250, 250, 0.65)";
-// El gris del logo en el archivo. Se cambia por blanco al vuelo porque sobre la
-// tarjeta oscura no se vería; el punto naranja se queda como está.
-// El oscuro del logo. Cambio de #272727 a #171717 con el logo nuevo del
-// 2026-09-30. Si no coincide con el del SVG, el replaceAll no encuentra
-// nada, el logo sale en su gris original sobre fondo oscuro y no se lee.
-const GRIS_DEL_LOGO = "#171717";
 
 // Medidas en puntos, no en píxeles. Se multiplican por ESCALA al final para que
 // la imagen salga nítida en una pantalla de teléfono sin tener que escribir
@@ -64,23 +58,34 @@ function cargarImagen(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-// El logo, repintado de blanco. Se lee el SVG como texto y se le cambia el gris
-// por blanco antes de convertirlo en imagen — es la única forma de recolorear
-// una parte de un SVG y dejar el punto naranja intacto; un tinte con
-// globalCompositeOperation pintaría también el punto.
+// THE LIGHT LOGO, LOADED AS-IS. `logo-secundary.svg` is the variant drawn for
+// dark grounds (#DADADA), so nothing here recolors anything.
 //
-// Si algo falla —el archivo no está, el gris ya no es ese— se devuelve null y
-// la tarjeta sale sin logo. Peor, pero entera: una tasa mal compartida es peor
-// que una tasa compartida sin logo.
+// WHAT THIS REPLACED, AND WHY IT IS WORTH READING. Until 2026-10-14 this
+// fetched `logo-primary.svg` and swapped its grey for white at runtime with a
+// `replaceAll` on the SVG text. That only works while a hex literal in this
+// file matches a hex literal inside an asset nobody looks at — and on
+// 2026-09-30 the constant was changed to #171717 while the file kept #272727.
+// The replace then matched nothing, silently, and the dark logo was painted on
+// the #171717 card: **1.20:1**, which is what the owner photographed. Reading
+// the secondary variant instead is **12.82:1** and cannot drift, because there
+// is no pair of values left to keep in sync.
+//
+// The old comment even predicted it — *"si no coincide con el del SVG, el
+// replaceAll no encuentra nada, el logo sale en su gris original"*. A comment
+// that names the failure does not prevent it; removing the coupling does.
+//
+// Discarded: keeping the recolor and fixing the constant to #272727. It leaves
+// the same trap armed for whoever next exports the logo, and it fails the same
+// invisible way — no error, no warning, just an unreadable card nobody sees
+// until it is already shared.
+//
+// Si algo falla —el archivo no está— se devuelve null y la tarjeta sale sin
+// logo. Peor, pero entera: una tasa mal compartida es peor que una tasa
+// compartida sin logo.
 async function cargarLogoBlanco(): Promise<HTMLImageElement | null> {
   try {
-    const respuesta = await fetch("/logo-primary.svg");
-    if (!respuesta.ok) return null;
-    const svg = (await respuesta.text()).replaceAll(GRIS_DEL_LOGO, TINTA);
-    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    const img = await cargarImagen(url);
-    URL.revokeObjectURL(url);
-    return img;
+    return await cargarImagen("/logo-secundary.svg");
   } catch {
     return null;
   }

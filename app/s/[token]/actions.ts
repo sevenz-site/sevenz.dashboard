@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { TEXTO_AVISOS_WHATSAPP_CLIENTE } from "@/lib/whatsapp-opt-in";
 
 // Quotas for the two actions below, the only two anyone can reach without a
 // login. Both are per share token and generous enough that a real client will
@@ -12,6 +13,10 @@ const DOCUMENT_ID_LIMIT = 5;
 // Sevenz?" says it once, maybe twice. Anything past that is not a client
 // changing their mind.
 const FEEDBACK_LIMIT = 3;
+// A person answers this once. The database already refuses to write a second
+// row for the same wording, so this is not about duplicates — it is so that
+// hammering the action cannot be used to probe which tokens are real.
+const WHATSAPP_CONSENT_LIMIT = 5;
 const RATE_WINDOW_SECONDS = 60 * 60;
 
 // Matches the ceiling inside submit_shared_feedback(). Enforced in both places
@@ -130,6 +135,101 @@ export async function submitFeedback(token: string, message: string): Promise<Su
   }
 
   return { error: null };
+}
+
+export type AcceptWhatsappConsentState = { error: string | null };
+
+// Public, unauthenticated action — same trust model as submitDocumentId above.
+// MS-25. The permission it records is what unblocks MS-3, Sevenz writing to
+// the final customer.
+//
+// THE TEXT IS NOT A PARAMETER, AND THAT IS THE WHOLE DESIGN. It comes from the
+// constant in lib/whatsapp-opt-in.ts, the same one the dialog renders, so what
+// was on screen is literally what lands in the ledger. A server action is a
+// public HTTP endpoint: if the caller could name the text, anyone holding a
+// share token would be able to write their own sentence into the evidence —
+// and a sentence nobody was ever shown is worse than no evidence at all,
+// because it reads as proof.
+//
+// That is also why record_client_whatsapp_consent() is granted to service_role
+// and NOT to anon, unlike the two actions above. The anon key travels to the
+// browser; this door has to stay on our side of it.
+//
+// Errors are generic by design (mask-raw-errors rule). Someone who cannot save
+// their preference should not learn what our database is called.
+export async function acceptWhatsappConsent(token: string): Promise<AcceptWhatsappConsentState> {
+  if (!(await withinQuota(token, "whatsapp_consent", WHATSAPP_CONSENT_LIMIT))) {
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde." };
+  }
+
+  try {
+    const service = createServiceClient();
+    const { data, error } = await service.rpc("record_client_whatsapp_consent", {
+      p_token: token,
+      p_consent_text: TEXTO_AVISOS_WHATSAPP_CLIENTE,
+    });
+
+    if (error) {
+      console.error("[acceptWhatsappConsent] rpc failed:", error.message);
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+
+    // false, not an exception, for the two cases the browser can produce: an
+    // unknown token, and a client whose shopkeeper never wrote down their
+    // number. The second one should be unreachable — the page does not mount
+    // the dialog then — but a server action can be called without the page.
+    if (data !== true) {
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+
+    return { error: null };
+  } catch (error) {
+    console.error(
+      "[acceptWhatsappConsent] threw:",
+      error instanceof Error ? error.message : error,
+    );
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
+}
+
+export type RevokeWhatsappConsentState = { error: string | null };
+
+// MS-31, the way out. Public and unauthenticated, same trust model as the
+// grant above.
+//
+// NO CONSENT TEXT HERE, and the asymmetry is the point: a grant has to evidence
+// what the person read, a withdrawal does not. Nobody ever has to prove that
+// someone asked us to stop — we just stop.
+//
+// Service client for the same reason as the grant: the function is granted to
+// service_role only, so a browser holding the anon key cannot reach it
+// directly and switch off a number it happens to hold a token for.
+export async function revokeWhatsappConsent(token: string): Promise<RevokeWhatsappConsentState> {
+  if (!(await withinQuota(token, "whatsapp_revoke", WHATSAPP_CONSENT_LIMIT))) {
+    return { error: "Demasiados intentos. Vuelve a intentarlo más tarde." };
+  }
+
+  try {
+    const service = createServiceClient();
+    const { data, error } = await service.rpc("revoke_client_whatsapp_consent", {
+      p_token: token,
+    });
+
+    if (error) {
+      console.error("[revokeWhatsappConsent] rpc failed:", error.message);
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+    if (data !== true) {
+      return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+    }
+    return { error: null };
+  } catch (error) {
+    console.error(
+      "[revokeWhatsappConsent] threw:",
+      error instanceof Error ? error.message : error,
+    );
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
 }
 
 export type UploadProfilePictureState = { error: string | null; path: string | null };

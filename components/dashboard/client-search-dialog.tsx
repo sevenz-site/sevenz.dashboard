@@ -1,6 +1,12 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  WhatsappConsentDialog,
+  WhatsappConsentField,
+} from "@/components/dashboard/whatsapp-consent-field";
+import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
+import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -305,6 +311,28 @@ function ClientSearchDialogBody({
   const [step, setStep] = useState<"search" | "new">("search");
   const [query, setQuery] = useState("");
   const [nameValue, setNameValue] = useState("");
+
+  // EL PERMISO DE WHATSAPP (MS-34), en el alta de cliente nuevo.
+  //
+  // Aqui SIEMPRE se pregunta: un cliente que acaba de nacer no puede haber
+  // sido preguntado antes, asi que no hay equivalente del `consentAsked` del
+  // alta de movimiento.
+  const [consent, setConsent] = useState(false);
+  const [consentDialog, setConsentDialog] = useState(false);
+  // El numero, solo para poder decir "falta registrar el WhatsApp". WhatsappInput
+  // no es controlado desde aqui, asi que se escucha su onValueChange.
+  const [whatsappValue, setWhatsappValue] = useState("");
+
+  // UNA REF Y NO ESTADO, y la diferencia importa. El envio del camino de
+  // duplicados no pasa por <form onSubmit>: `confirmDuplicateAndSubmit` llama
+  // a formAction() directamente. Al reintentarlo desde el dialogo del permiso
+  // esa funcion se lee desde el closure del render ANTERIOR, donde un useState
+  // seguiria valiendo false y volveria a abrir el dialogo, en bucle. Una ref
+  // la leen todos los closures igual.
+  const consentResuelto = useRef(false);
+  // Que hacer cuando el dialogo del permiso se cierre: reenviar el formulario
+  // normal, o rehacer el camino de duplicados que lo abrio.
+  const trasPermiso = useRef<"form" | "duplicado">("form");
   const [documentIdValue, setDocumentIdValue] = useState("");
   const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
@@ -402,6 +430,14 @@ function ClientSearchDialogBody({
   function confirmDuplicateAndSubmit() {
     if (!formRef.current) return;
     if (!validate(formRef.current)) return;
+    // Este camino NO pasa por <form onSubmit>, asi que la pregunta del permiso
+    // se repite aqui. Sin esto, crear un cliente duplicado se saltaria la
+    // unica vez que se iba a preguntar por el.
+    if (!consent && !consentResuelto.current) {
+      trasPermiso.current = "duplicado";
+      setConsentDialog(true);
+      return;
+    }
     const data = new FormData(formRef.current);
     data.set("confirm_duplicate", "true");
     formAction(data);
@@ -466,11 +502,24 @@ function ClientSearchDialogBody({
         ref={setFormRef}
         action={formAction}
         onSubmit={(e) => {
-          if (!validate(e.currentTarget)) e.preventDefault();
+          if (!validate(e.currentTarget)) {
+            e.preventDefault();
+            return;
+          }
+          if (!consent && !consentResuelto.current) {
+            e.preventDefault();
+            trasPermiso.current = "form";
+            setConsentDialog(true);
+          }
         }}
         className="flex flex-col gap-4"
       >
         <input type="hidden" name="confirm_duplicate" defaultValue="false" />
+        {/* Viaja siempre: en el alta de cliente la casilla se ensena siempre,
+            asi que el cliente nuevo nace con `whatsapp_consent_asked_at`
+            puesto y el alta de movimiento ya no vuelve a preguntar. */}
+        <input type="hidden" name={CONSENT_SHOWN_FIELD} value="1" />
+        {consent ? <input type="hidden" name={CONSENT_FIELD} value="1" /> : null}
         <div className="flex flex-col gap-2">
           <Label htmlFor="new_client_name">Nombre del cliente</Label>
           <Input
@@ -517,7 +566,10 @@ function ClientSearchDialogBody({
             name="whatsapp"
             preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
             invalid={Boolean(errors.whatsapp)}
-            onValueChange={() => recheck("whatsapp", formRef.current)}
+            onValueChange={(v) => {
+              setWhatsappValue(v ?? "");
+              recheck("whatsapp", formRef.current);
+            }}
           />
           {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
         </div>
@@ -669,6 +721,17 @@ function ClientSearchDialogBody({
           }}
         />
 
+        {/* Encima de "Guardar fiado", donde el dueño está mirando cuando
+            decide. El cliente todavía no existe, así que el nombre sale del
+            campo que se está tecleando y la frase se arma con él. */}
+        <WhatsappConsentField
+          clientName={nameValue}
+          hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
+          checked={consent}
+          onCheckedChange={setConsent}
+          disabled={pending}
+        />
+
         <DialogFooter>
           {state.duplicate ? (
             <AlertDialog>
@@ -699,6 +762,25 @@ function ClientSearchDialogBody({
           )}
         </DialogFooter>
       </form>
+
+      <WhatsappConsentDialog
+        open={consentDialog}
+        onOpenChange={setConsentDialog}
+        clientName={nameValue}
+        hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
+        checked={consent}
+        onCheckedChange={setConsent}
+        onContinue={() => {
+          consentResuelto.current = true;
+          setConsentDialog(false);
+          // El siguiente frame, para que el <input> oculto del permiso ya este
+          // en el DOM cuando se lea el FormData.
+          requestAnimationFrame(() => {
+            if (trasPermiso.current === "duplicado") confirmDuplicateAndSubmit();
+            else formRef.current?.requestSubmit();
+          });
+        }}
+      />
     </>
   );
 }

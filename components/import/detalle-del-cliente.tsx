@@ -795,10 +795,23 @@ export function DetalleDelCliente({
               }}
             />
             {cliente.faltaWhatsapp ? (
+              /* MS-39. Esta frase decía «Todavía no enviamos avisos de cobro a
+                 tus clientes, pero lo haremos pronto», y desde el 2026-10-10
+                 tiene justo debajo la casilla que le pide al tendero declarar
+                 que este cliente ACEPTA recibirlos. Ninguna de las dos mentía,
+                 pero juntas se leían como si se contradijeran — y la primera
+                 se vuelve falsa el día que los envíos se activen, sin que nada
+                 en el código se queje.
+
+                 Lo que la sustituye no es una promesa sino un hecho
+                 comprobable: sin número utilizable, la función que escribe el permiso
+                 devuelve false y el permiso NO se guarda.
+                 Así que «aunque marques la casilla de abajo» es literalmente lo que
+                 pasa, y seguirá siendo cierto cuando los envíos existan. */
               <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                Todavía no enviamos avisos de cobro a tus clientes, pero lo haremos pronto. Si
-                registras su WhatsApp ahora, no tendrás que volver a pasar por aquí.
+                Sin su WhatsApp no podremos avisarle de su saldo, aunque marques la casilla de abajo.
+                Apúntalo ahora y no tendrás que volver a pasar por aquí.
               </p>
             ) : null}
           </div>

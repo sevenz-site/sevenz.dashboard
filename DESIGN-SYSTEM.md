@@ -424,6 +424,46 @@ render prop sigue siendo válido *entre* componentes cliente: `FilterChip`, en
 `client-filters.tsx`, lo usa y funciona, porque quien lo monta es la hoja y no
 la página.
 
+### Un menú de Radix que se queda montado no devuelve el foco
+
+Hermano del anterior, misma causa de fondo y síntoma distinto. Ya está escrito
+más abajo que **Radix deja los diálogos montados al cerrarse**, con
+`data-state` en `closed`. Lo que no estaba dicho es lo que eso le hace al
+**foco**, y vale para los menús igual que para los diálogos.
+
+Un `DropdownMenu` modal trae un `FocusScope` **atrapado**, y su restauración de
+foco corre **al desmontar**. Si nunca se desmonta, nunca restaura, y mientras
+tanto el atrapamiento sigue vivo: cualquier foco que el código mueva fuera se
+lo devuelve al ítem, que ya está oculto.
+
+Medido el 2026-10-09 en `/s/[token]`, abriendo una capa a pantalla completa
+desde un ítem del menú:
+
+```js
+// al abrir la capa
+document.activeElement.getAttribute('aria-label')  // "Más opciones", el ⋮ que
+                                                   // la capa acaba de tapar
+// forzando el foco a la flecha de volver
+document.activeElement.getAttribute('role')        // "menuitem", se lo llevó
+// al cerrar la capa
+document.activeElement.tagName                     // "BODY"
+```
+
+**Por qué importa más de lo que parece:** no se ve. Con el dedo nadie lo nota,
+porque el siguiente toque va donde el dedo quiera. Lo sufre quien navega con
+teclado o con lector de pantalla, que se queda en un elemento invisible y cuyo
+siguiente Tab recorre una página que ya no está delante.
+
+**Qué hacer.** `modal={false}` en el menú, y devolver el foco a mano en cada
+salida. Lo primero suelta el `FocusScope` —y de paso quita el
+`pointer-events: none` del `<body>`, que es el mecanismo de la trampa de la
+sección siguiente—; lo segundo sustituye la restauración que ya no va a correr.
+`onCloseAutoFocus` **no** sirve de recambio: corre al desmontar, que es
+justamente lo que no pasa. Está hecho así en `components/public/share-settings.tsx`.
+
+La regla general: **al abrir una superficie propia desde un componente de
+Radix, el foco es tuyo**, de ida y de vuelta. No se hereda.
+
 ### Un popup en portal dentro de un Dialog de Radix no recibe toques
 
 Un Dialog modal de Radix pone `pointer-events: none` en el `<body>` y solo lo
@@ -997,6 +1037,37 @@ reescribir el trazado que mandó diseño.
 `/s/[token]` lo lleva detrás del texto porque "Compartir saldo vía WhatsApp"
 en la ficha del cliente ya lo llevaba así: son los dos lados del mismo trato y
 espejados se leían como dos cosas distintas.
+
+## En un canvas no hay `currentColor`: se elige la VARIANTE, no se repinta
+
+La regla de arriba sirve en el DOM. En un `<canvas>` —la tarjeta que se comparte
+desde la calculadora, en los dos repos— no existe: un SVG dibujado con
+`drawImage` llega con los colores que trae escritos, y no hay cascada que los
+cambie.
+
+La tentación es recolorearlo al vuelo: leer el SVG como texto, `replaceAll` del
+hex por el claro, y dibujarlo. **No se hace.** Eso ata un literal hexadecimal
+del código a un literal hexadecimal dentro de un archivo que nadie abre, y los
+dos tienen que seguir siendo iguales para siempre.
+
+**Lo que costó, el 2026-10-14.** El 2026-09-30 se exportó un logo nuevo y se
+cambió la constante del código a `#171717`; el SVG se quedó en `#272727`. El
+`replaceAll` dejó de encontrar nada —sin error, sin aviso— y el logo oscuro se
+pintó sobre la tarjeta oscura: **1,20:1**, ilegible. Lo encontró el dueño
+mirando una imagen ya compartida, que es el único sitio donde se veía.
+
+**La forma correcta**: `public/` ya tiene las dos variantes, y se carga la que
+toca. `logo-secundary.svg` es la de fondos oscuros, `#DADADA`, que sobre
+`#171717` da **12,82:1**. No hay nada que sincronizar, así que no hay nada que
+pueda separarse.
+
+Lo mismo vale para cualquier asset que se dibuje en un canvas: si hace falta en
+dos tonos, son dos archivos.
+
+**Y se comprueba generando la tarjeta de verdad**, no reimplementándola en la
+consola: se intercepta `navigator.share`, se queda uno con el `File` que produjo
+el propio código de la app y se cuentan los píxeles. Una reimplementación prueba
+que el SVG es legible; solo la tarjeta real prueba que el código la usa.
 
 ## Contrast floor
 

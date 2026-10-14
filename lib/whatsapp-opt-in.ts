@@ -37,6 +37,33 @@ export const TEXTO_AVISOS_WHATSAPP_REGISTRO =
   "Al crear tu cuenta aceptas recibir un resumen semanal de tu cartera en tu " +
   "WhatsApp. Puedes desactivarlo cuando quieras en Mi negocio.";
 
+// ── El del CLIENTE FINAL, que no es usuario de Sevenz ────────────────────
+//
+// Third surface, third constant, same rule: this is shown on /s/[token] and
+// stored verbatim by migration 081. MS-25.
+//
+// THREE THINGS IN THIS SENTENCE ARE LOAD-BEARING, and none of them is style.
+//
+// 1. "Sevenz me escriba". The message leaves Sevenz's WhatsApp number, not the
+//    shop's. Meta requires consent to receive messages FROM THE SENDER, so a
+//    sentence saying "my shopkeeper may message me" would be evidence for a
+//    thing that is not what happens.
+//
+// 2. "los negocios donde tengo cuenta", plural. The permission is stored
+//    against the PHONE NUMBER and covers every shop that person owes money to,
+//    present and future — owner's decision, 2026-10-09, see 081's header. A
+//    sentence promising only "this shop" would make the evidence narrower than
+//    the behaviour, which is the one way this text can be actively harmful.
+//
+// 3. IT PROMISES NO WAY OUT, deliberately, because there is none yet. MS-31 is
+//    the ticket; until it ships, "puedes desactivarlo cuando quieras" would be
+//    a sentence the product cannot honour. When MS-31 lands this does NOT get
+//    edited — a new constant is added beside it, per the rule above, and the
+//    append-only ledger keeps both readable.
+export const TEXTO_AVISOS_WHATSAPP_CLIENTE =
+  "Acepto que Sevenz me escriba por WhatsApp para avisarme de mi saldo y de " +
+  "mis plazos de pago en los negocios donde tengo cuenta.";
+
 // La única función que decide si a un dueño se le puede escribir.
 //
 // No basta con `whatsapp_opt_in_at is not null`: al desactivar NO se borra esa
@@ -115,3 +142,58 @@ export function tocaPreguntarAvisos(
   if (espera === undefined) return false;
   return Date.now() - new Date(owner.whatsapp_prompt_last_at).getTime() >= espera * DIA_MS;
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// THE SENTENCE THE SHOPKEEPER TICKS (MS-34)
+//
+// A NEW ONE, NOT AN EDIT OF THE TEXT ABOVE, per this file's own rule: the
+// ledger is append-only and every stored row has to keep meaning what it
+// meant, so a constant that has already been shown to somebody is never
+// rewritten.
+//
+// IT NAMES THE CLIENT ON PURPOSE. Evidence that says "the client accepted" is
+// weaker than evidence that says which client, and the stored string IS the
+// evidence -- `record_owner_declared_whatsapp_consent` keeps whatever is
+// passed here, so what the shopkeeper read and what a regulator would read are
+// the same sentence.
+//
+// THE WORDING IS THE OWNER'S, DECIDED ON 2026-10-10, and it displaces a
+// recommendation that is worth keeping written down. The proposal was "Le
+// pregunté a <nombre> y aceptó recibir avisos…", because that records who did
+// what: Sevenz can stand behind "the shopkeeper says they asked" and cannot
+// stand behind "the client accepted", which asserts something about a person
+// Sevenz never spoke to. The owner chose the shorter form. If this is ever
+// revisited, that is the reason it would be revisited for -- and revisiting it
+// means a THIRD constant, not an edit to this one.
+export function textoPermisoDeclarado(clientName: string): string {
+  const nombre = clientName.trim() || "El cliente";
+  return `${nombre} acepta recibir avisos de su saldo por WhatsApp.`;
+}
+
+// Where a permission was collected. Mirrors the check constraint added by
+// migration 091 -- if a value is added there, it is added here, and the
+// compiler then finds every switch that has to learn about it.
+//
+// `client_self` is absent on purpose: it is written only by the functions the
+// client's own screen calls, and the database rejects it from this side. A
+// shopkeeper cannot declare that somebody accepted on their own device.
+export type OrigenPermisoDeclarado = "owner_movement_form" | "owner_import";
+
+// LOS NOMBRES DE LOS CAMPOS DEL FORMULARIO, Y POR QUE VIVEN AQUI Y NO EN EL
+// COMPONENTE QUE LOS PINTA.
+//
+// Estuvieron en components/dashboard/whatsapp-consent-field.tsx, que lleva
+// "use client". Los escribe ese componente y los lee una server action, y
+// cruzar esa frontera NO devuelve la cadena: el modulo de cliente se sirve al
+// servidor como una referencia, asi que la constante llegaba undefined y
+// `formData.get(undefined)` devolvia null. Resultado: el permiso se marcaba en
+// pantalla, el campo oculto viajaba correctamente en el POST -- comprobado en
+// el DOM -- y la accion no guardaba nada, SIN UN SOLO ERROR en ninguna parte.
+//
+// Encontrado el 2026-10-10 guardando un fiado de verdad y mirando la tabla
+// despues. Ni el typecheck ni el lint lo ven, y la pantalla se porta como si
+// funcionara: la unica forma de encontrarlo es ejecutarlo y comprobar el
+// efecto. Por eso este archivo, que no es de cliente ni de servidor, es el
+// unico sitio correcto para algo que leen los dos.
+export const CONSENT_FIELD = "whatsapp_consent";
+export const CONSENT_SHOWN_FIELD = "whatsapp_consent_shown";
