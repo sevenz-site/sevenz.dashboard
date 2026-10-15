@@ -37,10 +37,14 @@ const ARROZ = {
   name: "Arroz",
   photo_path: null,
   base_currency: "USD",
-  currencies: ["USD", "EUR", "USDT"],
   stock: 40,
-  retail: { price: 5, pinned: {} },
-  wholesale: { price: 4, pinned: { EUR: 3.6, USDT: 4 } },
+  retail: { price: 5, pinned: {}, base: "USD", currencies: ["USD", "EUR", "USDT"] },
+  wholesale: {
+    price: 4,
+    pinned: { EUR: 3.6, USDT: 4 },
+    base: "USD",
+    currencies: ["USD", "EUR", "USDT"],
+  },
   wholesale_min_quantity: 6,
 };
 
@@ -49,9 +53,8 @@ const CAFE = {
   name: "Café",
   photo_path: null,
   base_currency: "USD",
-  currencies: ["USD"],
   stock: null,
-  retail: { price: 2.5, pinned: {} },
+  retail: { price: 2.5, pinned: {}, base: "USD", currencies: ["USD"] },
   wholesale: null,
   wholesale_min_quantity: null,
 };
@@ -248,10 +251,9 @@ const CASCO = {
   name: "Casco",
   photo_path: null,
   base_currency: "USD",
-  currencies: ["USD", "EUR", "USDT"],
   stock: 3,
-  retail: { price: 45.5, pinned: {} },
-  wholesale: { price: 40.25, pinned: {} },
+  retail: { price: 45.5, pinned: {}, base: "USD", currencies: ["USD", "EUR", "USDT"] },
+  wholesale: { price: 40.25, pinned: {}, base: "USD", currencies: ["USD", "EUR", "USDT"] },
   wholesale_min_quantity: 6,
 };
 const CON_CASCO = new Map([[CASCO.id, CASCO]]);
@@ -279,7 +281,7 @@ check(
 check(
   "9e. una moneda que el tendero RETIRÓ deja de tener precio",
   precioUnitario(
-    { ...CASCO, currencies: ["USD"] },
+    { ...CASCO, retail: { ...CASCO.retail, currencies: ["USD"] } },
     linea("casco", 1, "EUR"),
     TASA,
   ) === null,
@@ -287,7 +289,11 @@ check(
 );
 check(
   "9f. la base se resuelve aunque no esté en la lista de activas",
-  precioUnitario({ ...CASCO, currencies: [] }, linea("casco", 1, "USD"), TASA)?.amount === 45.5,
+  precioUnitario(
+    { ...CASCO, retail: { ...CASCO.retail, currencies: [] } },
+    linea("casco", 1, "USD"),
+    TASA,
+  )?.amount === 45.5,
   "una ficha descuadrada no deja un producto sin su propia moneda",
 );
 check(
@@ -298,7 +304,7 @@ check(
 check(
   "9h. un precio FIJADO gana sobre la conversión, también aquí",
   precioUnitario(
-    { ...CASCO, retail: { price: 45.5, pinned: { EUR: 39 } } },
+    { ...CASCO, retail: { ...CASCO.retail, pinned: { EUR: 39 } } },
     linea("casco", 1, "EUR"),
     TASA,
   )?.amount === 39,

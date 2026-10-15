@@ -55,18 +55,11 @@ export type ProductoDelCarrito = ProductoPublico & {
   id: string;
   name: string;
   photo_path: string | null;
+  // THE PRODUCT'S DEFAULT CURRENCY, and since migration 114 it prices
+  // nothing. Each tier carries its own base and its own currency list inside
+  // its `BloquePrecio`. Kept because the cart shows the product as a whole
+  // before any tier applies.
   base_currency: PriceCurrency;
-  // The currencies the shopkeeper has ENABLED for this product, straight from
-  // `product_currencies` (migration 087, exposed by 111). It lives on this
-  // type and not on `ProductoPublico` because the tier rule never needs it,
-  // and widening that type would force every `qa:orden` fixture to carry a
-  // field its assertions do not read.
-  //
-  // IT IS HERE SO THE CART CAN NOTICE A WITHDRAWN CURRENCY. A line can sit in
-  // `localStorage` for days; if the shopkeeper removes EUR from the product in
-  // the meantime, converting it anyway would show a price that
-  // `create_catalog_order` then refuses, taking the WHOLE order down with it.
-  currencies: PriceCurrency[];
   stock: number | null;
 };
 
@@ -162,21 +155,28 @@ export function precioUnitario(
   // withdrawn since the line was saved still has to resolve to null, because
   // the server would reject it.
   //
-  // THE SET IS EXACTLY THE ONE `create_catalog_order` ACCEPTS -- base, active,
-  // or pinned for THIS tier -- and that is not a detail. A pinned currency
-  // missing from `product_currencies` is the normal state of any product not
-  // re-saved since migration 087, which only carried `base_currency` over.
-  // Were this list narrower than the server's, the cart would hide a line the
-  // order would have taken; wider, it would quote one the order rejects whole.
+  // THE SET IS EXACTLY THE ONE `create_catalog_order` ACCEPTS -- the TIER's
+  // base, the tier's enabled list, or a price pinned for that tier -- and that
+  // is not a detail. A pinned currency missing from `product_currencies` is
+  // the normal state of any product not re-saved since migration 087, which
+  // only carried `base_currency` over. Were this list narrower than the
+  // server's, the cart would hide a line the order would have taken; wider, it
+  // would quote one the order rejects whole.
+  //
+  // EVERYTHING COMES OUT OF `bloque` SINCE MIGRATION 114. It used to read
+  // `producto.base_currency`, which was right only while both tiers shared one
+  // base: now a cart line at the wholesale tier has to be judged against the
+  // WHOLESALE base, and reading the product-level one would quote a euro price
+  // as if it were dollars.
   if (
-    linea.currency !== producto.base_currency &&
-    !producto.currencies.includes(linea.currency) &&
+    linea.currency !== bloque.base &&
+    !bloque.currencies.includes(linea.currency) &&
     bloque.pinned[linea.currency] == null
   ) {
     return null;
   }
 
-  const amount = precioEnMoneda(bloque, producto.base_currency, linea.currency, rates);
+  const amount = precioEnMoneda(bloque, linea.currency, rates);
   if (amount == null) return null;
   return { amount, currency: linea.currency, tier };
 }

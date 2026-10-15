@@ -29,6 +29,24 @@ export type BloquePrecio = {
   // migration 111 fixes; the list of currencies lives in `product_currencies`
   // and arrives separately.
   pinned: Partial<Record<PriceCurrency, number>>;
+
+  // THE CURRENCY `price` IS WRITTEN IN, and it belongs to the TIER, not to the
+  // product. Migration 114, owner's decision of 2026-10-15: wholesale can be
+  // offered in euros while retail is still typed in dollars.
+  //
+  // IT LIVES INSIDE THE BLOCK ON PURPOSE, and that shape IS the safety. While
+  // the base was a separate argument, every call site had both tiers' prices
+  // and one product-level base within reach, so converting a wholesale price
+  // with the retail base was a plausible typo that nothing would catch: USD
+  // 6.01 quoted as EUR 6.01 is about 8% dearer and entirely believable. With
+  // the base in the block there is no second base to reach for.
+  base: PriceCurrency;
+
+  // What THIS tier is offered in. Three at retail and one at wholesale is the
+  // case the owner asked for, and before 114 the model could not express it:
+  // `product_currencies` had no `tier`, so the two tiers shared one list and
+  // removing a currency from one removed it from the other.
+  currencies: PriceCurrency[];
 };
 
 export type ProductoPublico = {
@@ -36,6 +54,52 @@ export type ProductoPublico = {
   wholesale: BloquePrecio | null;
   wholesale_min_quantity: number | null;
 };
+
+/**
+ * What `get_shared_product`, `get_shared_products` and `get_shared_catalog`
+ * put in a tier's block, before it is a `BloquePrecio`.
+ *
+ * TWO NAMES FOR ONE THING, and the translation lives here rather than in each
+ * page. The payload says `base_currency`, matching the column; the type says
+ * `base`, because inside a block there is only one. Three pages each doing
+ * this inline is three places for the fallback below to be forgotten in.
+ */
+export type BloqueCrudo = {
+  price: number;
+  pinned: Partial<Record<PriceCurrency, number>>;
+  base_currency?: PriceCurrency | null;
+  currencies?: PriceCurrency[] | null;
+};
+
+/**
+ * Turns one raw tier block into a `BloquePrecio`.
+ *
+ * THE FALLBACKS ARE FOR ONE WINDOW ONLY: code deployed before migration 114
+ * has run. CLAUDE.md puts migrations first precisely so this cannot happen,
+ * and this is the belt for the day somebody inverts the order.
+ *
+ * They degrade rather than break, which is the whole point of choosing them
+ * carefully. Without a tier base it falls back to the PRODUCT's, which is
+ * exactly what every tier used before 114 -- so prices stay correct, they just
+ * stop being per-tier. Without a currency list it falls back to empty, and
+ * `monedasDelBloque` still adds the base and the pinned ones, so the customer
+ * is offered what they were offered before 114 instead of nothing at all.
+ *
+ * What neither fallback can do is invent a WRONG number: both land on the
+ * pre-114 behaviour, never on a price converted with the other tier's base.
+ */
+export function bloqueDesdeRpc(
+  bruto: BloqueCrudo | null | undefined,
+  baseDelProducto: PriceCurrency,
+): BloquePrecio | null {
+  if (bruto == null) return null;
+  return {
+    price: bruto.price,
+    pinned: bruto.pinned ?? {},
+    base: bruto.base_currency ?? baseDelProducto,
+    currencies: bruto.currencies ?? [],
+  };
+}
 
 /**
  * La cantidad más pequeña que el cliente puede pedir.
@@ -107,7 +171,6 @@ export function escalonParaCantidad(p: ProductoPublico, cantidad: number): Escal
  */
 export function precioEnMoneda(
   bloque: BloquePrecio | null,
-  base: PriceCurrency,
   currency: PriceCurrency,
   rates: BolivarRates | null,
 ): number | null {
@@ -115,14 +178,19 @@ export function precioEnMoneda(
 
   const fijado = bloque.pinned[currency];
   if (fijado != null && fijado > 0) return fijado;
-  if (currency === base) return bloque.price;
+  if (currency === bloque.base) return bloque.price;
   if (rates == null) return null;
 
-  return priceIn(currency, { amount: bloque.price, currency: base }, rates, bloque.pinned).amount;
+  return priceIn(
+    currency,
+    { amount: bloque.price, currency: bloque.base },
+    rates,
+    bloque.pinned,
+  ).amount;
 }
 
 /**
- * The currencies the customer can choose to pay in.
+ * The currencies the customer can choose to pay in, for ONE tier.
  *
  * THIS READ THE WRONG TABLE UNTIL 2026-10-15. It returned the base plus the
  * hand-pinned ones (`bloque.pinned`), which are the UNLINKED prices -- not the
@@ -130,55 +198,47 @@ export function precioEnMoneda(
  * enabled and no pinned price offered a single currency. Measured in dev with
  * «Casco».
  *
- * The real list is `product_currencies` (migration 087) and it arrives from
- * the server in `currencies`. Migration 111 exposes it in all three catalogue
- * read functions.
+ * AND IT WAS PER PRODUCT UNTIL MIGRATION 114, which is the second half of the
+ * same story. `product_currencies` had no `tier`, so both tiers shared one
+ * list: the owner reported on 2026-10-15 that removing a currency from one
+ * removed it from the other, and that it should be possible to have «los tres
+ * precios al detal pero solo uno al mayor». Migration 111's header had
+ * recorded that case as inexpressible and said a `tier` column would be needed
+ * first; 114 is that column.
  *
- * IT BELONGS TO THE PRODUCT, NOT TO THE TIER, and that corrects what was
- * decided on 2026-10-14. `product_currencies` is keyed `(product_id,
- * currency)` and has no `tier` column, so the case the owner described --
- * «al detal en dólares pero al mayor en euros, USDT y dólares» -- the data
- * model cannot express at all. What changes between tiers is only the amount.
- * Written down because the decision of the 14th did talk about tiers, and
- * whoever goes looking for it has to find why it stopped applying.
+ * SO IT TAKES A BLOCK AND NOTHING ELSE. The tier's base and the tier's list
+ * both live inside it, which is what makes "convert this tier with the other
+ * tier's base" unwriteable rather than merely discouraged.
+ *
+ * PINNED PRICES COUNT EVEN WHEN THEY ARE NOT IN `currencies`, and this is not
+ * a belt-and-braces: without it this would BREAK products that work today.
+ * Migration 087 only carried `base_currency` over to `product_currencies`, so
+ * a product not re-saved since 2026-10-10 holds one enabled currency even when
+ * it carries pinned prices in others -- and before 2026-10-15 those pinned
+ * ones were precisely the only ones on offer. A price pinned for a tier is the
+ * strongest possible statement that the tier sells in that currency: the
+ * shopkeeper typed it by hand. `create_catalog_order` accepts exactly the same
+ * set, and the two have to match or the screen offers what the server rejects.
  *
  * FILTERED DOWN TO THE ONES THAT HAVE A NUMBER, and the real case is USDT: its
- * rate comes from CriptoYa and public pages do not ask for it (decision of
- * 2026-10-10), so in the catalogue it always arrives null and cannot be
- * computed. A product with USDT enabled and no pinned price is offered in the
- * other currencies and not in that one. The alternative -- offering it with no
- * amount -- lets the customer pick something `create_catalog_order` rejects
- * with `sin_tasa` after they have filled in the entire form.
+ * rate comes from CriptoYa, and when it is missing or stale the currency is
+ * simply not offered rather than offered without an amount -- which would let
+ * the customer pick something rejected with `sin_tasa` after filling in the
+ * whole form.
  *
- * `base` comes first on purpose -- it is the price the shopkeeper set, and the
- * rest derive from it. The server fixes the ordering.
+ * The base comes first: it is the price the shopkeeper set, and the rest
+ * derive from it.
  */
-export function monedasDelProducto(
-  currencies: PriceCurrency[],
+export function monedasDelBloque(
   bloque: BloquePrecio | null,
-  base: PriceCurrency,
   rates: BolivarRates | null,
 ): PriceCurrency[] {
   if (bloque == null) return [];
 
-  // PINNED PRICES COUNT EVEN WHEN THEY ARE NOT IN `currencies`, and this is
-  // not a belt-and-braces: without it this fix would BREAK products that work
-  // today.
-  //
-  // Migration 087 only carried `base_currency` over to `product_currencies`
-  // (`select id, base_currency from products`), so a product not re-saved
-  // since 2026-10-10 holds ONE enabled currency even when it carries pinned
-  // prices in others. Before 2026-10-15 those pinned ones were precisely the
-  // only ones on offer, so reading `currencies` alone would have dropped them
-  // -- trading one bug for another.
-  //
-  // And a price pinned for a tier is the strongest possible statement that the
-  // product sells in that currency: the shopkeeper typed it by hand.
-  // `create_catalog_order` accepts exactly the same set, and the two lists
-  // have to match or the screen offers something the server rejects.
   const fijadas = Object.keys(bloque.pinned) as PriceCurrency[];
-  const lista = [base, ...currencies, ...fijadas].filter(
+  const lista = [bloque.base, ...bloque.currencies, ...fijadas].filter(
     (c, i, todas) => todas.indexOf(c) === i,
   );
-  return lista.filter((c) => precioEnMoneda(bloque, base, c, rates) != null);
+  return lista.filter((c) => precioEnMoneda(bloque, c, rates) != null);
 }
+

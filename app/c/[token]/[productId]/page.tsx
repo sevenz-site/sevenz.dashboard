@@ -8,7 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
-import type { BloquePrecio } from "@/lib/products/public-pricing";
+import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -48,14 +48,13 @@ type SharedProductDetail = {
   unit: string | null;
   description: string | null;
   photo_path: string | null;
+  // The product's default currency. Since migration 114 each tier carries its
+  // own inside its block, and THAT is the one that prices it.
   base_currency: PriceCurrency;
-  // The product's enabled currencies (`product_currencies`, migration 087).
-  // `get_shared_product` exposes them as of migration 111.
-  currencies: PriceCurrency[] | null;
   stock: number | null;
   wholesale_min_quantity: number | null;
-  retail: BloquePrecio | null;
-  wholesale: BloquePrecio | null;
+  retail: BloqueCrudo | null;
+  wholesale: BloqueCrudo | null;
   rate_mode: string | null;
   current_bcv_usd: number | null;
   current_bcv_eur: number | null;
@@ -193,18 +192,15 @@ export default async function ProductoPublicoPage({
         <ProductDetail
           token={token}
           productId={detalle.id}
+          // EACH TIER ARRIVES WITH ITS OWN BASE AND ITS OWN LIST (114), so
+          // the screen no longer takes a product-level base at all.
+          // `bloqueDesdeRpc` holds the fallback for the window where this code
+          // is deployed and 114 has not run yet.
           producto={{
-            retail: detalle.retail,
-            wholesale: detalle.wholesale,
+            retail: bloqueDesdeRpc(detalle.retail, detalle.base_currency),
+            wholesale: bloqueDesdeRpc(detalle.wholesale, detalle.base_currency),
             wholesale_min_quantity: detalle.wholesale_min_quantity,
           }}
-          baseCurrency={detalle.base_currency}
-          // THE FALLBACK IS THE BASE, not an empty list. If this page were
-          // served against a database without migration 111, `currencies`
-          // would arrive null and an empty list would leave the product with
-          // no currency to choose -- that is, unbuyable. Degrading to "only
-          // the shopkeeper's own" is the previous behaviour, which worked.
-          currencies={detalle.currencies ?? [detalle.base_currency]}
           rates={rates}
           stock={detalle.stock}
         />

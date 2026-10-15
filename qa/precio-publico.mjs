@@ -15,7 +15,7 @@
 import {
   cantidadMinima,
   escalonParaCantidad,
-  monedasDelProducto,
+  monedasDelBloque,
   precioEnMoneda,
 } from "../lib/products/public-pricing.ts";
 
@@ -31,8 +31,16 @@ const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // «precio al detal de 5 dólares, al mayor euros, USDT y dólares, venta al
 // mayor a partir de 6 unidades».
 const elCasoDelDueno = {
-  retail: { price: 5, pinned: {} },
-  wholesale: { price: 4, pinned: { EUR: 3.6, USDT: 4 } },
+  // CADA ESCALÓN CON SU BASE Y SU LISTA desde la migración 114. Aquí las dos
+  // listas coinciden porque este caso es el del 2026-10-14; el de dos listas
+  // distintas —lo que el dueño reportó el 15— va en la sección 1ter.
+  retail: { price: 5, pinned: {}, base: "USD", currencies: ["USD", "EUR", "USDT"] },
+  wholesale: {
+    price: 4,
+    pinned: { EUR: 3.6, USDT: 4 },
+    base: "USD",
+    currencies: ["USD", "EUR", "USDT"],
+  },
   wholesale_min_quantity: 6,
 };
 
@@ -84,43 +92,83 @@ const TASA = { usd: 100, eur: 120, usdt: null };
 
 check(
   "1e. al detal, sin tasa, solo se ofrece la moneda del precio",
-  igual(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", SIN_TASA), ["USD"]),
+  igual(monedasDelBloque(elCasoDelDueno.retail, SIN_TASA), ["USD"]),
   "es el «solo la moneda de pago en dólares» del dueño",
 );
 check(
   "1f. al mayor se ofrecen las tres, porque están fijadas a mano",
-  igual(monedasDelProducto(TRES, elCasoDelDueno.wholesale, "USD", SIN_TASA), TRES),
-  JSON.stringify(monedasDelProducto(TRES, elCasoDelDueno.wholesale, "USD", SIN_TASA)),
+  igual(monedasDelBloque(elCasoDelDueno.wholesale, SIN_TASA), TRES),
+  JSON.stringify(monedasDelBloque(elCasoDelDueno.wholesale, SIN_TASA)),
 );
 check(
   "1g. CON tasa, el detal ya ofrece el euro: es el fallo que se arregló",
-  igual(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA), ["USD", "EUR"]),
-  JSON.stringify(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA)),
+  igual(monedasDelBloque(elCasoDelDueno.retail, TASA), ["USD", "EUR"]),
+  JSON.stringify(monedasDelBloque(elCasoDelDueno.retail, TASA)),
 );
 check(
   "1h. el USDT se queda fuera aunque esté activo: su tasa no llega aquí",
-  !monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA).includes("USDT"),
+  !monedasDelBloque(elCasoDelDueno.retail, TASA).includes("USDT"),
   "CriptoYa no se llama desde una página pública (2026-10-10)",
 );
 check(
   "1i. una moneda sin número NO se ofrece, en vez de ofrecerse sin importe",
-  monedasDelProducto(["USD", "USDT"], elCasoDelDueno.retail, "USD", TASA).length === 1,
+  igual(
+    monedasDelBloque({ ...elCasoDelDueno.retail, currencies: ["USD", "USDT"] }, TASA),
+    ["USD"],
+  ),
   "ofrecerla mueve el fallo a después de rellenar el formulario",
+);
+
+// ── 1ter. LO QUE EL DUEÑO REPORTÓ EL 2026-10-15 ─────────────────────────
+//
+// «Un producto puede tener los tres precios al detal pero solo uno al mayor.»
+// Antes de la migración 114 esto NO se podía expresar: `product_currencies`
+// no tenía `tier`, las dos listas eran la misma, y quitar una moneda de un
+// escalón la quitaba del otro.
+//
+// La prueba 1j de abajo es su complemento y la que de verdad lo demuestra:
+// las dos listas pueden tener BASES distintas, que es lo que el dueño eligió
+// el 2026-10-15 cuando se le plantearon las dos lecturas de su frase.
+const tresYUna = {
+  retail: { price: 5, pinned: {}, base: "USD", currencies: ["USD", "EUR", "USDT"] },
+  wholesale: { price: 4.4, pinned: {}, base: "EUR", currencies: ["EUR"] },
+  wholesale_min_quantity: 6,
+};
+check(
+  "1p. al detal se ofrecen las suyas, sin contagiarse del mayor",
+  igual(monedasDelBloque(tresYUna.retail, TASA), ["USD", "EUR"]),
+  `${JSON.stringify(monedasDelBloque(tresYUna.retail, TASA))} — el USDT se cae por no tener tasa, no por el escalón`,
+);
+check(
+  "1q. al mayor se ofrece SOLO la suya, aunque el detal tenga tres",
+  igual(monedasDelBloque(tresYUna.wholesale, TASA), ["EUR"]),
+  JSON.stringify(monedasDelBloque(tresYUna.wholesale, TASA)),
+);
+check(
+  "1r. y cada escalón se cotiza con SU base, no con la del otro",
+  precioEnMoneda(tresYUna.wholesale, "EUR", TASA) === 4.4 &&
+    precioEnMoneda(tresYUna.retail, "USD", TASA) === 5,
+  "4,40 € al mayor son 4,40 €, no la conversión de 4,40 dólares",
+);
+check(
+  "1s. el mayor en euros NO vale 4,40 dólares — es la clase de error que esto evita",
+  precioEnMoneda(tresYUna.wholesale, "USD", TASA) !== 4.4,
+  `convertido da ${precioEnMoneda(tresYUna.wholesale, "USD", TASA)}`,
 );
 check(
   "1j. la base entra aunque la lista de activas no la traiga",
-  igual(monedasDelProducto([], elCasoDelDueno.retail, "USD", SIN_TASA), ["USD"]),
+  igual(monedasDelBloque(elCasoDelDueno.retail, SIN_TASA), ["USD"]),
   "una ficha descuadrada no deja un producto sin su propia moneda",
 );
 check(
   "1k. un bloque sin publicar no ofrece ninguna moneda",
-  igual(monedasDelProducto(TRES, null, "USD", TASA), []),
+  igual(monedasDelBloque(null, TASA), []),
 );
 
 // ── 1bis. `precioEnMoneda`, and the 1:1 fallback that does not come back ─
 check(
   "1l. la base no necesita tasa",
-  precioEnMoneda(elCasoDelDueno.retail, "USD", "USD", SIN_TASA) === 5,
+  precioEnMoneda(elCasoDelDueno.retail, "USD", SIN_TASA) === 5,
 );
 check(
   "1m. un precio FIJADO gana sobre la base y sobre la tasa",
@@ -129,13 +177,13 @@ check(
 );
 check(
   "1n. SIN TASA NO SE INVENTA UNA",
-  precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", SIN_TASA) === null,
+  precioEnMoneda(elCasoDelDueno.retail, "EUR", SIN_TASA) === null,
   "la reserva que la pantalla tenía habría devuelto 5 — euros a la par del dólar",
 );
 check(
   "1o. con tasa, convierte por bolívares igual que `priceIn`",
-  precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", TASA) === 4.17,
-  `5 USD a 100/120 = ${precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", TASA)}`,
+  precioEnMoneda(elCasoDelDueno.retail, "EUR", TASA) === 4.17,
+  `5 USD a 100/120 = ${precioEnMoneda(elCasoDelDueno.retail, "EUR", TASA)}`,
 );
 
 // ── 2. Sin cantidad mínima: NUNCA el mayor ───────────────────────────────

@@ -214,6 +214,17 @@ function rowFrom(input: ProductInput, checked: Checked, userId: string) {
     name: checked.name,
     unit: input.unit?.trim() || null,
     base_currency: checked.base,
+    // LAS DOS BASES, POR ESCALON (migracion 114). Hoy el formulario tiene una
+    // sola lista de monedas, asi que las tres salen iguales y nada cambia de
+    // precio; cuando la ficha aprenda a llevar una lista por escalon, estas
+    // dos dejaran de coincidir y `base_currency` seguira siendo solo el valor
+    // por defecto del producto.
+    //
+    // SE ESCRIBEN AUNQUE SEAN IGUALES, y no se dejan a su valor rellenado: la
+    // columna es NOT NULL y un producto nuevo no tiene nada que rellenar, asi
+    // que omitirlas aqui solo funcionaria al editar.
+    base_currency_retail: checked.base,
+    base_currency_wholesale: checked.base,
     price_retail: toNumber(input.priceRetail),
     price_wholesale: toNumber(input.priceWholesale),
     cost,
@@ -272,9 +283,21 @@ async function writeSatellites(
     return "Guardamos el producto, pero no pudimos actualizar sus monedas.";
   }
 
-  const { error: eInsCur } = await supabase
-    .from("product_currencies")
-    .insert(checked.currencies.map((currency) => ({ product_id: productId, currency })));
+  // CADA MONEDA EN LOS DOS ESCALONES (migracion 114). La columna `tier` es
+  // NOT NULL, asi que el insert de antes —sin ella— fallaria entero y el
+  // tendero no podria guardar un producto.
+  //
+  // Duplicar es LO QUE CONSERVA EL COMPORTAMIENTO DE HOY: el formulario
+  // todavia tiene una sola lista, asi que lo que el tendero ve y lo que se
+  // guarda siguen coincidiendo. El dia que la ficha lleve una lista por
+  // escalon, esto pasa a escribir cada una en la suya y es el unico sitio que
+  // hay que tocar.
+  const { error: eInsCur } = await supabase.from("product_currencies").insert(
+    checked.currencies.flatMap((currency) => [
+      { product_id: productId, tier: "retail", currency },
+      { product_id: productId, tier: "wholesale", currency },
+    ]),
+  );
   if (eInsCur) {
     console.error("[writeSatellites] insert currencies:", eInsCur.message);
     return "Guardamos el producto, pero no pudimos actualizar sus monedas.";

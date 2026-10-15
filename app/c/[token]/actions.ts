@@ -3,7 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { ProductoDelCarrito } from "@/lib/cart/cart";
-import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
+import type { BolivarRates } from "@/lib/products/price";
 
 // LAS DOS ACCIONES DEL CARRITO, Y LAS LLAMA UN VISITANTE SIN SESION.
 //
@@ -50,13 +51,13 @@ export async function productosDelCarrito(
     }
     const shared = data as {
       owner_country: string | null;
-      // `currencies` OPTIONAL ON PURPOSE, and not out of doubt about the
-      // type: this is an `as` over JSON coming from the database, so the type
-      // is a promise, not a check. Declaring it required would make the
-      // fallback below look like dead code, and that fallback is what avoids
-      // a TypeError when migration 111 has not been applied.
-      products: (Omit<ProductoDelCarrito, "currencies"> & {
-        currencies?: PriceCurrency[] | null;
+      // THE TIER BLOCKS ARRIVE RAW, and the `as` is a promise rather than a
+      // check -- it is JSON from the database. Typing them as `BloqueCrudo`
+      // is what makes the normalisation below look necessary instead of
+      // looking like dead code.
+      products: (Omit<ProductoDelCarrito, "retail" | "wholesale"> & {
+        retail: BloqueCrudo | null;
+        wholesale: BloqueCrudo | null;
       })[];
       rate_mode: string | null;
       current_bcv_usd: number | null;
@@ -83,19 +84,16 @@ export async function productosDelCarrito(
         : null;
     const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
-    // THE `currencies` FALLBACK IS THE BASE, not an empty list, and here it
-    // is not cosmetic: `precioUnitario` calls
-    // `producto.currencies.includes(...)`, so an `undefined` -- this response
-    // comes from an `as`, which checks nothing at runtime -- would not give a
-    // strange price, it would give a TypeError and a blank cart screen.
+    // EACH TIER BLOCK IS NORMALISED, and this is not cosmetic: `precioUnitario`
+    // reads `bloque.base` and `bloque.currencies`, so a raw block would give a
+    // TypeError and a blank cart screen rather than a strange price.
     //
-    // That would happen in the window between deploying this code and running
-    // migration 111, which is exactly the order CLAUDE.md forbids; this is the
-    // belt in case someone inverts it. Degrading to "only the shopkeeper's own
-    // currency" is the previous behaviour, which worked.
+    // `bloqueDesdeRpc` holds the fallbacks in one place -- see it for why they
+    // degrade to the pre-114 behaviour instead of to nothing.
     const productos = (shared.products ?? []).map((p) => ({
       ...p,
-      currencies: p.currencies ?? [p.base_currency],
+      retail: bloqueDesdeRpc(p.retail, p.base_currency),
+      wholesale: bloqueDesdeRpc(p.wholesale, p.base_currency),
     }));
 
     return { productos, rates };

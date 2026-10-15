@@ -20,7 +20,7 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import {
   cantidadMinima,
   escalonParaCantidad,
-  monedasDelProducto,
+  monedasDelBloque,
   precioEnMoneda,
   type BloquePrecio,
   type ProductoPublico,
@@ -93,19 +93,18 @@ export function ProductDetail({
   token,
   productId,
   producto,
-  baseCurrency,
-  currencies,
   rates,
   stock,
 }: {
   token: string;
   productId: string;
   producto: ProductoPublico;
-  baseCurrency: PriceCurrency;
-  // The product's enabled currencies, from `product_currencies`. They arrive
-  // from the server and are not inferred here: inferring them from `pinned` is
-  // precisely the bug migration 111 fixes.
-  currencies: PriceCurrency[];
+  // NO `baseCurrency` NOR `currencies` AS PROPS SINCE MIGRATION 114. Both
+  // belong to the TIER now and travel inside each `BloquePrecio`, so this
+  // screen cannot hold one base while showing two tiers' prices -- which is
+  // the mistake that would quote a wholesale price in the retail currency and
+  // look entirely plausible doing it.
+  //
   // null en un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
   stock: number | null;
@@ -119,20 +118,18 @@ export function ProductDetail({
   const n = Number(cantidad.replace(",", ".")) || 0;
   const escalon = escalonParaCantidad(producto, n);
   const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
-  const monedas = useMemo(
-    () => monedasDelProducto(currencies, bloque, baseCurrency, rates),
-    [currencies, bloque, baseCurrency, rates],
-  );
+  const monedas = useMemo(() => monedasDelBloque(bloque, rates), [bloque, rates]);
 
   // LA MONEDA ELEGIDA NO ES UN ESTADO INDEPENDIENTE, y eso evita un fallo que
   // sí lo sería: si el cliente elige euros con 3 unidades y luego sube a 6, el
   // escalón cambia y puede que el de mayor no tenga euros. Guardar su elección
   // a secas dejaría seleccionada una moneda que ya no está en la lista.
   //
-  // STILL NEEDED AFTER 2026-10-15, even though the currencies now belong to
-  // the product and not to the tier. The list is filtered down to the ones
-  // that have a number, and that does depend on the tier: the euro can be
-  // pinned by hand at wholesale and, with no rate, fail to resolve at retail.
+  // AND IT MATTERS MORE SINCE MIGRATION 114, not less. The two tiers now have
+  // genuinely different currency lists -- that is the whole point of it -- so
+  // crossing the wholesale threshold can drop the currency the customer had
+  // chosen. Before 114 the lists only differed by which prices happened to
+  // resolve; now they differ because the shopkeeper said so.
   //
   // Se guarda la PREFERENCIA y se resuelve contra lo que hay: si su moneda
   // sigue disponible, se respeta; si no, la primera del escalón nuevo.
@@ -161,9 +158,12 @@ export function ProductDetail({
     b: BloquePrecio | null,
     c: PriceCurrency,
   ): { texto: string; bs: string | null; exacto: boolean } | null {
-    const amount = precioEnMoneda(b, baseCurrency, c, rates);
+    // `b.base` AND NOT A SHARED ONE (114). Each tier is priced in its own
+    // currency, so asking this with the other tier's base is the silent
+    // mispricing the block shape exists to prevent.
+    const amount = precioEnMoneda(b, c, rates);
     if (amount == null || b == null) return null;
-    const exacto = c === baseCurrency || b.pinned[c] != null;
+    const exacto = c === b.base || b.pinned[c] != null;
     const texto = formatPriceAmount(amount, c);
     if (rates == null || c === "VES") return { texto, bs: null, exacto };
     const enBs = priceIn("VES", { amount, currency: c }, rates);
@@ -181,7 +181,7 @@ export function ProductDetail({
     // ONE PLACE COMPUTES THE UNIT PRICE. This used to ask `priceIn` again
     // with its own rate fallback, so the button could state an amount the
     // price block above was not showing.
-    const unidad = precioEnMoneda(bloque, baseCurrency, moneda, rates);
+    const unidad = precioEnMoneda(bloque, moneda, rates);
     if (unidad == null) return null;
     return formatPriceAmount(unidad * Math.max(n, 0), moneda);
   })();

@@ -478,11 +478,17 @@ try {
   await admin
     .from("product_currencies")
     .upsert(
+      // CON `tier` DESDE LA MIGRACION 114, y en los dos: esta prueba mide la
+      // conversion al detal y al mayor, asi que las dos listas tienen que
+      // ofrecer el euro o 14b se rechazaria por `moneda_invalida` y parecia
+      // un fallo de la conversion.
       [
-        { product_id: convertible.id, currency: "USD" },
-        { product_id: convertible.id, currency: "EUR" },
+        { product_id: convertible.id, tier: "retail", currency: "USD" },
+        { product_id: convertible.id, tier: "retail", currency: "EUR" },
+        { product_id: convertible.id, tier: "wholesale", currency: "USD" },
+        { product_id: convertible.id, tier: "wholesale", currency: "EUR" },
       ],
-      { onConflict: "product_id,currency" },
+      { onConflict: "product_id,tier,currency" },
     );
 
   // THE RATE, BY THE SAME ROUTE AS BOTH SIDES. The function takes it from
@@ -502,8 +508,8 @@ try {
       : { usd: Number(bcv.usd), eur: Number(bcv.eur), usdt: null };
 
   const fichaTs = {
-    retail: { price: 10, pinned: {} },
-    wholesale: { price: 8, pinned: {} },
+    retail: { price: 10, pinned: {}, base: "USD", currencies: ["USD", "EUR"] },
+    wholesale: { price: 8, pinned: {}, base: "USD", currencies: ["USD", "EUR"] },
     wholesale_min_quantity: 6,
   };
 
@@ -511,7 +517,7 @@ try {
     [1, "retail"],
     [6, "wholesale"],
   ]) {
-    const esperado = precioEnMoneda(fichaTs[escalon], "USD", "EUR", rates);
+    const esperado = precioEnMoneda(fichaTs[escalon], "EUR", rates);
     const r = await pedir(token, [
       { product_id: convertible.id, quantity: cantidad, currency: "EUR" },
     ]);
@@ -557,8 +563,8 @@ try {
   await admin
     .from("product_currencies")
     .upsert(
-      { product_id: convertible.id, currency: "USDT" },
-      { onConflict: "product_id,currency" },
+      { product_id: convertible.id, tier: "retail", currency: "USDT" },
+      { onConflict: "product_id,tier,currency" },
     );
 
   await admin.from("usdt_p2p_rate").delete().eq("id", true);
@@ -575,7 +581,7 @@ try {
   await admin
     .from("usdt_p2p_rate")
     .upsert({ id: true, bs_per_usdt: TASA_USDT, source: "qa", updated_at: new Date().toISOString() });
-  const esperadoUsdt = precioEnMoneda(fichaTs.retail, "USD", "USDT", {
+  const esperadoUsdt = precioEnMoneda({ ...fichaTs.retail, currencies: ["USD", "USDT"] }, "USDT", {
     ...rates,
     usdt: TASA_USDT,
   });
