@@ -7,7 +7,6 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { SetupNotice } from "@/components/setup-notice";
-import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
@@ -71,6 +70,16 @@ type SharedProduct = {
 type SharedCatalog = {
   business_name: string | null;
   owner_logo_path: string | null;
+  // YA NO SE PINTA. Hasta el 2026-10-15 esta pagina tenia un boton
+  // «Escribenos por WhatsApp» que abria `wa.me/<numero del dueno>`; el dueno
+  // lo quito, y de paso cierra `CT-11` — ese enlace llevaba el numero del
+  // tendero en la URL de una pagina que ve cualquiera con el enlace.
+  //
+  // Se queda en el tipo porque la funcion lo sigue devolviendo, y quitarlo de
+  // los dos sitios a la vez es trabajo para nada: quien abre este catalogo
+  // llego por un mensaje del propio negocio, asi que para escribirle solo
+  // tiene que volver a esa conversacion. El dia que haga falta otra vez, el
+  // dato esta.
   owner_whatsapp: string | null;
   owner_country: string | null;
   // El escalon del ENLACE. Sin esto, un mayorista no sabe si lo que ve es su
@@ -173,8 +182,6 @@ export default async function CatalogoPublicoPage({
         ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur, usdt: null }
         : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur, usdt: null }
       : null;
-
-  const whatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
 
   // LA CIFRA EN BOLIVARES DE CADA PRODUCTO, Y DE DONDE SALE.
   //
@@ -390,17 +397,6 @@ export default async function CatalogoPublicoPage({
           })}
         </ul>
       )}
-
-      {whatsappDigits ? (
-        <a
-          href={`https://wa.me/${whatsappDigits}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-11 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:bg-accent"
-        >
-          <WhatsappIcon className="size-5" /> Escríbenos por WhatsApp
-        </a>
-      ) : null}
 
       {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame
           `1190:5748` (2026-10-15). Durante un rato estuvo en los dos sitios a
