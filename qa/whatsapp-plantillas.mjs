@@ -38,7 +38,12 @@
 // NADA SALE A KAPSO. `fetch` se intercepta antes, y se afirma que salieron cero.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+import {
+  PLANTILLAS_ESPERADAS,
+  problemaDelBoton,
+  PHONE_ID_OWNERS,
+  PHONE_ID_CLIENTS,
+} from "./plantillas-esperadas.mjs";
 
 
 const env = Object.fromEntries(
@@ -161,6 +166,7 @@ try {
       nombres: cuerpo.parameters.map((p) => p.parameter_name),
       idioma: m.template.language?.code,
       componentes: m.template.components.map((c) => c.type),
+      boton: m.template.components.find((c) => c.type === "button"),
     });
     console.log(`  -> ${m.template.name}: ${cuerpo.parameters.map((p) => p.parameter_name).join(", ")}`);
   }
@@ -194,8 +200,9 @@ try {
     // las de cliente el 2026-10-15, por el camino contrario.
     check(
       `${plantilla}: el botón, o su ausencia, es el que la plantilla declara`,
-      esperado.boton === null && envios.every((e) => !e.componentes.includes("button")),
-      `declara ${esperado.boton ?? "ninguno"} · visto ${envios[0].componentes.join(" + ")}`,
+      envios.every((e) => problemaDelBoton(plantilla, e.boton) === null),
+      problemaDelBoton(plantilla, envios[0].boton) ??
+        `declara ${esperado.boton ?? "ninguno"} · visto ${envios[0].componentes.join(" + ")}`,
     );
   }
 

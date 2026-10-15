@@ -33,13 +33,24 @@
 // ===========================================================================
 // CÓMO SE DESCRIBE UN BOTÓN AQUÍ
 //
-//   boton: null            → la plantilla NO declara botón. No se manda
-//                            componente de botón. Mandarlo la hace fallar.
-//   boton: "url_suffix"    → botón de URL con sufijo dinámico `{{1}}`. Se
-//                            manda UN componente `{type:"button",
-//                            sub_type:"url", index:"0"}` con un solo
-//                            parámetro `{type:"text", text:<sufijo>}` y
-//                            **sin `parameter_name`**.
+//   boton: null              → la plantilla NO declara ningún botón. No se
+//                              manda componente. Mandarlo la hace fallar.
+//   boton: "sin_parametros"  → la plantilla SÍ declara botones, pero ninguno
+//                              toma valores al enviar: una URL fija, o una
+//                              respuesta rápida. Tampoco se manda componente.
+//   boton: "url_suffix"      → botón de URL con sufijo dinámico `{{1}}`. Se
+//                              manda UN componente `{type:"button",
+//                              sub_type:"url", index:"0"}` con un solo
+//                              parámetro `{type:"text", text:<sufijo>}` y
+//                              **sin `parameter_name`**.
+//
+// `null` Y `"sin_parametros"` HACEN LO MISMO AL ENVIAR Y AUN ASÍ SON DOS
+// VALORES DISTINTOS, a propósito. Esta tabla no es solo una comprobación: es
+// el único sitio del repo donde consta qué aprobó Meta. Anotar «ninguno» en
+// una plantilla que sí tiene un botón sería exactamente la clase de registro
+// falso que causó el fallo del 2026-10-15 — y el día que alguien quiera
+// hacer dinámico uno de esos botones, la diferencia entre «no hay botón» y
+// «hay uno y es fijo» es justo lo que necesita saber.
 //
 // LO DE `parameter_name` ES LA MITAD DEL FALLO Y MERECE ESTAR ESCRITO: el
 // cuerpo usa `parameter_format: NAMED` y sus parámetros SÍ llevan nombre; el
@@ -62,15 +73,27 @@ export const PLANTILLAS_ESPERADAS = {
   // propuesta inicial de Kapso y quedó así al aprobarse la v1. Renombrarlo
   // convertiría un cambio de pie en un cambio de integración.
   //
-  // Ninguna de las tres lleva botón, y por eso las tres funcionan en
-  // producción mientras las de cliente fallaban: no tenían dónde equivocarse.
+  // DOS DE LAS TRES SÍ LLEVAN BOTÓN, y la primera versión de esta tabla
+  // —escrita el mismo 2026-10-15— decía que ninguna. Se corrigió abriendo la
+  // ficha de cada una en vez de darlo por supuesto, que es literalmente la
+  // regla que acababa de escribirse. Ninguno toma valores al enviar: los dos
+  // de URL apuntan a `https://app.sevenz.site` fijo.
+  //
+  // NO ESTÁ CONFIRMADO QUE ESTAS DOS HAYAN ENVIADO BIEN CON SU BOTÓN. En
+  // producción, al 2026-10-15, no hay ni una fila de `cartera_summary_v2` ni
+  // de `cartera_pausada`: la v2 sustituyó a la v1 el 2026-10-14 y el cron es
+  // semanal, y nadie ha estado pausado en la ventana mirada. Lo que sí está
+  // confirmado funcionando es `cartera_attention`, que NO lleva botón. Ver
+  // `MS-42`.
   cartera_summary_v2: {
     cuerpo: ["customer_name", "amount_due", "overdue_clients"],
-    boton: null,
+    // URL fija «Ver mi cartera» → https://app.sevenz.site
+    boton: "sin_parametros",
   },
   cartera_pausada: {
     cuerpo: ["owner_name", "amount_due", "overdue_clients"],
-    boton: null,
+    // Dos: URL fija «Ver cartera» y respuesta rápida «Reactivar cuenta».
+    boton: "sin_parametros",
   },
   cartera_attention: {
     cuerpo: ["owner_name", "overdue_clients", "due_this_week", "viewed_no_payment"],
@@ -113,8 +136,11 @@ export function problemaDelBoton(plantilla, componenteBoton) {
   const esperado = PLANTILLAS_ESPERADAS[plantilla];
   if (!esperado) return `plantilla desconocida: ${plantilla}`;
 
-  if (esperado.boton === null) {
-    return componenteBoton ? "no declara botón y se está mandando uno" : null;
+  if (esperado.boton === null || esperado.boton === "sin_parametros") {
+    if (!componenteBoton) return null;
+    return esperado.boton === null
+      ? "no declara botón y se está mandando uno"
+      : "sus botones no toman valores al enviar y se está mandando un componente";
   }
 
   if (!componenteBoton) return "declara un botón de URL y no se manda ninguno";

@@ -640,6 +640,37 @@ plantilla la realidad exterior es lo que Meta tiene guardado.
   `qa/plantillas-esperadas.mjs`**, para que si alguien la vuelve a mandar, la
   suite no la reconozca y avise.
 
+### Las que ya están aprobadas y todavía no se usan: dar por rota su URL
+
+**Toda plantilla aprobada antes del 2026-10-15 con un botón de URL que lleve
+una variable está presuntamente rota de la misma forma**, y eso **no** se
+descubre leyendo su ficha: la ficha de `abono_confirmation_v2` describía un
+botón dinámico que Meta había guardado como estático, y es la misma frase
+copiada que llevan las demás.
+
+Son seis, todas con `https://app.sevenz.site/s/{{share_token}}` escrito igual:
+`abono_confirmation` (v1), `fiado_notification`, `fiado_notification_v2`,
+`payment_due_today`, `pending_balance_weekly` y `overdue_payment`.
+
+**Antes de conectar cualquiera de ellas**, lo primero —antes de escribir una
+línea de código que la llame— es **abrir la plantilla aprobada y mirar el tipo
+de URL del botón**. Si es estática, hay que crear una versión nueva con
+`{{1}}`, porque una aprobada no se edita. Presupuestarlo desde el principio: no
+es un retoque, es una plantilla nueva y su espera de aprobación.
+
+Y la señal práctica, que ahorra abrir la documentación de Meta: **un botón
+dinámico hace que el editor pida un ejemplo de URL completa.** Si no lo pide,
+es estático.
+
+### El mismo riesgo existe hacia el otro lado
+
+Una plantilla cuyo botón **sí** sea dinámico y a la que **no** se le mande el
+sufijo falla igual de entera y de silenciosa. Por eso
+`qa/plantillas-esperadas.mjs` distingue tres estados —`null` (sin botones),
+`"sin_parametros"` (los hay y ninguno toma valores) y `"url_suffix"`— aunque
+los dos primeros se envíen igual: la tabla no es solo una comprobación, es el
+único sitio del repo donde consta qué aprobó Meta.
+
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 
 **Si una decisión no está escrita, dentro de seis meses no se tomó: solo pasó.**
