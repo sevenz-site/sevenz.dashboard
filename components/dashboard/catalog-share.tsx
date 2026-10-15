@@ -45,7 +45,19 @@ export type PublishedCount = { retail: number; wholesale: number; any: number };
 //   2. `navigator.share` quiere salir del gesto del dedo. Con el token ya en
 //      la mano no hay ningun `await` entre el toque y la hoja, que es lo que
 //      iOS Safari puede rechazar. Solo la primerisima vez hay espera.
-export function CatalogShare({
+// ===========================================================================
+// DOS COMPONENTES Y NO UNO, PORQUE VAN A DOS ALTURAS DISTINTAS
+//
+// Decision del dueno el 2026-10-15: el «⋮» va en la fila del boton de volver,
+// arriba del todo, y «Compartir» se queda abajo, junto al titulo.
+//
+// NO COMPARTEN ESTADO Y NO LO NECESITAN, que es lo que permite partirlos sin
+// contexto ni estado elevado: los dos reciben `initialToken` del servidor, y
+// si el negocio todavia no tiene, los dos llaman a `getOrCreateCatalogLink`,
+// que es idempotente —selecciona primero, inserta si falta, y la restriccion
+// unica por `owner_id` cierra la carrera—. Dos llamadas devuelven el MISMO
+// token. Lo unico que cuesta es un viaje de mas la primera vez.
+export function CatalogShareButton({
   publishedCount,
   businessName,
   initialToken,
@@ -124,17 +136,8 @@ export function CatalogShare({
     toast.success("Mensaje copiado");
   }
 
-  async function verPrevia() {
-    const t = await conseguirToken();
-    if (!t) return;
-    // `noopener,noreferrer` por costumbre y no por este caso: el destino es
-    // nuestro propio dominio. Es la clase de linea que se queda puesta cuando
-    // la URL cambia.
-    window.open(urlDe(t), "_blank", "noopener,noreferrer");
-  }
-
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <>
       {/* MISMO ASPECTO QUE «SUBIR LIBRETA» en la cabecera de Clientes, a
           petición del dueño el 2026-10-10: texto e icono, sin recuadro. Antes
           llevaba borde y se leía como la acción principal de la pantalla,
@@ -157,7 +160,48 @@ export function CatalogShare({
         {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Share2 aria-hidden="true" />}
         Compartir
       </Button>
+    </>
+  );
+}
 
+// EL MENU DE LA FILA DE ARRIBA, a la altura del boton de volver.
+//
+// Solo lleva la vista previa. Vivia dentro del dialogo «Comparte tu catalogo»
+// y quitarlo la dejo sin sitio; preguntado al dueno el 2026-10-15, el frame
+// dibujaba las dos opciones aqui dentro y el eligio dejar «Compartir» fuera,
+// de un toque. Es lo correcto: compartir es lo que el tendero hace a diario, y
+// meterlo en un menu le costaria un toque cada vez.
+export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
+  const [token, setToken] = useState<string | null>(initialToken);
+  const [pending, startTransition] = useTransition();
+
+  function conseguirToken(): Promise<string | null> {
+    if (token) return Promise.resolve(token);
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        const result = await getOrCreateCatalogLink();
+        if ("error" in result) {
+          toast.error(result.error);
+          resolve(null);
+          return;
+        }
+        setToken(result.token);
+        resolve(result.token);
+      });
+    });
+  }
+
+  async function verPrevia() {
+    const t = await conseguirToken();
+    if (!t) return;
+    // `noopener,noreferrer` por costumbre y no por este caso: el destino es
+    // nuestro propio dominio. Es la clase de linea que se queda puesta cuando
+    // la URL cambia.
+    window.open(`${window.location.origin}/c/${t}`, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <>
       {/* LA VISTA PREVIA, EN UN MENU APARTE. Decisión del dueño el 2026-10-15:
           «Compartir» se queda de un toque y la previa pasa aquí. El frame
           dibujaba las dos dentro del menú; esto se aparta de él a propósito,
@@ -176,7 +220,16 @@ export function CatalogShare({
             size="icon"
             disabled={pending}
             title="Más"
-            className="size-9 shrink-0 text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
+            /* BLANCO Y CON FONDO AL TOCAR, como los iconos de accion de la
+               barra oscura de Inicio (`NotificationsButton` y el enlace de
+               «Notificaciones»). NO el color de marca que usa «Compartir»:
+               ese esta junto al titulo, y aqui el vecino es la flecha de
+               volver. Dos colores de marca distintos en una misma fila se
+               leen como un descuido.
+
+               La flecha se queda en `brand-muted` a proposito: es navegacion,
+               y tiene que pesar menos que una accion. */
+            className="size-9 shrink-0 text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
           >
             <MoreVertical aria-hidden="true" />
             <span className="sr-only">Más opciones</span>
@@ -189,6 +242,6 @@ export function CatalogShare({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { CatalogTable } from "@/components/dashboard/catalog-table";
-import { CatalogShare } from "@/components/dashboard/catalog-share";
+import { CatalogShareButton, CatalogMenu } from "@/components/dashboard/catalog-share";
 import {
   CatalogFilterProvider,
   CatalogSearchField,
@@ -184,12 +184,17 @@ export default async function ProductosPage({
              moneda. «Su precio», en singular, era de cuando solo había uno. */
           subtitle="Lo que vendes, con sus precios"
           action={
-            <CatalogShare
+            <CatalogShareButton
               publishedCount={publishedCount}
               businessName={owner?.business_name || "mi negocio"}
               initialToken={catalogLink?.token ?? null}
             />
           }
+          /* EL «⋮» VA ARRIBA, a la altura del botón de volver, y «Compartir»
+             se queda junto al título. Decisión del dueño el 2026-10-15: dos
+             alturas a propósito — compartir es la acción de cada día y va
+             donde cae la vista; el menú es la ocasional y va apartada. */
+          topAction={<CatalogMenu initialToken={catalogLink?.token ?? null} />}
           search={<CatalogSearchField />}
           filters={<CatalogFilterChips />}
         />

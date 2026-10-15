@@ -33,6 +33,7 @@ export function ScreenHeader({
   title,
   subtitle,
   action,
+  topAction,
   search,
   filters,
 }: {
@@ -43,6 +44,20 @@ export function ScreenHeader({
   // The slot beside the title. Only Clientes fills it, with "Subir libreta";
   // the spec leaves it empty on Malas pagas and Papelera.
   action?: React.ReactNode;
+  // THE SLOT ON THE BACK-ARROW ROW, which `action` is not: `action` lives
+  // beside the title and only climbs up here when the header collapses, so a
+  // control put there moves as the owner scrolls. This one stays put.
+  //
+  // Added 2026-10-15 for the catalogue's overflow menu, at the owner's
+  // request: the "⋮" belongs on the top row, level with the back arrow, while
+  // "Compartir" stays beside the title. Two controls, two heights, on purpose
+  // — sharing is the daily action and sits where the eye lands; the menu is
+  // the occasional one and sits out of the way.
+  //
+  // When the header collapses, both end up on this row. That is the intended
+  // outcome and not a collision: "← … Compartir ⋮" is exactly what a
+  // scrolled-down catalogue should offer.
+  topAction?: React.ReactNode;
   search: React.ReactNode;
   filters: React.ReactNode;
 }) {
@@ -79,7 +94,10 @@ export function ScreenHeader({
             of `ImportarCartera` would mean two `data-tour="import-button"`
             markers, and the tour finds its target with `querySelector`, which
             takes whichever comes first in the DOM — possibly the hidden one. */}
-        {collapsed ? action : null}
+        <div className="flex items-center gap-1">
+          {collapsed ? action : null}
+          {topAction}
+        </div>
       </div>
 
       {/* One wrapper around everything that disappears, because the hook
