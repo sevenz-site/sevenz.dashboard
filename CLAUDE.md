@@ -588,6 +588,58 @@ La especificación completa de cada plantilla vive en
 `../docs/WHATSAPP-PLANTILLAS.md`, que es la fuente de verdad y se escribe
 **antes** de enviar nada a Meta.
 
+## Una plantilla no está lista hasta leer lo que Meta APROBÓ
+
+La ficha de `../docs/WHATSAPP-PLANTILLAS.md` describe lo que **se envió** a
+aprobación. Lo que Meta devuelve aprobado puede ser otra cosa, **sin que nada
+avise**, y a partir de ese momento la ficha es una afirmación falsa escrita de
+buena fe. Por eso, cuando Meta aprueba una plantilla:
+
+1. **Se abre la plantilla aprobada** en Kapso o en el Administrador de Meta y
+   se compara campo por campo con la ficha: cuerpo carácter a carácter,
+   variables con su nombre **y su orden**, categoría, idioma, pie, y el botón
+   con su tipo de URL.
+2. **Se corrige la ficha con lo aprobado**, no al revés, y se anota la fecha.
+3. **Su fila entra en `qa/plantillas-esperadas.mjs`**, con sus parámetros de
+   cuerpo **y su botón**. Una suite no puede vigilar lo que no conoce.
+
+### Qué costó no hacerlo, el 2026-10-15
+
+`abono_confirmation_v2` se aprobó con el botón de URL **estático**: la URL
+llevaba el texto literal `{{share_token}}`, que Meta no reconoce como variable.
+El código le mandaba un parámetro y Meta devolvía `132018` —*«Button at index 0
+of type Url does not require parameters»*— **rechazando el mensaje entero**.
+
+**12 de 12 envíos fallidos en producción, cero recibos entregados, y el sistema
+nunca funcionó ni una vez.** No se vio desde la app: el tendero registraba su
+abono, la pantalla decía que todo bien, y el rechazo quedaba solo en una fila
+de `whatsapp_sends` que nadie miraba. Lo descubrió el dueño preguntando por qué
+sus clientes no recibían nada.
+
+Tres controles debieron cazarlo y los tres dijeron que todo estaba bien:
+
+| Control | Por qué no sirvió |
+|---|---|
+| `qa/plantillas-esperadas.mjs` | Solo listaba parámetros de **cuerpo**. Sin botones en la lista, no había nada que comparar |
+| `qa/recibo-cliente.mjs` | Miraba que el token tuviera 16 caracteres. Pasaba en verde con el envío roto |
+| La ficha del documento | Describía lo pedido, no lo aprobado — y nadie abrió lo segundo |
+
+Los tres están arreglados. La lección que se generaliza: **tres controles que
+se escriben mirándose entre sí coinciden perfectamente y pueden estar los tres
+equivocados.** Al menos uno tiene que mirar la realidad exterior, y en una
+plantilla la realidad exterior es lo que Meta tiene guardado.
+
+### Dos cosas concretas que aprendimos y conviene no redescubrir
+
+- **El sufijo de un botón de URL es POSICIONAL** (`{{1}}`) y al enviarlo va
+  **sin `parameter_name`**, aunque el cuerpo use `parameter_format: NAMED` y
+  sus parámetros sí lo lleven. Confirmado por Kapso por escrito.
+- **Una plantilla aprobada NO se edita.** Para corregirla hay que crear una
+  versión nueva (`_v3`, `_v2`…) y cambiar el nombre en el código. La anterior
+  sigue aprobada y hay que dejar de usarla — y **sacarla de
+  `qa/plantillas-esperadas.mjs`**, para que si alguien la vuelve a mandar, la
+  suite no la reconozca y avise.
+
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 
 **Si una decisión no está escrita, dentro de seis meses no se tomó: solo pasó.**

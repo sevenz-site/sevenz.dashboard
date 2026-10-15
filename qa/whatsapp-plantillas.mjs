@@ -175,21 +175,27 @@ try {
     }
     check(
       `${plantilla}: los parámetros del cuerpo, con sus nombres y en orden`,
-      envios.every((e) => e.nombres.length === esperado.length && e.nombres.every((n, i) => n === esperado[i])),
-      `esperado [${esperado.join(", ")}] · visto [${envios[0].nombres.join(", ")}]`,
+      envios.every(
+        (e) =>
+          e.nombres.length === esperado.cuerpo.length &&
+          e.nombres.every((n, i) => n === esperado.cuerpo[i]),
+      ),
+      `esperado [${esperado.cuerpo.join(", ")}] · visto [${envios[0].nombres.join(", ")}]`,
     );
     check(
       `${plantilla}: idioma es`,
       envios.every((e) => e.idioma === "es"),
       envios[0].idioma,
     );
-    // Ninguna de las tres de dueño lleva sufijo variable en su botón. Mandar un
-    // componente de botón a una plantilla que no lo declara la hace fallar
-    // igual que un parámetro con el nombre cambiado.
+    // Ninguna de las tres de dueño declara botón, y ahora eso se lee del
+    // inventario en vez de estar dado por supuesto aquí. Mandar un componente
+    // de botón a una plantilla que no lo declara la hace fallar igual que un
+    // parámetro con el nombre cambiado — y eso es exactamente lo que le pasó a
+    // las de cliente el 2026-10-15, por el camino contrario.
     check(
-      `${plantilla}: no se manda componente de botón`,
-      envios.every((e) => !e.componentes.includes("button")),
-      envios[0].componentes.join(" + "),
+      `${plantilla}: el botón, o su ausencia, es el que la plantilla declara`,
+      esperado.boton === null && envios.every((e) => !e.componentes.includes("button")),
+      `declara ${esperado.boton ?? "ninguno"} · visto ${envios[0].componentes.join(" + ")}`,
     );
   }
 
