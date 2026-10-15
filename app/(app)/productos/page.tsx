@@ -53,6 +53,7 @@ export default async function ProductosPage({
     { data: currencies },
     { data: ultimoProducto },
     { data: owner },
+    { data: catalogLink },
     country,
     rateContext,
   ] = await Promise.all([
@@ -98,6 +99,21 @@ export default async function ProductosPage({
         .limit(1)
         .maybeSingle(),
       supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
+      // EL ENLACE QUE YA TIENE, LEIDO SIN CREARLO. Las dos razones son
+      // distintas y las dos importan:
+      //
+      //   1. Un token acunado por el solo hecho de abrir esta pantalla
+      //      pondria a los 24 negocios a una URL de distancia de un catalogo
+      //      que nunca decidieron publicar. Por eso aqui se LEE; crear es
+      //      cosa del primer «Compartir».
+      //   2. `navigator.share` quiere salir del gesto del dedo. Con el token
+      //      ya servido no hay ningun `await` entre el toque y la hoja, que
+      //      es lo que iOS Safari puede rechazar.
+      supabase
+        .from("catalog_share_links")
+        .select("token")
+        .eq("owner_id", user!.id)
+        .maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
     ]);
@@ -171,6 +187,7 @@ export default async function ProductosPage({
             <CatalogShare
               publishedCount={publishedCount}
               businessName={owner?.business_name || "mi negocio"}
+              initialToken={catalogLink?.token ?? null}
             />
           }
           search={<CatalogSearchField />}

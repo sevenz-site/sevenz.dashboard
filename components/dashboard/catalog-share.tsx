@@ -1,69 +1,140 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Copy, Eye, Loader2, Share2 } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Eye, Loader2, MoreVertical, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { WhatsappIcon } from "@/components/icons/whatsapp";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
 
 export type PublishedCount = { retail: number; wholesale: number; any: number };
 
 // COMPARTIR EL CATALOGO.
 //
-// ─────────────────────────────────────────────────────────────────────────
-// AQUI YA NO SE ELIGE NADA: SOLO SE COPIA
+// ===========================================================================
+// SIN DIALOGO: UN TOQUE Y LA HOJA DEL TELEFONO
 //
-// Decision del dueno el 2026-10-10. Antes este dialogo tenia dos botones
-// «Crear el enlace», uno por escalon, y era el sitio donde se decidia que
-// catalogo existia. Eso estaba en el sitio equivocado: lo que se publica es
-// una propiedad del PRODUCTO, y el frame 1187:3728 la puso donde va — en la
-// ficha, con «Publicar producto en catálogo» y sus dos casillas.
+// Decision del dueno el 2026-10-15. Habia un dialogo «Comparte tu catalogo»
+// con el enlace en un campo, un boton de copiar y uno de compartir. Lo quito
+// entero: tocar «Compartir» abre directamente la hoja nativa, igual que
+// «Compartir enlace» en el perfil de un cliente.
 //
-// Asi que aqui solo quedan los enlaces, y cada uno existe porque hay algo
-// publicado en ese escalon. El que no tenga nada publicado dice eso en vez de
-// ofrecer un enlace a una pagina vacia.
+// La razon vieja queda escrita porque es la que haria falta para revertirlo:
+// el dialogo existia para ensenar el enlace y dejar copiarlo a mano. Lo que lo
+// desplaza es que la hoja nativa ya ofrece copiar, ademas de mandar por
+// WhatsApp, y el dialogo era una pantalla de por medio para llegar a lo mismo.
 //
-// Los tokens se crean al abrir este dialogo y no antes: un token acunado en el
-// alta pondria a los 24 negocios a una URL de distancia de un catalogo que
-// nunca decidieron publicar.
+// Y antes de eso, hasta el 2026-10-10, el dialogo era ademas el sitio donde se
+// decidia QUE catalogo existia, con dos botones «Crear el enlace». Eso se fue
+// a la ficha del producto, que es donde vive la decision de publicar.
 //
-// ─────────────────────────────────────────────────────────────────────────
-// Y DESDE EL 2026-10-15, UN SOLO ENLACE
+// ===========================================================================
+// EL TOKEN LLEGA DEL SERVIDOR, Y SOLO SE ACUNA SI HACE FALTA
 //
-// Decision del dueno. Habia dos —uno de detal y uno de mayor— y cada uno
-// ensenaba su lista de precios: era su propia decision del 2026-10-10, hecha
-// para el Tendero 2, que tiene clientes de los dos tipos.
+// `initialToken` es el que el negocio YA tiene, leido sin crear nada. Importa
+// por dos cosas distintas:
 //
-// Lo que la desplaza es el entregable B: el detalle de un producto ya decide
-// por CANTIDAD que escalon aplica, asi que los dos enlaces dejaron de separar
-// dos audiencias y pasaron a ser dos formas de ver lo mismo. Este dialogo
-// obligaba a elegir entre dos cosas que ya no se diferenciaban.
-//
-// La razon vieja queda escrita porque seria la que haria falta para revertir:
-// con dos enlaces el tendero elegia a quien le daba precios mayoristas.
-// Ahora cualquiera llega a ellos pidiendo suficiente, que es como funciona
-// una tienda. Migracion 106.
+//   1. Un token acunado en el alta pondria a los 24 negocios a una URL de
+//      distancia de un catalogo que nunca decidieron publicar. Por eso la
+//      pantalla LEE, y solo el primer «Compartir» CREA.
+//   2. `navigator.share` quiere salir del gesto del dedo. Con el token ya en
+//      la mano no hay ningun `await` entre el toque y la hoja, que es lo que
+//      iOS Safari puede rechazar. Solo la primerisima vez hay espera.
 export function CatalogShare({
   publishedCount,
   businessName,
+  initialToken,
 }: {
   publishedCount: PublishedCount;
   businessName: string;
+  initialToken: string | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState<string | null>(initialToken);
+  const [pending, startTransition] = useTransition();
+
+  const sinNada = publishedCount.any === 0;
+
+  function urlDe(t: string) {
+    return `${window.location.origin}/c/${t}`;
+  }
+
+  // Devuelve el token, creandolo si el negocio todavia no tiene. `null` si
+  // algo falla, y en ese caso ya se avisó.
+  //
+  // SOLO LA LLAMADA AL SERVIDOR VA DENTRO DE LA TRANSICION, envuelta en una
+  // promesa — la misma forma que `resolveUrl` en `client-header-actions.tsx`,
+  // que es la que lleva meses funcionando. Lo importante es lo que queda
+  // FUERA: `navigator.share` tiene que salir del gesto del dedo, y meterlo
+  // dentro de un `startTransition` es pedirle a iOS Safari que lo rechace.
+  function conseguirToken(): Promise<string | null> {
+    if (token) return Promise.resolve(token);
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        const result = await getOrCreateCatalogLink();
+        if ("error" in result) {
+          toast.error(result.error);
+          resolve(null);
+          return;
+        }
+        setToken(result.token);
+        resolve(result.token);
+      });
+    });
+  }
+
+  async function compartir() {
+    // SIN NADA PUBLICADO NO SE COMPARTE, y se dice por que.
+    //
+    // El dialogo que esto sustituye avisaba de lo mismo en un recuadro rojo.
+    // Sin el, un «Compartir» a secas mandaria el enlace de una pagina que dice
+    // «este negocio no tiene productos» — y el tendero se enteraria por su
+    // cliente.
+    if (sinNada) {
+      toast.error("Todavía no has publicado ningún producto.", {
+        description:
+          "Abre un producto y enciende «Publicar producto en catálogo» para que aparezca aquí.",
+      });
+      return;
+    }
+
+    const t = await conseguirToken();
+    if (!t) return;
+
+    const mensaje = `Mira lo que tenemos en ${businessName} y a qué precio: ${urlDe(t)}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: mensaje });
+      } catch {
+        // Cerrar la hoja la rechaza. Eso es el dueno decidiendo no mandarlo,
+        // no un fallo, asi que no lleva aviso.
+      }
+      return;
+    }
+
+    // Un escritorio sin `navigator.share` cae al portapapeles, y copia el
+    // MENSAJE entero y no solo el enlace: lo que se pega es lo mismo que
+    // habria mandado la hoja.
+    await navigator.clipboard.writeText(mensaje);
+    toast.success("Mensaje copiado");
+  }
+
+  async function verPrevia() {
+    const t = await conseguirToken();
+    if (!t) return;
+    // `noopener,noreferrer` por costumbre y no por este caso: el destino es
+    // nuestro propio dominio. Es la clase de linea que se queda puesta cuando
+    // la URL cambia.
+    window.open(urlDe(t), "_blank", "noopener,noreferrer");
+  }
 
   return (
-    <>
+    <div className="flex shrink-0 items-center gap-1">
       {/* MISMO ASPECTO QUE «SUBIR LIBRETA» en la cabecera de Clientes, a
           petición del dueño el 2026-10-10: texto e icono, sin recuadro. Antes
           llevaba borde y se leía como la acción principal de la pantalla,
@@ -79,162 +150,45 @@ export function CatalogShare({
         type="button"
         variant="ghost"
         size="sm"
-        onClick={() => setOpen(true)}
-        className="h-auto shrink-0 px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
+        onClick={() => void compartir()}
+        disabled={pending}
+        className="h-auto px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
       >
-        <Share2 aria-hidden="true" />
+        {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Share2 aria-hidden="true" />}
         Compartir
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Comparte tu catálogo</DialogTitle>
-            <DialogDescription>
-              Quien abra un enlace ve los productos que publicaste para ese precio, con su foto.
-              Nunca ve tus costos.
-            </DialogDescription>
-          </DialogHeader>
+      {/* LA VISTA PREVIA, EN UN MENU APARTE. Decisión del dueño el 2026-10-15:
+          «Compartir» se queda de un toque y la previa pasa aquí. El frame
+          dibujaba las dos dentro del menú; esto se aparta de él a propósito,
+          porque compartir es lo que el tendero hace a diario y meterlo en un
+          menú le costaría un toque cada vez.
 
-          {publishedCount.any === 0 ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm leading-relaxed text-destructive">
-              Todavía no has publicado ningún producto. Abre uno, enciende «Publicar producto en
-              catálogo» y marca si va al mayor, al detal o a los dos.
-            </p>
-          ) : null}
-
-          <LinkRow
-            label="El enlace de tu catálogo"
-            count={publishedCount.any}
-            extra="Quien pida la cantidad que marcaste para el mayor, verá el precio al mayor."
-            businessName={businessName}
-            open={open}
-          />
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function LinkRow({
-  label,
-  count,
-  extra,
-  businessName,
-  open,
-}: {
-  label: string;
-  count: number;
-  extra?: string;
-  businessName: string;
-  open: boolean;
-}) {
-  const [pending, startTransition] = useTransition();
-  const [url, setUrl] = useState<string | null>(null);
-
-  // Se pide al abrir, y solo si hay algo publicado en este escalon. Pedirlo
-  // sin productos crearia un token para una pagina que dice «no hay nada»,
-  // que es justo el enlace que no conviene tener a mano.
-  useEffect(() => {
-    if (!open || url != null || count === 0) return;
-    startTransition(async () => {
-      const result = await getOrCreateCatalogLink();
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      setUrl(`${window.location.origin}/c/${result.token}`);
-    });
-  }, [open, url, count]);
-
-  const mensaje = url ? `Mira lo que tenemos en ${businessName} y a qué precio: ${url}` : "";
-
-  async function compartir() {
-    if (!url) return;
-    if (navigator.share) {
-      try {
-        await navigator.share({ text: mensaje });
-      } catch {
-        // Cerrar la hoja de compartir la rechaza. Eso es el dueño decidiendo
-        // no mandarlo, no un fallo, asi que no lleva aviso.
-      }
-      return;
-    }
-    await navigator.clipboard.writeText(mensaje);
-    toast.success("Mensaje copiado");
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label>{label}</Label>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {count === 0 ? "sin productos" : `${count} ${count === 1 ? "producto" : "productos"}`}
-        </span>
-      </div>
-      {extra ? <p className="text-xs leading-relaxed text-muted-foreground">{extra}</p> : null}
-
-      {count === 0 ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Enciende «Publicar producto en catálogo» en algún producto y el enlace aparece aquí.
-        </p>
-      ) : pending || !url ? (
-        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Preparando el enlace...
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center gap-2">
-            <Input readOnly value={url} aria-label={label} className="flex-1" />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="size-10 shrink-0"
-              aria-label="Copiar el enlace"
-              onClick={async () => {
-                await navigator.clipboard.writeText(url);
-                toast.success("Enlace copiado");
-              }}
-            >
-              <Copy className="size-4" />
-            </Button>
-          </div>
-          <Button type="button" onClick={compartir}>
-            <WhatsappIcon className="size-4" /> Compartir
-          </Button>
-
-          {/* LA VISTA PREVIA ES LA PÁGINA DE VERDAD, abierta en otra pestaña.
-              No hay una copia del catálogo rindiéndose dentro del panel, y es
-              a propósito: una copia es una cosa más que puede quedarse atrás
-              del original sin que nadie se entere, y entonces el tendero
-              revisaría una pantalla que su cliente no ve.
-
-              Un `iframe` tampoco: esta página mide `min-h-dvh` y se maqueta
-              para un teléfono. Dentro de un marco de 400px de ancho se vería
-              perfecta por accidente, y justo lo que el tendero necesita
-              comprobar —«¿se lee esto en un teléfono?»— es lo que un marco
-              dentro del panel no puede responder.
-
-              Y la previa no miente: `get_shared_catalog` y
-              `get_shared_product` son `security definer` y no miran
-              `auth.uid()` en ningún sitio —comprobado en las migraciones 084 y
-              104—, así que la página se pinta igual con la sesión del dueño
-              abierta que sin ninguna sesión.
-
-              `noopener noreferrer` por costumbre, no por este caso: el destino
-              es nuestro propio dominio. Es la clase de línea que se queda
-              puesta cuando la URL cambia. */}
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          Abre la página de verdad en otra pestaña, no una copia dentro del
+          panel: una copia se queda atrás del original sin que nadie se entere,
+          y un marco de 400px respondería «se ve bien» a la única pregunta que
+          importa, que es si se lee en un teléfono. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={pending}
+            title="Más"
+            className="size-9 shrink-0 text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
           >
-            <Eye className="size-4" aria-hidden="true" /> Ver cómo lo ve tu cliente
-          </a>
-        </>
-      )}
+            <MoreVertical aria-hidden="true" />
+            <span className="sr-only">Más opciones</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => void verPrevia()}>
+            <Eye />
+            Vista previa
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
