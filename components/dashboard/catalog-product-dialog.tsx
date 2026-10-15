@@ -125,7 +125,10 @@ export function CatalogProductDialog({
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
   overrides: Record<PriceTier, Partial<Record<PriceCurrency, number>>>;
-  initialCurrencies: PriceCurrency[];
+  // UNA LISTA POR ESCALÓN desde la migración 114, cada una con SU base
+  // primera. Antes era una sola para los dos, y por eso quitar una moneda en
+  // un bloque la quitaba del otro — lo reportó el dueño el 2026-10-15.
+  initialCurrencies: Record<PriceTier, PriceCurrency[]>;
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
@@ -223,8 +226,13 @@ export function CatalogProductDialog({
   // 35 escrito encima.
   const [monedaSinTasa, setMonedaSinTasa] = useState(false);
 
-  const [currencies, setCurrencies] = useState<PriceCurrency[]>(initialCurrencies);
-  const base = currencies[0] ?? defaultCurrency;
+  const [currencies, setCurrencies] =
+    useState<Record<PriceTier, PriceCurrency[]>>(initialCurrencies);
+
+  // LA BASE DE CADA ESCALÓN ES LA PRIMERA DE SU LISTA, y ese contrato lo
+  // comparte con `currenciesOf` y con `TierSection`. Dos listas, dos bases:
+  // un producto puede escribir su detal en dólares y su mayor en euros.
+  const baseDe = (tier: PriceTier) => currencies[tier][0] ?? defaultCurrency;
 
   const [priceRetail, setPriceRetail] = useState(formatAmountForInput(product?.price_retail));
   const [priceWholesale, setPriceWholesale] = useState(
@@ -353,18 +361,27 @@ export function CatalogProductDialog({
     //
     // Un escalón con precios fijados a mano por moneda se queda fuera: ahí el
     // margen no manda, y su desplegable está apagado por lo mismo.
+    //
+    // CADA ESCALÓN RECALCULA CON SU PROPIA BASE (114). Con una base compartida
+    // esto funcionaba por casualidad; con dos, calcular el precio del mayor
+    // partiendo de la moneda del detal le pondría al tendero un número en la
+    // moneda equivocada sin decírselo.
     const recalcular = (
+      tier: PriceTier,
       margen: string,
       fijos: Partial<Record<PriceCurrency, string>>,
       set: (v: string) => void,
     ) => {
-      const hayFijos = currencies.some((x) => x !== base && estaDesvinculada(fijos, x));
+      const suBase = baseDe(tier);
+      const hayFijos = currencies[tier].some(
+        (x) => x !== suBase && estaDesvinculada(fijos, x),
+      );
       if (hayFijos) return;
-      const p = priceFromCost(c, moneda, Number(margen), base, rates);
+      const p = priceFromCost(c, moneda, Number(margen), suBase, rates);
       if (p != null) set(formatAmountForInput(p));
     };
-    recalcular(marginRetail, fixed.retail, setPriceRetail);
-    recalcular(marginWholesale, fixed.wholesale, setPriceWholesale);
+    recalcular("retail", marginRetail, fixed.retail, setPriceRetail);
+    recalcular("wholesale", marginWholesale, fixed.wholesale, setPriceWholesale);
   }
 
   // APAGAR LAS DOS DEJARIA UN PRODUCTO SIN NINGUN PRECIO, y la tabla exige
@@ -384,43 +401,60 @@ export function CatalogProductDialog({
     else setVentaWholesale(activa);
   }
 
-  function agregarMoneda(c: PriceCurrency) {
-    setCurrencies((prev) => (prev.includes(c) ? prev : [...prev, c]));
+  // AGREGAR Y QUITAR SON DE UN ESCALÓN, NO DEL PRODUCTO (114).
+  //
+  // Hasta el 2026-10-15 había una sola lista y las dos secciones compartían
+  // estas dos funciones, así que las papeleras estaban conectadas: quitar el
+  // euro al mayor lo quitaba del detal. El dueño lo reportó dos veces, y la
+  // segunda dejó claro lo que quería — «un producto puede tener los tres
+  // precios al detal pero solo uno al mayor».
+  function agregarMoneda(tier: PriceTier, c: PriceCurrency) {
+    setCurrencies((prev) =>
+      prev[tier].includes(c) ? prev : { ...prev, [tier]: [...prev[tier], c] },
+    );
   }
 
   // QUITAR LA BASE NO PUEDE DEJAR EL NUMERO QUIETO, y esto es dinero.
   //
-  // `price_retail` guarda «el precio en la moneda base». Si se quita el dólar
-  // y pasa a mandar el euro, un 65 guardado dejaría de significar $65 y pasaría
-  // a significar 65 € sin que nadie lo tocara — el producto se encarecería un
-  // 12 % en silencio. Por eso vive aquí y no en una sección: hay que mover el
-  // precio de LOS DOS escalones.
-  function quitarMoneda(c: PriceCurrency) {
-    if (currencies.length <= 1) return;
-    const siguientes = currencies.filter((x) => x !== c);
+  // `price_retail` guarda «el precio en la moneda base de SU escalón». Si se
+  // quita el dólar y pasa a mandar el euro, un 65 guardado dejaría de
+  // significar $65 y pasaría a significar 65 € sin que nadie lo tocara — el
+  // producto se encarecería un 12 % en silencio.
+  //
+  // Y DESDE LA 114 SOLO SE MUEVE EL PRECIO DE SU ESCALÓN, que es lo que esto
+  // tenía de retorcido antes: con una base compartida había que mover LOS DOS
+  // precios a la vez, porque los dos estaban escritos en la misma moneda.
+  // Separar las bases no complicó esta función, la simplificó.
+  function quitarMoneda(tier: PriceTier, c: PriceCurrency) {
+    const lista = currencies[tier];
+    if (lista.length <= 1) return;
+    const siguientes = lista.filter((x) => x !== c);
     const nuevaBase = siguientes[0];
+    const baseActual = baseDe(tier);
 
-    if (c === base) {
-      const trasladar = (precio: string, fijos: Partial<Record<PriceCurrency, string>>) => {
-        const fijado = (fijos[nuevaBase] ?? "").trim();
-        if (fijado !== "") return fijado;
+    if (c === baseActual) {
+      const precio = tier === "retail" ? priceRetail : priceWholesale;
+      const fijado = (fixed[tier][nuevaBase] ?? "").trim();
+      let trasladado = fijado;
+      if (trasladado === "") {
         const n = parseAmount(precio);
-        if (n == null || !rates) return "";
-        const conv = priceIn(nuevaBase, { amount: n, currency: base }, rates).amount;
-        return conv == null ? "" : formatAmountForInput(conv);
-      };
-      setPriceRetail(trasladar(priceRetail, fixed.retail));
-      setPriceWholesale(trasladar(priceWholesale, fixed.wholesale));
+        const conv =
+          n == null || !rates
+            ? null
+            : priceIn(nuevaBase, { amount: n, currency: baseActual }, rates).amount;
+        trasladado = conv == null ? "" : formatAmountForInput(conv);
+      }
+      if (tier === "retail") setPriceRetail(trasladado);
+      else setPriceWholesale(trasladado);
     }
 
-    const limpiar = (f: Partial<Record<PriceCurrency, string>>) => {
-      const next = { ...f };
+    setFixed((f) => {
+      const next = { ...f[tier] };
       delete next[c];
-      if (c === base) delete next[nuevaBase];
-      return next;
-    };
-    setFixed((f) => ({ retail: limpiar(f.retail), wholesale: limpiar(f.wholesale) }));
-    setCurrencies(siguientes);
+      if (c === baseActual) delete next[nuevaBase];
+      return { ...f, [tier]: next };
+    });
+    setCurrencies((prev) => ({ ...prev, [tier]: siguientes }));
   }
 
   const input: ProductInput = {
@@ -429,7 +463,9 @@ export function CatalogProductDialog({
     // queda: los productos que ya la tienen la conservan y el catálogo público
     // la sigue enseñando, pero no se vuelve a pedir.
     unit: product?.unit ?? null,
-    activeCurrencies: currencies,
+    // LAS DOS LISTAS. `rowFrom` saca de cada una su base, que es la primera.
+    activeCurrenciesRetail: currencies.retail,
+    activeCurrenciesWholesale: currencies.wholesale,
     // Un escalón apagado no manda precio, ni precios por moneda, ni queda
     // publicado. Si no, un producto que «ya no se vende al mayor» seguiría
     // saliendo en el catálogo de mayorista con su precio de siempre.
@@ -481,9 +517,9 @@ export function CatalogProductDialog({
     costUsable,
     onNeedCost: pedirCosto,
     onNeedRateCurrency: pedirMonedaConTasa,
-    currencies,
-    onAddCurrency: agregarMoneda,
-    onRemoveCurrency: quitarMoneda,
+    // `currencies`, `onAddCurrency` y `onRemoveCurrency` YA NO VIVEN AQUÍ: son
+    // lo único que las dos secciones no pueden compartir, y compartirlas era
+    // exactamente el fallo. Cada `TierSection` recibe las suyas abajo.
     rates,
     disabled: saving,
   };
@@ -650,6 +686,9 @@ export function CatalogProductDialog({
           <TierSection
             {...tierProps}
             tier="retail"
+            currencies={currencies.retail}
+            onAddCurrency={(c) => agregarMoneda("retail", c)}
+            onRemoveCurrency={(c) => quitarMoneda("retail", c)}
             label="Margen al detal"
             ventaLabel="Venta al detal"
             activa={ventaRetail}
@@ -665,6 +704,9 @@ export function CatalogProductDialog({
           <TierSection
             {...tierProps}
             tier="wholesale"
+            currencies={currencies.wholesale}
+            onAddCurrency={(c) => agregarMoneda("wholesale", c)}
+            onRemoveCurrency={(c) => quitarMoneda("wholesale", c)}
             label="Margen al mayor"
             ventaLabel="Venta al mayor"
             activa={ventaWholesale}

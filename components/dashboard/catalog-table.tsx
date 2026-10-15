@@ -146,7 +146,15 @@ export function CatalogTable({
       rates={rates}
       defaultCurrency={defaultCurrency}
       overrides={{ retail: {}, wholesale: {} }}
-      initialCurrencies={[lastBaseCurrency ?? defaultCurrency]}
+      // UN PRODUCTO NUEVO ARRANCA IGUAL EN LOS DOS ESCALONES. La decisión del
+      // dueño del 2026-10-14 —abrir con la moneda del último producto creado—
+      // no dice nada de escalones, y empezar con dos listas distintas sería
+      // inventarse una intención. Separarlas es un gesto que él hace cuando
+      // quiere, no el punto de partida.
+      initialCurrencies={{
+        retail: [lastBaseCurrency ?? defaultCurrency],
+        wholesale: [lastBaseCurrency ?? defaultCurrency],
+      }}
       supplierSuggestions={supplierSuggestions}
       lastCostCurrency={lastCostCurrency}
       ownerId={ownerId}
@@ -260,7 +268,19 @@ export function CatalogTable({
           rates={rates}
           defaultCurrency={defaultCurrency}
           overrides={overridesByTier(overrides, editing.id)}
-          initialCurrencies={currenciesOf(currencies, editing.id, editing.base_currency)}
+          // UNA LISTA POR ESCALÓN, cada una con SU base primera. Antes era una
+          // sola para los dos, que es lo que hacía que quitar una moneda al
+          // mayor la quitara también al detal — reportado por el dueño el
+          // 2026-10-15.
+          initialCurrencies={{
+            retail: currenciesOf(currencies, editing.id, "retail", editing.base_currency_retail),
+            wholesale: currenciesOf(
+              currencies,
+              editing.id,
+              "wholesale",
+              editing.base_currency_wholesale,
+            ),
+          }}
           supplierSuggestions={supplierSuggestions}
           ownerId={ownerId}
         />

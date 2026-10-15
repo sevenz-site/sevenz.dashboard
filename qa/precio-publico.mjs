@@ -18,6 +18,7 @@ import {
   monedasDelBloque,
   precioEnMoneda,
 } from "../lib/products/public-pricing.ts";
+import { currenciesOf } from "../lib/products/catalog.ts";
 
 const filas = [];
 function check(nombre, pasa, detalle) {
@@ -235,6 +236,60 @@ check(
   "4. un producto sin ningún precio no devuelve escalón",
   escalonParaCantidad({ retail: null, wholesale: null, wholesale_min_quantity: null }, 1) === null,
   "la función pública ya lo filtra; esto es que la pantalla no reviente si cambia",
+);
+
+// ── 5. LA LISTA QUE ABRE LA FICHA DEL TENDERO ───────────────────────────
+//
+// `currenciesOf` decide, para cada escalón, qué monedas se ven y CUÁL ES LA
+// BASE — porque `TierSection` deriva la suya con `currencies[0]`. O sea que un
+// fallo de orden aquí no se ve como una lista rara: se ve como el tendero
+// escribiendo el precio en la moneda equivocada.
+//
+// ANTES DE LA MIGRACIÓN 114 EL ORDEN LO FIJABA UNA LISTA CONSTANTE
+// —`["USD","EUR","USDT","COP"]`— y daba igual, porque la base era del producto
+// y venía de otro sitio. Con una base por escalón eso se vuelve un fallo
+// silencioso: un producto con el mayor en euros que además ofrezca dólares
+// habría puesto el dólar primero, por orden alfabético, y el tendero habría
+// escrito su precio al mayor en dólares creyendo que eran euros.
+//
+// Es lógica pura y sin base de datos, que es lo único de este cambio que se
+// puede probar sin una sesión del tendero: la ficha está detrás de login.
+const FILAS = [
+  { product_id: "p1", tier: "retail", currency: "USD" },
+  { product_id: "p1", tier: "retail", currency: "EUR" },
+  { product_id: "p1", tier: "retail", currency: "USDT" },
+  { product_id: "p1", tier: "wholesale", currency: "EUR" },
+  { product_id: "p2", tier: "retail", currency: "COP" },
+];
+
+check(
+  "5a. el detal trae las suyas, con su base primera",
+  igual(currenciesOf(FILAS, "p1", "retail", "USD"), ["USD", "EUR", "USDT"]),
+  JSON.stringify(currenciesOf(FILAS, "p1", "retail", "USD")),
+);
+check(
+  "5b. el mayor trae SOLO las suyas — no se contagia del detal",
+  igual(currenciesOf(FILAS, "p1", "wholesale", "EUR"), ["EUR"]),
+  JSON.stringify(currenciesOf(FILAS, "p1", "wholesale", "EUR")),
+);
+check(
+  "5c. LA BASE VA PRIMERA aunque el orden constante la pusiera después",
+  igual(currenciesOf(FILAS, "p1", "retail", "EUR"), ["EUR", "USD", "USDT"]),
+  `${JSON.stringify(currenciesOf(FILAS, "p1", "retail", "EUR"))} — con el orden viejo habría salido USD primero, y el precio se habría escrito en dólares`,
+);
+check(
+  "5d. la base entra aunque no tenga fila propia",
+  igual(currenciesOf(FILAS, "p1", "wholesale", "USDT"), ["USDT", "EUR"]),
+  "una ficha descuadrada no deja un escalón sin la moneda en la que guarda su precio",
+);
+check(
+  "5e. un producto sin filas se queda solo con su base",
+  igual(currenciesOf(FILAS, "p9", "retail", "COP"), ["COP"]),
+);
+check(
+  "5f. no se cuela la moneda de OTRO producto",
+  !currenciesOf(FILAS, "p1", "retail", "USD").includes("COP"),
+  "p2 tiene COP al detal y p1 no",
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

@@ -64,7 +64,10 @@ export default async function ProductosPage({
         .is("trashed_at", null)
         .order("name"),
       supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
-      supabase.from("product_currencies").select("product_id, currency"),
+      // CON `tier` DESDE LA 114: sin él las dos secciones de la ficha
+      // volverían a leer la misma lista, que es el fallo que la 114 vino a
+      // arreglar.
+      supabase.from("product_currencies").select("product_id, tier, currency"),
       // LAS DOS MONEDAS DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
       //
       // Decisión del dueño el 2026-10-14: «las monedas en la opción de costo y

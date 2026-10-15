@@ -12,7 +12,14 @@ export type ProductRow = {
   id: string;
   name: string;
   unit: string | null;
+  // THE PRODUCT'S DEFAULT, and since migration 114 it prices nothing: each
+  // tier has its own below. Kept because the grid and the filters group by it.
   base_currency: PriceCurrency;
+  // The currency each tier's price is WRITTEN IN. They can differ -- owner's
+  // decision of 2026-10-15 -- so anything converting one tier's amount has to
+  // reach for that tier's own and never for `base_currency`.
+  base_currency_retail: PriceCurrency;
+  base_currency_wholesale: PriceCurrency;
   price_retail: number | null;
   price_wholesale: number | null;
   cost: number | null;
@@ -51,28 +58,45 @@ export type ProductRow = {
   description: string | null;
 };
 
-/** Una moneda que el producto maneja. Ver la migración 087. */
+/**
+ * Una moneda que un ESCALÓN del producto maneja. Migración 087, y `tier` desde
+ * la 114 -- antes la lista era del producto entero, que es lo que hacía que
+ * quitar una moneda al mayor la quitara también al detal.
+ */
 export type ProductCurrencyRow = {
   product_id: string;
+  tier: PriceTier;
   currency: PriceCurrency;
 };
 
 /**
- * Las monedas activas de un producto, en el orden en que se leen.
+ * Las monedas activas de UN escalón, con su base la primera.
  *
- * El orden lo fija `VE_PRICE_CURRENCIES` y no el de la base: una lista cuyo
- * orden depende de en qué orden se insertaron las filas cambia de aspecto
- * entre dos cargas de la misma pantalla.
+ * LA BASE VA PRIMERA Y ESO ES UN CONTRATO, no una preferencia estética:
+ * `TierSection` deriva su moneda base con `currencies[0]`, así que el orden de
+ * esta lista decide en qué moneda se escribe el precio de ese escalón.
+ *
+ * Antes de la migración 114 el orden salía entero de la lista fija de abajo, y
+ * daba igual: la base era del producto y venía de otro sitio. Con una base por
+ * escalón eso se vuelve un fallo — un producto cuyo mayor está en euros y que
+ * además ofrece dólares habría puesto el dólar primero, por orden alfabético,
+ * y el tendero habría acabado escribiendo su precio en la moneda equivocada.
+ *
+ * El resto sí va en orden fijo y no en el de inserción: una lista cuyo orden
+ * depende de en qué orden se insertaron las filas cambia de aspecto entre dos
+ * cargas de la misma pantalla.
  */
 export function currenciesOf(
   rows: ProductCurrencyRow[],
   productId: string,
-  fallback: PriceCurrency,
+  tier: PriceTier,
+  base: PriceCurrency,
 ): PriceCurrency[] {
-  const mias = new Set(rows.filter((r) => r.product_id === productId).map((r) => r.currency));
+  const mias = new Set(
+    rows.filter((r) => r.product_id === productId && r.tier === tier).map((r) => r.currency),
+  );
   const orden: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
-  const out = orden.filter((c) => mias.has(c));
-  return out.length > 0 ? out : [fallback];
+  return [base, ...orden.filter((c) => mias.has(c) && c !== base)];
 }
 
 export type PriceOverrideRow = {
@@ -87,7 +111,8 @@ export type PriceOverrideRow = {
 // selector. A `select("*")` would have worked and would also have shipped
 // `cost` to any client component that happened to receive a row.
 export const PRODUCT_COLUMNS =
-  "id, name, unit, base_currency, price_retail, price_wholesale, cost, " +
+  "id, name, unit, base_currency, base_currency_retail, base_currency_wholesale, " +
+  "price_retail, price_wholesale, cost, " +
   "cost_currency, cost_currency_other, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
   "wholesale_min_quantity, supplier, " +

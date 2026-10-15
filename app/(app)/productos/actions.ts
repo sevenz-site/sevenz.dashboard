@@ -102,10 +102,16 @@ export type FixedPrices = Partial<Record<PriceCurrency, string>>;
 export type ProductInput = {
   name: string;
   unit: string | null;
-  // Las monedas que el producto maneja. La PRIMERA es la moneda base: la que
-  // va en `price_retail` / `price_wholesale` y la que lee todo lo de aguas
-  // abajo — la rejilla, el catálogo público, la tarjeta del cliente.
-  activeCurrencies: PriceCurrency[];
+  // Las monedas que maneja CADA ESCALÓN, y la PRIMERA de cada lista es su
+  // moneda base: la que va en `price_retail` o en `price_wholesale`.
+  //
+  // DOS LISTAS DESDE LA MIGRACIÓN 114. Antes era una sola para el producto
+  // entero, y por eso quitar una moneda en un bloque de la ficha la quitaba
+  // del otro — lo reportó el dueño el 2026-10-15. Las dos pueden tener bases
+  // distintas: el detal en dólares y el mayor en euros es el caso que él
+  // pidió expresamente.
+  activeCurrenciesRetail: PriceCurrency[];
+  activeCurrenciesWholesale: PriceCurrency[];
   // El precio en la moneda base, por escalón.
   priceRetail: string | null;
   priceWholesale: string | null;
@@ -128,7 +134,11 @@ export type ProductInput = {
   description: string | null;
 };
 
-type Checked = { name: string; currencies: PriceCurrency[]; base: PriceCurrency };
+type Checked = {
+  name: string;
+  currencies: Record<PriceTier, PriceCurrency[]>;
+  base: Record<PriceTier, PriceCurrency>;
+};
 
 // THE RULES THE TABLE ALSO ENFORCES, repeated here so the shopkeeper gets a
 // sentence instead of error 23514. The constraints stay in the database
@@ -137,11 +147,24 @@ function validate(input: ProductInput): { error: string } | Checked {
   const name = cleanName(input.name);
   if (!name) return { error: "Escribe el nombre del producto." };
 
-  const currencies = input.activeCurrencies.filter((c) => SELLABLE.includes(c));
-  if (currencies.length === 0) {
-    return { error: "Deja al menos una moneda en el producto." };
+  // CADA LISTA SE LIMPIA Y SE VALIDA POR SEPARADO. Un escalón sin ninguna
+  // moneda no tiene en qué escribir su precio, así que la frase habla del
+  // escalón y no del producto: «deja al menos una moneda» a secas mandaría al
+  // tendero a mirar el bloque equivocado.
+  const currencies: Record<PriceTier, PriceCurrency[]> = {
+    retail: input.activeCurrenciesRetail.filter((c) => SELLABLE.includes(c)),
+    wholesale: input.activeCurrenciesWholesale.filter((c) => SELLABLE.includes(c)),
+  };
+  if (currencies.retail.length === 0) {
+    return { error: "Deja al menos una moneda en el precio al detal." };
   }
-  const base = currencies[0];
+  if (currencies.wholesale.length === 0) {
+    return { error: "Deja al menos una moneda en el precio al mayor." };
+  }
+  const base: Record<PriceTier, PriceCurrency> = {
+    retail: currencies.retail[0],
+    wholesale: currencies.wholesale[0],
+  };
 
   const retail = toNumber(input.priceRetail);
   const wholesale = toNumber(input.priceWholesale);
@@ -213,18 +236,18 @@ function rowFrom(input: ProductInput, checked: Checked, userId: string) {
   return {
     name: checked.name,
     unit: input.unit?.trim() || null,
-    base_currency: checked.base,
-    // LAS DOS BASES, POR ESCALON (migracion 114). Hoy el formulario tiene una
-    // sola lista de monedas, asi que las tres salen iguales y nada cambia de
-    // precio; cuando la ficha aprenda a llevar una lista por escalon, estas
-    // dos dejaran de coincidir y `base_currency` seguira siendo solo el valor
-    // por defecto del producto.
-    //
-    // SE ESCRIBEN AUNQUE SEAN IGUALES, y no se dejan a su valor rellenado: la
-    // columna es NOT NULL y un producto nuevo no tiene nada que rellenar, asi
-    // que omitirlas aqui solo funcionaria al editar.
-    base_currency_retail: checked.base,
-    base_currency_wholesale: checked.base,
+    // `base_currency` ES EL VALOR POR DEFECTO DEL PRODUCTO y desde la 114 no
+    // es la unidad de ningún precio. Se escribe con la del detal porque es la
+    // que la rejilla y los filtros enseñan como «la moneda del producto», y
+    // porque el detal es el escalón que casi todos los productos tienen.
+    base_currency: checked.base.retail,
+    // LAS QUE SÍ FIJAN UN PRECIO. Se escriben siempre, también al crear: la
+    // columna es NOT NULL y un producto nuevo no tiene nada que rellenar, así
+    // que omitirlas aquí solo funcionaría al editar. El trigger de la 115 es
+    // la red para quien escriba sin saber de escalones, no una excusa para
+    // que este sitio no las ponga.
+    base_currency_retail: checked.base.retail,
+    base_currency_wholesale: checked.base.wholesale,
     price_retail: toNumber(input.priceRetail),
     price_wholesale: toNumber(input.priceWholesale),
     cost,
@@ -283,21 +306,22 @@ async function writeSatellites(
     return "Guardamos el producto, pero no pudimos actualizar sus monedas.";
   }
 
-  // CADA MONEDA EN LOS DOS ESCALONES (migracion 114). La columna `tier` es
-  // NOT NULL, asi que el insert de antes —sin ella— fallaria entero y el
-  // tendero no podria guardar un producto.
-  //
-  // Duplicar es LO QUE CONSERVA EL COMPORTAMIENTO DE HOY: el formulario
-  // todavia tiene una sola lista, asi que lo que el tendero ve y lo que se
-  // guarda siguen coincidiendo. El dia que la ficha lleve una lista por
-  // escalon, esto pasa a escribir cada una en la suya y es el unico sitio que
-  // hay que tocar.
-  const { error: eInsCur } = await supabase.from("product_currencies").insert(
-    checked.currencies.flatMap((currency) => [
-      { product_id: productId, tier: "retail", currency },
-      { product_id: productId, tier: "wholesale", currency },
-    ]),
-  );
+  // CADA LISTA EN SU ESCALÓN (migración 114). Entre el 2026-10-15 y este
+  // cambio esto duplicaba una sola lista a los dos, que era lo que conservaba
+  // el comportamiento de entonces; ahora escribe lo que el tendero eligió en
+  // cada bloque, que es lo que pidió.
+  const { error: eInsCur } = await supabase.from("product_currencies").insert([
+    ...checked.currencies.retail.map((currency) => ({
+      product_id: productId,
+      tier: "retail" as const,
+      currency,
+    })),
+    ...checked.currencies.wholesale.map((currency) => ({
+      product_id: productId,
+      tier: "wholesale" as const,
+      currency,
+    })),
+  ]);
   if (eInsCur) {
     console.error("[writeSatellites] insert currencies:", eInsCur.message);
     return "Guardamos el producto, pero no pudimos actualizar sus monedas.";
@@ -321,8 +345,12 @@ async function writeSatellites(
     ["retail", input.fixedRetail],
     ["wholesale", input.fixedWholesale],
   ] as [PriceTier, FixedPrices][]) {
-    for (const currency of checked.currencies) {
-      if (currency === checked.base) continue;
+    // LA LISTA Y LA BASE DE ESTE ESCALÓN, no las del producto (114). Con una
+    // sola lista compartida esto recorría las mismas monedas en los dos; con
+    // dos, recorrer la del detal al guardar el mayor escribiría precios
+    // fijados para monedas que ese escalón ya no ofrece.
+    for (const currency of checked.currencies[tier]) {
+      if (currency === checked.base[tier]) continue;
       const amount = toNumber(fixed[currency]);
       if (amount == null || amount <= 0) continue;
       filas.push({ product_id: productId, tier, currency, amount });
