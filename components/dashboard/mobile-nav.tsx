@@ -262,6 +262,19 @@ export function MobileNav() {
   // de mas abajo, que se lleva las dos por delante.
   const enSubirLibreta = pathname.startsWith("/import");
 
+  // NI EN «MI NEGOCIO». A peticion del dueno el 2026-10-15, y por un motivo
+  // distinto al de /import aunque el efecto sea el mismo.
+  //
+  // En /import el boton ofrece la version de uno en uno de lo que el tendero
+  // ya esta haciendo en lote. Aqui no ofrece nada que tenga que ver: /profile
+  // es una pantalla de AJUSTES --el logo, el nombre, el telefono, el pais-- y
+  // un boton flotante que dice «Agregar» encima de un formulario de datos
+  // propios solo puede leerse como «agregar algo de esto», que no existe.
+  //
+  // Ademas tapa el campo de abajo del formulario, que es como se vio: en la
+  // captura del dueno se come la mitad de «Pais».
+  const enMiNegocio = pathname.startsWith("/profile");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
@@ -336,8 +349,9 @@ export function MobileNav() {
           looked like the three that only move you. Floating, it is the one
           control that is obviously not a destination.
 
-          Y no sale en /import: ver `enSubirLibreta` arriba. */}
-      {!enSubirLibreta && (
+          Y no sale en /import ni en /profile: ver `enSubirLibreta` y
+          `enMiNegocio` arriba. */}
+      {!enSubirLibreta && !enMiNegocio && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

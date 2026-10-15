@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Eye, Loader2, MoreVertical, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -174,6 +175,7 @@ export function CatalogShareButton({
 export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
   const [token, setToken] = useState<string | null>(initialToken);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   function conseguirToken(): Promise<string | null> {
     if (token) return Promise.resolve(token);
@@ -191,15 +193,33 @@ export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
     });
   }
 
+  // NAVEGA EN LA MISMA VENTANA, Y NO ES UN DETALLE DE ESTILO.
+  //
+  // La primera version abria la previa con `window.open(..., "_blank")`. En el
+  // escritorio eso es una pestana; **en la PWA instalada es una pestana del
+  // SISTEMA**, que llega con su barra de direcciones encima. El dueno lo vio
+  // el 2026-10-15: la previa salia con la URL arriba, la flecha de atras
+  // dejaba la barra puesta y la vista de la app rota detras, y cualquiera
+  // podia editar la direccion a mano.
+  //
+  // Navegando en la misma ventana la previa se queda DENTRO de la app: sin
+  // barra, sin URL editable, y el boton de volver —un `Link` a /productos—
+  // devuelve al catalogo como cualquier otra pantalla.
+  //
+  // Lo que esto cuesta, dicho por delante: el tendero sale de la pantalla del
+  // catalogo en vez de abrir una ventana aparte. Es lo correcto de todos
+  // modos — en un telefono nadie compara dos pestanas, y lo que la previa
+  // tiene que responder es «¿como se ve esto?», no «¿como se ve al lado de lo
+  // otro?».
+  //
+  // `router.push` y no `window.location`: es una ruta de la misma app, asi
+  // que la navegacion del cliente es mas rapida y no recarga el documento.
   async function verPrevia() {
     const t = await conseguirToken();
     if (!t) return;
-    // `noopener,noreferrer` por costumbre y no por este caso: el destino es
-    // nuestro propio dominio. Es la clase de linea que se queda puesta cuando
-    // la URL cambia.
     // `?previa=1` es lo UNICO que distingue esta pagina de la que ve el
     // cliente: le añade un boton de volver. Decision del dueno el 2026-10-15.
-    window.open(`${window.location.origin}/c/${t}?previa=1`, "_blank", "noopener,noreferrer");
+    router.push(`/c/${t}?previa=1`);
   }
 
   return (
