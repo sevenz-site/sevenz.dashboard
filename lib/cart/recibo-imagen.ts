@@ -95,6 +95,50 @@ const TARJETA = "#ffffff";
 const FUENTE = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 const fuente = (px: number, peso = "400") => `${peso} ${px * ESCALA}px ${FUENTE}`;
 
+// LAS IMÁGENES SE PRECARGAN AL IMPORTAR, NO AL DIBUJAR.
+//
+// El recibo tiene que dibujarse sin un solo `await` -- ver la cabecera -- y
+// `drawImage` solo funciona con una imagen ya decodificada. La salida es
+// empezar a decodificarlas cuando el módulo se carga, que es cuando el cliente
+// abre la pantalla del carrito: para cuando pulse «Compartir» han pasado
+// segundos, no milisegundos.
+//
+// SI ALGUNA NO ESTÁ LISTA, NO SE DIBUJA Y YA. `dibujarSiLista` lo comprueba
+// con `complete` y `naturalWidth`, así que el peor caso es un recibo sin
+// bandera -- nunca un recibo a medias ni una espera. Esa es la razón de que
+// esto sea una optimización y no una dependencia.
+//
+// Son del mismo origen, así que no «manchan» el canvas y `toDataURL` sigue
+// funcionando. Un fichero de otro dominio lo rompería entero.
+const IMAGENES: Partial<Record<string, HTMLImageElement>> = {};
+
+function precargar(clave: string, src: string) {
+  if (typeof window === "undefined") return;
+  const img = new window.Image();
+  img.src = src;
+  IMAGENES[clave] = img;
+}
+
+precargar("USD", "/flag-usd.svg");
+precargar("EUR", "/flag-eur.svg");
+precargar("USDT", "/flag-usdt.svg");
+precargar("VES", "/flag-ves.svg");
+precargar("logo", "/logo-primary.svg");
+
+function dibujarSiLista(
+  ctx: CanvasRenderingContext2D | null,
+  clave: string,
+  x: number,
+  y: number,
+  ancho: number,
+  alto: number,
+): boolean {
+  const img = IMAGENES[clave];
+  if (img == null || !img.complete || img.naturalWidth === 0) return false;
+  if (ctx) ctx.drawImage(img, x, y, ancho, alto);
+  return true;
+}
+
 function envolver(ctx: CanvasRenderingContext2D, texto: string, ancho: number): string[] {
   const palabras = texto.split(/\s+/).filter(Boolean);
   if (palabras.length === 0) return [""];
@@ -275,6 +319,21 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
       ctx.fillStyle = TINTA;
       ctx.fillText(`Resumen de compra en ${nombre}`, MARGEN + 14 * ESCALA, by);
     }
+    // LA BANDERA A LA DERECHA, como la pantalla y como el frame. A petición
+    // del dueño el 2026-10-15: la imagen le faltaba frente al diseño.
+    //
+    // Se dibuja desde la misma fuente que usa la pantalla (`/flag-usd.svg` y
+    // compañía), no con arcos a mano: así no hay dos dibujos de la misma
+    // bandera que puedan separarse el día que una se retoque.
+    const ladoBandera = 16 * ESCALA;
+    dibujarSiLista(
+      ctx,
+      bloque.currency,
+      ANCHO - MARGEN - 14 * ESCALA - ladoBandera,
+      by - ladoBandera + 2 * ESCALA,
+      ladoBandera,
+      ladoBandera,
+    );
     by += 22 * ESCALA;
 
     const xIzq = MARGEN + 14 * ESCALA;
@@ -349,7 +408,21 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
   // receipt about money with no warning teaches that Sevenz messages
   // sometimes come without one, and that is the gap somebody impersonating us
   // walks through.
-  y += 6 * ESCALA;
+  // EL LOGO ENCIMA DEL AVISO. A petición del dueño el 2026-10-15, y no es
+  // adorno: esta imagen está hecha para reenviarse, así que acaba en chats
+  // donde no se ve nada más nuestro. Sin la marca, un recibo sobre dinero es
+  // una captura cualquiera; con ella, el aviso de abajo dice quién lo firma.
+  //
+  // RELACIÓN 1186:428, la del fichero. Calcularla a partir del propio SVG en
+  // vez de escribir dos números sueltos es lo que evita que el logo salga
+  // aplastado el día que se cambie el archivo.
+  y += 18 * ESCALA;
+  const altoLogo = 18 * ESCALA;
+  const anchoLogo = altoLogo * (1186 / 428);
+  if (dibujarSiLista(ctx, "logo", centro - anchoLogo / 2, y, anchoLogo, altoLogo)) {
+    y += altoLogo + 10 * ESCALA;
+  }
+
   const pie =
     "Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. " +
     "Pagos y abonos deben hacerse directamente con el dueño del comercio.";
@@ -364,6 +437,17 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
       ctx.fillText(linea, centro, y);
       ctx.textAlign = "left";
     }
+  }
+
+  // Y LA DIRECCIÓN DEBAJO, con su salto. Es lo único del recibo que le dice a
+  // quien lo recibe de segunda mano dónde comprobar que Sevenz existe.
+  y += 20 * ESCALA;
+  if (ctx) {
+    ctx.font = fuente(10, "500");
+    ctx.fillStyle = TENUE;
+    ctx.textAlign = "center";
+    ctx.fillText("sevenz.site", centro, y);
+    ctx.textAlign = "left";
   }
 
   return y + 22 * ESCALA;

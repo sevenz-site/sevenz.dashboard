@@ -462,24 +462,50 @@ function FormularioDeLaOrden({
 
       const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos, rates);
 
-      // SE INTENTA ABRIR WHATSAPP, Y SI NO SE PUEDE NO PASA NADA.
+      // SE INTENTA MANDAR EL RECIBO, Y SI NO SE PUEDE NO PASA NADA.
       //
-      // A petición del dueño el 2026-10-15: «Enviar pedido» abre wa.me y el
-      // resumen queda detrás. Lo que no se puede garantizar es que se abra:
-      // esto ocurre después de un `await`, así que iOS puede bloquearlo por
-      // no venir de un toque directo.
+      // El dueño pidió el 2026-10-15 que esto mandara el capture y no el
+      // texto. HAY DOS TOPES DE PLATAFORMA en el camino, y ninguno es
+      // nuestro; quedan escritos porque «sigue mandando texto» se lee como un
+      // fallo y no lo es:
       //
-      // Por eso el resumen lleva su propio «Compartir». El pedido YA está
-      // guardado —decisión del 2026-10-14, y es el punto entero de guardar
-      // primero—, así que un WhatsApp que no se abre cuesta un toque más, no
-      // un pedido perdido.
-      const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
-      if (digitos !== "") {
-        window.open(
-          `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
-          "_blank",
-          "noopener,noreferrer",
-        );
+      // 1. UN ENLACE `wa.me` SOLO ADMITE TEXTO. No existe ningún parámetro
+      //    para adjuntar un fichero -- comprobado contra la documentación del
+      //    formato el 2026-10-15. Mandar una imagen por WhatsApp solo se
+      //    puede desde la hoja nativa del teléfono o desde la API de negocio.
+      // 2. ESTO OCURRE DESPUÉS DE UN `await`, porque la orden se guarda
+      //    primero. iOS bloquea tanto `window.open` como `navigator.share`
+      //    cuando no vienen de un toque directo, así que ninguna de las dos
+      //    está garantizada aquí.
+      //
+      // Así que se intenta la hoja CON LA IMAGEN y se cae al `wa.me` de
+      // siempre. Donde funcione, el dueño recibe el recibo; donde no,
+      // exactamente lo de antes -- nunca menos.
+      //
+      // EL CAMINO FIABLE SIGUE SIENDO EL BOTÓN DEL RESUMEN, que es un toque
+      // directo sin nada esperando por delante. El pedido YA está guardado
+      // —decisión del 2026-10-14— así que lo que falle aquí cuesta un toque
+      // más, no un pedido.
+      const recibo = dibujarRecibo({
+        businessName,
+        comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
+        resumen: resumenPorMoneda(lineas, productos, rates),
+        rates,
+      });
+      const ficheroRecibo =
+        recibo == null ? null : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
+
+      if (ficheroRecibo != null && navigator.canShare?.({ files: [ficheroRecibo] })) {
+        void navigator.share({ files: [ficheroRecibo], text: mensaje }).catch(() => {});
+      } else {
+        const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
+        if (digitos !== "") {
+          window.open(
+            `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
+            "_blank",
+            "noopener,noreferrer",
+          );
+        }
       }
 
       onAbierto(false);
@@ -761,10 +787,28 @@ function Enviado({
         );
       })}
 
-      <p className="text-center text-xs leading-relaxed text-muted-foreground">
-        Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
-        hacerse directamente con el dueño del comercio.
-      </p>
+      {/* EL LOGO Y LA DIRECCIÓN, del frame. A petición del dueño el
+          2026-10-15, y van en la pantalla Y en la imagen por la misma razón:
+          esta es la única pantalla del catálogo que el cliente guarda o
+          reenvía, así que es donde el aviso de abajo necesita decir quién lo
+          firma. Sin marca, un texto sobre dinero es una captura cualquiera.
+
+          `priority` no, y `unoptimized` tampoco hace falta: es un SVG del
+          propio dominio y Next lo sirve tal cual. */}
+      <div className="flex flex-col items-center gap-3 pt-2">
+        <Image
+          src="/logo-primary.svg"
+          alt="Sevenz"
+          width={96}
+          height={35}
+          className="h-7 w-auto"
+        />
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
+          hacerse directamente con el dueño del comercio.
+        </p>
+        <p className="text-center text-xs font-medium text-muted-foreground">sevenz.site</p>
+      </div>
 
       <div className="flex flex-col gap-2 pt-2">
         <button
