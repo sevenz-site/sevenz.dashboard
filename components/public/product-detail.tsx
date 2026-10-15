@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { CircleCheck, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useCarrito } from "@/lib/cart/store";
@@ -188,15 +188,47 @@ export function ProductDetail({
               return (
                 <div key={t} className="flex items-baseline justify-between gap-3">
                   <span
-                    className={`truncate text-sm ${aplica ? "font-semibold" : "text-muted-foreground"}`}
+                    className={`flex min-w-0 items-baseline gap-1.5 truncate text-sm ${
+                      aplica ? "font-semibold" : "text-muted-foreground"
+                    }`}
                   >
-                    {t === "wholesale" ? "Precio al mayor" : "Precio al detal"}
-                    {t === "wholesale" && producto.wholesale_min_quantity != null ? (
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {" "}
-                        desde {producto.wholesale_min_quantity}
-                      </span>
+                    {/* EL CHECK VERDE MARCA EL PRECIO QUE SE ESTÁ APLICANDO.
+                        Del frame, a petición del dueño el 2026-10-15.
+
+                        NO ES SOLO ADORNO: hasta ahora la única diferencia
+                        entre las dos líneas era la negrita y el gris, y eso
+                        es una señal débil — en una pantalla al sol, o para
+                        quien no distingue bien los contrastes, las dos líneas
+                        se parecen demasiado para decidir cuánto va a pagar.
+
+                        `aria-hidden` en el icono y la frase en un `sr-only`
+                        al lado: un lector de pantalla no anuncia un SVG, así
+                        que sin esa frase la información de cuál aplica
+                        existiría solo en píxeles.
+
+                        El verde no sale de un token semántico de tema, por lo
+                        mismo que las etiquetas de inventario: esta página la
+                        ve un cliente que no eligió el tema de nadie, y el
+                        verde tiene que significar lo mismo en claro y en
+                        oscuro. */}
+                    {aplica ? (
+                      <>
+                        <CircleCheck
+                          className="size-4 shrink-0 translate-y-0.5 text-emerald-600"
+                          aria-hidden="true"
+                        />
+                        <span className="sr-only">Precio que se te aplica: </span>
+                      </>
                     ) : null}
+                    <span className="truncate">
+                      {t === "wholesale" ? "Precio al mayor" : "Precio al detal"}
+                      {t === "wholesale" && producto.wholesale_min_quantity != null ? (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {" "}
+                          desde {producto.wholesale_min_quantity}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   <span
                     className={`shrink-0 text-right text-sm tabular-nums ${aplica ? "font-semibold" : "text-muted-foreground"}`}
