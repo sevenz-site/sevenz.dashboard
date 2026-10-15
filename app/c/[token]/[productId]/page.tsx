@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronLeft, ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
@@ -116,14 +117,32 @@ export default async function ProductoPublicoPage({
 
   // Las mismas tasas que la lista, y por el mismo camino: la del tendero si la
   // fijó, la del BCV si no, y ninguna fuera de Venezuela.
-  const rates: BolivarRates | null =
+  // THE USDT RATE NOW REACHES THE PUBLIC CATALOGUE TOO. Owner's decision on
+  // 2026-10-15, which displaces the one of 2026-10-10 that kept third-party
+  // calls off public pages.
+  //
+  // What displaced it is a measurement, not a change of mind: the call sits
+  // behind a 60-second server cache and a 2-second timeout, so a thousand
+  // visitors in a minute cost ONE request to CriptoYa, not a thousand. The
+  // 2026-10-10 reasoning assumed one call per load.
+  //
+  // AND IT IS THE SAME CALL THE SHOPKEEPER'S OWN PRODUCT FORM MAKES, which
+  // closes a gap that had nothing to do with cost: until now the shopkeeper
+  // saw a USDT price on their product and their customer did not.
+  //
+  // It also writes the price down for `create_catalog_order` to read -- see
+  // migrations 112 and 113. That is what keeps what is OFFERED and what is
+  // ACCEPTED the same set; offering USDT without it would let the customer
+  // fill in the whole form and then be rejected with `sin_tasa`.
+  const tasaBase =
     detalle.owner_country === "VE" &&
     detalle.current_bcv_usd != null &&
     detalle.current_bcv_eur != null
       ? detalle.rate_mode === "CUSTOM" && detalle.custom_rate_usd && detalle.custom_rate_eur
-        ? { usd: detalle.custom_rate_usd, eur: detalle.custom_rate_eur, usdt: null }
-        : { usd: detalle.current_bcv_usd, eur: detalle.current_bcv_eur, usdt: null }
+        ? { usd: detalle.custom_rate_usd, eur: detalle.custom_rate_eur }
+        : { usd: detalle.current_bcv_usd, eur: detalle.current_bcv_eur }
       : null;
+  const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">

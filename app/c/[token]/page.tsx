@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -174,14 +175,32 @@ export default async function CatalogoPublicoPage({
   // CriptoYa — un cliente que mira un catalogo quiere el precio en lo que
   // paga, y esta pagina es publica, asi que cada carga seria una llamada a un
   // tercero disparada por cualquiera con el enlace.
-  const rates: BolivarRates | null =
+  // THE USDT RATE NOW REACHES THE PUBLIC CATALOGUE TOO. Owner's decision on
+  // 2026-10-15, which displaces the one of 2026-10-10 that kept third-party
+  // calls off public pages.
+  //
+  // What displaced it is a measurement, not a change of mind: the call sits
+  // behind a 60-second server cache and a 2-second timeout, so a thousand
+  // visitors in a minute cost ONE request to CriptoYa, not a thousand. The
+  // 2026-10-10 reasoning assumed one call per load.
+  //
+  // AND IT IS THE SAME CALL THE SHOPKEEPER'S OWN PRODUCT FORM MAKES, which
+  // closes a gap that had nothing to do with cost: until now the shopkeeper
+  // saw a USDT price on their product and their customer did not.
+  //
+  // It also writes the price down for `create_catalog_order` to read -- see
+  // migrations 112 and 113. That is what keeps what is OFFERED and what is
+  // ACCEPTED the same set; offering USDT without it would let the customer
+  // fill in the whole form and then be rejected with `sin_tasa`.
+  const tasaBase =
     shared.owner_country === "VE" &&
     shared.current_bcv_usd != null &&
     shared.current_bcv_eur != null
       ? shared.rate_mode === "CUSTOM" && shared.custom_rate_usd && shared.custom_rate_eur
-        ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur, usdt: null }
-        : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur, usdt: null }
+        ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
+        : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur }
       : null;
+  const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
   // LA CIFRA EN BOLIVARES DE CADA PRODUCTO, Y DE DONDE SALE.
   //

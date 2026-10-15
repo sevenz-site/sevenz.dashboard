@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getBolivarRates } from "@/lib/products/catalog";
 import type { ProductoDelCarrito } from "@/lib/cart/cart";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -67,14 +68,20 @@ export async function productosDelCarrito(
 
     // Las mismas tasas que la lista y el detalle, por el mismo camino: la del
     // tendero si la fijó, la del BCV si no, y ninguna fuera de Venezuela.
-    const rates: BolivarRates | null =
+    // THE USDT RATE HERE TOO, for the same reason as the catalogue and the
+    // detail: the cart recomputes every line, so if it resolved USDT
+    // differently from the screen the customer added from, a line would change
+    // price -- or vanish -- between one screen and the next. See migrations
+    // 112 and 113.
+    const tasaBase =
       shared.owner_country === "VE" &&
       shared.current_bcv_usd != null &&
       shared.current_bcv_eur != null
         ? shared.rate_mode === "CUSTOM" && shared.custom_rate_usd && shared.custom_rate_eur
-          ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur, usdt: null }
-          : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur, usdt: null }
+          ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
+          : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur }
         : null;
+    const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
     // THE `currencies` FALLBACK IS THE BASE, not an empty list, and here it
     // is not cosmetic: `precioUnitario` calls

@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { fetchUsdtP2p } from "@/lib/exchange-rate/usdt-p2p";
+import { createServiceClient } from "@/lib/supabase/service";
 import type { BolivarRates, PriceCurrency, PriceTier } from "@/lib/products/price";
 
 // WHAT THE CATALOGUE SCREEN NEEDS, ASSEMBLED ON THE SERVER.
@@ -102,8 +103,47 @@ export const PRODUCT_COLUMNS =
 // matches the route's on purpose — two different windows for the same price
 // would show one figure in the calculator and another in the catalogue, which
 // is exactly the kind of difference nobody can explain afterwards.
+// THE PRICE IS ALSO WRITTEN DOWN, so SQL can read it. Migration 112.
+//
+// WHY THIS IS NOT A CRON: on Vercel's Hobby plan every cron job is limited to
+// a DAILY interval -- a `*/30 * * * *` fails at deploy time with "Hobby
+// accounts are limited to daily cron jobs" -- and a 24-hour-old P2P price is a
+// wrong number about money, unlike the BCV rate, which the central bank itself
+// only publishes once a day.
+//
+// So the refresh rides on the page view. It sits INSIDE the cached function on
+// purpose: that body runs exactly on a cache miss, so the write happens about
+// once a minute no matter how many people are looking. Putting it outside
+// would add a database round trip to every single render for nothing.
+//
+// IT CANNOT BREAK A PAGE. `set_usdt_p2p_rate` ignores a null or non-positive
+// amount, `createServiceClient()` throws when the key is missing, and every
+// bit of it is swallowed here: a rate refresh failing must never take down a
+// catalogue that renders perfectly well without the USDT row.
+async function guardarTasaUsdt(amount: number | null): Promise<void> {
+  if (amount == null || amount <= 0) return;
+  try {
+    const supabase = createServiceClient();
+    // AN RPC AND NOT A TABLE WRITE, which is what lets the table keep RLS on
+    // with zero policies and zero grants. It is also what `qa:service-role`
+    // asks for: reach data behind a SECURITY DEFINER function instead of
+    // touching the table with the service key.
+    const { error } = await supabase.rpc("set_usdt_p2p_rate", {
+      p_amount: amount,
+      p_source: "binancep2p",
+    });
+    if (error) console.error("[guardarTasaUsdt] rpc:", error.message);
+  } catch (error) {
+    console.error("[guardarTasaUsdt]:", error instanceof Error ? error.message : error);
+  }
+}
+
 const cachedUsdtPrice = unstable_cache(
-  async (officialUsd: number) => fetchUsdtP2p(officialUsd),
+  async (officialUsd: number) => {
+    const p2p = await fetchUsdtP2p(officialUsd);
+    await guardarTasaUsdt(p2p?.ask ?? null);
+    return p2p;
+  },
   ["usdt-p2p-catalog"],
   { revalidate: 60 },
 );

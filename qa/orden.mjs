@@ -534,24 +534,93 @@ try {
     );
   }
 
-  // AND USDT DOES NOT, even when enabled: its rate comes from CriptoYa and
-  // public pages do not ask for it (decision of 2026-10-10), so the function
-  // cannot compute it. The reason has to be `sin_tasa` and NOT
-  // `moneda_invalida` -- two different fixes, and the log is where they get
-  // told apart.
+  // ── THE USDT, AND THE OWNER'S DECISION OF 2026-10-15 IN THREE PARTS ───
+  //
+  // «Encender CriptoYa en el catálogo, con el precio fijado a mano de
+  // reserva». That sentence has three distinct behaviours inside it, and only
+  // testing all three says whether it was built:
+  //
+  //   14c  no stored rate, no pinned price  -> rejected with `sin_tasa`
+  //   14d  stored rate                      -> converts, matching TypeScript
+  //   14e  no stored rate, pinned price     -> sells at the pinned price
+  //
+  // 14e IS THE ONE THAT MATTERS MOST and the easiest to leave untested,
+  // because it only happens when CriptoYa has been down for 24 hours -- which
+  // is precisely when nobody is watching. It is the whole reason the owner
+  // asked for a manual fallback rather than just switching the rate on.
+  //
+  // The row is written straight to the table rather than through
+  // `set_usdt_p2p_rate`, on purpose: that function ignores a write landing
+  // within 60 seconds of the stored one, which is right for a page render and
+  // useless for a test that has to control the value exactly. `qa/` is
+  // excluded from `qa:service-role` for this kind of fixture work.
   await admin
     .from("product_currencies")
     .upsert(
       { product_id: convertible.id, currency: "USDT" },
       { onConflict: "product_id,currency" },
     );
+
+  await admin.from("usdt_p2p_rate").delete().eq("id", true);
   const r14c = await pedir(token, [
     { product_id: convertible.id, quantity: 1, currency: "USDT" },
   ]);
   check(
-    "14c. el USDT activo pero sin tasa se rechaza con `sin_tasa`, no con `moneda_invalida`",
+    "14c. USDT activo, sin tasa guardada y sin precio fijado: `sin_tasa`, no `moneda_invalida`",
     !r14c.ok && r14c.reason === "sin_tasa",
-    r14c.reason,
+    `${r14c.reason} — son dos arreglos distintos y el log es donde se distinguen`,
+  );
+
+  const TASA_USDT = 200;
+  await admin
+    .from("usdt_p2p_rate")
+    .upsert({ id: true, bs_per_usdt: TASA_USDT, source: "qa", updated_at: new Date().toISOString() });
+  const esperadoUsdt = precioEnMoneda(fichaTs.retail, "USD", "USDT", {
+    ...rates,
+    usdt: TASA_USDT,
+  });
+  const r14d = await pedir(token, [
+    { product_id: convertible.id, quantity: 1, currency: "USDT" },
+  ]);
+  const { data: lineaUsdt } = r14d.ok
+    ? await admin
+        .from("catalog_order_items")
+        .select("unit_price, currency")
+        .eq("order_id", r14d.order_id)
+        .single()
+    : { data: null };
+  check(
+    "14d. con la tasa guardada, el USDT se convierte y coincide con TypeScript",
+    lineaUsdt != null &&
+      lineaUsdt.currency === "USDT" &&
+      Number(lineaUsdt.unit_price) === esperadoUsdt,
+    lineaUsdt == null
+      ? `la orden ni entró: ${r14d.reason}`
+      : `TypeScript ${esperadoUsdt} · base ${lineaUsdt.unit_price}`,
+  );
+
+  // Y LA RESERVA: sin tasa, pero con el precio escrito a mano, se vende igual.
+  await admin.from("usdt_p2p_rate").delete().eq("id", true);
+  await admin.from("product_price_overrides").upsert(
+    { product_id: convertible.id, tier: "retail", currency: "USDT", amount: 11.5 },
+    { onConflict: "product_id,tier,currency" },
+  );
+  const r14e = await pedir(token, [
+    { product_id: convertible.id, quantity: 1, currency: "USDT" },
+  ]);
+  const { data: lineaFijada } = r14e.ok
+    ? await admin
+        .from("catalog_order_items")
+        .select("unit_price, currency")
+        .eq("order_id", r14e.order_id)
+        .single()
+    : { data: null };
+  check(
+    "14e. sin tasa pero con precio fijado a mano, el USDT SÍ se vende — es la reserva que pidió el dueño",
+    lineaFijada != null &&
+      lineaFijada.currency === "USDT" &&
+      Number(lineaFijada.unit_price) === 11.5,
+    lineaFijada == null ? `rechazada: ${r14e.reason}` : String(lineaFijada.unit_price),
   );
 
 } finally {
@@ -565,6 +634,11 @@ try {
   if (link) await admin.from("catalog_orders").delete().eq("catalog_link_id", link.id);
   if (enlaceCreado) await admin.from("catalog_share_links").delete().eq("id", enlaceCreado);
   if (productos.length) await admin.from("products").delete().in("id", productos);
+  // LA TASA DEL USDT SE BORRA, no se restaura a lo que hubiera: la 112 la
+  // vuelve a escribir sola en cuanto alguien abra el catálogo, y dejar aquí un
+  // número inventado por una prueba es peor que dejarla vacía — vacía significa
+  // «no se ofrece USDT», que es un estado honesto y visible.
+  await admin.from("usdt_p2p_rate").delete().eq("id", true);
   await admin.from("client_whatsapp_consents").delete().eq("phone", TEL);
 
   const { count: quedanProd } = await admin
@@ -612,7 +686,12 @@ try {
   // watched is what the repo says, because that is what will be deployed. A
   // live function that does not match the file is a different problem, and the
   // twelve tests above catch it by actually calling it.
-  const sqlOrden = readFileSync("supabase/111_catalogo_ofrece_las_monedas_activas.sql", "utf8");
+  // THE FILE READ IS THE LATEST ONE THAT DEFINES THE FUNCTION, which is 113
+  // since 2026-10-15. Pointing at a superseded migration would compare the
+  // dictionary against codes nobody deploys any more -- and it would go on
+  // passing while doing nothing, which is the failure mode this whole check
+  // exists to avoid.
+  const sqlOrden = readFileSync("supabase/113_la_orden_convierte_usdt.sql", "utf8");
   const cuerpo = sqlOrden.slice(sqlOrden.indexOf("create function public.create_catalog_order"));
   const razonesDelSql = new Set([
     ...[...cuerpo.matchAll(/raise exception '([a-z_]+)' using errcode = 'P0001'/g)].map((m) => m[1]),
