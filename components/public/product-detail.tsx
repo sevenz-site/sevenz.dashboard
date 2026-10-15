@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Minus, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useCarrito } from "@/lib/cart/store";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ export function ProductDetail({
   stock: number | null;
 }) {
   const { agregar } = useCarrito(token);
+  const router = useRouter();
   const minimo = cantidadMinima(producto);
   const [cantidad, setCantidad] = useState(String(minimo));
   const [comentario, setComentario] = useState("");
@@ -314,14 +316,26 @@ export function ProductDetail({
               currency: moneda,
               comment: comentario.trim() === "" ? null : comentario.trim(),
             });
-            // SE VACÍA EL COMENTARIO Y SE DEJA LA CANTIDAD. El comentario ya
-            // viajó con la línea y volver a verlo invita a mandarlo dos veces;
-            // la cantidad se queda porque quien añade dos veces suele querer
-            // la misma, y además es la que el precio de arriba está mostrando.
-            setComentario("");
             toast.success("Agregado a tu carrito", {
               description: `${formatCantidad(n)} · ${total}`,
             });
+            // SE VUELVE AL CATÁLOGO, a petición del dueño el 2026-10-15.
+            //
+            // Quien acaba de añadir algo no quiere seguir mirando lo que ya
+            // añadió: quiere seguir comprando. Quedándose aquí, el único
+            // camino de vuelta era la flecha de arriba, y la pantalla seguía
+            // ofreciendo «Agregar» sobre un producto que ya está dentro — que
+            // es como se añade lo mismo dos veces sin querer.
+            //
+            // EL CARRITO NO SE PIERDE Y NO HAY QUE HACER NADA PARA ELLO: vive
+            // en `localStorage`, no en el estado de esta pantalla. Esa es
+            // justamente la propiedad que hace que esto sea un `push` y no
+            // haya que pasar nada por la URL.
+            //
+            // El aviso sobrevive al salto porque el `Toaster` está en el
+            // layout raíz, así que el cliente lee «Agregado a tu carrito» ya
+            // en el catálogo — que es donde le sirve de confirmación.
+            router.push(`/c/${token}`);
           }}
         >
           <Plus className="size-4" /> Agregar {total ?? ""}
