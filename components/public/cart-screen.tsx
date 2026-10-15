@@ -10,6 +10,7 @@ import {
   Loader2,
   Minus,
   Plus,
+  Share2,
   Trash2,
   User,
 } from "lucide-react";
@@ -130,7 +131,6 @@ export function CartScreen({
       <Enviado
         token={token}
         mensaje={estado.mensaje}
-        ownerWhatsapp={ownerWhatsapp}
         comprador={estado.comprador}
         resumen={estado.resumen}
         rates={estado.rates}
@@ -592,19 +592,42 @@ function FormularioDeLaOrden({
 function Enviado({
   token,
   mensaje,
-  ownerWhatsapp,
   comprador,
   resumen,
   rates,
 }: {
   token: string;
   mensaje: string;
-  ownerWhatsapp: string | null;
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: ReturnType<typeof resumenPorMoneda>;
   rates: BolivarRates | null;
 }) {
-  const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
+  // LA HOJA NATIVA DEL TELÉFONO, no un `wa.me`. A petición del dueño el
+  // 2026-10-15, y es lo que dibuja el frame `1326:5835`.
+  //
+  // La diferencia no es de icono: `wa.me` manda al número del NEGOCIO y nada
+  // más; la hoja nativa deja al comprador mandarse el resumen a sí mismo,
+  // reenviarlo a quien le hizo el encargo, o guardárselo. Al enviar el pedido
+  // ya se intentó abrir WhatsApp con el negocio, así que ese camino no se
+  // pierde — este es el otro.
+  //
+  // Mismo patrón que «Compartir enlace» del perfil de un cliente: hoja si la
+  // hay, portapapeles si no. Un escritorio sin `navigator.share` copia el
+  // MENSAJE entero y no un enlace, para que lo que se pega sea lo mismo que
+  // habría mandado la hoja.
+  async function compartir() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: mensaje });
+      } catch {
+        // Cerrar la hoja la rechaza. Eso es el comprador decidiendo no
+        // mandarlo, no un fallo, así que no lleva aviso.
+      }
+      return;
+    }
+    await navigator.clipboard.writeText(mensaje);
+    toast.success("Resumen copiado");
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
@@ -685,14 +708,13 @@ function Enviado({
       </p>
 
       <div className="flex flex-col gap-2 pt-2">
-        {digitos !== "" ? (
-          <a
-            href={`https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`}
-            className="flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:bg-accent"
-          >
-            <WhatsappIcon className="size-5" /> Compartir
-          </a>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => void compartir()}
+          className="flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Share2 className="size-5" aria-hidden="true" /> Compartir
+        </button>
         <Link
           href={`/c/${token}`}
           className="flex h-12 items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background"

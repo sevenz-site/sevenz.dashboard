@@ -318,6 +318,14 @@ export function ProductDetail({
             });
             toast.success("Agregado a tu carrito", {
               description: `${formatCantidad(n)} · ${total}`,
+              // ARRIBA, Y SOLO ESTE AVISO. Abajo se solapaba con la píldora
+              // «Ver carrito», que es fija y aparece justo al añadir — el
+              // aviso tapaba el botón que acababa de ganarse su sitio.
+              //
+              // Se pone por aviso y no en el `Toaster` del layout raíz: ese
+              // es el mismo para toda la app, y moverlo cambiaría de sitio
+              // todos los avisos del tendero para arreglar uno del cliente.
+              position: "top-center",
             });
             // SE VUELVE AL CATÁLOGO, a petición del dueño el 2026-10-15.
             //
