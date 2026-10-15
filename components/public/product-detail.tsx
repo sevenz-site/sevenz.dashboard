@@ -194,11 +194,22 @@ export function ProductDetail({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* EL DISPONIBLE. Sale del frame y el dueño lo confirmó sabiendo que
-          publica su inventario a cualquiera con el enlace. Hoy es un número que
-          nadie mueve (CT-59), así que no bloquea: se deja pedir de más. */}
+      {/* EL DISPONIBLE, SIN CIFRA, igual que la etiqueta del catálogo.
+          Decisión del dueño el 2026-10-15: dice si hay o no hay, nunca cuánto.
+          El porqué está en `app/c/[token]/page.tsx`, donde vive la etiqueta.
+
+          Y DE PASO ARREGLA UN DESCUADRE que la cifra escondía: esto se pintaba
+          con `stock != null`, así que un producto con CERO existencias decía
+          «Disponible: 0» aquí mientras su tarjeta del catálogo decía «No
+          disponible». Dos pantallas del mismo producto, una diciendo que hay y
+          la otra que no, a un cliente que está decidiendo si pedirlo.
+
+          Sigue sin bloquear: el número no lo mantiene nadie (`CT-59`), así que
+          se deja pedir de más y solo se avisa. */}
       {stock != null ? (
-        <p className="text-sm font-semibold">Disponible: {formatCantidad(stock)}</p>
+        <p className="text-sm font-semibold">
+          {stock === 0 ? "No disponible" : "Disponible"}
+        </p>
       ) : null}
 
       {bloque == null ? (
@@ -285,25 +296,46 @@ export function ProductDetail({
 
           {/* UN SOLO SELECTOR, con las monedas del escalón que aplica. El
               error del frame era tener uno por bloque: dos listas invitan a
-              elegir dos veces y solo se paga una. */}
+              elegir dos veces y solo se paga una.
+
+              CON UNA SOLA MONEDA NO SE DIBUJA EL BOTÓN. Decisión del dueño el
+              2026-10-15: si no hay nada que elegir, un radio marcado le pide
+              al cliente que confirme algo que ya está decidido, y un control
+              que no hace nada enseña que los controles de esta pantalla no
+              hacen nada.
+
+              LA FILA SÍ SE QUEDA, con su bandera y su importe. Es la que dice
+              en qué moneda se paga, y esa información hace falta aunque no
+              haya elección — sobre todo en un negocio venezolano, donde el
+              cliente no puede dar por hecho cuál es.
+
+              Y SIN `<label>` CUANDO NO HAY `<input>`: una etiqueta sin control
+              al que apuntar es HTML roto, y un lector de pantalla la anuncia
+              como si hubiera algo que activar. */}
           <div className="flex flex-col gap-0.5 border-t pt-2">
             {monedas.map((c) => {
               const p = precioEn(bloque, c);
               if (p == null) return null;
               const elegida = c === moneda;
+              const hayQueElegir = monedas.length > 1;
+              const Fila = hayQueElegir ? "label" : "div";
               return (
-                <label
+                <Fila
                   key={c}
-                  className="flex cursor-pointer items-center justify-between gap-3 py-1.5"
+                  className={`flex items-center justify-between gap-3 py-1.5 ${
+                    hayQueElegir ? "cursor-pointer" : ""
+                  }`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <input
-                      type="radio"
-                      name="moneda"
-                      checked={elegida}
-                      onChange={() => setPreferida(c)}
-                      className="size-4 shrink-0 accent-foreground"
-                    />
+                    {hayQueElegir ? (
+                      <input
+                        type="radio"
+                        name="moneda"
+                        checked={elegida}
+                        onChange={() => setPreferida(c)}
+                        className="size-4 shrink-0 accent-foreground"
+                      />
+                    ) : null}
                     <CurrencyFlagIcon currency={c as "USD" | "EUR" | "USDT"} />
                     <span className="truncate text-sm">{ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}</span>
                   </span>
@@ -313,7 +345,7 @@ export function ProductDetail({
                       <span className="block text-xs text-muted-foreground">{p.bs}</span>
                     ) : null}
                   </span>
-                </label>
+                </Fila>
               );
             })}
           </div>

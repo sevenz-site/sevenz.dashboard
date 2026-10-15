@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { formatCantidad } from "@/lib/products/cantidad";
 import { SetupNotice } from "@/components/setup-notice";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
@@ -380,17 +379,26 @@ export default async function CatalogoPublicoPage({
 
                   {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
 
-                      TRES ESTADOS Y EL FRAME DIBUJA DOS. Decisión del dueño el
-                      2026-10-15, preguntada antes de construirla: con cantidad
-                      sale el número, con cero sale «No disponible», y SIN
-                      cantidad escrita sale «Disponible» a secas.
+                      SIN CIFRA. Decisión del dueño el 2026-10-15, que cambia
+                      lo acordado esa misma mañana: la etiqueta dice si HAY o
+                      NO HAY, nunca cuánto.
 
-                      El tercero es el que importa: `stock_opening` nace nulo
-                      salvo que el tendero lo ponga, y es un número que nadie
-                      mantiene (`CT-59`). Con solo dos estados, 5 de los 6
-                      productos de dev saldrían en rojo como «No disponible»
-                      estando en el mostrador — y el tendero se enteraría por
-                      un cliente que no le compró.
+                      Lo que se quita es enseñarle al cliente «Disponible: 1».
+                      Un número de inventario a la vista empuja justo lo que no
+                      conviene — «solo queda uno» es presión de venta falsa si
+                      el número está desactualizado, y «quedan 1.000» le dice a
+                      la competencia lo que el tendero tiene en el mostrador.
+                      Y hoy ese número no lo mantiene nadie (`CT-59`), así que
+                      publicarlo con dos decimales de precisión es prometer una
+                      exactitud que no existe.
+
+                      LOS TRES ESTADOS SIGUEN VIVOS POR DENTRO, y eso no es un
+                      detalle: `0` es «no disponible» y `null` es «no se sabe»,
+                      que se pinta como disponible. Aplanar el null a 0
+                      convertiría «no se sabe» en «no hay», y 5 de los 6
+                      productos de dev saldrían en rojo estando en el
+                      mostrador. Lo que desapareció es la CIFRA, no la
+                      distinción.
 
                       El color no sale de un token semántico de tema: esta
                       página la ve un cliente que no eligió el tema de nadie, y
@@ -403,11 +411,7 @@ export default async function CatalogoPublicoPage({
                         : "border-emerald-200 bg-emerald-50 text-emerald-700"
                     }`}
                   >
-                    {p.stock === 0
-                      ? "No disponible"
-                      : p.stock == null
-                        ? "Disponible"
-                        : `Disponible: ${formatCantidad(p.stock)}`}
+                    {p.stock === 0 ? "No disponible" : "Disponible"}
                   </span>
                 </div>
                 </Link>

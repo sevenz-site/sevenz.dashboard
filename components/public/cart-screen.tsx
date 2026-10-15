@@ -33,6 +33,7 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type BolivarRates } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { splitForInput } from "@/lib/phone";
+import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
   precioUnitario,
@@ -131,6 +132,7 @@ export function CartScreen({
       <Enviado
         token={token}
         mensaje={estado.mensaje}
+        businessName={businessName}
         comprador={estado.comprador}
         resumen={estado.resumen}
         rates={estado.rates}
@@ -599,12 +601,14 @@ function FormularioDeLaOrden({
 function Enviado({
   token,
   mensaje,
+  businessName,
   comprador,
   resumen,
   rates,
 }: {
   token: string;
   mensaje: string;
+  businessName: string;
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: ReturnType<typeof resumenPorMoneda>;
   rates: BolivarRates | null;
@@ -618,22 +622,70 @@ function Enviado({
   // ya se intentó abrir WhatsApp con el negocio, así que ese camino no se
   // pierde — este es el otro.
   //
-  // Mismo patrón que «Compartir enlace» del perfil de un cliente: hoja si la
-  // hay, portapapeles si no. Un escritorio sin `navigator.share` copia el
-  // MENSAJE entero y no un enlace, para que lo que se pega sea lo mismo que
-  // habría mandado la hoja.
-  async function compartir() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ text: mensaje });
-      } catch {
+  // ─────────────────────────────────────────────────────────────────────
+  // Y LO QUE SE COMPARTE ES UNA IMAGEN, no el texto. Decisión del dueño el
+  // 2026-10-15: «para evitar que se edite el texto del mensaje en whatsApp».
+  //
+  // SE LE DIJO LO QUE ESTO NO HACE, y queda escrito para que nadie lo
+  // confunda después: una imagen no impide manipular nada. Se puede recortar
+  // una captura, o no compartir y escribir otra cosa. Lo que gana es que el
+  // camino honesto produzca algo que no se retoca sin querer al editar el
+  // borrador de WhatsApp antes de mandarlo. La prueba de verdad es la orden
+  // guardada en el servidor, que es la que el tendero abre.
+  //
+  // NO HAY NI UN `await` ANTES DE `navigator.share`, y es deliberado. iOS
+  // bloquea la hoja cuando la llamada no viene de un gesto, y un `await`
+  // rompe esa cadena — este mismo repo ya perdió así el `wa.me`. Por eso
+  // `dibujarRecibo` es síncrona de principio a fin y esta función dejó de ser
+  // `async`.
+  //
+  // TRES CAMINOS, EN ESTE ORDEN, y cada uno existe por un sitio real:
+  //
+  //   1. Hoja nativa con el fichero -> el teléfono, que es donde pasa esto.
+  //   2. Descargar el PNG -> un escritorio sin `canShare({files})`, que es
+  //      Firefox y buena parte de Chrome en Windows.
+  //   3. El texto de siempre -> si el dibujo falla. Un canvas puede no estar
+  //      disponible, y quedarse sin compartir nada por eso sería peor que
+  //      compartir texto editable.
+  function compartir() {
+    const blob = dibujarRecibo({
+      businessName,
+      // EL TELÉFONO VA YA FORMATEADO, el mismo que la pantalla enseña. Si la
+      // imagen lo escribiera en crudo, el comprador vería doce dígitos
+      // seguidos en el recibo y su número separado arriba, y no sabría cuál
+      // de los dos le mandaron al tendero.
+      comprador: { ...comprador, telefono: telefonoLegible(comprador.telefono) },
+      resumen,
+      rates,
+    });
+
+    if (blob != null) {
+      const fichero = new File([blob], "pedido-sevenz.png", { type: "image/png" });
+      if (navigator.canShare?.({ files: [fichero] })) {
         // Cerrar la hoja la rechaza. Eso es el comprador decidiendo no
         // mandarlo, no un fallo, así que no lleva aviso.
+        void navigator.share({ files: [fichero] }).catch(() => {});
+        return;
       }
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "pedido-sevenz.png";
+      enlace.click();
+      // Revocar en el mismo tick cancela la descarga en algunos navegadores.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast.success("Resumen descargado");
       return;
     }
-    await navigator.clipboard.writeText(mensaje);
-    toast.success("Resumen copiado");
+
+    if (navigator.share) {
+      void navigator.share({ text: mensaje }).catch(() => {});
+      return;
+    }
+    void navigator.clipboard
+      .writeText(mensaje)
+      .then(() => toast.success("Resumen copiado"))
+      .catch(() => toast.error("No pudimos copiar el resumen"));
   }
 
   return (
@@ -717,7 +769,7 @@ function Enviado({
       <div className="flex flex-col gap-2 pt-2">
         <button
           type="button"
-          onClick={() => void compartir()}
+          onClick={compartir}
           className="flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
