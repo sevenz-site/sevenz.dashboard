@@ -40,7 +40,8 @@
     "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs",
     "qa:contraste": "node qa/contraste.mjs",
     "qa:proveedor": "node --experimental-strip-types qa/proveedor.mjs",
-    "qa:precio-publico": "node --experimental-strip-types qa/precio-publico.mjs"
+    "qa:precio-publico": "node --experimental-strip-types qa/precio-publico.mjs",
+    "qa:orden": "node --experimental-strip-types qa/orden.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
