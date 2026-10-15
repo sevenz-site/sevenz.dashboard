@@ -156,6 +156,50 @@ export function precioUnitario(
  * El orden lo fija el de aparicion en el carrito, no el alfabetico: asi la
  * lista de subtotales se lee en el mismo orden en que se armo el pedido.
  */
+/**
+ * EL RESUMEN AGRUPADO POR MONEDA, para la pantalla de «pedido registrado»
+ * (frame `1326:5835`).
+ *
+ * Es lo mismo que `subtotales` pero conservando las líneas, y existe aparte
+ * porque esa pantalla se pinta DESPUÉS de vaciar el carrito: necesita una
+ * foto completa de lo que se pidió, no una suma que dependa de un carrito que
+ * ya no está.
+ *
+ * El orden lo fija el de aparición, no el alfabético: el pedido se lee en el
+ * mismo orden en que se armó.
+ */
+export function resumenPorMoneda(
+  lineas: LineaCarrito[],
+  productos: Map<string, ProductoDelCarrito>,
+): {
+  currency: PriceCurrency;
+  items: { name: string; quantity: number; unitPrice: number; total: number }[];
+  total: number;
+}[] {
+  const porMoneda = new Map<PriceCurrency, { name: string; quantity: number; unitPrice: number; total: number }[]>();
+
+  for (const l of lineas) {
+    const p = productos.get(l.productId);
+    if (p == null) continue;
+    const precio = precioUnitario(p, l);
+    if (precio == null) continue;
+    const lista = porMoneda.get(precio.currency) ?? [];
+    lista.push({
+      name: p.name,
+      quantity: l.quantity,
+      unitPrice: precio.amount,
+      total: precio.amount * l.quantity,
+    });
+    porMoneda.set(precio.currency, lista);
+  }
+
+  return [...porMoneda.entries()].map(([currency, items]) => ({
+    currency,
+    items,
+    total: items.reduce((n, i) => n + i.total, 0),
+  }));
+}
+
 export function subtotales(
   lineas: LineaCarrito[],
   productos: Map<string, ProductoDelCarrito>,

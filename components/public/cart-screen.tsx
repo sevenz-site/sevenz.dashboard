@@ -3,7 +3,16 @@
 import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ImageOff, Loader2, Minus, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ImageOff,
+  Loader2,
+  Minus,
+  Plus,
+  Trash2,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,12 +25,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
+import { WhatsappInput } from "@/components/whatsapp-input";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type BolivarRates } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
+import { splitForInput } from "@/lib/phone";
 import { useCarrito } from "@/lib/cart/store";
-import { precioUnitario, subtotales, type ProductoDelCarrito } from "@/lib/cart/cart";
+import {
+  precioUnitario,
+  subtotales,
+  resumenPorMoneda,
+  type ProductoDelCarrito,
+} from "@/lib/cart/cart";
 import { productosDelCarrito, crearOrden } from "@/app/c/[token]/actions";
 import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
 
@@ -56,16 +73,29 @@ import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
 type Estado =
   | { fase: "cargando" }
   | { fase: "listo"; productos: Map<string, ProductoDelCarrito>; rates: BolivarRates | null }
-  | { fase: "enviado"; orderId: string; mensaje: string };
+  | {
+      fase: "enviado";
+      mensaje: string;
+      comprador: { nombre: string; documento: string; telefono: string };
+      // LA FOTO DEL PEDIDO, no una referencia al carrito: esta pantalla se
+      // pinta DESPUÉS de vaciarlo. Calcularla sobre el carrito daría un
+      // resumen vacío justo donde el cliente espera ver lo que pidió.
+      resumen: ReturnType<typeof resumenPorMoneda>;
+      rates: BolivarRates | null;
+    };
 
 export function CartScreen({
   token,
   businessName,
   ownerWhatsapp,
+  ownerCountry,
 }: {
   token: string;
   businessName: string;
   ownerWhatsapp: string | null;
+  // El país del NEGOCIO, solo para que el selector de prefijo abra en el que
+  // va a usar el 99 % de sus clientes. El cliente puede cambiarlo.
+  ownerCountry: string | null;
 }) {
   const { lineas, cambiar, quitar, vaciar } = useCarrito(token);
   const [estado, setEstado] = useState<Estado>({ fase: "cargando" });
@@ -101,6 +131,9 @@ export function CartScreen({
         token={token}
         mensaje={estado.mensaje}
         ownerWhatsapp={ownerWhatsapp}
+        comprador={estado.comprador}
+        resumen={estado.resumen}
+        rates={estado.rates}
       />
     );
   }
@@ -325,11 +358,22 @@ export function CartScreen({
         onAbierto={setAbierto}
         token={token}
         businessName={businessName}
+        ownerCountry={ownerCountry}
+        ownerWhatsapp={ownerWhatsapp}
         lineas={lineas}
         productos={productos}
-        onEnviada={(orderId, mensaje) => {
+        onEnviada={(mensaje, comprador) => {
+          // LA FOTO SE TOMA ANTES DE VACIAR, y el orden importa: `vaciar()`
+          // borra las líneas, así que calcular el resumen después daría una
+          // pantalla en blanco.
+          setEstado({
+            fase: "enviado",
+            mensaje,
+            comprador,
+            resumen: resumenPorMoneda(lineas, productos),
+            rates,
+          });
           vaciar();
-          setEstado({ fase: "enviado", orderId, mensaje });
         }}
       />
     </main>
@@ -348,6 +392,8 @@ function FormularioDeLaOrden({
   onAbierto,
   token,
   businessName,
+  ownerCountry,
+  ownerWhatsapp,
   lineas,
   productos,
   onEnviada,
@@ -356,16 +402,29 @@ function FormularioDeLaOrden({
   onAbierto: (v: boolean) => void;
   token: string;
   businessName: string;
+  ownerCountry: string | null;
+  ownerWhatsapp: string | null;
   lineas: ReturnType<typeof useCarrito>["lineas"];
   productos: Map<string, ProductoDelCarrito>;
-  onEnviada: (orderId: string, mensaje: string) => void;
+  onEnviada: (
+    mensaje: string,
+    comprador: { nombre: string; documento: string; telefono: string },
+  ) => void;
 }) {
   const [nombre, setNombre] = useState("");
   const [documento, setDocumento] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  // DESMARCADA, aunque el frame la dibuje marcada. El porqué está en
+  // `lib/cart/mensaje.ts`, junto al texto: Meta exige consentimiento
+  // afirmativo, y una premarcada no es una elección.
   const [quiereAvisos, setQuiereAvisos] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, startTransition] = useTransition();
+
+  // El prefijo abre en el país del NEGOCIO, que es el de casi todos sus
+  // clientes. `DIAL_POR_PAIS` solo cubre los dos donde Sevenz opera; para
+  // cualquier otro, `WhatsappInput` cae en su propio valor por defecto.
+  const prefijo = ownerCountry === "VE" ? "58" : ownerCountry === "CO" ? "57" : undefined;
 
   function enviar() {
     setError(null);
@@ -377,9 +436,6 @@ function FormularioDeLaOrden({
           documento,
           whatsapp,
           quiereAvisos,
-          // EL TEXTO QUE SE GUARDA ES EL QUE ESTÁ EN PANTALLA, generado por la
-          // misma constante que lo pinta. Esa cadena es la evidencia ante
-          // Meta: dos textos distintos la convertirían en una reconstrucción.
           textoDelPermiso: quiereAvisos ? TEXTO_PERMISO_ORDEN : null,
         },
         lineas.map((l) => ({
@@ -394,8 +450,31 @@ function FormularioDeLaOrden({
         setError(r.error);
         return;
       }
+
+      const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos);
+
+      // SE INTENTA ABRIR WHATSAPP, Y SI NO SE PUEDE NO PASA NADA.
+      //
+      // A petición del dueño el 2026-10-15: «Enviar pedido» abre wa.me y el
+      // resumen queda detrás. Lo que no se puede garantizar es que se abra:
+      // esto ocurre después de un `await`, así que iOS puede bloquearlo por
+      // no venir de un toque directo.
+      //
+      // Por eso el resumen lleva su propio «Compartir». El pedido YA está
+      // guardado —decisión del 2026-10-14, y es el punto entero de guardar
+      // primero—, así que un WhatsApp que no se abre cuesta un toque más, no
+      // un pedido perdido.
+      const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
+      if (digitos !== "") {
+        window.open(
+          `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      }
+
       onAbierto(false);
-      onEnviada(r.orderId, mensajeDeLaOrden(businessName, nombre, lineas, productos));
+      onEnviada(mensaje, { nombre, documento, telefono: whatsapp });
     });
   }
 
@@ -405,7 +484,7 @@ function FormularioDeLaOrden({
         <DialogHeader>
           <DialogTitle>¿Quién hace el pedido?</DialogTitle>
           <DialogDescription>
-            El negocio necesita estos datos para responderte y preparar lo que pediste.
+            El negocio necesita estos datos para poder responderte y preparar tu pedido.
           </DialogDescription>
         </DialogHeader>
 
@@ -416,6 +495,7 @@ function FormularioDeLaOrden({
               id="orden_nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
+              placeholder="Escribe nombre y apellido"
               maxLength={120}
               autoComplete="name"
               disabled={enviando}
@@ -428,24 +508,28 @@ function FormularioDeLaOrden({
               id="orden_documento"
               value={documento}
               onChange={(e) => setDocumento(e.target.value)}
+              placeholder="Escribe documento"
               maxLength={40}
               disabled={enviando}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="orden_whatsapp">WhatsApp</Label>
-            <Input
+            {/* «WhatsApp o teléfono» y no «WhatsApp» a secas, del frame
+                `1326:5755`: el cliente puede no tener WhatsApp y el número
+                sigue sirviéndole al tendero para llamarlo.
+
+                Se reutiliza `WhatsappInput`, el mismo del alta de clientes y
+                del registro, en vez de un campo suelto. No es ahorro: ese
+                componente ya resuelve partir y recomponer un número con su
+                prefijo, y la migración 073 documenta lo que cuesta hacerlo a
+                mano — «4149900094» se leía como Suiza. */}
+            <Label htmlFor="orden_whatsapp">WhatsApp o teléfono</Label>
+            <WhatsappInput
               id="orden_whatsapp"
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value)}
-              /* `inputMode="tel"` y no `type="tel"`: en iOS un `type="tel"`
-                 con fuente menor de 16px hace zoom al enfocarse. El tamaño ya
-                 está bien en este `Input`, pero el modo basta para sacar el
-                 teclado numérico sin arriesgar el otro comportamiento. */
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+58 412 1234567"
+              name="orden_whatsapp"
+              preferredDialCode={prefijo}
+              onValueChange={setWhatsapp}
               disabled={enviando}
             />
           </div>
@@ -468,7 +552,11 @@ function FormularioDeLaOrden({
           ) : null}
 
           <Button type="button" className="h-12" onClick={enviar} disabled={enviando}>
-            {enviando ? <Loader2 className="size-4 animate-spin" /> : null}
+            {enviando ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <WhatsappIcon className="size-5" />
+            )}
             Enviar pedido
           </Button>
         </div>
@@ -478,47 +566,183 @@ function FormularioDeLaOrden({
 }
 
 // ===========================================================================
-// «LISTO», Y EL BOTÓN DE WHATSAPP LO PULSA EL CLIENTE
+// «TU PEDIDO QUEDÓ REGISTRADO», del frame `1326:5835`
 //
-// El pedido YA está guardado cuando se ve esta pantalla. Abrir WhatsApp solo
-// después de un toque, y no automáticamente tras el `await`, es lo que evita
-// que iOS lo bloquee por no venir de un gesto — y si aun así no se abre, el
-// tendero tiene el pedido igual.
+// SIN EL BLOQUE DE DEUDAS QUE DIBUJA EL FRAME, y la razón vale la pena no
+// perderla. El frame trae, por moneda, «Abonó», «Debe (esta venta)», «Deuda
+// antigua» y «Deuda total». Se quitaron el 2026-10-15, decidido por el dueño
+// tras ponerle delante lo que implicaban:
+//
+//   1. No hay paso de pago en el flujo, así que «Abonó» solo puede ser cero.
+//   2. «Deuda antigua» ES el libro del dinero, y la decisión 7 del 2026-10-14
+//      dice que la orden no lo toca.
+//   3. Y la que decide: para saber esa deuda hay que emparejar al comprador
+//      con un cliente de la bodega por el teléfono o el documento que ACABA
+//      DE TECLEAR UN DESCONOCIDO. Cualquiera con el enlace escribiría el
+//      número de su vecino, pediría una bolsa de arroz, y la pantalla le
+//      contestaría con cuánto debe su vecino. El catálogo público se
+//      convertiría en un consultor de saldos ajenos.
+//
+// Vuelven cuando exista el cruce con movimientos (entregable 1.2) y en una
+// pantalla donde el comprador esté identificado de verdad.
+//
+// EL BOTÓN DE WHATSAPP ES EL PLAN B, no el camino principal: al enviar ya se
+// intentó abrir. Está aquí porque ese intento ocurre tras un `await` y iOS
+// puede bloquearlo — y entonces este toque sí sale de un gesto.
 function Enviado({
   token,
   mensaje,
   ownerWhatsapp,
+  comprador,
+  resumen,
+  rates,
 }: {
   token: string;
   mensaje: string;
   ownerWhatsapp: string | null;
+  comprador: { nombre: string; documento: string; telefono: string };
+  resumen: ReturnType<typeof resumenPorMoneda>;
+  rates: BolivarRates | null;
 }) {
   const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 py-10 text-center">
-      <CheckCircle2 className="size-12 text-emerald-600" aria-hidden="true" />
-      <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        El negocio ya lo tiene. Mándaselo también por WhatsApp para que sepa que eres tú y pueda
-        responderte.
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
+      <div className="flex flex-col items-center gap-3 pb-2 text-center">
+        <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
+        <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
+      </div>
+
+      <section className="flex flex-col gap-3 rounded-xl border p-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Datos del comprador</h2>
+          <User className="size-5 text-muted-foreground" aria-hidden="true" />
+        </div>
+        <Dato etiqueta="Nombre y apellido" valor={comprador.nombre} />
+        <Dato etiqueta="Documento" valor={comprador.documento} />
+        <Dato etiqueta="Teléfono" valor={telefonoLegible(comprador.telefono)} />
+      </section>
+
+      {resumen.map((bloque) => {
+        const enBs =
+          rates && bloque.currency !== "VES"
+            ? priceIn("VES", { amount: bloque.total, currency: bloque.currency }, rates)
+            : null;
+        return (
+          <section key={bloque.currency} className="flex flex-col gap-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold">
+                Resumen de compra en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
+              </h2>
+              <CurrencyFlagIcon currency={bloque.currency as "USD" | "EUR" | "USDT"} />
+            </div>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th className="pb-1 text-left font-normal">Producto</th>
+                  <th className="pb-1 text-right font-normal">Cantidad</th>
+                  <th className="pb-1 text-right font-normal">Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bloque.items.map((i, n) => (
+                  <tr key={`${i.name}-${n}`}>
+                    <td className="py-0.5 pr-2">{i.name}</td>
+                    <td className="py-0.5 text-right tabular-nums">
+                      {formatCantidad(i.quantity)}
+                    </td>
+                    <td className="py-0.5 text-right tabular-nums">
+                      {formatPriceAmount(i.total, bloque.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="flex items-baseline justify-between gap-3 border-t pt-3">
+              <span className="text-sm font-semibold">
+                Total en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
+              </span>
+              <span className="text-right">
+                <span className="block text-base font-semibold tabular-nums">
+                  {formatPriceAmount(bloque.total, bloque.currency)}
+                </span>
+                {enBs?.amount != null ? (
+                  <span className="block text-xs text-muted-foreground tabular-nums">
+                    {formatBs(enBs.amount)}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          </section>
+        );
+      })}
+
+      <p className="text-center text-xs leading-relaxed text-muted-foreground">
+        Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
+        hacerse directamente con el dueño del comercio.
       </p>
 
-      {digitos !== "" ? (
-        <a
-          href={`https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-foreground text-sm font-medium text-background"
+      <div className="flex flex-col gap-2 pt-2">
+        {digitos !== "" ? (
+          <a
+            href={`https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`}
+            className="flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <WhatsappIcon className="size-5" /> Compartir
+          </a>
+        ) : null}
+        <Link
+          href={`/c/${token}`}
+          className="flex h-12 items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background"
         >
-          <WhatsappIcon className="size-5" /> Enviar por WhatsApp
-        </a>
-      ) : null}
-
-      <Link
-        href={`/c/${token}`}
-        className="text-sm font-medium underline underline-offset-4"
-      >
-        Volver al catálogo
-      </Link>
+          Volver al catálogo
+        </Link>
+      </div>
     </main>
+  );
+}
+
+// Los nombres del frame. `MONEDAS_TECLEABLES` de `lib/types.ts` solo cubre las
+// tres del libro del dinero, y aquí hacen falta las cinco del catálogo.
+const NOMBRE_MONEDA: Record<string, string> = {
+  USD: "Dólares",
+  EUR: "Euros",
+  USDT: "USDT",
+  COP: "Pesos",
+  VES: "Bolívares",
+};
+
+// EL TELÉFONO SE LEE, NO SE DESCIFRA.
+//
+// Lo que viaja es la cadena combinada de `WhatsappInput`: dígitos pegados,
+// «584148889977». Esta pantalla existe para que el comprador compruebe que
+// sus datos son los suyos, y doce dígitos seguidos no se comprueban de un
+// vistazo — hay que contarlos.
+//
+// Se separa con `splitForInput`, que es la misma función que usa el campo
+// para abrir un número guardado. No se parte a mano por longitud: la
+// migración 073 documenta lo que cuesta — un móvil venezolano «4149900094»
+// se leía como +41 Suiza.
+function telefonoLegible(combinado: string): string {
+  const { dialCode, local } = splitForInput(combinado);
+  if (local === "") return combinado;
+  // OPERADORA Y NÚMERO: los tres primeros dígitos aparte y el resto junto.
+  // Es como se dice un móvil en los dos países donde Sevenz opera — «412
+  // 1234567», «300 1112233» — y no un troceado mecánico.
+  //
+  // La primera versión partía de tres en tres y dejaba «412 123 456 7», con
+  // un dígito suelto al final. Se vio en pantalla, no leyendo el código.
+  if (local.length <= 3) return `+${dialCode} ${local}`;
+  return `+${dialCode} ${local.slice(0, 3)} ${local.slice(3)}`;
+}
+
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="shrink-0 text-sm text-muted-foreground">{etiqueta}</span>
+      <span className="truncate text-right text-sm font-medium">{valor}</span>
+    </div>
   );
 }

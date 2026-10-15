@@ -20,6 +20,7 @@ import {
   cuantosArticulos,
   precioUnitario,
   subtotales,
+  resumenPorMoneda,
 } from "../lib/cart/cart.ts";
 
 const filas = [];
@@ -178,6 +179,36 @@ check(
   "7. al volver a añadir, manda la moneda recién elegida",
   c7[0].currency === "EUR",
   "es la que el cliente acaba de ver en pantalla",
+);
+
+// ── 8. EL RESUMEN AGRUPADO, que se pinta con el carrito ya vacío ─────────
+const resumen = resumenPorMoneda(
+  [linea("arroz", 6, "EUR"), linea("cafe", 2, "USD"), linea("arroz2", 1, "USD")],
+  new Map([...CATALOGO, ["arroz2", { ...ARROZ, id: "arroz2", name: "Arroz grande" }]]),
+);
+check(
+  "8a. agrupa por moneda y conserva las líneas",
+  resumen.length === 2 &&
+    resumen[0].currency === "EUR" &&
+    resumen[0].items.length === 1 &&
+    resumen[1].currency === "USD" &&
+    resumen[1].items.length === 2,
+  JSON.stringify(resumen.map((r) => `${r.currency}:${r.items.length}`)),
+);
+check(
+  "8b. cada línea lleva su precio unitario Y su total",
+  resumen[0].items[0].unitPrice === 3.6 && resumen[0].items[0].total === 21.6,
+  JSON.stringify(resumen[0].items[0]),
+);
+check(
+  "8c. el total de cada moneda es la suma de SUS líneas",
+  resumen[0].total === 21.6 && resumen[1].total === 10,
+  `EUR ${resumen[0].total} · USD ${resumen[1].total}`,
+);
+check(
+  "8d. un producto que ya no está no aparece ni descuadra el total",
+  resumenPorMoneda([linea("arroz", 2), linea("fantasma", 9)], CATALOGO)[0].total === 10,
+  "la línea huérfana se ignora",
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

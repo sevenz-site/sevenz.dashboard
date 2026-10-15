@@ -16,8 +16,18 @@ import { precioUnitario, subtotales, type LineaCarrito, type ProductoDelCarrito 
 // Por eso la pinta y la guarda la MISMA constante. Escrita dos veces, el dia
 // que alguien retoque la de la pantalla, la base empieza a guardar una frase
 // que nadie leyo nunca.
+//
+// LA REDACCION ES LA DEL FRAME `1326:5755` (2026-10-15), literal. Cambio
+// cualquier palabra de aqui y la frase guardada deja de coincidir con la que
+// el cliente leyo — que es justo lo que la invalida como evidencia.
+//
+// Y LA CASILLA NACE DESMARCADA, aunque el frame la dibuje marcada. Decision
+// del dueno el 2026-10-15 al verlo planteado: Meta exige consentimiento
+// AFIRMATIVO, y una casilla premarcada no es una eleccion sino algo que paso
+// mientras el cliente miraba otra cosa. Ademas es el unico freno real entre un
+// enlace que circula y permisos dados en nombre de terceros.
 export const TEXTO_PERMISO_ORDEN =
-  "Quiero recibir avisos de mis compras y mi saldo por WhatsApp.";
+  "Quiero recibir avisos del estado de mi compra y saldo vía WhatsApp.";
 
 // ===========================================================================
 // EL RESUMEN QUE VIAJA POR WHATSAPP

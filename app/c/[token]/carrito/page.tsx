@@ -30,7 +30,9 @@ export default async function CarritoPage({
 }) {
   const { token } = await params;
 
-  if (!isSupabaseConfigured()) return <CartScreen token={token} businessName="" ownerWhatsapp={null} />;
+  if (!isSupabaseConfigured()) return (
+      <CartScreen token={token} businessName="" ownerWhatsapp={null} ownerCountry={null} />
+    );
 
   // EL NOMBRE Y EL TELEFONO DEL NEGOCIO, que la pantalla necesita para armar
   // el mensaje de WhatsApp. Salen de `get_shared_catalog` y no de una funcion
@@ -39,23 +41,40 @@ export default async function CarritoPage({
   // ERRORES ENMASCARADOS, y el `try` no devuelve JSX por lo mismo que en las
   // otras dos publicas: construir el arbol dentro de un try hace que un error
   // de renderizado lo atrape este catch en vez de la frontera que le toca.
-  const negocio = await (async (): Promise<{ nombre: string; whatsapp: string | null }> => {
+  const negocio = await (async (): Promise<{
+    nombre: string;
+    whatsapp: string | null;
+    pais: string | null;
+  }> => {
     try {
       const supabase = await createClient();
       const { data, error } = await supabase.rpc("get_shared_catalog", { p_token: token });
       if (error) {
         console.error("[carrito] rpc:", error.message);
-        return { nombre: "", whatsapp: null };
+        return { nombre: "", whatsapp: null, pais: null };
       }
-      const shared = data as { business_name: string | null; owner_whatsapp: string | null } | null;
-      return { nombre: shared?.business_name ?? "", whatsapp: shared?.owner_whatsapp ?? null };
+      const shared = data as {
+        business_name: string | null;
+        owner_whatsapp: string | null;
+        owner_country: string | null;
+      } | null;
+      return {
+        nombre: shared?.business_name ?? "",
+        whatsapp: shared?.owner_whatsapp ?? null,
+        pais: shared?.owner_country ?? null,
+      };
     } catch (error) {
       console.error("[carrito] threw:", error instanceof Error ? error.message : error);
-      return { nombre: "", whatsapp: null };
+      return { nombre: "", whatsapp: null, pais: null };
     }
   })();
 
   return (
-    <CartScreen token={token} businessName={negocio.nombre} ownerWhatsapp={negocio.whatsapp} />
+    <CartScreen
+      token={token}
+      businessName={negocio.nombre}
+      ownerWhatsapp={negocio.whatsapp}
+      ownerCountry={negocio.pais}
+    />
   );
 }
