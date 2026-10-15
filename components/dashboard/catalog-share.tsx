@@ -197,7 +197,9 @@ export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
     // `noopener,noreferrer` por costumbre y no por este caso: el destino es
     // nuestro propio dominio. Es la clase de linea que se queda puesta cuando
     // la URL cambia.
-    window.open(`${window.location.origin}/c/${t}`, "_blank", "noopener,noreferrer");
+    // `?previa=1` es lo UNICO que distingue esta pagina de la que ve el
+    // cliente: le añade un boton de volver. Decision del dueno el 2026-10-15.
+    window.open(`${window.location.origin}/c/${t}?previa=1`, "_blank", "noopener,noreferrer");
   }
 
   return (

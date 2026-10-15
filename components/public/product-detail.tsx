@@ -13,6 +13,7 @@ import {
   type BolivarRates,
   type PriceCurrency,
 } from "@/lib/products/price";
+import { formatCantidad } from "@/lib/products/cantidad";
 import {
   cantidadMinima,
   escalonParaCantidad,
@@ -57,14 +58,6 @@ import {
 // El carrito es el entregable C. Decisión del dueño: B termina en el detalle.
 // El botón se pinta apagado con su motivo al lado en vez de esconderlo, porque
 // un botón que falta no se distingue de uno que no cargó.
-
-// UNA CANTIDAD NO ES UN PRECIO, y pasarla por el formateador de precios daba
-// «Disponible: 40.00». Dos decimales fijos tienen sentido en dinero y ninguno
-// en unidades: nadie tiene cuarenta coma cero cero aceites. Se permiten hasta
-// tres por si el negocio vende a peso, que es para lo que la columna es
-// `numeric(14,3)`, pero no se fuerzan.
-const CANTIDAD = new Intl.NumberFormat("es-VE", { maximumFractionDigits: 3 });
-const formatCantidad = (n: number) => CANTIDAD.format(n);
 
 const ETIQUETA_MONEDA: Record<string, string> = {
   USD: "Paga en USD",

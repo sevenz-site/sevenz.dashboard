@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ImageOff } from "lucide-react";
+import { ArrowLeft, ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { formatCantidad } from "@/lib/products/cantidad";
 import { SetupNotice } from "@/components/setup-notice";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -60,6 +61,11 @@ type SharedProduct = {
   // justo en la pantalla donde se fijo para que se viera.
   pinned: Partial<Record<PriceCurrency, number>>;
   base_currency: PriceCurrency;
+  // TRES ESTADOS Y EL TERCERO ES `null`. Migración 107: `> 0` es «Disponible:
+  // NN», `0` es «No disponible», y `null` es «Disponible» sin cifra — porque
+  // hoy casi ningún producto tiene inventario escrito y nadie lo mantiene
+  // (`CT-59`). Aplanar el null a 0 convertiría «no se sabe» en «no hay».
+  stock: number | null;
 };
 
 type SharedCatalog = {
@@ -100,10 +106,23 @@ function EnlaceInvalido() {
 
 export default async function CatalogoPublicoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  // `?previa=1` lo pone el «Vista previa» del menú del catálogo. Es LO ÚNICO
+  // que distingue lo que ve el tendero de lo que ve su cliente — decisión del
+  // dueño el 2026-10-15: «en la vista previa lo único que cambia es el botón
+  // de regresar».
+  //
+  // Un marcador en la URL y no una ruta aparte, a propósito: una segunda ruta
+  // sería una segunda copia de esta pantalla, y una copia se queda atrás del
+  // original sin que nadie se entere. Lo que el tendero revisa tiene que ser
+  // la página de verdad, byte por byte, o la revisión no vale.
+  searchParams: Promise<{ previa?: string }>;
 }) {
   const { token } = await params;
+  const { previa } = await searchParams;
+  const esVistaPrevia = previa === "1";
 
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -179,28 +198,84 @@ export default async function CatalogoPublicoPage({
   const hayFijadas = [...bolivares.values()].some((b) => b.pinned);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-6 px-4 py-6">
-      <header className="flex items-center gap-3">
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+      {/* LA CABECERA DEL FRAME `1190:5748`.
+          
+          Oscura y centrada, con el logotipo del negocio arriba y la marca de
+          agua de Sevenz detrás. No es decoración: esta página la abre alguien
+          que recibió un enlace por WhatsApp de un número que no tiene
+          agendado, y lo primero que necesita es reconocer de quién es. El
+          logotipo del NEGOCIO manda —es a quien le compra— y el de Sevenz
+          queda detrás, diciendo quién responde por la página.
+
+          `overflow-hidden` en la banda y la marca de agua recortada por
+          arriba, como el frame. Sin él la marca se desborda y empuja el ancho
+          de la página, que es el fallo de maquetación más fácil de meter aquí
+          y el más difícil de ver en el escritorio. */}
+      <header className="relative isolate overflow-hidden bg-brand-primary px-6 pt-10 pb-8 text-center">
+        {/* SOLO EN LA VISTA PREVIA. Un cliente que abre este enlace desde un
+            mensaje no tiene a dónde volver — no venía de ninguna parte— y un
+            botón que lo saque de la página sería una salida que nadie pidió.
+
+            El tendero sí: llegó desde su catálogo y quiere volver. Va a
+            `/productos` con un `Link` y no con `history.back()`: la previa se
+            abre en una pestaña NUEVA, así que no hay historial al que volver y
+            el botón no haría nada.
+
+            Si alguien copiara esta URL con el `?previa=1` y la compartiera, su
+            cliente vería el botón y al tocarlo acabaría en la pantalla de
+            entrar. Feo, no peligroso: `/productos` exige sesión. */}
+        {esVistaPrevia ? (
+          <Link
+            href="/productos"
+            aria-label="Volver al catálogo"
+            className="absolute top-4 left-4 z-10 flex size-10 items-center justify-center rounded-full text-white outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40"
+          >
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </Link>
+        ) : null}
+        <Image
+          src="/logo-secundary.svg"
+          alt=""
+          aria-hidden="true"
+          width={520}
+          height={160}
+          priority={false}
+          className="pointer-events-none absolute -top-6 left-1/2 -z-10 w-[130%] max-w-none -translate-x-1/2 opacity-[0.06] select-none"
+        />
         <Image
           src={logoUrl}
           alt=""
-          width={48}
-          height={48}
+          width={96}
+          height={96}
           unoptimized={Boolean(shared.owner_logo_path)}
-          className="size-12 shrink-0 rounded-lg object-cover"
+          className="mx-auto size-24 rounded-full border-2 border-white/10 object-cover"
         />
-        <div className="flex min-w-0 flex-col">
-          <h1 className="truncate text-xl font-semibold">
-            {shared.business_name || "Catálogo"}
-          </h1>
-          {/* YA NO HAY ESCALON DEL ENLACE QUE DECIR AQUI (migracion 106).
-              Habia dos enlaces y la cabecera avisaba de cual era este, para
-              que un mayorista supiera de entrada que veia sus precios. Con un
-              solo enlace eso se contesta producto a producto, en la tarjeta y
-              en el detalle, donde la cantidad decide. */}
-          <p className="text-sm text-muted-foreground">Lo que vendemos, con sus precios</p>
-        </div>
+        <h1 className="pt-4 text-2xl font-semibold text-white">
+          {shared.business_name || "Catálogo"}
+        </h1>
+        {/* EL AVISO DE LA TASA, Y SOLO DONDE HAY TASA.
+            
+            Un negocio colombiano cobra en pesos y no tiene equivalencia que
+            advertir, así que la frase sobraría y además mentiría. Ya no dice
+            «Lo que vendemos, con sus precios»: esa frase no informaba de nada
+            que la pantalla no enseñe sola, y el frame la cambia por la única
+            advertencia que el cliente necesita antes de mirar un precio.
+
+            LA CONDICIÓN ES `hayCalculadas` Y NO `rates`, y la diferencia
+            importa: con TODOS los precios fijados a mano por el tendero nada
+            se calcula con la tasa, y entonces la frase es falsa. Esa precisión
+            venía del aviso que esto sustituye, al pie de la página, y casi se
+            pierde al subirlo: la primera versión miraba solo si el negocio es
+            venezolano, y el aviso salía arriba Y abajo a la vez. */}
+        {hayCalculadas ? (
+          <p className="mx-auto max-w-sm pt-2 text-sm leading-relaxed text-brand-muted">
+            Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar.
+          </p>
+        ) : null}
       </header>
+
+      <div className="flex flex-col gap-6 px-4 py-6">
 
       {shared.products.length === 0 ? (
         <div className="rounded-xl border border-dashed px-6 py-12 text-center">
@@ -275,13 +350,39 @@ export default async function CatalogoPublicoPage({
                       al entrar seria un cebo. */}
                   <span className="text-xs text-muted-foreground">
                     {p.price_tier === "wholesale" ? "precio al mayor" : "precio al detal"}
-                    {p.unit ? ` · ${p.unit}` : ""}
                   </span>
-                  {p.description ? (
-                    <span className="line-clamp-3 pt-1 text-xs leading-relaxed text-muted-foreground">
-                      {p.description}
-                    </span>
-                  ) : null}
+
+                  {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
+
+                      TRES ESTADOS Y EL FRAME DIBUJA DOS. Decisión del dueño el
+                      2026-10-15, preguntada antes de construirla: con cantidad
+                      sale el número, con cero sale «No disponible», y SIN
+                      cantidad escrita sale «Disponible» a secas.
+
+                      El tercero es el que importa: `stock_opening` nace nulo
+                      salvo que el tendero lo ponga, y es un número que nadie
+                      mantiene (`CT-59`). Con solo dos estados, 5 de los 6
+                      productos de dev saldrían en rojo como «No disponible»
+                      estando en el mostrador — y el tendero se enteraría por
+                      un cliente que no le compró.
+
+                      El color no sale de un token semántico de tema: esta
+                      página la ve un cliente que no eligió el tema de nadie, y
+                      el verde y el rojo tienen que significar lo mismo en los
+                      dos. */}
+                  <span
+                    className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
+                      p.stock === 0
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {p.stock === 0
+                      ? "No disponible"
+                      : p.stock == null
+                        ? "Disponible"
+                        : `Disponible: ${formatCantidad(p.stock)}`}
+                  </span>
                 </div>
                 </Link>
               </li>
@@ -301,18 +402,17 @@ export default async function CatalogoPublicoPage({
         </a>
       ) : null}
 
-      {/* Solo si queda alguna calculada de verdad. Con todos los precios
-          fijados a mano, esta frase seria falsa. */}
-      {hayCalculadas ? (
+      {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame
+          `1190:5748` (2026-10-15). Durante un rato estuvo en los dos sitios a
+          la vez — se vio rindiendo la página, no leyéndola.
+
+          Lo que se queda abajo es esta otra frase, y solo donde HAY algún
+          precio fijado a mano. En un catálogo sin ninguno explicaría una
+          etiqueta que no aparece en la página: texto que no describe lo que se
+          está viendo. */}
+      {hayFijadas ? (
         <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar.
-          {/* La segunda frase solo donde HAY alguno fijado. En un catálogo sin
-              ninguno explica una etiqueta que no aparece en la página, que es
-              la version pequeña del mismo problema que la primera frase tenia:
-              texto que no describe lo que se esta viendo. */}
-          {hayFijadas
-            ? " Los precios marcados «precio en Bs.» los fijó el negocio y no se mueven solos."
-            : ""}
+          Los precios marcados «precio en Bs.» los fijó el negocio y no se mueven solos.
         </p>
       ) : null}
 
@@ -339,6 +439,7 @@ export default async function CatalogoPublicoPage({
         Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos
         deben hacerse directamente con el dueño del comercio.
       </p>
+      </div>
     </main>
   );
 }
