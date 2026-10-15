@@ -41,7 +41,8 @@
     "qa:contraste": "node qa/contraste.mjs",
     "qa:proveedor": "node --experimental-strip-types qa/proveedor.mjs",
     "qa:precio-publico": "node --experimental-strip-types qa/precio-publico.mjs",
-    "qa:orden": "node --experimental-strip-types qa/orden.mjs"
+    "qa:orden": "node --experimental-strip-types qa/orden.mjs",
+    "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

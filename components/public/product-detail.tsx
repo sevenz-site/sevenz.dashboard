@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Minus, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { useCarrito } from "@/lib/cart/store";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,11 +55,16 @@ import {
 // una función pura con su suite, `qa:precio-publico`.
 //
 // ===========================================================================
-// «AGREGAR» TODAVÍA NO HACE NADA, Y SE DICE
+// «AGREGAR» YA GUARDA EN EL CARRITO (entregable C, 2026-10-15)
 //
-// El carrito es el entregable C. Decisión del dueño: B termina en el detalle.
-// El botón se pinta apagado con su motivo al lado en vez de esconderlo, porque
-// un botón que falta no se distingue de uno que no cargó.
+// Estuvo apagado desde el entregable B, con su motivo al lado: un botón que
+// falta no se distingue de uno que no cargó.
+//
+// Lo que guarda es `{ producto, cantidad, moneda, comentario }` y NO el
+// precio. La razón está en la cabecera de `lib/cart/cart.ts` y vale la pena no
+// redescubrirla: el escalón depende de la cantidad TOTAL, así que añadir 3 y
+// luego 3 más son 6 — y a 6 el precio cambia. Un precio congelado aquí sería
+// el de detal para una cantidad que ya es de mayor.
 
 const ETIQUETA_MONEDA: Record<string, string> = {
   USD: "Paga en USD",
@@ -68,17 +75,22 @@ const ETIQUETA_MONEDA: Record<string, string> = {
 };
 
 export function ProductDetail({
+  token,
+  productId,
   producto,
   baseCurrency,
   rates,
   stock,
 }: {
+  token: string;
+  productId: string;
   producto: ProductoPublico;
   baseCurrency: PriceCurrency;
   // null en un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
   stock: number | null;
 }) {
+  const { agregar } = useCarrito(token);
   const minimo = cantidadMinima(producto);
   const [cantidad, setCantidad] = useState(String(minimo));
   const [comentario, setComentario] = useState("");
@@ -286,7 +298,32 @@ export function ProductDetail({
           </Button>
         </div>
 
-        <Button type="button" className="h-12 flex-1" disabled>
+        <Button
+          type="button"
+          className="h-12 flex-1"
+          /* NO SE PUEDE AÑADIR UNA CANTIDAD QUE NO VALE. Es el mismo criterio
+             que el total: con un 3 escrito bajo un mínimo de 12, el botón no
+             puede ofrecer meterlo en el carrito mientras un aviso en rojo dice
+             que no se puede pedir. `total` ya es null en ese caso. */
+          disabled={bloque == null || moneda == null || total == null}
+          onClick={() => {
+            if (bloque == null || moneda == null || total == null) return;
+            agregar({
+              productId,
+              quantity: n,
+              currency: moneda,
+              comment: comentario.trim() === "" ? null : comentario.trim(),
+            });
+            // SE VACÍA EL COMENTARIO Y SE DEJA LA CANTIDAD. El comentario ya
+            // viajó con la línea y volver a verlo invita a mandarlo dos veces;
+            // la cantidad se queda porque quien añade dos veces suele querer
+            // la misma, y además es la que el precio de arriba está mostrando.
+            setComentario("");
+            toast.success("Agregado a tu carrito", {
+              description: `${formatCantidad(n)} · ${total}`,
+            });
+          }}
+        >
           <Plus className="size-4" /> Agregar {total ?? ""}
         </Button>
       </div>
@@ -300,10 +337,6 @@ export function ProductDetail({
         </p>
       ) : null}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Todavía no puedes enviar el pedido desde aquí: estamos terminándolo. Escríbele al
-        negocio por WhatsApp y dile qué quieres.
-      </p>
     </div>
   );
 }

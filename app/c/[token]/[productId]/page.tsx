@@ -169,6 +169,8 @@ export default async function ProductoPublicoPage({
         ) : null}
 
         <ProductDetail
+          token={token}
+          productId={detalle.id}
           producto={{
             retail: detalle.retail,
             wholesale: detalle.wholesale,
