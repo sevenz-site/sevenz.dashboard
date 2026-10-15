@@ -1,6 +1,7 @@
-import type { PriceCurrency } from "@/lib/products/price";
+import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import {
   escalonParaCantidad,
+  precioEnMoneda,
   type BloquePrecio,
   type ProductoPublico,
 } from "@/lib/products/public-pricing";
@@ -55,6 +56,17 @@ export type ProductoDelCarrito = ProductoPublico & {
   name: string;
   photo_path: string | null;
   base_currency: PriceCurrency;
+  // The currencies the shopkeeper has ENABLED for this product, straight from
+  // `product_currencies` (migration 087, exposed by 111). It lives on this
+  // type and not on `ProductoPublico` because the tier rule never needs it,
+  // and widening that type would force every `qa:orden` fixture to carry a
+  // field its assertions do not read.
+  //
+  // IT IS HERE SO THE CART CAN NOTICE A WITHDRAWN CURRENCY. A line can sit in
+  // `localStorage` for days; if the shopkeeper removes EUR from the product in
+  // the meantime, converting it anyway would show a price that
+  // `create_catalog_order` then refuses, taking the WHOLE order down with it.
+  currencies: PriceCurrency[];
   stock: number | null;
 };
 
@@ -130,6 +142,7 @@ export function cuantosArticulos(lineas: LineaCarrito[]): number {
 export function precioUnitario(
   producto: ProductoDelCarrito,
   linea: LineaCarrito,
+  rates: BolivarRates | null,
 ): { amount: number; currency: PriceCurrency; tier: "retail" | "wholesale" } | null {
   const tier = escalonParaCantidad(producto, linea.quantity);
   if (tier == null) return null;
@@ -137,12 +150,35 @@ export function precioUnitario(
   const bloque: BloquePrecio | null = tier === "wholesale" ? producto.wholesale : producto.retail;
   if (bloque == null) return null;
 
-  if (linea.currency === producto.base_currency) {
-    return { amount: bloque.price, currency: linea.currency, tier };
+  // THE CURRENCY HAS TO STILL BE ON OFFER. Until 2026-10-15 this function only
+  // resolved the base and the pinned prices, so a line in a currency the
+  // shopkeeper derived from the rate -- the common case, not the exception --
+  // returned null and the product VANISHED from the cart with no message at
+  // all. That was the same wrong assumption as in `monedasDelProducto`, in the
+  // one place where it was invisible: the screen renders a cart that is simply
+  // missing a product the customer remembers adding.
+  //
+  // The check stays, pointed at the right list: a currency that has been
+  // withdrawn since the line was saved still has to resolve to null, because
+  // the server would reject it.
+  //
+  // THE SET IS EXACTLY THE ONE `create_catalog_order` ACCEPTS -- base, active,
+  // or pinned for THIS tier -- and that is not a detail. A pinned currency
+  // missing from `product_currencies` is the normal state of any product not
+  // re-saved since migration 087, which only carried `base_currency` over.
+  // Were this list narrower than the server's, the cart would hide a line the
+  // order would have taken; wider, it would quote one the order rejects whole.
+  if (
+    linea.currency !== producto.base_currency &&
+    !producto.currencies.includes(linea.currency) &&
+    bloque.pinned[linea.currency] == null
+  ) {
+    return null;
   }
-  const fijado = bloque.pinned[linea.currency];
-  if (fijado == null) return null;
-  return { amount: fijado, currency: linea.currency, tier };
+
+  const amount = precioEnMoneda(bloque, producto.base_currency, linea.currency, rates);
+  if (amount == null) return null;
+  return { amount, currency: linea.currency, tier };
 }
 
 /**
@@ -171,6 +207,7 @@ export function precioUnitario(
 export function resumenPorMoneda(
   lineas: LineaCarrito[],
   productos: Map<string, ProductoDelCarrito>,
+  rates: BolivarRates | null,
 ): {
   currency: PriceCurrency;
   items: { name: string; quantity: number; unitPrice: number; total: number }[];
@@ -181,7 +218,7 @@ export function resumenPorMoneda(
   for (const l of lineas) {
     const p = productos.get(l.productId);
     if (p == null) continue;
-    const precio = precioUnitario(p, l);
+    const precio = precioUnitario(p, l, rates);
     if (precio == null) continue;
     const lista = porMoneda.get(precio.currency) ?? [];
     lista.push({
@@ -203,12 +240,13 @@ export function resumenPorMoneda(
 export function subtotales(
   lineas: LineaCarrito[],
   productos: Map<string, ProductoDelCarrito>,
+  rates: BolivarRates | null,
 ): { currency: PriceCurrency; amount: number }[] {
   const porMoneda = new Map<PriceCurrency, number>();
   for (const l of lineas) {
     const p = productos.get(l.productId);
     if (p == null) continue;
-    const precio = precioUnitario(p, l);
+    const precio = precioUnitario(p, l, rates);
     if (precio == null) continue;
     porMoneda.set(precio.currency, (porMoneda.get(precio.currency) ?? 0) + precio.amount * l.quantity);
   }

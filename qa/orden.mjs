@@ -41,7 +41,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { escalonParaCantidad } from "../lib/products/public-pricing.ts";
+import { escalonParaCantidad, precioEnMoneda } from "../lib/products/public-pricing.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -442,6 +442,115 @@ try {
     eEscribir != null,
     eEscribir?.message ?? "¡LA INSERTÓ!",
   );
+
+  // ── 14. LA CONVERSIÓN: QUE EL SERVIDOR Y EL NAVEGADOR DEN EL MISMO
+  //        NÚMERO, NO SOLO UN NÚMERO ──────────────────────────────────
+  //
+  // Hasta la migración 111 la función no convertía nada: el importe salía de
+  // la ficha y era exacto POR CONSTRUCCIÓN. Al convertir, la aritmética se
+  // hace DOS VECES —`numeric` aquí, coma flotante de 64 bits en el navegador—
+  // y las dos tienen que coincidir al céntimo. Si no, el cliente ve un precio
+  // y la orden guarda otro, y nadie se enteraría: las dos cifras son
+  // plausibles y nunca aparecen juntas en la misma pantalla.
+  //
+  // Es la misma idea que la prueba 2a hace con el escalón: no comprobar que
+  // cada lado funcione, sino que los dos lados estén de acuerdo.
+  //
+  // EL PRODUCTO LLEVA `product_currencies` Y NINGÚN PRECIO FIJADO, que es el
+  // caso que la 111 habilita y el único que llega a la conversión. El de la
+  // prueba 3a es su complemento: sin filas en esa tabla y con el euro fijado.
+  const { data: convertible } = await admin
+    .from("products")
+    .insert({
+      owner_id: ownerId,
+      name: `${MARCA} convertible`,
+      base_currency: "USD",
+      price_retail: 10,
+      price_wholesale: 8,
+      wholesale_min_quantity: 6,
+      published_retail: true,
+      published_wholesale: true,
+    })
+    .select("id")
+    .single();
+  productos.push(convertible.id);
+  await admin
+    .from("product_currencies")
+    .upsert(
+      [
+        { product_id: convertible.id, currency: "USD" },
+        { product_id: convertible.id, currency: "EUR" },
+      ],
+      { onConflict: "product_id,currency" },
+    );
+
+  // LA TASA, POR EL MISMO CAMINO QUE LAS DOS PARTES. La función la toma de
+  // `owner_exchange_settings` si el negocio fijó la suya, y del BCV si no; la
+  // pantalla hace lo mismo en `app/c/[token]/page.tsx`. Leerla aquí de otra
+  // forma convertiría esta prueba en una tercera opinión en vez de un árbitro.
+  const { data: ajustes } = await admin
+    .from("owner_exchange_settings")
+    .select("rate_mode, custom_rate_usd, custom_rate_eur")
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  const { data: bcv } = await admin.rpc("get_current_bcv_rate").single();
+  const rates =
+    ajustes?.rate_mode === "CUSTOM" && ajustes.custom_rate_usd > 0 && ajustes.custom_rate_eur > 0
+      ? { usd: Number(ajustes.custom_rate_usd), eur: Number(ajustes.custom_rate_eur), usdt: null }
+      : { usd: Number(bcv.usd), eur: Number(bcv.eur), usdt: null };
+
+  const fichaTs = {
+    retail: { price: 10, pinned: {} },
+    wholesale: { price: 8, pinned: {} },
+    wholesale_min_quantity: 6,
+  };
+
+  for (const [cantidad, escalon] of [
+    [1, "retail"],
+    [6, "wholesale"],
+  ]) {
+    const esperado = precioEnMoneda(fichaTs[escalon], "USD", "EUR", rates);
+    const r = await pedir(token, [
+      { product_id: convertible.id, quantity: cantidad, currency: "EUR" },
+    ]);
+    const { data: linea } = r.ok
+      ? await admin
+          .from("catalog_order_items")
+          .select("unit_price, currency, tier")
+          .eq("order_id", r.order_id)
+          .single()
+      : { data: null };
+    check(
+      `14${cantidad === 1 ? "a" : "b"}. pidiendo ${cantidad} en EUR, el servidor guarda lo que el navegador enseñó`,
+      linea != null &&
+        linea.currency === "EUR" &&
+        linea.tier === escalon &&
+        Number(linea.unit_price) === esperado,
+      linea == null
+        ? `la orden ni entró: ${r.reason}`
+        : `TypeScript ${esperado} · base ${linea.unit_price} (${linea.tier})`,
+    );
+  }
+
+  // Y EL USDT NO, aunque esté activo: su tasa viene de CriptoYa y las páginas
+  // públicas no la piden (decisión del 2026-10-10), así que la función no
+  // puede calcularlo. La razón tiene que ser `sin_tasa` y NO `moneda_invalida`
+  // -- son dos arreglos distintos y el log es donde se distinguen.
+  await admin
+    .from("product_currencies")
+    .upsert(
+      { product_id: convertible.id, currency: "USDT" },
+      { onConflict: "product_id,currency" },
+    );
+  const r14c = await pedir(token, [
+    { product_id: convertible.id, quantity: 1, currency: "USDT" },
+  ]);
+  check(
+    "14c. el USDT activo pero sin tasa se rechaza con `sin_tasa`, no con `moneda_invalida`",
+    !r14c.ok && r14c.reason === "sin_tasa",
+    r14c.reason,
+  );
+
 } finally {
   // Las órdenes se van por cascada al borrar nada: no cuelgan del producto
   // sino del enlace, así que se borran por el enlace del negocio.
@@ -467,6 +576,69 @@ try {
     "12. limpieza: no queda nada de la prueba en dev",
     quedanProd === 0 && quedanPermisos === 0,
     `${quedanProd} productos · ${quedanPermisos} permisos`,
+  );
+
+  // ── 13. CADA RAZÓN DEL SQL TIENE SU FRASE, Y ESTE ES EL ÚNICO CONTROL
+  //        DE TODA LA SUITE QUE MIRA AFUERA ───────────────────────────
+  //
+  // Las doce comprobaciones de arriba hablan con la base, que es la realidad
+  // de un lado. Esta compara DOS ARCHIVOS: los códigos que la migración
+  // devuelve y el diccionario `MOTIVOS` de la acción. Ninguno de los dos sabe
+  // del otro, y ahí está el fallo que nada chilla: una clave que falta no
+  // rompe nada —la búsqueda termina en `?? "No pudimos enviar tu pedido"`— así
+  // que la frase redactada con cuidado simplemente no sale nunca.
+  //
+  // POR QUÉ EXISTE, Y NO ES UNA HIPÓTESIS. El 2026-10-15, al reescribir la
+  // función para la migración 111, se le cambió el nombre a seis códigos sin
+  // querer: `producto_invalido` pasó a `producto_no_disponible`, y los tres
+  // campos del comprador —que la 109 valida por separado, cada uno con su
+  // frase— se juntaron en un `datos_incompletos` que no existía.
+  //
+  // Lo peor no fue el cambio: fue que al verlo fallar se "arreglaron" el
+  // diccionario Y ESTA SUITE para que coincidieran con el error nuevo. Los
+  // tres volvieron a estar de acuerdo, los tres equivocados, y el tendero
+  // habría perdido los mensajes precisos de «Escribe tu nombre» y «Ese número
+  // de WhatsApp no se entiende. Revísalo.» a cambio de uno genérico.
+  //
+  // Es la lección de las plantillas de Meta del mismo día, y esta vez el que
+  // la rompió fue el que la había escrito: tres controles que se escriben
+  // mirándose entre sí coinciden perfectamente y pueden estar los tres
+  // equivocados. Al menos uno tiene que mirar fuera.
+  //
+  // SE LEE EL ARCHIVO DE LA MIGRACIÓN Y NO LA BASE, a propósito: lo que hay
+  // que vigilar es lo que el repo dice, porque es lo que se va a desplegar.
+  // Una función viva que no case con el archivo es otro problema, y lo cazan
+  // las doce pruebas de arriba llamándola de verdad.
+  const sqlOrden = readFileSync("supabase/111_catalogo_ofrece_las_monedas_activas.sql", "utf8");
+  const cuerpo = sqlOrden.slice(sqlOrden.indexOf("create function public.create_catalog_order"));
+  const razonesDelSql = new Set([
+    ...[...cuerpo.matchAll(/raise exception '([a-z_]+)' using errcode = 'P0001'/g)].map((m) => m[1]),
+    ...[...cuerpo.matchAll(/'reason', '([a-z_]+)'/g)].map((m) => m[1]),
+  ]);
+  // `error` es el comodín del `when others` y NO lleva frase a propósito: cae
+  // en la genérica, que es justo lo que hay que decirle a alguien cuando no
+  // sabemos qué pasó.
+  razonesDelSql.delete("error");
+
+  const fuenteDeMotivos = readFileSync("app/c/[token]/actions.ts", "utf8");
+  const desde = fuenteDeMotivos.indexOf("const MOTIVOS");
+  const bloqueDeMotivos = fuenteDeMotivos.slice(desde, fuenteDeMotivos.indexOf("};", desde));
+  const traducidas = new Set([...bloqueDeMotivos.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]));
+
+  const sinFrase = [...razonesDelSql].filter((r) => !traducidas.has(r)).sort();
+  const sobrantes = [...traducidas].filter((r) => !razonesDelSql.has(r)).sort();
+
+  check(
+    "13a. toda razón que el SQL devuelve tiene su frase en MOTIVOS",
+    razonesDelSql.size > 5 && sinFrase.length === 0,
+    sinFrase.length === 0
+      ? `${razonesDelSql.size} razones, todas traducidas`
+      : `SIN FRASE, saldría la genérica: ${sinFrase.join(", ")}`,
+  );
+  check(
+    "13b. y MOTIVOS no traduce razones que el SQL ya no devuelve",
+    sobrantes.length === 0,
+    sobrantes.length === 0 ? "ninguna sobra" : `código muerto: ${sobrantes.join(", ")}`,
   );
 
   const fallos = filas.filter((f) => !f.pasa).length;

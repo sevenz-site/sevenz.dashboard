@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ProductoDelCarrito } from "@/lib/cart/cart";
-import type { BolivarRates } from "@/lib/products/price";
+import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // LAS DOS ACCIONES DEL CARRITO, Y LAS LLAMA UN VISITANTE SIN SESION.
 //
@@ -49,7 +49,14 @@ export async function productosDelCarrito(
     }
     const shared = data as {
       owner_country: string | null;
-      products: ProductoDelCarrito[];
+      // `currencies` OPCIONAL A PROPOSITO, y no por duda sobre el tipo:
+      // esto es un `as` sobre JSON que llega de la base, asi que el tipo
+      // es una promesa, no una comprobacion. Declararlo obligatorio haria
+      // que la reserva de abajo pareciera codigo muerto, y es lo que evita
+      // un TypeError si la migracion 111 no esta aplicada.
+      products: (Omit<ProductoDelCarrito, "currencies"> & {
+        currencies?: PriceCurrency[] | null;
+      })[];
       rate_mode: string | null;
       current_bcv_usd: number | null;
       current_bcv_eur: number | null;
@@ -69,7 +76,22 @@ export async function productosDelCarrito(
           : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur, usdt: null }
         : null;
 
-    return { productos: shared.products ?? [], rates };
+    // LA RESERVA DE `currencies` ES LA BASE, no una lista vacía, y aquí no es
+    // cosmética: `precioUnitario` llama a `producto.currencies.includes(...)`,
+    // así que un `undefined` —esta respuesta viene de un `as`, que no
+    // comprueba nada en tiempo de ejecución— no daría un precio raro, daría un
+    // TypeError y la pantalla del carrito en blanco.
+    //
+    // Pasaría en la ventana entre desplegar este código y correr la migración
+    // 111, que es justo el orden que CLAUDE.md prohíbe; esto es el cinturón
+    // por si alguien lo invierte. Degradar a «solo la moneda del tendero» es
+    // el comportamiento anterior, que funcionaba.
+    const productos = (shared.products ?? []).map((p) => ({
+      ...p,
+      currencies: p.currencies ?? [p.base_currency],
+    }));
+
+    return { productos, rates };
   } catch (error) {
     console.error("[carrito] threw:", error instanceof Error ? error.message : error);
     return { productos: [], rates: null };
@@ -110,6 +132,15 @@ const MOTIVOS: Record<string, string> = {
   cantidad_bajo_el_minimo: "Hay un producto del que tienes que pedir más unidades.",
   sin_precio: "Uno de los productos ya no tiene precio. Quítalo y vuelve a intentarlo.",
   moneda_invalida: "Una de las monedas ya no está disponible para esa cantidad.",
+  // NUEVA EN LA MIGRACIÓN 111, y distinta de `moneda_invalida` a propósito:
+  // «no lo vendemos en esa moneda» se arregla eligiendo otra, y «no tenemos la
+  // tasa ahora mismo» se arregla esperando. Dar el mismo consejo para los dos
+  // manda al cliente a cambiar algo que no era el problema.
+  //
+  // En la práctica le toca al USDT: su tasa viene de CriptoYa y las páginas
+  // públicas no la piden (decisión del 2026-10-10), así que solo se puede
+  // pedir en USDT si el tendero le fijó el precio a mano.
+  sin_tasa: "Ahora mismo no podemos calcular ese precio. Prueba con otra moneda.",
 };
 
 export async function crearOrden(

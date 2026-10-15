@@ -15,7 +15,8 @@
 import {
   cantidadMinima,
   escalonParaCantidad,
-  monedasDelEscalon,
+  monedasDelProducto,
+  precioEnMoneda,
 } from "../lib/products/public-pricing.ts";
 
 const filas = [];
@@ -53,15 +54,86 @@ check(
   "1d. pidiendo 20 se ve el MAYOR",
   escalonParaCantidad(elCasoDelDueno, 20) === "wholesale",
 );
+// LAS MONEDAS SON DEL PRODUCTO, NO DEL ESCALÓN, desde el 2026-10-15.
+//
+// Esto corrige dos cosas a la vez, y conviene separarlas porque una era un
+// fallo y la otra una decisión tomada sobre información mala:
+//
+// 1. EL FALLO. `monedasDelEscalon` leía `bloque.pinned`, o sea los precios
+//    DESVINCULADOS, creyendo que eran «las monedas en oferta». Un producto con
+//    tres monedas activas y ningún precio fijado ofrecía una. Medido en dev
+//    con el Casco.
+//
+// 2. LA DECISIÓN. El 2026-10-14 se descartó convertir alegando que mostraría
+//    un importe que el tendero nunca escribió. Es falso: su propio formulario
+//    ya le muestra esa conversión, calculada igual y marcada con una cadena.
+//
+// Y `product_currencies` no tiene columna `tier`, así que el caso que planteó
+// el dueño —monedas distintas al detal y al mayor— el modelo no lo expresa. Lo
+// que cambia entre escalones es el importe.
+//
+// EL CASO DEL DUEÑO SIGUE PASANDO, y por eso se conserva con sus números: con
+// EUR y USDT fijados SOLO al mayor y sin tasa, al detal se ofrece una moneda y
+// al mayor tres — igual que antes. Lo que cambia es la razón: no es que el
+// detal «no tenga» esas monedas, es que sin tasa no se pueden calcular.
+const TRES = ["USD", "EUR", "USDT"];
+const SIN_TASA = null;
+const TASA = { usd: 100, eur: 120, usdt: null };
+
 check(
-  "1e. al detal solo se ofrece la moneda del precio",
-  igual(monedasDelEscalon(elCasoDelDueno.retail, "USD"), ["USD"]),
+  "1e. al detal, sin tasa, solo se ofrece la moneda del precio",
+  igual(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", SIN_TASA), ["USD"]),
   "es el «solo la moneda de pago en dólares» del dueño",
 );
 check(
-  "1f. al mayor se ofrecen las tres",
-  igual(monedasDelEscalon(elCasoDelDueno.wholesale, "USD"), ["USD", "EUR", "USDT"]),
-  JSON.stringify(monedasDelEscalon(elCasoDelDueno.wholesale, "USD")),
+  "1f. al mayor se ofrecen las tres, porque están fijadas a mano",
+  igual(monedasDelProducto(TRES, elCasoDelDueno.wholesale, "USD", SIN_TASA), TRES),
+  JSON.stringify(monedasDelProducto(TRES, elCasoDelDueno.wholesale, "USD", SIN_TASA)),
+);
+check(
+  "1g. CON tasa, el detal ya ofrece el euro: es el fallo que se arregló",
+  igual(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA), ["USD", "EUR"]),
+  JSON.stringify(monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA)),
+);
+check(
+  "1h. el USDT se queda fuera aunque esté activo: su tasa no llega aquí",
+  !monedasDelProducto(TRES, elCasoDelDueno.retail, "USD", TASA).includes("USDT"),
+  "CriptoYa no se llama desde una página pública (2026-10-10)",
+);
+check(
+  "1i. una moneda sin número NO se ofrece, en vez de ofrecerse sin importe",
+  monedasDelProducto(["USD", "USDT"], elCasoDelDueno.retail, "USD", TASA).length === 1,
+  "ofrecerla mueve el fallo a después de rellenar el formulario",
+);
+check(
+  "1j. la base entra aunque la lista de activas no la traiga",
+  igual(monedasDelProducto([], elCasoDelDueno.retail, "USD", SIN_TASA), ["USD"]),
+  "una ficha descuadrada no deja un producto sin su propia moneda",
+);
+check(
+  "1k. un bloque sin publicar no ofrece ninguna moneda",
+  igual(monedasDelProducto(TRES, null, "USD", TASA), []),
+);
+
+// ── 1bis. `precioEnMoneda`, y la reserva 1:1 que no vuelve ──────────────
+check(
+  "1l. la base no necesita tasa",
+  precioEnMoneda(elCasoDelDueno.retail, "USD", "USD", SIN_TASA) === 5,
+);
+check(
+  "1m. un precio FIJADO gana sobre la base y sobre la tasa",
+  precioEnMoneda({ price: 5, pinned: { USD: 4 } }, "USD", "USD", TASA) === 4,
+  "un candado cerrado es una decisión explícita del tendero",
+);
+check(
+  "1n. SIN TASA NO SE INVENTA UNA",
+  precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", SIN_TASA) === null,
+  "la reserva que la pantalla tenía habría devuelto 5 — euros a la par del dólar",
+);
+check(
+  "1o. con tasa, convierte por bolívares igual que `priceIn`",
+  precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", TASA) === 4.17,
+  `5 USD a 100/120 = ${precioEnMoneda(elCasoDelDueno.retail, "USD", "EUR", TASA)}`,
 );
 
 // ── 2. Sin cantidad mínima: NUNCA el mayor ───────────────────────────────

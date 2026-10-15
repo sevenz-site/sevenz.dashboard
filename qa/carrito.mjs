@@ -37,6 +37,7 @@ const ARROZ = {
   name: "Arroz",
   photo_path: null,
   base_currency: "USD",
+  currencies: ["USD", "EUR", "USDT"],
   stock: 40,
   retail: { price: 5, pinned: {} },
   wholesale: { price: 4, pinned: { EUR: 3.6, USDT: 4 } },
@@ -48,6 +49,7 @@ const CAFE = {
   name: "Café",
   photo_path: null,
   base_currency: "USD",
+  currencies: ["USD"],
   stock: null,
   retail: { price: 2.5, pinned: {} },
   wholesale: null,
@@ -58,6 +60,23 @@ const CATALOGO = new Map([
   [ARROZ.id, ARROZ],
   [CAFE.id, CAFE],
 ]);
+
+// LAS PRUEBAS 1 A 8 PASAN `null` COMO TASA, Y ESO NO ES PEREZA.
+//
+// Sin tasa solo se resuelven el precio base y los fijados a mano, que es
+// exactamente lo que esas pruebas afirmaban cuando se escribieron el
+// 2026-10-14. Dejarlas así conserva su significado intacto Y fija de paso la
+// regla que más caro habría salido perder: **sin tasa no se inventa una**.
+//
+// Hasta el 2026-10-15 la pantalla pasaba `rates ?? { usd: 1, eur: 1, usdt:
+// null }`, inofensivo mientras ninguna moneda calculada se ofrecía. En cuanto
+// la conversión pasó a ser el camino normal, esa reserva habría cotizado el
+// euro a la par del dólar a cualquier negocio venezolano al que le faltara la
+// tasa del BCV. La prueba 9c es la que no deja que vuelva.
+//
+// El comportamiento nuevo —convertir cuando SÍ hay tasa— va en la sección 9.
+const SIN_TASA = null;
+const TASA = { usd: 100, eur: 120, usdt: null };
 
 const linea = (productId, quantity, currency = "USD", comment = null) => ({
   productId,
@@ -83,9 +102,9 @@ check("1b. un producto distinto sí añade línea", carrito.length === 2);
 // Tres y tres son seis, y seis ya es precio de mayor. Si una línea guardara
 // el precio del momento de añadir, esta se habría quedado en 5 por unidad.
 let c2 = agregarLinea([], linea("arroz", 3));
-const antes = precioUnitario(ARROZ, c2[0]);
+const antes = precioUnitario(ARROZ, c2[0], SIN_TASA);
 c2 = agregarLinea(c2, linea("arroz", 3));
-const despues = precioUnitario(ARROZ, c2[0]);
+const despues = precioUnitario(ARROZ, c2[0], SIN_TASA);
 check(
   "2. añadir 3 y 3 cruza al precio de MAYOR, no se queda en el de detal",
   antes.amount === 5 && antes.tier === "retail" && despues.amount === 4 && despues.tier === "wholesale",
@@ -95,40 +114,40 @@ check(
 // ── 3. LA MONEDA ─────────────────────────────────────────────────────────
 check(
   "3a. una moneda fijada en el escalón que aplica da su importe exacto",
-  precioUnitario(ARROZ, linea("arroz", 6, "EUR")).amount === 3.6,
-  String(precioUnitario(ARROZ, linea("arroz", 6, "EUR"))?.amount),
+  precioUnitario(ARROZ, linea("arroz", 6, "EUR"), SIN_TASA).amount === 3.6,
+  String(precioUnitario(ARROZ, linea("arroz", 6, "EUR"), SIN_TASA)?.amount),
 );
 check(
   "3b. esa misma moneda con 3 unidades NO vale: el detal no la tiene",
-  precioUnitario(ARROZ, linea("arroz", 3, "EUR")) === null,
+  precioUnitario(ARROZ, linea("arroz", 3, "EUR"), SIN_TASA) === null,
   "devuelve null para que la pantalla caiga a la moneda base",
 );
 check(
   "3c. la moneda base siempre vale, en los dos escalones",
-  precioUnitario(ARROZ, linea("arroz", 1, "USD")).amount === 5 &&
-    precioUnitario(ARROZ, linea("arroz", 9, "USD")).amount === 4,
+  precioUnitario(ARROZ, linea("arroz", 1, "USD"), SIN_TASA).amount === 5 &&
+    precioUnitario(ARROZ, linea("arroz", 9, "USD"), SIN_TASA).amount === 4,
 );
 
 // ── 4. SUBTOTALES POR MONEDA ─────────────────────────────────────────────
 const mezclado = [linea("arroz", 6, "EUR"), linea("cafe", 2, "USD")];
 check(
   "4a. con monedas mezcladas hay DOS subtotales, no un total inventado",
-  igual(subtotales(mezclado, CATALOGO), [
+  igual(subtotales(mezclado, CATALOGO, SIN_TASA), [
     { currency: "EUR", amount: 21.6 },
     { currency: "USD", amount: 5 },
   ]),
-  JSON.stringify(subtotales(mezclado, CATALOGO)),
+  JSON.stringify(subtotales(mezclado, CATALOGO, SIN_TASA)),
 );
 check(
   "4b. dos líneas en la misma moneda se suman en UN subtotal",
-  igual(subtotales([linea("arroz", 2), linea("cafe", 2)], CATALOGO), [
+  igual(subtotales([linea("arroz", 2), linea("cafe", 2)], CATALOGO, SIN_TASA), [
     { currency: "USD", amount: 15 },
   ]),
-  JSON.stringify(subtotales([linea("arroz", 2), linea("cafe", 2)], CATALOGO)),
+  JSON.stringify(subtotales([linea("arroz", 2), linea("cafe", 2)], CATALOGO, SIN_TASA)),
 );
 check(
   "4c. un producto que ya no está en el catálogo no rompe el subtotal",
-  igual(subtotales([linea("arroz", 2), linea("borrado", 5)], CATALOGO), [
+  igual(subtotales([linea("arroz", 2), linea("borrado", 5)], CATALOGO, SIN_TASA), [
     { currency: "USD", amount: 10 },
   ]),
   "se ignora la línea huérfana en vez de reventar",
@@ -185,6 +204,7 @@ check(
 const resumen = resumenPorMoneda(
   [linea("arroz", 6, "EUR"), linea("cafe", 2, "USD"), linea("arroz2", 1, "USD")],
   new Map([...CATALOGO, ["arroz2", { ...ARROZ, id: "arroz2", name: "Arroz grande" }]]),
+  SIN_TASA,
 );
 check(
   "8a. agrupa por moneda y conserva las líneas",
@@ -207,8 +227,90 @@ check(
 );
 check(
   "8d. un producto que ya no está no aparece ni descuadra el total",
-  resumenPorMoneda([linea("arroz", 2), linea("fantasma", 9)], CATALOGO)[0].total === 10,
+  resumenPorMoneda([linea("arroz", 2), linea("fantasma", 9)], CATALOGO, SIN_TASA)[0].total === 10,
   "la línea huérfana se ignora",
+);
+
+// ── 9. LA MONEDA CALCULADA, que hasta el 2026-10-15 hacía DESAPARECER la
+//       línea del carrito ───────────────────────────────────────────────
+//
+// El fallo que estas pruebas vigilan es el peor de los cuatro que tenía esta
+// suposición, porque es el único silencioso: `precioUnitario` solo resolvía la
+// base y los precios fijados, así que una línea en una moneda derivada de la
+// tasa —el caso NORMAL, no la excepción— devolvía null y el producto no se
+// pintaba. Ni error, ni aviso, ni hueco: el cliente añadía algo y su carrito
+// simplemente no lo tenía.
+//
+// El Casco de dev es el caso real: USD base, EUR y USDT activos, cero precios
+// fijados.
+const CASCO = {
+  id: "casco",
+  name: "Casco",
+  photo_path: null,
+  base_currency: "USD",
+  currencies: ["USD", "EUR", "USDT"],
+  stock: 3,
+  retail: { price: 45.5, pinned: {} },
+  wholesale: { price: 40.25, pinned: {} },
+  wholesale_min_quantity: 6,
+};
+const CON_CASCO = new Map([[CASCO.id, CASCO]]);
+
+check(
+  "9a. una línea en euros SÍ tiene precio, convertido con la tasa",
+  precioUnitario(CASCO, linea("casco", 1, "EUR"), TASA)?.amount === 37.92,
+  `45,50 USD a 100/120 = ${precioUnitario(CASCO, linea("casco", 1, "EUR"), TASA)?.amount}`,
+);
+check(
+  "9b. y antes del arreglo era null, que es lo que la borraba del carrito",
+  precioUnitario(CASCO, linea("casco", 1, "EUR"), SIN_TASA) === null,
+  "sin tasa no hay número, y sin número no se ofrece",
+);
+check(
+  "9c. SIN TASA NO SE INVENTA UNA: el euro no vale lo mismo que el dólar",
+  precioUnitario(CASCO, linea("casco", 1, "EUR"), SIN_TASA)?.amount !== 45.5,
+  "la reserva 1:1 que la pantalla tenía habría devuelto 45,5 aquí",
+);
+check(
+  "9d. el USDT no se puede pedir aunque esté activo: no hay tasa de USDT",
+  precioUnitario(CASCO, linea("casco", 1, "USDT"), TASA) === null,
+  "CriptoYa no se llama desde una página pública (2026-10-10)",
+);
+check(
+  "9e. una moneda que el tendero RETIRÓ deja de tener precio",
+  precioUnitario(
+    { ...CASCO, currencies: ["USD"] },
+    linea("casco", 1, "EUR"),
+    TASA,
+  ) === null,
+  "la línea puede llevar días en localStorage; el servidor la rechazaría",
+);
+check(
+  "9f. la base se resuelve aunque no esté en la lista de activas",
+  precioUnitario({ ...CASCO, currencies: [] }, linea("casco", 1, "USD"), TASA)?.amount === 45.5,
+  "una ficha descuadrada no deja un producto sin su propia moneda",
+);
+check(
+  "9g. el escalón sigue mandando sobre el importe convertido",
+  precioUnitario(CASCO, linea("casco", 6, "EUR"), TASA)?.amount === 33.54,
+  `40,25 al mayor, no 45,50: ${precioUnitario(CASCO, linea("casco", 6, "EUR"), TASA)?.amount}`,
+);
+check(
+  "9h. un precio FIJADO gana sobre la conversión, también aquí",
+  precioUnitario(
+    { ...CASCO, retail: { price: 45.5, pinned: { EUR: 39 } } },
+    linea("casco", 1, "EUR"),
+    TASA,
+  )?.amount === 39,
+  "un candado cerrado es una decisión del tendero; la tasa es el valor de partida",
+);
+check(
+  "9i. los subtotales mezclan convertido y base sin inventar un total único",
+  igual(subtotales([linea("casco", 1, "EUR"), linea("casco", 1, "USD")], CON_CASCO, TASA), [
+    { currency: "EUR", amount: 37.92 },
+    { currency: "USD", amount: 45.5 },
+  ]),
+  JSON.stringify(subtotales([linea("casco", 1, "EUR"), linea("casco", 1, "USD")], CON_CASCO, TASA)),
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

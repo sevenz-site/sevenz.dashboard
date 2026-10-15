@@ -1,4 +1,4 @@
-import { formatPriceAmount } from "@/lib/products/price";
+import { formatPriceAmount, type BolivarRates } from "@/lib/products/price";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { precioUnitario, subtotales, type LineaCarrito, type ProductoDelCarrito } from "@/lib/cart/cart";
 
@@ -50,6 +50,10 @@ export function mensajeDeLaOrden(
   nombreDelCliente: string,
   lineas: LineaCarrito[],
   productos: Map<string, ProductoDelCarrito>,
+  // THE SAME RATE THE SCREEN USED. It travels instead of being read here so
+  // the message cannot quote a different figure from the one on screen -- a
+  // second read could land on the other side of the daily rate refresh.
+  rates: BolivarRates | null,
 ): string {
   const partes: string[] = [
     `Hola ${businessName}, soy ${nombreDelCliente.trim()} y te hago este pedido:`,
@@ -59,7 +63,7 @@ export function mensajeDeLaOrden(
   for (const l of lineas) {
     const p = productos.get(l.productId);
     if (p == null) continue;
-    const precio = precioUnitario(p, l);
+    const precio = precioUnitario(p, l, rates);
     if (precio == null) continue;
 
     const unidad = formatPriceAmount(precio.amount, precio.currency);
@@ -68,7 +72,7 @@ export function mensajeDeLaOrden(
     if (l.comment) partes.push(`   (${l.comment})`);
   }
 
-  const totales = subtotales(lineas, productos);
+  const totales = subtotales(lineas, productos, rates);
   if (totales.length > 0) {
     partes.push("");
     for (const t of totales) {

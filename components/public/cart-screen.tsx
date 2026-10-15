@@ -140,7 +140,7 @@ export function CartScreen({
 
   const productos = estado.fase === "listo" ? estado.productos : new Map<string, ProductoDelCarrito>();
   const rates = estado.fase === "listo" ? estado.rates : null;
-  const totales = subtotales(lineas, productos);
+  const totales = subtotales(lineas, productos, rates);
   // Solo la PRIMERA carga tapa la lista. Las siguientes —al añadir algo desde
   // otra pestaña, por ejemplo— dejan lo que ya está pintado y lo refrescan
   // cuando llega; tapar una lista que ya se ve es peor que esperar un
@@ -200,7 +200,7 @@ export function CartScreen({
             <ul className="flex flex-col gap-3">
               {lineas.map((l) => {
                 const p = productos.get(l.productId);
-                const precio = p ? precioUnitario(p, l) : null;
+                const precio = p ? precioUnitario(p, l, rates) : null;
                 const bs =
                   precio && rates && precio.currency !== "VES"
                     ? priceIn("VES", { amount: precio.amount, currency: precio.currency }, rates)
@@ -362,6 +362,7 @@ export function CartScreen({
         ownerWhatsapp={ownerWhatsapp}
         lineas={lineas}
         productos={productos}
+        rates={rates}
         onEnviada={(mensaje, comprador) => {
           // LA FOTO SE TOMA ANTES DE VACIAR, y el orden importa: `vaciar()`
           // borra las líneas, así que calcular el resumen después daría una
@@ -370,7 +371,7 @@ export function CartScreen({
             fase: "enviado",
             mensaje,
             comprador,
-            resumen: resumenPorMoneda(lineas, productos),
+            resumen: resumenPorMoneda(lineas, productos, rates),
             rates,
           });
           vaciar();
@@ -396,6 +397,7 @@ function FormularioDeLaOrden({
   ownerWhatsapp,
   lineas,
   productos,
+  rates,
   onEnviada,
 }: {
   abierto: boolean;
@@ -406,6 +408,11 @@ function FormularioDeLaOrden({
   ownerWhatsapp: string | null;
   lineas: ReturnType<typeof useCarrito>["lineas"];
   productos: Map<string, ProductoDelCarrito>;
+  // LA MISMA TASA QUE LA PANTALLA ACABA DE ENSENAR. Baja como prop en vez de
+  // leerse aqui para que el mensaje de WhatsApp no pueda citar una cifra
+  // distinta de la que el cliente vio: una segunda lectura podria caer al otro
+  // lado del refresco diario de la tasa.
+  rates: BolivarRates | null;
   onEnviada: (
     mensaje: string,
     comprador: { nombre: string; documento: string; telefono: string },
@@ -451,7 +458,7 @@ function FormularioDeLaOrden({
         return;
       }
 
-      const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos);
+      const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos, rates);
 
       // SE INTENTA ABRIR WHATSAPP, Y SI NO SE PUEDE NO PASA NADA.
       //

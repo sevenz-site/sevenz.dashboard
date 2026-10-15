@@ -20,7 +20,8 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import {
   cantidadMinima,
   escalonParaCantidad,
-  monedasDelEscalon,
+  monedasDelProducto,
+  precioEnMoneda,
   type BloquePrecio,
   type ProductoPublico,
 } from "@/lib/products/public-pricing";
@@ -43,17 +44,29 @@ import {
 //   monedas y se podían elegir dos cosas a la vez.
 //
 // Así que: **los dos precios se enseñan siempre**, para que el cliente vea lo
-// que se ahorra pidiendo más; y **hay un solo selector de moneda**, con las
-// monedas del escalón que la cantidad hace aplicable. Con 3 unidades del caso
-// del dueño solo se ofrece dólar, porque es lo único que tiene el precio al
-// detal — confirmado por él el 2026-10-15 frente a la alternativa de ofrecer
-// las tres y convertir, que le enseñaría al cliente un importe en euros que
-// el tendero nunca escribió.
+// que se ahorra pidiendo más; y **hay un solo selector de moneda**.
 //
-// La regla vive en `lib/products/public-pricing.ts` y no aquí: es la única
-// parte de esta pantalla que puede equivocarse sin que nadie se entere —un
-// cliente que ve el precio equivocado cierra la página y ya está— así que es
-// una función pura con su suite, `qa:precio-publico`.
+//   3. 2026-10-15, más tarde — «este producto tiene varias monedas seteadas en
+//   su configuración, pero en el catálogo al cliente solo le aparece Dólar».
+//
+// LO QUE DECÍA AQUÍ ANTES ERA FALSO, y queda escrito porque es la razón por la
+// que la decisión anterior salió como salió. Este comentario afirmaba que
+// ofrecer todas las monedas y convertir «le enseñaría al cliente un importe en
+// euros que el tendero nunca escribió», y sobre esa frase el dueño eligió
+// ofrecer solo las fijadas a mano.
+//
+// Es mentira: el formulario del propio tendero —`catalog-product-dialog.tsx`,
+// donde pinta cada moneda activa— ya le enseña exactamente esa conversión,
+// calculada con `priceIn` y marcada con un icono de cadena. El importe en
+// euros no es un número a espaldas de nadie; es el mismo número, con la misma
+// regla, que el tendero ve y acepta cuando activa la moneda.
+//
+// Así que el selector ofrece **las monedas que el tendero activó** en el
+// producto, y el escalón solo decide el importe. La regla vive en
+// `lib/products/public-pricing.ts` y no aquí: es la única parte de esta
+// pantalla que puede equivocarse sin que nadie se entere —un cliente que ve el
+// precio equivocado cierra la página y ya está— así que es una función pura
+// con su suite, `qa:precio-publico`.
 //
 // ===========================================================================
 // «AGREGAR» YA GUARDA EN EL CARRITO (entregable C, 2026-10-15)
@@ -80,6 +93,7 @@ export function ProductDetail({
   productId,
   producto,
   baseCurrency,
+  currencies,
   rates,
   stock,
 }: {
@@ -87,6 +101,10 @@ export function ProductDetail({
   productId: string;
   producto: ProductoPublico;
   baseCurrency: PriceCurrency;
+  // Las monedas activas del producto, de `product_currencies`. Llegan del
+  // servidor y no se deducen aquí: deducirlas de `pinned` es justamente el
+  // fallo que la migración 111 arregla.
+  currencies: PriceCurrency[];
   // null en un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
   stock: number | null;
@@ -101,14 +119,19 @@ export function ProductDetail({
   const escalon = escalonParaCantidad(producto, n);
   const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
   const monedas = useMemo(
-    () => monedasDelEscalon(bloque, baseCurrency),
-    [bloque, baseCurrency],
+    () => monedasDelProducto(currencies, bloque, baseCurrency, rates),
+    [currencies, bloque, baseCurrency, rates],
   );
 
   // LA MONEDA ELEGIDA NO ES UN ESTADO INDEPENDIENTE, y eso evita un fallo que
   // sí lo sería: si el cliente elige euros con 3 unidades y luego sube a 6, el
   // escalón cambia y puede que el de mayor no tenga euros. Guardar su elección
   // a secas dejaría seleccionada una moneda que ya no está en la lista.
+  //
+  // SIGUE HACIENDO FALTA DESPUÉS DEL 2026-10-15, aunque las monedas ya sean
+  // del producto y no del escalón. La lista se filtra por las que tienen
+  // número, y eso depende del escalón: el euro puede estar fijado a mano al
+  // mayor y, sin tasa, no resolverse al detal.
   //
   // Se guarda la PREFERENCIA y se resuelve contra lo que hay: si su moneda
   // sigue disponible, se respeta; si no, la primera del escalón nuevo.
@@ -119,22 +142,28 @@ export function ProductDetail({
   const porDebajoDelMinimo = cantidad.trim() !== "" && n < minimo;
 
   // `exacto` DISTINGUE UN PRECIO ESCRITO DE UNO CALCULADO, y por eso viaja.
-  // La moneda elegida siempre es exacta en el escalón que aplica —el selector
-  // solo ofrece la base y las fijadas a mano—, pero el OTRO escalón puede no
-  // tenerla, y entonces su línea sale de la tasa del día. Enseñar los dos
-  // números igual haría pasar por precio del tendero uno que no lo es.
+  // Desde el 2026-10-15 la moneda elegida puede ser calculada también —el
+  // selector ya ofrece las activas, no solo las fijadas— así que esta marca
+  // pasó de ser un detalle del otro escalón a ser el caso normal. Enseñar los
+  // dos números igual haría pasar por precio del tendero uno que no lo es.
+  //
+  // SIN RESERVA DE TASA 1:1. Antes pasaba `rates ?? { usd: 1, eur: 1, usdt:
+  // null }`, que solo era inofensivo porque ninguna moneda calculada se
+  // ofrecía: la base y las fijadas no leen la tasa. Con la conversión como
+  // camino principal, esa reserva le habría ofrecido euros a la par del dólar
+  // —€45,50 por un producto de $45,50— a cualquier negocio venezolano al que
+  // le faltara la tasa del BCV, y con pinta de precio real. `precioEnMoneda`
+  // devuelve null en ese caso, y una moneda sin número no se ofrece.
   function precioEn(
     b: BloquePrecio | null,
     c: PriceCurrency,
   ): { texto: string; bs: string | null; exacto: boolean } | null {
-    if (b == null) return null;
-    const base = { amount: b.price, currency: baseCurrency };
-    const fila = priceIn(c, base, rates ?? { usd: 1, eur: 1, usdt: null }, b.pinned);
-    if (fila.amount == null) return null;
+    const amount = precioEnMoneda(b, baseCurrency, c, rates);
+    if (amount == null || b == null) return null;
     const exacto = c === baseCurrency || b.pinned[c] != null;
-    const texto = formatPriceAmount(fila.amount, c);
+    const texto = formatPriceAmount(amount, c);
     if (rates == null || c === "VES") return { texto, bs: null, exacto };
-    const enBs = priceIn("VES", { amount: fila.amount, currency: c }, rates);
+    const enBs = priceIn("VES", { amount, currency: c }, rates);
     return { texto, bs: enBs.amount == null ? null : formatBs(enBs.amount), exacto };
   }
 
@@ -146,11 +175,12 @@ export function ProductDetail({
     // haga algo.
     if (porDebajoDelMinimo) return null;
     if (bloque == null || moneda == null) return null;
-    const unidad = precioEn(bloque, moneda);
+    // UN SOLO SITIO CALCULA EL PRECIO UNITARIO. Antes esto lo volvía a pedir a
+    // `priceIn` con su propia reserva de tasa, así que el botón podía decir un
+    // importe que el bloque de precios de arriba no enseñaba.
+    const unidad = precioEnMoneda(bloque, baseCurrency, moneda, rates);
     if (unidad == null) return null;
-    const fila = priceIn(moneda, { amount: bloque.price, currency: baseCurrency }, rates ?? { usd: 1, eur: 1, usdt: null }, bloque.pinned);
-    if (fila.amount == null) return null;
-    return formatPriceAmount(fila.amount * Math.max(n, 0), moneda);
+    return formatPriceAmount(unidad * Math.max(n, 0), moneda);
   })();
 
   const paso = (delta: number) =>
