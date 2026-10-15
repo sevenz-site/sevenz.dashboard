@@ -48,8 +48,8 @@ type SharedProductDetail = {
   description: string | null;
   photo_path: string | null;
   base_currency: PriceCurrency;
-  // Las monedas activas del producto (`product_currencies`, migración 087).
-  // Las expone `get_shared_product` desde la migración 111.
+  // The product's enabled currencies (`product_currencies`, migration 087).
+  // `get_shared_product` exposes them as of migration 111.
   currencies: PriceCurrency[] | null;
   stock: number | null;
   wholesale_min_quantity: number | null;
@@ -180,11 +180,11 @@ export default async function ProductoPublicoPage({
             wholesale_min_quantity: detalle.wholesale_min_quantity,
           }}
           baseCurrency={detalle.base_currency}
-          // LA RESERVA ES LA BASE, no una lista vacía. Si esta página se
-          // sirviera contra una base sin la migración 111, `currencies`
-          // llegaría en null y una lista vacía dejaría el producto sin ninguna
-          // moneda que elegir — o sea, sin poder comprarse. Degradar a «solo
-          // la del tendero» es el comportamiento anterior, que funcionaba.
+          // THE FALLBACK IS THE BASE, not an empty list. If this page were
+          // served against a database without migration 111, `currencies`
+          // would arrive null and an empty list would leave the product with
+          // no currency to choose -- that is, unbuyable. Degrading to "only
+          // the shopkeeper's own" is the previous behaviour, which worked.
           currencies={detalle.currencies ?? [detalle.base_currency]}
           rates={rates}
           stock={detalle.stock}

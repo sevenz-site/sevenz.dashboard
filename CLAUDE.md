@@ -855,6 +855,39 @@ Strings the user reads are unaffected: `console.log` output in a `qa/` script is
 read by the user, so it stays Spanish, in the same file whose comments are
 English. That is the rule working, not a contradiction.
 
+#### SQL migrations are comments too, and that needed saying
+
+**A `.sql` file under `supabase/` is code. Its comments are English, same as
+every other file's.** Confirmed by the user on 2026-10-15: *"Idioma de
+comentarios en inglés siempre"*, asked as a straight choice between converting
+and writing migrations down as the exception. There is no exception.
+
+It needed saying because migrations are where this rule has been broken the
+most and the hardest to notice. `104` through `111` were all written with
+Spanish comments, none of them flagged, and by the time anyone looked it read
+as the house style rather than as drift — which is exactly how `tasa-prevista.ts`
+got in on 2026-09-13.
+
+Two things make a migration pull harder than a `.ts` file toward Spanish, and
+knowing them is the defence:
+
+- **Its comments are the longest in the repo.** A migration carries the whole
+  decision, its cost and what it displaces, so it is the most expensive prose
+  to write — and the point at which "the surrounding files are Spanish" is most
+  tempting.
+- **It quotes the owner.** His words are Spanish and stay Spanish, verbatim and
+  in quotes. An English comment carrying a Spanish quotation is correct and is
+  what these files should look like, not a reason to write the whole thing in
+  Spanish.
+
+The ledger's `description` is NOT a comment — it is a value stored in
+`public.schema_migrations` that the user reads during a parity check, so it
+follows the same rule as `console.log` in `qa/` and stays Spanish.
+
+The boundary is unchanged: migrations already written keep their prose. `111`
+was converted on 2026-10-15 because it had not reached production yet; `104`
+to `110` were left alone.
+
 ### The boundary, because the codebase is now mixed
 
 Existing Spanish names are NOT renamed. The cost of touching

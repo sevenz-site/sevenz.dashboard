@@ -54,28 +54,30 @@ check(
   "1d. pidiendo 20 se ve el MAYOR",
   escalonParaCantidad(elCasoDelDueno, 20) === "wholesale",
 );
-// LAS MONEDAS SON DEL PRODUCTO, NO DEL ESCALÓN, desde el 2026-10-15.
+// CURRENCIES BELONG TO THE PRODUCT, NOT TO THE TIER, as of 2026-10-15.
 //
-// Esto corrige dos cosas a la vez, y conviene separarlas porque una era un
-// fallo y la otra una decisión tomada sobre información mala:
+// This corrects two things at once, and they are worth separating because one
+// was a bug and the other a decision taken on bad information:
 //
-// 1. EL FALLO. `monedasDelEscalon` leía `bloque.pinned`, o sea los precios
-//    DESVINCULADOS, creyendo que eran «las monedas en oferta». Un producto con
-//    tres monedas activas y ningún precio fijado ofrecía una. Medido en dev
-//    con el Casco.
+// 1. THE BUG. `monedasDelEscalon` read `bloque.pinned`, i.e. the UNLINKED
+//    prices, believing they were "the currencies on offer". A product with
+//    three enabled currencies and no pinned price offered one. Measured in dev
+//    with the Casco.
 //
-// 2. LA DECISIÓN. El 2026-10-14 se descartó convertir alegando que mostraría
-//    un importe que el tendero nunca escribió. Es falso: su propio formulario
-//    ya le muestra esa conversión, calculada igual y marcada con una cadena.
+// 2. THE DECISION. On 2026-10-14 converting was discarded on the claim that it
+//    would show an amount the shopkeeper never typed. That is false: their own
+//    form already shows them that conversion, computed the same way and marked
+//    with a chain.
 //
-// Y `product_currencies` no tiene columna `tier`, así que el caso que planteó
-// el dueño —monedas distintas al detal y al mayor— el modelo no lo expresa. Lo
-// que cambia entre escalones es el importe.
+// And `product_currencies` has no `tier` column, so the case the owner
+// described -- different currencies at retail and wholesale -- the model does
+// not express. What changes between tiers is the amount.
 //
-// EL CASO DEL DUEÑO SIGUE PASANDO, y por eso se conserva con sus números: con
-// EUR y USDT fijados SOLO al mayor y sin tasa, al detal se ofrece una moneda y
-// al mayor tres — igual que antes. Lo que cambia es la razón: no es que el
-// detal «no tenga» esas monedas, es que sin tasa no se pueden calcular.
+// THE OWNER'S CASE STILL PASSES, which is why it is kept with its numbers:
+// with EUR and USDT pinned ONLY at wholesale and no rate, retail offers one
+// currency and wholesale three -- same as before. What changes is the reason:
+// it is not that retail "does not have" those currencies, it is that without a
+// rate they cannot be computed.
 const TRES = ["USD", "EUR", "USDT"];
 const SIN_TASA = null;
 const TASA = { usd: 100, eur: 120, usdt: null };
@@ -115,7 +117,7 @@ check(
   igual(monedasDelProducto(TRES, null, "USD", TASA), []),
 );
 
-// ── 1bis. `precioEnMoneda`, y la reserva 1:1 que no vuelve ──────────────
+// ── 1bis. `precioEnMoneda`, and the 1:1 fallback that does not come back ─
 check(
   "1l. la base no necesita tasa",
   precioEnMoneda(elCasoDelDueno.retail, "USD", "USD", SIN_TASA) === 5,

@@ -408,10 +408,10 @@ function FormularioDeLaOrden({
   ownerWhatsapp: string | null;
   lineas: ReturnType<typeof useCarrito>["lineas"];
   productos: Map<string, ProductoDelCarrito>;
-  // LA MISMA TASA QUE LA PANTALLA ACABA DE ENSENAR. Baja como prop en vez de
-  // leerse aqui para que el mensaje de WhatsApp no pueda citar una cifra
-  // distinta de la que el cliente vio: una segunda lectura podria caer al otro
-  // lado del refresco diario de la tasa.
+  // THE SAME RATE THE SCREEN HAS JUST SHOWN. It comes down as a prop instead
+  // of being read here so the WhatsApp message cannot quote a figure different
+  // from the one the customer saw: a second read could land on the other side
+  // of the daily rate refresh.
   rates: BolivarRates | null;
   onEnviada: (
     mensaje: string,

@@ -443,22 +443,23 @@ try {
     eEscribir?.message ?? "¡LA INSERTÓ!",
   );
 
-  // ── 14. LA CONVERSIÓN: QUE EL SERVIDOR Y EL NAVEGADOR DEN EL MISMO
-  //        NÚMERO, NO SOLO UN NÚMERO ──────────────────────────────────
+  // ── 14. THE CONVERSION: THAT THE SERVER AND THE BROWSER GIVE THE SAME
+  //        NUMBER, NOT JUST A NUMBER ────────────────────────────────────
   //
-  // Hasta la migración 111 la función no convertía nada: el importe salía de
-  // la ficha y era exacto POR CONSTRUCCIÓN. Al convertir, la aritmética se
-  // hace DOS VECES —`numeric` aquí, coma flotante de 64 bits en el navegador—
-  // y las dos tienen que coincidir al céntimo. Si no, el cliente ve un precio
-  // y la orden guarda otro, y nadie se enteraría: las dos cifras son
-  // plausibles y nunca aparecen juntas en la misma pantalla.
+  // Until migration 111 the function converted nothing: the amount came from
+  // the product record and was exact BY CONSTRUCTION. Once it converts, the
+  // arithmetic happens TWICE -- `numeric` here, 64-bit floating point in the
+  // browser -- and the two have to agree to the cent. If they do not, the
+  // customer sees one price and the order stores another, and nobody would
+  // find out: both figures are plausible and they never appear together on the
+  // same screen.
   //
-  // Es la misma idea que la prueba 2a hace con el escalón: no comprobar que
-  // cada lado funcione, sino que los dos lados estén de acuerdo.
+  // Same idea as what test 2a does with the tier: not checking that each side
+  // works, but that the two sides agree.
   //
-  // EL PRODUCTO LLEVA `product_currencies` Y NINGÚN PRECIO FIJADO, que es el
-  // caso que la 111 habilita y el único que llega a la conversión. El de la
-  // prueba 3a es su complemento: sin filas en esa tabla y con el euro fijado.
+  // THE PRODUCT CARRIES `product_currencies` AND NO PINNED PRICE, which is the
+  // case 111 enables and the only one that reaches the conversion. Test 3a is
+  // its complement: no rows in that table, and the euro pinned.
   const { data: convertible } = await admin
     .from("products")
     .insert({
@@ -484,10 +485,11 @@ try {
       { onConflict: "product_id,currency" },
     );
 
-  // LA TASA, POR EL MISMO CAMINO QUE LAS DOS PARTES. La función la toma de
-  // `owner_exchange_settings` si el negocio fijó la suya, y del BCV si no; la
-  // pantalla hace lo mismo en `app/c/[token]/page.tsx`. Leerla aquí de otra
-  // forma convertiría esta prueba en una tercera opinión en vez de un árbitro.
+  // THE RATE, BY THE SAME ROUTE AS BOTH SIDES. The function takes it from
+  // `owner_exchange_settings` when the business set its own, and from the BCV
+  // otherwise; the screen does the same in `app/c/[token]/page.tsx`. Reading
+  // it here any other way would turn this test into a third opinion instead of
+  // a referee.
   const { data: ajustes } = await admin
     .from("owner_exchange_settings")
     .select("rate_mode, custom_rate_usd, custom_rate_eur")
@@ -532,10 +534,11 @@ try {
     );
   }
 
-  // Y EL USDT NO, aunque esté activo: su tasa viene de CriptoYa y las páginas
-  // públicas no la piden (decisión del 2026-10-10), así que la función no
-  // puede calcularlo. La razón tiene que ser `sin_tasa` y NO `moneda_invalida`
-  // -- son dos arreglos distintos y el log es donde se distinguen.
+  // AND USDT DOES NOT, even when enabled: its rate comes from CriptoYa and
+  // public pages do not ask for it (decision of 2026-10-10), so the function
+  // cannot compute it. The reason has to be `sin_tasa` and NOT
+  // `moneda_invalida` -- two different fixes, and the log is where they get
+  // told apart.
   await admin
     .from("product_currencies")
     .upsert(
@@ -578,37 +581,37 @@ try {
     `${quedanProd} productos · ${quedanPermisos} permisos`,
   );
 
-  // ── 13. CADA RAZÓN DEL SQL TIENE SU FRASE, Y ESTE ES EL ÚNICO CONTROL
-  //        DE TODA LA SUITE QUE MIRA AFUERA ───────────────────────────
+  // ── 13. EVERY SQL REASON HAS ITS SENTENCE, AND THIS IS THE ONLY CHECK
+  //        IN THE WHOLE SUITE THAT LOOKS OUTSIDE ──────────────────────
   //
-  // Las doce comprobaciones de arriba hablan con la base, que es la realidad
-  // de un lado. Esta compara DOS ARCHIVOS: los códigos que la migración
-  // devuelve y el diccionario `MOTIVOS` de la acción. Ninguno de los dos sabe
-  // del otro, y ahí está el fallo que nada chilla: una clave que falta no
-  // rompe nada —la búsqueda termina en `?? "No pudimos enviar tu pedido"`— así
-  // que la frase redactada con cuidado simplemente no sale nunca.
+  // The twelve checks above talk to the database, which is reality on one
+  // side. This one compares TWO FILES: the codes the migration returns and the
+  // action's `MOTIVOS` dictionary. Neither knows about the other, and that is
+  // where the failure nothing screams about lives: a missing key breaks
+  // nothing -- the lookup ends in `?? "No pudimos enviar tu pedido"` -- so the
+  // carefully worded sentence simply never appears.
   //
-  // POR QUÉ EXISTE, Y NO ES UNA HIPÓTESIS. El 2026-10-15, al reescribir la
-  // función para la migración 111, se le cambió el nombre a seis códigos sin
-  // querer: `producto_invalido` pasó a `producto_no_disponible`, y los tres
-  // campos del comprador —que la 109 valida por separado, cada uno con su
-  // frase— se juntaron en un `datos_incompletos` que no existía.
+  // WHY IT EXISTS, AND IT IS NOT HYPOTHETICAL. On 2026-10-15, while rewriting
+  // the function for migration 111, six codes were renamed by accident:
+  // `producto_invalido` became `producto_no_disponible`, and the buyer's three
+  // fields -- which 109 validates separately, each with its own sentence --
+  // were merged into a `datos_incompletos` that did not exist.
   //
-  // Lo peor no fue el cambio: fue que al verlo fallar se "arreglaron" el
-  // diccionario Y ESTA SUITE para que coincidieran con el error nuevo. Los
-  // tres volvieron a estar de acuerdo, los tres equivocados, y el tendero
-  // habría perdido los mensajes precisos de «Escribe tu nombre» y «Ese número
-  // de WhatsApp no se entiende. Revísalo.» a cambio de uno genérico.
+  // The rename was not the worst part: on seeing it fail, the dictionary AND
+  // THIS SUITE were "fixed" to match the new mistake. All three agreed again,
+  // all three wrong, and the customer would have lost the precise «Escribe tu
+  // nombre» and «Ese número de WhatsApp no se entiende. Revísalo.» in exchange
+  // for a generic one.
   //
-  // Es la lección de las plantillas de Meta del mismo día, y esta vez el que
-  // la rompió fue el que la había escrito: tres controles que se escriben
-  // mirándose entre sí coinciden perfectamente y pueden estar los tres
-  // equivocados. Al menos uno tiene que mirar fuera.
+  // It is the lesson of the same day's Meta templates, and this time the one
+  // who broke it was the one who had written it: three controls written by
+  // looking at each other agree perfectly and can all three be wrong. At least
+  // one has to look outside.
   //
-  // SE LEE EL ARCHIVO DE LA MIGRACIÓN Y NO LA BASE, a propósito: lo que hay
-  // que vigilar es lo que el repo dice, porque es lo que se va a desplegar.
-  // Una función viva que no case con el archivo es otro problema, y lo cazan
-  // las doce pruebas de arriba llamándola de verdad.
+  // THE MIGRATION FILE IS READ, NOT THE DATABASE, on purpose: what has to be
+  // watched is what the repo says, because that is what will be deployed. A
+  // live function that does not match the file is a different problem, and the
+  // twelve tests above catch it by actually calling it.
   const sqlOrden = readFileSync("supabase/111_catalogo_ofrece_las_monedas_activas.sql", "utf8");
   const cuerpo = sqlOrden.slice(sqlOrden.indexOf("create function public.create_catalog_order"));
   const razonesDelSql = new Set([

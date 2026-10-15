@@ -43,30 +43,31 @@ import {
 //   frame no eran los dos bloques, era que cada uno traía su propia lista de
 //   monedas y se podían elegir dos cosas a la vez.
 //
-// Así que: **los dos precios se enseñan siempre**, para que el cliente vea lo
-// que se ahorra pidiendo más; y **hay un solo selector de moneda**.
+// So: **both prices are always shown**, so the customer sees what they save by
+// ordering more; and **there is a single currency selector**.
 //
-//   3. 2026-10-15, más tarde — «este producto tiene varias monedas seteadas en
-//   su configuración, pero en el catálogo al cliente solo le aparece Dólar».
+//   3. 2026-10-15, later — «este producto tiene varias monedas seteadas en su
+//   configuración, pero en el catálogo al cliente solo le aparece Dólar».
 //
-// LO QUE DECÍA AQUÍ ANTES ERA FALSO, y queda escrito porque es la razón por la
-// que la decisión anterior salió como salió. Este comentario afirmaba que
-// ofrecer todas las monedas y convertir «le enseñaría al cliente un importe en
-// euros que el tendero nunca escribió», y sobre esa frase el dueño eligió
-// ofrecer solo las fijadas a mano.
+// WHAT THIS COMMENT SAID BEFORE WAS FALSE, and it is written down because it
+// is the reason the previous decision came out the way it did. It claimed that
+// offering every currency and converting «le enseñaría al cliente un importe
+// en euros que el tendero nunca escribió», and the owner chose to offer only
+// the hand-pinned ones on the strength of that sentence.
 //
-// Es mentira: el formulario del propio tendero —`catalog-product-dialog.tsx`,
-// donde pinta cada moneda activa— ya le enseña exactamente esa conversión,
-// calculada con `priceIn` y marcada con un icono de cadena. El importe en
-// euros no es un número a espaldas de nadie; es el mismo número, con la misma
-// regla, que el tendero ve y acepta cuando activa la moneda.
+// It is untrue: the shopkeeper's own form -- `catalog-product-dialog.tsx`,
+// where it paints every enabled currency -- already shows them exactly that
+// conversion, computed with `priceIn` and marked with a chain icon. The euro
+// amount is not a number behind anyone's back; it is the same number, under
+// the same rule, that the shopkeeper sees and accepts when they enable the
+// currency.
 //
-// Así que el selector ofrece **las monedas que el tendero activó** en el
-// producto, y el escalón solo decide el importe. La regla vive en
-// `lib/products/public-pricing.ts` y no aquí: es la única parte de esta
-// pantalla que puede equivocarse sin que nadie se entere —un cliente que ve el
-// precio equivocado cierra la página y ya está— así que es una función pura
-// con su suite, `qa:precio-publico`.
+// So the selector offers **the currencies the shopkeeper enabled** on the
+// product, and the tier only decides the amount. The rule lives in
+// `lib/products/public-pricing.ts` and not here: it is the one part of this
+// screen that can be wrong without anybody finding out -- a customer who sees
+// the wrong price closes the page and that is that -- so it is a pure function
+// with its own suite, `qa:precio-publico`.
 //
 // ===========================================================================
 // «AGREGAR» YA GUARDA EN EL CARRITO (entregable C, 2026-10-15)
@@ -101,9 +102,9 @@ export function ProductDetail({
   productId: string;
   producto: ProductoPublico;
   baseCurrency: PriceCurrency;
-  // Las monedas activas del producto, de `product_currencies`. Llegan del
-  // servidor y no se deducen aquí: deducirlas de `pinned` es justamente el
-  // fallo que la migración 111 arregla.
+  // The product's enabled currencies, from `product_currencies`. They arrive
+  // from the server and are not inferred here: inferring them from `pinned` is
+  // precisely the bug migration 111 fixes.
   currencies: PriceCurrency[];
   // null en un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
@@ -128,10 +129,10 @@ export function ProductDetail({
   // escalón cambia y puede que el de mayor no tenga euros. Guardar su elección
   // a secas dejaría seleccionada una moneda que ya no está en la lista.
   //
-  // SIGUE HACIENDO FALTA DESPUÉS DEL 2026-10-15, aunque las monedas ya sean
-  // del producto y no del escalón. La lista se filtra por las que tienen
-  // número, y eso depende del escalón: el euro puede estar fijado a mano al
-  // mayor y, sin tasa, no resolverse al detal.
+  // STILL NEEDED AFTER 2026-10-15, even though the currencies now belong to
+  // the product and not to the tier. The list is filtered down to the ones
+  // that have a number, and that does depend on the tier: the euro can be
+  // pinned by hand at wholesale and, with no rate, fail to resolve at retail.
   //
   // Se guarda la PREFERENCIA y se resuelve contra lo que hay: si su moneda
   // sigue disponible, se respeta; si no, la primera del escalón nuevo.
@@ -141,19 +142,21 @@ export function ProductDetail({
 
   const porDebajoDelMinimo = cantidad.trim() !== "" && n < minimo;
 
-  // `exacto` DISTINGUE UN PRECIO ESCRITO DE UNO CALCULADO, y por eso viaja.
-  // Desde el 2026-10-15 la moneda elegida puede ser calculada también —el
-  // selector ya ofrece las activas, no solo las fijadas— así que esta marca
-  // pasó de ser un detalle del otro escalón a ser el caso normal. Enseñar los
-  // dos números igual haría pasar por precio del tendero uno que no lo es.
+  // `exacto` TELLS A TYPED PRICE FROM A COMPUTED ONE, which is why it
+  // travels. Since 2026-10-15 the chosen currency can be a computed one too
+  // -- the selector now offers the enabled ones, not just the pinned ones --
+  // so this marker went from being a detail of the other tier to being the
+  // normal case. Showing both numbers alike would pass off as the
+  // shopkeeper's a price that is not.
   //
-  // SIN RESERVA DE TASA 1:1. Antes pasaba `rates ?? { usd: 1, eur: 1, usdt:
-  // null }`, que solo era inofensivo porque ninguna moneda calculada se
-  // ofrecía: la base y las fijadas no leen la tasa. Con la conversión como
-  // camino principal, esa reserva le habría ofrecido euros a la par del dólar
-  // —€45,50 por un producto de $45,50— a cualquier negocio venezolano al que
-  // le faltara la tasa del BCV, y con pinta de precio real. `precioEnMoneda`
-  // devuelve null en ese caso, y una moneda sin número no se ofrece.
+  // NO 1:1 RATE FALLBACK. It used to pass `rates ?? { usd: 1, eur: 1, usdt:
+  // null }`, which was harmless only because no computed currency was ever
+  // offered: the base and the pinned ones do not read the rate. With
+  // conversion as the main path, that fallback would have offered euros at
+  // parity with the dollar -- EUR 45.50 for a USD 45.50 product -- to any
+  // Venezuelan business missing its BCV rate, and it would have looked like a
+  // real price. `precioEnMoneda` returns null in that case, and a currency
+  // with no number is not offered.
   function precioEn(
     b: BloquePrecio | null,
     c: PriceCurrency,
@@ -175,9 +178,9 @@ export function ProductDetail({
     // haga algo.
     if (porDebajoDelMinimo) return null;
     if (bloque == null || moneda == null) return null;
-    // UN SOLO SITIO CALCULA EL PRECIO UNITARIO. Antes esto lo volvía a pedir a
-    // `priceIn` con su propia reserva de tasa, así que el botón podía decir un
-    // importe que el bloque de precios de arriba no enseñaba.
+    // ONE PLACE COMPUTES THE UNIT PRICE. This used to ask `priceIn` again
+    // with its own rate fallback, so the button could state an amount the
+    // price block above was not showing.
     const unidad = precioEnMoneda(bloque, baseCurrency, moneda, rates);
     if (unidad == null) return null;
     return formatPriceAmount(unidad * Math.max(n, 0), moneda);

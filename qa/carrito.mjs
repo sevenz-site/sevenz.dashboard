@@ -61,20 +61,20 @@ const CATALOGO = new Map([
   [CAFE.id, CAFE],
 ]);
 
-// LAS PRUEBAS 1 A 8 PASAN `null` COMO TASA, Y ESO NO ES PEREZA.
+// TESTS 1 TO 8 PASS `null` AS THE RATE, AND THAT IS NOT LAZINESS.
 //
-// Sin tasa solo se resuelven el precio base y los fijados a mano, que es
-// exactamente lo que esas pruebas afirmaban cuando se escribieron el
-// 2026-10-14. Dejarlas así conserva su significado intacto Y fija de paso la
-// regla que más caro habría salido perder: **sin tasa no se inventa una**.
+// With no rate only the base price and the hand-pinned ones resolve, which is
+// exactly what those tests asserted when they were written on 2026-10-14.
+// Leaving them that way keeps their meaning intact AND pins down the rule that
+// would have been costliest to lose: **with no rate, none is invented**.
 //
-// Hasta el 2026-10-15 la pantalla pasaba `rates ?? { usd: 1, eur: 1, usdt:
-// null }`, inofensivo mientras ninguna moneda calculada se ofrecía. En cuanto
-// la conversión pasó a ser el camino normal, esa reserva habría cotizado el
-// euro a la par del dólar a cualquier negocio venezolano al que le faltara la
-// tasa del BCV. La prueba 9c es la que no deja que vuelva.
+// Until 2026-10-15 the screen passed `rates ?? { usd: 1, eur: 1, usdt: null }`,
+// harmless while no computed currency was ever offered. The moment conversion
+// became the normal path, that fallback would have quoted the euro at parity
+// with the dollar to any Venezuelan business missing its BCV rate. Test 9c is
+// what stops it coming back.
 //
-// El comportamiento nuevo —convertir cuando SÍ hay tasa— va en la sección 9.
+// The new behaviour -- converting when there IS a rate -- lives in section 9.
 const SIN_TASA = null;
 const TASA = { usd: 100, eur: 120, usdt: null };
 
@@ -231,18 +231,18 @@ check(
   "la línea huérfana se ignora",
 );
 
-// ── 9. LA MONEDA CALCULADA, que hasta el 2026-10-15 hacía DESAPARECER la
-//       línea del carrito ───────────────────────────────────────────────
+// ── 9. THE COMPUTED CURRENCY, which until 2026-10-15 made the cart line
+//       DISAPPEAR ───────────────────────────────────────────────────────
 //
-// El fallo que estas pruebas vigilan es el peor de los cuatro que tenía esta
-// suposición, porque es el único silencioso: `precioUnitario` solo resolvía la
-// base y los precios fijados, así que una línea en una moneda derivada de la
-// tasa —el caso NORMAL, no la excepción— devolvía null y el producto no se
-// pintaba. Ni error, ni aviso, ni hueco: el cliente añadía algo y su carrito
-// simplemente no lo tenía.
+// The bug these tests guard is the worst of the four this assumption caused,
+// because it is the only silent one: `precioUnitario` resolved only the base
+// and the pinned prices, so a line in a rate-derived currency -- the NORMAL
+// case, not the exception -- returned null and the product was never painted.
+// No error, no warning, no gap: the customer added something and their cart
+// simply did not have it.
 //
-// El Casco de dev es el caso real: USD base, EUR y USDT activos, cero precios
-// fijados.
+// The dev Casco is the real case: USD base, EUR and USDT enabled, zero pinned
+// prices.
 const CASCO = {
   id: "casco",
   name: "Casco",

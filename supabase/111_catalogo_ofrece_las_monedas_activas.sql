@@ -1,111 +1,119 @@
--- EL CATALOGO OFRECE LAS MONEDAS QUE EL TENDERO ACTIVO, NO LAS QUE FIJO A MANO.
+-- THE CATALOGUE OFFERS THE CURRENCIES THE SHOPKEEPER ENABLED, NOT THE ONES
+-- THEY PINNED BY HAND.
 --
 -- ENVIRONMENT: run first on the DEV branch (vzqppwrwnmlbrxizskdh). Do NOT run
 -- against production (rabmiyqodnvnrwiartuj) until the user says to launch.
 --
 -- ===========================================================================
--- EL FALLO: SE LE PREGUNTABA A LA TABLA EQUIVOCADA
+-- THE BUG: THE WRONG TABLE WAS BEING ASKED
 --
--- Las cuatro funciones del catalogo construian la lista de monedas desde
--- `product_price_overrides`, que guarda SOLO los precios que el tendero
--- desvinculo y escribio a mano. Las monedas que el tendero ACTIVO en el
--- producto estan en `product_currencies` (migracion 087), y ninguna de las
--- cuatro la leia.
+-- All four catalogue functions built their currency list from
+-- `product_price_overrides`, which holds ONLY the prices the shopkeeper
+-- unlinked and typed by hand. The currencies they ENABLED on the product live
+-- in `product_currencies` (migration 087), and not one of the four read it.
 --
--- Son dos preguntas distintas y se hacia la equivocada:
+-- Two different questions, and the wrong one was being asked:
 --
---   `product_currencies`      -> «en que monedas vende este producto»
---   `product_price_overrides` -> «que precios escribio a mano»
+--   `product_currencies`      -> "which currencies does this product sell in"
+--   `product_price_overrides` -> "which prices were typed by hand"
 --
--- Medido en dev el 2026-10-15 con el producto «Casco» (USD base): tres monedas
--- activas —USD, EUR, USDT—, cero precios fijados. El cliente veia UNA.
---
--- ===========================================================================
--- LAS MONEDAS SON DEL PRODUCTO, NO DEL ESCALON
---
--- `product_currencies` tiene clave `(product_id, currency)` y NO tiene columna
--- `tier`. Asi que la lista es la misma para detal y para mayor; lo que cambia
--- entre escalones es solo el IMPORTE.
---
--- Queda escrito porque el 2026-10-14 se decidio «solo las monedas del escalon
--- que aplica» sobre el caso que planteo el dueno —«al detal en dolares pero al
--- mayor en euros, USDT y dolares»— y ese caso el modelo de datos NO lo sabe
--- expresar. Quien quiera monedas distintas por escalon necesita antes una
--- columna `tier` en esa tabla; no es un ajuste de estas funciones.
+-- Measured in dev on 2026-10-15 with the product «Casco» (USD base): three
+-- enabled currencies -- USD, EUR, USDT -- and zero pinned prices. The customer
+-- saw ONE.
 --
 -- ===========================================================================
--- LO QUE ESTO LE CUESTA AL CANDADO 5, DICHO ENTERO
+-- CURRENCIES BELONG TO THE PRODUCT, NOT TO THE TIER
 --
--- La 109 cerraba asi: «no se convierte nada con la tasa -- la moneda pedida
--- tiene que ser la base o una fijada a mano, o se rechaza», y de ahi salia una
--- propiedad buena: el importe de una orden era EXACTO POR CONSTRUCCION, no
--- habia deriva posible entre lo que el cliente vio y lo que quedo escrito.
+-- `product_currencies` is keyed `(product_id, currency)` and has NO `tier`
+-- column. So the list is the same for retail and wholesale; what changes
+-- between tiers is only the AMOUNT.
 --
--- Esa propiedad se pierde hoy, a proposito y con el coste medido: para que el
--- euro se pueda PEDIR, esta funcion tiene que convertir. El importe pasa a
--- depender de la tasa del instante del envio, no del instante en que el
--- cliente lo mire. Si la tasa se mueve entremedias, el cliente vio EUR 40,91 y
--- la orden dice EUR 40,50.
---
--- Se acepta por tres razones, en orden de peso:
---
--- 1. **Es la misma deriva que ya tiene cada precio convertido del producto**,
---    incluida la ficha del propio tendero. No es una clase de riesgo nueva:
---    es la que el app ya tiene, llegando a un sitio mas.
--- 2. La tasa del BCV se refresca una vez al dia por cron, asi que la ventana
---    real son los segundos alrededor de ese refresco.
--- 3. El importe se CONGELA en `catalog_order_items.unit_price` al insertar.
---    Una orden es un presupuesto cerrado: abrirla tres dias despues ensena lo
---    que se pidio, no lo que costaria hoy.
---
--- EL CANDADO 5 SIGUE EN PIE EN LO QUE IMPORTA: el precio NO viaja en la
--- peticion. Del navegador llega `{product_id, quantity, currency, comment}` y
--- nada mas. Lo unico que cambia es de donde sale el numero —de la ficha, o de
--- la ficha mas la tasa—, nunca quien lo decide.
+-- Written down because on 2026-10-14 we decided "only the currencies of the
+-- tier that applies" on the strength of the case the owner described -- «al
+-- detal en dolares pero al mayor en euros, USDT y dolares» -- and the data
+-- model cannot express that case at all. Anyone who wants per-tier currencies
+-- needs a `tier` column on that table first; it is not a tweak to these
+-- functions.
 --
 -- ===========================================================================
--- EL USDT NO SE PUEDE PEDIR SI NO ESTA FIJADO, Y ESO ES COHERENTE A PROPOSITO
+-- WHAT THIS COSTS PADLOCK 5, STATED IN FULL
 --
--- `get_current_bcv_rate()` da usd y eur. La tasa del USDT viene de CriptoYa,
--- un tercero, y el 2026-10-10 el dueno decidio que las paginas publicas no lo
--- llamaran en cada carga: en el catalogo `usdt` llega siempre null.
+-- Migration 109 closed it like this: "nothing is converted with the rate --
+-- the requested currency has to be the base or one pinned by hand, or it is
+-- rejected", and that bought a good property: an order's amount was EXACT BY
+-- CONSTRUCTION, with no possible drift between what the customer saw and what
+-- got written down.
 --
--- Consecuencia: aqui el USDT no se convierte NUNCA. Un producto con USDT
--- activo y sin precio fijado se puede pedir en las demas monedas, no en esa.
+-- That property is given up today, deliberately and with the cost measured:
+-- for the euro to be ORDERABLE, this function has to convert. The amount now
+-- depends on the rate at the instant of submission, not at the instant the
+-- customer looked. If the rate moves in between, the customer saw EUR 40.91
+-- and the order says EUR 40.50.
 --
--- Y ES LO MISMO QUE DECIDE LA PANTALLA, que no ofrece una moneda sin numero.
--- Que las dos coincidan no es casualidad ni redundancia: es la unica forma de
--- que lo ofrecido y lo aceptado sean el mismo conjunto. Si algun dia se
--- enciende la tasa del USDT en el catalogo, hay que encenderla EN LOS DOS
--- SITIOS O EN NINGUNO -- encenderla solo en la pantalla ofrece algo que esta
--- funcion rechaza, y el cliente se come un `moneda_invalida` despues de
--- rellenar todo el formulario.
+-- Accepted for three reasons, heaviest first:
+--
+-- 1. **It is the same drift every converted price in the app already has**,
+--    including the shopkeeper's own product form. This is not a new class of
+--    risk: it is the one the app already carries, reaching one more place.
+-- 2. The BCV rate refreshes once a day by cron, so the real window is the few
+--    seconds around that refresh.
+-- 3. The amount is FROZEN into `catalog_order_items.unit_price` on insert. An
+--    order is a closed quote: opening it three days later shows what was
+--    ordered, not what it would cost today.
+--
+-- PADLOCK 5 STILL HOLDS WHERE IT MATTERS: the price does NOT travel in the
+-- request. What arrives from the browser is `{product_id, quantity, currency,
+-- comment}` and nothing else. All that changed is where the number comes from
+-- -- the product record, or the product record plus the rate -- never who
+-- decides it.
+--
+-- ===========================================================================
+-- USDT CANNOT BE ORDERED UNLESS IT IS PINNED, AND THAT IS COHERENT ON PURPOSE
+--
+-- `get_current_bcv_rate()` gives usd and eur. The USDT rate comes from
+-- CriptoYa, a third party, and on 2026-10-10 the owner decided public pages
+-- must not call it on every load: in the catalogue `usdt` always arrives null.
+--
+-- Consequence: USDT is NEVER converted here. A product with USDT enabled and
+-- no pinned price can be ordered in the other currencies, not in that one.
+-- The owner confirmed that way out on 2026-10-15: the shopkeeper pins the USDT
+-- price by hand. See `CT-73` for what neither option fixes -- nothing tells
+-- the shopkeeper their customer cannot see it.
+--
+-- AND THE SCREEN DECIDES THE SAME THING -- it does not offer a currency with
+-- no number. The two agreeing is neither coincidence nor redundancy: it is the
+-- only way for what is offered and what is accepted to be the same set. If the
+-- USDT rate is ever switched on for the catalogue, it must be switched on IN
+-- BOTH PLACES OR NEITHER -- switching it on only in the screen offers
+-- something this function rejects, and the customer eats a `sin_tasa` after
+-- filling in the whole form.
 
 begin;
 
 -- ===========================================================================
--- 0. LA LISTA DE MONEDAS, EN UN SOLO SITIO
+-- 0. THE CURRENCY LIST, IN ONE PLACE
 --
--- Las cuatro funciones necesitan la misma lista con la misma regla de reserva,
--- y cuatro copias de un `coalesce` es como tres de ellas acaban diciendo una
--- cosa y la cuarta otra. Esta es la unica definicion.
+-- All four functions need the same list under the same fallback rule, and four
+-- copies of a `coalesce` is how three of them end up saying one thing and the
+-- fourth another. This is the only definition.
 --
--- LA BASE ENTRA SIEMPRE, aunque no este en `product_currencies`. Hoy no puede
--- faltar —el formulario toma `base_currency` de la primera moneda activa— pero
--- si alguna fila quedara descuadrada, el resultado sin esto seria un producto
--- que no se puede pedir en SU PROPIA moneda. El `union` tambien quita el
--- duplicado del caso normal.
+-- THE BASE ALWAYS COUNTS, even when it is not in `product_currencies`. Today
+-- it cannot be missing -- the form takes `base_currency` from the first
+-- enabled currency -- but if a row ever went out of step, the result without
+-- this would be a product that cannot be ordered in ITS OWN currency. The
+-- `union` also removes the duplicate in the normal case.
 --
--- LA BASE VA PRIMERA en el orden, que es el que la pantalla usa para los
--- radios: es el precio que el tendero escribio, y las demas salieron de el.
+-- THE BASE COMES FIRST in the ordering, which is the one the screen uses for
+-- its radios: it is the price the shopkeeper typed, and the rest derive from
+-- it.
 -- ===========================================================================
 
--- `drop` + `create` Y NO `create or replace`, aunque la funcion sea nueva.
--- CLAUDE.md lo documenta con lo que costo: `create or replace` no puede
--- cambiar el tipo ni el nombre de un parametro, asi que el dia que esta firma
--- cambie crearia un SEGUNDO overload en vez de reemplazar, y PostgREST
--- resolveria al que le guste. Una sola firma existe antes y despues de este
--- archivo, asi que un solo `drop` lo deja re-ejecutable.
+-- `drop` + `create` AND NOT `create or replace`, even though the function is
+-- new. CLAUDE.md documents what that cost: `create or replace` cannot change a
+-- parameter's type or name, so the day this signature changes it would create
+-- a SECOND overload instead of replacing, and PostgREST would resolve to
+-- whichever it liked. One signature exists before and after this file, so a
+-- single `drop` leaves it re-runnable.
 drop function if exists public.product_catalog_currencies(uuid, text);
 
 create function public.product_catalog_currencies(p_product_id uuid, p_base text)
@@ -125,20 +133,21 @@ as $$
   ) x
 $$;
 
--- NO LA LLAMA NADIE DE FUERA. Vive para las cuatro funciones de abajo, que son
--- SECURITY DEFINER y por tanto pueden ejecutarla sin que anon tenga el permiso.
--- Supabase concede EXECUTE a anon y authenticated sobre toda funcion nueva del
--- esquema public, asi que se les nombra a proposito en vez de confiar en que
--- revocarle a `public` baste -- la 067 documenta el agujero que eso abrio.
+-- NOBODY OUTSIDE CALLS IT. It exists for the four functions below, which are
+-- SECURITY DEFINER and can therefore execute it without anon holding the
+-- privilege. Supabase grants EXECUTE to anon and authenticated on every new
+-- function in the public schema, so they are named explicitly instead of
+-- trusting that revoking from `public` is enough -- migration 067 documents
+-- the real hole that assumption opened.
 revoke execute on function public.product_catalog_currencies(uuid, text) from public;
 revoke execute on function public.product_catalog_currencies(uuid, text) from anon;
 revoke execute on function public.product_catalog_currencies(uuid, text) from authenticated;
 
 comment on function public.product_catalog_currencies(uuid, text) is
-  'Las monedas en las que un producto se puede pedir desde el catalogo publico: las activas de product_currencies mas su base, que entra siempre. La base va primera. Es del PRODUCTO y no del escalon, porque product_currencies no tiene columna tier. Interna: solo la llaman las funciones SECURITY DEFINER del catalogo.';
+  'The currencies a product can be ordered in from the public catalogue: the enabled ones in product_currencies plus its base, which always counts. The base comes first. It belongs to the PRODUCT and not to the tier, because product_currencies has no tier column. Internal: only the catalogue SECURITY DEFINER functions call it.';
 
 -- ===========================================================================
--- 1. EL CATALOGO
+-- 1. THE CATALOGUE
 -- ===========================================================================
 
 drop function if exists public.get_shared_catalog(text);
@@ -173,9 +182,9 @@ begin
   from public.owners
   where id = v_owner_id;
 
-  -- EL PRECIO DE UNA UNIDAD, no el mas bajo (migracion 107): la portada
-  -- ensena lo que cuesta comprar uno, y el de mayor aparece en el detalle
-  -- cuando la cantidad lo alcanza.
+  -- THE PRICE OF ONE UNIT, not the lowest one (migration 107): the front page
+  -- shows what buying one costs, and the wholesale price appears in the detail
+  -- once the quantity reaches it.
   select json_agg(
     json_build_object(
       'id', p.id,
@@ -237,7 +246,7 @@ revoke execute on function public.get_shared_catalog(text) from public;
 grant execute on function public.get_shared_catalog(text) to anon, authenticated;
 
 -- ===========================================================================
--- 2. EL DETALLE DE UN PRODUCTO
+-- 2. A PRODUCT'S DETAIL
 -- ===========================================================================
 
 drop function if exists public.get_shared_product(text, uuid);
@@ -267,9 +276,9 @@ begin
     return null;
   end if;
 
-  -- OWNER Y PUBLICADO, porque `p_product_id` llega de la URL. Sin esto,
-  -- cambiar el identificador en la barra de direcciones ensenaria el producto
-  -- de otro negocio -- comprobado el 2026-10-14: devuelve null, como debe.
+  -- OWNER AND PUBLISHED, because `p_product_id` arrives from the URL. Without
+  -- this, changing the identifier in the address bar would show another
+  -- business's product -- checked on 2026-10-14: it returns null, as it must.
   select * into p
   from public.products
   where id = p_product_id
@@ -307,12 +316,12 @@ begin
     'description', p.description,
     'photo_path', p.photo_path,
     'base_currency', p.base_currency,
-    -- LA LISTA ENTERA, una sola vez: vale para los dos escalones.
+    -- THE WHOLE LIST, once: it serves both tiers.
     'currencies', public.product_catalog_currencies(p.id, p.base_currency),
     'stock', p.stock_opening,
     'wholesale_min_quantity', p.wholesale_min_quantity,
-    -- LOS DOS ESCALONES ENTEROS, y la pantalla decide. Un escalon sin
-    -- publicar viaja como null y no se ensena en ninguna parte.
+    -- BOTH TIERS WHOLE, and the screen decides. An unpublished tier travels as
+    -- null and is shown nowhere.
     'retail', case
       when p.published_retail and p.price_retail is not null
       then json_build_object('price', p.price_retail, 'pinned', coalesce(v_retail_pinned, '{}'::json))
@@ -334,7 +343,7 @@ revoke execute on function public.get_shared_product(text, uuid) from public;
 grant execute on function public.get_shared_product(text, uuid) to anon, authenticated;
 
 -- ===========================================================================
--- 3. LOS PRODUCTOS DE UN CARRITO
+-- 3. THE PRODUCTS IN A CART
 -- ===========================================================================
 
 drop function if exists public.get_shared_products(text, uuid[]);
@@ -361,9 +370,9 @@ begin
     return null;
   end if;
 
-  -- UN TOPE AQUI TAMBIEN. El carrito admite 50 lineas (migracion 109) y esta
-  -- funcion la llama cualquiera con el enlace: sin limite, una peticion con
-  -- diez mil ids seria una consulta cara gratis.
+  -- A CAP HERE TOO. The cart takes 50 lines (migration 109) and this function
+  -- can be called by anyone holding the link: with no limit, a request with
+  -- ten thousand ids would be an expensive query for free.
   if p_ids is null or array_length(p_ids, 1) is null or array_length(p_ids, 1) > 50 then
     return json_build_object('products', '[]'::json);
   end if;
@@ -379,8 +388,8 @@ begin
       'currencies', public.product_catalog_currencies(p.id, p.base_currency),
       'stock', p.stock_opening,
       'wholesale_min_quantity', p.wholesale_min_quantity,
-      -- Los DOS escalones enteros, igual que `get_shared_product`. Un escalon
-      -- sin publicar viaja como null y no se ensena en ninguna parte.
+      -- BOTH TIERS WHOLE, same as `get_shared_product`. An unpublished tier
+      -- travels as null and is shown nowhere.
       'retail', case
         when p.published_retail and p.price_retail is not null
         then json_build_object('price', p.price_retail, 'pinned', coalesce(ret.pinned, '{}'::json))
@@ -429,7 +438,15 @@ revoke execute on function public.get_shared_products(text, uuid[]) from public;
 grant execute on function public.get_shared_products(text, uuid[]) to anon, authenticated;
 
 -- ===========================================================================
--- 4. LA ORDEN, QUE AHORA CONVIERTE
+-- 4. THE ORDER, WHICH NOW CONVERTS
+--
+-- Taken VERBATIM from migration 109 and given exactly three changes: the rate
+-- lookup, the currency check, and the conversion branch. It was rewritten from
+-- memory the first time round and that silently swapped
+-- `normalize_whatsapp_phone` for a hand-rolled `regexp_replace` -- the phone
+-- is the key of the WhatsApp consent, so two spellings of the same number are
+-- two different people to the database. `qa:orden` caught it; no amount of
+-- re-reading had.
 -- ===========================================================================
 
 drop function if exists public.create_catalog_order(text, text, text, text, boolean, text, jsonb);
@@ -440,9 +457,9 @@ create function public.create_catalog_order(
   p_customer_document text,
   p_customer_whatsapp text,
   p_wants_notices boolean,
-  -- La frase literal que la casilla tenia en pantalla. Es LA evidencia ante
-  -- Meta, misma regla que el resto de los permisos: dos textos distintos
-  -- convierten la prueba en una reconstruccion.
+  -- The literal sentence the checkbox had on screen. It is THE evidence for
+  -- Meta, same rule as every other consent: two different texts turn the proof
+  -- into a reconstruction.
   p_consent_text text,
   -- [{ "product_id": uuid, "quantity": number, "currency": text,
   --    "comment": text|null }]
@@ -454,16 +471,17 @@ security definer
 set search_path = public
 as $fn$
 declare
-  -- LOS TOPES, JUNTOS Y ARRIBA para que se vean de un vistazo y se cambien en
-  -- un sitio. Los numeros tienen razon de ser, no son redondos por gusto:
+  -- THE CAPS, TOGETHER AND AT THE TOP so they can be seen at a glance and
+  -- changed in one place. The numbers have reasons; they are not round for
+  -- the sake of it:
   --
-  --   50 lineas: un pedido de bodega real no pasa de diez. Cincuenta deja
-  --   sitio de sobra y corta una peticion de megabytes.
+  --   50 lines: a real corner-shop order does not pass ten. Fifty leaves room
+  --   to spare and cuts off a megabyte-sized request.
   --
-  --   20 por minuto y por enlace: un guion hace miles por minuto y una bodega
-  --   no hace veinte. El limite distingue las dos cosas por su FORMA, no por
-  --   su volumen, que es lo que evita bloquear a un cliente de verdad.
-  --   Vigilarlo es `CT-68`, porque quedarse corto cuesta ventas y no avisa.
+  --   20 per minute per link: a script does thousands a minute and a shop does
+  --   not do twenty. The limit tells the two apart by their SHAPE, not by
+  --   their volume, which is what stops it blocking a real customer. Watching
+  --   it is `CT-68`, because setting it too low costs sales and says nothing.
   c_max_lineas constant int := 50;
   c_max_por_minuto constant int := 20;
 
@@ -485,7 +503,7 @@ declare
   v_fijado numeric;
   v_min numeric;
 
-  -- LO QUE LA CONVERSION NECESITA, nuevo en la migracion 111.
+  -- WHAT THE CONVERSION NEEDS, new in migration 111.
   v_monedas json;
   v_country text;
   v_settings public.owner_exchange_settings%rowtype;
@@ -494,19 +512,19 @@ declare
   v_bs_base numeric;
   v_bs_destino numeric;
 begin
-  -- ── CANDADO 1: el dueno sale del TOKEN ────────────────────────────────
+  -- ── PADLOCK 1: the owner comes from the TOKEN ─────────────────────────
   select owner_id, id into v_owner_id, v_link_id
   from public.catalog_share_links
   where token = p_token;
 
   if not found then
-    -- El mismo «no» para un token inexistente y para uno revocado, igual que
-    -- en el resto de las superficies publicas: quien pruebe tokens al azar no
-    -- aprende nada de la diferencia.
+    -- The same "no" for a token that never existed and one that was revoked,
+    -- like every other public surface: anyone trying tokens at random learns
+    -- nothing from the difference.
     return jsonb_build_object('ok', false, 'reason', 'enlace_invalido');
   end if;
 
-  -- ── CANDADO 4: tope por enlace y por minuto ───────────────────────────
+  -- ── PADLOCK 4: cap per link, per minute ───────────────────────────────
   select count(*) into v_recientes
   from public.catalog_orders
   where catalog_link_id = v_link_id
@@ -516,7 +534,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'demasiadas_ordenes');
   end if;
 
-  -- ── Quien pide ────────────────────────────────────────────────────────
+  -- ── Who is ordering ───────────────────────────────────────────────────
   v_nombre := btrim(coalesce(p_customer_name, ''));
   v_documento := btrim(coalesce(p_customer_document, ''));
 
@@ -528,15 +546,15 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'documento_invalido');
   end if;
 
-  -- Normalizado AQUI y nunca por quien llama, que es la misma regla que el
-  -- resto del producto: el telefono es la clave del permiso y dos formas de
-  -- escribir el mismo numero son dos personas distintas para la base.
+  -- Normalised HERE and never by the caller, which is the same rule as the
+  -- rest of the product: the phone is the key of the consent, and two
+  -- spellings of the same number are two different people to the database.
   v_phone := public.normalize_whatsapp_phone(p_customer_whatsapp);
   if v_phone is null then
     return jsonb_build_object('ok', false, 'reason', 'whatsapp_invalido');
   end if;
 
-  -- ── CANDADO 3: tamano ─────────────────────────────────────────────────
+  -- ── PADLOCK 3: size ───────────────────────────────────────────────────
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
     return jsonb_build_object('ok', false, 'reason', 'sin_productos');
   end if;
@@ -549,17 +567,17 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'demasiados_productos');
   end if;
 
-  -- ── LA TASA DEL NEGOCIO, UNA SOLA VEZ PARA TODA LA ORDEN (111) ────────
+  -- ── THE SHOP'S RATE, ONCE FOR THE WHOLE ORDER (111) ───────────────────
   --
-  -- Fuera del bucle a proposito: con la tasa leida por linea, una orden de
-  -- doce productos podria cruzar el refresco del cron por la mitad y quedar
-  -- con dos tasas distintas dentro. Un presupuesto con dos tasas no se le
-  -- puede explicar a nadie.
+  -- Outside the loop on purpose: with the rate read per line, a twelve-product
+  -- order could cross the cron refresh halfway through and end up holding two
+  -- different rates inside it. A quote with two rates cannot be explained to
+  -- anybody.
   --
-  -- MISMA REGLA QUE LA PANTALLA, que la arma en `app/c/[token]/page.tsx`: si
-  -- el negocio fijo tasa propia y tiene las dos, esa manda; si no, la del BCV.
-  -- Las dos tienen que coincidir, o el cliente veria un numero y la orden
-  -- guardaria otro POR SISTEMA, no por deriva.
+  -- SAME RULE AS THE SCREEN, which builds it in `app/c/[token]/page.tsx`: if
+  -- the shop set its own rate and has both, that one wins; otherwise the BCV
+  -- one. The two have to agree, or the customer would see one number and the
+  -- order would store another BY DESIGN, not by drift.
   select country into v_country from public.owners where id = v_owner_id;
   if v_country = 'VE' then
     select * into v_settings from public.owner_exchange_settings where owner_id = v_owner_id;
@@ -573,7 +591,7 @@ begin
     end if;
   end if;
 
-  -- ── La orden ──────────────────────────────────────────────────────────
+  -- ── The order ─────────────────────────────────────────────────────────
   insert into public.catalog_orders (
     owner_id, catalog_link_id,
     customer_name, customer_document,
@@ -588,11 +606,11 @@ begin
   )
   returning id into v_order_id;
 
-  -- ── Las lineas, una por una ───────────────────────────────────────────
+  -- ── The lines, one by one ─────────────────────────────────────────────
   for v_item in select * from jsonb_array_elements(p_items)
   loop
-    -- CANDADO 2: el producto es de ESTE dueno, no esta en la papelera y esta
-    -- publicado. Un id cualquiera pegado en la peticion no entra.
+    -- PADLOCK 2: the product belongs to THIS owner, is not in the bin and is
+    -- published. Any old id pasted into the request does not get in.
     select * into p
     from public.products
     where id = (v_item ->> 'product_id')::uuid
@@ -601,9 +619,9 @@ begin
       and (published_retail or published_wholesale);
 
     if not found then
-      -- Se deshace la orden entera. Media orden es peor que ninguna: el
-      -- tendero atenderia un pedido al que le falta lo que el cliente creia
-      -- haber pedido, sin que nada lo diga.
+      -- The whole order is undone. Half an order is worse than none: the
+      -- shopkeeper would serve a request missing what the customer believed
+      -- they had ordered, with nothing saying so.
       raise exception 'producto_invalido' using errcode = 'P0001';
     end if;
 
@@ -612,12 +630,13 @@ begin
       raise exception 'cantidad_invalida' using errcode = 'P0001';
     end if;
 
-    -- EL ESCALON, con la misma regla que `escalonParaCantidad`. Ver la
-    -- cabecera: aqui es donde se DECIDE, el TypeScript solo lo ensena.
+    -- THE TIER, under the same rule as `escalonParaCantidad`. See the header:
+    -- this is where it is DECIDED, the TypeScript only displays it.
     --
-    -- Sin cantidad minima NUNCA se llega al mayor, y es el lado seguro: un
-    -- precio mayorista cobrado por una unidad es dinero perdido. La migracion
-    -- 088 permite el nulo y documenta lo contrario; se descarta a proposito.
+    -- With no minimum quantity the wholesale tier is NEVER reached, and that
+    -- is the safe side: a wholesale price charged for one unit is money lost.
+    -- Migration 088 permits the null and documents the opposite reading; it is
+    -- discarded here on purpose.
     v_min := p.wholesale_min_quantity;
     if not (p.published_retail and p.price_retail is not null) then
       v_tier := 'wholesale';
@@ -631,10 +650,10 @@ begin
       v_tier := 'retail';
     end if;
 
-    -- EL MINIMO ES BARRERA SOLO CUANDO NO HAY DONDE CAER. Un producto que solo
-    -- se vende al mayor no tiene precio de detal al que bajar, asi que pedir
-    -- menos del minimo no significa nada. Con los dos escalones publicados,
-    -- pedir poco si significa algo: es el precio al detal.
+    -- THE MINIMUM IS A HARD BARRIER ONLY WHEN THERE IS NOWHERE TO FALL. A
+    -- product sold only by wholesale has no retail price to drop to, so
+    -- ordering less than the minimum means nothing. With both tiers published,
+    -- ordering few does mean something: it is the retail price.
     if v_tier = 'wholesale'
        and not (p.published_retail and p.price_retail is not null)
        and v_min is not null and v_cantidad < v_min then
@@ -646,28 +665,29 @@ begin
       raise exception 'sin_precio' using errcode = 'P0001';
     end if;
 
-    -- CANDADO 5: el importe lo calcula ESTA funcion, y el precio NUNCA viaja
-    -- en la peticion. Eso no cambia. Lo que cambio el 2026-10-15 es de donde
-    -- sale el numero -- de la ficha, o de la ficha mas la tasa -- y el coste
-    -- de ese cambio esta medido en la cabecera de esta migracion.
+    -- PADLOCK 5: THIS function computes the amount, and the price NEVER
+    -- travels in the request. That does not change. What changed on
+    -- 2026-10-15 is where the number comes from -- the product record, or the
+    -- product record plus the rate -- and the cost of that change is measured
+    -- in this migration's header.
     v_moneda := upper(btrim(coalesce(v_item ->> 'currency', '')));
 
-    -- PRIMERO: la moneda tiene que ser una en la que este producto se venda.
-    -- Sin esta comprobacion cualquier moneda convertible valdria -- un cliente
-    -- podria pedir en euros un producto que el tendero solo vende en dolares,
-    -- y la conversion funcionaria perfectamente.
+    -- FIRST: the currency has to be one this product actually sells in.
+    -- Without this check any convertible currency would do -- a customer could
+    -- order in euros a product the shopkeeper only sells in dollars, and the
+    -- conversion would work perfectly.
     --
-    -- LAS FIJADAS A MANO CUENTAN, AUNQUE NO ESTEN EN `product_currencies`, y
-    -- esto no es un cinturon: sin ello la migracion 111 ROMPERIA productos que
-    -- hoy funcionan. La 087 solo traspaso `base_currency` a esa tabla
-    -- (`select id, base_currency from products`), asi que un producto que no
-    -- se haya vuelto a guardar desde entonces tiene UNA sola moneda activa
-    -- aunque lleve precios fijados en otras. Un precio fijado para un escalon
-    -- es la afirmacion mas fuerte que existe de que el producto se vende en
-    -- esa moneda: lo escribio el tendero a mano.
+    -- PINNED PRICES COUNT EVEN WHEN THEY ARE NOT IN `product_currencies`, and
+    -- this is not a belt-and-braces: without it migration 111 would BREAK
+    -- products that work today. Migration 087 only carried `base_currency`
+    -- over to that table (`select id, base_currency from products`), so a
+    -- product not re-saved since then holds ONE enabled currency even when it
+    -- carries pinned prices in others. A price pinned for a tier is the
+    -- strongest possible statement that the product sells in that currency:
+    -- the shopkeeper typed it by hand.
     --
-    -- Lo caza `qa:orden` 3a, que usa un producto recien creado -- sin filas en
-    -- `product_currencies` y con el euro fijado al mayor.
+    -- `qa:orden` 3a catches it, using a freshly created product -- no rows in
+    -- `product_currencies` and the euro pinned at wholesale.
     v_monedas := public.product_catalog_currencies(p.id, p.base_currency);
     if v_moneda <> p.base_currency
        and not exists (
@@ -681,10 +701,11 @@ begin
       raise exception 'moneda_invalida' using errcode = 'P0001';
     end if;
 
-    -- EL MISMO ORDEN QUE `priceIn` EN TYPESCRIPT: fijado a mano, luego la
-    -- base, luego la conversion. El orden importa y no es el intuitivo -- un
-    -- precio fijado gana INCLUSO sobre la base, porque un candado cerrado es
-    -- una decision explicita del tendero y la base es el valor de partida.
+    -- THE SAME ORDER AS `priceIn` IN TYPESCRIPT: pinned by hand, then the
+    -- base, then the conversion. The order matters and is not the intuitive
+    -- one -- a pinned price wins EVEN over the base, because a closed padlock
+    -- is an explicit decision by the shopkeeper and the base is the starting
+    -- value.
     select amount into v_fijado
     from public.product_price_overrides
     where product_id = p.id and tier = v_tier and currency = v_moneda;
@@ -692,8 +713,8 @@ begin
     if found and v_fijado is not null and v_fijado > 0 then
       v_precio := v_fijado;
     elsif v_moneda <> p.base_currency then
-      -- BOLIVARES POR UNIDAD DE CADA MONEDA, igual que `bolivaresPorUnidad`.
-      -- USDT y COP se quedan sin tasa a proposito: ver la cabecera.
+      -- BOLIVARES PER UNIT OF EACH CURRENCY, same as `bolivaresPorUnidad`.
+      -- USDT and COP are left without a rate on purpose: see the header.
       v_bs_base := case p.base_currency
         when 'VES' then 1
         when 'USD' then nullif(v_rate_usd, 0)
@@ -706,23 +727,24 @@ begin
         else null end;
 
       if v_bs_base is null or v_bs_destino is null then
-        -- RAZON NUEVA Y DISTINTA DE `moneda_invalida`, A PROPOSITO. «No lo
-        -- vendemos en esa moneda» y «lo vendemos pero ahora mismo no tenemos
-        -- la tasa» son dos problemas con dos arreglos distintos: el primero lo
-        -- arregla el tendero activando la moneda, el segundo se arregla solo o
-        -- es una averia nuestra. Una sola razon para los dos los vuelve
-        -- indistinguibles en el log, que es donde se diagnostican.
+        -- A NEW REASON, DISTINCT FROM `moneda_invalida` ON PURPOSE. "We do not
+        -- sell it in that currency" and "we do sell it but right now we have
+        -- no rate" are two problems with two different fixes: the first the
+        -- shopkeeper fixes by enabling the currency, the second fixes itself
+        -- or is a fault of ours. One reason for both makes them
+        -- indistinguishable in the log, which is where they get diagnosed.
         raise exception 'sin_tasa' using errcode = 'P0001';
       end if;
 
-      -- DOS DECIMALES, redondeo normal, igual que `redondear` en price.ts.
+      -- TWO DECIMALS, ordinary rounding, same as `redondear` in price.ts.
       --
-      -- OJO, LA ARITMETICA NO ES LA MISMA: aqui es `numeric` y en el navegador
-      -- es coma flotante de 64 bits. En un empate exacto las dos podrian
-      -- separarse en el ultimo centimo, y entonces el cliente veria un numero
-      -- y la orden guardaria otro. No se ha observado; se escribe porque si
-      -- algun dia se reporta «me guardo un centimo de mas», esta es la causa
-      -- a mirar primero y no la deriva de la tasa.
+      -- CAREFUL, THE ARITHMETIC IS NOT THE SAME: `numeric` here and 64-bit
+      -- floating point in the browser. On an exact tie the two could part
+      -- company on the last cent, and then the customer would see one number
+      -- and the order would store another. Not observed; written down because
+      -- if someone ever reports "it stored a cent too much", this is the cause
+      -- to look at first, not the rate drift. `qa:orden` 14a/14b compare the
+      -- two sides to the cent, and `CT-72` holds what they do not cover.
       v_precio := round((v_precio * v_bs_base) / v_bs_destino, 2);
 
       if v_precio <= 0 then
@@ -741,24 +763,24 @@ begin
     );
   end loop;
 
-  -- ── El permiso, si lo pidio ───────────────────────────────────────────
+  -- ── The consent, if they asked for it ─────────────────────────────────
   --
-  -- DECISION DEL DUENO EL 2026-10-15, y desplaza la «salida A» que el mismo
-  -- habia decidido el 2026-10-14. La razon vieja queda escrita porque es la
-  -- que haria falta para revertir: el permiso vale para TODOS los negocios
-  -- (migracion 081) y aqui el numero lo teclea un visitante anonimo, asi que
-  -- cualquiera podria dar de alta el numero de un tercero.
+  -- OWNER'S DECISION ON 2026-10-15, displacing the "exit A" the same owner had
+  -- decided on 2026-10-14. The old reason stays written down because it is the
+  -- one needed to revert: the consent is valid for ALL businesses (migration
+  -- 081) and here the number is typed by an anonymous visitor, so anyone could
+  -- sign up a third party's number.
   --
-  -- Lo que lo desplaza es que el tendero ahora ABRE la orden y verifica
-  -- nombre, documento y telefono —puede corregirlos— antes de atenderla. Esa
-  -- es la doble verificacion que el 14 no existia.
+  -- What displaces it is that the shopkeeper now OPENS the order and verifies
+  -- name, document and phone -- and can correct them -- before serving it.
+  -- That is the double check that did not exist on the 14th.
   --
-  -- El riesgo que queda, dicho: el permiso existe desde que se marca la
-  -- casilla hasta que el tendero mira. En esa ventana no sale ningun mensaje
-  -- por si solo —hace falta ademas que ese numero sea cliente de alguna bodega
-  -- y que le registren un movimiento— pero la ventana existe. Por eso el
-  -- origen es `client_order` y no `client_self`: si algun dia hay que
-  -- encontrarlos y revocarlos, esta columna es la unica forma.
+  -- The remaining risk, stated: the consent exists from the moment the box is
+  -- ticked until the shopkeeper looks. In that window no message goes out by
+  -- itself -- that number also has to be a client of some shop and have a
+  -- movement registered -- but the window exists. That is why the source is
+  -- `client_order` and not `client_self`: if they ever have to be found and
+  -- revoked, this column is the only way.
   if coalesce(p_wants_notices, false) and btrim(coalesce(p_consent_text, '')) <> '' then
     insert into public.client_whatsapp_consents (phone, event, consent_text, source)
     values (v_phone, 'granted', btrim(p_consent_text), 'client_order');
@@ -768,26 +790,26 @@ begin
 
 exception
   when sqlstate 'P0001' then
-    -- El texto del `raise` es un codigo estable, no una frase para ensenar.
-    -- Quien llama lo traduce; la pagina publica NUNCA ensena texto crudo de la
-    -- base, que es la regla de CLAUDE.md sobre enmascarar errores.
+    -- The `raise` text is a stable code, not a sentence to display. The caller
+    -- translates it; the public page NEVER shows raw text from the database,
+    -- which is CLAUDE.md's rule about masking errors.
     --
-    -- Y ATRAPARLO AQUI DESHACE LA ORDEN ENTERA, que es el comportamiento
-    -- buscado: un bloque con `exception` es una subtransaccion, asi que al
-    -- entrar aqui las filas ya insertadas se van. Media orden es peor que
-    -- ninguna — el tendero atenderia un pedido al que le falta lo que el
-    -- cliente creia haber pedido, sin que nada lo diga.
+    -- AND CATCHING IT HERE UNDOES THE WHOLE ORDER, which is the wanted
+    -- behaviour: a block with an `exception` clause is a subtransaction, so
+    -- entering here takes the already-inserted rows with it. Half an order is
+    -- worse than none -- the shopkeeper would serve a request missing what the
+    -- customer believed they had ordered, with nothing saying so.
     return jsonb_build_object('ok', false, 'reason', sqlerrm);
 
   when others then
-    -- LO QUE NO PREVIMOS. Un `product_id` que no es un uuid, una cantidad que
-    -- no es un numero: cosas que no vienen de un navegador normal y que, sin
-    -- esto, saldrian como un error crudo de Postgres.
+    -- WHAT WE DID NOT FORESEE. A `product_id` that is not a uuid, a quantity
+    -- that is not a number: things that do not come from a normal browser and
+    -- that, without this, would surface as a raw Postgres error.
     --
-    -- Al que llama se le da una razon generica —regla de enmascarar errores—
-    -- y el detalle real va al log del servidor con `raise warning`, que es el
-    -- unico sitio donde queremos verlo. Sin el `warning`, este `when others`
-    -- se tragaria tambien nuestros propios fallos y no lo sabriamos nunca.
+    -- The caller gets a generic reason -- the masking rule -- and the real
+    -- detail goes to the server log with `raise warning`, which is the only
+    -- place we want to see it. Without the `warning`, this `when others` would
+    -- swallow our own failures too and we would never know.
     raise warning 'create_catalog_order fallo inesperado: % (%)', sqlerrm, sqlstate;
     return jsonb_build_object('ok', false, 'reason', 'error');
 end;
@@ -797,12 +819,12 @@ revoke execute on function public.create_catalog_order(text, text, text, text, b
 grant execute on function public.create_catalog_order(text, text, text, text, boolean, text, jsonb) to anon, authenticated;
 
 comment on function public.create_catalog_order(text, text, text, text, boolean, text, jsonb) is
-  'Crea una orden desde el catalogo publico. La llama un visitante ANONIMO. Cinco candados: el dueno sale del token y nunca del navegador; cada producto se valida como suyo, sin borrar y publicado; topes de tamano (50 lineas, textos acotados); tope de 20 ordenes por enlace y por minuto; y el PRECIO lo calcula esta funcion, nunca viaja en la peticion. La moneda pedida tiene que ser la base, una ACTIVA en product_currencies, o una con precio fijado a mano para ese escalon -- esta ultima cuenta porque la 087 solo traspaso base_currency a esa tabla; el importe es el fijado a mano para ese escalon si existe, si no la base, si no la conversion con la tasa del negocio -- mismo orden que priceIn en TypeScript. USDT y COP no se convierten porque no hay tasa: razon sin_tasa, distinta de moneda_invalida. El escalon lo decide esta funcion con la misma regla que lib/products/public-pricing.ts, y MANDA esta: la de TypeScript es presentacion.';
+  'Creates an order from the public catalogue. Called by an ANONYMOUS visitor. Five padlocks: the owner comes from the token and never from the browser; every product is validated as theirs, not trashed and published; size caps (50 lines, bounded texts); a cap of 20 orders per link per minute; and the PRICE is computed by this function, never travelling in the request. The requested currency has to be the base, one enabled in product_currencies, or one with a price pinned by hand for that tier -- the last counts because migration 087 only carried base_currency over to that table; the amount is the pinned one for that tier if it exists, else the base, else the conversion with the shop rate -- same order as priceIn in TypeScript. USDT and COP are not converted because there is no rate: reason sin_tasa, distinct from moneda_invalida. The tier is decided by this function under the same rule as lib/products/public-pricing.ts, and THIS one rules: the TypeScript is presentation.';
 
 insert into public.schema_migrations (key, description)
 values (
   '111_catalogo_ofrece_las_monedas_activas',
-  'El catalogo publico ofrecia solo la moneda base del producto mas las que el tendero habia FIJADO a mano, porque las cuatro funciones leian product_price_overrides -- que guarda los precios desvinculados -- en vez de product_currencies, que es la lista de monedas activas (migracion 087). Medido en dev con el producto Casco: tres monedas activas, cero fijadas, el cliente veia una. La suposicion vivia en cuatro sitios y solo uno era visible: monedasDelEscalon no las ofrecia, precioUnitario devolvia null y la linea DESAPARECIA del carrito sin aviso, create_catalog_order rechazaba con moneda_invalida, y las tres funciones de lectura no exponian la tabla. Corrige ademas una premisa que el agente dio mal el 2026-10-14: se descarto convertir alegando que ensenaria un importe que el tendero nunca escribio, cuando el formulario del propio tendero (catalog-product-dialog.tsx:1393) ya le ensena exactamente esa conversion. Las monedas son del PRODUCTO y no del escalon: product_currencies no tiene columna tier, asi que el caso que el dueno planteo -- monedas distintas al detal y al mayor -- el modelo no lo sabe expresar. Coste aceptado: el candado 5 pierde la exactitud por construccion, porque convertir ata el importe a la tasa del instante del envio; es la misma deriva que ya tiene cada precio convertido del app, la ventana son los segundos del refresco diario del cron, y el importe se congela al insertar. El precio sigue sin viajar en la peticion, que es lo que el candado 5 protege de verdad. El USDT no se convierte -- su tasa viene de CriptoYa y las paginas publicas no la piden (decision del 2026-10-10) -- asi que solo se puede pedir en USDT con el precio fijado a mano, y la pantalla no ofrece una moneda sin numero: encender esa tasa hay que hacerlo en los dos sitios o en ninguno.'
+  'El catalogo publico ofrecia solo la moneda base del producto mas las que el tendero habia FIJADO a mano, porque las cuatro funciones leian product_price_overrides -- que guarda los precios desvinculados -- en vez de product_currencies, que es la lista de monedas activas (migracion 087). Medido en dev con el producto Casco: tres monedas activas, cero fijadas, el cliente veia una. La suposicion vivia en cuatro sitios y solo uno era visible: monedasDelEscalon no las ofrecia, precioUnitario devolvia null y la linea DESAPARECIA del carrito sin aviso, create_catalog_order rechazaba con moneda_invalida, y las tres funciones de lectura no exponian la tabla. Corrige ademas una premisa que el agente dio mal el 2026-10-14: se descarto convertir alegando que ensenaria un importe que el tendero nunca escribio, cuando el formulario del propio tendero (catalog-product-dialog.tsx:1393) ya le ensena exactamente esa conversion. Las monedas son del PRODUCTO y no del escalon: product_currencies no tiene columna tier, asi que el caso que el dueno planteo -- monedas distintas al detal y al mayor -- el modelo no lo sabe expresar. El conjunto que se ofrece y el que se acepta es el mismo en los dos lados: base, activas, y las fijadas a mano para ese escalon -- estas ultimas cuentan porque la 087 solo traspaso base_currency, asi que sin ellas este arreglo habria roto productos que funcionan. Coste aceptado: el candado 5 pierde la exactitud por construccion, porque convertir ata el importe a la tasa del instante del envio; es la misma deriva que ya tiene cada precio convertido del app, la ventana son los segundos del refresco diario del cron, y el importe se congela al insertar. El precio sigue sin viajar en la peticion, que es lo que el candado 5 protege de verdad. El USDT no se convierte -- su tasa viene de CriptoYa y las paginas publicas no la piden (decision del 2026-10-10) -- asi que solo se puede pedir en USDT con el precio fijado a mano, que es la salida que el dueno confirmo el 2026-10-15; ver CT-73.'
 )
 on conflict (key) do nothing;
 
@@ -810,24 +832,24 @@ commit;
 
 -- ── verification, after running the above ───────────────────────────────
 --
--- 1. El catalogo ya ofrece las tres monedas del Casco:
+-- 1. The catalogue now offers all three of the Casco's currencies:
 --
 -- select p.name, public.product_catalog_currencies(p.id, p.base_currency) as monedas
 -- from public.products p
 -- where p.name = 'Casco';
 --
--- EXPECTED: ["USD","EUR","USDT"] -- la base primera, las demas alfabeticas.
+-- EXPECTED: ["USD","EUR","USDT"] -- base first, the rest alphabetical.
 --
--- 2. Y llega dentro del detalle publico, por el token real del enlace:
+-- 2. And it arrives inside the public detail, through the link's real token:
 --
 -- select (public.get_shared_product(l.token, p.id) -> 'currencies') as monedas
 -- from public.catalog_share_links l
 -- join public.products p on p.owner_id = l.owner_id and p.name = 'Casco';
 --
--- EXPECTED: lo mismo que el punto 1.
+-- EXPECTED: the same as point 1.
 --
--- 3. Una sola version de cada funcion -- un segundo overload es el fallo que
---    documenta CLAUDE.md, y PostgREST resolveria al que le guste:
+-- 3. One version of each function -- a second overload is the failure CLAUDE.md
+--    documents, and PostgREST would resolve to whichever it liked:
 --
 -- select p.proname, count(*) as versiones
 -- from pg_proc p
@@ -839,9 +861,9 @@ commit;
 -- group by p.proname
 -- order by p.proname;
 --
--- EXPECTED: 1 en las cinco.
+-- EXPECTED: 1 for all five.
 --
--- 4. El ayudante NO lo puede llamar un visitante, y la orden SI:
+-- 4. The helper is NOT callable by a visitor, and the order IS:
 --
 -- select
 --   has_function_privilege('anon', 'public.product_catalog_currencies(uuid, text)', 'execute') as anon_ayudante,

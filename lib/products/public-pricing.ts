@@ -122,35 +122,36 @@ export function precioEnMoneda(
 }
 
 /**
- * Las monedas que el cliente puede elegir para pagar.
+ * The currencies the customer can choose to pay in.
  *
- * ESTO LEÍA LA TABLA EQUIVOCADA HASTA EL 2026-10-15. Devolvía la base más las
- * fijadas a mano (`bloque.pinned`), que son los precios DESVINCULADOS — no las
- * monedas que el tendero activó. Un producto con dólar, euro y USDT activos y
- * ningún precio fijado ofrecía una sola moneda. Medido en dev con «Casco».
+ * THIS READ THE WRONG TABLE UNTIL 2026-10-15. It returned the base plus the
+ * hand-pinned ones (`bloque.pinned`), which are the UNLINKED prices -- not the
+ * currencies the shopkeeper enabled. A product with dollar, euro and USDT
+ * enabled and no pinned price offered a single currency. Measured in dev with
+ * «Casco».
  *
- * La lista de verdad es `product_currencies` (migración 087) y llega desde el
- * servidor en `currencies`. Migración 111 la expone en las tres funciones de
- * lectura del catálogo.
+ * The real list is `product_currencies` (migration 087) and it arrives from
+ * the server in `currencies`. Migration 111 exposes it in all three catalogue
+ * read functions.
  *
- * ES DEL PRODUCTO, NO DEL ESCALÓN, y eso corrige lo que se decidió el
- * 2026-10-14. `product_currencies` tiene clave `(product_id, currency)` y no
- * tiene columna `tier`, así que el caso que planteó el dueño —«al detal en
- * dólares pero al mayor en euros, USDT y dólares»— el modelo de datos no lo
- * sabe expresar. Lo que cambia entre escalones es solo el importe. Queda
- * escrito porque la decisión del 14 sí hablaba de escalones, y quien la
- * busque tiene que encontrar por qué dejó de aplicarse.
+ * IT BELONGS TO THE PRODUCT, NOT TO THE TIER, and that corrects what was
+ * decided on 2026-10-14. `product_currencies` is keyed `(product_id,
+ * currency)` and has no `tier` column, so the case the owner described --
+ * «al detal en dólares pero al mayor en euros, USDT y dólares» -- the data
+ * model cannot express at all. What changes between tiers is only the amount.
+ * Written down because the decision of the 14th did talk about tiers, and
+ * whoever goes looking for it has to find why it stopped applying.
  *
- * SE FILTRA POR LAS QUE TIENEN NÚMERO, y el caso real es el USDT: su tasa
- * viene de CriptoYa y las páginas públicas no la piden (decisión del
- * 2026-10-10), así que en el catálogo llega siempre en null y no se puede
- * calcular. Un producto con USDT activo y sin precio fijado se ofrece en las
- * demás monedas y no en esa. La alternativa —ofrecerla sin importe— deja al
- * cliente elegir algo que `create_catalog_order` rechaza con `sin_tasa`
- * después de que haya rellenado el formulario entero.
+ * FILTERED DOWN TO THE ONES THAT HAVE A NUMBER, and the real case is USDT: its
+ * rate comes from CriptoYa and public pages do not ask for it (decision of
+ * 2026-10-10), so in the catalogue it always arrives null and cannot be
+ * computed. A product with USDT enabled and no pinned price is offered in the
+ * other currencies and not in that one. The alternative -- offering it with no
+ * amount -- lets the customer pick something `create_catalog_order` rejects
+ * with `sin_tasa` after they have filled in the entire form.
  *
- * `base` va primera a propósito — es el precio que el tendero puso, y las
- * demás salieron de él. El orden lo fija el servidor.
+ * `base` comes first on purpose -- it is the price the shopkeeper set, and the
+ * rest derive from it. The server fixes the ordering.
  */
 export function monedasDelProducto(
   currencies: PriceCurrency[],
@@ -160,20 +161,21 @@ export function monedasDelProducto(
 ): PriceCurrency[] {
   if (bloque == null) return [];
 
-  // LAS FIJADAS A MANO ENTRAN AUNQUE NO ESTÉN EN `currencies`, y esto no es un
-  // cinturón: sin ello este arreglo ROMPERÍA productos que hoy funcionan.
+  // PINNED PRICES COUNT EVEN WHEN THEY ARE NOT IN `currencies`, and this is
+  // not a belt-and-braces: without it this fix would BREAK products that work
+  // today.
   //
-  // La migración 087 solo traspasó `base_currency` a `product_currencies`
-  // (`select id, base_currency from products`), así que un producto que no se
-  // haya vuelto a guardar desde el 2026-10-10 tiene UNA sola moneda activa
-  // aunque lleve precios fijados en otras. Antes del 2026-10-15 esas fijadas
-  // eran precisamente las únicas que se ofrecían, así que leer solo
-  // `currencies` las habría dejado fuera — cambiando un fallo por otro.
+  // Migration 087 only carried `base_currency` over to `product_currencies`
+  // (`select id, base_currency from products`), so a product not re-saved
+  // since 2026-10-10 holds ONE enabled currency even when it carries pinned
+  // prices in others. Before 2026-10-15 those pinned ones were precisely the
+  // only ones on offer, so reading `currencies` alone would have dropped them
+  // -- trading one bug for another.
   //
-  // Y un precio fijado para un escalón es la afirmación más fuerte que existe
-  // de que el producto se vende en esa moneda: lo escribió el tendero a mano.
-  // `create_catalog_order` acepta exactamente el mismo conjunto, y las dos
-  // listas tienen que coincidir o se ofrece algo que el servidor rechaza.
+  // And a price pinned for a tier is the strongest possible statement that the
+  // product sells in that currency: the shopkeeper typed it by hand.
+  // `create_catalog_order` accepts exactly the same set, and the two lists
+  // have to match or the screen offers something the server rejects.
   const fijadas = Object.keys(bloque.pinned) as PriceCurrency[];
   const lista = [base, ...currencies, ...fijadas].filter(
     (c, i, todas) => todas.indexOf(c) === i,

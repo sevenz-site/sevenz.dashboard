@@ -49,11 +49,11 @@ export async function productosDelCarrito(
     }
     const shared = data as {
       owner_country: string | null;
-      // `currencies` OPCIONAL A PROPOSITO, y no por duda sobre el tipo:
-      // esto es un `as` sobre JSON que llega de la base, asi que el tipo
-      // es una promesa, no una comprobacion. Declararlo obligatorio haria
-      // que la reserva de abajo pareciera codigo muerto, y es lo que evita
-      // un TypeError si la migracion 111 no esta aplicada.
+      // `currencies` OPTIONAL ON PURPOSE, and not out of doubt about the
+      // type: this is an `as` over JSON coming from the database, so the type
+      // is a promise, not a check. Declaring it required would make the
+      // fallback below look like dead code, and that fallback is what avoids
+      // a TypeError when migration 111 has not been applied.
       products: (Omit<ProductoDelCarrito, "currencies"> & {
         currencies?: PriceCurrency[] | null;
       })[];
@@ -76,16 +76,16 @@ export async function productosDelCarrito(
           : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur, usdt: null }
         : null;
 
-    // LA RESERVA DE `currencies` ES LA BASE, no una lista vacía, y aquí no es
-    // cosmética: `precioUnitario` llama a `producto.currencies.includes(...)`,
-    // así que un `undefined` —esta respuesta viene de un `as`, que no
-    // comprueba nada en tiempo de ejecución— no daría un precio raro, daría un
-    // TypeError y la pantalla del carrito en blanco.
+    // THE `currencies` FALLBACK IS THE BASE, not an empty list, and here it
+    // is not cosmetic: `precioUnitario` calls
+    // `producto.currencies.includes(...)`, so an `undefined` -- this response
+    // comes from an `as`, which checks nothing at runtime -- would not give a
+    // strange price, it would give a TypeError and a blank cart screen.
     //
-    // Pasaría en la ventana entre desplegar este código y correr la migración
-    // 111, que es justo el orden que CLAUDE.md prohíbe; esto es el cinturón
-    // por si alguien lo invierte. Degradar a «solo la moneda del tendero» es
-    // el comportamiento anterior, que funcionaba.
+    // That would happen in the window between deploying this code and running
+    // migration 111, which is exactly the order CLAUDE.md forbids; this is the
+    // belt in case someone inverts it. Degrading to "only the shopkeeper's own
+    // currency" is the previous behaviour, which worked.
     const productos = (shared.products ?? []).map((p) => ({
       ...p,
       currencies: p.currencies ?? [p.base_currency],
@@ -132,14 +132,14 @@ const MOTIVOS: Record<string, string> = {
   cantidad_bajo_el_minimo: "Hay un producto del que tienes que pedir más unidades.",
   sin_precio: "Uno de los productos ya no tiene precio. Quítalo y vuelve a intentarlo.",
   moneda_invalida: "Una de las monedas ya no está disponible para esa cantidad.",
-  // NUEVA EN LA MIGRACIÓN 111, y distinta de `moneda_invalida` a propósito:
-  // «no lo vendemos en esa moneda» se arregla eligiendo otra, y «no tenemos la
-  // tasa ahora mismo» se arregla esperando. Dar el mismo consejo para los dos
-  // manda al cliente a cambiar algo que no era el problema.
+  // NEW IN MIGRATION 111, and distinct from `moneda_invalida` on purpose:
+  // "we do not sell it in that currency" is fixed by picking another, and "we
+  // have no rate right now" is fixed by waiting. Giving the same advice for
+  // both sends the customer to change something that was not the problem.
   //
-  // En la práctica le toca al USDT: su tasa viene de CriptoYa y las páginas
-  // públicas no la piden (decisión del 2026-10-10), así que solo se puede
-  // pedir en USDT si el tendero le fijó el precio a mano.
+  // In practice it falls to USDT: its rate comes from CriptoYa and public
+  // pages do not ask for it (decision of 2026-10-10), so a USDT order is only
+  // possible when the shopkeeper pinned that price by hand. See `CT-73`.
   sin_tasa: "Ahora mismo no podemos calcular ese precio. Prueba con otra moneda.",
 };
 
