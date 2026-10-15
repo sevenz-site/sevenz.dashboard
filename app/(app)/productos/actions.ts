@@ -488,27 +488,34 @@ export async function restoreProduct(productId: string): Promise<ProductResult> 
 // 2026-10-09. Created on first use, exactly like `getOrCreateShareLink`: a
 // token minted at signup would put every one of the 24 businesses one URL
 // guess away from a catalogue they never chose to publish.
-export async function getOrCreateCatalogLink(
-  tier: PriceTier,
-): Promise<{ token: string } | { error: string }> {
+// UN SOLO ENLACE POR NEGOCIO desde el 2026-10-15 (migración 106). Antes
+// recibía el escalón y había uno de detal y otro de mayor; la razón de aquello
+// y la de esto están escritas en la cabecera de la migración.
+//
+// Sigue sin acuñarse en el alta: un token creado al registrarse pondría a los
+// 24 negocios a una URL de distancia de un catálogo que nunca decidieron
+// publicar. Se crea la primera vez que el tendero abre «Compartir».
+export async function getOrCreateCatalogLink(): Promise<{ token: string } | { error: string }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
 
+  // `owner_id` sale de `auth.getUser()` y nunca del navegador — la regla de
+  // las comprobaciones de propiedad explícitas de CLAUDE.md. La RLS es el
+  // respaldo, no la única línea.
   const { data: existing } = await supabase
     .from("catalog_share_links")
     .select("token")
     .eq("owner_id", user.id)
-    .eq("tier", tier)
     .maybeSingle();
 
   if (existing) return { token: existing.token };
 
   const { data: created, error } = await supabase
     .from("catalog_share_links")
-    .insert({ owner_id: user.id, tier })
+    .insert({ owner_id: user.id })
     .select("token")
     .single();
 

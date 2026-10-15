@@ -17,6 +17,7 @@ import {
   cantidadMinima,
   escalonParaCantidad,
   monedasDelEscalon,
+  type BloquePrecio,
   type ProductoPublico,
 } from "@/lib/products/public-pricing";
 
@@ -24,12 +25,26 @@ import {
 // pantalla `1190:5833`.
 //
 // ===========================================================================
-// UN SOLO BLOQUE DE PRECIO, Y LO ELIGE LA CANTIDAD
+// LOS DOS PRECIOS SE VEN; UNA SOLA MONEDA SE ELIGE
 //
-// El frame dibuja «Precio al detal» y «Precio al mayor» uno encima del otro,
-// los dos a la vez. El dueño lo descartó el 2026-10-14 con su propio caso, y
-// lo que hay aquí es su versión: la cantidad decide cuál de los dos se enseña,
-// y las monedas que se ofrecen son las de ESE escalón. Nunca los dos.
+// Dos correcciones del dueño sobre el frame, en dos días, y la segunda matiza
+// a la primera. Las dos quedan escritas porque juntas son la regla:
+//
+//   2026-10-14 — «el frame muestra precio al mayor y al detal a verse en
+//   conjunto pero está mal, se ve uno o el otro». Se construyó así.
+//
+//   2026-10-15 — «ve los dos precios a la vez pero puede seleccionar solo una
+//   moneda de pago, no las dos, es un error del frame». O sea: el error del
+//   frame no eran los dos bloques, era que cada uno traía su propia lista de
+//   monedas y se podían elegir dos cosas a la vez.
+//
+// Así que: **los dos precios se enseñan siempre**, para que el cliente vea lo
+// que se ahorra pidiendo más; y **hay un solo selector de moneda**, con las
+// monedas del escalón que la cantidad hace aplicable. Con 3 unidades del caso
+// del dueño solo se ofrece dólar, porque es lo único que tiene el precio al
+// detal — confirmado por él el 2026-10-15 frente a la alternativa de ofrecer
+// las tres y convertir, que le enseñaría al cliente un importe en euros que
+// el tendero nunca escribió.
 //
 // La regla vive en `lib/products/public-pricing.ts` y no aquí: es la única
 // parte de esta pantalla que puede equivocarse sin que nadie se entere —un
@@ -96,15 +111,24 @@ export function ProductDetail({
 
   const porDebajoDelMinimo = cantidad.trim() !== "" && n < minimo;
 
-  function precioEn(c: PriceCurrency): { texto: string; bs: string | null } | null {
-    if (bloque == null) return null;
-    const base = { amount: bloque.price, currency: baseCurrency };
-    const fila = priceIn(c, base, rates ?? { usd: 1, eur: 1, usdt: null }, bloque.pinned);
+  // `exacto` DISTINGUE UN PRECIO ESCRITO DE UNO CALCULADO, y por eso viaja.
+  // La moneda elegida siempre es exacta en el escalón que aplica —el selector
+  // solo ofrece la base y las fijadas a mano—, pero el OTRO escalón puede no
+  // tenerla, y entonces su línea sale de la tasa del día. Enseñar los dos
+  // números igual haría pasar por precio del tendero uno que no lo es.
+  function precioEn(
+    b: BloquePrecio | null,
+    c: PriceCurrency,
+  ): { texto: string; bs: string | null; exacto: boolean } | null {
+    if (b == null) return null;
+    const base = { amount: b.price, currency: baseCurrency };
+    const fila = priceIn(c, base, rates ?? { usd: 1, eur: 1, usdt: null }, b.pinned);
     if (fila.amount == null) return null;
+    const exacto = c === baseCurrency || b.pinned[c] != null;
     const texto = formatPriceAmount(fila.amount, c);
-    if (rates == null || c === "VES") return { texto, bs: null };
+    if (rates == null || c === "VES") return { texto, bs: null, exacto };
     const enBs = priceIn("VES", { amount: fila.amount, currency: c }, rates);
-    return { texto, bs: enBs.amount == null ? null : formatBs(enBs.amount) };
+    return { texto, bs: enBs.amount == null ? null : formatBs(enBs.amount), exacto };
   }
 
   const total = (() => {
@@ -115,7 +139,7 @@ export function ProductDetail({
     // haga algo.
     if (porDebajoDelMinimo) return null;
     if (bloque == null || moneda == null) return null;
-    const unidad = precioEn(moneda);
+    const unidad = precioEn(bloque, moneda);
     if (unidad == null) return null;
     const fila = priceIn(moneda, { amount: bloque.price, currency: baseCurrency }, rates ?? { usd: 1, eur: 1, usdt: null }, bloque.pinned);
     if (fila.amount == null) return null;
@@ -142,40 +166,85 @@ export function ProductDetail({
           Este producto no tiene precio publicado ahora mismo. Escríbele al negocio.
         </p>
       ) : (
-        <div className="flex flex-col gap-2 rounded-lg border p-3">
-          <p className="text-xs text-muted-foreground">
-            {escalon === "wholesale" ? "Precio al mayor" : "Precio al detal"}
-          </p>
+        <div className="flex flex-col gap-3 rounded-lg border p-3">
+          {/* LOS DOS ESCALONES, SIEMPRE QUE EXISTAN. Lo pidió el dueño el
+              2026-10-15: que el cliente vea lo que se ahorra pidiendo más, sin
+              tener que descubrirlo subiendo la cantidad a ciegas. El que
+              aplica ahora va en negrita; el otro, apagado. */}
+          <div className="flex flex-col gap-1.5">
+            {(["retail", "wholesale"] as const).map((t) => {
+              const b = t === "retail" ? producto.retail : producto.wholesale;
+              if (b == null) return null;
+              const p = moneda == null ? null : precioEn(b, moneda);
+              if (p == null) return null;
+              const aplica = t === escalon;
+              return (
+                <div key={t} className="flex items-baseline justify-between gap-3">
+                  <span
+                    className={`truncate text-sm ${aplica ? "font-semibold" : "text-muted-foreground"}`}
+                  >
+                    {t === "wholesale" ? "Precio al mayor" : "Precio al detal"}
+                    {t === "wholesale" && producto.wholesale_min_quantity != null ? (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {" "}
+                        desde {producto.wholesale_min_quantity}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span
+                    className={`shrink-0 text-right text-sm tabular-nums ${aplica ? "font-semibold" : "text-muted-foreground"}`}
+                  >
+                    {/* «aprox.» SOLO EN EL ESCALON QUE NO APLICA, y solo si su
+                        precio en esta moneda salió de la tasa y no de lo que
+                        el tendero escribió. Sin esa palabra, un número
+                        calculado se lee como un precio prometido. */}
+                    {p.exacto ? null : <span className="text-xs">aprox. </span>}
+                    {p.texto}
+                    {p.bs ? (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {p.bs}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-          {monedas.map((c) => {
-            const p = precioEn(c);
-            if (p == null) return null;
-            const elegida = c === moneda;
-            return (
-              <label
-                key={c}
-                className="flex cursor-pointer items-center justify-between gap-3 py-1.5"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <input
-                    type="radio"
-                    name="moneda"
-                    checked={elegida}
-                    onChange={() => setPreferida(c)}
-                    className="size-4 shrink-0 accent-foreground"
-                  />
-                  <CurrencyFlagIcon currency={c as "USD" | "EUR" | "USDT"} />
-                  <span className="truncate text-sm">{ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}</span>
-                </span>
-                <span className="shrink-0 text-right text-sm tabular-nums">
-                  {p.texto}
-                  {p.bs ? (
-                    <span className="block text-xs text-muted-foreground">{p.bs}</span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
+          {/* UN SOLO SELECTOR, con las monedas del escalón que aplica. El
+              error del frame era tener uno por bloque: dos listas invitan a
+              elegir dos veces y solo se paga una. */}
+          <div className="flex flex-col gap-0.5 border-t pt-2">
+            {monedas.map((c) => {
+              const p = precioEn(bloque, c);
+              if (p == null) return null;
+              const elegida = c === moneda;
+              return (
+                <label
+                  key={c}
+                  className="flex cursor-pointer items-center justify-between gap-3 py-1.5"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <input
+                      type="radio"
+                      name="moneda"
+                      checked={elegida}
+                      onChange={() => setPreferida(c)}
+                      className="size-4 shrink-0 accent-foreground"
+                    />
+                    <CurrencyFlagIcon currency={c as "USD" | "EUR" | "USDT"} />
+                    <span className="truncate text-sm">{ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}</span>
+                  </span>
+                  <span className="shrink-0 text-right text-sm tabular-nums">
+                    {p.texto}
+                    {p.bs ? (
+                      <span className="block text-xs text-muted-foreground">{p.bs}</span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -189,14 +258,6 @@ export function ProductDetail({
           rows={3}
         />
       </div>
-
-      {/* EL MÍNIMO DEL MAYOR, dicho antes de que estorbe. Solo aparece cuando
-          el producto de verdad lo tiene y gobierna algo. */}
-      {producto.wholesale != null && producto.wholesale_min_quantity != null ? (
-        <p className="text-xs text-muted-foreground">
-          Al mayor a partir de: {producto.wholesale_min_quantity}
-        </p>
-      ) : null}
 
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">

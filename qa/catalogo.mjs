@@ -1,6 +1,7 @@
 // SOLO LA RAMA DEV (vzqppwrwnmlbrxizskdh) — lee .env.local.
 //
-// Comprueba la migración 084: el catálogo público, sus dos enlaces y los
+// Comprueba el catálogo público: migración 084 y sus correcciones, hasta la
+// 106 — que dejó UN SOLO enlace por negocio donde había dos. Y los
 // campos que le añade a la ficha. SÍ ESCRIBE en dev, a propósito: de una
 // restricción y de un filtro lo único que importa es que de verdad rechacen, y
 // eso no se lee, se provoca. Crea y borra lo suyo, y el `finally` limpia
@@ -16,14 +17,18 @@
 //   2. Que `stock_opening` rechace un negativo, y que los dos márgenes nuevos
 //      entren. Es lo que la 084 añadió a la ficha.
 //
-//   3. Que haya DOS enlaces y no uno: uno de detal y uno de mayor, y ni uno
-//      más de cada. Es la decisión 11 del dueño y `CT-55`, y es lo que pidió
-//      el Tendero 2, que tiene clientes de los dos tipos.
+//   3. Que haya UN SOLO enlace por negocio, y que no se pueda crear un
+//      segundo. Hasta el 2026-10-15 había dos, uno por escalón — decisión 11
+//      del dueño y `CT-55` — y el propio dueño lo cambió al ver que el
+//      detalle ya decide por cantidad qué precio aplica. Si la restricción
+//      única se perdiera, un negocio tendría dos tokens vivos y el diálogo
+//      enseñaría uno u otro según el orden de la consulta, sin error.
 //
-//   4. Que **cada enlace enseñe su propio precio**. Es la razón de ser de los
-//      dos enlaces: si los dos devolvieran lo mismo, la función estaría
-//      ignorando el escalón y nadie se enteraría mirando la pantalla — los dos
-//      catálogos se verían perfectamente bien, con el precio equivocado en uno.
+//   4. Que la tarjeta enseñe **el precio de UNA UNIDAD** — el de detal si
+//      está publicado, el de mayor si es lo único que hay. No el más bajo,
+//      que era el criterio de la 086 y encajaba con dos enlaces. Con uno
+//      solo, enseñar 11 en la tarjeta y cobrar 13 al entrar es un cebo, y
+//      nadie se enteraría mirando: las dos pantallas se verían bien.
 //
 //   5. Que `get_shared_catalog` NO FILTRE lo que no debe: costo, márgenes,
 //      cantidad, ni el precio del escalón que no es el del enlace. El costo de
@@ -221,46 +226,52 @@ try {
     eEtiquetaSuelta ? eEtiquetaSuelta.code : "entró",
   );
 
-  // ── 3. DOS enlaces, uno por escalón ────────────────────────────────────
-  // Pueden existir de una prueba anterior o de la propia pantalla: se
-  // reutilizan en ese caso y solo se borra al final lo que haya creado ESTE
-  // script.
-  async function enlace(tier) {
+  // ── 3. UN SOLO enlace por negocio (migración 106) ──────────────────────
+  //
+  // Hasta el 2026-10-15 habia dos, uno por escalon, y esta seccion comprobaba
+  // que existieran los dos y que cada uno ensenara su lista. El dueno lo
+  // cambio: el detalle del producto ya decide por cantidad que escalon
+  // aplica, asi que dos enlaces eran dos formas de ver lo mismo.
+  //
+  // LO QUE AHORA HAY QUE VIGILAR ES LO CONTRARIO: que no se puedan crear dos.
+  // Si la restriccion unica se perdiera, un negocio acabaria con dos tokens
+  // vivos y el dialogo ensenaria uno u otro segun el orden que devolviera la
+  // consulta -- sin error y sin que nadie lo note.
+  async function enlace() {
     const { data: existente } = await admin
       .from("catalog_share_links")
       .select("token")
       .eq("owner_id", ownerId)
-      .eq("tier", tier)
       .maybeSingle();
     if (existente) return { token: existente.token, nuevo: false, error: null };
     const { data, error } = await admin
       .from("catalog_share_links")
-      .insert({ owner_id: ownerId, tier })
+      .insert({ owner_id: ownerId })
       .select("id, token")
       .single();
     if (data) enlacesCreados.push(data.id);
     return { token: data?.token ?? null, nuevo: true, error };
   }
 
-  const detal = await enlace("retail");
-  const mayor = await enlace("wholesale");
-  check(
-    "3a. existen los dos enlaces, detal y mayor",
-    detal.error == null && mayor.error == null && detal.token && mayor.token,
-    detal.error?.message ?? mayor.error?.message,
-  );
-  check(
-    "3b. los dos tokens son distintos",
-    detal.token !== mayor.token,
-  );
+  const unico = await enlace();
+  const detal = unico;
+  const mayor = unico;
+  check("3a. el negocio tiene su enlace", unico.error == null && Boolean(unico.token), unico.error?.message);
 
   const { error: eDoble } = await admin
     .from("catalog_share_links")
-    .insert({ owner_id: ownerId, tier: "retail" });
+    .insert({ owner_id: ownerId });
   check(
-    "3c. un negocio no puede tener dos enlaces del mismo escalón",
+    "3b. un negocio NO puede tener dos enlaces",
     eDoble != null && eDoble.code === "23505",
-    eDoble ? eDoble.code : "entró un segundo de detal",
+    eDoble ? eDoble.code : "entró un segundo enlace",
+  );
+
+  const { data: columnas } = await admin.from("catalog_share_links").select("*").limit(1);
+  check(
+    "3c. la columna `tier` ya no existe",
+    columnas != null && columnas.length > 0 && !("tier" in columnas[0]),
+    columnas?.[0] ? Object.keys(columnas[0]).join(", ") : "sin filas",
   );
 
   // ── 4 y 5. Lo que cada enlace devuelve, y lo que NO ────────────────────
@@ -306,47 +317,36 @@ try {
   const { data: catDetal, error: eDetal } = await anon.rpc("get_shared_catalog", {
     p_token: detal.token,
   });
-  const { data: catMayor, error: eMayor } = await anon.rpc("get_shared_catalog", {
-    p_token: mayor.token,
-  });
   check(
-    "4a. anon puede abrir los dos catálogos",
-    eDetal == null && eMayor == null && catDetal != null && catMayor != null,
-    eDetal?.message ?? eMayor?.message,
+    "4a. anon puede abrir el catálogo",
+    eDetal == null && catDetal != null,
+    eDetal?.message,
   );
 
   const enDetal = (catDetal?.products ?? []).find((p) => p.id === visible.id);
-  const enMayor = (catMayor?.products ?? []).find((p) => p.id === visible.id);
 
-  // EL PRECIO MAS BAJO DE LOS ESCALONES PUBLICADOS, en los DOS enlaces.
+  // EL PRECIO DE UNA UNIDAD, NO EL MAS BAJO (migración 106).
   //
-  // Decisión del dueño el 2026-10-10 (migración 086). `visible` tiene 13 al
-  // detal y 11 al mayor y está publicado en los dos, así que los dos enlaces
-  // enseñan 11 y lo dicen con `price_tier`.
+  // `visible` tiene 13 al detal y 11 al mayor, publicado en los dos. Hasta el
+  // 2026-10-15 la tarjeta enseñaba 11 —el más bajo, criterio de la 086— y eso
+  // tenía sentido con dos enlaces, uno por audiencia.
   //
-  // Hasta el 2026-10-10 esta misma prueba esperaba 13 en el de detal: ese era
-  // el diseño anterior, dos listas de precios para dos audiencias. Se deja
-  // dicho aquí porque la diferencia entre los dos enlaces dejó de ser el
-  // precio y pasó a ser qué productos incluye cada uno — ver 7b y 7c.
+  // Con un solo enlace, tarjeta y detalle son la misma página en dos pasos, y
+  // el detalle abre en 1 unidad, que es precio al DETAL. Enseñar 11 en la
+  // tarjeta y cobrar 13 al entrar es un cebo, así que ahora enseña 13.
+  //
+  // ESTA ES LA PRUEBA QUE SE ROMPE SI ALGUIEN VUELVE AL CRITERIO VIEJO, y es
+  // justo la que hay que leer antes de cambiarlo: las dos versiones son
+  // defendibles por separado y solo una encaja con un enlace único.
   check(
-    "4b. el enlace de DETAL enseña el precio más bajo de los publicados",
-    enDetal != null && Number(enDetal.price) === 11 && enDetal.price_tier === "wholesale",
+    "4b. la tarjeta enseña el precio de UNA UNIDAD, el de detal",
+    enDetal != null && Number(enDetal.price) === 13 && enDetal.price_tier === "retail",
     enDetal ? `price=${enDetal.price} tier=${enDetal.price_tier}` : "sin producto",
-  );
-  check(
-    "4c. el de MAYOR enseña el mismo, porque también es el más bajo",
-    enMayor != null && Number(enMayor.price) === 11 && enMayor.price_tier === "wholesale",
-    enMayor ? `price=${enMayor.price} tier=${enMayor.price_tier}` : "sin producto",
-  );
-  check(
-    "4d. el escalón del enlace viaja en la respuesta",
-    catDetal?.tier === "retail" && catMayor?.tier === "wholesale",
-    `detal=${catDetal?.tier} mayor=${catMayor?.tier}`,
   );
 
   const soloEnDetal = (catDetal?.products ?? []).find((p) => p.id === soloMayor.id);
   check(
-    "4e. un producto con solo precio de mayor sale en el enlace de detal, y lo dice",
+    "4c. sin precio al detal publicado, la tarjeta enseña el de mayor y lo dice",
     soloEnDetal != null &&
       Number(soloEnDetal.price) === 7 &&
       soloEnDetal.price_tier === "wholesale",
@@ -406,16 +406,23 @@ try {
   // (ver 7e). Pero el candado sí tiene que llegar hasta aquí, porque es lo
   // único que hace que signifique algo — el tendero lo cerró precisamente
   // para que su cliente viera ESE número, no la conversión del día.
-  // Se fija en el escalón DEL PRECIO ELEGIDO, que para este producto es el de
-  // mayor (11 < 13). Es la parte sutil de la 086: los candados se leen del
-  // escalón que ganó, no del escalón del enlace.
+  // Se fija en el escalón QUE LA TARJETA ENSEÑA, que desde la migración 106 es
+  // el de DETAL para este producto — porque la tarjeta enseña el precio de una
+  // unidad, no el más bajo.
+  //
+  // HASTA EL 2026-10-15 ESTO ESPERABA LO CONTRARIO, y el cambio de expectativa
+  // es la prueba de que la 106 hizo lo que decía: con el criterio de la 086
+  // ganaba el de mayor (11 < 13) y los candados que llegaban eran los suyos.
+  // Al correr la 106 esta comprobación falló con `{"EUR":99}` — exactamente el
+  // candado del otro escalón, que es el que ahora manda.
   await admin.from("product_price_overrides").upsert(
-    { product_id: visible.id, tier: "wholesale", currency: "USDT", amount: 9 },
+    { product_id: visible.id, tier: "retail", currency: "USDT", amount: 9 },
     { onConflict: "product_id,tier,currency" },
   );
-  // Y uno en el escalón que NO ganó, que no debe aparecer por ningún enlace.
+  // Y uno en el escalón que NO se enseña en la tarjeta. No debe aparecer: el
+  // cliente lo verá en el detalle, cuando pida la cantidad que lo activa.
   await admin.from("product_price_overrides").upsert(
-    { product_id: visible.id, tier: "retail", currency: "EUR", amount: 99 },
+    { product_id: visible.id, tier: "wholesale", currency: "EUR", amount: 99 },
     { onConflict: "product_id,tier,currency" },
   );
 
@@ -427,7 +434,7 @@ try {
     conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
   check(
-    "6b. el candado del escalón que NO ganó no aparece",
+    "6b. el candado del escalón que la tarjeta NO enseña no aparece",
     conPin != null && conPin.pinned?.EUR === undefined,
     conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
@@ -458,14 +465,19 @@ try {
   creados.push(soloDetal.id);
 
   const { data: cat2Detal } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
-  const { data: cat2Mayor } = await anon.rpc("get_shared_catalog", { p_token: mayor.token });
   check(
-    "7b. publicado solo al detal SÍ sale en el enlace de detal",
+    "7b. publicado solo al detal SÍ sale en el catálogo",
     (cat2Detal?.products ?? []).some((p) => p.id === soloDetal.id),
   );
+
+  // 7c COMPROBABA QUE ESE PRODUCTO **NO** SALIERA EN EL ENLACE DE MAYOR, que
+  // era la razón de ser de los dos enlaces. Con uno solo (migración 106) la
+  // pregunta cambia de sitio: un escalón sin publicar ya no decide quién ve el
+  // producto, decide qué PRECIO se enseña — y eso lo vigilan 4b, 4c y 4f.
   check(
-    "7c. publicado solo al detal NO sale en el de mayor",
-    !(cat2Mayor?.products ?? []).some((p) => p.id === soloDetal.id),
+    "7c. y lo hace con su precio al detal, no con el de mayor sin publicar",
+    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.price_tier === "retail",
+    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.price_tier ?? "desapareció",
   );
 
   await admin

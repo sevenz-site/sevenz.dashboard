@@ -69,7 +69,6 @@ type SharedCatalog = {
   owner_country: string | null;
   // El escalon del ENLACE. Sin esto, un mayorista no sabe si lo que ve es su
   // precio o el del publico.
-  tier: PriceTier;
   products: SharedProduct[];
   rate_mode: string | null;
   current_bcv_usd: number | null;
@@ -194,14 +193,12 @@ export default async function CatalogoPublicoPage({
           <h1 className="truncate text-xl font-semibold">
             {shared.business_name || "Catálogo"}
           </h1>
-          {/* EL ESCALON SE DICE ARRIBA, no solo producto a producto. Un
-              mayorista que abre su enlace tiene que saber de entrada que estos
-              son sus precios; si no, no sabe si le estan cobrando de mas. */}
-          <p className="text-sm text-muted-foreground">
-            {shared.tier === "wholesale"
-              ? "Nuestros precios al mayor"
-              : "Lo que vendemos, con sus precios"}
-          </p>
+          {/* YA NO HAY ESCALON DEL ENLACE QUE DECIR AQUI (migracion 106).
+              Habia dos enlaces y la cabecera avisaba de cual era este, para
+              que un mayorista supiera de entrada que veia sus precios. Con un
+              solo enlace eso se contesta producto a producto, en la tarjeta y
+              en el detalle, donde la cantidad decide. */}
+          <p className="text-sm text-muted-foreground">Lo que vendemos, con sus precios</p>
         </div>
       </header>
 
@@ -269,13 +266,13 @@ export default async function CatalogoPublicoPage({
                       {formatBs(bs.amount)}
                     </span>
                   ) : null}
-                  {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA. Antes solo
-                      cuando no coincidia con el escalon del enlace, y eso
-                      dejo de tener sentido con la migracion 086: la tarjeta
-                      ensena el MAS BAJO de los escalones publicados, asi que
-                      en el enlace de detal lo normal pasa a ser el precio de
-                      mayor. Callarlo seria dejar al cliente adivinando a que
-                      precio le estan ofreciendo la cosa. */}
+                  {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
+                      migracion 106 la tarjeta ensena el precio de UNA UNIDAD
+                      -- detal si esta publicado, mayor si es lo unico que
+                      hay-- en vez del mas bajo, que era el criterio de la 086.
+                      Con un solo enlace, tarjeta y detalle son la misma
+                      pagina en dos pasos: ensenar 4 en la tarjeta y cobrar 5
+                      al entrar seria un cebo. */}
                   <span className="text-xs text-muted-foreground">
                     {p.price_tier === "wholesale" ? "precio al mayor" : "precio al detal"}
                     {p.unit ? ` · ${p.unit}` : ""}

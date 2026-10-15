@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
-import type { PriceTier } from "@/lib/products/price";
 
 export type PublishedCount = { retail: number; wholesale: number; any: number };
 
@@ -37,6 +36,23 @@ export type PublishedCount = { retail: number; wholesale: number; any: number };
 // Los tokens se crean al abrir este dialogo y no antes: un token acunado en el
 // alta pondria a los 24 negocios a una URL de distancia de un catalogo que
 // nunca decidieron publicar.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// Y DESDE EL 2026-10-15, UN SOLO ENLACE
+//
+// Decision del dueno. Habia dos —uno de detal y uno de mayor— y cada uno
+// ensenaba su lista de precios: era su propia decision del 2026-10-10, hecha
+// para el Tendero 2, que tiene clientes de los dos tipos.
+//
+// Lo que la desplaza es el entregable B: el detalle de un producto ya decide
+// por CANTIDAD que escalon aplica, asi que los dos enlaces dejaron de separar
+// dos audiencias y pasaron a ser dos formas de ver lo mismo. Este dialogo
+// obligaba a elegir entre dos cosas que ya no se diferenciaban.
+//
+// La razon vieja queda escrita porque seria la que haria falta para revertir:
+// con dos enlaces el tendero elegia a quien le daba precios mayoristas.
+// Ahora cualquiera llega a ellos pidiendo suficiente, que es como funciona
+// una tienda. Migracion 106.
 export function CatalogShare({
   publishedCount,
   businessName,
@@ -87,23 +103,13 @@ export function CatalogShare({
             </p>
           ) : null}
 
-          <div className="flex flex-col gap-4">
-            <LinkRow
-              tier="retail"
-              label="Para tus clientes de detal"
-              count={publishedCount.retail}
-              businessName={businessName}
-              open={open}
-            />
-            <LinkRow
-              tier="wholesale"
-              label="Para tus clientes al mayor"
-              count={publishedCount.wholesale}
-              extra="Quien lo reenvíe le está dando precios de mayorista a quien lo reciba."
-              businessName={businessName}
-              open={open}
-            />
-          </div>
+          <LinkRow
+            label="El enlace de tu catálogo"
+            count={publishedCount.any}
+            extra="Quien pida la cantidad que marcaste para el mayor, verá el precio al mayor."
+            businessName={businessName}
+            open={open}
+          />
         </DialogContent>
       </Dialog>
     </>
@@ -111,14 +117,12 @@ export function CatalogShare({
 }
 
 function LinkRow({
-  tier,
   label,
   count,
   extra,
   businessName,
   open,
 }: {
-  tier: PriceTier;
   label: string;
   count: number;
   extra?: string;
@@ -134,14 +138,14 @@ function LinkRow({
   useEffect(() => {
     if (!open || url != null || count === 0) return;
     startTransition(async () => {
-      const result = await getOrCreateCatalogLink(tier);
+      const result = await getOrCreateCatalogLink();
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
       setUrl(`${window.location.origin}/c/${result.token}`);
     });
-  }, [open, url, count, tier]);
+  }, [open, url, count]);
 
   const mensaje = url ? `Mira lo que tenemos en ${businessName} y a qué precio: ${url}` : "";
 
@@ -172,8 +176,7 @@ function LinkRow({
 
       {count === 0 ? (
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Marca «Incluir precio {tier === "retail" ? "al detal" : "al mayor"}» en algún producto y
-          el enlace aparece aquí.
+          Enciende «Publicar producto en catálogo» en algún producto y el enlace aparece aquí.
         </p>
       ) : pending || !url ? (
         <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">

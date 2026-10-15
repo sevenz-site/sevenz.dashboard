@@ -157,6 +157,21 @@ export function CatalogProductDialog({
   const [stock, setStock] = useState(
     product != null ? formatAmountForInput(product.stock_opening) : "1",
   );
+  // SE PASO DEL TOPE AL TECLEAR. No es lo mismo que «el valor es demasiado
+  // grande»: con el tope puesto, el valor NUNCA llega a serlo, porque la tecla
+  // no entra. Sin este aviso, el campo ignoraría al dedo sin decir nada, que
+  // es la peor forma de rechazar algo.
+  const [stockTopado, setStockTopado] = useState(false);
+
+  // SE APAGA CON LA SIGUIENTE PULSACION QUE SI ENTRA -- y eso incluye borrar,
+  // que es como se corrige un campo en un telefono. Se hace aqui y no en un
+  // `useEffect` que vigile `stock`: llamar a setState dentro de un efecto
+  // encadena renders y la regla `react-hooks/set-state-in-effect` lo rechaza.
+  const cambiarStock: Dispatch<SetStateAction<string>> = (valor) => {
+    setStockTopado(false);
+    setStock(valor);
+  };
+
   const [cost, setCost] = useState(formatAmountForInput(product?.cost));
 
   // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
@@ -511,7 +526,7 @@ export function CatalogProductDialog({
             id="producto_cantidad"
             label="Disponible en inventario"
             value={stock}
-            onChange={setStock}
+            onChange={cambiarStock}
             /* EL TECHO SE DICE ANTES DE CHOCAR CON ÉL. Pedido por el dueño el
                2026-10-14, después de que su 1000000000000000 solo produjera un
                error al pulsar guardar — con quince campos rellenos y una foto
@@ -521,11 +536,21 @@ export function CatalogProductDialog({
                «máximo 11 dígitos» permanente bajo un campo que el 99 % de las
                veces lleva un 1 o un 12 es ruido que se deja de leer, y
                entonces tampoco se lee el día que importa. */
+            /* ONCE DÍGITOS, Y LA TECLA DOCE NO ENTRA. Pedido por el dueño
+               el 2026-10-15. La versión anterior dejaba teclear
+               1000000000000000 entero y avisaba debajo en gris: el aviso
+               llegaba tarde y parecía una nota, no un rechazo.
+
+               El tope son once ENTEROS y no once caracteres, porque el límite
+               real es `numeric(14,3)` en la base. */
+            maxDigitos={11}
+            onTope={() => setStockTopado(true)}
+            hintError={stockTopado || excedeTecho(stock, 1e11)}
             hint={
-              stock.trim() === ""
-                ? null
-                : excedeTecho(stock, 1e11)
-                  ? "Esa cantidad es demasiado grande: como mucho 11 dígitos (99.999.999.999)."
+              stockTopado || excedeTecho(stock, 1e11)
+                ? "Esa cantidad es demasiado grande: como mucho 11 dígitos (99.999.999.999)."
+                : stock.trim() === ""
+                  ? null
                   : "Por ahora esta cantidad no baja sola: cuando fíes o vendas, tendrás que ajustarla tú."
             }
             disabled={saving}
@@ -987,6 +1012,9 @@ function Stepper({
   value,
   onChange,
   hint,
+  hintError = false,
+  maxDigitos,
+  onTope,
   min = 0,
   disabled,
 }: {
@@ -1009,6 +1037,23 @@ function Stepper({
   // dice el `hint` — bloquear el teclado impediría borrar el contenido para
   // escribir otro número, que es como se corrige un campo en un teléfono.
   min?: number;
+  // EL AVISO EN ROJO. Un `hint` normal es gris y se lee como una nota al pie;
+  // esto es el campo diciendo que no acepta lo que se le esta dando, y tiene
+  // que distinguirse de un consejo.
+  hintError?: boolean;
+  // CUANTOS DIGITOS ENTEROS CABEN. Cuando se pasa, la pulsacion NO ENTRA --
+  // pedido por el dueno el 2026-10-15, despues de ver que teclear un numero
+  // imposible te dejaba seguir escribiendo y solo te avisaba debajo.
+  //
+  // Se cuentan los digitos del lado entero y no los caracteres del campo: con
+  // `1234567890,5` son once digitos y doce caracteres, y el limite de verdad
+  // --`numeric(14,3)` en la base-- es de once ENTEROS. Contar caracteres
+  // rechazaria un numero valido por llevar coma.
+  maxDigitos?: number;
+  // Se llama cuando una pulsacion se rechaza, para que el padre pueda
+  // explicar por que no pasa nada. Sin esto, el campo simplemente ignoraria
+  // al dedo, que es la peor forma de decir que no.
+  onTope?: () => void;
   disabled: boolean;
 }) {
   // ACTUALIZACION FUNCIONAL, Y NO ES PREFERENCIA DE ESTILO. Antes esto leía
@@ -1040,10 +1085,24 @@ function Stepper({
           id={id}
           inputMode="decimal"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            const nuevo = e.target.value;
+            // SE DEJA BORRAR SIEMPRE. Un tope que tambien bloquea la tecla de
+            // retroceso deja el campo atascado en un numero que no se puede
+            // corregir -- y en un telefono, corregir es borrar y reescribir.
+            if (maxDigitos != null && nuevo.length > value.length) {
+              const parteEntera = nuevo.split(/[.,]/)[0].replace(/[^0-9]/g, "");
+              if (parteEntera.length > maxDigitos) {
+                onTope?.();
+                return;
+              }
+            }
+            onChange(nuevo);
+          }}
           placeholder="0"
+          aria-invalid={hintError}
           disabled={disabled}
-          className="text-center tabular-nums"
+          className={`text-center tabular-nums ${hintError ? "border-destructive" : ""}`}
         />
         <Button
           type="button"
@@ -1057,7 +1116,13 @@ function Stepper({
           <Plus className="size-4" />
         </Button>
       </div>
-      {hint ? <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p
+          className={`text-xs leading-relaxed ${hintError ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
