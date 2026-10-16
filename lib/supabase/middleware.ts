@@ -14,6 +14,13 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/forgot-password");
   const isPublicRoute =
     request.nextUrl.pathname.startsWith("/s/") ||
+    // /c/ — the shareable catalogue, since 2026-10-09. Same reasoning as /s/:
+    // the visitor is a customer with no account, so bouncing them to /login
+    // makes the link they were sent do nothing. Found by reading this file
+    // before testing, which is the only reason it did not ship broken: a
+    // missing entry here fails as a redirect, not as an error, so the page
+    // itself would have looked blameless.
+    request.nextUrl.pathname.startsWith("/c/") ||
     // The recovery link itself signs the visitor in, so this route must
     // never bounce them to /dashboard the way other auth routes do —
     // otherwise they'd never reach the "set a new password" form.
@@ -31,7 +38,8 @@ export async function updateSession(request: NextRequest) {
   // getUser() is a network round trip to Supabase Auth on every single
   // request, and /s/ — the balance link an owner sends to every client at
   // once — is both the burstiest path in the app and the one where the
-  // visitor is guaranteed not to have a session to validate.
+  // visitor is guaranteed not to have a session to validate. /c/ is the same
+  // shape: one link shared to many people, none of them with an account.
   //
   // /reset-password is deliberately still public-but-checked below: it needs
   // no redirect either way, and the branch that follows leaves it alone.

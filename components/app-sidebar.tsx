@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, ChartColumn, Users, ShieldAlert, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
+import { Home, ChartColumn, Users, ShieldAlert, Package, Trash2, Upload, Building2, LogOut, Loader2, CircleHelp, Smartphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +28,25 @@ const NAV_ITEMS = [
   { href: "/reportes", label: "Reportes", icon: ChartColumn, dataTour: undefined },
   { href: "/clients", label: "Clientes", icon: Users, dataTour: undefined },
   { href: "/malas-pagas", label: "Malas pagas", icon: ShieldAlert, dataTour: undefined },
+  // CATÁLOGO, y su entrada ha ido y venido dos veces — las dos razones se
+  // dejan escritas porque la segunda desplaza a la primera, no la anula.
+  //
+  // RAZÓN VIEJA, 2026-10-09: entró aquí por la mañana y salió esa misma tarde,
+  // cuando el dueño le dio un hueco en la barra de abajo (frame 1175:5881). Se
+  // quitó en el mismo cambio a propósito — dos puertas al mismo cajón es lo
+  // que el DESIGN-SYSTEM advierte, y dejarla era el atajo obvio.
+  //
+  // DECISIÓN NUEVA, 2026-10-14: el dueño la quiere en los dos sitios, al
+  // retomar el catálogo con el frame 1192:4185. Así que el catálogo es hoy la
+  // única pantalla con dos puertas, y eso es deliberado y suyo: en el teléfono
+  // se llega por la barra, de un toque, y el lateral es por donde se busca lo
+  // que no se usa a diario — que es justo donde un tendero mira cuando aún no
+  // tiene el hábito de la función nueva.
+  //
+  // Va aquí, entre Malas pagas y Papelera, y no al final: es una pantalla del
+  // día a día, no una ocasional. El `gapBefore` de Papelera marca esa frontera
+  // y sigue marcándola igual.
+  { href: "/productos", label: "Catálogo", icon: Package, dataTour: undefined },
   // Directly below Malas pagas: the two screens answer the same question at
   // different strengths, and an owner looking for a client they can no longer
   // find will try both in order.

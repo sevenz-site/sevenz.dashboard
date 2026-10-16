@@ -119,6 +119,13 @@ export const PLANTILLAS_ESPERADAS = {
   // ones stay approved and unused -- which is why they are NOT in this table:
   // if somebody sends them again, the suite failing to recognise them is
   // exactly the warning that is needed.
+  //
+  // `abono_confirmation_v3` IS CONFIRMED IN PRODUCTION, 2026-10-16 at 03:26
+  // UTC: a real payment, `ok = true`, a message id back from Meta, no error,
+  // and `phone_number_id` the clients' number. It is the first receipt a
+  // Sevenz client has ever actually received -- the 46 before it were rejected
+  // whole. `payment_due_date_v2` is NOT confirmed yet: it has never fired in
+  // production, and the first chance is the 13:00 UTC cron.
   abono_confirmation_v3: {
     cuerpo: ["client_name", "payment_amount", "business_display", "new_balance"],
     boton: "url_suffix",

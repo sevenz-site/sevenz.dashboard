@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChartColumn, Home, Loader2, Menu, Plus, Users } from "lucide-react";
+import { ChartColumn, Home, Loader2, Menu, Package, Plus, Users } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
@@ -11,7 +11,7 @@ import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { cn } from "@/lib/utils";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
-// The three places the bar navigates to, in order, before Menú. Exact pathname
+// The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
 // anyway (see onClientDetail below), so there is no case where a child route
 // should light up its parent here.
@@ -19,18 +19,73 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // NOTIFICACIONES LEFT THIS BAR on 2026-10-03, with delivery 3 of the redesign.
 // It is not gone: it moved to the Inicio header, where it sits with its own
 // unread badge, and `/notificaciones` is still a page the sidebar reaches. What
-// it stopped being is one of the four things a thumb can reach without reading
-// — and that is the whole budget this bar has.
+// it stopped being is one of the things a thumb can reach without reading.
 //
 // Reportes took the slot. The trade is deliberate: a notification is something
 // you are told about (the badge does that from the header), while a report is
 // something you have to decide to go and look at, which is exactly what a
 // navigation bar is for.
-const DESTINATIONS = [
-  { href: "/dashboard", label: "Inicio", icon: Home },
-  { href: "/reportes", label: "Reportes", icon: ChartColumn },
-  { href: "/clients", label: "Clientes", icon: Users },
-] as const;
+//
+// ─────────────────────────────────────────────────────────────────────────
+// A FIFTH SLOT, AND IT OVERRULES SOMETHING WRITTEN HERE
+//
+// Owner's decision, 2026-10-09, from Figma frame 1175:5881: Catálogo joins the
+// bar, which goes from four slots to five.
+//
+// The displaced reason is kept because it was a real measurement, not a whim:
+// the bar was held to four on the grounds that four is what a thumb reaches
+// without reading, and on 2026-10-03 "Agregar" was moved OUT to a floating
+// button partly to protect that budget. Five slots cost touch width — 75px
+// each at 375px instead of 93px — and that number is the thing to look at
+// again if anybody reports mistaps.
+//
+// What bought it: a catalogue is the screen the shopkeeper opens mid-sale, with
+// a customer in front of them asking a price. The sidebar is two taps and a
+// read; the bar is one tap. The entry was in the sidebar until today and comes
+// OUT of it in the same change — two doors to the same drawer is the thing
+// DESIGN-SYSTEM.md warns about, and it would have been the obvious shortcut.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// Y OCULTO OTRA VEZ, QUE NO ES LO MISMO QUE DESHECHO
+//
+// Decisión del dueño el 2026-10-12: el catálogo se esconde de la navegación
+// mientras no se lance. La pantalla, sus migraciones y sus enlaces públicos
+// siguen existiendo y `/productos` responde si se escribe la URL — es una
+// función terminada esperando turno, no una revertida.
+//
+// Un interruptor y no borrar las líneas, a propósito: volver a enseñarlo es
+// cambiar `false` por `true`, y borrarlas se habría llevado por delante el
+// porqué de abajo, que es una medición y no una opinión.
+//
+// EFECTO LATERAL QUE CONVIENE SABER: la barra vuelve a cuatro huecos, así que
+// cada uno recupera sus 93px a 375px en vez de 75px. O sea que el presupuesto
+// de pulgar que la quinta ranura gastó vuelve a estar entero mientras dure
+// esto, y si alguien había reportado toques fallidos, aquí dejan de ocurrir.
+//
+// El lateral NO hace falta tocarlo: su entrada ya salió el 2026-10-09, cuando
+// el catálogo entró en la barra, para no tener dos puertas al mismo cajón.
+//
+// ───────────────────────────────────────────────────────────────────────────
+// Y VISIBLE OTRA VEZ — 2026-10-14
+//
+// Decisión del dueño al retomar el catálogo con el frame 1192:4185: vuelve a
+// la navegación, aquí Y en el menú lateral. Esto último desplaza la decisión
+// del 2026-10-09 que lo sacó del lateral para no tener dos puertas al mismo
+// cajón; la razón vieja se deja escrita arriba, entera, porque sigue siendo
+// cierta como argumento y es lo que haría falta si algún día se revierte.
+//
+// Vuelve también el efecto de la quinta ranura: a 375px cada hueco de la barra
+// pasa de 93px a 75px. La medida está en DESIGN-SYSTEM.md.
+const CATALOGO_VISIBLE = true;
+
+const DESTINATIONS = (
+  [
+    { href: "/dashboard", label: "Inicio", icon: Home },
+    { href: "/reportes", label: "Reportes", icon: ChartColumn },
+    { href: "/productos", label: "Catálogo", icon: Package },
+    { href: "/clients", label: "Clientes", icon: Users },
+  ] as const
+).filter((d) => CATALOGO_VISIBLE || d.href !== "/productos");
 
 // Shown only below md. Deliberately a CSS media query rather than the
 // useIsMobile hook: the hook resolves after hydration, so the bar would pop in
@@ -158,7 +213,68 @@ export function MobileNav() {
   // Note the trailing slash: /clients (the list) keeps its bar, only
   // /clients/<id> loses it.
   const onClientDetail = pathname.startsWith("/clients/");
-  const agregarHref = "/dashboard?nuevo=1";
+
+  // THE FLOATING BUTTON CHANGES WHAT IT DOES ON THE CATALOGUE.
+  //
+  // Frame 1175:5881 draws a floating "Crear producto" on that screen. It is
+  // this same button rather than a second one, and that is what fixes a bug
+  // found by running the screen on 2026-10-09: the catalogue had its own
+  // "Agregar producto" while this one said "Agregar" and opened **Registrar
+  // movimiento** — two controls, one word, two different drawers, and the
+  // floating one is the big one.
+  //
+  // It stays in `MobileNav` and does not move into the page because all four
+  // conditions above — a dialog is open, the keyboard is up, a libreta is
+  // being reviewed, we are on a client's screen — apply to it exactly as they
+  // apply to the bar. A page-owned button would have to copy all four, and the
+  // day one of them changed it would survive a keyboard the bar correctly got
+  // out of the way of.
+  //
+  // So it navigates to `?nuevo=1` and the catalogue opens its own dialog from
+  // that marker, exactly as Inicio already does. The mechanism is proven,
+  // including the two traps `ClientSearchDialog` documents: repeat taps, and
+  // clearing the marker through the router rather than `replaceState`.
+  const enCatalogo = pathname === "/productos";
+  const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/dashboard?nuevo=1";
+  const agregarLabel = enCatalogo ? "Crear producto" : "Agregar";
+
+  // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
+  // 2026-10-14, con una captura de la pantalla de carga de la foto.
+  //
+  // `revisando`, mas abajo, ya escondia este boton Y la barra -- pero solo
+  // desde que la libreta esta leida y esperando confirmacion. El flujo empieza
+  // mucho antes: elegir la foto, verla procesar, abrir los resultados, entrar
+  // al detalle de una persona. En todo ese tramo el boton seguia ahi.
+  //
+  // POR QUE ESTORBA, y no es cuestion de gusto: subir una libreta ES registrar
+  // movimientos, veinte de una vez. Un boton que dice "Agregar" encima de esa
+  // pantalla ofrece la version de uno en uno de lo que el tendero ya esta
+  // haciendo en lote, y al tocarlo se SALE del flujo --con la libreta a medio
+  // revisar detras-- hacia un dialogo que hace lo mismo peor.
+  //
+  // UNA RUTA BASTA. El flujo entero vive en /import, dentro de `ImportFlow`:
+  // las tres pantallas que el dueno nombro --la foto, los movimientos y el
+  // detalle del cliente-- son estados de ese componente y no rutas propias.
+  // `startsWith` cubre ademas cualquier subruta que se anada despues.
+  //
+  // ESCONDE SOLO EL BOTON, NO LA BARRA. La barra sigue siendo la via de salida
+  // y el dueno no pidio quitarla; por eso esto va aqui y no en el `return null`
+  // de mas abajo, que se lleva las dos por delante.
+  const enSubirLibreta = pathname.startsWith("/import");
+
+  // NI EN «MI NEGOCIO». A peticion del dueno el 2026-10-15, y por un motivo
+  // distinto al de /import aunque el efecto sea el mismo.
+  //
+  // En /import el boton ofrece la version de uno en uno de lo que el tendero
+  // ya esta haciendo en lote. Aqui no ofrece nada que tenga que ver: /profile
+  // es una pantalla de AJUSTES --el logo, el nombre, el telefono, el pais-- y
+  // un boton flotante que dice «Agregar» encima de un formulario de datos
+  // propios solo puede leerse como «agregar algo de esto», que no existe.
+  //
+  // Ademas tapa el campo de abajo del formulario, que es como se vio: en la
+  // captura del dueno se come la mitad de «Pais».
+  const enMiNegocio = pathname.startsWith("/profile");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
@@ -231,15 +347,23 @@ export function MobileNav() {
           Why it left the bar: it was the fourth of four equal-looking slots,
           three of which navigate. The only thing on this screen that WRITES
           looked like the three that only move you. Floating, it is the one
-          control that is obviously not a destination. */}
+          control that is obviously not a destination.
+
+          Y no sale en /import ni en /profile: ver `enSubirLibreta` y
+          `enMiNegocio` arriba. */}
+      {!enSubirLibreta && !enMiNegocio && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
         // target with querySelector, which returns whichever matches first in
         // the DOM — two elements sharing a marker means it can highlight the
         // wrong one, or one that isn't on screen.
-        data-tour="new-client-button-mobile"
-        aria-label="Agregar movimiento"
+        // The tour marker only on the movement variant. The tour finds its
+        // target with querySelector, which returns whichever matches first in
+        // the DOM; a marker on a button that opens a different dialog is a
+        // tour that explains the wrong thing.
+        data-tour={enCatalogo ? undefined : "new-client-button-mobile"}
+        aria-label={enCatalogo ? "Crear producto" : "Agregar movimiento"}
         onClick={() => {
           if (guardia()) return;
           guard(() => {
@@ -267,7 +391,7 @@ export function MobileNav() {
         {/* Label first, glyph second, from the spec. It reads as a sentence
             that way — "Agregar +" — where the other order reads as an icon
             button that happens to have a word stuck to it. */}
-        Agregar
+        {agregarLabel}
         <span className="flex size-10 items-center justify-center">
           {isPending && goingTo === agregarHref ? (
             <Loader2 className="size-6 animate-spin" aria-hidden="true" />
@@ -276,6 +400,7 @@ export function MobileNav() {
           )}
         </span>
       </button>
+      )}
 
       {/* z-40, below the z-50 every Dialog/Sheet/Drawer in this app uses. The
           bar also unmounts while one is open, so this is belt and braces.

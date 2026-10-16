@@ -109,6 +109,42 @@ receipt across — and it's what keeps step 2's check meaningful. Without it the
 gap grows by one every release, until "6 commits on main" is background noise
 nobody reads, and a real hotfix eventually gets overwritten unnoticed.
 
+### Cuando la rama de release NO sale de `dev`
+
+A veces hay que desplegar una parte y dejar el resto en `dev` — porque `dev`
+lleva trabajo a medias que no puede salir. La forma que funciona es **cortar una
+rama de `main`**, poner ahí solo lo que se despliega, y mergearla a `main`. Se
+hizo el 2026-10-15 para sacar WhatsApp dejando el catálogo dentro de `dev`, y
+salió bien.
+
+Lo que esa forma cuesta se paga **en el paso 4**, y conviene saberlo antes de
+llegar: si `dev` ya tenía sus propias copias de ese mismo trabajo —porque se
+construyó ahí primero y luego se rehízo en la rama— el back-merge **choca en
+todos los archivos tocados**. Ese día fueron nueve a la vez. No es un merge que
+traiga algo nuevo: es uno que reconcilia dos copias de lo mismo.
+
+**Cómo resolverlo sin pisar trabajo, y no a ojo.** La tentación es resolver todo
+a favor de `main` porque «es lo que está en producción», y normalmente es la
+respuesta correcta — pero es una conclusión, no un punto de partida. Antes de
+tomar un lado, **compara el código no comentado de los dos**, archivo por
+archivo:
+
+```sh
+git show :2:<archivo>   # ours   = dev
+git show :3:<archivo>   # theirs = main
+```
+
+Quitando las líneas de comentario de cada lado, si el resto sale **idéntico**,
+quedarse con `main` no descarta ni una línea de lógica. Si sale distinto, `dev`
+tiene trabajo que `main` no tiene y hay que mirarlo a mano. El 2026-10-15 los
+nueve salieron idénticos y lo único que difería era la prosa: `dev` tenía los
+comentarios en español y una cifra que resultó falsa.
+
+**Por qué esto importa más que un conflicto normal**: resolver nueve archivos a
+favor de un lado con `--theirs` tarda un segundo y no avisa de nada. Es la forma
+exacta de revertir en silencio algo que `dev` tenía y nadie recordaba — que es el
+mismo fallo que el paso 2 existe para prevenir, entrando por la puerta de atrás.
+
 ### The one exception: never back-merge a revert on autopilot
 
 If production is ever rolled back by **reverting on `main`** (not a Vercel
@@ -503,19 +539,29 @@ siguió enseñando lo viejo durante más de dos minutos**, incluso pidiéndolo c
 estaba 6 commits por detrás, porque el merge se había hecho solo en local— el
 dominio se actualizó en menos de un minuto.
 
-La explicación más probable es que `sevenz.site` lo sirve una compilación de
-Cloudflare conectada a la rama `main` del repo, y que el `wrangler deploy` de
-la línea de comandos publica en otro sitio. **No está confirmado**: cuatro
-minutos de caché expirando explicarían lo mismo, y es una sola observación. Lo
-que sí es seguro es la secuencia que funcionó, y que seguir esta regla tal como
-estaba escrita —construir y desplegar— dejaba el sitio sin cambiar con el log
-diciendo que todo fue bien.
+**CONFIRMADO EL 2026-10-16**, corriendo la prueba barata que este mismo
+apartado proponía. Ya no es una hipótesis con una sola observación:
+
+| Momento | `sevenz-web.sevenz-mvp.workers.dev` | `sevenz.site` |
+|---|---|---|
+| Tras `npx wrangler deploy` | frase **nueva** | frase **vieja** |
+| +0s, +15s, +30s tras `git push origin main` | — | frase **vieja** |
+| **+45s** tras el push | — | frase **nueva** |
+
+Las peticiones iban con `Cache-Control: no-store` y un `?cb=<timestamp>`
+distinto cada vez, así que **la caché queda descartada**: el dominio no
+cambió en todo el rato que medió entre el despliegue y el push, y cambió
+dentro de los 45 segundos siguientes al push. O sea que `sevenz.site` lo
+sirve una compilación de Cloudflare conectada a la rama `main`, y el
+`wrangler deploy` de la línea de comandos publica en el worker.
+
+**Consecuencia práctica, y es la que importa**: `wrangler deploy` NO publica
+el dominio. Los tres pasos son obligatorios y el que de verdad lo cambia es el
+tercero. Seguir esta regla a medias —construir y desplegar— deja el sitio sin
+cambiar con el log diciendo que todo fue bien.
 
 Así que el orden completo es **`npm run build` → `npx wrangler deploy` →
-`git push origin main`**, y la comprobación en vivo va después de las tres. Si
-alguna vez se quiere saber cuál de las dos publica de verdad, la prueba es
-barata: desplegar, mirar la URL del worker (debería cambiar ya) y el dominio
-(no debería), empujar, y volver a mirar el dominio.
+`git push origin main`**, y la comprobación en vivo va después de las tres.
 
 **And the live page is what gets checked, not the log.** Fetch it with
 `cache: 'no-store'` and assert on both sides: the new sentence present AND the
@@ -587,6 +633,89 @@ resuelve es un número local, que es la oportunidad abierta en `MS-24`.
 La especificación completa de cada plantilla vive en
 `../docs/WHATSAPP-PLANTILLAS.md`, que es la fuente de verdad y se escribe
 **antes** de enviar nada a Meta.
+
+## Una plantilla no está lista hasta leer lo que Meta APROBÓ
+
+La ficha de `../docs/WHATSAPP-PLANTILLAS.md` describe lo que **se envió** a
+aprobación. Lo que Meta devuelve aprobado puede ser otra cosa, **sin que nada
+avise**, y a partir de ese momento la ficha es una afirmación falsa escrita de
+buena fe. Por eso, cuando Meta aprueba una plantilla:
+
+1. **Se abre la plantilla aprobada** en Kapso o en el Administrador de Meta y
+   se compara campo por campo con la ficha: cuerpo carácter a carácter,
+   variables con su nombre **y su orden**, categoría, idioma, pie, y el botón
+   con su tipo de URL.
+2. **Se corrige la ficha con lo aprobado**, no al revés, y se anota la fecha.
+3. **Su fila entra en `qa/plantillas-esperadas.mjs`**, con sus parámetros de
+   cuerpo **y su botón**. Una suite no puede vigilar lo que no conoce.
+
+### Qué costó no hacerlo, el 2026-10-15
+
+`abono_confirmation_v2` se aprobó con el botón de URL **estático**: la URL
+llevaba el texto literal `{{share_token}}`, que Meta no reconoce como variable.
+El código le mandaba un parámetro y Meta devolvía `132018` —*«Button at index 0
+of type Url does not require parameters»*— **rechazando el mensaje entero**.
+
+**12 de 12 envíos fallidos en producción, cero recibos entregados, y el sistema
+nunca funcionó ni una vez.** No se vio desde la app: el tendero registraba su
+abono, la pantalla decía que todo bien, y el rechazo quedaba solo en una fila
+de `whatsapp_sends` que nadie miraba. Lo descubrió el dueño preguntando por qué
+sus clientes no recibían nada.
+
+Tres controles debieron cazarlo y los tres dijeron que todo estaba bien:
+
+| Control | Por qué no sirvió |
+|---|---|
+| `qa/plantillas-esperadas.mjs` | Solo listaba parámetros de **cuerpo**. Sin botones en la lista, no había nada que comparar |
+| `qa/recibo-cliente.mjs` | Miraba que el token tuviera 16 caracteres. Pasaba en verde con el envío roto |
+| La ficha del documento | Describía lo pedido, no lo aprobado — y nadie abrió lo segundo |
+
+Los tres están arreglados. La lección que se generaliza: **tres controles que
+se escriben mirándose entre sí coinciden perfectamente y pueden estar los tres
+equivocados.** Al menos uno tiene que mirar la realidad exterior, y en una
+plantilla la realidad exterior es lo que Meta tiene guardado.
+
+### Dos cosas concretas que aprendimos y conviene no redescubrir
+
+- **El sufijo de un botón de URL es POSICIONAL** (`{{1}}`) y al enviarlo va
+  **sin `parameter_name`**, aunque el cuerpo use `parameter_format: NAMED` y
+  sus parámetros sí lo lleven. Confirmado por Kapso por escrito.
+- **Una plantilla aprobada NO se edita.** Para corregirla hay que crear una
+  versión nueva (`_v3`, `_v2`…) y cambiar el nombre en el código. La anterior
+  sigue aprobada y hay que dejar de usarla — y **sacarla de
+  `qa/plantillas-esperadas.mjs`**, para que si alguien la vuelve a mandar, la
+  suite no la reconozca y avise.
+
+### Las que ya están aprobadas y todavía no se usan: dar por rota su URL
+
+**Toda plantilla aprobada antes del 2026-10-15 con un botón de URL que lleve
+una variable está presuntamente rota de la misma forma**, y eso **no** se
+descubre leyendo su ficha: la ficha de `abono_confirmation_v2` describía un
+botón dinámico que Meta había guardado como estático, y es la misma frase
+copiada que llevan las demás.
+
+Son seis, todas con `https://app.sevenz.site/s/{{share_token}}` escrito igual:
+`abono_confirmation` (v1), `fiado_notification`, `fiado_notification_v2`,
+`payment_due_today`, `pending_balance_weekly` y `overdue_payment`.
+
+**Antes de conectar cualquiera de ellas**, lo primero —antes de escribir una
+línea de código que la llame— es **abrir la plantilla aprobada y mirar el tipo
+de URL del botón**. Si es estática, hay que crear una versión nueva con
+`{{1}}`, porque una aprobada no se edita. Presupuestarlo desde el principio: no
+es un retoque, es una plantilla nueva y su espera de aprobación.
+
+Y la señal práctica, que ahorra abrir la documentación de Meta: **un botón
+dinámico hace que el editor pida un ejemplo de URL completa.** Si no lo pide,
+es estático.
+
+### El mismo riesgo existe hacia el otro lado
+
+Una plantilla cuyo botón **sí** sea dinámico y a la que **no** se le mande el
+sufijo falla igual de entera y de silenciosa. Por eso
+`qa/plantillas-esperadas.mjs` distingue tres estados —`null` (sin botones),
+`"sin_parametros"` (los hay y ninguno toma valores) y `"url_suffix"`— aunque
+los dos primeros se envíen igual: la tabla no es solo una comprobación, es el
+único sitio del repo donde consta qué aprobó Meta.
 
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 
@@ -771,6 +900,39 @@ exactly the same reason.
 Strings the user reads are unaffected: `console.log` output in a `qa/` script is
 read by the user, so it stays Spanish, in the same file whose comments are
 English. That is the rule working, not a contradiction.
+
+#### SQL migrations are comments too, and that needed saying
+
+**A `.sql` file under `supabase/` is code. Its comments are English, same as
+every other file's.** Confirmed by the user on 2026-10-15: *"Idioma de
+comentarios en inglés siempre"*, asked as a straight choice between converting
+and writing migrations down as the exception. There is no exception.
+
+It needed saying because migrations are where this rule has been broken the
+most and the hardest to notice. `104` through `111` were all written with
+Spanish comments, none of them flagged, and by the time anyone looked it read
+as the house style rather than as drift — which is exactly how `tasa-prevista.ts`
+got in on 2026-09-13.
+
+Two things make a migration pull harder than a `.ts` file toward Spanish, and
+knowing them is the defence:
+
+- **Its comments are the longest in the repo.** A migration carries the whole
+  decision, its cost and what it displaces, so it is the most expensive prose
+  to write — and the point at which "the surrounding files are Spanish" is most
+  tempting.
+- **It quotes the owner.** His words are Spanish and stay Spanish, verbatim and
+  in quotes. An English comment carrying a Spanish quotation is correct and is
+  what these files should look like, not a reason to write the whole thing in
+  Spanish.
+
+The ledger's `description` is NOT a comment — it is a value stored in
+`public.schema_migrations` that the user reads during a parity check, so it
+follows the same rule as `console.log` in `qa/` and stays Spanish.
+
+The boundary is unchanged: migrations already written keep their prose. `111`
+was converted on 2026-10-15 because it had not reached production yet; `104`
+to `110` were left alone.
 
 ### The boundary, because the codebase is now mixed
 

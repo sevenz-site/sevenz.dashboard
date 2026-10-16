@@ -100,6 +100,18 @@ export type NotificationItem =
       // client has been restored by some other route, and false for a
       // permanent hide, which has nothing to undo.
       canRestore: boolean;
+    }
+  | {
+      id: string;
+      kind: "product_hidden";
+      occurredAt: string;
+      productId: string;
+      productName: string;
+      action: "trashed" | "restored";
+      // Si el botón «Restaurar» va en esta fila. False cuando el producto ya
+      // volvió por otra vía — si no, el botón prometería deshacer algo que ya
+      // está deshecho.
+      canRestore: boolean;
     };
 
 const NOTIFICATION_PHOTO_SIGNED_URL_TTL_SECONDS = 300;
@@ -119,6 +131,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     { data: imports, error: importsError },
     { data: deletions, error: deletionsError },
     { data: hides, error: hidesError },
+    { data: productHides, error: productHidesError },
   ] = await Promise.all([
     supabase
       .from("link_opens")
@@ -148,12 +161,24 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       .eq("owner_id", user.id)
       .order("occurred_at", { ascending: false })
       .limit(20),
+    // Productos a la papelera y de vuelta (migración 090). Se lee el nombre y
+    // el `trashed_at` del producto en el mismo viaje: el nombre porque una
+    // notificación sin él no se puede accionar, y `trashed_at` para saber si
+    // el botón «Restaurar» todavía tiene sentido.
+    supabase
+      .from("product_hides")
+      .select("id, product_id, action, occurred_at, read_at, products(name, trashed_at)")
+      .eq("owner_id", user.id)
+      .order("occurred_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (opensError) console.error("getNotifications: link_opens query failed", opensError);
   if (importsError) console.error("getNotifications: import_notifications query failed", importsError);
   if (deletionsError) console.error("getNotifications: movement_deletions query failed", deletionsError);
   if (hidesError) console.error("getNotifications: client_hides query failed", hidesError);
+  if (productHidesError)
+    console.error("getNotifications: product_hides query failed", productHidesError);
 
   const openRows = opens ?? [];
   const importRows = imports ?? [];
@@ -188,6 +213,18 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       entry_amount: number | null;
       exchange_rate_used: number | null;
     } | null;
+  }[];
+
+  // Mismo casteo que `deletionRows` y por el mismo motivo: sin tipos generados
+  // supabase-js infiere todo embed como array, y `product_id` es una FK simple
+  // que vuelve como objeto.
+  const productHideRows = (productHides ?? []) as unknown as {
+    id: string;
+    product_id: string;
+    action: "trashed" | "restored";
+    occurred_at: string;
+    read_at: string | null;
+    products: { name: string; trashed_at: string | null } | null;
   }[];
 
   const clientIds = [
@@ -231,6 +268,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   const unreadImportIds = importRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadDeletionIds = deletionRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadHideIds = hideRows.filter((r) => !r.read_at).map((r) => r.id);
+  const unreadProductHideIds = productHideRows.filter((r) => !r.read_at).map((r) => r.id);
   await Promise.all([
     unreadOpenIds.length > 0
       ? supabase.from("link_opens").update({ read_at: new Date().toISOString() }).in("id", unreadOpenIds)
@@ -249,6 +287,12 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       : null,
     unreadHideIds.length > 0
       ? supabase.from("client_hides").update({ read_at: new Date().toISOString() }).in("id", unreadHideIds)
+      : null,
+    unreadProductHideIds.length > 0
+      ? supabase
+          .from("product_hides")
+          .update({ read_at: new Date().toISOString() })
+          .in("id", unreadProductHideIds)
       : null,
   ]);
 
@@ -321,6 +365,26 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           canRestore: r.action === "trashed" && client.trashed_at !== null && client.deleted_at === null,
         };
       }),
+    // Un rastro cuyo producto ya no existe se descarta: la fila cuelga con
+    // `on delete cascade`, asi que esto solo puede pasar en una carrera entre
+    // la consulta y un borrado de verdad. Sin nombre no hay nada que contar.
+    ...productHideRows
+      .filter((r) => r.products != null)
+      .map((r): NotificationItem => {
+        const producto = r.products!;
+        return {
+          id: r.id,
+          kind: "product_hidden",
+          occurredAt: r.occurred_at,
+          productId: r.product_id,
+          productName: producto.name,
+          action: r.action,
+          // Se mira el estado de AHORA, no lo que esta fila registro: quien ya
+          // restauro el producto por otra via no deberia ver un boton que no
+          // hace nada.
+          canRestore: r.action === "trashed" && producto.trashed_at !== null,
+        };
+      }),
   ];
 
   return items
@@ -348,6 +412,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
     { data: imports, error: importError },
     { data: deletions, error: deletionError },
     { data: hides, error: hideError },
+    { data: productHides, error: productHideError },
   ] = await Promise.all([
     supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
     supabase
@@ -363,12 +428,21 @@ export async function getUnreadNotificationCount(): Promise<number> {
       .is("read_at", null)
       .limit(CAP),
     supabase.from("client_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
+    supabase.from("product_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
   ]);
 
   if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
   if (importError) console.error("getUnreadNotificationCount: import_notifications query failed", importError);
   if (deletionError) console.error("getUnreadNotificationCount: movement_deletions query failed", deletionError);
   if (hideError) console.error("getUnreadNotificationCount: client_hides query failed", hideError);
+  if (productHideError)
+    console.error("getUnreadNotificationCount: product_hides query failed", productHideError);
 
-  return (opens?.length ?? 0) + (imports?.length ?? 0) + (deletions?.length ?? 0) + (hides?.length ?? 0);
+  return (
+    (opens?.length ?? 0) +
+    (imports?.length ?? 0) +
+    (deletions?.length ?? 0) +
+    (hides?.length ?? 0) +
+    (productHides?.length ?? 0)
+  );
 }

@@ -255,7 +255,12 @@ export function ClientStatusLegend({ className }: { className?: string }) {
 // Only the presentation is new. No filtering logic is duplicated: everything
 // still goes through useClientFilters, which is already proven on four
 // screens.
-function FilterChip({
+// Exported since 2026-10-09 so the catalogue's own chips reuse this shell
+// instead of copying the dark-tone styling, which carries a measured contrast
+// decision (`--brand-field-border`, 5,78:1) that a second copy would quietly
+// drift from. Only the shell is shared: each screen keeps its own option
+// lists, which is what the note above is about.
+export function FilterChip({
   label,
   active,
   children,

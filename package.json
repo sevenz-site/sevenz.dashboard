@@ -25,6 +25,9 @@
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
     "qa:pausados": "node qa/whatsapp-pausados.mjs",
     "qa:consent": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-consent.mjs",
+    "qa:precio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/product-price.mjs",
+    "qa:productos": "node qa/products.mjs",
+    "qa:catalogo": "node qa/catalogo.mjs",
     "qa:plantillas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-plantillas.mjs",
     "qa:import": "node qa/import-libreta.mjs",
     "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
@@ -35,7 +38,12 @@
     "qa:puerta": "node qa/puerta-envio.mjs",
     "qa:telefono": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/telefono-internacional.mjs",
     "qa:bordes": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/bordes-subir-libreta.mjs",
-    "qa:contraste": "node qa/contraste.mjs"
+    "qa:contraste": "node qa/contraste.mjs",
+    "qa:proveedor": "node --experimental-strip-types qa/proveedor.mjs",
+    "qa:precio-publico": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/precio-publico.mjs",
+    "qa:orden": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/orden.mjs",
+    "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",
+    "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

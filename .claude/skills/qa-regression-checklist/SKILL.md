@@ -175,6 +175,33 @@ from the templates Meta has approved. When a new template ships, add its row
 there — the script's job is to notice when the code and the approved template
 drift apart, which it cannot do for a template it has never heard of.
 
+## 3c. El catálogo y las órdenes — cuatro suites, y una es de seguridad
+
+Solo cuando el diff toca `app/c/`, `components/public/`, `lib/products/`,
+`lib/cart/` o una migración de `products`, `catalog_*` u `orders`.
+
+- **`npm run qa:orden`** — **la importante, y es de seguridad, no de
+  producto.** `create_catalog_order` es la ÚNICA escritura de Sevenz que no
+  tiene detrás ni una sesión ni una fila que ya existiera: la llama un
+  visitante anónimo por un enlace hecho para circular. La suite le intenta
+  colar productos de otro dueño, sin publicar y de la papelera; comprueba que
+  el precio salga de la ficha y no de quien llama; que una línea mala deshaga
+  la orden entera; y que el tope por minuto frene. Escribe en dev y limpia.
+- **`npm run qa:carrito`** — lógica pura. El caso que no existe en ninguna
+  otra pantalla: fusionar dos veces el mismo producto **cambia su precio**,
+  porque el escalón depende de la cantidad total.
+- **`npm run qa:precio-publico`** — qué precio ve el cliente según cuánto
+  pide. Lógica pura.
+- **`npm run qa:catalogo`** y **`npm run qa:productos`** — el catálogo
+  público, el enlace único y los candados de precio. Escriben en dev.
+
+**Por qué `qa:orden` merece su propia línea en esta lista**: sus fallos no se
+ven desde ninguna pantalla. Una orden con un precio manipulado le llega al
+tendero con la misma pinta que una buena, y la comprobación de que la regla
+del escalón de la base y la de TypeScript coinciden es lo único que caza una
+divergencia que, si ocurre, enseña un precio al cliente y guarda otro **sin un
+solo error en ninguna parte**.
+
 ## 4. Public, unauthenticated surfaces
 
 - The public client balance page (`/s/[token]`) — easy to forget since
