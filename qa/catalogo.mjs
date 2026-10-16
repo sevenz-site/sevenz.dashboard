@@ -340,8 +340,8 @@ try {
   // defendibles por separado y solo una encaja con un enlace único.
   check(
     "4b. la tarjeta enseña el precio de UNA UNIDAD, el de detal",
-    enDetal != null && Number(enDetal.price) === 13 && enDetal.price_tier === "retail",
-    enDetal ? `price=${enDetal.price} tier=${enDetal.price_tier}` : "sin producto",
+    enDetal != null && Number(enDetal.price) === 13 && enDetal.tier === "retail",
+    enDetal ? `price=${enDetal.price} tier=${enDetal.tier}` : "sin producto",
   );
 
   const soloEnDetal = (catDetal?.products ?? []).find((p) => p.id === soloMayor.id);
@@ -349,8 +349,8 @@ try {
     "4c. sin precio al detal publicado, la tarjeta enseña el de mayor y lo dice",
     soloEnDetal != null &&
       Number(soloEnDetal.price) === 7 &&
-      soloEnDetal.price_tier === "wholesale",
-    soloEnDetal ? `tier=${soloEnDetal.price_tier}` : "desapareció",
+      soloEnDetal.tier === "wholesale",
+    soloEnDetal ? `tier=${soloEnDetal.tier}` : "desapareció",
   );
 
   // UN ESCALÓN NO PUBLICADO NO ES CANDIDATO, aunque su precio sea el más bajo.
@@ -378,8 +378,8 @@ try {
   const oculto = (catOculto?.products ?? []).find((p) => p.id === mayorOculto.id);
   check(
     "4f. un escalón NO publicado no se cuela aunque sea más barato",
-    oculto != null && Number(oculto.price) === 20 && oculto.price_tier === "retail",
-    oculto ? `price=${oculto.price} tier=${oculto.price_tier}` : "desapareció",
+    oculto != null && Number(oculto.price) === 20 && oculto.tier === "retail",
+    oculto ? `price=${oculto.price} tier=${oculto.tier}` : "desapareció",
   );
 
   const PROHIBIDAS = [
@@ -476,8 +476,8 @@ try {
   // producto, decide qué PRECIO se enseña — y eso lo vigilan 4b, 4c y 4f.
   check(
     "7c. y lo hace con su precio al detal, no con el de mayor sin publicar",
-    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.price_tier === "retail",
-    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.price_tier ?? "desapareció",
+    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.tier === "retail",
+    (cat2Detal?.products ?? []).find((p) => p.id === soloDetal.id)?.tier ?? "desapareció",
   );
 
   await admin
@@ -515,24 +515,37 @@ try {
   // La 087 las saca de `base_currency` a su propia tabla porque el tendero las
   // agrega y las quita. VES NO puede estar: es la moneda en la que el cliente
   // paga, se enseña siempre calculada y no se agrega ni se quita.
+  //
+  // `tier` VA EN EL INSERT DESDE LA 114, que lo metio en la clave primaria.
+  // Sin el, esto fallaba con `23502` -- un not-null -- y daba por bueno un
+  // rechazo que NO era el de la moneda. Una prueba que pasa por la razon
+  // equivocada deja de vigilar lo que dice vigilar.
   const { error: eVesActiva } = await admin
     .from("product_currencies")
-    .insert({ product_id: visible.id, currency: "VES" });
+    .insert({ product_id: visible.id, tier: "retail", currency: "VES" });
   check(
     "7f. el bolívar no puede ser una moneda activa del producto",
     eVesActiva != null && eVesActiva.code === "23514",
     eVesActiva ? eVesActiva.code : "entró",
   );
 
+  // LA CLAVE ES (product_id, tier, currency) DESDE LA 114, no
+  // (product_id, currency): el detal y el mayor llevan su propia lista, que
+  // es justo lo que el dueno reporto el 2026-10-15 -- anadir una moneda en
+  // uno la anadia en el otro.
   await admin
     .from("product_currencies")
-    .upsert({ product_id: visible.id, currency: "EUR" }, { onConflict: "product_id,currency" });
+    .upsert(
+      { product_id: visible.id, tier: "retail", currency: "EUR" },
+      { onConflict: "product_id,tier,currency" },
+    );
   const { data: monedas } = await admin
     .from("product_currencies")
     .select("currency")
-    .eq("product_id", visible.id);
+    .eq("product_id", visible.id)
+    .eq("tier", "retail");
   check(
-    "7g. una moneda activa se guarda",
+    "7g. una moneda activa se guarda, en SU escalon",
     (monedas ?? []).some((m) => m.currency === "EUR"),
     (monedas ?? []).map((m) => m.currency).join(","),
   );

@@ -47,13 +47,34 @@ type SharedProduct = {
   id: string;
   name: string;
   unit: string | null;
-  description: string | null;
   photo_path: string | null;
+  // `description` ESTABA AQUI Y LA FUNCION NUNCA LA MANDO. Quitada el
+  // 2026-10-16: este tipo se declara a mano, asi que un campo de mas no es un
+  // campo de mas, es una afirmacion falsa sobre lo que llega -- y es
+  // exactamente lo que escondio el bug de `price_tier` durante un dia. Si
+  // alguna vez hace falta la descripcion en la tarjeta, primero se añade al
+  // `json_build_object` de `get_shared_catalog`.
   price: number;
   // El escalon del NUMERO, que puede no ser el del enlace: un producto que
   // solo tiene precio de detal sale con el suyo incluso en un enlace de mayor,
   // y lo dice, en vez de desaparecer del catalogo sin explicacion.
-  price_tier: PriceTier;
+  //
+  // THE FIELD IS `tier`, AND IT WAS `price_tier` UNTIL 2026-10-16.
+  //
+  // Migration 111 rewrote `get_shared_catalog` and renamed it. This page kept
+  // reading the old name, and TypeScript could not catch it because the RPC's
+  // shape is hand-declared right here: the field stayed in the type and never
+  // came back in the answer again. So the label below read `undefined` and
+  // EVERY card said "precio al detal" -- including the ones showing a
+  // WHOLESALE price, which is a bulk price presented as the unit price, on a
+  // public page, to a client who has no way to report it. Exactly the failure
+  // this area was flagged for in the plan: it can be wrong without anybody
+  // finding out.
+  //
+  // It was caught by `qa:catalogo`, which had been failing since the day
+  // before and was first read as a stale test -- the field name had changed,
+  // so the suite looked out of date rather than right. It was right.
+  tier: PriceTier;
   // Los precios que el tendero FIJO A MANO para este escalon, por moneda. Es
   // lo que hace que el candado signifique algo aqui: si esta pagina calculara
   // la equivalencia por su cuenta, el candado seria cierto en la ficha y falso
@@ -374,7 +395,7 @@ export default async function CatalogoPublicoPage({
                       pagina en dos pasos: ensenar 4 en la tarjeta y cobrar 5
                       al entrar seria un cebo. */}
                   <span className="text-xs text-muted-foreground">
-                    {p.price_tier === "wholesale" ? "precio al mayor" : "precio al detal"}
+                    {p.tier === "wholesale" ? "precio al mayor" : "precio al detal"}
                   </span>
 
                   {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.

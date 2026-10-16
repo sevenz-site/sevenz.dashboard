@@ -42,7 +42,11 @@ export const metadata: Metadata = {
 type SharedProductDetail = {
   business_name: string | null;
   owner_country: string | null;
-  tier: "retail" | "wholesale";
+  // `tier` ESTABA AQUI Y LA FUNCION NUNCA LA MANDO, igual que `description` en
+  // la tarjeta. Quitada el 2026-10-16 sin reemplazo porque nadie la usaba: lo
+  // que se arreglo ese dia es la hermana, que si la leia. La razon larga esta
+  // en `app/c/[token]/page.tsx`; aqui basta con no volver a declarar un campo
+  // que no llega, porque este tipo se escribe a mano y nada lo contrasta.
   id: string;
   name: string;
   unit: string | null;
