@@ -539,19 +539,29 @@ siguió enseñando lo viejo durante más de dos minutos**, incluso pidiéndolo c
 estaba 6 commits por detrás, porque el merge se había hecho solo en local— el
 dominio se actualizó en menos de un minuto.
 
-La explicación más probable es que `sevenz.site` lo sirve una compilación de
-Cloudflare conectada a la rama `main` del repo, y que el `wrangler deploy` de
-la línea de comandos publica en otro sitio. **No está confirmado**: cuatro
-minutos de caché expirando explicarían lo mismo, y es una sola observación. Lo
-que sí es seguro es la secuencia que funcionó, y que seguir esta regla tal como
-estaba escrita —construir y desplegar— dejaba el sitio sin cambiar con el log
-diciendo que todo fue bien.
+**CONFIRMADO EL 2026-10-16**, corriendo la prueba barata que este mismo
+apartado proponía. Ya no es una hipótesis con una sola observación:
+
+| Momento | `sevenz-web.sevenz-mvp.workers.dev` | `sevenz.site` |
+|---|---|---|
+| Tras `npx wrangler deploy` | frase **nueva** | frase **vieja** |
+| +0s, +15s, +30s tras `git push origin main` | — | frase **vieja** |
+| **+45s** tras el push | — | frase **nueva** |
+
+Las peticiones iban con `Cache-Control: no-store` y un `?cb=<timestamp>`
+distinto cada vez, así que **la caché queda descartada**: el dominio no
+cambió en todo el rato que medió entre el despliegue y el push, y cambió
+dentro de los 45 segundos siguientes al push. O sea que `sevenz.site` lo
+sirve una compilación de Cloudflare conectada a la rama `main`, y el
+`wrangler deploy` de la línea de comandos publica en el worker.
+
+**Consecuencia práctica, y es la que importa**: `wrangler deploy` NO publica
+el dominio. Los tres pasos son obligatorios y el que de verdad lo cambia es el
+tercero. Seguir esta regla a medias —construir y desplegar— deja el sitio sin
+cambiar con el log diciendo que todo fue bien.
 
 Así que el orden completo es **`npm run build` → `npx wrangler deploy` →
-`git push origin main`**, y la comprobación en vivo va después de las tres. Si
-alguna vez se quiere saber cuál de las dos publica de verdad, la prueba es
-barata: desplegar, mirar la URL del worker (debería cambiar ya) y el dominio
-(no debería), empujar, y volver a mirar el dominio.
+`git push origin main`**, y la comprobación en vivo va después de las tres.
 
 **And the live page is what gets checked, not the log.** Fetch it with
 `cache: 'no-store'` and assert on both sides: the new sentence present AND the
