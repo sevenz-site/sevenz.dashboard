@@ -109,6 +109,42 @@ receipt across — and it's what keeps step 2's check meaningful. Without it the
 gap grows by one every release, until "6 commits on main" is background noise
 nobody reads, and a real hotfix eventually gets overwritten unnoticed.
 
+### Cuando la rama de release NO sale de `dev`
+
+A veces hay que desplegar una parte y dejar el resto en `dev` — porque `dev`
+lleva trabajo a medias que no puede salir. La forma que funciona es **cortar una
+rama de `main`**, poner ahí solo lo que se despliega, y mergearla a `main`. Se
+hizo el 2026-10-15 para sacar WhatsApp dejando el catálogo dentro de `dev`, y
+salió bien.
+
+Lo que esa forma cuesta se paga **en el paso 4**, y conviene saberlo antes de
+llegar: si `dev` ya tenía sus propias copias de ese mismo trabajo —porque se
+construyó ahí primero y luego se rehízo en la rama— el back-merge **choca en
+todos los archivos tocados**. Ese día fueron nueve a la vez. No es un merge que
+traiga algo nuevo: es uno que reconcilia dos copias de lo mismo.
+
+**Cómo resolverlo sin pisar trabajo, y no a ojo.** La tentación es resolver todo
+a favor de `main` porque «es lo que está en producción», y normalmente es la
+respuesta correcta — pero es una conclusión, no un punto de partida. Antes de
+tomar un lado, **compara el código no comentado de los dos**, archivo por
+archivo:
+
+```sh
+git show :2:<archivo>   # ours   = dev
+git show :3:<archivo>   # theirs = main
+```
+
+Quitando las líneas de comentario de cada lado, si el resto sale **idéntico**,
+quedarse con `main` no descarta ni una línea de lógica. Si sale distinto, `dev`
+tiene trabajo que `main` no tiene y hay que mirarlo a mano. El 2026-10-15 los
+nueve salieron idénticos y lo único que difería era la prosa: `dev` tenía los
+comentarios en español y una cifra que resultó falsa.
+
+**Por qué esto importa más que un conflicto normal**: resolver nueve archivos a
+favor de un lado con `--theirs` tarda un segundo y no avisa de nada. Es la forma
+exacta de revertir en silencio algo que `dev` tenía y nadie recordaba — que es el
+mismo fallo que el paso 2 existe para prevenir, entrando por la puerta de atrás.
+
 ### The one exception: never back-merge a revert on autopilot
 
 If production is ever rolled back by **reverting on `main`** (not a Vercel
