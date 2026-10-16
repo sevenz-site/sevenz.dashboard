@@ -193,11 +193,11 @@ try {
       envios.every((e) => e.idioma === "es"),
       envios[0].idioma,
     );
-    // Ninguna de las tres de dueño declara botón, y ahora eso se lee del
-    // inventario en vez de estar dado por supuesto aquí. Mandar un componente
-    // de botón a una plantilla que no lo declara la hace fallar igual que un
-    // parámetro con el nombre cambiado — y eso es exactamente lo que le pasó a
-    // las de cliente el 2026-10-15, por el camino contrario.
+    // None of the three owner templates takes a button parameter, and that is
+    // now read from the inventory instead of being assumed here. Sending a
+    // button component to a template that declares none makes it fail just as
+    // a renamed parameter would -- which is exactly what happened to the
+    // client ones on 2026-10-15, from the opposite direction.
     check(
       `${plantilla}: el botón, o su ausencia, es el que la plantilla declara`,
       envios.every((e) => problemaDelBoton(plantilla, e.boton) === null),

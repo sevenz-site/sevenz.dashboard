@@ -104,17 +104,17 @@ export async function enviarPlantilla(opciones: {
     },
   ];
 
-  // EL SUFIJO DEL BOTON VA SIN NOMBRE, Y ESTO COSTO 12 ENVIOS Y DOS SEMANAS.
+  // THE URL SUFFIX TRAVELS WITHOUT A NAME, AND THAT COST 12 SENDS AND TWO WEEKS.
   //
-  // El cuerpo usa `parameter_format: NAMED` y sus parametros SI llevan
-  // `parameter_name`. El sufijo de un boton de URL es POSICIONAL y no lo
-  // lleva, aunque el cuerpo sea nombrado. Confirmado por escrito por Kapso el
-  // 2026-10-15, despues de que Meta rechazara 12 de 12 recibos con
+  // The body uses `parameter_format: NAMED` and its parameters DO carry
+  // `parameter_name`. A URL button's suffix is POSITIONAL and does not, even
+  // when the body is named. Confirmed in writing by Kapso on 2026-10-15,
+  // after Meta rejected 12 of 12 receipts with
   // `132018: Button at index 0 of type Url does not require parameters`.
   //
-  // `nombre` se sigue pidiendo en el tipo pero NO viaja: documenta en el sitio
-  // de la llamada que ese texto es el `{{1}}` de la plantilla, que de otro
-  // modo seria una cadena suelta sin nada que diga a que corresponde.
+  // `nombre` is still required by the type but does NOT travel: it documents,
+  // at the call site, that this text is the template's `{{1}}` -- which would
+  // otherwise be a loose string with nothing saying what it stands for.
   if (opciones.parametroBoton) {
     componentes.push({
       type: "button",
@@ -124,9 +124,10 @@ export async function enviarPlantilla(opciones: {
     });
   }
 
-  // RESUELTO UNA VEZ Y REUTILIZADO. Llamar a `phoneIdFor` en la URL y otra
-  // vez al devolver el resultado abriria la puerta a que lo registrado no sea
-  // lo enviado, que es justo lo que la columna existe para descartar.
+  // RESOLVED ONCE AND REUSED. Calling `phoneIdFor` for the URL and again when
+  // returning the result would leave room for the recorded number not to be
+  // the one actually used -- which is exactly what the column exists to rule
+  // out.
   const phoneNumberId = phoneIdFor(opciones.audience);
 
   let respuesta: Response;

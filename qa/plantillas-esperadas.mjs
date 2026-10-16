@@ -1,66 +1,67 @@
 // EL INVENTARIO DE PLANTILLAS, EN UN SOLO SITIO.
 //
-// Lo que Meta aprobó para cada plantilla: los parámetros de cuerpo con su
-// nombre y EN ORDEN, y **qué botón declara**. Meta rechaza entero y en
-// silencio un mensaje cuyos componentes no encajen con la plantilla, así que
-// esto es lo que impide que el código y la plantilla aprobada se separen sin
-// que nadie lo vea.
+// What Meta approved for each template: the body parameters with their name
+// and IN ORDER, and **which button it declares**. Meta rejects a message
+// whole and in silence when its components do not match the template, so this
+// is what keeps the code and the approved template from drifting apart with
+// nobody seeing it.
 //
 // ===========================================================================
-// POR QUÉ AHORA TAMBIÉN LOS BOTONES, Y LO QUE COSTÓ QUE NO ESTUVIERAN
+// WHY THE BUTTONS ARE HERE NOW, AND WHAT THEIR ABSENCE COST
 //
-// Hasta el 2026-10-15 esta tabla solo listaba los parámetros del CUERPO. Esa
-// ausencia no era un descuido menor: era un punto ciego con forma de lista
-// completa. Una lista de la compra que no menciona el pan nunca te hace notar
-// que falta el pan.
+// Until 2026-10-15 this table listed BODY parameters only. That absence was
+// not a minor oversight: it was a blind spot shaped like a complete list. A
+// shopping list that never mentions bread never makes you notice the bread is
+// missing.
 //
-// Lo que pasó: `abono_confirmation_v2` se aprobó con el botón de URL como
-// ESTÁTICO —la URL llevaba el texto literal `{{share_token}}`, que Meta no
-// reconoce como variable— mientras el código mandaba un parámetro para él.
-// Meta devolvía `132018` *«Button at index 0 of type Url does not require
-// parameters»* y rechazaba el mensaje ENTERO. 12 de 12 envíos fallidos en
-// producción, cero recibos entregados, y el fallo nunca se vio desde la app:
-// el tendero registraba su abono y la pantalla le decía que todo bien.
+// What happened: `abono_confirmation_v2` was approved with its URL button
+// STATIC -- the URL carried the literal text `{{share_token}}`, which Meta
+// does not recognise as a variable -- while the code sent a parameter for it.
+// Meta answered `132018` *"Button at index 0 of type Url does not require
+// parameters"* and rejected the WHOLE message. 12 of 12 sends failed in
+// production, zero receipts delivered, and the failure was never visible from
+// the app: the shopkeeper registered the payment and the screen said fine.
 //
-// Tres sitios debieron cazarlo y ninguno pudo:
-//   1. Esta tabla, porque los botones no existían en ella.
-//   2. `qa/recibo-cliente.mjs`, que solo miraba si el token tenía 16
-//      caracteres o más — pasaba en verde con el envío roto.
-//   3. La ficha de `../docs/WHATSAPP-PLANTILLAS.md`, que describe lo que se
-//      ENVIÓ a aprobación, no lo que Meta APROBÓ. Son dos cosas distintas y
-//      nadie abrió la segunda.
+// Three places should have caught it and none could:
+//   1. This table, because buttons did not exist in it.
+//   2. `qa/recibo-cliente.mjs`, which only checked whether the token was 16
+//      characters or longer -- green while the send was broken.
+//   3. The entry in `../docs/WHATSAPP-PLANTILLAS.md`, which describes what was
+//      SUBMITTED for approval, not what Meta APPROVED. Two different things,
+//      and nobody opened the second one.
 //
 // ===========================================================================
-// CÓMO SE DESCRIBE UN BOTÓN AQUÍ
+// HOW A BUTTON IS DESCRIBED HERE
 //
-//   boton: null              → la plantilla NO declara ningún botón. No se
-//                              manda componente. Mandarlo la hace fallar.
-//   boton: "sin_parametros"  → la plantilla SÍ declara botones, pero ninguno
-//                              toma valores al enviar: una URL fija, o una
-//                              respuesta rápida. Tampoco se manda componente.
-//   boton: "url_suffix"      → botón de URL con sufijo dinámico `{{1}}`. Se
-//                              manda UN componente `{type:"button",
-//                              sub_type:"url", index:"0"}` con un solo
-//                              parámetro `{type:"text", text:<sufijo>}` y
-//                              **sin `parameter_name`**.
+//   boton: null              -> the template declares NO button. No component
+//                              is sent. Sending one makes it fail.
+//   boton: "sin_parametros"  -> the template DOES declare buttons, but none
+//                              takes values at send time: a fixed URL, or a
+//                              quick reply. No component is sent either.
+//   boton: "url_suffix"      -> URL button with a dynamic `{{1}}` suffix. ONE
+//                              component `{type:"button", sub_type:"url",
+//                              index:"0"}` is sent, with a single parameter
+//                              `{type:"text", text:<suffix>}` and
+//                              **no `parameter_name`**.
 //
-// `null` Y `"sin_parametros"` HACEN LO MISMO AL ENVIAR Y AUN ASÍ SON DOS
-// VALORES DISTINTOS, a propósito. Esta tabla no es solo una comprobación: es
-// el único sitio del repo donde consta qué aprobó Meta. Anotar «ninguno» en
-// una plantilla que sí tiene un botón sería exactamente la clase de registro
-// falso que causó el fallo del 2026-10-15 — y el día que alguien quiera
-// hacer dinámico uno de esos botones, la diferencia entre «no hay botón» y
-// «hay uno y es fijo» es justo lo que necesita saber.
+// `null` AND `"sin_parametros"` BEHAVE IDENTICALLY WHEN SENDING AND ARE STILL
+// TWO DIFFERENT VALUES, on purpose. This table is not only a check: it is the
+// only place in the repo that records what Meta approved. Writing "none" for
+// a template that does have a button would be exactly the kind of false
+// record that caused the 2026-10-15 failure -- and the day someone wants to
+// make one of those buttons dynamic, the difference between "there is no
+// button" and "there is one and it is fixed" is precisely what they need.
 //
-// LO DE `parameter_name` ES LA MITAD DEL FALLO Y MERECE ESTAR ESCRITO: el
-// cuerpo usa `parameter_format: NAMED` y sus parámetros SÍ llevan nombre; el
-// sufijo de un botón de URL es POSICIONAL y no lo lleva, aunque el cuerpo sea
-// nombrado. Confirmado por Kapso por escrito el 2026-10-15.
+// THE `parameter_name` PART IS HALF THE FAILURE AND DESERVES WRITING DOWN:
+// the body uses `parameter_format: NAMED` and its parameters DO carry a name;
+// a URL button's suffix is POSITIONAL and does not, even when the body is
+// named. Confirmed in writing by Kapso on 2026-10-15.
 //
-// LA FUENTE DE VERDAD DE VERDAD ES `../docs/WHATSAPP-PLANTILLAS.md`. Esto es
-// su copia ejecutable: cuando las dos discrepen, manda el documento y esto es
-// lo que hay que corregir. Y el documento, a su vez, solo vale si alguien
-// abrió la plantilla aprobada y la comparó — ver la regla de CLAUDE.md.
+// THE REAL SOURCE OF TRUTH IS `../docs/WHATSAPP-PLANTILLAS.md`. This is its
+// executable copy: when the two disagree, the document wins and this is what
+// gets corrected. And the document, in turn, is only worth anything if
+// somebody opened the approved template and compared it -- see the rule in
+// CLAUDE.md.
 //
 // CUANDO SE APRUEBE UNA PLANTILLA NUEVA, su fila entra aquí. Una suite no
 // puede vigilar una plantilla de la que nunca ha oído hablar.
@@ -73,26 +74,31 @@ export const PLANTILLAS_ESPERADAS = {
   // propuesta inicial de Kapso y quedó así al aprobarse la v1. Renombrarlo
   // convertiría un cambio de pie en un cambio de integración.
   //
-  // DOS DE LAS TRES SÍ LLEVAN BOTÓN, y la primera versión de esta tabla
-  // —escrita el mismo 2026-10-15— decía que ninguna. Se corrigió abriendo la
-  // ficha de cada una en vez de darlo por supuesto, que es literalmente la
-  // regla que acababa de escribirse. Ninguno toma valores al enviar: los dos
-  // de URL apuntan a `https://app.sevenz.site` fijo.
+  // TWO OF THE THREE DO CARRY A BUTTON, and the first version of this table
+  // -- written on that same 2026-10-15 -- said none did. It was corrected by
+  // opening each template's entry instead of assuming, which is literally the
+  // rule that had just been written. None takes values at send time: both URL
+  // buttons point at a fixed `https://app.sevenz.site`.
   //
-  // NO ESTÁ CONFIRMADO QUE ESTAS DOS HAYAN ENVIADO BIEN CON SU BOTÓN. En
-  // producción, al 2026-10-15, no hay ni una fila de `cartera_summary_v2` ni
-  // de `cartera_pausada`: la v2 sustituyó a la v1 el 2026-10-14 y el cron es
-  // semanal, y nadie ha estado pausado en la ventana mirada. Lo que sí está
-  // confirmado funcionando es `cartera_attention`, que NO lleva botón. Ver
-  // `MS-42`.
+  // `cartera_summary_v2` IS NOW CONFIRMED, and this comment said the opposite
+  // for a few hours on 2026-10-15. It claimed zero rows in production; a count
+  // by template that same afternoon returned 7 rows, all `ok = true`. So a
+  // template with a FIXED URL button sends correctly when the code sends no
+  // button component -- measured, not argued. `cartera_attention`, which
+  // declares no button at all, is confirmed too: 18 of 18.
+  //
+  // `cartera_pausada` IS STILL UNCONFIRMED: zero rows ever, because nobody has
+  // been paused in the window. It is the one left where a dynamic button we do
+  // not know about would fail the whole message in silence -- and it would
+  // fail for the owner who most needs to read it. See `MS-42`.
   cartera_summary_v2: {
     cuerpo: ["customer_name", "amount_due", "overdue_clients"],
-    // URL fija «Ver mi cartera» → https://app.sevenz.site
+    // Fixed URL "Ver mi cartera" -> https://app.sevenz.site
     boton: "sin_parametros",
   },
   cartera_pausada: {
     cuerpo: ["owner_name", "amount_due", "overdue_clients"],
-    // Dos: URL fija «Ver cartera» y respuesta rápida «Reactivar cuenta».
+    // Two of them: fixed URL "Ver cartera" and quick reply "Reactivar cuenta".
     boton: "sin_parametros",
   },
   cartera_attention: {
@@ -107,12 +113,12 @@ export const PLANTILLAS_ESPERADAS = {
   // etapa (MS-38), así que no están aquí: una fila para algo que nadie manda
   // es una fila que nadie comprueba.
   //
-  // LAS DOS SON VERSIONES NUEVAS DEL 2026-10-15, y no por gusto. Kapso
-  // confirmó que una plantilla aprobada NO se edita: para corregir el botón
-  // hubo que crear `abono_confirmation_v3` y `payment_due_date_v2`. Las
-  // anteriores siguen aprobadas y sin usar — por eso NO están en esta tabla:
-  // si alguien las vuelve a mandar, que la suite no las reconozca es
-  // exactamente el aviso que hace falta.
+  // BOTH ARE NEW VERSIONS FROM 2026-10-15, and not for fun. Kapso confirmed
+  // that an approved template is NOT editable: fixing the button meant
+  // creating `abono_confirmation_v3` and `payment_due_date_v2`. The previous
+  // ones stay approved and unused -- which is why they are NOT in this table:
+  // if somebody sends them again, the suite failing to recognise them is
+  // exactly the warning that is needed.
   abono_confirmation_v3: {
     cuerpo: ["client_name", "payment_amount", "business_display", "new_balance"],
     boton: "url_suffix",
@@ -124,13 +130,14 @@ export const PLANTILLAS_ESPERADAS = {
 };
 
 /**
- * Comprueba un componente de botón contra lo que la plantilla declara.
+ * Checks a button component against what the template declares.
  *
- * Vive aquí y no dentro de cada suite porque las tres preguntan lo mismo, y
- * tres copias de esta comprobación acabarían discrepando — que es justo la
- * forma del fallo que esta función existe para cerrar.
+ * It lives here rather than inside each suite because all three ask the same
+ * question, and three copies of this check would end up disagreeing -- which
+ * is exactly the shape of the failure this function exists to close.
  *
- * Devuelve `null` si está bien, o una frase que dice qué falla.
+ * Returns `null` when fine, or a sentence saying what is wrong. That sentence
+ * is printed for the user to read, so it stays in Spanish.
  */
 export function problemaDelBoton(plantilla, componenteBoton) {
   const esperado = PLANTILLAS_ESPERADAS[plantilla];
@@ -154,9 +161,9 @@ export function problemaDelBoton(plantilla, componenteBoton) {
   if (p.type !== "text") return `parámetro de tipo ${p.type}, se esperaba text`;
   if (typeof p.text !== "string" || p.text.length < 16) return `sufijo sospechoso: ${p.text}`;
 
-  // EL FALLO DEL 2026-10-15, convertido en comprobación. Un sufijo de URL es
-  // posicional; `parameter_name` es solo del cuerpo. Con él, Meta devuelve
-  // 132018 y descarta el mensaje entero.
+  // THE 2026-10-15 FAILURE, TURNED INTO A CHECK. A URL suffix is positional;
+  // `parameter_name` belongs to the body only. With it, Meta returns 132018
+  // and discards the whole message.
   if ("parameter_name" in p) return `lleva parameter_name "${p.parameter_name}" y un sufijo de URL es posicional`;
 
   return null;

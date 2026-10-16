@@ -195,17 +195,17 @@ try {
   );
 
   const boton = (msg?.template?.components ?? []).find((c) => c.type === "button");
-  // LA FORMA DEL BOTON, NO SOLO SU CONTENIDO.
+  // THE SHAPE OF THE BUTTON, NOT JUST ITS CONTENT.
   //
-  // Hasta el 2026-10-15 esto solo miraba que el token tuviera 16 caracteres o
-  // mas, y paso en VERDE mientras produccion fallaba 12 de 12. El parametro
-  // viajaba con `parameter_name`, que vale para el cuerpo y no para el sufijo
-  // de un boton de URL, que es posicional. Meta devolvia `132018` y descartaba
-  // el mensaje entero, sin que nada se le mostrara al tendero.
+  // Until 2026-10-15 this only looked at whether the token was 16 characters
+  // or longer, and it stayed GREEN while production failed 12 of 12. The
+  // parameter travelled with `parameter_name`, which is valid for the body and
+  // not for a URL button's suffix, which is positional. Meta returned `132018`
+  // and discarded the whole message, with nothing shown to the shopkeeper.
   //
-  // La regla vive en `plantillas-esperadas.mjs` y no aqui a proposito: las
-  // tres suites preguntan lo mismo, y tres copias de esta comprobacion
-  // acabarian discrepando -- que es la forma exacta del fallo que cierra.
+  // The rule lives in `plantillas-esperadas.mjs` and not here, on purpose: the
+  // three suites ask the same question, and three copies of this check would
+  // end up disagreeing -- which is the exact shape of the failure it closes.
   const problema = problemaDelBoton(PLANTILLA, boton);
   check(
     "4d. el botón lleva el token, y con la forma que Meta acepta",
@@ -221,14 +221,15 @@ try {
 
   check("4f. el idioma es es", msg?.template?.language?.code === "es", msg?.template?.language?.code);
 
-  // 4g MIRA LA FILA GUARDADA, NO LA LLAMADA, y esa es toda la diferencia. La
-  // 4e de arriba comprueba la URL del momento; esto comprueba lo que queda
-  // escrito, que es lo unico que se puede consultar seis dias despues.
+  // 4g LOOKS AT THE STORED ROW, NOT AT THE CALL, and that is the whole
+  // difference. 4e above checks the URL at the moment of sending; this checks
+  // what stays written down, which is the only thing you can consult six days
+  // later.
   //
-  // Lo pidio el dueno el 2026-10-15 al ver el numero de duenos seleccionado en
-  // el panel de Kapso y preguntar desde cual salian los recibos. El codigo
-  // estaba bien y la respuesta hubo que argumentarla leyendo codigo, porque la
-  // tabla no guardaba el emisor. Migracion 105.
+  // The owner asked for it on 2026-10-15, after seeing the owners' number
+  // selected in Kapso's panel and asking which one the receipts went out from.
+  // The code was right, and the answer had to be argued by reading source,
+  // because the table did not record the sender. Migration 105.
   const { data: fila } = await admin
     .from("whatsapp_sends")
     .select("phone_number_id")

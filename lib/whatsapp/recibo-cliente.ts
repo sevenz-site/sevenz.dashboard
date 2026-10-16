@@ -170,7 +170,7 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
     p_ok: envio.ok,
     p_provider_message_id: envio.ok ? envio.messageId : null,
     p_error: envio.ok ? null : envio.error,
-    // Desde que numero salio de verdad (migracion 105).
+    // Which number it really went out from (migration 105).
     p_phone_number_id: envio.phoneNumberId,
   });
 
