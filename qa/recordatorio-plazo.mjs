@@ -1,6 +1,6 @@
 // SOLO LA RAMA DEV (vzqppwrwnmlbrxizskdh) — lee .env.local.
 //
-// El recordatorio de plazo: `payment_due_date`.
+// El recordatorio de plazo: `payment_due_date_v2`.
 //
 // NADA SALE A KAPSO. `fetch` se intercepta antes y se afirma que salieron
 // cero. Lo que se inspecciona es lo que Kapso HABRÍA recibido.
@@ -28,7 +28,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+import {
+  PLANTILLAS_ESPERADAS,
+  problemaDelBoton,
+  PHONE_ID_OWNERS,
+  PHONE_ID_CLIENTS,
+} from "./plantillas-esperadas.mjs";
 
 
 const env = Object.fromEntries(
@@ -77,7 +82,7 @@ const { enviarRecordatoriosDePlazo } = await import("../lib/whatsapp/recordatori
 const apagado = await enviarRecordatoriosDePlazo();
 process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
-const ESPERADO = PLANTILLAS_ESPERADAS.payment_due_date;
+const ESPERADO = PLANTILLAS_ESPERADAS.payment_due_date_v2.cuerpo;
 const PREFIJO = "QA Recordatorio ";
 
 const filas = [];
@@ -181,7 +186,7 @@ try {
     JSON.stringify(resumen),
   );
 
-  const mensajes = interceptados.filter((m) => m.template?.name === "payment_due_date");
+  const mensajes = interceptados.filter((m) => m.template?.name === "payment_due_date_v2");
   const msg = mensajes.at(-1);
   const nombresParams = (msg?.template?.components ?? [])
     .filter((c) => c.type === "body")
@@ -207,13 +212,29 @@ try {
     msg.__url.includes(PHONE_ID_CLIENTS) ? "número de clientes" : msg.__url,
   );
 
-  check("4d. el botón lleva su token", Boolean(
-    (msg?.template?.components ?? []).find((c) => c.type === "button")?.parameters?.[0]?.text,
-  ));
+  // EL BOTON, CON LA MISMA REGLA QUE EL RECIBO.
+  //
+  // Esta comprobacion decia «lleva su token» y miraba solo que hubiera texto.
+  // Paso en verde mientras la plantilla hermana fallaba 12 de 12 en
+  // produccion: el sufijo viajaba con `parameter_name`, que es del cuerpo y no
+  // de un boton de URL, y Meta descartaba el mensaje entero con `132018`.
+  // Esta plantilla tenia el mismo defecto y solo no se noto porque apenas
+  // habia disparado.
+  //
+  // La regla vive en `plantillas-esperadas.mjs` y no aqui: las tres suites
+  // preguntan lo mismo, y tres copias acabarian discrepando -- que es la forma
+  // exacta del fallo que cierra.
+  const boton = (msg?.template?.components ?? []).find((c) => c.type === "button");
+  const problema = problemaDelBoton("payment_due_date_v2", boton);
+  check(
+    "4d. el botón lleva el token, y con la forma que Meta acepta",
+    problema === null,
+    problema ?? JSON.stringify(boton),
+  );
 
   const antes = mensajes.length;
   const segunda = await enviarRecordatoriosDePlazo();
-  const despues = interceptados.filter((m) => m.template?.name === "payment_due_date").length;
+  const despues = interceptados.filter((m) => m.template?.name === "payment_due_date_v2").length;
   check(
     "5. correr el cron dos veces el mismo día no manda un segundo aviso",
     despues === antes && (segunda.omitidos.ya_enviado ?? 0) > 0,
@@ -226,7 +247,7 @@ try {
     `${interceptados.length} interceptados, 0 enviados`,
   );
 } finally {
-  await admin.from("whatsapp_sends").delete().eq("template", "payment_due_date");
+  await admin.from("whatsapp_sends").delete().eq("template", "payment_due_date_v2");
   for (const [id, tel] of creados) {
     await admin.from("movements").delete().eq("client_id", id);
     await admin.from("clients").delete().eq("id", id);
