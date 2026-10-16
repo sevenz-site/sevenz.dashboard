@@ -212,18 +212,18 @@ try {
     msg.__url.includes(PHONE_ID_CLIENTS) ? "número de clientes" : msg.__url,
   );
 
-  // EL BOTON, CON LA MISMA REGLA QUE EL RECIBO.
+  // THE BUTTON, UNDER THE SAME RULE AS THE RECEIPT.
   //
-  // Esta comprobacion decia «lleva su token» y miraba solo que hubiera texto.
-  // Paso en verde mientras la plantilla hermana fallaba 12 de 12 en
-  // produccion: el sufijo viajaba con `parameter_name`, que es del cuerpo y no
-  // de un boton de URL, y Meta descartaba el mensaje entero con `132018`.
-  // Esta plantilla tenia el mismo defecto y solo no se noto porque apenas
-  // habia disparado.
+  // This check used to say "carries its token" and looked only for some text.
+  // It stayed green while the sibling template failed 12 of 12 in production:
+  // the suffix travelled with `parameter_name`, which belongs to the body and
+  // not to a URL button, and Meta discarded the whole message with `132018`.
+  // This template had the same defect and it only went unnoticed because it
+  // had barely fired.
   //
-  // La regla vive en `plantillas-esperadas.mjs` y no aqui: las tres suites
-  // preguntan lo mismo, y tres copias acabarian discrepando -- que es la forma
-  // exacta del fallo que cierra.
+  // The rule lives in `plantillas-esperadas.mjs` and not here: the three
+  // suites ask the same question, and three copies would end up disagreeing --
+  // which is the exact shape of the failure it closes.
   const boton = (msg?.template?.components ?? []).find((c) => c.type === "button");
   const problema = problemaDelBoton("payment_due_date_v2", boton);
   check(
