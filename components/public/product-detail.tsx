@@ -336,7 +336,7 @@ export function ProductDetail({
                         className="size-4 shrink-0 accent-foreground"
                       />
                     ) : null}
-                    <CurrencyFlagIcon currency={c as "USD" | "EUR" | "USDT"} />
+                    <CurrencyFlagIcon currency={c} />
                     <span className="truncate text-sm">{ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}</span>
                   </span>
                   <span className="shrink-0 text-right text-sm tabular-nums">

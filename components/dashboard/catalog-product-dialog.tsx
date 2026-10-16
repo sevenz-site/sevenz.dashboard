@@ -965,7 +965,7 @@ function CostCurrencySelect({
           <SelectItem key={c} value={c}>
             <span className="flex items-center gap-1.5">
               {c === "OTHER" || c === "COP" ? null : (
-                <CurrencyFlagIcon currency={c as "USD" | "EUR" | "USDT"} />
+                <CurrencyFlagIcon currency={c} />
               )}
               {COST_LABEL[c] ?? c}
             </span>
@@ -1510,7 +1510,7 @@ function PriceRows({
       {inactivas.map((currency) => (
         <div key={currency} className="flex items-center justify-between gap-2">
           <Label className="flex min-w-0 shrink items-center gap-1.5 text-xs font-normal text-muted-foreground">
-            <CurrencyFlagIcon currency={currency as "USD" | "EUR" | "USDT"} />
+            <CurrencyFlagIcon currency={currency} />
             <span className="truncate">Precio {CURRENCY_LABEL[currency] ?? currency}</span>
           </Label>
           {/* EL MISMO ENVOLTORIO QUE UNA FILA ACTIVA, y esto no es cosmética:
@@ -1578,7 +1578,7 @@ function PriceRow({
           className="flex min-w-0 shrink items-center gap-1.5 text-xs font-normal text-muted-foreground"
         >
           {currency === "COP" ? null : (
-            <CurrencyFlagIcon currency={currency as "USD" | "EUR" | "VES" | "USDT"} />
+            <CurrencyFlagIcon currency={currency} />
           )}
           <span className="truncate">{label}</span>
         </Label>

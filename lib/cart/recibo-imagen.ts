@@ -123,6 +123,14 @@ precargar("USD", "/flag-usd.svg");
 precargar("EUR", "/flag-eur.svg");
 precargar("USDT", "/flag-usdt.svg");
 precargar("VES", "/flag-ves.svg");
+// COP WAS MISSING HERE TOO, until 2026-10-16. The label map above already
+// knew `COP: "Pesos"`, so the receipt named the currency correctly and drew
+// no flag beside it -- only for Colombian shops, and only on the one image a
+// client keeps and forwards. Same omission as `CurrencyFlagIcon`, found the
+// same day by walking CT-74. Two lists of flags is one too many; they are
+// left separate because this one is a canvas preload and that one is a
+// component, but a currency added to either belongs in both.
+precargar("COP", "/flag-cop.svg");
 precargar("logo", "/logo-primary.svg");
 
 function dibujarSiLista(

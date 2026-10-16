@@ -742,7 +742,7 @@ function Enviado({
               <h2 className="text-base font-semibold">
                 Resumen de compra en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
               </h2>
-              <CurrencyFlagIcon currency={bloque.currency as "USD" | "EUR" | "USDT"} />
+              <CurrencyFlagIcon currency={bloque.currency} />
             </div>
 
             <table className="w-full text-sm">
