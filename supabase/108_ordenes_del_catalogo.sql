@@ -184,6 +184,34 @@ alter table public.client_whatsapp_consents
   add constraint client_whatsapp_consents_source_check
   check (source in ('client_self', 'owner_movement_form', 'owner_import', 'owner_client_profile', 'client_order'));
 
+-- ===========================================================================
+-- 5. THE LEDGER ROW -- MISSING FROM THIS FILE UNTIL 2026-10-16
+-- ===========================================================================
+
+-- THIS FILE RAN IN DEV WITHOUT RECORDING ITSELF, and the row dev has today was
+-- typed by hand afterwards. Caught by the `qa-regression-checklist` the day
+-- before the catalogue was due to reach production, counting ledger inserts
+-- across the twenty pending migrations: this was the only one of the twenty
+-- with none.
+--
+-- WHAT IT WOULD HAVE COST, which is worse than it sounds: production would
+-- have gained both tables and NOT the key. The checklist's hard stop compares
+-- the two ledgers and blocks on any difference, so `108_ordenes_del_catalogo`
+-- would have shown up as "dev has it, production does not" on every release
+-- from then on -- a true-looking alarm about a migration that had in fact run.
+-- An alarm that always rings stops being read, which is the exact failure
+-- CLAUDE.md warns about for one-environment migrations.
+--
+-- The description below is copied CHARACTER FOR CHARACTER from the row dev
+-- already holds, so that both environments say the same thing rather than two
+-- accounts of the same migration.
+insert into public.schema_migrations (key, description)
+values (
+  '108_ordenes_del_catalogo',
+  'catalog_orders y catalog_order_items: las ordenes del catalogo publico, entregables C y D. Cada linea congela nombre e importe tal como estaban al pedir --una orden es la foto de lo acordado, no un enlace a un precio que se mueve-- y product_id lleva on delete set null para que la linea sobreviva al producto. RLS encendida y el dueno lee lo suyo; anon sin ningun permiso sobre las tablas, escribe solo por la funcion de la 109. Nuevo origen de permiso client_order, propio y no client_self: en /s/[token] el numero lo habia escrito el tendero, aqui lo teclea el visitante entero, y si algun dia hay que revocar los que entraron por esta puerta esa columna es la unica forma de distinguirlos.'
+)
+on conflict (key) do nothing;
+
 commit;
 
 -- ── verification, after running the above ───────────────────────────────
