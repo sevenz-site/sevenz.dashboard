@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { CatalogTable } from "@/components/dashboard/catalog-table";
 import { CatalogShareButton, CatalogMenu } from "@/components/dashboard/catalog-share";
@@ -56,6 +59,7 @@ export default async function ProductosPage({
     { data: catalogLink },
     country,
     rateContext,
+    ordenesSinAtender,
   ] = await Promise.all([
       supabase
         .from("products")
@@ -119,6 +123,9 @@ export default async function ProductosPage({
         .maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
+      // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
+      // `head: true` count, so it costs a plan and no rows.
+      countUnattendedOrders(supabase, user!.id),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano
@@ -201,6 +208,36 @@ export default async function ProductosPage({
           search={<CatalogSearchField />}
           filters={<CatalogFilterChips />}
         />
+        {/* THE ORDERS SECTION, inside Catálogo -- the owner's decision of
+            2026-10-16 (CT-71), which asked for BOTH surfaces: the bell and a
+            section of its own here.
+
+            IT IS SHOWN EVEN AT ZERO, on purpose. Hiding it when empty would
+            mean the one screen that answers "has anybody ordered?" only
+            exists once somebody has, so a shopkeeper wondering could never
+            check. Same reasoning as DESIGN-SYSTEM.md's rule for empty values:
+            keep the row, say it is empty. */}
+        <Link
+          href="/productos/ordenes"
+          className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2"
+        >
+          <span className="flex min-w-0 flex-col">
+            <span className="font-medium">Pedidos</span>
+            <span className="text-xs text-muted-foreground">
+              {ordenesSinAtender > 0
+                ? `${ordenesSinAtender} sin atender`
+                : "Lo que te piden desde tu enlace"}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {ordenesSinAtender > 0 ? (
+              <span className="flex size-5 items-center justify-center rounded-full bg-destructive text-[11px] font-medium text-white">
+                {ordenesSinAtender > 9 ? "9+" : ordenesSinAtender}
+              </span>
+            ) : null}
+            <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+          </span>
+        </Link>
         <CatalogTable
           loadFailed={productsError != null}
           overrides={(overrides ?? []) as PriceOverrideRow[]}

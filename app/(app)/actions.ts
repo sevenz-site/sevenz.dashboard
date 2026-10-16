@@ -112,6 +112,17 @@ export type NotificationItem =
       // volvió por otra vía — si no, el botón prometería deshacer algo que ya
       // está deshecho.
       canRestore: boolean;
+    }
+  | {
+      id: string;
+      kind: "catalog_order";
+      occurredAt: string;
+      orderId: string;
+      customerName: string;
+      // How many lines it carries. The notice says "3 productos" rather than
+      // listing them: the order's own page is one tap away and is where they
+      // belong.
+      itemCount: number;
     };
 
 const NOTIFICATION_PHOTO_SIGNED_URL_TTL_SECONDS = 300;
@@ -132,6 +143,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     { data: deletions, error: deletionsError },
     { data: hides, error: hidesError },
     { data: productHides, error: productHidesError },
+    { data: orders, error: ordersError },
   ] = await Promise.all([
     supabase
       .from("link_opens")
@@ -171,6 +183,21 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       .eq("owner_id", user.id)
       .order("occurred_at", { ascending: false })
       .limit(20),
+    // CATALOGUE ORDERS, AND NOTE WHAT IS NOT SELECTED: there is no `read_at`
+    // here, because this table has none and deliberately so.
+    //
+    // The owner decided on 2026-10-16 (CT-71) that an order's notice counts
+    // while the order is UNATTENDED, not until somebody opens the bell. So
+    // the filter is `status = 'new'` and nothing below marks these rows read:
+    // they leave this list when the shopkeeper attends the order, which is
+    // the only event that means anything here.
+    supabase
+      .from("catalog_orders")
+      .select("id, customer_name, created_at, catalog_order_items(id)")
+      .eq("owner_id", user.id)
+      .eq("status", "new")
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (opensError) console.error("getNotifications: link_opens query failed", opensError);
@@ -179,6 +206,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   if (hidesError) console.error("getNotifications: client_hides query failed", hidesError);
   if (productHidesError)
     console.error("getNotifications: product_hides query failed", productHidesError);
+  if (ordersError) console.error("getNotifications: catalog_orders query failed", ordersError);
 
   const openRows = opens ?? [];
   const importRows = imports ?? [];
@@ -225,6 +253,17 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     occurred_at: string;
     read_at: string | null;
     products: { name: string; trashed_at: string | null } | null;
+  }[];
+
+  // `catalog_order_items` IS embedded only to be counted. Selecting `id`
+  // alone keeps the payload to one column per line: the notice says how many
+  // products there are and nothing about them, because the order's own page
+  // is one tap away and is where they belong.
+  const orderRows = (orders ?? []) as unknown as {
+    id: string;
+    customer_name: string;
+    created_at: string;
+    catalog_order_items: { id: string }[] | null;
   }[];
 
   const clientIds = [
@@ -385,6 +424,18 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           canRestore: r.action === "trashed" && producto.trashed_at !== null,
         };
       }),
+    // ONE NOTICE PER ORDER, not one grouped per day -- the owner's decision of
+    // 2026-10-16. Each order is attended separately (ring the customer,
+    // prepare it), and grouping hides which is which exactly when they have
+    // to be told apart.
+    ...orderRows.map((r): NotificationItem => ({
+      id: r.id,
+      kind: "catalog_order",
+      occurredAt: r.created_at,
+      orderId: r.id,
+      customerName: r.customer_name,
+      itemCount: r.catalog_order_items?.length ?? 0,
+    })),
   ];
 
   return items
@@ -413,6 +464,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
     { data: deletions, error: deletionError },
     { data: hides, error: hideError },
     { data: productHides, error: productHideError },
+    { data: unattendedOrders, error: ordersCountError },
   ] = await Promise.all([
     supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
     supabase
@@ -429,6 +481,18 @@ export async function getUnreadNotificationCount(): Promise<number> {
       .limit(CAP),
     supabase.from("client_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
     supabase.from("product_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
+    // ORDERS COUNT BY `status`, NOT BY `read_at`, and that is the whole point
+    // of the owner's decision on 2026-10-16 (CT-71). Every other row above
+    // leaves this count when somebody opens the bell; an order leaves it when
+    // somebody ATTENDS it. Counting them the same way would show zero with
+    // orders still waiting, which is the one number this badge must never
+    // show.
+    supabase
+      .from("catalog_orders")
+      .select("id")
+      .eq("owner_id", user.id)
+      .eq("status", "new")
+      .limit(CAP),
   ]);
 
   if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
@@ -437,12 +501,15 @@ export async function getUnreadNotificationCount(): Promise<number> {
   if (hideError) console.error("getUnreadNotificationCount: client_hides query failed", hideError);
   if (productHideError)
     console.error("getUnreadNotificationCount: product_hides query failed", productHideError);
+  if (ordersCountError)
+    console.error("getUnreadNotificationCount: catalog_orders query failed", ordersCountError);
 
   return (
     (opens?.length ?? 0) +
     (imports?.length ?? 0) +
     (deletions?.length ?? 0) +
     (hides?.length ?? 0) +
-    (productHides?.length ?? 0)
+    (productHides?.length ?? 0) +
+    (unattendedOrders?.length ?? 0)
   );
 }

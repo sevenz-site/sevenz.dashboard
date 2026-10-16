@@ -411,6 +411,36 @@ Real examples from 2026-09-04, all three reported as complete before they were:
   `?nuevo=1` marker still cleared on a normal close — could have re-broken a
   bug fixed earlier the same day.
 
+### A `qa/` script runs as the service role. The owner does not.
+
+Every script under `qa/` authenticates with `SUPABASE_SERVICE_ROLE_KEY`, which
+**bypasses RLS and needs no table grant**. The shopkeeper's session has
+neither privilege. So a suite built only on that key cannot see the two things
+that most often break a screen: a policy that filters the owner's rows away,
+and a missing `grant` that refuses the table outright.
+
+This is not theoretical. On 2026-10-16 migration `108` created
+`catalog_orders`, turned RLS on, wrote a correct `owner_id = auth.uid()`
+policy — and never granted anything to `authenticated`. Every read the owner
+made died with `42501`, the Pedidos screen said *«todavía no te ha llegado
+ningún pedido»* with three real orders in the table, and **`qa:pedidos` was
+passing 14 of 14 at that exact moment**. It was found by opening the screen in
+a browser. Migration `116` is the fix.
+
+**So: any suite covering a table the owner reads or writes directly gets at
+least one check that runs as the owner.** The session is free — the magic-link
+pattern in `qa/import-libreta.mjs` (`generateLink` + `verifyOtp`, no password
+typed), then a client carrying `Authorization: Bearer <access_token>`.
+`qa/pedidos.mjs` is the worked example: it reads as the owner, and its "mark
+as attended" goes through that session too, because `update` is a separate
+grant from `select` and a suite that writes with the service key would pass
+with the button broken for everyone.
+
+A table reached **only** through `security definer` functions needs none of
+this — that is the deliberate design of `whatsapp_sends`, `usdt_p2p_rate` and
+the catalogue's own `create_catalog_order`. The rule is about tables the app
+queries directly with the owner's client.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
