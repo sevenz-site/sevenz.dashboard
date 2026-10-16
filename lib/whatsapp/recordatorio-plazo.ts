@@ -3,7 +3,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 
-// EL RECORDATORIO DE PLAZO: `payment_due_date`.
+// EL RECORDATORIO DE PLAZO: `payment_due_date_v2`.
 //
 // Sale N días antes del vencimiento más cercano, y N depende del plazo:
 //
@@ -24,7 +24,7 @@ import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 //      al guardar; un fiado subido de una libreta sí recibe su recordatorio
 //      cuando vence. Es la decisión de MS-27 y se confirmó el 2026-10-14.
 
-const PLANTILLA = "payment_due_date";
+const PLANTILLA = "payment_due_date_v2";
 
 export type ResumenRecordatorios = {
   candidatos: number;
@@ -189,6 +189,8 @@ export async function enviarRecordatoriosDePlazo(): Promise<ResumenRecordatorios
       p_ok: envio.ok,
       p_provider_message_id: envio.ok ? envio.messageId : null,
       p_error: envio.ok ? null : envio.error,
+      // Which number it really went out from (migration 105).
+      p_phone_number_id: envio.phoneNumberId,
     });
 
     if (!envio.ok) {

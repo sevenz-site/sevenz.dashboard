@@ -1,6 +1,6 @@
 // SOLO LA RAMA DEV (vzqppwrwnmlbrxizskdh) — lee .env.local.
 //
-// El recibo del cliente: `abono_confirmation_v2`.
+// El recibo del cliente: `abono_confirmation_v3`.
 //
 // NADA SALE A KAPSO. `fetch` se intercepta antes y se afirma que salieron
 // cero. Lo que se inspecciona es lo que Kapso HABRÍA recibido: los cuatro
@@ -35,7 +35,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+import {
+  PLANTILLAS_ESPERADAS,
+  problemaDelBoton,
+  PHONE_ID_OWNERS,
+  PHONE_ID_CLIENTS,
+} from "./plantillas-esperadas.mjs";
 
 
 const env = Object.fromEntries(
@@ -87,7 +92,7 @@ const { enviarReciboAlCliente } = await import("../lib/whatsapp/recibo-cliente.t
 const apagado = await enviarReciboAlCliente("00000000-0000-4000-8000-000000000000");
 process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
-const ESPERADO = PLANTILLAS_ESPERADAS.abono_confirmation_v2;
+const ESPERADO = PLANTILLAS_ESPERADAS.abono_confirmation_v3.cuerpo;
 
 const filas = [];
 function check(nombre, pasa, detalle) {
@@ -96,7 +101,7 @@ function check(nombre, pasa, detalle) {
 }
 
 const TEL = "584129900101";
-const PLANTILLA = "abono_confirmation_v2";
+const PLANTILLA = "abono_confirmation_v3";
 let clienteId = null;
 
 try {
@@ -190,10 +195,22 @@ try {
   );
 
   const boton = (msg?.template?.components ?? []).find((c) => c.type === "button");
+  // THE SHAPE OF THE BUTTON, NOT JUST ITS CONTENT.
+  //
+  // Until 2026-10-15 this only looked at whether the token was 16 characters
+  // or longer, and it stayed GREEN while production failed 12 of 12. The
+  // parameter travelled with `parameter_name`, which is valid for the body and
+  // not for a URL button's suffix, which is positional. Meta returned `132018`
+  // and discarded the whole message, with nothing shown to the shopkeeper.
+  //
+  // The rule lives in `plantillas-esperadas.mjs` and not here, on purpose: the
+  // three suites ask the same question, and three copies of this check would
+  // end up disagreeing -- which is the exact shape of the failure it closes.
+  const problema = problemaDelBoton(PLANTILLA, boton);
   check(
-    "4d. el botón lleva el token del enlace del cliente",
-    Boolean(boton) && typeof boton.parameters?.[0]?.text === "string" && boton.parameters[0].text.length >= 16,
-    JSON.stringify(boton),
+    "4d. el botón lleva el token, y con la forma que Meta acepta",
+    problema === null,
+    problema ?? JSON.stringify(boton),
   );
 
   check(
@@ -203,6 +220,27 @@ try {
   );
 
   check("4f. el idioma es es", msg?.template?.language?.code === "es", msg?.template?.language?.code);
+
+  // 4g LOOKS AT THE STORED ROW, NOT AT THE CALL, and that is the whole
+  // difference. 4e above checks the URL at the moment of sending; this checks
+  // what stays written down, which is the only thing you can consult six days
+  // later.
+  //
+  // The owner asked for it on 2026-10-15, after seeing the owners' number
+  // selected in Kapso's panel and asking which one the receipts went out from.
+  // The code was right, and the answer had to be argued by reading source,
+  // because the table did not record the sender. Migration 105.
+  const { data: fila } = await admin
+    .from("whatsapp_sends")
+    .select("phone_number_id")
+    .eq("template", PLANTILLA)
+    .limit(1)
+    .maybeSingle();
+  check(
+    "4g. la fila guardada deja constancia del numero emisor",
+    fila?.phone_number_id === PHONE_ID_CLIENTS,
+    fila?.phone_number_id ?? "sin phone_number_id — ¿corriste la migración 105 en dev?",
+  );
 
   // ── 5. El mismo abono dos veces ────────────────────────────────────────
   const antes = interceptados.length;

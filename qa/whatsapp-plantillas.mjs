@@ -38,7 +38,12 @@
 // NADA SALE A KAPSO. `fetch` se intercepta antes, y se afirma que salieron cero.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { PLANTILLAS_ESPERADAS, PHONE_ID_OWNERS, PHONE_ID_CLIENTS } from "./plantillas-esperadas.mjs";
+import {
+  PLANTILLAS_ESPERADAS,
+  problemaDelBoton,
+  PHONE_ID_OWNERS,
+  PHONE_ID_CLIENTS,
+} from "./plantillas-esperadas.mjs";
 
 
 const env = Object.fromEntries(
@@ -161,6 +166,7 @@ try {
       nombres: cuerpo.parameters.map((p) => p.parameter_name),
       idioma: m.template.language?.code,
       componentes: m.template.components.map((c) => c.type),
+      boton: m.template.components.find((c) => c.type === "button"),
     });
     console.log(`  -> ${m.template.name}: ${cuerpo.parameters.map((p) => p.parameter_name).join(", ")}`);
   }
@@ -175,21 +181,28 @@ try {
     }
     check(
       `${plantilla}: los parámetros del cuerpo, con sus nombres y en orden`,
-      envios.every((e) => e.nombres.length === esperado.length && e.nombres.every((n, i) => n === esperado[i])),
-      `esperado [${esperado.join(", ")}] · visto [${envios[0].nombres.join(", ")}]`,
+      envios.every(
+        (e) =>
+          e.nombres.length === esperado.cuerpo.length &&
+          e.nombres.every((n, i) => n === esperado.cuerpo[i]),
+      ),
+      `esperado [${esperado.cuerpo.join(", ")}] · visto [${envios[0].nombres.join(", ")}]`,
     );
     check(
       `${plantilla}: idioma es`,
       envios.every((e) => e.idioma === "es"),
       envios[0].idioma,
     );
-    // Ninguna de las tres de dueño lleva sufijo variable en su botón. Mandar un
-    // componente de botón a una plantilla que no lo declara la hace fallar
-    // igual que un parámetro con el nombre cambiado.
+    // None of the three owner templates takes a button parameter, and that is
+    // now read from the inventory instead of being assumed here. Sending a
+    // button component to a template that declares none makes it fail just as
+    // a renamed parameter would -- which is exactly what happened to the
+    // client ones on 2026-10-15, from the opposite direction.
     check(
-      `${plantilla}: no se manda componente de botón`,
-      envios.every((e) => !e.componentes.includes("button")),
-      envios[0].componentes.join(" + "),
+      `${plantilla}: el botón, o su ausencia, es el que la plantilla declara`,
+      envios.every((e) => problemaDelBoton(plantilla, e.boton) === null),
+      problemaDelBoton(plantilla, envios[0].boton) ??
+        `declara ${esperado.boton ?? "ninguno"} · visto ${envios[0].componentes.join(" + ")}`,
     );
   }
 

@@ -69,9 +69,13 @@ function apiKey(): string {
 
 export type ParametroPlantilla = { nombre: string; texto: string };
 
+// `phoneNumberId` travels back on BOTH branches on purpose. It is the id this
+// call really put in the URL, not one recomputed from the audience, and it is
+// what gets written to `whatsapp_sends` (migration 105). A failed send is
+// exactly when you want to know which number it failed from.
 export type ResultadoKapso =
-  | { ok: true; messageId: string | null }
-  | { ok: false; error: string };
+  | { ok: true; messageId: string | null; phoneNumberId: string }
+  | { ok: false; error: string; phoneNumberId: string };
 
 // `to` va en dígitos con prefijo de país y SIN `+`, que es exactamente como
 // `owners.whatsapp` y `clients.whatsapp` lo guardan ya. No hay conversión que
@@ -100,24 +104,35 @@ export async function enviarPlantilla(opciones: {
     },
   ];
 
+  // THE URL SUFFIX TRAVELS WITHOUT A NAME, AND THAT COST 12 SENDS AND TWO WEEKS.
+  //
+  // The body uses `parameter_format: NAMED` and its parameters DO carry
+  // `parameter_name`. A URL button's suffix is POSITIONAL and does not, even
+  // when the body is named. Confirmed in writing by Kapso on 2026-10-15,
+  // after Meta rejected 12 of 12 receipts with
+  // `132018: Button at index 0 of type Url does not require parameters`.
+  //
+  // `nombre` is still required by the type but does NOT travel: it documents,
+  // at the call site, that this text is the template's `{{1}}` -- which would
+  // otherwise be a loose string with nothing saying what it stands for.
   if (opciones.parametroBoton) {
     componentes.push({
       type: "button",
       sub_type: "url",
       index: "0",
-      parameters: [
-        {
-          type: "text",
-          parameter_name: opciones.parametroBoton.nombre,
-          text: opciones.parametroBoton.texto,
-        },
-      ],
+      parameters: [{ type: "text", text: opciones.parametroBoton.texto }],
     });
   }
 
+  // RESOLVED ONCE AND REUSED. Calling `phoneIdFor` for the URL and again when
+  // returning the result would leave room for the recorded number not to be
+  // the one actually used -- which is exactly what the column exists to rule
+  // out.
+  const phoneNumberId = phoneIdFor(opciones.audience);
+
   let respuesta: Response;
   try {
-    respuesta = await fetch(`${BASE}/${phoneIdFor(opciones.audience)}/messages`, {
+    respuesta = await fetch(`${BASE}/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         "X-API-Key": apiKey(),
@@ -140,13 +155,17 @@ export async function enviarPlantilla(opciones: {
   } catch (error) {
     // Red caída, DNS, timeout. El texto se guarda en whatsapp_sends.error y no
     // sale a ninguna respuesta HTTP.
-    return { ok: false, error: error instanceof Error ? error.message : "Error de red." };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Error de red.",
+      phoneNumberId,
+    };
   }
 
   const cuerpo = await respuesta.text();
 
   if (!respuesta.ok) {
-    return { ok: false, error: `HTTP ${respuesta.status}: ${cuerpo.slice(0, 500)}` };
+    return { ok: false, error: `HTTP ${respuesta.status}: ${cuerpo.slice(0, 500)}`, phoneNumberId };
   }
 
   // El id del mensaje es informativo: sirve para rastrear una entrega con
@@ -154,8 +173,8 @@ export async function enviarPlantilla(opciones: {
   // debe contarse como fallido solo porque no encontramos el id.
   try {
     const json = JSON.parse(cuerpo) as { messages?: { id?: string }[] };
-    return { ok: true, messageId: json.messages?.[0]?.id ?? null };
+    return { ok: true, messageId: json.messages?.[0]?.id ?? null, phoneNumberId };
   } catch {
-    return { ok: true, messageId: null };
+    return { ok: true, messageId: null, phoneNumberId };
   }
 }

@@ -3,7 +3,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 
-// EL RECIBO DEL CLIENTE: `abono_confirmation_v2`.
+// EL RECIBO DEL CLIENTE: `abono_confirmation_v3`.
 //
 // Sale cuando el tendero registra un abono. Es el PRIMER mensaje que Sevenz le
 // manda a un cliente final, y se eligió a propósito que fuera este y no un
@@ -127,7 +127,7 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
   // pago.
   const { data: reserva, error: errorReserva } = await supabase.rpc("whatsapp_send_begin", {
     p_owner_id: objetivo.owner_id,
-    p_template: "abono_confirmation_v2",
+    p_template: "abono_confirmation_v3",
     p_period_key: objetivo.movement_id,
     p_audience: "client",
     p_recipient: objetivo.phone,
@@ -155,7 +155,7 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
   const envio = await enviarPlantilla({
     audience: "client",
     to: objetivo.phone,
-    plantilla: "abono_confirmation_v2",
+    plantilla: "abono_confirmation_v3",
     parametrosCuerpo: [
       { nombre: "client_name", texto: objetivo.client_name },
       { nombre: "payment_amount", texto: formatear(Number(objetivo.amount), objetivo.currency) },
@@ -170,6 +170,8 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
     p_ok: envio.ok,
     p_provider_message_id: envio.ok ? envio.messageId : null,
     p_error: envio.ok ? null : envio.error,
+    // Which number it really went out from (migration 105).
+    p_phone_number_id: envio.phoneNumberId,
   });
 
   if (!envio.ok) {
