@@ -45,6 +45,8 @@ import {
   formatAmountForInput,
   priceFromCost,
   type BolivarRates,
+  isSaleCurrencyLocked,
+  withoutLockedSaleCurrencies,
   type CostCurrency,
   type PriceCurrency,
   type PriceTier,
@@ -226,8 +228,18 @@ export function CatalogProductDialog({
   // 35 escrito encima.
   const [monedaSinTasa, setMonedaSinTasa] = useState(false);
 
-  const [currencies, setCurrencies] =
-    useState<Record<PriceTier, PriceCurrency[]>>(initialCurrencies);
+  // LAS MONEDAS BLOQUEADAS SE CAEN AL CARGAR, no solo al anadir (CT-79). Un
+  // producto que ya tenga USDT -- en dev hay dos -- se abre sin ella, y al
+  // guardar deja de tenerla. Es lo que "bloqueada" tiene que significar: si
+  // siguiera editable, el tendero podria mantener vivo un precio que el
+  // catalogo publicaria y que ninguna orden podria registrarse.
+  //
+  // Su base nunca se cae, por `withoutLockedSaleCurrencies`: eso repreciaria
+  // el producto en silencio en vez de ocultarle una moneda.
+  const [currencies, setCurrencies] = useState<Record<PriceTier, PriceCurrency[]>>({
+    retail: withoutLockedSaleCurrencies(initialCurrencies.retail),
+    wholesale: withoutLockedSaleCurrencies(initialCurrencies.wholesale),
+  });
 
   // LA BASE DE CADA ESCALÓN ES LA PRIMERA DE SU LISTA, y ese contrato lo
   // comparte con `currenciesOf` y con `TierSection`. Dos listas, dos bases:
@@ -1402,7 +1414,8 @@ function PriceRows({
     );
   }
 
-  const inactivas = SELLABLE.filter((c) => !currencies.includes(c));
+  // Lo que todavia se puede anadir. Las bloqueadas no estan (CT-79).
+  const inactivas = SELLABLE.filter((c) => !currencies.includes(c) && !isSaleCurrencyLocked(c));
   const enBolivares = (amount: number | null, currency: PriceCurrency) =>
     amount == null ? null : priceIn("VES", { amount, currency }, rates).amount;
 

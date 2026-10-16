@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { parseAmount } from "@/lib/products/price";
+import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 
 export type ProductResult = { error: string | null; id?: string };
@@ -160,6 +160,30 @@ function validate(input: ProductInput): { error: string } | Checked {
   }
   if (currencies.wholesale.length === 0) {
     return { error: "Deja al menos una moneda en el precio al mayor." };
+  }
+
+  // THE LOCK IS REFUSED HERE, NOT FILTERED (CT-79).
+  //
+  // `SELLABLE` above is what the schema allows; this is what is temporarily
+  // off. The dialog already drops a locked currency when it loads a product
+  // and hides it from the "add" menu, so a normal save never reaches this.
+  // What reaches it is a request built by hand -- and the one who would build
+  // it is the shopkeeper with his own session, which is exactly why a lock
+  // that lives only in a menu is not a lock.
+  //
+  // REFUSING AND NOT FILTERING is the decision worth keeping: filtering a
+  // list whose FIRST entry is locked would move the base to the next currency
+  // and leave the stored number meaning something else -- the product silently
+  // repriced. An error says what happened; a silent rebase does not.
+  for (const tier of ["retail", "wholesale"] as PriceTier[]) {
+    if (currencies[tier].some(isSaleCurrencyLocked)) {
+      return {
+        error:
+          tier === "retail"
+            ? "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al detal."
+            : "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al mayor.",
+      };
+    }
   }
   const base: Record<PriceTier, PriceCurrency> = {
     retail: currencies.retail[0],

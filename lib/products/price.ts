@@ -60,6 +60,50 @@ export type PriceInCurrency = {
 // es donde cae lo que solo se calcula.
 export const VE_PRICE_CURRENCIES: PriceCurrency[] = ["USD", "EUR", "USDT", "VES"];
 
+// TEMPORARILY LOCKED SALE CURRENCIES -- CT-79, and this is the whole lock.
+//
+// WHY IT EXISTS. `catalog_order_items.currency` accepts USDT (migration 108)
+// while `movements.currency` is `check (currency in ('USD','EUR'))` (migration
+// 025). With a USDT sale price published, a client could order in a currency
+// the money ledger cannot store, and the shopkeeper would be left holding an
+// order he cannot register. The owner decided on 2026-10-16 to hide it rather
+// than remove it, so the catalogue can ship to production before the third
+// ledger exists.
+//
+// COST IN USDT IS NOT LOCKED, at the owner's request the same day: USDT stays
+// as a cost currency for margin, and the rate strip that already ships in
+// production keeps showing the USDT price. So the app shows a USDT rate and
+// takes a USDT cost while refusing a USDT sale price. That is inconsistent on
+// screen, deliberately, and it is written here so it does not read as a bug.
+//
+// TO UNDO: empty this array. Nothing else. It is read by the product dialog
+// (what can be added, and what an existing product can still edit) and by the
+// product server action, which refuses it -- because a lock that lives only in
+// a menu is not a lock: the server action took whatever the form sent. Undo it
+// only AFTER `movements` can hold USDT, never before and not at the same time.
+export const SALE_CURRENCIES_LOCKED: PriceCurrency[] = ["USDT"];
+
+export function isSaleCurrencyLocked(currency: PriceCurrency): boolean {
+  return SALE_CURRENCIES_LOCKED.includes(currency);
+}
+
+// THE FIRST ONE IS NEVER DROPPED, and that is the point of this helper rather
+// than a plain `filter`. Index 0 is that tier's base -- the currency its price
+// is actually stored in, by `currenciesOf`'s contract -- so removing it would
+// not hide a currency, it would REPRICE the product: the same number, read as
+// a different currency, with nothing on screen saying so. That is the worst
+// failure this area can produce, and it is why the lock is expressed as "drop
+// the extras" instead of "drop the locked ones".
+//
+// Measured in dev on 2026-10-16 before writing this: of 11 live products, 2
+// carry USDT (`Alicate`, `Casco`) and ZERO have it as a base, with zero prices
+// pinned in USDT. So the case this guard protects is unreachable today -- it
+// is here because "unreachable today" is exactly what the per-tier base work
+// of migration 114 turned into a real bug the week before.
+export function withoutLockedSaleCurrencies(list: PriceCurrency[]): PriceCurrency[] {
+  return list.filter((currency, i) => i === 0 || !isSaleCurrencyLocked(currency));
+}
+
 // Bolívares por una unidad de `currency`. 1 para el propio bolívar.
 function bolivaresPorUnidad(currency: PriceCurrency, rates: BolivarRates): number | null {
   switch (currency) {

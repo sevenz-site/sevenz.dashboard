@@ -32,6 +32,9 @@ import {
   marginFromPrice,
   parseAmount,
   formatAmountForInput,
+  SALE_CURRENCIES_LOCKED,
+  isSaleCurrencyLocked,
+  withoutLockedSaleCurrencies,
 } from "../lib/products/price.ts";
 
 const filas = [];
@@ -184,6 +187,79 @@ for (const n of IDA_Y_VUELTA) {
     parseAmount(formatAmountForInput(n)) === n,
   );
 }
+
+// ── 9. EL CANDADO DEL PRECIO EN USDT ──────────────────────────────────────
+//
+// `CT-79`. Es lógica pura, así que se puede probar sin base de datos y sin
+// sesión del tendero — y eso importa aquí más que de costumbre: la ficha de
+// producto está detrás de login, así que esta sección es lo ÚNICO del candado
+// que se puede comprobar corriéndolo. Lo que no cubre se dice en el informe.
+//
+// LO QUE ESTAS COMPROBACIONES IMPIDEN, que no es que la lista salga bonita:
+// el catálogo acepta una orden en USDT (`catalog_order_items`, migración 108)
+// y `movements` no (migración 025). Si el candado se cayera sin que nadie se
+// enterara, un cliente pediría en una moneda que el libro del dinero no sabe
+// guardar y el tendero se quedaría con un pedido que no puede registrar.
+check(
+  "9a. USDT está bloqueada hoy",
+  isSaleCurrencyLocked("USDT"),
+  JSON.stringify(SALE_CURRENCIES_LOCKED),
+);
+check(
+  "9b. y el dólar y el euro NO lo están",
+  !isSaleCurrencyLocked("USD") && !isSaleCurrencyLocked("EUR"),
+);
+
+check(
+  "9c. una lista normal no se toca",
+  JSON.stringify(withoutLockedSaleCurrencies(["USD", "EUR"])) === JSON.stringify(["USD", "EUR"]),
+);
+check(
+  "9d. USDT secundaria se cae",
+  JSON.stringify(withoutLockedSaleCurrencies(["USD", "EUR", "USDT"])) ===
+    JSON.stringify(["USD", "EUR"]),
+  "es el caso de `Casco` en dev",
+);
+check(
+  "9e. y se cae también cuando es la única extra",
+  JSON.stringify(withoutLockedSaleCurrencies(["EUR", "USDT"])) === JSON.stringify(["EUR"]),
+  "es el caso del mayor de `Alicate` en dev",
+);
+
+// 9f ES LA COMPROBACIÓN QUE DE VERDAD PROTEGE DINERO, y la razón de que el
+// candado no sea un `filter` a secas. El primer elemento es la BASE del
+// escalón: la moneda en la que el precio está guardado. Quitarla no ocultaría
+// una moneda, REPRECIARÍA el producto — el mismo número leído como otra
+// moneda, sin nada en pantalla que lo diga.
+//
+// Hoy ningún producto de dev tiene USDT como base (medido el 2026-10-16: 0 de
+// 11), así que esto vigila un caso que no existe. Se escribe porque el trabajo
+// de bases por escalón de la migración `114` convirtió «no existe» en un bug
+// real la semana anterior.
+check(
+  "9f. la BASE no se cae nunca, aunque esté bloqueada",
+  JSON.stringify(withoutLockedSaleCurrencies(["USDT", "USD"])) ===
+    JSON.stringify(["USDT", "USD"]),
+  "si se cayera, el precio guardado en USDT pasaría a leerse como dólares",
+);
+check(
+  "9g. una lista de una sola moneda bloqueada se queda entera",
+  JSON.stringify(withoutLockedSaleCurrencies(["USDT"])) === JSON.stringify(["USDT"]),
+  "la acción de servidor la rechaza con un error; no la vacía en silencio",
+);
+check(
+  "9h. una lista vacía sigue vacía",
+  JSON.stringify(withoutLockedSaleCurrencies([])) === JSON.stringify([]),
+);
+
+// EL DÍA QUE SE DESTAPE (paso 13 del plan del 2026-10-16), esta comprobación
+// es la que debe empezar a fallar. Su mensaje dice qué hacer, para que quien
+// la vea en rojo no la "arregle" borrándola.
+check(
+  "9i. el candado sigue puesto: SALE_CURRENCIES_LOCKED tiene exactamente USDT",
+  SALE_CURRENCIES_LOCKED.length === 1 && SALE_CURRENCIES_LOCKED[0] === "USDT",
+  "si esto falla porque se vació a propósito, quita esta comprobación y la 9a, y cierra CT-79",
+);
 
 const fallos = filas.filter((f) => !f.pasa).length;
 console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);
