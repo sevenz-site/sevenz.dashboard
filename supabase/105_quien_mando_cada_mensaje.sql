@@ -20,10 +20,19 @@
 -- the URL. Recomputing it from the audience here would re-derive the very
 -- thing under suspicion, and would agree with itself even if routing broke.
 --
--- THIS DOES NOT BACKFILL. The 12 rows already in production stay null
--- forever: nothing recorded it at the time, and inventing a value from today's
--- routing would be a guess written as if it were a record. Null means "we did
--- not know", which is the truth about those rows.
+-- THIS DOES NOT BACKFILL. The rows already in production stay null forever:
+-- nothing recorded it at the time, and inventing a value from today's routing
+-- would be a guess written as if it were a record. Null means "we did not
+-- know", which is the truth about those rows.
+--
+-- HOW MANY ROWS, because this comment got it wrong first. It said 12, which
+-- was the number of rejected client receipts someone had quoted from memory.
+-- Counted in production on 2026-10-15, right after this migration ran, the
+-- table held 91: 46 `abono_confirmation_v2` to clients (all 46 rejected, none
+-- delivered), 18 `cartera_attention`, 20 `cartera_summary` and 7
+-- `cartera_summary_v2`, all 45 of those delivered. The ledger description
+-- below still says 12 and is wrong in the same way; correcting a stored value
+-- needs its own statement, which is why the number is set straight here.
 
 begin;
 

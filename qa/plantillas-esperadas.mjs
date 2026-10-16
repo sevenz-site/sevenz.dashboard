@@ -80,12 +80,17 @@ export const PLANTILLAS_ESPERADAS = {
   // rule that had just been written. None takes values at send time: both URL
   // buttons point at a fixed `https://app.sevenz.site`.
   //
-  // IT IS NOT CONFIRMED THAT THESE TWO HAVE EVER SENT CORRECTLY WITH THEIR
-  // BUTTON. In production, as of 2026-10-15, there is not a single row for
-  // `cartera_summary_v2` or `cartera_pausada`: v2 replaced v1 on 2026-10-14,
-  // the cron is weekly, and nobody has been paused inside the window looked
-  // at. What IS confirmed working is `cartera_attention`, which carries NO
-  // button. See `MS-42`.
+  // `cartera_summary_v2` IS NOW CONFIRMED, and this comment said the opposite
+  // for a few hours on 2026-10-15. It claimed zero rows in production; a count
+  // by template that same afternoon returned 7 rows, all `ok = true`. So a
+  // template with a FIXED URL button sends correctly when the code sends no
+  // button component -- measured, not argued. `cartera_attention`, which
+  // declares no button at all, is confirmed too: 18 of 18.
+  //
+  // `cartera_pausada` IS STILL UNCONFIRMED: zero rows ever, because nobody has
+  // been paused in the window. It is the one left where a dynamic button we do
+  // not know about would fail the whole message in silence -- and it would
+  // fail for the owner who most needs to read it. See `MS-42`.
   cartera_summary_v2: {
     cuerpo: ["customer_name", "amount_due", "overdue_clients"],
     // Fixed URL "Ver mi cartera" -> https://app.sevenz.site
