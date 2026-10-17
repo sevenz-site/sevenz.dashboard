@@ -31,7 +31,16 @@ export async function updateSession(request: NextRequest) {
     // curl for testing) calls these with no session cookie at all, so they
     // must be exempt from the redirect-to-login check below. Each route
     // still enforces its own secret check and returns 401 on its own.
-    request.nextUrl.pathname.startsWith("/api/cron/");
+    request.nextUrl.pathname.startsWith("/api/cron/") ||
+    // El aviso de "Contactar vía WhatsApp" de /s/[token], que lo manda el
+    // CLIENTE y por tanto nunca trae sesión. Sin esta línea el proxy lo
+    // redirige a /login con un 307 y el evento no llega nunca — el mismo
+    // tropiezo que /c/ documenta justo arriba, y que falla igual de callado:
+    // la petición "sale" del navegador y nadie la cuenta.
+    //
+    // La ruta no se fía de que esto la proteja: solo admite un token y emite
+    // un nombre de evento fijo. Ver app/api/share-contact/route.ts.
+    request.nextUrl.pathname === "/api/share-contact";
 
   // A public route's decision doesn't depend on who is asking, so skip the
   // session lookup entirely rather than paying for an answer nothing reads.

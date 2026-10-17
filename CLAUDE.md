@@ -478,6 +478,48 @@ dialogs mounted, duplicate tour markers).
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
 
+## Todo evento de analítica documenta su pregunta de negocio
+
+**Un evento sin una pregunta escrita al lado es una columna que nadie va a
+mirar.** Pedido por el dueño el 2026-10-16, al encargar el primero que nació
+así: *«documenta la business question en el código del evento, agrega como
+norma en claude que todos los eventos deben documentar su business question»*.
+
+La regla, entera: **cada `trackServer(...)` y cada `track(...)` nuevo lleva,
+pegado en el código, la pregunta de negocio que contesta** — en las palabras
+del dueño cuando las haya, entre comillas y con su fecha. No «qué mide», que
+se deduce del nombre: **qué decisión cambia según la respuesta.**
+
+El ejemplo es el primero que se escribió así, `Business Contacted On WhatsApp`
+en `app/api/share-contact/route.ts`:
+
+> *«¿Con cuál frecuencia los clientes contactan al dueño del negocio a través
+> del botón de WhatsApp?»* — y debajo, lo que se hace con cada respuesta: si
+> casi todos escriben, la pantalla no está contestando lo que venían a buscar
+> y hay que ir a leer qué preguntan; si casi nadie escribe, está haciendo su
+> trabajo y el botón es una red de seguridad.
+
+**Por qué esto y no una hoja aparte.** Un documento de eventos envejece sin
+avisar: el evento se renombra, se deja de enviar o cambia de propiedades, y la
+hoja sigue describiendo el de antes. Pegado al código, lo lee quien lo va a
+tocar, sin buscarlo — que es la misma razón que separa un comentario del
+mensaje de un commit, más arriba en este archivo.
+
+**Y vale igual para los que ya existen.** No hay que volver atrás a
+documentarlos todos de golpe, pero el día que se toque uno —se renombre, se le
+añada una propiedad, se mueva de sitio— se le escribe su pregunta entonces.
+
+### Lo que la pregunta tiene que dejar claro, además de sí misma
+
+- **Bajo qué perfil se archiva.** Mixpanel aquí guarda todo bajo el id del
+  DUEÑO. Un evento que nace en una pantalla del cliente —`/s/[token]`,
+  `/c/[token]`— no tiene a quién atribuirlo sin resolverlo en el servidor, y
+  esa resolución es parte de la decisión, no un detalle de implementación.
+- **Si se puede perder, y cuánto.** Un evento que manda el navegador del
+  cliente es aproximado por diseño: hay un apartado entero más abajo sobre lo
+  que iOS se niega a hacer. Decir «este número es un suelo, no un recuento» en
+  el código evita que alguien lo presente como exacto en seis meses.
+
 ## Every requirement must account for iPhone
 
 Sevenz owners work from their phones, and a large share of those are
