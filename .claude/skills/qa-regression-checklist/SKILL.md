@@ -63,6 +63,38 @@ path in both, in production (`CT-35`).
   this section has ever had was found the same way — by someone touching the
   app, not by someone re-reading the list.
 
+### A fiado agreed in cuotas — from the release that ships migration `118` on
+
+**Run `npm run qa:cuotas` from `dashboard/`. It takes seconds, writes only to
+dev and cleans up after itself.** Seventeen checks: that a charge with no
+cuotas is judged exactly as before, that "3 cuotas en 30 días" falls due every
+10, that **half a cuota does not refresh the deadline**, that the database
+refuses cuotas without a plazo, that a Colombian owner (whose currency is
+`null`) splits too, and that the owner's and the client's WhatsApp both count
+the cuota's deadline rather than the end of the term.
+
+Then, in a browser and **named by viewport in the report**:
+
+- Register a fiado **in cuotas** from both forms. There are two, and they post
+  to different server actions: "Agregar fiado" on a client's page, and
+  "Registrar cliente nuevo" from Inicio → Agregar movimiento. The second one
+  shipped without the field once already — see CLAUDE.md's rule about a field
+  entering through every door of its action.
+- Open the movement's card and confirm the **table of dates** is there, that
+  the amounts add up to the charge, and that nothing scrolls sideways at 375px.
+- Open the same movement from the **client's shared link** (`/s/[token]`). It
+  reads `get_shared_balance()`, not `movements`, so it can show the cuotas only
+  because migration `121` names the column — a release that ships `118` without
+  `121` leaves the client's card silently missing them.
+
+**Why this is its own block and not a line in the list above**: a fiado in
+cuotas walks the same money path as any other, so every check above passes with
+it broken. What cuotas change is *when* the ledger says somebody is overdue —
+and that answer is read by the badge, by the owner's weekly WhatsApp and by the
+client's reminder, each through a different function. They already drifted apart
+once, on 2026-10-16, between `118` and the two WhatsApp functions; migration
+`119` is that fix, and `qa:cuotas` check 10 is what would catch it next time.
+
 ## 3. Per-currency (VE owner) flows
 
 - New movement (manual entry, "Registrar movimiento"): `currency` actually
