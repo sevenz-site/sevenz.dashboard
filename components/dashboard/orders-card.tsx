@@ -82,8 +82,14 @@ export function OrdersCard({
           aria-hidden="true"
         />
         {place === "inicio" ? (
+          // THE EMPTY LINE NAMES THE CATALOGUE, and only here. The owner's
+          // wording, 2026-10-16. On Inicio this card arrives with no context
+          // around it -- the sections above and below are money and the
+          // calculator -- so it has to say where an order would come from.
+          // Inside Catálogo the reader is already in it, and the same
+          // sentence there would be explaining a screen by its own name.
           <span className="truncate text-xs leading-4 text-primary">
-            {unattended > 0 ? `${unattended} sin atender` : "Lo que te piden desde tu enlace"}
+            {unattended > 0 ? `${unattended} sin atender` : "Lo que piden desde tu catálogo"}
           </span>
         ) : (
           <span className="flex min-w-0 flex-col justify-center">
