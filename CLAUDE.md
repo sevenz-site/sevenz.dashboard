@@ -441,6 +441,37 @@ this — that is the deliberate design of `whatsapp_sends`, `usdt_p2p_rate` and
 the catalogue's own `create_catalog_order`. The rule is about tables the app
 queries directly with the owner's client.
 
+### Una función puede estar redefinida más abajo: lee la ÚLTIMA
+
+En este repo las funciones de Postgres se reescriben con `create or replace`
+en migraciones sucesivas, así que **el mismo nombre está escrito varias veces
+y solo la última cuenta**. `get_oldest_unpaid_charge` vive en la `017`, en la
+`021` y en la `025`, y las tres son definiciones completas y distintas.
+
+El problema es que `grep` las devuelve **en orden de archivo, con la más vieja
+arriba**. Leer la primera y dar por hecho que es la que corre es un diagnóstico
+que sale perfectamente razonado y perfectamente falso.
+
+**Qué costó, el 2026-10-16**: se escribió la ficha `CT-78` —«el reparto de
+abonos no mira la moneda, un fiado en dólares lo puede pagar un abono en
+euros»— leyendo la `021`, donde es verdad. La `025` ya lo había arreglado un
+año antes. La ficha entró en `PENDIENTES.md` con su explicación en cristiano,
+su peor escenario y su «es un defecto de HOY, en producción», pasó a ser el
+**paso 2** del orden de despliegues del día siguiente, y de ella colgaba la
+dependencia que colocaba el USDT después. Nada de eso era cierto. Se cayó al
+ir a construirlo y montar el caso contra dev, que tardó dos minutos.
+
+**La regla, entonces:**
+
+1. Antes de diagnosticar nada sobre una función, `grep` por **todas** sus
+   definiciones y leer la de número más alto.
+2. Y cuando el diagnóstico va a decidir trabajo —una ficha, un orden de
+   despliegues, una migración— **comprobarlo contra la base**, no contra el
+   repo. Montar el caso con datos de prueba en dev y mirar qué contesta cuesta
+   minutos y es la única prueba que no depende de haber leído el archivo
+   correcto. Es la misma regla que ya está más arriba para las suites de `qa/`:
+   al menos un control tiene que mirar la realidad exterior.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
