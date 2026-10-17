@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -115,13 +116,28 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="flex flex-col gap-4">
-      <Link
-        href="/productos/ordenes"
-        className="flex items-center gap-1 text-sm text-muted-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Pedidos
-      </Link>
+      {/* THE SAME BACK BAR AS NOTIFICACIONES, at the owner's request on
+          2026-10-16: he put the two headers side by side and this screen was
+          the odd one. Flush to the top and edge to edge -- the negative
+          margins cancel `main`'s `p-4` -- with the chevron alone and a rule
+          under it. `/import`, `/profile` and `/notificaciones` carry the
+          identical row.
+
+          WITHOUT THEIR `sm:hidden`, AND THAT IS THE ONE DIFFERENCE. Those
+          three hide it from `sm` up because the app header comes back and
+          would be a second bar. It does not come back here: `app-header.tsx`
+          lists `/productos` under `bringsItsOwnDarkHeader`, which is every
+          width and not just the phone. Copying the `sm:hidden` would leave
+          this screen with no way back on a laptop -- and `/productos/ordenes`
+          is not in the sidebar, so it would take two clicks through
+          Catálogo. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3">
+        <Button variant="ghost" size="icon" asChild className="-ml-2">
+          <Link href="/productos/ordenes" aria-label="Volver a Pedidos">
+            <ChevronLeft className="size-5" />
+          </Link>
+        </Button>
+      </div>
 
       <h1 className="text-2xl font-semibold">{pedido.customer_name}</h1>
 
