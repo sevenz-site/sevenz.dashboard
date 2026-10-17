@@ -482,8 +482,11 @@ async function MovementHistory({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>
+      {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo pueda
+          ir a su derecha, en la misma fila. La tipografía se queda aquí: las
+          dos pantallas que usan esa lista titulan distinto. */}
       <MovementHistoryList
+        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>}
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}

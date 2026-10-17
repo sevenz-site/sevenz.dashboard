@@ -408,8 +408,14 @@ export default async function SharedBalancePage({
       />
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList movements={movements} ledger={ledger} compartir={compartir} />
+        {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
+            pueda ir a su derecha, en la misma fila. */}
+        <MovementHistoryList
+          titulo={<h2 className="text-sm font-medium text-muted-foreground">Historial</h2>}
+          movements={movements}
+          ledger={ledger}
+          compartir={compartir}
+        />
         {!showAll && shared.movement_total > movements.length ? (
           <div className="flex flex-col items-center gap-2 pt-1">
             <p className="text-xs text-muted-foreground">

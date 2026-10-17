@@ -10,6 +10,8 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
+import { FilterChip } from "@/components/dashboard/client-filters";
+import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -39,29 +41,109 @@ type SharedMovement = {
 
 const PAGE_SIZE = 10;
 
+
+// EL FILTRO POR TIPO, pedido por el dueño el 2026-10-16: "Todos", "Fiado" y
+// "Abono", a la derecha del rótulo "Historial". Gemelo del de la lista del
+// tendero (`components/dashboard/movement-history-list.tsx`), y en dos copias
+// a propósito: esta lista es la que ve el CLIENTE, con sus propios tipos y su
+// propio contrato de datos, y juntarlas obligaría a una sola forma para dos
+// pantallas que ya se han separado antes.
+const TIPOS = [
+  { value: "todos", label: "Todos" },
+  { value: "charge", label: "Fiado" },
+  { value: "payment", label: "Abono" },
+] as const;
+
+type TipoFiltro = (typeof TIPOS)[number]["value"];
+
+function FiltroDeTipo({
+  tipo,
+  setTipo,
+}: {
+  tipo: TipoFiltro;
+  setTipo: (v: TipoFiltro) => void;
+}) {
+  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todos";
+  return (
+    <FilterChip label={tipo === "todos" ? "Tipo" : etiqueta} active={tipo !== "todos"}>
+      {(close) => (
+        <div className="flex flex-col gap-1">
+          {TIPOS.map((opt) => (
+            <Button
+              key={opt.value}
+              type="button"
+              variant={tipo === opt.value ? "secondary" : "ghost"}
+              size="sm"
+              className="justify-start"
+              onClick={() => {
+                setTipo(opt.value);
+                close();
+              }}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+      )}
+    </FilterChip>
+  );
+}
+
 export function MovementHistoryList({
   movements,
   ledger = null,
   compartir = null,
+  titulo = null,
 }: {
   movements: SharedMovement[];
   ledger?: LedgerDisplay | null;
   // Aqui el enlace sale de la direccion que el cliente ya tiene abierta: pedir
   // uno al servidor solo responde a un dueño con sesion.
   compartir?: DatosParaCompartir | null;
+  // El rótulo de la sección, para poder poner el filtro a su derecha.
+  titulo?: React.ReactNode;
 }) {
   const [page, setPage] = useState(1);
+  const [tipo, setTipo] = useState<TipoFiltro>("todos");
+
+  const visibles = tipo === "todos" ? movements : movements.filter((m) => m.type === tipo);
+
+  // La cabecera se pinta siempre: un filtro que no deja nada no puede
+  // llevarse por delante el control que sirve para deshacerlo.
+  const cabecera = titulo ? (
+    <div className="flex items-center justify-between gap-3">
+      {titulo}
+      {movements.length > 0 ? <FiltroDeTipo tipo={tipo} setTipo={setTipo} /> : null}
+    </div>
+  ) : null;
 
   if (movements.length === 0) {
-    return <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>;
+    return (
+      <div className="flex flex-col gap-2">
+        {cabecera}
+        <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
+      </div>
+    );
   }
 
-  const pageCount = Math.max(1, Math.ceil(movements.length / PAGE_SIZE));
+  if (visibles.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        {cabecera}
+        <p className="text-sm text-muted-foreground">
+          No tienes {tipo === "charge" ? "fiados" : "abonos"} en este historial.
+        </p>
+      </div>
+    );
+  }
+
+  const pageCount = Math.max(1, Math.ceil(visibles.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const pagedMovements = movements.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedMovements = visibles.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-3">
+      {cabecera}
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
