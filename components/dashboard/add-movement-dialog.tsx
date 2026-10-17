@@ -36,6 +36,8 @@ import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actio
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
+import { MovementProductsField } from "@/components/dashboard/movement-products-field";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/movement-products";
 import {
   MontoCard,
   TipoButtons,
@@ -155,6 +157,9 @@ export function AddMovementDialog({
   const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
+  // QUÉ SE LLEVÓ EL CLIENTE. Paso 8, entregable `E` / `CT-51`. Lista vacía es
+  // el caso normal: la mayoría de los movimientos son dinero a secas.
+  const [productos, setProductos] = useState<LineaDeProducto[]>([]);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
   // En que moneda escribe, que no es lo mismo que el libro donde entra la
@@ -382,6 +387,7 @@ export function AddMovementDialog({
     if (!open) {
       setPhotoPath(null);
       setAmountStr("");
+      setProductos([]);
       setPaymentBlocked(false);
       resetErrors();
     }
@@ -542,6 +548,27 @@ export function AddMovementDialog({
                     ? Number(plazoPago)
                     : null
                 }
+              />
+              {/* QUÉ SE LLEVÓ, debajo del plazo y las cuotas. Solo en un fiado:
+                  un abono es dinero que entra y no se lleva mercancía. Decisión
+                  del dueño, 2026-10-17, y la migración `122` lo repite con un
+                  trigger. */}
+              <MovementProductsField
+                value={productos}
+                onValueChange={(lineas) => {
+                  setProductos(lineas);
+                  // EL MONTO SE RELLENA, PERO NO SE BLOQUEA. Su decisión del
+                  // 2026-10-17, y la razón está en su contrario: el día que
+                  // fíe con descuento o redondee y no pueda, vuelve a no usar
+                  // productos -- o apunta mal el dinero, que es peor.
+                  //
+                  // Al quedarse sin líneas NO se borra lo que haya escrito: si
+                  // quitó el último producto de un fiado de 15, el 15 sigue
+                  // siendo lo que acordó con su cliente.
+                  const total = totalDeLineas(lineas);
+                  if (lineas.length > 0) setAmountStr(String(total));
+                }}
+                moneda={(n) => formatDisplayCurrency(n, currency)}
               />
             </>
           ) : null}

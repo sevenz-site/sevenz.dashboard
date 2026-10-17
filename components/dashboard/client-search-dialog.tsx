@@ -37,6 +37,10 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
+import { MovementProductsField } from "@/components/dashboard/movement-products-field";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatCurrency } from "@/lib/format";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/movement-products";
 import {
   MontoCard,
   MonedaTecleadaButtons,
@@ -344,6 +348,12 @@ function ClientSearchDialogBody({
   const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
+  // QUÉ SE LLEVÓ. Entra por ESTA puerta también y no solo por la otra: las dos
+  // mandan a la misma acción del servidor, y el 2026-10-16 el campo de cuotas
+  // se puso en una sola -- un cliente nuevo a crédito se guardaba siempre sin
+  // cuotas, en silencio. Es la regla de CLAUDE.md sobre entrar por todas las
+  // puertas de una acción.
+  const [productos, setProductos] = useState<LineaDeProducto[]>([]);
   // Controlled like every other field in this form now — it used to be the
   // one plain uncontrolled input, which is exactly the field a resubmit
   // after the duplicate-document warning could silently blank out.
@@ -620,6 +630,20 @@ function ClientSearchDialogBody({
             plazoPago && plazoPago !== "sin_especificar" && Number.isFinite(Number(plazoPago))
               ? Number(plazoPago)
               : null
+          }
+        />
+        {/* Este formulario SIEMPRE registra un cargo --el `type` oculto de
+            arriba-- así que no lleva la guarda de "solo fiados" que sí tiene
+            el otro: un cliente nuevo siempre empieza debiendo. */}
+        <MovementProductsField
+          value={productos}
+          onValueChange={(lineas) => {
+            setProductos(lineas);
+            const total = totalDeLineas(lineas);
+            if (lineas.length > 0) setAmountStr(String(total));
+          }}
+          moneda={(n) =>
+            ownerCountry === "VE" ? formatDisplayCurrency(n, currency) : formatCurrency(n)
           }
         />
 

@@ -30,6 +30,8 @@ import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-row
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
+import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
+import type { MovementProductRow } from "@/lib/movement-products";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -47,6 +49,7 @@ export function MovementDetailPopover({
   ownerNote = null,
   plazoDias,
   cuotas = null,
+  productos = [],
   createdAt,
   runningBalance,
   balanceLabel = "Por cobrar",
@@ -96,6 +99,12 @@ export function MovementDetailPopover({
   // Still defaults to null, so a new screen that mounts this component shows
   // nothing it was not given.
   cuotas?: number | null;
+  // QUÉ SE LLEVÓ EL CLIENTE, migración `122`. Vacío es el caso normal y es
+  // también lo que ve la pantalla del cliente: `get_shared_balance()` no
+  // devuelve estas líneas, y mientras el dueño no diga lo contrario no las
+  // devuelve a propósito -- quién se llevó qué es una conversación entre los
+  // dos, pero el inventario del negocio no lo es.
+  productos?: MovementProductRow[];
   createdAt: string;
   runningBalance: number;
   // Label for the running-balance row — the owner's dashboard says "Por
@@ -305,6 +314,13 @@ export function MovementDetailPopover({
                 createdAt={createdAt}
                 plazoDias={plazoDias}
                 cuotas={cuotas}
+                amount={amount}
+                formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
+              />
+            ) : null}
+            {productos.length > 0 ? (
+              <ProductosDelMovimiento
+                productos={productos}
                 amount={amount}
                 formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
               />

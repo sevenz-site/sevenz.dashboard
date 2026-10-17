@@ -45,7 +45,8 @@
     "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",
     "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs",
     "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
-    "qa:cuotas": "node qa/cuotas.mjs"
+    "qa:cuotas": "node qa/cuotas.mjs",
+    "qa:productos-mov": "node qa/productos-del-movimiento.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

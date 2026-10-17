@@ -34,6 +34,7 @@ import {
   type Movement,
   type OwnerCountry,
 } from "@/lib/types";
+import type { MovementProductRow } from "@/lib/movement-products";
 
 const SIGNED_URL_TTL_SECONDS = 300;
 
@@ -474,6 +475,26 @@ async function MovementHistory({
     .order("created_at", { ascending: false });
 
   const movementRows = (movements ?? []) as Movement[];
+
+  // QUÉ SE LLEVÓ EL CLIENTE EN CADA MOVIMIENTO — paso 8, entregable `E`.
+  //
+  // UNA SOLA CONSULTA PARA TODA LA LISTA y no una por ficha: el detalle se
+  // abre en un diálogo que ya está montado, así que pedirlo al abrirlo
+  // significaría una espera justo donde el dueño espera un dato inmediato.
+  // Son pocas filas --la mayoría de los movimientos no llevan productos-- y
+  // van indexadas por `movement_id`.
+  const productosPorMovimiento = new Map<string, MovementProductRow[]>();
+  if (movementRows.length > 0) {
+    const { data: lineas } = await supabase
+      .from("movement_products")
+      .select("movement_id, name, quantity, unit_price")
+      .in("movement_id", movementRows.map((m) => m.id));
+    for (const l of lineas ?? []) {
+      const lista = productosPorMovimiento.get(l.movement_id) ?? [];
+      lista.push({ name: l.name, quantity: Number(l.quantity), unitPrice: Number(l.unit_price) });
+      productosPorMovimiento.set(l.movement_id, lista);
+    }
+  }
   const photoPaths = movementRows.map((m) => m.photo_path).filter((p): p is string => Boolean(p));
 
   const photoUrls = new Map<string, string>();
@@ -497,6 +518,7 @@ async function MovementHistory({
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
         compartir={compartir}
+        productosPorMovimiento={productosPorMovimiento}
       />
     </div>
   );

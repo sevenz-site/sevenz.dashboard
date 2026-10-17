@@ -19,6 +19,7 @@ import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
+import type { MovementProductRow } from "@/lib/movement-products";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
@@ -44,6 +45,7 @@ export function MovementHistoryList({
   ledger = null,
   compartir = null,
   titulo = null,
+  productosPorMovimiento,
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
@@ -55,6 +57,11 @@ export function MovementHistoryList({
   // El rótulo de la sección, para poder poner el filtro a su derecha. Ver el
   // comentario de `FiltroDeTipo`.
   titulo?: React.ReactNode;
+  // QUÉ SE LLEVÓ EL CLIENTE en cada movimiento, indexado por su id. La página
+  // lo trae en una sola consulta para toda la lista; aquí solo se reparte.
+  // Opcional porque la pantalla del cliente no lo pasa -- ver la nota de la
+  // prop `productos` en MovementDetailPopover.
+  productosPorMovimiento?: Map<string, MovementProductRow[]>;
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
@@ -127,6 +134,7 @@ export function MovementHistoryList({
               ownerNote={m.owner_note}
               plazoDias={m.plazo_dias}
               cuotas={m.cuotas}
+              productos={productosPorMovimiento?.get(m.id) ?? []}
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               photoUrl={m.photo_path ? (photoUrls[m.photo_path] ?? null) : null}
