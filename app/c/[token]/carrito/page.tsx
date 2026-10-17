@@ -52,7 +52,7 @@ export default async function CarritoPage({
     nombre: string;
     whatsapp: string | null;
     pais: string | null;
-    // EL CATÁLOGO, para el carrusel «Productos relacionados» del comprobante
+    // EL CATÁLOGO, para el carrusel «Otros productos» del comprobante
     // (encargo del dueño, 2026-10-17). Sale de la MISMA llamada que ya se
     // hacía aquí: `get_shared_catalog` devuelve los productos de todas
     // formas, así que esto no cuesta ni una consulta más.

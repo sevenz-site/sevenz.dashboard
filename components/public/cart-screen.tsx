@@ -117,7 +117,8 @@ export function CartScreen({
   // El país del NEGOCIO, solo para que el selector de prefijo abra en el que
   // va a usar el 99 % de sus clientes. El cliente puede cambiarlo.
   ownerCountry: string | null;
-  // EL CATÁLOGO DEL NEGOCIO, para el carrusel del comprobante. Por defecto
+  // EL CATÁLOGO DEL NEGOCIO, para el carrusel «Otros productos» del
+  // comprobante. Por defecto
   // vacío: la pantalla de «enlace inválido» monta este componente sin datos,
   // y un carrusel sin productos no se pinta solo.
   relacionados?: CatalogStripProduct[];
@@ -966,15 +967,24 @@ function Enviado({
             es un despiste — y en un producto sobre dinero, invitar a comprar
             dos veces lo mismo es exactamente lo que no conviene.
 
-            SOBRE EL RÓTULO, y queda dicho para que nadie lo lea como una
-            promesa: «relacionados» es la palabra del dueño, pero hoy nada
-            relaciona estos productos con lo comprado más allá de ser del
-            mismo negocio. No hay categorías ni etiquetas en la ficha de un
-            producto. Si algún día se quiere que lo sean de verdad, hace falta
-            ese dato primero. */}
+            EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
+            Nació con lo segundo y el dueño lo cambió el mismo día, al leer
+            que el dato no lo sostenía: la ficha de un producto no tiene
+            categoría, ni etiquetas, ni familia, así que lo único que une a
+            estos con lo comprado es ser de la misma bodega.
+
+            Con seis productos no se nota —«relacionados» y «los otros» son el
+            mismo conjunto— pero el día que una bodega publique decenas, quien
+            compró arroz vería tornillos bajo un título que le prometió otra
+            cosa. «Otros productos» es verdad hoy y lo seguirá siendo cuando
+            el catálogo crezca, que es la única clase de rótulo que no hay que
+            volver a tocar. Cierra `CT-96`.
+
+            Si algún día la ficha gana una categoría, el rótulo puede volver a
+            prometer parentesco — pero entonces habrá con qué cumplirlo. */}
         <CatalogStrip
           catalogToken={token}
-          titulo="Productos relacionados"
+          titulo="Otros productos"
           products={relacionados.filter((p) => !yaComprados.includes(p.id))}
         />
 

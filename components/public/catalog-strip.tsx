@@ -44,7 +44,7 @@ export function CatalogStrip({
   // never used to build the catalogue link.
   //
   // OPTIONAL SINCE 2026-10-17, when the owner asked for this same carousel on
-  // the order receipt under the title «Productos relacionados». There the
+  // the order receipt under the title «Otros productos». There the
   // reader is ALREADY inside the catalogue, so there is no «opened the
   // catalogue from the share link» to record -- and sending that event from
   // there would inflate the one number it exists to answer. No token, no
@@ -53,7 +53,7 @@ export function CatalogStrip({
   catalogToken: string;
   products: CatalogStripProduct[];
   // El rótulo, porque las dos pantallas que lo usan dicen cosas distintas:
-  // «Productos» en el saldo del cliente y «Productos relacionados» en el
+  // «Productos» en el saldo del cliente y «Otros productos» en el
   // comprobante. Por defecto el primero, que es el que ya existía.
   titulo?: string;
 }) {
