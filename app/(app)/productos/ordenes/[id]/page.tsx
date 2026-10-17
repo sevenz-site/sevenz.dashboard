@@ -6,7 +6,7 @@ import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { formatDocumentId } from "@/lib/format";
-import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
@@ -164,7 +164,13 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
       {totales.length > 0 ? (
         <div className="rounded-lg border bg-muted/30 px-3 py-2">
           {totales.map((t) => (
-            <Fila key={t.currency} nombre={totales.length > 1 ? `Total en ${t.currency}` : "Total"}>
+            // THE CURRENCY IS ALWAYS NAMED, even when the order carries a
+            // single one -- the owner's request of 2026-10-16. It used to say
+            // a bare "Total" for one currency, which is only unambiguous to
+            // somebody who has just read the lines above it; "Total en
+            // dólares" answers it on its own, and in words rather than the
+            // ISO code, which is bank vocabulary.
+            <Fila key={t.currency} nombre={`Total en ${currencyName(t.currency as PriceCurrency)}`}>
               <span className="flex items-center justify-end gap-1.5 tabular-nums">
                 <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
                 {formatPriceAmount(t.amount, t.currency as PriceCurrency)}

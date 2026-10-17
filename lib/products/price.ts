@@ -338,6 +338,37 @@ export function formatPriceAmount(amount: number, currency: PriceCurrency): stri
   }
 }
 
+// THE CURRENCY'S NAME IN WORDS, for labelling a figure.
+//
+// From the owner's request of 2026-10-16: an order's total must always say
+// its currency, whether the order carries one or three -- «Total en dólares»,
+// never a bare «Total». The ISO code does not do that job: "Total en USD" is
+// bank vocabulary and the person reading that screen is a shopkeeper.
+//
+// It lives here rather than in the screen because a loose copy of this same
+// decision already existed -- the `destino === "USD" ? "dólares" : "euros"`
+// ternary in `lib/exchange-rate/monto-en-bolivares.ts` -- and two copies of
+// one table end up saying different things about the same currency. That one
+// stays as it is: it is in production and rewriting it buys nothing.
+//
+// USDT IS DELIBERATELY NOT TRANSLATED. It has no Spanish name, and the
+// shopkeeper reads it exactly like this in Binance; inventing one would be
+// worse than the ISO code.
+const CURRENCY_NAMES: Record<PriceCurrency, string> = {
+  USD: "dólares",
+  EUR: "euros",
+  USDT: "USDT",
+  COP: "pesos",
+  VES: "bolívares",
+};
+
+export function currencyName(currency: PriceCurrency): string {
+  // The ISO code back if something reaches here without passing through the
+  // type -- a string straight from the database, say. "USD" is ugly;
+  // "undefined" printed on the screen is a defect.
+  return CURRENCY_NAMES[currency] ?? currency;
+}
+
 // UN PORCENTAJE TAMBIÉN SE FORMATEA, y esto ya mordió aquí.
 //
 // `{margen}%` en crudo imprime "33.33%" — punto inglés — justo al lado de las
