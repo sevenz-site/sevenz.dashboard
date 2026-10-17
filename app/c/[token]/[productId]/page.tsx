@@ -71,7 +71,7 @@ type SharedProductDetail = {
 // diferencia.
 function NoDisponible({ token }: { token: string }) {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
       <Image src="/fav-icon-primary.svg" alt="Sevenz" width={48} height={48} className="size-12" />
       <h1 className="text-xl font-semibold">Este producto ya no está</h1>
       <p className="text-sm leading-relaxed text-muted-foreground">
@@ -160,7 +160,7 @@ export default async function ProductoPublicoPage({
   const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       {/* LA FOTO A SANGRE Y EL CHEVRON ENCIMA, como el frame. El botón vuelve
           a la lista con un Link y no con `history.back()`: si alguien abrió
           este enlace directo —que es para lo que existe la ruta— no hay

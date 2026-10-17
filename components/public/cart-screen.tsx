@@ -196,7 +196,7 @@ export function CartScreen({
       : [];
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       <header className="flex items-center justify-between gap-3 px-4 py-4">
         <Link
           href={`/c/${token}`}
@@ -838,7 +838,7 @@ function Enviado({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-4 px-4 py-8">
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
         <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
         <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>

@@ -130,7 +130,7 @@ type SharedCatalog = {
 // nada de la diferencia.
 function EnlaceInvalido() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
       <Image
         src="/fav-icon-primary.svg"
         alt="Sevenz"
@@ -274,7 +274,7 @@ export default async function CatalogoPublicoPage({
   const hayFijadas = [...bolivares.values()].some((b) => b.pinned);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       {/* LA CABECERA DEL FRAME `1190:5748`.
           
           Oscura y centrada, con el logotipo del negocio arriba y la marca de

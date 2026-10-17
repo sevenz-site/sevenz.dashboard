@@ -380,6 +380,30 @@ bare digits and 4 are something else.
 
 ## Traps that have actually bitten this codebase
 
+**Un `mx-auto max-w-*` DENTRO de un flex column necesita `w-full`, o la
+pantalla se desplaza en horizontal.** `body` es `flex flex-col`, así que cada
+`<main>` es un ítem flex. Las márgenes automáticas de `mx-auto` lo convierten
+en *shrink-to-fit*: en vez de ocupar el ancho del padre, mide **su propio
+contenido**, y lo único que lo frena es el `max-w-*`. Con un hijo ancho —un
+carrusel que se desliza, una tabla— el `main` se va a su máximo y **toda la
+página se desborda**, no solo ese hijo.
+
+Lo delata una medición de dos números: `document.documentElement.clientWidth`
+dice 375 y `main.getBoundingClientRect().width` dice 672, que es
+exactamente `max-w-2xl`. Si ves el máximo clavado, es esto.
+
+**`min-w-0` NO lo arregla**, y es el primer intento de cualquiera porque es el
+remedio del *otro* problema de flex —el hijo que no se deja encoger—. Aquí el
+`main` no está siendo empujado por su hijo: está midiéndose a sí mismo porque
+las márgenes automáticas se lo permiten. Lo que lo arregla es `w-full`, que
+fija el ancho al del padre y deja al `max-w-*` como el tope que debía ser.
+
+**Mordió el 2026-10-17**, en la pantalla del comprobante del catálogo, al
+añadirle el carrusel «Otros productos». Las otras seis pantallas públicas
+tenían la misma trampa armada y sin disparar — el hijo más ancho de cada una
+cabía por casualidad. Se les puso `w-full` a todas. `/s/[token]` nunca falló
+porque ya lo llevaba, y **esa es la única razón**.
+
 **`Input` ignora tu tamaño de fuente desde 768px.** `components/ui/input.tsx`
 trae `md:text-sm` en su clase base. Si le pasas `text-2xl` por `className`,
 `tailwind-merge` sí elimina el `text-base` que choca —mismo grupo— pero **no
