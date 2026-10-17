@@ -510,39 +510,80 @@ function FormularioDeLaOrden({
         rates,
       );
 
-      // «ENVIAR PEDIDO» ABRE EL WHATSAPP DEL NEGOCIO. SIEMPRE.
+      // «ENVIAR PEDIDO» MANDA LA FOTO DEL RECIBO, NO EL TEXTO.
       //
-      // Decisión del dueño el 2026-10-17, y DESPLAZA la suya del 2026-10-15,
-      // que pedía mandar aquí el recibo dibujado. Las dos quedan escritas.
+      // Decisión del dueño el 2026-10-15 —«para evitar que se edite el texto
+      // del mensaje en whatsApp»— y REAFIRMADA por él el 2026-10-17, después
+      // de que yo la invirtiera por error. Las tres versiones quedan escritas
+      // porque el camino de ida y vuelta es justo lo que no hay que repetir:
       //
-      // Lo que falla en la versión anterior es a quién va dirigido el botón.
-      // Este dice «Enviar pedido»: su destinatario es el NEGOCIO, uno solo y
-      // conocido, y `wa.me` lleva justo ahí. La hoja nativa pregunta a quién
-      // mandarlo — una pregunta que nadie hizo, sobre un pedido que ya está
-      // guardado— y encima podía acabar en cualquier otra aplicación.
+      //   1. `{ files, text }` -> WhatsApp adjuntaba el recibo Y debajo el
+      //      mensaje entero: la misma compra contada dos veces. Él lo
+      //      reportó.
+      //   2. `wa.me` con el texto, sin foto -> lo que yo hice al leer «debería
+      //      abrir el wa.me del negocio». Dejaba exactamente lo que él quería
+      //      quitar, el texto editable, y tiraba lo que quería conservar.
+      //   3. `{ files }` a secas, que es esto.
       //
-      // EL RECIBO NO SE PIERDE: lo manda el botón «Compartir» de la pantalla
-      // siguiente, que es donde tiene sentido ofrecer la hoja nativa, porque
-      // ahí el comprador SÍ elige destinatario —se lo manda a sí mismo, o a
-      // quien le hizo el encargo— y porque es un toque directo sin ningún
-      // `await` por delante, que es lo que iOS exige.
+      // ─────────────────────────────────────────────────────────────────────
+      // Y POR QUÉ NO SE PUEDE TENER LAS DOS COSAS, que es el fondo del
+      // malentendido y hay que dejarlo dicho para que nadie lo intente otra
+      // vez creyendo que se nos olvidó:
       //
-      // `wa.me` SOLO ADMITE TEXTO, y eso no es una carencia aquí: lo que el
-      // tendero necesita recibir es el pedido legible en su conversación. No
-      // existe ningún parámetro del formato para adjuntar un fichero —
-      // comprobado contra su documentación el 2026-10-15.
+      //   - `wa.me/<numero>` va DIRECTO al negocio, sin preguntar a quién...
+      //     pero SOLO ADMITE TEXTO. No existe ningún parámetro del formato
+      //     para adjuntar un fichero — comprobado contra su documentación el
+      //     2026-10-15.
+      //   - `navigator.share({files})` SÍ lleva la imagen... pero la hoja
+      //     nativa decide el destinatario, y la Web Share API no permite
+      //     fijarlo.
       //
-      // SI EL NEGOCIO NO TIENE NÚMERO, no se abre nada y no pasa nada más: el
-      // pedido YA está guardado —decisión del 2026-10-14— y el tendero lo ve
-      // en su pantalla de Pedidos. Lo que se pierde es el aviso inmediato, no
-      // la compra.
-      const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
-      if (digitos !== "") {
-        window.open(
-          `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
-          "_blank",
-          "noopener,noreferrer",
-        );
+      // «Va solo al negocio» y «lleva la foto» son excluyentes en un toque, y
+      // el dueño eligió la foto. Lo que cuesta: el comprador elige WhatsApp y
+      // el contacto en la hoja. Lo que se gana: lo que llega no se puede
+      // editar de camino, que era el problema original.
+      //
+      // EL `wa.me` SE QUEDA COMO RESERVA, abajo, para el aparato que no puede
+      // compartir ficheros — un escritorio, básicamente. Ahí la elección no
+      // existe: o texto, o nada.
+      //
+      // ESTO OCURRE DESPUÉS DE UN `await`, porque la orden se guarda primero,
+      // y iOS bloquea tanto `window.open` como `navigator.share` cuando no
+      // vienen de un toque directo. Así que ninguna de las dos está
+      // garantizada aquí, y el camino fiable sigue siendo el botón
+      // «Compartir» de la pantalla siguiente, que es un toque directo sin
+      // nada esperando por delante. El pedido YA está guardado —decisión del
+      // 2026-10-14— así que lo que falle aquí cuesta un toque más, no un
+      // pedido.
+      const recibo = dibujarRecibo({
+        businessName,
+        comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
+        resumen: resumenPorMoneda(lineas, productos, rates),
+        rates,
+      });
+      const ficheroRecibo =
+        recibo == null
+          ? null
+          : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
+
+      if (
+        ficheroRecibo != null &&
+        navigator.canShare?.({ files: [ficheroRecibo] })
+      ) {
+        // SIN `text`. Es la primera corrección del 2026-10-17 y sigue en pie:
+        // la imagen va sola, no acompañada del mensaje escrito.
+        void navigator.share({ files: [ficheroRecibo] }).catch(() => {});
+      } else {
+        // LA RESERVA. `mensaje` no sobra: es lo único que un `wa.me` admite, y
+        // es también lo que recibe `onEnviada` para la pantalla siguiente.
+        const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
+        if (digitos !== "") {
+          window.open(
+            `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
+            "_blank",
+            "noopener,noreferrer",
+          );
+        }
       }
 
       onAbierto(false);
