@@ -81,6 +81,9 @@ export type NotificationItem =
       exchangeRateUsed: number | null;
       description: string | null;
       plazoDias: number | null;
+      // Migration `118`. null = single payment, which is every row stored
+      // before 2026-10-16.
+      cuotas: number | null;
       photoUrl: string | null;
       // The deleted movement's own running_balance, frozen at the moment it
       // was deleted — recalc_client_running_balance only ever rewrites
@@ -162,7 +165,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         // currency y el rastro de bolivares no estaban aqui, y esa ausencia era el
         // fallo: sin currency, la ficha formateaba TODO como pesos colombianos y
         // un movimiento de 45 euros se leia "$ 45,00".
-        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used)",
+        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, cuotas, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used)",
       )
       .eq("owner_id", user.id)
       .order("deleted_at", { ascending: false })
@@ -234,6 +237,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       currency: LedgerCurrency | null;
       description: string | null;
       plazo_dias: number | null;
+      cuotas: number | null;
       photo_path: string | null;
       running_balance: number;
       created_at: string;
@@ -379,6 +383,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           exchangeRateUsed: movement.exchange_rate_used,
           description: movement.description,
           plazoDias: movement.plazo_dias,
+          cuotas: movement.cuotas,
           photoUrl: movement.photo_path ? (deletionPhotoUrls.get(movement.photo_path) ?? null) : null,
           runningBalance: movement.running_balance,
           movementCreatedAt: movement.created_at,

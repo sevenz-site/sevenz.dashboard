@@ -10,8 +10,10 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
-import { FilterChip } from "@/components/dashboard/client-filters";
-import { Button } from "@/components/ui/button";
+import {
+  MovementTypeFilter,
+  type TipoFiltro,
+} from "@/components/dashboard/movement-type-filter";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -48,46 +50,7 @@ const PAGE_SIZE = 10;
 // a propósito: esta lista es la que ve el CLIENTE, con sus propios tipos y su
 // propio contrato de datos, y juntarlas obligaría a una sola forma para dos
 // pantallas que ya se han separado antes.
-const TIPOS = [
-  { value: "todos", label: "Todos" },
-  { value: "charge", label: "Fiado" },
-  { value: "payment", label: "Abono" },
-] as const;
 
-type TipoFiltro = (typeof TIPOS)[number]["value"];
-
-function FiltroDeTipo({
-  tipo,
-  setTipo,
-}: {
-  tipo: TipoFiltro;
-  setTipo: (v: TipoFiltro) => void;
-}) {
-  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todos";
-  return (
-    <FilterChip label={tipo === "todos" ? "Tipo" : etiqueta} active={tipo !== "todos"}>
-      {(close) => (
-        <div className="flex flex-col gap-1">
-          {TIPOS.map((opt) => (
-            <Button
-              key={opt.value}
-              type="button"
-              variant={tipo === opt.value ? "secondary" : "ghost"}
-              size="sm"
-              className="justify-start"
-              onClick={() => {
-                setTipo(opt.value);
-                close();
-              }}
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </div>
-      )}
-    </FilterChip>
-  );
-}
 
 export function MovementHistoryList({
   movements,
@@ -113,7 +76,7 @@ export function MovementHistoryList({
   const cabecera = titulo ? (
     <div className="flex items-center justify-between gap-3">
       {titulo}
-      {movements.length > 0 ? <FiltroDeTipo tipo={tipo} setTipo={setTipo} /> : null}
+      {movements.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} /> : null}
     </div>
   ) : null;
 

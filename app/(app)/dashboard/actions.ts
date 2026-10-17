@@ -619,10 +619,20 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     return { error: MENSAJE_CUENTA_PAUSADA };
   }
 
+  // THE OWNERSHIP CHECK, EXPLICIT AND NOT JUST RLS. `movementId` arrives from
+  // the browser and `movements` carries no `owner_id`, so the check goes
+  // through the client, exactly as `app/(app)/clients/[id]/actions.ts` does it.
+  //
+  // Added 2026-10-16, while verifying that a deletion reaches Notificaciones.
+  // It was not exploitable -- RLS held -- but it was the single point of
+  // failure CLAUDE.md's rule exists for, in the one action that erases money.
+  // The 2026-08-28 audit found the same shape in `getOrCreateShareLink` and
+  // `confirmImport` and fixed both; this one was missed.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id")
+    .select("id, client_id, clients!inner(owner_id)")
     .eq("id", movementId)
+    .eq("clients.owner_id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -676,10 +686,14 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     return { error: MENSAJE_CUENTA_PAUSADA };
   }
 
+  // Same explicit ownership check as `deleteMovement` above, and for the same
+  // reason: restoring puts an amount back into somebody's balance, so it moves
+  // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id")
+    .select("id, client_id, clients!inner(owner_id)")
     .eq("id", movementId)
+    .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
     .maybeSingle();
 
