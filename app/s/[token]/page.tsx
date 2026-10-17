@@ -15,13 +15,25 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { getBalanceLabel } from "@/lib/types";
-import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
-import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type {
+  ExchangeRateMode,
+  LedgerCurrency,
+  MovementCurrencyCode,
+} from "@/lib/types";
+import {
+  formatBalanceSummary,
+  type LedgerDisplay,
+} from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import { VerifyBadge } from "@/components/public/verify-badge";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { ShareDialogs } from "@/components/public/share-dialogs";
 import { ShareSettings } from "@/components/public/share-settings";
+import { PublicHeader } from "@/components/public/public-header";
+import {
+  CatalogStrip,
+  type CatalogStripProduct,
+} from "@/components/public/catalog-strip";
 
 // La vista previa que ve quien recibe el enlace por WhatsApp.
 //
@@ -35,11 +47,13 @@ import { ShareSettings } from "@/components/public/share-settings";
 // que acabara en un buscador. No había ninguna regla de indexación hasta hoy.
 export const metadata: Metadata = {
   title: "Consulta tu saldo — Sevenz",
-  description: "Revisa lo que debes y lo que has abonado, actualizado al instante.",
+  description:
+    "Revisa lo que debes y lo que has abonado, actualizado al instante.",
   robots: { index: false, follow: false },
   openGraph: {
     title: "Consulta tu saldo",
-    description: "Revisa lo que debes y lo que has abonado, actualizado al instante.",
+    description:
+      "Revisa lo que debes y lo que has abonado, actualizado al instante.",
     siteName: "Sevenz",
     locale: "es_VE",
     type: "website",
@@ -210,12 +224,15 @@ export default async function SharedBalancePage({
   // cannot record the answer to.
   const consent = await (async () => {
     try {
-      const { data: state, error: consentError } = await createServiceClient().rpc(
-        "client_whatsapp_consent_state",
-        { p_token: token },
-      );
+      const { data: state, error: consentError } =
+        await createServiceClient().rpc("client_whatsapp_consent_state", {
+          p_token: token,
+        });
       if (consentError) {
-        console.error("[sharedBalance] consent state failed:", consentError.message);
+        console.error(
+          "[sharedBalance] consent state failed:",
+          consentError.message,
+        );
         return null;
       }
       return state as { can_consent: boolean; granted: boolean } | null;
@@ -229,37 +246,94 @@ export default async function SharedBalancePage({
   })();
 
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
-  const logoUrl = shared.owner_logo_path ? getPublicLogoUrl(shared.owner_logo_path) : "/fav-icon-primary.svg";
+  const logoUrl = shared.owner_logo_path
+    ? getPublicLogoUrl(shared.owner_logo_path)
+    : "/fav-icon-primary.svg";
 
   // Absent (null) for a 'CO' owner, or a 'VE' owner before any rate has ever
   // been fetched — the balance then renders exactly like today's plain COP
   // figure, same as everywhere else this shape is used.
   const rateContext =
-    shared.owner_country === "VE" && shared.current_bcv_usd != null && shared.current_bcv_eur != null
+    shared.owner_country === "VE" &&
+    shared.current_bcv_usd != null &&
+    shared.current_bcv_eur != null
       ? {
           rateMode: shared.rate_mode ?? ("BCV_AUTO" as ExchangeRateMode),
           effectiveRate:
-            shared.rate_mode === "CUSTOM" && shared.custom_rate_usd && shared.custom_rate_eur
+            shared.rate_mode === "CUSTOM" &&
+            shared.custom_rate_usd &&
+            shared.custom_rate_eur
               ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
               : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
-          officialRate: { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur },
+          officialRate: {
+            usd: shared.current_bcv_usd,
+            eur: shared.current_bcv_eur,
+          },
         }
       : null;
-  const ledger: LedgerDisplay | null = rateContext ? { rate: rateContext.effectiveRate } : null;
+  const ledger: LedgerDisplay | null = rateContext
+    ? { rate: rateContext.effectiveRate }
+    : null;
 
   // El mismo mensaje que manda el dueño desde su lado, para que el cliente que
   // reenvia un movimiento mande exactamente lo que habria mandado el.
   //
   // El enlace sale de la direccion que ya tiene abierta y no del servidor:
   // crear un enlace solo responde a un dueño con sesion, y aqui no hay ninguna.
+  // EL CATÁLOGO DEL NEGOCIO, si tiene. Encargo del dueño el 2026-10-17, frame
+  // `1378:7916`.
+  //
+  // La función es `service_role` (migración 123) y por eso va por el cliente
+  // de servicio, igual que `client_whatsapp_consent_state` justo arriba y por
+  // la misma razón: la clave anónima llega al navegador, y esto convierte el
+  // token de un cliente en el del catálogo del negocio.
+  //
+  // FALLA HACIA NO ENSEÑAR NADA, que es la tercera vez que esta página toma
+  // esa decisión y la más barata de las tres: un cliente que no ve la franja
+  // no pierde nada de lo que vino a buscar. Si la migración todavía no corrió
+  // en este entorno —que es el estado normal durante un despliegue— esto da
+  // error, se registra en el servidor y la pantalla queda exactamente como
+  // estaba. Nunca al revés: una cabecera «Productos» sobre una franja vacía
+  // es peor que ninguna cabecera.
+  const catalogo = await (async () => {
+    try {
+      const { data: preview, error: previewError } =
+        await createServiceClient().rpc("get_shared_catalog_preview", {
+          p_token: token,
+        });
+      if (previewError) {
+        console.error(
+          "[sharedBalance] catalog preview failed:",
+          previewError.message,
+        );
+        return null;
+      }
+      return preview as {
+        catalog_token: string | null;
+        products: CatalogStripProduct[];
+      } | null;
+    } catch (previewError) {
+      console.error(
+        "[sharedBalance] catalog preview threw:",
+        previewError instanceof Error ? previewError.message : previewError,
+      );
+      return null;
+    }
+  })();
+
   const compartir: DatosParaCompartir = {
     clientName: shared.client_name,
-    balanceText: formatBalanceSummary(shared.balance, shared.balance_usd, shared.balance_eur, ledger),
+    balanceText: formatBalanceSummary(
+      shared.balance,
+      shared.balance_usd,
+      shared.balance_eur,
+      ledger,
+    ),
     enlace: { de: "cliente", token },
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
       {/* ONE QUESTION PER VISIT. The two dialogs are mounted together, by a
           client component, because the rule that orders them needs to remember
           something the server cannot: whether the cédula was asked for on THIS
@@ -285,91 +359,107 @@ export default async function SharedBalancePage({
         whatsappLast4={shared.whatsapp_last4}
       />
 
-      {/* The top bar this page never had. One control, pushed right, because
-          the back arrow the mockup drew beside it was dropped — see the
-          comment in share-settings.tsx. `-mb-2` because the block below
-          already carries `mt-2`, and two stacked margins would open a gap
-          nobody asked for. */}
-      <div className="-mb-2 flex items-center justify-end">
-        <ShareSettings
-          token={token}
-          whatsappLast4={shared.whatsapp_last4}
-          canConsent={consent?.can_consent === true}
-          // Live, unlike the frozen copy ShareDialogs holds: this is the switch
-          // the person came to look at, so it has to show what is true now.
-          granted={consent?.granted === true}
-        />
-      </div>
+      {/* LA MISMA BANDA OSCURA QUE ABRE EL CATÁLOGO, desde el 2026-10-17.
+          Frame `1378:7916`, decisión del dueño.
 
-      {/* Not a card: no border, no padding of its own, so the logo and the
-          business name start on the page's own inset, in line with
-          "Pendiente" and the edges of the balance cards below. */}
-      <div className="mt-2 flex items-center gap-3">
-        <Image
-          src={logoUrl}
-          alt=""
-          width={64}
-          height={64}
-          unoptimized={Boolean(shared.owner_logo_path)}
-          className="size-16 shrink-0 rounded-xl object-cover"
-        />
-        <div className="flex min-w-0 flex-col">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{shared.business_name}</h1>
-          {/* The name is the only identity cue this page carries now. The
-              document used to sit here, and anyone holding the link could read
-              it — a share link travels through WhatsApp groups and forwarded
-              chats, so its real audience is wider than the one client it was
-              sent to. Name plus cédula is most of what someone needs to sound
-              convincing on a phone call pretending to be the shop.
+          Antes esta pantalla abría con una cabecera blanca, el logo pequeño a
+          la izquierda y el nombre al lado. Lo que la cambia no es el gusto: a
+          partir de ahora se salta de aquí al catálogo y se vuelve, y dos
+          pantallas de la misma bodega que no se parecen en nada hacen dudar
+          de que sean la misma bodega — que es justo lo que no conviene en una
+          página sobre dinero que llegó por un mensaje de WhatsApp.
 
-              This is a server component, so removing the render is enough:
-              shared.document_id stays in server memory and never enters the
-              HTML or the RSC payload. It will come back when a client can
-              authenticate and prove the page is theirs. */}
-          <p className="truncate text-sm font-medium">{shared.client_name}</p>
-        </div>
-      </div>
+          EL COMPONENTE ES COMPARTIDO, no copiado: `components/public/
+          public-header.tsx`, que salió de `/c/[token]` el mismo día. Dos
+          copias se separan sin que nadie lo note, porque nadie abre las dos
+          pantallas en el mismo minuto.
 
-      <h2 className="text-xl font-semibold">Pendiente</h2>
+          SIN FLECHA DE VOLVER, aunque el frame la dibuja. Quien abre este
+          enlace llega desde un mensaje: no venía de ninguna parte, y la
+          flecha lo sacaría de la página a un sitio que no existe. Es la misma
+          razón escrita en el catálogo, donde la flecha solo sale en la vista
+          previa del tendero. El catálogo que se abre DESDE aquí sí tendrá la
+          suya, porque ahí sí hay a dónde volver.
 
-      {/* One card per currency, label left and figure right. The label is
+          EL SUBTÍTULO ES EL NOMBRE DEL CLIENTE Y NADA MÁS. La cédula estuvo
+          ahí y cualquiera con el enlace podía leerla — un enlace compartido
+          viaja por grupos de WhatsApp y reenvíos, así que su público real es
+          más ancho que el cliente al que se le mandó. Nombre más cédula es
+          casi todo lo que hace falta para sonar convincente en una llamada
+          haciéndose pasar por la bodega. Esto es un componente de servidor,
+          así que con no pintarlo basta: `shared.document_id` se queda en
+          memoria del servidor y nunca entra en el HTML ni en la carga RSC. */}
+      <PublicHeader
+        logoUrl={logoUrl}
+        logoIsRemote={Boolean(shared.owner_logo_path)}
+        title={shared.business_name}
+        subtitle={`Cliente: ${shared.client_name}`}
+        actions={
+          <ShareSettings
+            token={token}
+            whatsappLast4={shared.whatsapp_last4}
+            canConsent={consent?.can_consent === true}
+            // Live, unlike the frozen copy ShareDialogs holds: this is the switch
+            // the person came to look at, so it has to show what is true now.
+            granted={consent?.granted === true}
+          />
+        }
+      >
+        {ownerWhatsappDigits ? (
+          <ContactWhatsappLink
+            token={token}
+            href={`https://wa.me/${ownerWhatsappDigits}`}
+          />
+        ) : null}
+      </PublicHeader>
+
+      <div className="flex flex-col gap-4 p-4">
+        <h2 className="text-xl font-semibold">Pendiente</h2>
+
+        {/* One card per currency, label left and figure right. The label is
           getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
           reads "A favor en Dólares" rather than being told they owe a
           negative amount. */}
-      {rateContext ? (
-        <>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`} currency="USD">
-            <ExchangeRateBalanceDisplay
-              balance={shared.balance_usd}
+        {rateContext ? (
+          <>
+            <BalanceRowCard
+              label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}
               currency="USD"
-              ledger={ledger}
-              align="end"
-              mainClassName="text-3xl"
-            />
-          </BalanceRowCard>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`} currency="EUR">
-            <ExchangeRateBalanceDisplay
-              balance={shared.balance_eur}
+            >
+              <ExchangeRateBalanceDisplay
+                balance={shared.balance_usd}
+                currency="USD"
+                ledger={ledger}
+                align="end"
+                mainClassName="text-3xl"
+              />
+            </BalanceRowCard>
+            <BalanceRowCard
+              label={`${getBalanceLabel(shared.balance_eur)} en Euros`}
               currency="EUR"
-              ledger={ledger}
+            >
+              <ExchangeRateBalanceDisplay
+                balance={shared.balance_eur}
+                currency="EUR"
+                ledger={ledger}
+                align="end"
+                mainClassName="text-3xl"
+              />
+            </BalanceRowCard>
+          </>
+        ) : (
+          <BalanceRowCard label={getBalanceLabel(shared.balance)}>
+            <ExchangeRateBalanceDisplay
+              balance={shared.balance}
+              currency={null}
+              ledger={null}
               align="end"
               mainClassName="text-3xl"
             />
           </BalanceRowCard>
-        </>
-      ) : (
-        <BalanceRowCard label={getBalanceLabel(shared.balance)}>
-          <ExchangeRateBalanceDisplay
-            balance={shared.balance}
-            currency={null}
-            ledger={null}
-            align="end"
-            mainClassName="text-3xl"
-          />
-        </BalanceRowCard>
-      )}
+        )}
 
-      {/* "Cómo pagar" used to sit here, showing the owner's Nequi or bank
+        {/* "Cómo pagar" used to sit here, showing the owner's Nequi or bank
           details to anyone holding the link. That is the raw material for
           impersonating the shop: a stranger who can quote the real payment
           handle alongside a real balance is far more believable than one who
@@ -379,59 +469,89 @@ export default async function SharedBalancePage({
           It returns behind authentication rather than being deleted — the RPC
           still returns payment_info, this page simply stops rendering it. */}
 
-      {ownerWhatsappDigits ? (
-        <ContactWhatsappLink token={token} href={`https://wa.me/${ownerWhatsappDigits}`} />
-      ) : null}
+        {/* EL BOTON DE WHATSAPP SUBIO A LA BANDA OSCURA el 2026-10-17, que es
+          donde lo dibuja el frame `1378:7916`. Antes estaba aqui, debajo del
+          saldo. */}
 
-      <FeedbackBanner token={token} />
+        <FeedbackBanner token={token} />
 
-      {/* Sin condición desde el 2026-09-21. Antes solo se pintaba si el
+        {/* Sin condición desde el 2026-09-21. Antes solo se pintaba si el
           cliente tenía número guardado, y ahora que el número es opcional eso
           dejaba a quien no lo tiene sin enterarse de que la verificación
           existe. El propio componente decide qué enseñar: el campo de los 4
           dígitos, o la explicación de por qué todavía no se puede. */}
-      <VerifyBadge
-        expectedLast4={shared.whatsapp_last4}
-        businessName={shared.business_name}
-        ownerWhatsapp={shared.owner_whatsapp}
-      />
-
-      <div className="flex flex-col gap-2">
-        {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
-            pueda ir a su derecha, en la misma fila. */}
-        <MovementHistoryList
-          titulo={<h2 className="text-sm font-medium text-muted-foreground">Historial</h2>}
-          movements={movements}
-          ledger={ledger}
-          compartir={compartir}
+        <VerifyBadge
+          expectedLast4={shared.whatsapp_last4}
+          businessName={shared.business_name}
+          ownerWhatsapp={shared.owner_whatsapp}
         />
-        {!showAll && shared.movement_total > movements.length ? (
-          <div className="flex flex-col items-center gap-2 pt-1">
-            <p className="text-xs text-muted-foreground">
-              Mostrando los {movements.length} movimientos más recientes de {shared.movement_total}.
-            </p>
-            {/* h-10 so it matches every other labelled button in the app and
-                clears a thumb on a phone. */}
-            <Button asChild variant="outline" size="sm" className="w-full">
-              <Link href={`/s/${token}?historial=todo`} scroll={false}>
-                Ver todo el historial
-              </Link>
-            </Button>
-          </div>
+
+        {/* LA FRANJA DEL CATALOGO, encima del historial y debajo de todo lo que
+          el cliente vino a leer. Ese orden es del frame y tiene sentido: el
+          saldo primero, porque es a lo que entra; los productos despues,
+          porque es la invitacion; y el historial al final, que es lo largo.
+
+          NO SE PINTA NADA si el negocio no tiene enlace de catalogo, si no
+          tiene productos publicados, o si la lectura fallo. Son tres estados
+          distintos y aqui dan el mismo resultado a proposito: una cabecera
+          «Productos» sobre una franja vacia le dice al cliente que la bodega
+          no vende nada. */}
+        {catalogo?.catalog_token && catalogo.products.length > 0 ? (
+          <CatalogStrip
+            shareToken={token}
+            catalogToken={catalogo.catalog_token}
+            products={catalogo.products}
+          />
         ) : null}
-      </div>
 
-      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
-        <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-1" />
-        <p className="text-sm font-medium">
-          ¿Quieres tener las cuentas claras con tus clientes?
-        </p>
-        <Button asChild size="sm">
-          <Link href="/signup">Regístrate en Sevenz</Link>
-        </Button>
-      </div>
+        <div className="flex flex-col gap-2">
+          {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
+            pueda ir a su derecha, en la misma fila. */}
+          <MovementHistoryList
+            titulo={
+              <h2 className="text-sm font-medium text-muted-foreground">
+                Historial
+              </h2>
+            }
+            movements={movements}
+            ledger={ledger}
+            compartir={compartir}
+          />
+          {!showAll && shared.movement_total > movements.length ? (
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <p className="text-xs text-muted-foreground">
+                Mostrando los {movements.length} movimientos más recientes de{" "}
+                {shared.movement_total}.
+              </p>
+              {/* h-10 so it matches every other labelled button in the app and
+                clears a thumb on a phone. */}
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <Link href={`/s/${token}?historial=todo`} scroll={false}>
+                  Ver todo el historial
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
-      {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-5 text-center">
+          <Image
+            src="/logo-primary.svg"
+            alt="Sevenz"
+            width={120}
+            height={44}
+            className="mb-1"
+          />
+          <p className="text-sm font-medium">
+            ¿Quieres tener las cuentas claras con tus clientes?
+          </p>
+          <Button asChild size="sm">
+            <Link href="/signup">Regístrate en Sevenz</Link>
+          </Button>
+        </div>
+
+        {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
+      </div>
     </div>
   );
 }

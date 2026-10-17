@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getPublicLogoUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import {
+  getPublicLogoUrl,
+  getPublicProductPhotoUrl,
+} from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
+import { PublicHeader } from "@/components/public/public-header";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
@@ -125,10 +129,17 @@ type SharedCatalog = {
 function EnlaceInvalido() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
-      <Image src="/fav-icon-primary.svg" alt="Sevenz" width={48} height={48} className="size-12" />
+      <Image
+        src="/fav-icon-primary.svg"
+        alt="Sevenz"
+        width={48}
+        height={48}
+        className="size-12"
+      />
       <h1 className="text-xl font-semibold">Este enlace ya no sirve</h1>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        Puede que el negocio lo haya cambiado. Pídele el enlace nuevo por WhatsApp.
+        Puede que el negocio lo haya cambiado. Pídele el enlace nuevo por
+        WhatsApp.
       </p>
     </main>
   );
@@ -169,14 +180,19 @@ export default async function CatalogoPublicoPage({
   // corresponde. Asi que aqui solo se decide, y el JSX se devuelve despues.
   const shared = await (async (): Promise<SharedCatalog | null> => {
     try {
-      const { data, error } = await supabase.rpc("get_shared_catalog", { p_token: token });
+      const { data, error } = await supabase.rpc("get_shared_catalog", {
+        p_token: token,
+      });
       if (error) {
         console.error("[catalogoPublico] rpc:", error.message);
         return null;
       }
       return data as SharedCatalog | null;
     } catch (error) {
-      console.error("[catalogoPublico] threw:", error instanceof Error ? error.message : error);
+      console.error(
+        "[catalogoPublico] threw:",
+        error instanceof Error ? error.message : error,
+      );
       return null;
     }
   })();
@@ -216,11 +232,15 @@ export default async function CatalogoPublicoPage({
     shared.owner_country === "VE" &&
     shared.current_bcv_usd != null &&
     shared.current_bcv_eur != null
-      ? shared.rate_mode === "CUSTOM" && shared.custom_rate_usd && shared.custom_rate_eur
+      ? shared.rate_mode === "CUSTOM" &&
+        shared.custom_rate_usd &&
+        shared.custom_rate_eur
         ? { usd: shared.custom_rate_usd, eur: shared.custom_rate_eur }
         : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur }
       : null;
-  const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
+  const rates: BolivarRates | null = tasaBase
+    ? await getBolivarRates(tasaBase)
+    : null;
 
   // LA CIFRA EN BOLIVARES DE CADA PRODUCTO, Y DE DONDE SALE.
   //
@@ -234,9 +254,17 @@ export default async function CatalogoPublicoPage({
   if (rates) {
     for (const p of shared.products) {
       if (p.base_currency === "VES") continue;
-      const row = priceIn("VES", { amount: p.price, currency: p.base_currency }, rates, p.pinned);
+      const row = priceIn(
+        "VES",
+        { amount: p.price, currency: p.base_currency },
+        rates,
+        p.pinned,
+      );
       if (row.amount != null) {
-        bolivares.set(p.id, { amount: row.amount, pinned: row.origin === "manual" });
+        bolivares.set(p.id, {
+          amount: row.amount,
+          pinned: row.origin === "manual",
+        });
       }
     }
   }
@@ -258,147 +286,136 @@ export default async function CatalogoPublicoPage({
           arriba, como el frame. Sin él la marca se desborda y empuja el ancho
           de la página, que es el fallo de maquetación más fácil de meter aquí
           y el más difícil de ver en el escritorio. */}
-      <header className="relative isolate overflow-hidden bg-brand-primary px-6 pt-10 pb-8 text-center">
-        {/* SOLO EN LA VISTA PREVIA. Un cliente que abre este enlace desde un
-            mensaje no tiene a dónde volver — no venía de ninguna parte— y un
-            botón que lo saque de la página sería una salida que nadie pidió.
+      {/* LA BANDA SALIO DE AQUI A `components/public/public-header.tsx` el
+          2026-10-17, cuando el frame `1378:7916` la puso tambien encima de
+          `/s/[token]`. Lo que se movio es el marcado tal cual; lo que decide
+          esta pantalla sigue aqui, que son las dos condiciones de abajo.
 
-            El tendero sí: llegó desde su catálogo y quiere volver. Va a
-            `/productos` con un `Link` y no con `history.back()`: la previa se
-            abre en una pestaña NUEVA, así que no hay historial al que volver y
-            el botón no haría nada.
+          Copiarla habria sido mas rapido y es justo el fallo: son las dos
+          unicas superficies que ve un desconocido, y la banda es lo que dice
+          quien responde por ellas. Dos copias se separan sin que nadie lo
+          note, porque nadie abre las dos pantallas en el mismo minuto. */}
+      <PublicHeader
+        logoUrl={logoUrl}
+        logoIsRemote={Boolean(shared.owner_logo_path)}
+        title={shared.business_name || "Catálogo"}
+        /* SOLO EN LA VISTA PREVIA. Un cliente que abre este enlace desde un
+           mensaje no tiene a dónde volver — no venía de ninguna parte— y un
+           botón que lo saque de la página sería una salida que nadie pidió.
 
-            Si alguien copiara esta URL con el `?previa=1` y la compartiera, su
-            cliente vería el botón y al tocarlo acabaría en la pantalla de
-            entrar. Feo, no peligroso: `/productos` exige sesión. */}
-        {esVistaPrevia ? (
-          <Link
-            href="/productos"
-            aria-label="Volver al catálogo"
-            className="absolute top-4 left-4 z-10 flex size-10 items-center justify-center rounded-full text-white outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </Link>
-        ) : null}
-        <Image
-          src="/logo-secundary.svg"
-          alt=""
-          aria-hidden="true"
-          width={520}
-          height={160}
-          priority={false}
-          className="pointer-events-none absolute -top-6 left-1/2 -z-10 w-[130%] max-w-none -translate-x-1/2 opacity-[0.06] select-none"
-        />
-        <Image
-          src={logoUrl}
-          alt=""
-          width={96}
-          height={96}
-          unoptimized={Boolean(shared.owner_logo_path)}
-          className="mx-auto size-24 rounded-full border-2 border-white/10 object-cover"
-        />
-        <h1 className="pt-4 text-2xl font-semibold text-white">
-          {shared.business_name || "Catálogo"}
-        </h1>
-        {/* EL AVISO DE LA TASA, Y SOLO DONDE HAY TASA.
-            
-            Un negocio colombiano cobra en pesos y no tiene equivalencia que
-            advertir, así que la frase sobraría y además mentiría. Ya no dice
-            «Lo que vendemos, con sus precios»: esa frase no informaba de nada
-            que la pantalla no enseñe sola, y el frame la cambia por la única
-            advertencia que el cliente necesita antes de mirar un precio.
+           El tendero sí: llegó desde su catálogo y quiere volver. Va a
+           `/productos` con un `Link` y no con `history.back()`: la previa se
+           abre en una pestaña NUEVA, así que no hay historial al que volver y
+           el botón no haría nada.
 
-            LA CONDICIÓN ES `hayCalculadas` Y NO `rates`, y la diferencia
-            importa: con TODOS los precios fijados a mano por el tendero nada
-            se calcula con la tasa, y entonces la frase es falsa. Esa precisión
-            venía del aviso que esto sustituye, al pie de la página, y casi se
-            pierde al subirlo: la primera versión miraba solo si el negocio es
-            venezolano, y el aviso salía arriba Y abajo a la vez. */}
-        {hayCalculadas ? (
-          <p className="mx-auto max-w-sm pt-2 text-sm leading-relaxed text-brand-muted">
-            Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar.
-          </p>
-        ) : null}
-      </header>
+           Si alguien copiara esta URL con el `?previa=1` y la compartiera, su
+           cliente vería el botón y al tocarlo acabaría en la pantalla de
+           entrar. Feo, no peligroso: `/productos` exige sesión. */
+        back={
+          esVistaPrevia
+            ? { href: "/productos", label: "Volver al catálogo" }
+            : undefined
+        }
+        /* EL AVISO DE LA TASA, Y SOLO DONDE HAY TASA.
+
+           Un negocio colombiano cobra en pesos y no tiene equivalencia que
+           advertir, así que la frase sobraría y además mentiría.
+
+           LA CONDICIÓN ES `hayCalculadas` Y NO `rates`, y la diferencia
+           importa: con TODOS los precios fijados a mano por el tendero nada
+           se calcula con la tasa, y entonces la frase es falsa. Esa precisión
+           venía del aviso que esto sustituye, al pie de la página, y casi se
+           pierde al subirlo: la primera versión miraba solo si el negocio es
+           venezolano, y el aviso salía arriba Y abajo a la vez. */
+        subtitle={
+          hayCalculadas
+            ? "Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar."
+            : undefined
+        }
+      />
 
       <div className="flex flex-col gap-6 px-4 py-6">
-
-      {shared.products.length === 0 ? (
-        <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Todavía no hay productos publicados. Escríbele al negocio y pregúntale qué tiene.
-          </p>
-        </div>
-      ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {shared.products.map((p) => {
-            // El fijado a mano manda sobre el calculado — es la precedencia que
-            // `priceIn` ya respeta, y la razon por la que `pinned` viaja hasta
-            // aqui en vez de quedarse en la ficha.
-            const bs = bolivares.get(p.id) ?? null;
-            return (
-              <li key={p.id} className="flex">
-                {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
+        {shared.products.length === 0 ? (
+          <div className="rounded-xl border border-dashed px-6 py-12 text-center">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Todavía no hay productos publicados. Escríbele al negocio y
+              pregúntale qué tiene.
+            </p>
+          </div>
+        ) : (
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {shared.products.map((p) => {
+              // El fijado a mano manda sobre el calculado — es la precedencia que
+              // `priceIn` ya respeta, y la razon por la que `pinned` viaja hasta
+              // aqui en vez de quedarse en la ficha.
+              const bs = bolivares.get(p.id) ?? null;
+              return (
+                <li key={p.id} className="flex">
+                  {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
                     entregable B (2026-10-14). Un `Link` y no un `onClick`: así
                     el cliente puede abrirlo en otra pestaña, copiarlo para
                     mandárselo a alguien, y el navegador le enseña a dónde va
                     antes de tocar — tres cosas que un div con manejador no
                     hace, en una página donde quien mira no conoce a Sevenz y
                     no tiene por qué fiarse. */}
-                <Link
-                  href={`/c/${token}/${p.id}`}
-                  className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
-                >
-                <div className="relative aspect-square w-full bg-muted">
-                  {p.photo_path ? (
-                    <Image
-                      src={getPublicProductPhotoUrl(p.photo_path)}
-                      alt=""
-                      fill
-                      unoptimized
-                      sizes="(min-width: 640px) 33vw, 50vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
-                      <ImageOff className="size-6" aria-hidden="true" />
-                      <span className="text-[11px]">Sin foto</span>
+                  <Link
+                    href={`/c/${token}/${p.id}`}
+                    className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
+                  >
+                    <div className="relative aspect-square w-full bg-muted">
+                      {p.photo_path ? (
+                        <Image
+                          src={getPublicProductPhotoUrl(p.photo_path)}
+                          alt=""
+                          fill
+                          unoptimized
+                          sizes="(min-width: 640px) 33vw, 50vw"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                          <ImageOff className="size-6" aria-hidden="true" />
+                          <span className="text-[11px]">Sin foto</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-0.5 p-3">
-                  <span className="line-clamp-2 text-sm font-medium">{p.name}</span>
-                  <span className="text-sm tabular-nums">
-                    {formatPriceAmount(p.price, p.base_currency)}
-                  </span>
-                  {/* La equivalencia, con la palabra que ya decidio el dueño
+                    <div className="flex flex-col gap-0.5 p-3">
+                      <span className="line-clamp-2 text-sm font-medium">
+                        {p.name}
+                      </span>
+                      <span className="text-sm tabular-nums">
+                        {formatPriceAmount(p.price, p.base_currency)}
+                      </span>
+                      {/* La equivalencia, con la palabra que ya decidio el dueño
                       el 2026-10-09: es «equivalente», no un segundo precio.
                       Aqui importa mas que en la ficha — quien lo lee va a
                       pagar con eso. */}
-                  {/* «Precio en bolívares» cuando el tendero lo fijó, y
+                      {/* «Precio en bolívares» cuando el tendero lo fijó, y
                       «equivale a» cuando lo calculamos nosotros. No es un
                       matiz: lo primero es un precio que él sostiene, lo
                       segundo es una conversión que se mueve con la tasa, y el
                       cliente paga distinto según cuál sea. Es la misma palabra
                       que ya decidió el dueño para la ficha el 2026-10-09. */}
-                  {bs != null ? (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {bs.pinned ? "precio en " : "equivale a "}
-                      {formatBs(bs.amount)}
-                    </span>
-                  ) : null}
-                  {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
+                      {bs != null ? (
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {bs.pinned ? "precio en " : "equivale a "}
+                          {formatBs(bs.amount)}
+                        </span>
+                      ) : null}
+                      {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
                       migracion 106 la tarjeta ensena el precio de UNA UNIDAD
                       -- detal si esta publicado, mayor si es lo unico que
                       hay-- en vez del mas bajo, que era el criterio de la 086.
                       Con un solo enlace, tarjeta y detalle son la misma
                       pagina en dos pasos: ensenar 4 en la tarjeta y cobrar 5
                       al entrar seria un cebo. */}
-                  <span className="text-xs text-muted-foreground">
-                    {p.tier === "wholesale" ? "precio al mayor" : "precio al detal"}
-                  </span>
+                      <span className="text-xs text-muted-foreground">
+                        {p.tier === "wholesale"
+                          ? "precio al mayor"
+                          : "precio al detal"}
+                      </span>
 
-                  {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
+                      {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
 
                       SIN CIFRA. Decisión del dueño el 2026-10-15, que cambia
                       lo acordado esa misma mañana: la etiqueta dice si HAY o
@@ -425,24 +442,24 @@ export default async function CatalogoPublicoPage({
                       página la ve un cliente que no eligió el tema de nadie, y
                       el verde y el rojo tienen que significar lo mismo en los
                       dos. */}
-                  <span
-                    className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
-                      p.stock === 0
-                        ? "border-red-200 bg-red-50 text-red-700"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    }`}
-                  >
-                    {p.stock === 0 ? "No disponible" : "Disponible"}
-                  </span>
-                </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                      <span
+                        className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
+                          p.stock === 0
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {p.stock === 0 ? "No disponible" : "Disponible"}
+                      </span>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
-      {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame
+        {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame
           `1190:5748` (2026-10-15). Durante un rato estuvo en los dos sitios a
           la vez — se vio rindiendo la página, no leyéndola.
 
@@ -450,13 +467,14 @@ export default async function CatalogoPublicoPage({
           precio fijado a mano. En un catálogo sin ninguno explicaría una
           etiqueta que no aparece en la página: texto que no describe lo que se
           está viendo. */}
-      {hayFijadas ? (
-        <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          Los precios marcados «precio en Bs.» los fijó el negocio y no se mueven solos.
-        </p>
-      ) : null}
+        {hayFijadas ? (
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
+            Los precios marcados «precio en Bs.» los fijó el negocio y no se
+            mueven solos.
+          </p>
+        ) : null}
 
-      {/* EL MISMO PIE ANTIFRAUDE QUE LLEVAN LAS PLANTILLAS DE WHATSAPP, y por
+        {/* EL MISMO PIE ANTIFRAUDE QUE LLEVAN LAS PLANTILLAS DE WHATSAPP, y por
           la misma razon: este enlace llega por un mensaje sobre un negocio,
           desde un numero que el destinatario no tiene agendado. Esa secuencia
           es, en Venezuela, la estafa mas corriente que existe. Decision del
@@ -464,7 +482,7 @@ export default async function CatalogoPublicoPage({
           coherencia, no una regla nueva — si los mensajes lo llevan y la
           pagina a la que llevan no, el aviso enseña a desconfiar del mensaje
           en vez de del impostor. */}
-      {/* LA VERSIÓN LARGA, del frame 1192:4185 (2026-10-14).
+        {/* LA VERSIÓN LARGA, del frame 1192:4185 (2026-10-14).
 
           La corta —«Sevenz no pide códigos ni pagos. Aquí solo ves precios»—
           nació cuando esta página solo enseñaba precios, y esa segunda frase
@@ -475,10 +493,10 @@ export default async function CatalogoPublicoPage({
           mensaje no le funcionó, y dice adónde va el dinero de verdad. Un
           cliente que acaba de mandar un pedido por WhatsApp es exactamente
           quien espera una llamada «del negocio» a continuación. */}
-      <p className="text-center text-xs text-muted-foreground">
-        Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos
-        deben hacerse directamente con el dueño del comercio.
-      </p>
+        <p className="text-center text-xs text-muted-foreground">
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas.
+          Pagos y abonos deben hacerse directamente con el dueño del comercio.
+        </p>
       </div>
     </main>
   );
