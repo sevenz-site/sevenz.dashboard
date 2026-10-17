@@ -44,19 +44,41 @@ import type { ClientSummary } from "@/lib/types";
 // rule, and the same two traps, as Inicio's field — the 2px border is what
 // makes the field visible (its fill is 1,91:1 against the header) and the
 // placeholder cannot be dimmed at any opacity.
+// ÉSTE ES EL BUSCADOR DE TODA LA APP, no solo de las tres pantallas de
+// clientes. Catálogo, Reportes y Pedidos lo usan desde el 2026-10-16, por
+// instrucción del dueño: *«el componente que usas en "Clientes" es el que
+// debería ir en todas las pantallas mencionadas»*.
+//
+// Lo que había antes eran copias cercanas escritas en días distintos, y las
+// diferencias entre ellas no las había decidido nadie. Dos se quedaron SIN
+// ASPA —Catálogo y Reportes, y Pedidos nació copiando a Catálogo—, y esa no
+// es una diferencia cosmética: el aspa es la mitad de cómo este campo dice si
+// está filtrando algo. El texto escrito y el marcador de posición son el
+// mismo #DADADA a propósito (ver abajo), así que el color no distingue un
+// campo lleno de uno vacío; lo distingue el icono. Sin aspa, además, vaciar
+// la búsqueda se hace borrando letra por letra.
 export function SearchField({
   value,
   onChange,
   placeholder,
   tone = "light",
+  onFocus,
+  onBlur,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   tone?: "light" | "dark";
+  // Para las pantallas que además despliegan resultados bajo el campo
+  // —Reportes—, que necesitan su propio retardo al salir. Se SUMAN al
+  // comportamiento de abajo, no lo reemplazan.
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   // Mientras se escribe, el título de la pantalla se aparta para dejar
-  // sitio a la lista. Ver search-focus-context.tsx.
+  // sitio a la lista. Ver search-focus-context.tsx. Donde no hay proveedor
+  // —Catálogo, Reportes, Pedidos— el contexto trae un valor por defecto que
+  // no hace nada, así que el campo funciona igual.
   const { setFocused } = useSearchFocus();
 
   return (
@@ -67,8 +89,14 @@ export function SearchField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true);
+          onFocus?.();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onBlur?.();
+        }}
         className={
           tone === "dark"
             ? "h-[50px] w-full min-w-0 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-10 pl-4 text-[17px] text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"

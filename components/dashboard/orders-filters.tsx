@@ -1,9 +1,8 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
 import { isUnattended } from "@/lib/orders/catalog-orders";
@@ -95,24 +94,9 @@ export function OrdersFilterProvider({
 
 export function OrdersSearchField() {
   const { query, setQuery } = useOrdersFilters();
-  return (
-    <div className="relative">
-      <Search
-        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-brand-muted"
-        aria-hidden="true"
-      />
-      {/* Same classes as the catalogue's field over the dark header:
-          `--brand-field-border` at 2px, which is the measured contrast
-          (5,78:1). The spec's #525252 gave 1,91:1 and disappeared. */}
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar cliente"
-        aria-label="Buscar cliente"
-        className="h-[46px] rounded-[10px] border-2 border-brand-field-border bg-transparent pl-9 text-white placeholder:text-brand-muted focus-visible:border-white"
-      />
-    </div>
-  );
+  // `SearchField`, el mismo de Clientes. Nació copiando el de Catálogo el
+  // 2026-10-16 y se unificó con todos el mismo día.
+  return <SearchField tone="dark" value={query} onChange={setQuery} placeholder="Buscar cliente" />;
 }
 
 export function OrdersFilterChips() {

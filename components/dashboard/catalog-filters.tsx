@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
@@ -158,25 +158,11 @@ export function CatalogFilterProvider({
 }
 
 export function CatalogSearchField() {
-  const { setQuery, query } = useCatalogFilters();
-  return (
-    <div className="relative">
-      <Search
-        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-brand-muted"
-        aria-hidden="true"
-      />
-      {/* Mismas clases que el campo de Clientes sobre la cabecera oscura:
-          `--brand-field-border` a 2px, que es el contraste medido (5,78:1).
-          El #525252 del spec daba 1,91:1 y desaparecia. */}
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar producto"
-        aria-label="Buscar producto"
-        className="h-[46px] rounded-[10px] border-2 border-brand-field-border bg-transparent pl-9 text-white placeholder:text-brand-muted focus-visible:border-white"
-      />
-    </div>
-  );
+  const { query, setQuery } = useCatalogFilters();
+  // `SearchField`, el mismo de Clientes, Malas pagas y Papelera, desde el
+  // 2026-10-16. Antes era una copia de 46px con la lupa a la izquierda y sin
+  // aspa: para vaciar la búsqueda había que borrar letra por letra.
+  return <SearchField tone="dark" value={query} onChange={setQuery} placeholder="Buscar producto" />;
 }
 
 export function CatalogFilterChips() {
