@@ -11,6 +11,29 @@ import { ArrowLeft } from "lucide-react";
 // que un día dejen de serlo.
 export const CLAVE_VOLVER_AL_SALDO = "sevenz:volver-al-saldo";
 
+// EL TOKEN DEL SALDO, SI LO HAY. Sacado a un hook el 2026-10-17 porque ya son
+// DOS sitios los que preguntan lo mismo: esta flecha y el botón «Ver saldo
+// pendiente» del comprobante. Dos lecturas del mismo almacén con dos claves
+// escritas a mano es como una de las dos deja de encontrar nada.
+export function useTokenDelSaldo(): string | null {
+  // El valor se lee del almacén en cada render del cliente y es `null` en el
+  // servidor, así que no hay desajuste de hidratación ni un segundo render en
+  // cascada. La suscripción no hace nada a propósito: esto se escribe una
+  // sola vez, en otra página, antes de que estos componentes existan.
+  return useSyncExternalStore(
+    () => () => {},
+    () => {
+      try {
+        return sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO);
+      } catch {
+        // Modo privado, almacén bloqueado, o un navegador que dice que no.
+        return null;
+      }
+    },
+    () => null,
+  );
+}
+
 // LA FLECHA PARA VOLVER AL SALDO, y solo para quien vino de ahí.
 //
 // Pedida por el dueño el 2026-10-17, el mismo día que el catálogo empezó a
@@ -50,22 +73,7 @@ export const CLAVE_VOLVER_AL_SALDO = "sevenz:volver-al-saldo";
 // mismo catálogo ya vive en `localStorage`** (`useCarrito`), así que un
 // navegador que no deje guardar nada ya no podía usar esta pantalla.
 export function BackToBalance() {
-  // El valor se lee del almacén en cada render del cliente y es `null` en el
-  // servidor, así que no hay desajuste de hidratación ni un segundo render en
-  // cascada. La suscripción no hace nada a propósito: esto se escribe una
-  // sola vez, en otra página, antes de que este componente exista.
-  const token = useSyncExternalStore(
-    () => () => {},
-    () => {
-      try {
-        return sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO);
-      } catch {
-        // Modo privado, almacén bloqueado, o un navegador que dice que no.
-        return null;
-      }
-    },
-    () => null,
-  );
+  const token = useTokenDelSaldo();
 
   if (!token) return null;
 

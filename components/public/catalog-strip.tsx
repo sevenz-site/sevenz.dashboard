@@ -37,13 +37,25 @@ export function CatalogStrip({
   shareToken,
   catalogToken,
   products,
+  titulo = "Productos",
 }: {
   // The CLIENT's token, the one in the address bar. It is what the event
   // route uses to find out which business to file the event under; it is
   // never used to build the catalogue link.
-  shareToken: string;
+  //
+  // OPTIONAL SINCE 2026-10-17, when the owner asked for this same carousel on
+  // the order receipt under the title «Productos relacionados». There the
+  // reader is ALREADY inside the catalogue, so there is no «opened the
+  // catalogue from the share link» to record -- and sending that event from
+  // there would inflate the one number it exists to answer. No token, no
+  // event; the cards still work.
+  shareToken?: string;
   catalogToken: string;
   products: CatalogStripProduct[];
+  // El rótulo, porque las dos pantallas que lo usan dicen cosas distintas:
+  // «Productos» en el saldo del cliente y «Productos relacionados» en el
+  // comprobante. Por defecto el primero, que es el que ya existía.
+  titulo?: string;
 }) {
   if (products.length === 0) return null;
 
@@ -62,6 +74,10 @@ export function CatalogStrip({
   // IT FAILS SILENTLY ON PURPOSE. An analytics call that can break a link is
   // worse than a missing number, so every outcome here is swallowed.
   const registrar = () => {
+    // SIN TOKEN NO HAY NADA QUE HACER: no se viene del saldo, así que ni hay
+    // camino de vuelta que guardar ni evento que contar.
+    if (!shareToken) return;
+
     // EL CAMINO DE VUELTA, antes que nada. Es lo único de esta función que el
     // cliente va a notar si falla, así que va primero y en su propio `try`:
     // un fallo del aviso a Mixpanel no puede llevarse por delante la flecha.
@@ -93,7 +109,7 @@ export function CatalogStrip({
             2026-10-17 y lo corrigió el dueño el mismo día, mirando la
             pantalla: «Pendiente», «Productos» e «Historial» se leían como
             tres jerarquías distintas en una columna donde son lo mismo. */}
-        <h2 className="mt-1 text-xl font-semibold">Productos</h2>
+        <h2 className="mt-1 text-xl font-semibold">{titulo}</h2>
         <Link
           href={href}
           onClick={registrar}

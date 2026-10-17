@@ -28,6 +28,11 @@ import {
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import {
+  CatalogStrip,
+  type CatalogStripProduct,
+} from "@/components/public/catalog-strip";
+import { useTokenDelSaldo } from "@/components/public/back-to-balance";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
@@ -87,6 +92,11 @@ type Estado =
       fase: "enviado";
       mensaje: string;
       comprador: { nombre: string; documento: string; telefono: string };
+      // LOS IDS DE LO COMPRADO, por la MISMA razón que el resumen: esta
+      // pantalla se pinta después de vaciar el carrito, así que leerlos de él
+      // daría una lista vacía y el carrusel de abajo volvería a ofrecer lo que
+      // el comprador acaba de meter en la bolsa.
+      comprados: string[];
       // LA FOTO DEL PEDIDO, no una referencia al carrito: esta pantalla se
       // pinta DESPUÉS de vaciarlo. Calcularla sobre el carrito daría un
       // resumen vacío justo donde el cliente espera ver lo que pidió.
@@ -99,6 +109,7 @@ export function CartScreen({
   businessName,
   ownerWhatsapp,
   ownerCountry,
+  relacionados = [],
 }: {
   token: string;
   businessName: string;
@@ -106,6 +117,10 @@ export function CartScreen({
   // El país del NEGOCIO, solo para que el selector de prefijo abra en el que
   // va a usar el 99 % de sus clientes. El cliente puede cambiarlo.
   ownerCountry: string | null;
+  // EL CATÁLOGO DEL NEGOCIO, para el carrusel del comprobante. Por defecto
+  // vacío: la pantalla de «enlace inválido» monta este componente sin datos,
+  // y un carrusel sin productos no se pinta solo.
+  relacionados?: CatalogStripProduct[];
 }) {
   const { lineas, cambiar, quitar, vaciar } = useCarrito(token);
   const [estado, setEstado] = useState<Estado>({ fase: "cargando" });
@@ -147,6 +162,10 @@ export function CartScreen({
         comprador={estado.comprador}
         resumen={estado.resumen}
         rates={estado.rates}
+        relacionados={relacionados}
+        // LO QUE ACABA DE COMPRAR, para no ofrecérselo otra vez debajo del
+        // recibo. `estado.lineas` es la orden recién enviada.
+        yaComprados={estado.comprados}
       />
     );
   }
@@ -415,6 +434,7 @@ export function CartScreen({
             mensaje,
             comprador,
             resumen: resumenPorMoneda(lineas, productos, rates),
+            comprados: lineas.map((l) => l.productId),
             rates,
           });
           vaciar();
@@ -720,6 +740,8 @@ function Enviado({
   comprador,
   resumen,
   rates,
+  relacionados,
+  yaComprados,
 }: {
   token: string;
   mensaje: string;
@@ -727,7 +749,13 @@ function Enviado({
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: ReturnType<typeof resumenPorMoneda>;
   rates: BolivarRates | null;
+  relacionados: CatalogStripProduct[];
+  yaComprados: string[];
 }) {
+  // El enlace del saldo, si este comprador llegó desde el suyo. Decide si
+  // «Ver saldo pendiente» existe — ver donde se pinta, abajo.
+  const tokenDelSaldo = useTokenDelSaldo();
+
   // LA HOJA NATIVA DEL TELÉFONO, no un `wa.me`. A petición del dueño el
   // 2026-10-15, y es lo que dibuja el frame `1326:5835`.
   //
@@ -922,12 +950,62 @@ function Enviado({
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </button>
+
+        {/* EL CARRUSEL, DEBAJO DE «COMPARTIR». Encargo del dueño el
+            2026-10-17, y es el MISMO componente que la franja del saldo —no
+            una copia— porque las dos enseñan lo mismo y el día que una
+            cambie la otra tiene que cambiar con ella.
+
+            SIN `shareToken`, a propósito: quien lee esto YA está dentro del
+            catálogo, así que no hay ningún «abrió el catálogo desde el
+            enlace» que contar. Mandar ese evento desde aquí inflaría el único
+            número que existe para contestar esa pregunta.
+
+            FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo
+            le ofrece otra vez lo que tiene en la bolsa no es una sugerencia,
+            es un despiste — y en un producto sobre dinero, invitar a comprar
+            dos veces lo mismo es exactamente lo que no conviene.
+
+            SOBRE EL RÓTULO, y queda dicho para que nadie lo lea como una
+            promesa: «relacionados» es la palabra del dueño, pero hoy nada
+            relaciona estos productos con lo comprado más allá de ser del
+            mismo negocio. No hay categorías ni etiquetas en la ficha de un
+            producto. Si algún día se quiere que lo sean de verdad, hace falta
+            ese dato primero. */}
+        <CatalogStrip
+          catalogToken={token}
+          titulo="Productos relacionados"
+          products={relacionados.filter((p) => !yaComprados.includes(p.id))}
+        />
+
         <Link
           href={`/c/${token}`}
-          className="flex h-12 items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background"
+          className="flex h-12 items-center justify-center gap-2 rounded-lg bg-foreground text-sm font-medium text-background"
         >
-          Volver al catálogo
+          <ArrowLeft className="size-5" aria-hidden="true" /> Volver al catálogo
         </Link>
+
+        {/* «VER SALDO PENDIENTE», Y SOLO PARA QUIEN VINO DE SU SALDO.
+            Decisión del dueño el 2026-10-17: «ese último botón aparecerá solo
+            cuando el cliente accedió desde el link compartido, sino no debe
+            aparecer».
+
+            Tiene su razón: a quien llegó por el enlace del catálogo a secas
+            no le corresponde ningún saldo —puede no ser cliente del negocio—
+            y un botón que promete enseñarle una deuda que no existe es peor
+            que ninguno.
+
+            El mismo almacén que la flecha de volver, leído por el mismo hook.
+            Si está bloqueado, no sale el botón: el comprobante queda como
+            estaba y nadie pierde nada de lo que vino a ver. */}
+        {tokenDelSaldo ? (
+          <Link
+            href={`/s/${tokenDelSaldo}`}
+            className="flex h-12 items-center justify-center rounded-lg border text-sm font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Ver saldo pendiente
+          </Link>
+        ) : null}
       </div>
     </main>
   );
