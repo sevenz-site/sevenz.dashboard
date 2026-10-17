@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import { CartPill } from "@/components/public/cart-pill";
-import { WidthProbe } from "@/components/public/width-probe";
 
 // EL LAYOUT DEL CATALOGO PUBLICO, y existe por una sola razon: la pildora del
 // carrito tiene que salir en la lista Y en el detalle.
@@ -25,14 +23,6 @@ export default async function CatalogoLayout({
 
   return (
     <>
-      {/* SONDA TEMPORAL, solo con `?diag=1`. Sin el parámetro devuelve `null`.
-          Está aquí y no en una pantalla concreta porque el desbordamiento que
-          busca puede aparecer en cualquiera de las cuatro. Se quita entera
-          —archivo y esta línea— en cuanto el diagnóstico termine; ver el aviso
-          de `width-probe.tsx`. */}
-      <Suspense fallback={null}>
-        <WidthProbe />
-      </Suspense>
       {children}
       <CartPill token={token} />
     </>
