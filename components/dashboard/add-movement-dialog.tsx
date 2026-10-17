@@ -37,7 +37,7 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { MovementProductsField } from "@/components/dashboard/movement-products-field";
-import { totalDeLineas, type LineaDeProducto } from "@/lib/movement-products";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 import {
   MontoCard,
   TipoButtons,

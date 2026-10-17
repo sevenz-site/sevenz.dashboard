@@ -40,7 +40,7 @@ import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { MovementProductsField } from "@/components/dashboard/movement-products-field";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatCurrency } from "@/lib/format";
-import { totalDeLineas, type LineaDeProducto } from "@/lib/movement-products";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 import {
   MontoCard,
   MonedaTecleadaButtons,

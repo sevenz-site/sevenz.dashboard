@@ -1,4 +1,4 @@
-import { totalDeLineas, type MovementProductRow } from "@/lib/movement-products";
+import { totalDeLineas, type SaleLineRow } from "@/lib/sale-lines";
 
 // QUÉ SE LLEVÓ EL CLIENTE, en la ficha de un movimiento ya guardado.
 //
@@ -22,7 +22,7 @@ export function ProductosDelMovimiento({
   amount,
   formatearMonto,
 }: {
-  productos: MovementProductRow[];
+  productos: SaleLineRow[];
   // El monto que quedó guardado en el movimiento, que es la verdad del dinero.
   amount: number;
   formatearMonto: (monto: number) => string;

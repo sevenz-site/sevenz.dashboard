@@ -19,7 +19,7 @@ import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
-import type { MovementProductRow } from "@/lib/movement-products";
+import type { SaleLineRow } from "@/lib/sale-lines";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
@@ -61,7 +61,7 @@ export function MovementHistoryList({
   // lo trae en una sola consulta para toda la lista; aquí solo se reparte.
   // Opcional porque la pantalla del cliente no lo pasa -- ver la nota de la
   // prop `productos` en MovementDetailPopover.
-  productosPorMovimiento?: Map<string, MovementProductRow[]>;
+  productosPorMovimiento?: Map<string, SaleLineRow[]>;
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");

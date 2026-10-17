@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buscarProductos, type ProductoBuscado } from "@/app/(app)/productos/actions";
-import { totalDeLineas, type LineaDeProducto } from "@/lib/movement-products";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 
 // QUÉ SE LLEVÓ EL CLIENTE, dentro del formulario de fiado. Paso 8 del orden
 // acordado, entregable `E` / `CT-51`.

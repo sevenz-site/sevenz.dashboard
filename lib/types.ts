@@ -31,6 +31,13 @@ export type Movement = {
   // payment, and that is every row stored before 2026-10-16. Only a charge with
   // a plazo can carry it -- the check constraint refuses anything else.
   cuotas: number | null;
+  // LA VENTA DE LA QUE NACIÓ, si nació de una (migración `124`). null en todo
+  // lo registrado antes del 2026-10-17 y en lo que entra por la libreta.
+  //
+  // Un fiado manual es «una venta sin pago», así que desde esa fecha lo
+  // normal es que un cargo del formulario SÍ la tenga: es donde viven las
+  // líneas de qué se llevó el cliente.
+  sale_id: string | null;
   created_at: string;
   // Which ledger this movement belongs to. null for a country='CO' owner,
   // whose single ledger is COP.

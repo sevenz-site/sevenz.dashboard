@@ -31,7 +31,7 @@ import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
-import type { MovementProductRow } from "@/lib/movement-products";
+import type { SaleLineRow } from "@/lib/sale-lines";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -104,7 +104,7 @@ export function MovementDetailPopover({
   // devuelve estas líneas, y mientras el dueño no diga lo contrario no las
   // devuelve a propósito -- quién se llevó qué es una conversación entre los
   // dos, pero el inventario del negocio no lo es.
-  productos?: MovementProductRow[];
+  productos?: SaleLineRow[];
   createdAt: string;
   runningBalance: number;
   // Label for the running-balance row — the owner's dashboard says "Por

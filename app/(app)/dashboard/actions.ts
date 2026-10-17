@@ -16,7 +16,7 @@ import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
-import type { LineaDeProducto } from "@/lib/movement-products";
+import type { LineaDeProducto } from "@/lib/sale-lines";
 
 export type MovementFormState = {
   error: string | null;
@@ -118,9 +118,26 @@ function parsearProductos(bruto: string): LineaDeProducto[] {
 // devuelve, para que quien llame decida. Hoy nadie tumba el movimiento por
 // esto --ya está guardado y el dinero es lo que importa-- pero el día que haga
 // falta avisar en pantalla, el dato está. Es la lección de `CT-88`.
-async function guardarProductosDelMovimiento(
+//
+// ===========================================================================
+// ESTO CREA UNA VENTA, Y HASTA EL 2026-10-17 INSERTABA EN `movement_products`
+//
+// Un fiado manual es ahora «una venta sin pago»: se crea la fila en `sales`,
+// sus `sale_lines`, y se apunta el movimiento a ella con `sale_id`.
+//
+// POR QUÉ CAMBIÓ: una venta pagada al contado no escribe NADA en `movements`
+// —el recálculo del saldo no tiene fila neutra, ver la migración `124`— así
+// que sus productos no tenían movimiento del que colgar. Con dos tablas, cada
+// pantalla que quisiera enseñar «qué se llevó» tendría que mirar en las dos o
+// quedarse a medias.
+//
+// EL ORDEN IMPORTA Y ES EL MISMO DE ANTES: el dinero primero. Cuando esto
+// corre, el movimiento ya existe y el saldo ya es correcto. Si algo de aquí
+// falla, se pierde el detalle de la compra y nunca la deuda.
+async function guardarVentaDelMovimiento(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ownerId: string,
+  clientId: string,
   movementId: string,
   lineas: LineaDeProducto[],
   // EL LIBRO DEL MOVIMIENTO, que es la moneda base del producto que nazca
@@ -144,7 +161,19 @@ async function guardarProductosDelMovimiento(
     idsPropios = new Set((data ?? []).map((p) => p.id));
   }
 
-  const filas: { movement_id: string; product_id: string | null; name: string; quantity: number; unit_price: number }[] = [];
+  // LA VENTA, antes que sus líneas. Si esto falla no hay dónde colgarlas y se
+  // sale: el movimiento ya está guardado y el saldo ya es correcto.
+  const { data: venta, error: errorVenta } = await supabase
+    .from("sales")
+    .insert({ owner_id: ownerId, client_id: clientId, created_by: ownerId })
+    .select("id")
+    .single();
+  if (errorVenta || !venta) {
+    console.error("guardarVentaDelMovimiento: alta de venta:", errorVenta?.message);
+    return { error: "No pudimos guardar los productos de este movimiento." };
+  }
+
+  const filas: { sale_id: string; product_id: string | null; name: string; quantity: number; unit_price: number; currency: string }[] = [];
 
   for (const l of lineas) {
     let productId = l.productId && idsPropios.has(l.productId) ? l.productId : null;
@@ -168,24 +197,45 @@ async function guardarProductosDelMovimiento(
         })
         .select("id")
         .single();
-      if (error) console.error("guardarProductosDelMovimiento: alta de producto:", error.message);
+      if (error) console.error("guardarVentaDelMovimiento: alta de producto:", error.message);
       else productId = creado.id;
     }
 
     filas.push({
-      movement_id: movementId,
+      sale_id: venta.id,
       product_id: productId,
       name: l.name,
       quantity: l.quantity,
       unit_price: l.unitPrice,
+      // LA MONEDA DE LA LÍNEA ES LA DEL LIBRO DEL MOVIMIENTO. Un fiado manual
+      // es de una sola moneda --la que el formulario eligió-- así que todas
+      // sus líneas comparten libro. La venta del sitemap sí admite una moneda
+      // por línea, y ese es el camino que esta función todavía no cubre.
+      //
+      // `COP` donde el libro es `null`, que es el único libro de un negocio
+      // colombiano: la columna de `sale_lines` no admite nulos porque una
+      // línea sin moneda no se puede sumar con nada.
+      currency: ledger ?? "COP",
     });
   }
 
-  const { error } = await supabase.from("movement_products").insert(filas);
+  const { error } = await supabase.from("sale_lines").insert(filas);
   if (error) {
-    console.error("guardarProductosDelMovimiento:", error.message);
+    console.error("guardarVentaDelMovimiento: lineas:", error.message);
     return { error: "No pudimos guardar los productos de este movimiento." };
   }
+
+  // EL ENLACE, AL FINAL. Si esto falla, la venta y sus líneas existen y solo
+  // se pierde el puente desde el movimiento -- recuperable, al contrario que
+  // un saldo mal calculado.
+  const { error: errorEnlace } = await supabase
+    .from("movements")
+    .update({ sale_id: venta.id })
+    .eq("id", movementId);
+  if (errorEnlace) {
+    console.error("guardarVentaDelMovimiento: enlace:", errorEnlace.message);
+  }
+
   return { error: null };
 }
 
@@ -500,7 +550,7 @@ export async function createClientWithMovement(
   // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
   // esto falla, el fiado ya existe y el saldo ya es correcto -- que es el
   // orden que importa.
-  await guardarProductosDelMovimiento(supabase, user.id, movimiento.id, productos, resolved.currency);
+  await guardarVentaDelMovimiento(supabase, user.id, newClient.id, movimiento.id, productos, resolved.currency);
 
   // Tracked here rather than in the browser: this fires after the response
   // is sent (see trackServer), so it can't slow or break the save, and no
@@ -689,7 +739,7 @@ export async function addMovement(
   // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
   // esto falla, el fiado ya existe y el saldo ya es correcto -- que es el
   // orden que importa.
-  await guardarProductosDelMovimiento(supabase, user.id, movimiento.id, productos, resolved.currency);
+  await guardarVentaDelMovimiento(supabase, user.id, clientId, movimiento.id, productos, resolved.currency);
 
   trackServer("Movement Added", user.id, { client_id: clientId, movement_type: type }, user.email);
 

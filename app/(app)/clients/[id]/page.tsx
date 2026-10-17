@@ -34,7 +34,7 @@ import {
   type Movement,
   type OwnerCountry,
 } from "@/lib/types";
-import type { MovementProductRow } from "@/lib/movement-products";
+import type { SaleLineRow } from "@/lib/sale-lines";
 
 const SIGNED_URL_TTL_SECONDS = 300;
 
@@ -483,16 +483,28 @@ async function MovementHistory({
   // significaría una espera justo donde el dueño espera un dato inmediato.
   // Son pocas filas --la mayoría de los movimientos no llevan productos-- y
   // van indexadas por `movement_id`.
-  const productosPorMovimiento = new Map<string, MovementProductRow[]>();
-  if (movementRows.length > 0) {
+  //
+  // SE BUSCAN POR LA VENTA Y NO POR EL MOVIMIENTO desde el 2026-10-17: las
+  // líneas se mudaron a `sale_lines` (migración `124`) porque una venta
+  // pagada al contado no tiene movimiento del que colgar. El movimiento
+  // apunta a su venta con `sale_id`, así que el índice sigue siendo por
+  // movimiento y la pantalla no se entera del cambio.
+  const productosPorMovimiento = new Map<string, SaleLineRow[]>();
+  const ventaDelMovimiento = new Map<string, string>();
+  for (const m of movementRows) {
+    if (m.sale_id) ventaDelMovimiento.set(m.sale_id, m.id);
+  }
+  if (ventaDelMovimiento.size > 0) {
     const { data: lineas } = await supabase
-      .from("movement_products")
-      .select("movement_id, name, quantity, unit_price")
-      .in("movement_id", movementRows.map((m) => m.id));
+      .from("sale_lines")
+      .select("sale_id, name, quantity, unit_price")
+      .in("sale_id", [...ventaDelMovimiento.keys()]);
     for (const l of lineas ?? []) {
-      const lista = productosPorMovimiento.get(l.movement_id) ?? [];
+      const movementId = ventaDelMovimiento.get(l.sale_id);
+      if (!movementId) continue;
+      const lista = productosPorMovimiento.get(movementId) ?? [];
       lista.push({ name: l.name, quantity: Number(l.quantity), unitPrice: Number(l.unit_price) });
-      productosPorMovimiento.set(l.movement_id, lista);
+      productosPorMovimiento.set(movementId, lista);
     }
   }
   const photoPaths = movementRows.map((m) => m.photo_path).filter((p): p is string => Boolean(p));

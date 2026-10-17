@@ -1,4 +1,4 @@
-// WHAT THE CLIENT TOOK IN A MOVEMENT — the shape, and the one sum.
+// WHAT THE CLIENT TOOK — the shape, and the one sum.
 //
 // IT LIVES IN `lib/` AND NOT IN THE FIELD COMPONENT because three sides need
 // it and only one of them is a screen: the picker builds these lines, the
@@ -9,8 +9,22 @@
 // importing something that is NOT a type from there gets a client module
 // pulled into a server bundle.
 //
-// Migration `122` is the other half. Its comments carry the owner's three
-// decisions of 2026-10-17 that shaped all of this.
+// ===========================================================================
+// ESTE ARCHIVO SE LLAMABA `movement-products.ts` HASTA EL 2026-10-17
+//
+// Las líneas colgaban del MOVIMIENTO (`movement_products`, migración `122`).
+// Dejaron de hacerlo al llegar la venta: una venta pagada al contado **no
+// escribe nada en `movements`** —el recálculo del saldo no tiene fila neutra,
+// ver la migración `124`— así que sus productos no tenían movimiento del que
+// colgar.
+//
+// Ahora cuelgan de la VENTA, y un fiado manual es «una venta sin pago». Una
+// sola tabla contesta «qué se llevó el cliente», que era la alternativa a
+// tener dos y que cada pantalla mirara en una o se quedara a medias.
+//
+// Se renombró el archivo y no solo su contenido a propósito: el nombre
+// anterior nombraba una tabla que ya no existe, y un módulo que miente sobre
+// dónde vive el dato es la clase de pista falsa que cuesta una tarde.
 
 export type LineaDeProducto = {
   // null = a product the shopkeeper typed on the spot and that does not exist
@@ -42,7 +56,7 @@ export function totalDeLineas(lineas: { quantity: number; unitPrice: number }[])
 // misma forma que `LineaDeProducto` sin `productId`: la ficha enseña qué se
 // llevó, no a qué producto del inventario apunta -- y el día que ese producto
 // se borre, la línea tiene que seguir leyéndose igual.
-export type MovementProductRow = {
+export type SaleLineRow = {
   name: string;
   quantity: number;
   unitPrice: number;
