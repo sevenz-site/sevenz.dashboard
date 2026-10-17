@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { formatCadaCuantosDias } from "@/lib/format";
 
 // EN CUÁNTAS CUOTAS SE PACTÓ EL FIADO. Decisión del dueño, 2026-10-17.
 //
@@ -46,13 +47,10 @@ export function CuotasSelect({
   if (plazoDias === null) return null;
 
   const cuotas = Number(value) || 1;
-  // Los mismos decimales que la base: 30 días en 4 cuotas son 7,5 días, no 7.
-  // Redondear aquí haría que la pantalla prometa una fecha y la base calcule
-  // otra.
-  const cadaCuantos = plazoDias / cuotas;
-  const legible = Number.isInteger(cadaCuantos)
-    ? String(cadaCuantos)
-    : cadaCuantos.toFixed(1).replace(".", ",");
+  // The division lives in `formatCadaCuantosDias` and not here: the movement
+  // detail repeats this same sentence after saving, and the two must not be
+  // able to drift apart. Its own comment carries why it never rounds.
+  const cadaCuantos = formatCadaCuantosDias(plazoDias, cuotas);
 
   return (
     <div className="flex flex-col gap-2">
@@ -77,7 +75,7 @@ export function CuotasSelect({
       {cuotas > 1 ? (
         <p className="text-xs text-muted-foreground">
           Las cuotas se reparten dentro del plazo: {cuotas} cuotas en {plazoDias} días es una
-          cuota cada {legible} {legible === "1" ? "día" : "días"}.
+          cuota cada {cadaCuantos}.
         </p>
       ) : null}
 

@@ -27,6 +27,10 @@ export type Movement = {
   needs_review: boolean;
   photo_path: string | null;
   plazo_dias: number | null;
+  // How many cuotas the fiado was agreed in (migration `118`). null = single
+  // payment, and that is every row stored before 2026-10-16. Only a charge with
+  // a plazo can carry it -- the check constraint refuses anything else.
+  cuotas: number | null;
   created_at: string;
   // Which ledger this movement belongs to. null for a country='CO' owner,
   // whose single ledger is COP.

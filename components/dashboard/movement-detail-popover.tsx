@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
-import { formatDate, formatPlazoDias } from "@/lib/format";
+import { formatCadaCuantosDias, formatDate, formatPlazoDias } from "@/lib/format";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -45,6 +45,7 @@ export function MovementDetailPopover({
   description,
   ownerNote = null,
   plazoDias,
+  cuotas = null,
   createdAt,
   runningBalance,
   balanceLabel = "Por cobrar",
@@ -75,6 +76,17 @@ export function MovementDetailPopover({
   // por descuido.
   ownerNote?: string | null;
   plazoDias: number | null;
+  // How many cuotas the fiado was agreed in (migration `118`). null = single
+  // payment, which is what every row stored before today holds.
+  //
+  // THE CLIENT'S PAGE DOES NOT PASS IT, and today it could not:
+  // `get_shared_balance()` builds each movement's JSON field by field and
+  // carries `plazo_dias` but not `cuotas`, so showing them to the client is a
+  // migration, not a prop. `CT-86` in PENDIENTES.md asks for something else
+  // anyway -- the client's screen needs WHEN the next one falls due, not how
+  // many were agreed. Defaults to null like `ownerNote`, so a new screen that
+  // mounts this component cannot start showing them by accident.
+  cuotas?: number | null;
   createdAt: string;
   runningBalance: number;
   // Label for the running-balance row — the owner's dashboard says "Por
@@ -153,6 +165,28 @@ export function MovementDetailPopover({
   // lleva plazo y la fila dira "—", pero quitarla cambiaria una ficha que el
   // dueño ya conoce sin que nadie lo haya pedido.
   const plazo = formatPlazoDias(plazoDias);
+
+  // WHAT THE CUOTAS ROW SAYS: "3 cuotas, una cada 10 días". The count alone
+  // would make the owner redo the division to know when the next one is due --
+  // the same division the form already did for him before he saved, worded the
+  // same way and computed by the same function, so the card cannot contradict
+  // what he was promised.
+  //
+  // `plazoDias` is never null here in practice: migration `118`'s check
+  // constraint refuses cuotas without a plazo. The fallback exists so this
+  // component never has to trust that from inside a React render.
+  //
+  // AND THE ROW ONLY EXISTS WHEN THERE ARE CUOTAS, unlike "Plazo de pago" just
+  // above it, which deliberately shows a dash on a payment. That row has been
+  // there for months and removing it would change a card the owner already
+  // knows; this one is new, so a "—" on every single movement would be noise he
+  // never asked for -- and almost every movement has no cuotas.
+  const cuotasTexto =
+    cuotas == null
+      ? null
+      : plazoDias == null
+        ? `${cuotas} cuotas`
+        : `${cuotas} cuotas, una cada ${formatCadaCuantosDias(plazoDias, cuotas)}`;
 
   // El saldo manda el color: rojo lo que queda por cobrar, verde el saldo a
   // favor. Es el mismo par de colores que el formulario y el historial, y por
@@ -279,7 +313,8 @@ export function MovementDetailPopover({
 
           <Grupo>
             <Fila nombre="Plazo de pago">{plazo}</Fila>
-            <Fila nombre="Detalle">
+            {cuotasTexto ? <Fila nombre="Cuotas">{cuotasTexto}</Fila> : null}
+            <Fila nombre="Descripción">
               <span className="break-words">{description || "—"}</span>
             </Fila>
             {/* La nota del dueño, y se dice en voz alta que el cliente no la ve.

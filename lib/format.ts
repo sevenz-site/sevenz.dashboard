@@ -35,6 +35,26 @@ export function formatPlazoDias(days: number | null): string {
   return days == null ? "—" : `${days} días`;
 }
 
+// HOW OFTEN A CUOTA FALLS DUE, in days. Cuotas SPLIT the term, they do not
+// extend it: 3 cuotas over 30 days is one every 10 (the owner's decision and
+// his own example, 2026-10-16).
+//
+// IT LIVES HERE BECAUSE TWO SCREENS SAY IT. The form promises the number
+// before saving (`CuotasSelect`) and the movement detail repeats it afterwards
+// (`MovementDetailPopover`). Two copies of one division eventually disagree,
+// and the one that disagrees is a screen telling the owner a date the ledger
+// does not hold.
+//
+// NO ROUNDING, on purpose: 4 cuotas over 30 days is 7,5 days, which is exactly
+// what migration `118` computes with `plazo * (cubiertas + 1) / n`. Rounding to
+// 7 here would print a deadline the database never uses -- and the owner would
+// have no way to tell which of the two was lying.
+export function formatCadaCuantosDias(plazoDias: number, cuotas: number): string {
+  const cada = plazoDias / cuotas;
+  const legible = Number.isInteger(cada) ? String(cada) : cada.toFixed(1).replace(".", ",");
+  return `${legible} ${legible === "1" ? "día" : "días"}`;
+}
+
 // Cédula-style grouping (23.845.083) — only applied to purely numeric
 // documents; a document with letters (e.g. a foreigner ID prefix) is shown
 // exactly as stored rather than guessed at.

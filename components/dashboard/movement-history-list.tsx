@@ -163,6 +163,7 @@ export function MovementHistoryList({
               description={m.description}
               ownerNote={m.owner_note}
               plazoDias={m.plazo_dias}
+              cuotas={m.cuotas}
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               photoUrl={m.photo_path ? (photoUrls[m.photo_path] ?? null) : null}

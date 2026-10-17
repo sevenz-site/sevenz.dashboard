@@ -620,7 +620,7 @@ export function AddMovementDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="description">Detalle (opcional)</Label>
+            <Label htmlFor="description">Descripción (opcional)</Label>
             <Input id="description" name="description" />
           </div>
 

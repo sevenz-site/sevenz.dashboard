@@ -169,7 +169,7 @@ export function MovementDeletionDialog({
 
           <Grupo>
             <Fila nombre="Plazo de pago">{formatPlazoDias(notification.plazoDias)}</Fila>
-            <Fila nombre="Detalle">
+            <Fila nombre="Descripción">
               <span className="break-words">{notification.description || "—"}</span>
             </Fila>
             <dt className="text-xs leading-5 text-muted-foreground">Foto</dt>
