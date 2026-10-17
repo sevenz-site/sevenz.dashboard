@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -155,8 +156,25 @@ export function ClientCardBody({
 
       <p className="flex shrink-0 items-baseline gap-1">
         <span className="text-xl text-foreground tabular-nums">{amount.primary}</span>
+        {/* LA BANDERA EN VEZ DE LAS SIGLAS, desde el 2026-10-16, por
+            instrucción del dueño: *«todo lo que muestre moneda debe contener
+            el ícono (flag)»*. Decía "USD" / "EUR" en 11px grises al lado de
+            la cifra.
+
+            SIGUE SIENDO UN RÓTULO Y NO UN ADORNO, así que conserva lo que
+            decía para quien no distingue dos banderas de 16px o usa un lector
+            de pantalla: el `alt` de la bandera ya nombra el país, y el
+            `sr-only` de abajo dice la moneda. Quitar las siglas sin dejar
+            nada en su lugar habría hecho esta línea MENOS legible, no más. */}
         {bigger ? (
-          <span className="text-[11px] font-medium text-muted-foreground">{bigger}</span>
+          // `self-center` porque el padre alinea por línea base y una bandera
+          // es un círculo: sobre la base queda colgando por debajo de los
+          // dígitos en vez de a su altura. Las siglas que había antes sí
+          // querían la línea base, que es de donde viene el `items-baseline`.
+          <span className="flex items-center self-center">
+            <CurrencyFlagIcon currency={bigger} />
+            <span className="sr-only">{bigger}</span>
+          </span>
         ) : null}
         {/* THE MARK, when the client owes in both ledgers. Measured in dev on
             2026-10-04: 4 of the 45 clients with debt owe in two currencies, and

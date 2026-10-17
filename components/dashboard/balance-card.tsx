@@ -62,7 +62,9 @@ export function BalanceCard({
   // The small line. Formatted here rather than with
   // `ExchangeRateBalanceDisplay` because that component renders TWO lines — the
   // figure and its bolívar equivalent below it — and the brief is one.
-  const smaller = secondary ? formatLedgerAmount(secondary.balance, secondary.currency, ledger) : null;
+  const smaller = secondary
+    ? formatLedgerAmount(secondary.balance, secondary.currency, ledger)
+    : null;
 
   return (
     // Figma spec, 2026-10-04: 1px border, radius 10, padding 8 over 16, and no
@@ -89,7 +91,10 @@ export function BalanceCard({
           mainClassName="text-[30px] leading-tight text-money-due"
           leading={
             main.currency ? (
-              <CurrencyFlagIcon currency={main.currency} className="size-6 shrink-0" />
+              <CurrencyFlagIcon
+                currency={main.currency}
+                className="size-6 shrink-0"
+              />
             ) : null
           }
         />
@@ -106,16 +111,40 @@ export function BalanceCard({
             dos, leer "$" arriba y "€" abajo sin más obliga a deducirlo; y el
             símbolo es justo lo que se parece entre monedas. */}
         {smaller && secondary ? (
-          <p className="truncate text-sm tabular-nums text-muted-foreground">
-            {ledgerLabel(secondary.currency)}:{" "}
-            {hidden ? (
-              "••••••"
-            ) : (
-              <>
-                <span className="font-medium text-foreground">{smaller.primary}</span>
-                {smaller.secondary ? ` · ${smaller.secondary} hoy` : null}
-              </>
-            )}
+          <p className="flex items-center gap-1.5 truncate text-sm tabular-nums text-muted-foreground">
+            {/* Su bandera, desde el 2026-10-16, por la misma instrucción del
+                dueño que la puso en las tarjetas de cliente y en las fichas
+                de saldo. La cifra grande de arriba ya llevaba la suya desde
+                el 2026-10-08; esta línea nombra la OTRA moneda y era la única
+                de la tarjeta sin icono, que es justo donde la confusión entre
+                "$" y "€" cuesta más. */}
+            {secondary.currency ? (
+              <CurrencyFlagIcon
+                currency={secondary.currency}
+                className="shrink-0"
+              />
+            ) : null}
+            <span className="truncate">
+              {/* CON BANDERA, EL RÓTULO SUELTA SU MONEDA. Con "Capital por
+                  cobrar en Euro:" delante, la bandera empujaba 22px más y el
+                  corte se comía la propia cifra —"€5…"—, que es justo lo que
+                  el comentario de arriba dice que nunca debe pasar: el
+                  bolívar es lo que cede, no el euro. Quitar "en Euro" devuelve
+                  unos 45px y no pierde nada, porque lo que esa palabra decía
+                  lo dice ahora el icono. Sin bandera —un negocio colombiano—
+                  el rótulo se queda entero. */}
+              {secondary.currency ? "Capital por cobrar" : ledgerLabel(secondary.currency)}:{" "}
+              {hidden ? (
+                "••••••"
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">
+                    {smaller.primary}
+                  </span>
+                  {smaller.secondary ? ` · ${smaller.secondary} hoy` : null}
+                </>
+              )}
+            </span>
           </p>
         ) : null}
       </div>

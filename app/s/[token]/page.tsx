@@ -11,6 +11,8 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -100,11 +102,33 @@ type SharedBalance = {
 
 // One currency's balance as its own card, label left and figure right —
 // matching how the owner's own client screen shows the same two numbers.
-function BalanceRowCard({ label, children }: { label: string; children: React.ReactNode }) {
+// LA BANDERA VA PEGADA AL RÓTULO, no a la cifra. Instrucción del dueño,
+// 2026-10-16: *«todo lo que muestre moneda debe contener el ícono (flag)»*.
+//
+// Delante del rótulo y no detrás del número porque la fila ya tiene la cifra
+// en el extremo derecho con su equivalente en bolívares debajo; meter ahí un
+// icono más empuja los dos renglones y, a 375px, es justo donde menos sitio
+// hay. El rótulo, en cambio, tiene el flanco izquierdo libre.
+//
+// Y no reemplaza a la palabra: "Dólares" se queda. La bandera es lo que se ve
+// de un vistazo y la palabra lo que lo deja sin ambigüedad para quien no
+// distingue dos banderas pequeñas —o no las ve.
+function BalanceRowCard({
+  label,
+  currency,
+  children,
+}: {
+  label: string;
+  currency?: PriceCurrency | null;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+          {currency ? <CurrencyFlagIcon currency={currency} /> : null}
+          <span className="truncate">{label}</span>
+        </p>
         {children}
       </div>
     </div>
@@ -311,7 +335,7 @@ export default async function SharedBalancePage({
           negative amount. */}
       {rateContext ? (
         <>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`} currency="USD">
             <ExchangeRateBalanceDisplay
               balance={shared.balance_usd}
               currency="USD"
@@ -320,7 +344,7 @@ export default async function SharedBalancePage({
               mainClassName="text-3xl"
             />
           </BalanceRowCard>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`}>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`} currency="EUR">
             <ExchangeRateBalanceDisplay
               balance={shared.balance_eur}
               currency="EUR"
