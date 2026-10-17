@@ -44,7 +44,8 @@
     "qa:orden": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/orden.mjs",
     "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",
     "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs",
-    "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs"
+    "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
+    "qa:cuotas": "node qa/cuotas.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

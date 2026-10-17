@@ -128,6 +128,14 @@ export function computeCreditScore(params: {
   daysSincePayment: number;
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
+  // Desde la migración `118`. El puntaje usa la MISMA etiqueta que la
+  // pantalla: si la de arriba dice «dentro del plazo» porque la próxima
+  // cuota no ha vencido, el puntaje no puede decir lo contrario del mismo
+  // cliente. Lo que NO cambia es la puntualidad histórica de más abajo, que
+  // sigue juzgando cada fiado contra su plazo entero: convertir cada cuota
+  // en un vencimiento multiplicaría los juicios de todo el mundo sin que
+  // nadie lo haya pedido.
+  oldestUnpaidChargeDueAt: string | null;
   isFlagged: boolean;
   mostRecentUnflaggedAt: string | null;
 }): CreditScoreResult {
@@ -170,6 +178,7 @@ export function computeCreditScore(params: {
     params.daysSincePayment,
     params.oldestUnpaidChargeAt,
     params.oldestUnpaidChargePlazoDias,
+    params.oldestUnpaidChargeDueAt,
   );
   const standingScore = STANDING_SCORE[status];
 

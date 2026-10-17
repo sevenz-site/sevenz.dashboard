@@ -46,6 +46,8 @@ type ParsedMovement =
       description: string | null;
       photoPath: string | null;
       plazoDias: number | null;
+      // En cuántas cuotas se pactó. null = sin cuotas = una sola.
+      cuotas: number | null;
     };
 
 // Un rango, no una lista. El desplegable ofrece 7, 15, 30 y 45 porque son los
@@ -58,6 +60,12 @@ type ParsedMovement =
 // cliente, así que un número absurdo no es inofensivo.
 const PLAZO_MIN_DIAS = 1;
 const PLAZO_MAX_DIAS = 365;
+// CUÁNTAS CUOTAS COMO MUCHO. El tope es el mismo de la migración `118` y no
+// una validación de más: sin él, el `check` de la base rechaza el insert y el
+// dueño ve «No pudimos guardar» sin saber qué corregir. 36 es tres años
+// pagando una vez al mes, que ya está fuera de lo que este producto hace.
+const CUOTAS_MIN = 2;
+const CUOTAS_MAX = 36;
 const ALLOWED_CURRENCIES: LedgerCurrency[] = ["USD", "EUR"];
 
 function parseMovementFields(formData: FormData): ParsedMovement {
@@ -67,6 +75,7 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   const description = String(formData.get("description") ?? "").trim();
   const photoPath = String(formData.get("photo_path") ?? "").trim();
   const plazoRaw = String(formData.get("plazo_dias") ?? "");
+  const cuotasRaw = String(formData.get("cuotas") ?? "");
 
   if (type !== "charge" && type !== "payment") {
     return { error: "Selecciona el tipo de movimiento." };
@@ -90,6 +99,24 @@ function parseMovementFields(formData: FormData): ParsedMovement {
     plazoDias = parsed;
   }
 
+  // LAS CUOTAS SOLO EXISTEN SOBRE UN PLAZO, que es lo que dividen: «3 cuotas
+  // en 30 días» son una cada 10. Sin plazo no hay nada que repartir, así que
+  // un fiado «sin especificar» se guarda sin cuotas aunque el formulario
+  // mandara un número — y no es un error que haya que enseñarle a nadie,
+  // porque el propio formulario esconde el campo en ese caso.
+  //
+  // Y una cuota es lo mismo que ninguna, así que se guarda null: es la
+  // decisión de la migración `118`, que hace que lo de siempre sea el caso
+  // N=1 y que no haya dos caminos en el código.
+  let cuotas: number | null = null;
+  if (type === "charge" && plazoDias !== null && cuotasRaw && cuotasRaw !== "1") {
+    const parsedCuotas = Number(cuotasRaw);
+    if (!Number.isInteger(parsedCuotas) || parsedCuotas < CUOTAS_MIN || parsedCuotas > CUOTAS_MAX) {
+      return { error: `Las cuotas tienen que ser un número entre ${CUOTAS_MIN} y ${CUOTAS_MAX}.` };
+    }
+    cuotas = parsedCuotas;
+  }
+
   const tecleadaRaw = String(formData.get("moneda_tecleada") ?? "");
   const monedaTecleada =
     tecleadaRaw === "VES" || tecleadaRaw === "USD" || tecleadaRaw === "EUR" ? tecleadaRaw : null;
@@ -103,6 +130,7 @@ function parseMovementFields(formData: FormData): ParsedMovement {
     description: description || null,
     photoPath: photoPath || null,
     plazoDias,
+    cuotas,
   };
 }
 
@@ -209,7 +237,7 @@ export async function createClientWithMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, currency, monedaTecleada, description, photoPath, plazoDias } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas } = fields;
   let amount = fields.amount;
 
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
@@ -317,6 +345,7 @@ export async function createClientWithMovement(
     source: "manual",
     photo_path: photoPath,
     plazo_dias: plazoDias,
+    cuotas,
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,
@@ -418,7 +447,7 @@ export async function addMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, currency, monedaTecleada, description, photoPath, plazoDias } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas } = fields;
   let amount = fields.amount;
 
   // La casilla "aplicar tasa BCV prevista". Llega como marca, no como cifra:
@@ -500,6 +529,7 @@ export async function addMovement(
     source: "manual",
     photo_path: photoPath,
     plazo_dias: plazoDias,
+    cuotas,
     rate_mode_used: resolved.rateModeUsed,
     exchange_rate_used: resolved.exchangeRateUsed,
     official_bcv_rate_at_time: resolved.officialBcvRateAtTime,

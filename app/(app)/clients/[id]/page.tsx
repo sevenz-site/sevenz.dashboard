@@ -171,6 +171,7 @@ export default async function ClientDetailPage({
     clientSummary?.days_since_payment ?? 0,
     clientSummary?.oldest_unpaid_charge_at ?? null,
     clientSummary?.oldest_unpaid_charge_plazo_dias ?? null,
+    clientSummary?.oldest_unpaid_charge_due_at ?? null,
   );
 
   return (
@@ -294,6 +295,7 @@ export default async function ClientDetailPage({
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
+          oldestUnpaidChargeDueAt={clientSummary?.oldest_unpaid_charge_due_at ?? null}
           isFlagged={client.is_flagged}
         />
       </Suspense>
@@ -373,6 +375,7 @@ async function CreditScoreSection({
   daysSincePayment,
   oldestUnpaidChargeAt,
   oldestUnpaidChargePlazoDias,
+  oldestUnpaidChargeDueAt,
   isFlagged,
 }: {
   clientId: string;
@@ -385,6 +388,8 @@ async function CreditScoreSection({
   daysSincePayment: number;
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
+  // Migración `118`: el vencimiento de la próxima cuota sin pagar.
+  oldestUnpaidChargeDueAt: string | null;
   isFlagged: boolean;
 }) {
   const supabase = await createClient();
@@ -419,6 +424,7 @@ async function CreditScoreSection({
     daysSincePayment,
     oldestUnpaidChargeAt,
     oldestUnpaidChargePlazoDias,
+    oldestUnpaidChargeDueAt,
     isFlagged,
     mostRecentUnflaggedAt: lastUnflag?.unflagged_at ?? null,
   });

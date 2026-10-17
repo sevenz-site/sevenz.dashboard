@@ -243,6 +243,7 @@ export async function getAverageCreditScore(
         daysSincePayment: Number(r.days_since_payment ?? 0),
         oldestUnpaidChargeAt: (r.oldest_unpaid_charge_at as string | null) ?? null,
         oldestUnpaidChargePlazoDias: (r.oldest_unpaid_charge_plazo_dias as number | null) ?? null,
+        oldestUnpaidChargeDueAt: (r.oldest_unpaid_charge_due_at as string | null) ?? null,
         isFlagged: Boolean(r.is_flagged),
         mostRecentUnflaggedAt: (r.most_recent_unflagged_at as string | null) ?? null,
       }).score,

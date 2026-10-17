@@ -137,6 +137,7 @@ export function PapeleraTable({
             row.days_since_payment,
             row.oldest_unpaid_charge_at,
             row.oldest_unpaid_charge_plazo_dias,
+            row.oldest_unpaid_charge_due_at,
           );
           const busy = busyId === row.client_id;
           return (

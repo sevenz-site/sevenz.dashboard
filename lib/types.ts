@@ -181,6 +181,11 @@ export type ClientSummary = {
   days_since_payment: number;
   oldest_unpaid_charge_at: string | null;
   oldest_unpaid_charge_plazo_dias: number | null;
+  // CUÁNDO VENCE LO SIGUIENTE QUE DEBE, calculado por la base (migración
+  // `118`). Sin cuotas es el final del plazo del cargo más viejo, que es lo
+  // que esta pantalla calculaba sola hasta entonces. Con cuotas es el
+  // vencimiento de la PRÓXIMA cuota sin pagar.
+  oldest_unpaid_charge_due_at: string | null;
   is_flagged: boolean;
 };
 
@@ -225,21 +230,44 @@ const CRITICO_THRESHOLD_DAYS = 30;
 // had a term at all it's "sin_plazo" — same severity, different reason, so
 // callers can tell them apart. Either way it still escalates to "critico"
 // after CRITICO_THRESHOLD_DAYS since the last payment.
+// EL QUINTO ARGUMENTO ES OBLIGATORIO A PROPÓSITO, desde la migración `118`.
+//
+// Podría tener un valor por defecto y no romper ninguna llamada existente —
+// y eso es exactamente lo que lo hace mala idea: una pantalla que se olvidara
+// de pasarlo seguiría compilando y seguiría juzgando por el plazo entero,
+// mientras la de al lado juzga por cuota. Dos etiquetas distintas para el
+// mismo cliente, sin que nada avise. Obligándolo, el compilador enumera cada
+// sitio que hay que tocar.
 export function getClientStatus(
   balance: number,
   daysSincePayment: number,
-  oldestUnpaidChargeAt: string | null = null,
-  oldestUnpaidChargePlazoDias: number | null = null,
+  oldestUnpaidChargeAt: string | null,
+  oldestUnpaidChargePlazoDias: number | null,
+  // `client_summary.oldest_unpaid_charge_due_at`. La base ya hizo la cuenta:
+  // aquí solo se compara con hoy.
+  oldestUnpaidChargeDueAt: string | null,
 ): ClientStatus {
   if (balance === 0) return "sin_deuda";
   if (balance < 0) return "a_favor";
 
   const hasPlazo = oldestUnpaidChargeAt !== null && oldestUnpaidChargePlazoDias !== null;
   if (hasPlazo) {
-    const daysSinceCharge = Math.floor(
-      (Date.now() - new Date(oldestUnpaidChargeAt).getTime()) / (1000 * 60 * 60 * 24),
-    );
-    if (daysSinceCharge <= oldestUnpaidChargePlazoDias) return "dentro_del_plazo";
+    // CON FECHA DE VENCIMIENTO, MANDA ELLA. Es la de la próxima cuota sin
+    // pagar, y sin cuotas coincide con el final del plazo.
+    //
+    // El `else` no es una ruta muerta ni un resto: `due_at` llega en null si
+    // el cargo no tiene plazo (ahí no se entra), y también durante el rato en
+    // que la migración `118` esté en un entorno y no en el otro. En ese caso
+    // se juzga como siempre, que es exactamente lo que hay que hacer mientras
+    // la columna no exista.
+    if (oldestUnpaidChargeDueAt !== null) {
+      if (Date.now() <= new Date(oldestUnpaidChargeDueAt).getTime()) return "dentro_del_plazo";
+    } else {
+      const daysSinceCharge = Math.floor(
+        (Date.now() - new Date(oldestUnpaidChargeAt).getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysSinceCharge <= oldestUnpaidChargePlazoDias) return "dentro_del_plazo";
+    }
   }
 
   if (daysSincePayment > CRITICO_THRESHOLD_DAYS) return "critico";
