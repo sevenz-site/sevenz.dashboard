@@ -17,12 +17,8 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { restoreMovement } from "@/app/(app)/dashboard/actions";
 import type { NotificationItem } from "@/app/(app)/actions";
-import {
-  formatCadaCuantosDias,
-  formatCurrency,
-  formatDateTime,
-  formatPlazoDias,
-} from "@/lib/format";
+import { formatCurrency, formatDateTime, formatPlazoDias } from "@/lib/format";
+import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import type { MovementCurrencyCode } from "@/lib/types";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -179,15 +175,14 @@ export function MovementDeletionDialog({
                 "restore this?" is harder to answer from a card that hides half
                 of what was agreed. Only drawn when there are cuotas, for the
                 reason written in MovementDetailPopover. */}
-            {notification.cuotas != null ? (
-              <Fila nombre="Cuotas">
-                {notification.plazoDias == null
-                  ? `${notification.cuotas} cuotas`
-                  : `${notification.cuotas} cuotas, una cada ${formatCadaCuantosDias(
-                      notification.plazoDias,
-                      notification.cuotas,
-                    )}`}
-              </Fila>
+            {notification.cuotas != null && notification.plazoDias != null ? (
+              <CuotasTable
+                createdAt={notification.movementCreatedAt}
+                plazoDias={notification.plazoDias}
+                cuotas={notification.cuotas}
+                amount={notification.amount}
+                formatearMonto={enSuMoneda}
+              />
             ) : null}
             <Fila nombre="Descripción">
               <span className="break-words">{notification.description || "—"}</span>

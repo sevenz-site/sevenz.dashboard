@@ -39,11 +39,11 @@ export function formatPlazoDias(days: number | null): string {
 // extend it: 3 cuotas over 30 days is one every 10 (the owner's decision and
 // his own example, 2026-10-16).
 //
-// IT LIVES HERE BECAUSE TWO SCREENS SAY IT. The form promises the number
-// before saving (`CuotasSelect`) and the movement detail repeats it afterwards
-// (`MovementDetailPopover`). Two copies of one division eventually disagree,
-// and the one that disagrees is a screen telling the owner a date the ledger
-// does not hold.
+// ONLY THE FORM SAYS IT NOW. It was shared with the movement's card until
+// 2026-10-16, when the owner asked the card for the DATES instead -- see
+// `lib/cuotas.ts`, which computes them from the same rule. This one stays
+// because the form has no dates to show: nothing has been saved yet, so the
+// interval is the only thing that can be promised.
 //
 // NO ROUNDING, on purpose: 4 cuotas over 30 days is 7,5 days, which is exactly
 // what migration `118` computes with `plazo * (cubiertas + 1) / n`. Rounding to

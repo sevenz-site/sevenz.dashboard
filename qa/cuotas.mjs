@@ -62,6 +62,9 @@ function check(nombre, pasa, detalle) {
 const MARCA = "ZZ QA cuotas";
 const dias = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const creados = [];
+// Los permisos de WhatsApp van por TELÉFONO, no por cliente, así que borrar
+// el cliente no se los lleva: hay que limpiarlos a mano.
+const consentimientos = [];
 
 // Cuántos días después del cargo vence lo siguiente, según la base.
 async function vencimiento(clientId, cargoAt) {
@@ -266,10 +269,86 @@ try {
       );
     }
   }
+
+  // ── 11. EL RECORDATORIO AL CLIENTE MIRA CADA CUOTA ───────────────────
+  //
+  // La otra mitad de lo que pidió el dueño el 2026-10-16: las fechas de cada
+  // cuota cuentan como plazo y tienen que salir en los mensajes «tanto para
+  // cliente como dueño». La del dueño la arregló la `119` y la vigila el
+  // check 10; ésta es la del cliente, migración `120`.
+  //
+  // EL CASO ESTÁ ELEGIDO PARA QUE LAS DOS VERSIONES DISCREPEN. 3 cuotas en 30
+  // días son tramos de 10, y la ventana de aviso es el 25% de 10 = 3 días. Un
+  // cargo de hace 7 días tiene su PRIMERA cuota venciendo dentro de 3, así que
+  // hoy es el día del recordatorio. Con la función vieja —que solo miraba el
+  // final del plazo— ese mismo cargo vencía dentro de 23 días y avisaba 7
+  // antes: dentro de 16. O sea que antes de la `120` esta comprobación NO
+  // encuentra al cliente, que es justo lo que tiene que demostrar.
+  {
+    const id = await nuevoCliente(ve.id, "recordatorio");
+    const TELEFONO = "584120009911";
+    await admin.from("clients").update({ whatsapp: TELEFONO }).eq("id", id);
+    // El permiso va por teléfono, no por cliente: así lo hace la `081`.
+    //
+    // `source` TIENE UN CHECK y "qa" no está en la lista. La primera versión de
+    // esta prueba insertaba "qa", NO MIRABA EL ERROR, y el cliente se quedaba
+    // sin permiso — con lo que el check 11 habría fallado por el consentimiento
+    // y no por la migración, que es exactamente el diagnóstico equivocado que
+    // más cuesta deshacer. Por eso el error se comprueba y rompe la prueba.
+    const { error: ePermiso } = await admin
+      .from("client_whatsapp_consents")
+      .insert({
+        phone: TELEFONO,
+        event: "granted",
+        consent_text: "ZZ QA cuotas",
+        source: "client_order",
+      });
+    if (ePermiso) throw new Error(`client_whatsapp_consents: ${ePermiso.message}`);
+    consentimientos.push(TELEFONO);
+
+    const { data: acepta } = await admin.rpc("client_accepts_whatsapp", { p_client_id: id });
+    check(
+      "11a. el cliente de prueba sí tiene permiso para recibir WhatsApp",
+      acepta === true,
+      "sin esto, el 11 fallaría por el consentimiento y parecería culpa de la migración",
+    );
+
+    await admin.from("movements").insert({
+      client_id: id, type: "charge", amount: 90, currency: "USD",
+      plazo_dias: 30, cuotas: 3, created_at: dias(7), source: "manual",
+      description: `${MARCA} fiado`,
+    });
+    await admin.rpc("recalc_client_running_balance", { p_client_id: id });
+
+    const { data: dest, error: eDest } = await admin.rpc("whatsapp_destinatarios_plazo");
+    if (eDest) {
+      check("11. el recordatorio al cliente mira la cuota", false, eDest.message);
+    } else {
+      const fila = (dest ?? []).find((d) => d.client_id === id);
+      check(
+        "11. el recordatorio al cliente sale HOY por la primera cuota, no por el plazo entero",
+        Boolean(fila),
+        fila ? `vence ${fila.due_date}` : "no aparece: la función sigue mirando solo el final del plazo",
+      );
+      if (fila) {
+        // Y la fecha que viaja a la plantilla es la de la CUOTA: hoy + 3.
+        const esperada = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+        check(
+          "11b. la fecha que recibe la plantilla es la de la cuota",
+          fila.due_date === esperada,
+          `${fila.due_date} (esperada ${esperada})`,
+        );
+      }
+    }
+  }
+
 } catch (e) {
   console.error("\nSE CAYÓ:", e instanceof Error ? e.message : e);
   process.exitCode = 1;
 } finally {
+  for (const tel of consentimientos) {
+    await admin.from("client_whatsapp_consents").delete().eq("phone", tel);
+  }
   for (const id of creados) {
     await admin.from("movements").delete().eq("client_id", id);
     await admin.from("clients").delete().eq("id", id);

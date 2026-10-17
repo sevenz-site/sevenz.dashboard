@@ -47,9 +47,9 @@ export function CuotasSelect({
   if (plazoDias === null) return null;
 
   const cuotas = Number(value) || 1;
-  // The division lives in `formatCadaCuantosDias` and not here: the movement
-  // detail repeats this same sentence after saving, and the two must not be
-  // able to drift apart. Its own comment carries why it never rounds.
+  // The division lives in `formatCadaCuantosDias`, which carries why it never
+  // rounds. The saved movement's card shows the DATES instead of the interval
+  // (`lib/cuotas.ts`) -- same rule, and here there is no date to show yet.
   const cadaCuantos = formatCadaCuantosDias(plazoDias, cuotas);
 
   return (
