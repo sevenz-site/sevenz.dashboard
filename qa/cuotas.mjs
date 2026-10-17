@@ -313,9 +313,10 @@ try {
       "sin esto, el 11 fallaría por el consentimiento y parecería culpa de la migración",
     );
 
+    const cargoAt = dias(7);
     await admin.from("movements").insert({
       client_id: id, type: "charge", amount: 90, currency: "USD",
-      plazo_dias: 30, cuotas: 3, created_at: dias(7), source: "manual",
+      plazo_dias: 30, cuotas: 3, created_at: cargoAt, source: "manual",
       description: `${MARCA} fiado`,
     });
     await admin.rpc("recalc_client_running_balance", { p_client_id: id });
@@ -331,10 +332,20 @@ try {
         fila ? `vence ${fila.due_date}` : "no aparece: la función sigue mirando solo el final del plazo",
       );
       if (fila) {
-        // Y la fecha que viaja a la plantilla es la de la CUOTA: hoy + 3.
-        const esperada = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+        // Y LA FECHA QUE VIAJA A LA PLANTILLA ES LA DE LA CUOTA, calculada con
+        // la misma fórmula de lib/cuotas.ts y de la `118`: carga + plazo·(k/n).
+        //
+        // EN HORA DE COLOMBIA, que es donde la primera versión de esta
+        // comprobación se equivocó: esperaba el 20 y la función decía el 19, y
+        // la razón no era la migración sino que yo sumaba días en UTC mientras
+        // `120` convierte a hora local antes de quedarse con la fecha. Un
+        // movimiento creado a las 23:4x en Bogotá vence un día antes de lo que
+        // parece en UTC. Colombia es UTC−5 fijo, sin horario de verano.
+        const enBogota = (ms) => new Date(ms - 5 * 3600000).toISOString().slice(0, 10);
+        const vencimiento = new Date(cargoAt).getTime() + (30 * 1 / 3) * 86400000;
+        const esperada = enBogota(vencimiento);
         check(
-          "11b. la fecha que recibe la plantilla es la de la cuota",
+          "11b. la fecha que recibe la plantilla es la de la primera cuota",
           fila.due_date === esperada,
           `${fila.due_date} (esperada ${esperada})`,
         );

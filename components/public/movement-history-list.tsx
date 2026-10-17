@@ -31,6 +31,7 @@ type SharedMovement = {
   running_balance: number;
   needs_review: boolean;
   plazo_dias: number | null;
+  cuotas: number | null;
   created_at: string;
   rate_mode_used: ExchangeRateMode | null;
   exchange_rate_used: number | null;
@@ -126,6 +127,7 @@ export function MovementHistoryList({
               currency={m.currency}
               description={m.description}
               plazoDias={m.plazo_dias}
+              cuotas={m.cuotas}
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               balanceLabel={getBalanceLabel(m.running_balance)}

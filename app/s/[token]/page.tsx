@@ -56,6 +56,9 @@ type SharedMovement = {
   running_balance: number;
   needs_review: boolean;
   plazo_dias: number | null;
+  // Arrives through migration `121`. It is null for everything stored before
+  // 2026-10-16, and the card only draws the table when it is not.
+  cuotas: number | null;
   created_at: string;
 };
 

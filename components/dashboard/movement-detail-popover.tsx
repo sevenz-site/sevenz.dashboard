@@ -80,13 +80,21 @@ export function MovementDetailPopover({
   // How many cuotas the fiado was agreed in (migration `118`). null = single
   // payment, which is what every row stored before today holds.
   //
-  // THE CLIENT'S PAGE DOES NOT PASS IT, and today it could not:
-  // `get_shared_balance()` builds each movement's JSON field by field and
-  // carries `plazo_dias` but not `cuotas`, so showing them to the client is a
-  // migration, not a prop. `CT-86` in PENDIENTES.md asks for something else
-  // anyway -- the client's screen needs WHEN the next one falls due, not how
-  // many were agreed. Defaults to null like `ownerNote`, so a new screen that
-  // mounts this component cannot start showing them by accident.
+  // THE CLIENT'S PAGE PASSES IT TOO, since migration `121`. Earlier on
+  // 2026-10-16 this comment said the opposite -- that the client deliberately
+  // did not see them, because `CT-86` asked for the next deadline on the
+  // balance card rather than the whole agreement on each movement. That was my
+  // reading, not the owner's: *«deben verse al igual que en la vista del
+  // dueño, mismo componente»*. `CT-86` is still open; it is a different
+  // surface.
+  //
+  // It needed a migration and not a prop, which is the part worth remembering:
+  // that page does not read `movements`, it reads `get_shared_balance()`, and
+  // that function builds each movement's JSON field by field. A column it does
+  // not name does not exist for the client.
+  //
+  // Still defaults to null, so a new screen that mounts this component shows
+  // nothing it was not given.
   cuotas?: number | null;
   createdAt: string;
   runningBalance: number;
