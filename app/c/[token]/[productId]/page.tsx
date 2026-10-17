@@ -86,10 +86,22 @@ function NoDisponible({ token }: { token: string }) {
 
 export default async function ProductoPublicoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string; productId: string }>;
+  // `?previa=1` LO TRAE LA TARJETA del catálogo cuando el tendero está
+  // mirando su propia vista previa. Añadido el 2026-10-17 al cerrar `CT-95`.
+  //
+  // Se lee en el SERVIDOR y no en el navegador a propósito: de ello depende
+  // que «Agregar» exista o no, y resolverlo en el cliente pintaría el botón
+  // un instante antes de quitarlo — un parpadeo sobre un control que el
+  // tendero no debe poder tocar.
+  searchParams: Promise<{ previa?: string }>;
 }) {
   const { token, productId } = await params;
+  const { previa } = await searchParams;
+  const esVistaPrevia = previa === "1";
+  const volverAlCatalogo = esVistaPrevia ? `/c/${token}?previa=1` : `/c/${token}`;
 
   if (!isSupabaseConfigured()) return <NoDisponible token={token} />;
 
@@ -170,7 +182,7 @@ export default async function ProductoPublicoPage({
           </div>
         )}
         <Link
-          href={`/c/${token}`}
+          href={volverAlCatalogo}
           aria-label="Volver al catálogo"
           className="absolute top-4 left-4 flex size-10 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur transition-colors hover:bg-background"
         >
@@ -207,6 +219,11 @@ export default async function ProductoPublicoPage({
           }}
           rates={rates}
           stock={detalle.stock}
+          /* EN LA VISTA PREVIA EL TENDERO SOLO MIRA. Decisión del dueño el
+             2026-10-17: «el dueño solo puede ver la pantalla del listado de
+             productos y detalle de producto, el resto del flujo no». */
+          isPreview={esVistaPrevia}
+          volverAlCatalogo={volverAlCatalogo}
         />
 
         {/* EL MISMO PIE QUE LA LISTA. Un cliente que llega aquí desde un

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ShoppingBag } from "lucide-react";
 import { useCarrito } from "@/lib/cart/store";
 import { cuantosArticulos } from "@/lib/cart/cart";
@@ -23,10 +23,20 @@ import { formatCantidad } from "@/lib/products/cantidad";
 export function CartPill({ token }: { token: string }) {
   const { lineas } = useCarrito(token);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const enElCarrito = pathname === `/c/${token}/carrito`;
+  // Y TAMPOCO EN LA VISTA PREVIA DEL TENDERO, desde el 2026-10-17: ahí la
+  // pantalla es solo para mirar, y esta píldora es el ÚNICO camino al
+  // carrito —lo dice el comentario de arriba—, así que quitarla cierra el
+  // resto del flujo sin tocar nada más.
+  //
+  // Se lee del cliente y no del servidor porque un layout de Next no recibe
+  // `searchParams`. No hay parpadeo posible: la píldora solo existe con el
+  // carrito lleno, y el tendero que acaba de abrir su previa lo tiene vacío.
+  const enLaVistaPrevia = searchParams.get("previa") === "1";
   const total = cuantosArticulos(lineas);
-  if (total === 0 || enElCarrito) return null;
+  if (total === 0 || enElCarrito || enLaVistaPrevia) return null;
 
   return (
     // `pb-[env(safe-area-inset-bottom)]` por los iPhone con barra de gestos:

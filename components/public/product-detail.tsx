@@ -95,10 +95,28 @@ export function ProductDetail({
   producto,
   rates,
   stock,
+  isPreview = false,
+  volverAlCatalogo,
 }: {
   token: string;
   productId: string;
   producto: ProductoPublico;
+  // LA VISTA PREVIA DEL TENDERO MIRA Y NO TOCA. Decisión del dueño el
+  // 2026-10-17: «el dueño solo puede ver la pantalla del listado de productos
+  // y detalle de producto, el resto del flujo no».
+  //
+  // No es una restricción de seguridad —nada impide escribir la URL del
+  // carrito— sino de honestidad: lo que el tendero revisa tiene que ser lo
+  // que su cliente verá, y un carrito a medias lleno por él mismo mientras
+  // prueba no es eso. Además «Agrega comentarios al dueño» mostrado AL dueño
+  // no significa nada.
+  //
+  // Llega resuelto desde el servidor para que el botón no llegue a pintarse.
+  isPreview?: boolean;
+  // El catálogo al que volver tras añadir, con el marcador si lo había. Sin
+  // esto, añadir algo devolvía a la vista NORMAL y el tendero perdía su
+  // previa a mitad — el mismo `CT-95` por la puerta de al lado.
+  volverAlCatalogo?: string;
   // NO `baseCurrency` NOR `currencies` AS PROPS SINCE MIGRATION 114. Both
   // belong to the TIER now and travel inside each `BloquePrecio`, so this
   // screen cannot hold one base while showing two tiers' prices -- which is
@@ -118,7 +136,10 @@ export function ProductDetail({
   const n = Number(cantidad.replace(",", ".")) || 0;
   const escalon = escalonParaCantidad(producto, n);
   const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
-  const monedas = useMemo(() => monedasDelBloque(bloque, rates), [bloque, rates]);
+  const monedas = useMemo(
+    () => monedasDelBloque(bloque, rates),
+    [bloque, rates],
+  );
 
   // LA MONEDA ELEGIDA NO ES UN ESTADO INDEPENDIENTE, y eso evita un fallo que
   // sí lo sería: si el cliente elige euros con 3 unidades y luego sube a 6, el
@@ -134,8 +155,8 @@ export function ProductDetail({
   // Se guarda la PREFERENCIA y se resuelve contra lo que hay: si su moneda
   // sigue disponible, se respeta; si no, la primera del escalón nuevo.
   const [preferida, setPreferida] = useState<PriceCurrency | null>(null);
-  const moneda = preferida != null && monedas.includes(preferida) ? preferida : monedas[0];
-
+  const moneda =
+    preferida != null && monedas.includes(preferida) ? preferida : monedas[0];
 
   const porDebajoDelMinimo = cantidad.trim() !== "" && n < minimo;
 
@@ -167,7 +188,11 @@ export function ProductDetail({
     const texto = formatPriceAmount(amount, c);
     if (rates == null || c === "VES") return { texto, bs: null, exacto };
     const enBs = priceIn("VES", { amount, currency: c }, rates);
-    return { texto, bs: enBs.amount == null ? null : formatBs(enBs.amount), exacto };
+    return {
+      texto,
+      bs: enBs.amount == null ? null : formatBs(enBs.amount),
+      exacto,
+    };
   }
 
   const total = (() => {
@@ -214,7 +239,8 @@ export function ProductDetail({
 
       {bloque == null ? (
         <p className="text-sm text-muted-foreground">
-          Este producto no tiene precio publicado ahora mismo. Escríbele al negocio.
+          Este producto no tiene precio publicado ahora mismo. Escríbele al
+          negocio.
         </p>
       ) : (
         <div className="flex flex-col gap-3 rounded-lg border p-3">
@@ -230,7 +256,10 @@ export function ProductDetail({
               if (p == null) return null;
               const aplica = t === escalon;
               return (
-                <div key={t} className="flex items-baseline justify-between gap-3">
+                <div
+                  key={t}
+                  className="flex items-baseline justify-between gap-3"
+                >
                   <span
                     className={`flex min-w-0 items-baseline gap-1.5 truncate text-sm ${
                       aplica ? "font-semibold" : "text-muted-foreground"
@@ -261,12 +290,17 @@ export function ProductDetail({
                           className="size-4 shrink-0 translate-y-0.5 text-emerald-600"
                           aria-hidden="true"
                         />
-                        <span className="sr-only">Precio que se te aplica: </span>
+                        <span className="sr-only">
+                          Precio que se te aplica:{" "}
+                        </span>
                       </>
                     ) : null}
                     <span className="truncate">
-                      {t === "wholesale" ? "Precio al mayor" : "Precio al detal"}
-                      {t === "wholesale" && producto.wholesale_min_quantity != null ? (
+                      {t === "wholesale"
+                        ? "Precio al mayor"
+                        : "Precio al detal"}
+                      {t === "wholesale" &&
+                      producto.wholesale_min_quantity != null ? (
                         <span className="text-xs font-normal text-muted-foreground">
                           {" "}
                           desde {producto.wholesale_min_quantity}
@@ -337,12 +371,16 @@ export function ProductDetail({
                       />
                     ) : null}
                     <CurrencyFlagIcon currency={c} />
-                    <span className="truncate text-sm">{ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}</span>
+                    <span className="truncate text-sm">
+                      {ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}
+                    </span>
                   </span>
                   <span className="shrink-0 text-right text-sm tabular-nums">
                     {p.texto}
                     {p.bs ? (
-                      <span className="block text-xs text-muted-foreground">{p.bs}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {p.bs}
+                      </span>
                     ) : null}
                   </span>
                 </Fila>
@@ -352,100 +390,119 @@ export function ProductDetail({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="comentario">Comentarios</Label>
-        <Textarea
-          id="comentario"
-          value={comentario}
-          onChange={(e) => setComentario(e.target.value)}
-          placeholder="Agrega comentarios al dueño"
-          rows={3}
-        />
-      </div>
+      {/* TODO LO QUE SIGUE ES HACER UN PEDIDO, y en la vista previa del
+          tendero no se pinta. Decisión del dueño el 2026-10-17.
 
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="size-10 shrink-0"
-            onClick={() => paso(-1)}
-            aria-label="Quitar uno"
-          >
-            <Minus className="size-4" />
-          </Button>
-          <input
-            inputMode="numeric"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            aria-label="Cantidad"
-            aria-invalid={porDebajoDelMinimo}
-            className={`h-10 w-16 rounded-md border bg-background text-center text-base tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              porDebajoDelMinimo ? "border-destructive" : ""
-            }`}
+          Él nombró dos cosas —«Agregar» y el campo de la cantidad— y el
+          criterio con el que las nombró: «el dueño solo puede ver la pantalla
+          del listado de productos y detalle de producto, el resto del flujo
+          no». Los comentarios entran por ese criterio, no por su lista: un
+          campo que dice «Agrega comentarios al dueño» enseñado AL dueño, que
+          además no va a ninguna parte, es peor que no estar. Queda escrito
+          por si prefiere lo contrario.
+
+          NO ES UN CANDADO DE SEGURIDAD y no pretende serlo: quien escriba a
+          mano la URL del carrito llega igual. Es que lo que el tendero revisa
+          tiene que ser lo que su cliente verá, y un carrito que él mismo
+          llenó probando no es eso. */}
+      {isPreview ? null : (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="comentario">Comentarios</Label>
+          <Textarea
+            id="comentario"
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            placeholder="Agrega comentarios al dueño"
+            rows={3}
           />
+        </div>
+      )}
+
+      {isPreview ? null : (
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-10 shrink-0"
+              onClick={() => paso(-1)}
+              aria-label="Quitar uno"
+            >
+              <Minus className="size-4" />
+            </Button>
+            <input
+              inputMode="numeric"
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              aria-label="Cantidad"
+              aria-invalid={porDebajoDelMinimo}
+              className={`h-10 w-16 rounded-md border bg-background text-center text-base tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                porDebajoDelMinimo ? "border-destructive" : ""
+              }`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-10 shrink-0"
+              onClick={() => paso(1)}
+              aria-label="Agregar uno"
+            >
+              <Plus className="size-4" />
+            </Button>
+          </div>
+
           <Button
             type="button"
-            variant="outline"
-            size="icon"
-            className="size-10 shrink-0"
-            onClick={() => paso(1)}
-            aria-label="Agregar uno"
-          >
-            <Plus className="size-4" />
-          </Button>
-        </div>
-
-        <Button
-          type="button"
-          className="h-12 flex-1"
-          /* NO SE PUEDE AÑADIR UNA CANTIDAD QUE NO VALE. Es el mismo criterio
+            className="h-12 flex-1"
+            /* NO SE PUEDE AÑADIR UNA CANTIDAD QUE NO VALE. Es el mismo criterio
              que el total: con un 3 escrito bajo un mínimo de 12, el botón no
              puede ofrecer meterlo en el carrito mientras un aviso en rojo dice
              que no se puede pedir. `total` ya es null en ese caso. */
-          disabled={bloque == null || moneda == null || total == null}
-          onClick={() => {
-            if (bloque == null || moneda == null || total == null) return;
-            agregar({
-              productId,
-              quantity: n,
-              currency: moneda,
-              comment: comentario.trim() === "" ? null : comentario.trim(),
-            });
-            toast.success("Agregado a tu carrito", {
-              description: `${formatCantidad(n)} · ${total}`,
-              // ARRIBA, Y SOLO ESTE AVISO. Abajo se solapaba con la píldora
-              // «Ver carrito», que es fija y aparece justo al añadir — el
-              // aviso tapaba el botón que acababa de ganarse su sitio.
+            disabled={bloque == null || moneda == null || total == null}
+            onClick={() => {
+              if (bloque == null || moneda == null || total == null) return;
+              agregar({
+                productId,
+                quantity: n,
+                currency: moneda,
+                comment: comentario.trim() === "" ? null : comentario.trim(),
+              });
+              toast.success("Agregado a tu carrito", {
+                description: `${formatCantidad(n)} · ${total}`,
+                // ARRIBA, Y SOLO ESTE AVISO. Abajo se solapaba con la píldora
+                // «Ver carrito», que es fija y aparece justo al añadir — el
+                // aviso tapaba el botón que acababa de ganarse su sitio.
+                //
+                // Se pone por aviso y no en el `Toaster` del layout raíz: ese
+                // es el mismo para toda la app, y moverlo cambiaría de sitio
+                // todos los avisos del tendero para arreglar uno del cliente.
+                position: "top-center",
+              });
+              // SE VUELVE AL CATÁLOGO, a petición del dueño el 2026-10-15.
               //
-              // Se pone por aviso y no en el `Toaster` del layout raíz: ese
-              // es el mismo para toda la app, y moverlo cambiaría de sitio
-              // todos los avisos del tendero para arreglar uno del cliente.
-              position: "top-center",
-            });
-            // SE VUELVE AL CATÁLOGO, a petición del dueño el 2026-10-15.
-            //
-            // Quien acaba de añadir algo no quiere seguir mirando lo que ya
-            // añadió: quiere seguir comprando. Quedándose aquí, el único
-            // camino de vuelta era la flecha de arriba, y la pantalla seguía
-            // ofreciendo «Agregar» sobre un producto que ya está dentro — que
-            // es como se añade lo mismo dos veces sin querer.
-            //
-            // EL CARRITO NO SE PIERDE Y NO HAY QUE HACER NADA PARA ELLO: vive
-            // en `localStorage`, no en el estado de esta pantalla. Esa es
-            // justamente la propiedad que hace que esto sea un `push` y no
-            // haya que pasar nada por la URL.
-            //
-            // El aviso sobrevive al salto porque el `Toaster` está en el
-            // layout raíz, así que el cliente lee «Agregado a tu carrito» ya
-            // en el catálogo — que es donde le sirve de confirmación.
-            router.push(`/c/${token}`);
-          }}
-        >
-          <Plus className="size-4" /> Agregar {total ?? ""}
-        </Button>
-      </div>
+              // Quien acaba de añadir algo no quiere seguir mirando lo que ya
+              // añadió: quiere seguir comprando. Quedándose aquí, el único
+              // camino de vuelta era la flecha de arriba, y la pantalla seguía
+              // ofreciendo «Agregar» sobre un producto que ya está dentro — que
+              // es como se añade lo mismo dos veces sin querer.
+              //
+              // EL CARRITO NO SE PIERDE Y NO HAY QUE HACER NADA PARA ELLO: vive
+              // en `localStorage`, no en el estado de esta pantalla. Esa es
+              // justamente la propiedad que hace que esto sea un `push` y no
+              // haya que pasar nada por la URL.
+              //
+              // El aviso sobrevive al salto porque el `Toaster` está en el
+              // layout raíz, así que el cliente lee «Agregado a tu carrito» ya
+              // en el catálogo — que es donde le sirve de confirmación.
+              router.push(volverAlCatalogo ?? `/c/${token}`);
+            }}
+          >
+            <Plus className="size-4" /> Agregar {total ?? ""}
+          </Button>
+        </div>
+      )}
 
       {/* EN ROJO Y SOLO CUANDO HAY UN NÚMERO POR DEBAJO. Lo pidió el dueño el
           2026-10-14 para el producto que solo se vende al mayor: ahí no hay
@@ -455,7 +512,6 @@ export function ProductDetail({
           Este producto se vende desde {minimo} unidades.
         </p>
       ) : null}
-
     </div>
   );
 }

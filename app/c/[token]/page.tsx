@@ -374,7 +374,17 @@ export default async function CatalogoPublicoPage({
                     hace, en una página donde quien mira no conoce a Sevenz y
                     no tiene por qué fiarse. */}
                     <Link
-                      href={`/c/${token}/${p.id}`}
+                      /* EL MARCADOR VIAJA CON EL ENLACE, desde el
+                         2026-10-17 (`CT-95`). Sin esto el tendero abría un
+                         producto desde su propia vista previa y la pantalla
+                         siguiente ya no sabía que era una previa: le ofrecía
+                         «Agregar» y le quitaba la flecha de volver, dejándolo
+                         sin salida. */
+                      href={
+                        esVistaPrevia
+                          ? `/c/${token}/${p.id}?previa=1`
+                          : `/c/${token}/${p.id}`
+                      }
                       className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
                     >
                       <div className="relative aspect-square w-full bg-muted">

@@ -30,7 +30,11 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
-import { formatPriceAmount, priceIn, type BolivarRates } from "@/lib/products/price";
+import {
+  formatPriceAmount,
+  priceIn,
+  type BolivarRates,
+} from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { splitForInput } from "@/lib/phone";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
@@ -74,7 +78,11 @@ import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
 
 type Estado =
   | { fase: "cargando" }
-  | { fase: "listo"; productos: Map<string, ProductoDelCarrito>; rates: BolivarRates | null }
+  | {
+      fase: "listo";
+      productos: Map<string, ProductoDelCarrito>;
+      rates: BolivarRates | null;
+    }
   | {
       fase: "enviado";
       mensaje: string;
@@ -111,7 +119,10 @@ export function CartScreen({
 
   // Las claves de las líneas, como texto, para que el efecto no se dispare en
   // cada render por un array nuevo con el mismo contenido.
-  const idsClave = lineas.map((l) => l.productId).sort().join(",");
+  const idsClave = lineas
+    .map((l) => l.productId)
+    .sort()
+    .join(",");
 
   useEffect(() => {
     // Con el carrito vacío no hay nada que pedir, y tampoco nada que mostrar:
@@ -140,7 +151,10 @@ export function CartScreen({
     );
   }
 
-  const productos = estado.fase === "listo" ? estado.productos : new Map<string, ProductoDelCarrito>();
+  const productos =
+    estado.fase === "listo"
+      ? estado.productos
+      : new Map<string, ProductoDelCarrito>();
   const rates = estado.fase === "listo" ? estado.rates : null;
   const totales = subtotales(lineas, productos, rates);
   // Solo la PRIMERA carga tapa la lista. Las siguientes —al añadir algo desde
@@ -157,7 +171,9 @@ export function CartScreen({
   // es una que no ha llegado. Confundirlas enseñaría «ya no está disponible»
   // en cada carga.
   const huerfanas =
-    estado.fase === "listo" && !cargando ? lineas.filter((l) => !productos.has(l.productId)) : [];
+    estado.fase === "listo" && !cargando
+      ? lineas.filter((l) => !productos.has(l.productId))
+      : [];
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
@@ -190,7 +206,8 @@ export function CartScreen({
         {lineas.length === 0 ? (
           <div className="rounded-xl border border-dashed px-6 py-12 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Todavía no has agregado nada. Vuelve al catálogo y elige lo que quieras pedir.
+              Todavía no has agregado nada. Vuelve al catálogo y elige lo que
+              quieras pedir.
             </p>
           </div>
         ) : primeraCarga ? (
@@ -205,11 +222,18 @@ export function CartScreen({
                 const precio = p ? precioUnitario(p, l, rates) : null;
                 const bs =
                   precio && rates && precio.currency !== "VES"
-                    ? priceIn("VES", { amount: precio.amount, currency: precio.currency }, rates)
+                    ? priceIn(
+                        "VES",
+                        { amount: precio.amount, currency: precio.currency },
+                        rates,
+                      )
                     : null;
 
                 return (
-                  <li key={l.productId} className="flex gap-3 rounded-xl border p-3">
+                  <li
+                    key={l.productId}
+                    className="flex gap-3 rounded-xl border p-3"
+                  >
                     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {p?.photo_path ? (
                         <Image
@@ -229,7 +253,9 @@ export function CartScreen({
 
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-medium">{p?.name ?? "Producto"}</span>
+                        <span className="text-sm font-medium">
+                          {p?.name ?? "Producto"}
+                        </span>
                         <button
                           type="button"
                           onClick={() => quitar(l.productId)}
@@ -242,15 +268,19 @@ export function CartScreen({
 
                       {p == null ? (
                         cargando ? (
-                          <p className="text-xs text-muted-foreground">Actualizando precio...</p>
+                          <p className="text-xs text-muted-foreground">
+                            Actualizando precio...
+                          </p>
                         ) : (
                           <p className="text-xs leading-relaxed text-destructive">
-                            Ya no está disponible. Quítalo para poder enviar tu pedido.
+                            Ya no está disponible. Quítalo para poder enviar tu
+                            pedido.
                           </p>
                         )
                       ) : precio == null ? (
                         <p className="text-xs leading-relaxed text-destructive">
-                          Este producto ya no tiene precio para esa cantidad. Cámbiala o quítalo.
+                          Este producto ya no tiene precio para esa cantidad.
+                          Cámbiala o quítalo.
                         </p>
                       ) : (
                         <>
@@ -258,7 +288,10 @@ export function CartScreen({
                             {formatPriceAmount(precio.amount, precio.currency)}
                             <span className="text-xs text-muted-foreground">
                               {" "}
-                              c/u · {precio.tier === "wholesale" ? "al mayor" : "al detal"}
+                              c/u ·{" "}
+                              {precio.tier === "wholesale"
+                                ? "al mayor"
+                                : "al detal"}
                             </span>
                           </span>
                           {bs?.amount != null ? (
@@ -270,7 +303,9 @@ export function CartScreen({
                       )}
 
                       {l.comment ? (
-                        <p className="text-xs leading-relaxed text-muted-foreground">«{l.comment}»</p>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          «{l.comment}»
+                        </p>
                       ) : null}
 
                       <div className="flex items-center gap-2 pt-1">
@@ -312,7 +347,10 @@ export function CartScreen({
             {totales.length > 0 ? (
               <div className="flex flex-col gap-1 rounded-xl border p-3">
                 {totales.map((t) => (
-                  <div key={t.currency} className="flex items-baseline justify-between gap-3">
+                  <div
+                    key={t.currency}
+                    className="flex items-baseline justify-between gap-3"
+                  >
                     <span className="text-sm text-muted-foreground">
                       {totales.length > 1 ? `Total en ${t.currency}` : "Total"}
                     </span>
@@ -323,7 +361,8 @@ export function CartScreen({
                 ))}
                 {totales.length > 1 ? (
                   <p className="pt-1 text-xs leading-relaxed text-muted-foreground">
-                    Son dos totales porque pediste en dos monedas. Cada uno se paga por separado.
+                    Son dos totales porque pediste en dos monedas. Cada uno se
+                    paga por separado.
                   </p>
                 ) : null}
               </div>
@@ -332,8 +371,8 @@ export function CartScreen({
         )}
 
         <p className="pt-2 text-center text-xs leading-relaxed text-muted-foreground">
-          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
-          hacerse directamente con el dueño del comercio.
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas.
+          Pagos y abonos deben hacerse directamente con el dueño del comercio.
         </p>
       </div>
 
@@ -342,7 +381,9 @@ export function CartScreen({
           <Button
             type="button"
             className="h-12 w-full"
-            disabled={cargando || estado.fase !== "listo" || huerfanas.length > 0}
+            disabled={
+              cargando || estado.fase !== "listo" || huerfanas.length > 0
+            }
             onClick={() => setAbierto(true)}
           >
             <WhatsappIcon className="size-5" /> Completar orden
@@ -433,7 +474,8 @@ function FormularioDeLaOrden({
   // El prefijo abre en el país del NEGOCIO, que es el de casi todos sus
   // clientes. `DIAL_POR_PAIS` solo cubre los dos donde Sevenz opera; para
   // cualquier otro, `WhatsappInput` cae en su propio valor por defecto.
-  const prefijo = ownerCountry === "VE" ? "58" : ownerCountry === "CO" ? "57" : undefined;
+  const prefijo =
+    ownerCountry === "VE" ? "58" : ownerCountry === "CO" ? "57" : undefined;
 
   function enviar() {
     setError(null);
@@ -460,65 +502,47 @@ function FormularioDeLaOrden({
         return;
       }
 
-      const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos, rates);
-
-      // SE INTENTA MANDAR EL RECIBO, Y SI NO SE PUEDE NO PASA NADA.
-      //
-      // El dueño pidió el 2026-10-15 que esto mandara el capture y no el
-      // texto. HAY DOS TOPES DE PLATAFORMA en el camino, y ninguno es
-      // nuestro; quedan escritos porque «sigue mandando texto» se lee como un
-      // fallo y no lo es:
-      //
-      // 1. UN ENLACE `wa.me` SOLO ADMITE TEXTO. No existe ningún parámetro
-      //    para adjuntar un fichero -- comprobado contra la documentación del
-      //    formato el 2026-10-15. Mandar una imagen por WhatsApp solo se
-      //    puede desde la hoja nativa del teléfono o desde la API de negocio.
-      // 2. ESTO OCURRE DESPUÉS DE UN `await`, porque la orden se guarda
-      //    primero. iOS bloquea tanto `window.open` como `navigator.share`
-      //    cuando no vienen de un toque directo, así que ninguna de las dos
-      //    está garantizada aquí.
-      //
-      // Así que se intenta la hoja CON LA IMAGEN y se cae al `wa.me` de
-      // siempre. Donde funcione, el dueño recibe el recibo; donde no,
-      // exactamente lo de antes -- nunca menos.
-      //
-      // EL CAMINO FIABLE SIGUE SIENDO EL BOTÓN DEL RESUMEN, que es un toque
-      // directo sin nada esperando por delante. El pedido YA está guardado
-      // —decisión del 2026-10-14— así que lo que falle aquí cuesta un toque
-      // más, no un pedido.
-      const recibo = dibujarRecibo({
+      const mensaje = mensajeDeLaOrden(
         businessName,
-        comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
-        resumen: resumenPorMoneda(lineas, productos, rates),
+        nombre,
+        lineas,
+        productos,
         rates,
-      });
-      const ficheroRecibo =
-        recibo == null ? null : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
+      );
 
-      if (ficheroRecibo != null && navigator.canShare?.({ files: [ficheroRecibo] })) {
-        // SOLO LA IMAGEN, SIN `text`. Lo reportó el dueño el 2026-10-17: al
-        // compartir, WhatsApp adjuntaba el recibo Y debajo el mensaje entero
-        // escrito a mano, que es la misma compra contada dos veces.
-        //
-        // No era un descuido suelto: el botón del resumen, ocho funciones más
-        // abajo, ya comparte `{ files }` a secas desde el 2026-10-15 —
-        // «para evitar que se edite el texto del mensaje en whatsApp», sus
-        // palabras. Este camino se quedó con el `text` de la versión
-        // anterior, cuando lo único que se podía mandar era texto.
-        //
-        // `mensaje` NO sobra: sigue siendo lo que viaja por el `wa.me` de
-        // abajo, donde un fichero no se puede adjuntar, y lo que recibe
-        // `onEnviada` para la pantalla de confirmación.
-        void navigator.share({ files: [ficheroRecibo] }).catch(() => {});
-      } else {
-        const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
-        if (digitos !== "") {
-          window.open(
-            `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
-            "_blank",
-            "noopener,noreferrer",
-          );
-        }
+      // «ENVIAR PEDIDO» ABRE EL WHATSAPP DEL NEGOCIO. SIEMPRE.
+      //
+      // Decisión del dueño el 2026-10-17, y DESPLAZA la suya del 2026-10-15,
+      // que pedía mandar aquí el recibo dibujado. Las dos quedan escritas.
+      //
+      // Lo que falla en la versión anterior es a quién va dirigido el botón.
+      // Este dice «Enviar pedido»: su destinatario es el NEGOCIO, uno solo y
+      // conocido, y `wa.me` lleva justo ahí. La hoja nativa pregunta a quién
+      // mandarlo — una pregunta que nadie hizo, sobre un pedido que ya está
+      // guardado— y encima podía acabar en cualquier otra aplicación.
+      //
+      // EL RECIBO NO SE PIERDE: lo manda el botón «Compartir» de la pantalla
+      // siguiente, que es donde tiene sentido ofrecer la hoja nativa, porque
+      // ahí el comprador SÍ elige destinatario —se lo manda a sí mismo, o a
+      // quien le hizo el encargo— y porque es un toque directo sin ningún
+      // `await` por delante, que es lo que iOS exige.
+      //
+      // `wa.me` SOLO ADMITE TEXTO, y eso no es una carencia aquí: lo que el
+      // tendero necesita recibir es el pedido legible en su conversación. No
+      // existe ningún parámetro del formato para adjuntar un fichero —
+      // comprobado contra su documentación el 2026-10-15.
+      //
+      // SI EL NEGOCIO NO TIENE NÚMERO, no se abre nada y no pasa nada más: el
+      // pedido YA está guardado —decisión del 2026-10-14— y el tendero lo ve
+      // en su pantalla de Pedidos. Lo que se pierde es el aviso inmediato, no
+      // la compra.
+      const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
+      if (digitos !== "") {
+        window.open(
+          `https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
       }
 
       onAbierto(false);
@@ -532,7 +556,8 @@ function FormularioDeLaOrden({
         <DialogHeader>
           <DialogTitle>¿Quién hace el pedido?</DialogTitle>
           <DialogDescription>
-            El negocio necesita estos datos para poder responderte y preparar tu pedido.
+            El negocio necesita estos datos para poder responderte y preparar tu
+            pedido.
           </DialogDescription>
         </DialogHeader>
 
@@ -590,16 +615,26 @@ function FormularioDeLaOrden({
               disabled={enviando}
               className="mt-0.5 size-4 shrink-0 accent-foreground"
             />
-            <span className="text-sm leading-relaxed">{TEXTO_PERMISO_ORDEN}</span>
+            <span className="text-sm leading-relaxed">
+              {TEXTO_PERMISO_ORDEN}
+            </span>
           </label>
 
           {error ? (
-            <p className="text-sm leading-relaxed text-destructive" role="alert">
+            <p
+              className="text-sm leading-relaxed text-destructive"
+              role="alert"
+            >
               {error}
             </p>
           ) : null}
 
-          <Button type="button" className="h-12" onClick={enviar} disabled={enviando}>
+          <Button
+            type="button"
+            className="h-12"
+            onClick={enviar}
+            disabled={enviando}
+          >
             {enviando ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -693,13 +728,18 @@ function Enviado({
       // imagen lo escribiera en crudo, el comprador vería doce dígitos
       // seguidos en el recibo y su número separado arriba, y no sabría cuál
       // de los dos le mandaron al tendero.
-      comprador: { ...comprador, telefono: telefonoLegible(comprador.telefono) },
+      comprador: {
+        ...comprador,
+        telefono: telefonoLegible(comprador.telefono),
+      },
       resumen,
       rates,
     });
 
     if (blob != null) {
-      const fichero = new File([blob], "pedido-sevenz.png", { type: "image/png" });
+      const fichero = new File([blob], "pedido-sevenz.png", {
+        type: "image/png",
+      });
       if (navigator.canShare?.({ files: [fichero] })) {
         // Cerrar la hoja la rechaza. Eso es el comprador decidiendo no
         // mandarlo, no un fallo, así que no lleva aviso.
@@ -747,13 +787,21 @@ function Enviado({
       {resumen.map((bloque) => {
         const enBs =
           rates && bloque.currency !== "VES"
-            ? priceIn("VES", { amount: bloque.total, currency: bloque.currency }, rates)
+            ? priceIn(
+                "VES",
+                { amount: bloque.total, currency: bloque.currency },
+                rates,
+              )
             : null;
         return (
-          <section key={bloque.currency} className="flex flex-col gap-3 rounded-xl border p-4">
+          <section
+            key={bloque.currency}
+            className="flex flex-col gap-3 rounded-xl border p-4"
+          >
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-semibold">
-                Resumen de compra en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
+                Resumen de compra en{" "}
+                {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
               </h2>
               <CurrencyFlagIcon currency={bloque.currency} />
             </div>
@@ -817,10 +865,12 @@ function Enviado({
           className="h-7 w-auto"
         />
         <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
-          hacerse directamente con el dueño del comercio.
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas.
+          Pagos y abonos deben hacerse directamente con el dueño del comercio.
         </p>
-        <p className="text-center text-xs font-medium text-muted-foreground">sevenz.site</p>
+        <p className="text-center text-xs font-medium text-muted-foreground">
+          sevenz.site
+        </p>
       </div>
 
       <div className="flex flex-col gap-2 pt-2">
