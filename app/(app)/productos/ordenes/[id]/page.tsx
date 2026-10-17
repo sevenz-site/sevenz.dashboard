@@ -77,6 +77,11 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   // Digits only. The column is already normalised, so this only guards against
   // anything that reached the table by another door than the cart.
   const whatsappDigits = (pedido.customer_whatsapp ?? "").replace(/\D/g, "");
+
+  // «Hola Pedro, sobre tu pedido...» -- the first word of the name, trimmed,
+  // and the whole name when there is only one word.
+  const primerNombre = pedido.customer_name.trim().split(/\s+/)[0];
+  const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
   const totales = totalsByCurrency(items);
 
   // The owner's zone, never the server's: this page renders on Vercel, which
@@ -104,7 +109,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
 
       <h1 className="text-2xl font-semibold">{pedido.customer_name}</h1>
 
-      <h2 className="mt-1 text-xl font-semibold">Quién pidió</h2>
+      <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
       <div className="rounded-lg border bg-muted/30 px-3 py-2">
         <Fila nombre="Nombre">{pedido.customer_name}</Fila>
         <Fila nombre="Documento">{formatDocumentId(pedido.customer_document)}</Fila>
@@ -113,7 +118,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
             is right. The normalised one is the key the database stores it
             under, not something to show anybody. */}
         <Fila nombre="WhatsApp">{pedido.customer_whatsapp_raw || "—"}</Fila>
-        <Fila nombre="Llegó">{cuando}</Fila>
+        <Fila nombre="Fecha de pedido">{cuando}</Fila>
         {/* "Notificaciones" and not "Avisos", "Aceptada" and not "Los
             aceptó": the owner's wording, 2026-10-16. */}
         <Fila nombre="Notificaciones por WhatsApp">
@@ -121,7 +126,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </Fila>
       </div>
 
-      {/* CONTACTAR, right under "Quién pidió" -- the owner's placement,
+      {/* CONTACTAR, right under "Datos del cliente" -- the owner's placement,
           2026-10-16. It is the action that section leads to: the shopkeeper
           reads who ordered and the next thing they do is ring them.
 
@@ -132,11 +137,17 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           code the cart's own `WhatsappInput` composed (migration 109 stores
           it through `normalize_whatsapp_phone`).
 
-          NO PREFILLED TEXT, deliberately. What to say about an order --
-          "ya está listo", "no tengo la harina", a price -- is the
-          shopkeeper's call and changes every time; a canned sentence would
-          be deleted before it was sent. The `/s/[token]` button opens the
-          same way, with no text.
+          IT OPENS WITH A SENTENCE ALREADY TYPED, the owner's own on
+          2026-10-16: «Hola [nombre], sobre tu pedido...». It stops where the
+          shopkeeper has to take over on purpose -- what comes next ("ya está
+          listo", "no tengo la harina", a price) changes every time and is
+          their call. The greeting is the part that is the same every time and
+          the part that is tedious to type on a phone.
+
+          THE FIRST NAME ONLY, not the whole thing: an order carries the name
+          as the customer typed it to be identified, so it is often "Pedro
+          Ramírez" or worse, and «Hola Pedro Ramírez» reads like a bank. If
+          the field holds a single word, that word is the greeting.
 
           NOTHING IS GUESSED WHEN THE NUMBER LOOKS LOCAL. An order stored
           without its country code (ten digits, no 58 or 57) opens the wrong
@@ -146,7 +157,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           sits two lines above for the shopkeeper to compare. */}
       {whatsappDigits ? (
         <a
-          href={`https://wa.me/${whatsappDigits}`}
+          href={`https://wa.me/${whatsappDigits}?text=${encodeURIComponent(mensajeWhatsapp)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
@@ -159,7 +170,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </a>
       ) : null}
 
-      <h2 className="mt-1 text-xl font-semibold">Qué pidió</h2>
+      <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
         {items.length === 0 ? (
           <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
