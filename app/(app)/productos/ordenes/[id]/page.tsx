@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { formatDocumentId } from "@/lib/format";
 import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -72,6 +73,10 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   if (errorItems) console.error("[orders] detail items:", errorItems.message);
 
   const items = (itemRows ?? []) as CatalogOrderItemRow[];
+
+  // Digits only. The column is already normalised, so this only guards against
+  // anything that reached the table by another door than the cart.
+  const whatsappDigits = (pedido.customer_whatsapp ?? "").replace(/\D/g, "");
   const totales = totalsByCurrency(items);
 
   // The owner's zone, never the server's: this page renders on Vercel, which
@@ -115,6 +120,44 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
         </Fila>
       </div>
+
+      {/* CONTACTAR, right under "Quién pidió" -- the owner's placement,
+          2026-10-16. It is the action that section leads to: the shopkeeper
+          reads who ordered and the next thing they do is ring them.
+
+          IT DIALS `customer_whatsapp`, THE NORMALISED ONE, and not the raw
+          number shown above it. The raw string is what the customer typed and
+          may carry spaces, dashes or a leading zero, none of which `wa.me`
+          accepts; the normalised column is digits only and carries the dial
+          code the cart's own `WhatsappInput` composed (migration 109 stores
+          it through `normalize_whatsapp_phone`).
+
+          NO PREFILLED TEXT, deliberately. What to say about an order --
+          "ya está listo", "no tengo la harina", a price -- is the
+          shopkeeper's call and changes every time; a canned sentence would
+          be deleted before it was sent. The `/s/[token]` button opens the
+          same way, with no text.
+
+          NOTHING IS GUESSED WHEN THE NUMBER LOOKS LOCAL. An order stored
+          without its country code (ten digits, no 58 or 57) opens the wrong
+          chat, and this does not quietly prepend anything to fix it: adding a
+          code we were not given is inventing a stranger's phone number. The
+          cart always composes one, so a real order has it; the raw number
+          sits two lines above for the shopkeeper to compare. */}
+      {whatsappDigits ? (
+        <a
+          href={`https://wa.me/${whatsappDigits}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+        >
+          Contactar vía WhatsApp
+          {/* The icon goes AFTER the text, like the client's own button and
+              the one on `/s/[token]`: the same deal seen from both sides, and
+              mirroring them read as two different things. */}
+          <WhatsappIcon className="size-4" />
+        </a>
+      ) : null}
 
       <h2 className="mt-1 text-xl font-semibold">Qué pidió</h2>
       <div className="flex flex-col gap-2">
