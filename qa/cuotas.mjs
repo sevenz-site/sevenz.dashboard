@@ -11,7 +11,7 @@
 //      producción— tiene que seguir juzgándose exactamente igual que ayer.
 //
 //   2. Que «3 cuotas en 30 días» venza cada 10. Es la regla que dio el dueño
-//      el 2026-10-17, con su ejemplo literal.
+//      el 2026-10-16, con su ejemplo literal.
 //
 //   3. Que MEDIA CUOTA NO REFRESQUE. La otra decisión del dueño del mismo
 //      día, y la que impide que esto se convierta en «abona 1 Bs al mes y no
@@ -143,7 +143,7 @@ try {
       created_at: dias(4), source: "manual", description: `${MARCA} media cuota`,
     });
     await admin.rpc("recalc_client_running_balance", { p_client_id: id });
-    check("3. media cuota NO refresca: pagar 29 de 30 deja el vencimiento a los 10", (await vencimiento(id, cargo)) === 10, "decisión del dueño, 2026-10-17");
+    check("3. media cuota NO refresca: pagar 29 de 30 deja el vencimiento a los 10", (await vencimiento(id, cargo)) === 10, "decisión del dueño, 2026-10-16");
 
     // El euro que faltaba completa la primera cuota.
     await admin.from("movements").insert({
@@ -207,7 +207,7 @@ try {
   }
   // ── 10. WHATSAPP TIENE QUE DECIR LO MISMO QUE LA PANTALLA ─────────────
   //
-  // La comprobación que faltaba el 2026-10-17, y que salió de una pregunta
+  // La comprobación que faltaba el 2026-10-16, y que salió de una pregunta
   // del dueño y no de una prueba: `whatsapp_destinatarios_atencion()` se
   // calculaba el vencimiento por su cuenta —`carga_at + plazo`, el plazo
   // ENTERO— así que un cliente con una cuota vencida habría salido «Plazo

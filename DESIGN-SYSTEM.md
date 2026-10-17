@@ -1207,6 +1207,42 @@ consola: se intercepta `navigator.share`, se queda uno con el `File` que produjo
 el propio código de la app y se cuentan los píxeles. Una reimplementación prueba
 que el SVG es legible; solo la tarjeta real prueba que el código la usa.
 
+## Un filtro nombra su VALOR, y lleva su rótulo al lado
+
+Un chip de filtro dice **lo que está filtrando ahora mismo**, no cómo se llama
+el campo. El del historial ponía «Tipo» mientras no había filtro, y pasó a
+poner **«Todos»** el 2026-10-16, a petición del dueño.
+
+La diferencia no es cosmética: «Tipo» contesta *«¿qué controla este botón?»*,
+una pregunta que se deja de hacer en cuanto se ve una vez. «Todos» contesta
+*«¿qué estoy mirando?»*, que sigue viva cada vez que se vuelve a la pantalla —
+y es la que importa, porque una lista filtrada que parece completa es la forma
+de que alguien concluya que un movimiento no existe.
+
+Y para que no se pierda qué controla, **a su izquierda va un rótulo en gris**:
+
+```tsx
+<div className="flex shrink-0 items-center gap-2">
+  <span className="text-xs text-muted-foreground">Filtrar por</span>
+  <FilterChip label={etiqueta} active={tipo !== "todos"} />
+</div>
+```
+
+El rótulo es **hermano del chip, no parte de él**: el chip se rellena cuando
+hay un filtro activo, y un «Filtrar por» resaltado se leería como parte del
+valor elegido.
+
+### Y si dos pantallas montan el mismo filtro, es UN componente
+
+`FiltroDeTipo` estaba copiado **byte a byte** en el historial del tendero y en
+el del cliente (`/s/[token]`). Seguían idénticos solo porque nadie había tocado
+uno. Este encargo tocaba los dos, que es exactamente la primera edición que los
+habría separado — y el del cliente es el que nadie de este lado mira. Vive en
+`components/dashboard/movement-type-filter.tsx` y lo montan las dos.
+
+**La señal de alarma, para la próxima**: si estás a punto de hacer el mismo
+cambio en dos archivos, el cambio no es el problema; la copia sí.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

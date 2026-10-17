@@ -1,6 +1,6 @@
 -- 118: A FIADO CAN BE AGREED IN INSTALMENTS, AND THE TERM MOVES WITH THEM
 --
--- Owner's decision, 2026-10-17, answering the question CT-77 left open --
+-- Owner's decision, 2026-10-16, answering the question CT-77 left open --
 -- "how much does a client have to pay for their term to refresh?":
 --
 --   *«Las cuotas deberían dividirse entre el plazo establecido, por ejemplo,
@@ -163,7 +163,7 @@ begin
         n := greatest(coalesce(queue_cuotas[i], 1), 1);
 
         -- CUÁNTAS CUOTAS ENTERAS TAPÓ LO ABONADO. `floor` es la decisión del
-        -- dueño del 2026-10-17 escrita en aritmética: media cuota no cuenta.
+        -- dueño del 2026-10-16 escrita en aritmética: media cuota no cuenta.
         -- Pagar 29 de una cuota de 30 deja la cuota sin cubrir y el
         -- vencimiento donde estaba.
         if queue_total[i] > 0 then
@@ -317,7 +317,7 @@ grant select on public.client_summary to authenticated;
 insert into public.schema_migrations (key, description)
 values (
   '118_fiado_en_cuotas',
-  'movements.cuotas: en cuantas cuotas se pacto un fiado, y el vencimiento de la cola FIFO pasa a ser el de la PROXIMA cuota sin pagar en vez del final del plazo entero. Decision del dueno del 2026-10-17: «las cuotas se dividen entre el plazo establecido -- 3 cuotas en 30 dias es una cada 10» y «una cuota pagada a medias no refresca» (de ahi el floor). NULL = sin cuotas = una sola cuota, asi que lo ya guardado sigue correcto sin backfill y el codigo tiene un solo camino. Antes de escribir esto se midio contra dev que «el 100 % del fiado refresca y un abono parcial no» YA era la regla vigente desde la 025: esto no la cambia, solo le da una unidad mas pequena. Las dos funciones cambian sus columnas de salida, que create or replace no admite, asi que van con drop+create y las dos vistas delante porque dependen de ellas por un lateral join. NO cambia contra que cargo se juzga el estado: sigue siendo el mas antiguo por fecha.'
+  'movements.cuotas: en cuantas cuotas se pacto un fiado, y el vencimiento de la cola FIFO pasa a ser el de la PROXIMA cuota sin pagar en vez del final del plazo entero. Decision del dueno del 2026-10-16: «las cuotas se dividen entre el plazo establecido -- 3 cuotas en 30 dias es una cada 10» y «una cuota pagada a medias no refresca» (de ahi el floor). NULL = sin cuotas = una sola cuota, asi que lo ya guardado sigue correcto sin backfill y el codigo tiene un solo camino. Antes de escribir esto se midio contra dev que «el 100 % del fiado refresca y un abono parcial no» YA era la regla vigente desde la 025: esto no la cambia, solo le da una unidad mas pequena. Las dos funciones cambian sus columnas de salida, que create or replace no admite, asi que van con drop+create y las dos vistas delante porque dependen de ellas por un lateral join. NO cambia contra que cargo se juzga el estado: sigue siendo el mas antiguo por fecha.'
 )
 on conflict (key) do nothing;
 

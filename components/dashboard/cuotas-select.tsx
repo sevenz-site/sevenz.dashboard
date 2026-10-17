@@ -10,7 +10,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { formatCadaCuantosDias } from "@/lib/format";
 
-// EN CUÁNTAS CUOTAS SE PACTÓ EL FIADO. Decisión del dueño, 2026-10-17.
+// EN CUÁNTAS CUOTAS SE PACTÓ EL FIADO. Decisión del dueño, 2026-10-16.
 //
 // LA REGLA, Y ES SUYA LITERAL: *«las cuotas deberían dividirse entre el plazo
 // establecido, por ejemplo, selecciona 3 cuotas en 30 días, entonces sería

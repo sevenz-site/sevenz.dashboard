@@ -472,6 +472,36 @@ ir a construirlo y montar el caso contra dev, que tardó dos minutos.
    correcto. Es la misma regla que ya está más arriba para las suites de `qa/`:
    al menos un control tiene que mirar la realidad exterior.
 
+### Un campo nuevo entra por TODAS las puertas de su acción
+
+Antes de dar por puesto un campo de formulario, hay que buscar **quién más
+escribe en la misma acción del servidor**. No «quién más tiene un formulario
+parecido»: quién manda su `FormData` a la misma función.
+
+El 2026-10-16 el campo de **cuotas** se añadió a `add-movement-dialog.tsx` y se
+reportó el trabajo como terminado. Había un segundo formulario —«Registrar
+cliente nuevo», en `client-search-dialog.tsx`— que manda a
+`createClientWithMovement`, **y esa acción ya leía `cuotas` desde el primer
+día**. O sea que el servidor estaba listo y la pantalla no: un cliente nuevo a
+crédito se guardaba **siempre sin cuotas**, en silencio, sin error y sin que
+nada se viera raro. Lo descubrió el dueño mirando la pantalla, no una prueba.
+
+**Por qué este fallo no avisa, y por eso merece regla propia**: un campo que
+falta no rompe nada. El formulario envía, el servidor acepta, la fila se
+guarda. Lo único que pasa es que un dato que el tendero creía haber puesto no
+está — y eso se descubre semanas después, cuando la app contradice lo que él
+recuerda haber acordado con su cliente.
+
+La comprobación cuesta un `grep` por el nombre de la acción:
+
+```sh
+grep -rn "createClientWithMovement\|createMovement" --include=*.tsx components/
+```
+
+Y vale igual al revés: **una acción que empieza a leer un campo nuevo tiene que
+decir qué formularios se lo van a mandar**, porque los que no lo hagan van a
+guardar `null` sin quejarse.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a

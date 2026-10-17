@@ -1,6 +1,6 @@
 -- 119: THE OWNER'S WHATSAPP READS THE SAME DEADLINE THE SCREEN READS
 --
--- Found on 2026-10-17 by the owner's own question -- *«¿el agregar cuotas
+-- Found on 2026-10-16 by the owner's own question -- *«¿el agregar cuotas
 -- afectará el envío de la notificación en whatsapp?»* -- and the answer turned
 -- out to be yes, in a way nothing would have announced.
 --
@@ -175,7 +175,7 @@ grant execute on function public.whatsapp_destinatarios_atencion() to service_ro
 insert into public.schema_migrations (key, description)
 values (
   '119_whatsapp_mira_el_vencimiento',
-  'whatsapp_destinatarios_resumen() y _atencion() dejan de rehacer la cuenta del vencimiento y leen client_summary.oldest_unpaid_charge_due_at, la misma columna que mira la pantalla desde la 118. Salio de una pregunta del dueno el 2026-10-17 sobre si las cuotas afectaban a WhatsApp: si, y de forma invisible. Las dos calculaban carga_at + plazo_dias, o sea el plazo ENTERO, asi que un cliente con una cuota vencida saldria «Plazo vencido» en la pantalla del tendero y NO contaria entre los overdue_clients de su propio resumen semanal. Hoy no es un defecto --sin cuotas due_at ES carga_at + plazo, identico-- y por eso esto no cambia nada de lo que nadie recibe: evita que las dos frases se separen el dia que las cuotas lleguen a produccion. Respeta la nota de la 068 («desde los datos crudos, nunca desde el estado que pinta la insignia»): due_at es una columna de la vista calculada en SQL, es la fecha con la que la insignia esta hecha y no la insignia. Los cuerpos se copiaron VERBATIM de la 072 y lo unico que cambia es la aritmetica de la fecha. No cambia ningun texto ni ninguna variable de plantilla: NO hace falta volver a pasar por Meta.'
+  'whatsapp_destinatarios_resumen() y _atencion() dejan de rehacer la cuenta del vencimiento y leen client_summary.oldest_unpaid_charge_due_at, la misma columna que mira la pantalla desde la 118. Salio de una pregunta del dueno el 2026-10-16 sobre si las cuotas afectaban a WhatsApp: si, y de forma invisible. Las dos calculaban carga_at + plazo_dias, o sea el plazo ENTERO, asi que un cliente con una cuota vencida saldria «Plazo vencido» en la pantalla del tendero y NO contaria entre los overdue_clients de su propio resumen semanal. Hoy no es un defecto --sin cuotas due_at ES carga_at + plazo, identico-- y por eso esto no cambia nada de lo que nadie recibe: evita que las dos frases se separen el dia que las cuotas lleguen a produccion. Respeta la nota de la 068 («desde los datos crudos, nunca desde el estado que pinta la insignia»): due_at es una columna de la vista calculada en SQL, es la fecha con la que la insignia esta hecha y no la insignia. Los cuerpos se copiaron VERBATIM de la 072 y lo unico que cambia es la aritmetica de la fecha. No cambia ningun texto ni ninguna variable de plantilla: NO hace falta volver a pasar por Meta.'
 )
 on conflict (key) do nothing;
 
