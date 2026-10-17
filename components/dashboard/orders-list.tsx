@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import {
   Table,
   TableBody,
@@ -32,13 +33,24 @@ import {
 
 export type OrderWithItems = CatalogOrderRow & { items: CatalogOrderItemRow[] };
 
+// THE FLAG GOES BESIDE THE AMOUNT. Owner's request, 2026-10-16, for this
+// screen and for the detail's totals.
+//
+// It is not decoration and it is not redundant with the `$`/`€` the formatter
+// already prints: USDT has no symbol of its own, so a USDT line would read as
+// a bare number next to two that carry one. The flag is the only mark that
+// tells the three apart at a glance, which is the whole job of this column
+// when an order mixes currencies.
 function Importes({ items }: { items: CatalogOrderItemRow[] }) {
   const totales = totalsByCurrency(items);
   if (totales.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="flex flex-col items-end gap-0.5 tabular-nums">
       {totales.map((t) => (
-        <span key={t.currency}>{formatPriceAmount(t.amount, t.currency as PriceCurrency)}</span>
+        <span key={t.currency} className="flex items-center justify-end gap-1.5">
+          <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
+          {formatPriceAmount(t.amount, t.currency as PriceCurrency)}
+        </span>
       ))}
     </span>
   );
@@ -98,9 +110,21 @@ export function OrdersList({
           >
             <span className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="truncate font-medium">{order.customer_name}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {cuandoLlego(order.created_at, timeZone)} · {order.items.length}{" "}
-                {order.items.length === 1 ? "producto" : "productos"}
+              {/* IT WRAPS, IT DOES NOT TRUNCATE. It was `truncate` until the
+                  flags went in beside the amount on 2026-10-16: the right
+                  column grew ~22px and "2 productos" started coming out as
+                  "2 product…" at 375px. Hiding how many products an order
+                  has to keep one tidy line is the wrong trade — the card can
+                  be two lines tall. The name above still truncates, because
+                  a name is recognised from its start. */}
+              <span className="text-xs text-muted-foreground">
+                {cuandoLlego(order.created_at, timeZone)} ·{" "}
+                {/* The count and its noun break as one piece, so a second
+                    line reads "2 productos" rather than leaving the "2"
+                    stranded at the end of the first. */}
+                <span className="whitespace-nowrap">
+                  {order.items.length} {order.items.length === 1 ? "producto" : "productos"}
+                </span>
               </span>
               <span>
                 <Estado order={order} />

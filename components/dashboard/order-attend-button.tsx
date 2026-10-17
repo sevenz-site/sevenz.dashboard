@@ -38,6 +38,11 @@ export function OrderAttendButton({
   return (
     <Button
       type="button"
+      // FULL WIDTH ON A PHONE, its own width from `sm`. Owner's request,
+      // 2026-10-16. It is the only action on the screen and it sits at the
+      // bottom, where the thumb is: a 180px target floating in a 375px row
+      // is the hardest shape to hit of the ones available for free.
+      className="w-full sm:w-auto"
       disabled={pending}
       onClick={() =>
         startTransition(async () => {

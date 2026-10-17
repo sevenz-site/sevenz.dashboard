@@ -275,6 +275,24 @@ export function MobileNav() {
   // captura del dueno se come la mitad de «Pais».
   const enMiNegocio = pathname.startsWith("/profile");
 
+  // NI EN PEDIDOS. A petición del dueño el 2026-10-16, con dos capturas: una
+  // de la lista y otra de la ficha.
+  //
+  // Es el mismo motivo que /profile y uno más. El que comparte: Pedidos es
+  // una pantalla de LECTURA — lo que pidió otra persona — y aquí el botón ni
+  // siquiera dice «Crear producto», porque `enCatalogo` solo mira
+  // `/productos` exacto: decía «Agregar» y abría Registrar movimiento, que no
+  // tiene nada que ver con el pedido que el tendero está mirando.
+  //
+  // El que no comparte, y se ve en la captura: TAPA. En la lista se come la
+  // esquina de la última tarjeta y en la ficha se pone encima de las líneas
+  // del pedido y al lado del botón de atender, que es la única acción que esa
+  // pantalla tiene.
+  //
+  // `startsWith` y no igualdad, porque cubre la ficha `/productos/ordenes/[id]`
+  // con la misma línea.
+  const enPedidos = pathname.startsWith("/productos/ordenes");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
@@ -349,9 +367,9 @@ export function MobileNav() {
           looked like the three that only move you. Floating, it is the one
           control that is obviously not a destination.
 
-          Y no sale en /import ni en /profile: ver `enSubirLibreta` y
-          `enMiNegocio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && (
+          Y no sale en /import, ni en /profile, ni en Pedidos: ver
+          `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

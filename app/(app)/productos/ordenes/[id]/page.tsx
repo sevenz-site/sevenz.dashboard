@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { formatDocumentId } from "@/lib/format";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -108,8 +109,10 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
             under, not something to show anybody. */}
         <Fila nombre="WhatsApp">{pedido.customer_whatsapp_raw || "—"}</Fila>
         <Fila nombre="Llegó">{cuando}</Fila>
-        <Fila nombre="Avisos por WhatsApp">
-          {pedido.wants_whatsapp_notices ? "Los aceptó" : "No los pidió"}
+        {/* "Notificaciones" and not "Avisos", "Aceptada" and not "Los
+            aceptó": the owner's wording, 2026-10-16. */}
+        <Fila nombre="Notificaciones por WhatsApp">
+          {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
         </Fila>
       </div>
 
@@ -124,7 +127,12 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
             <div key={item.id} className="rounded-lg border bg-muted/30 px-3 py-2">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 truncate font-medium">{item.product_name}</span>
-                <span className="shrink-0 text-sm font-semibold tabular-nums">
+                {/* THE FLAG BESIDE THE AMOUNT, owner's request of
+                    2026-10-16. USDT prints no symbol of its own, so without
+                    it a USDT line is a bare number sitting next to lines that
+                    carry a `$` or a `€`. */}
+                <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold tabular-nums">
+                  <CurrencyFlagIcon currency={item.currency as PriceCurrency} />
                   {formatPriceAmount(
                     Number(item.quantity) * Number(item.unit_price),
                     item.currency as PriceCurrency,
@@ -157,7 +165,8 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         <div className="rounded-lg border bg-muted/30 px-3 py-2">
           {totales.map((t) => (
             <Fila key={t.currency} nombre={totales.length > 1 ? `Total en ${t.currency}` : "Total"}>
-              <span className="tabular-nums">
+              <span className="flex items-center justify-end gap-1.5 tabular-nums">
+                <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
                 {formatPriceAmount(t.amount, t.currency as PriceCurrency)}
               </span>
             </Fila>
