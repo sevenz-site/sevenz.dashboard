@@ -496,7 +496,20 @@ function FormularioDeLaOrden({
         recibo == null ? null : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
 
       if (ficheroRecibo != null && navigator.canShare?.({ files: [ficheroRecibo] })) {
-        void navigator.share({ files: [ficheroRecibo], text: mensaje }).catch(() => {});
+        // SOLO LA IMAGEN, SIN `text`. Lo reportó el dueño el 2026-10-17: al
+        // compartir, WhatsApp adjuntaba el recibo Y debajo el mensaje entero
+        // escrito a mano, que es la misma compra contada dos veces.
+        //
+        // No era un descuido suelto: el botón del resumen, ocho funciones más
+        // abajo, ya comparte `{ files }` a secas desde el 2026-10-15 —
+        // «para evitar que se edite el texto del mensaje en whatsApp», sus
+        // palabras. Este camino se quedó con el `text` de la versión
+        // anterior, cuando lo único que se podía mandar era texto.
+        //
+        // `mensaje` NO sobra: sigue siendo lo que viaja por el `wa.me` de
+        // abajo, donde un fichero no se puede adjuntar, y lo que recibe
+        // `onEnviada` para la pantalla de confirmación.
+        void navigator.share({ files: [ficheroRecibo] }).catch(() => {});
       } else {
         const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
         if (digitos !== "") {

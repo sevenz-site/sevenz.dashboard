@@ -161,18 +161,11 @@ export default async function CatalogoPublicoPage({
   // sería una segunda copia de esta pantalla, y una copia se queda atrás del
   // original sin que nadie se entere. Lo que el tendero revisa tiene que ser
   // la página de verdad, byte por byte, o la revisión no vale.
-  // `?desde=saldo` LO PONE LA FRANJA DE PRODUCTOS de `/s/[token]`, y lo único
-  // que hace es encender la flecha de volver. Es una palabra sin información
-  // a propósito: el token del cliente abre su saldo, y meterlo en la URL del
-  // catálogo —que es la pantalla que un cliente sí querría reenviar— sería
-  // regalar su deuda a quien la reciba. El porqué entero está en
-  // `components/public/back-to-balance.tsx`.
-  searchParams: Promise<{ previa?: string; desde?: string }>;
+  searchParams: Promise<{ previa?: string }>;
 }) {
   const { token } = await params;
-  const { previa, desde } = await searchParams;
+  const { previa } = await searchParams;
   const esVistaPrevia = previa === "1";
-  const vieneDelSaldo = desde === "saldo";
 
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -325,7 +318,12 @@ export default async function CatalogoPublicoPage({
             ? { href: "/productos", label: "Volver al catálogo" }
             : undefined
         }
-        backSlot={vieneDelSaldo ? <BackToBalance /> : undefined}
+        /* SIEMPRE MONTADA, y ella decide si se pinta: lee de
+           `sessionStorage` el camino de vuelta que dejó la franja de
+           `/s/[token]`, y devuelve `null` si no hay ninguno. Esa decisión no
+           puede tomarse aquí porque esto es servidor y ese almacén solo
+           existe en el navegador. */
+        backSlot={<BackToBalance />}
         /* EL AVISO DE LA TASA, Y SOLO DONDE HAY TASA.
 
            Un negocio colombiano cobra en pesos y no tiene equivalencia que

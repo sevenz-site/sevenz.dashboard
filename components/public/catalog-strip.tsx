@@ -6,6 +6,7 @@ import { ChevronRight, ImageOff } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { CLAVE_VOLVER_AL_SALDO } from "@/components/public/back-to-balance";
 
 export type CatalogStripProduct = {
   id: string;
@@ -46,11 +47,11 @@ export function CatalogStrip({
 }) {
   if (products.length === 0) return null;
 
-  // `?desde=saldo` ENCIENDE LA FLECHA DE VOLVER del catálogo, y nada más. No
-  // lleva el token del cliente a propósito: ese abre su saldo, y el catálogo
-  // es justo la pantalla que alguien reenviaría. Ver
-  // `components/public/back-to-balance.tsx`.
-  const href = `/c/${catalogToken}?desde=saldo`;
+  // LA URL VA LIMPIA, sin marcador ni token. El camino de vuelta al saldo se
+  // guarda en `sessionStorage` justo abajo, al tocar: así el catálogo que el
+  // cliente reenvíe no lleva nada suyo dentro. El porqué entero, y las dos
+  // alternativas que se descartaron, están en `back-to-balance.tsx`.
+  const href = `/c/${catalogToken}`;
 
   // THE TAP IS RECORDED BY THE SERVER, AND THE NAVIGATION DOES NOT WAIT FOR
   // IT. `keepalive` is what makes that safe: the request survives the page
@@ -61,6 +62,16 @@ export function CatalogStrip({
   // IT FAILS SILENTLY ON PURPOSE. An analytics call that can break a link is
   // worse than a missing number, so every outcome here is swallowed.
   const registrar = () => {
+    // EL CAMINO DE VUELTA, antes que nada. Es lo único de esta función que el
+    // cliente va a notar si falla, así que va primero y en su propio `try`:
+    // un fallo del aviso a Mixpanel no puede llevarse por delante la flecha.
+    try {
+      sessionStorage.setItem(CLAVE_VOLVER_AL_SALDO, shareToken);
+    } catch {
+      // Almacén bloqueado. Sin flecha, que es degradación limpia — ver
+      // `back-to-balance.tsx`.
+    }
+
     try {
       void fetch("/api/share-catalog", {
         method: "POST",
