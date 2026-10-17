@@ -768,6 +768,30 @@ blanco al 10% y sobre `#272727` se compone en un gris que no se ve. Es un
 elemento propio con clases explícitas, igual que los chips de filtro y la flecha
 de volver de las otras cabeceras, y por la misma razón.
 
+### Y `variant="ghost"` tampoco. Ni ninguna variante, sobre esa banda
+
+Es la misma trampa un paso más allá, y ya ha mordido tres veces: `outline` con
+el botón de WhatsApp (2026-10-04), `emerald-700` con el de «Contactar vía
+WhatsApp» (2026-10-17) y `ghost` con el `⋮` de la pantalla del cliente ese
+mismo día. **Las tres veces el control se veía perfecto en la pantalla donde
+se escribió y quedó ilegible al subirlo a la banda.**
+
+`ghost` pinta `text-foreground`, que en el tema claro es casi negro. Negro
+sobre `#272727` no es «poco contraste»: es un icono que no está. El dueño lo
+reportó señalando una esquina vacía.
+
+**La regla, entonces: un control que viva sobre `--brand-primary` escribe sus
+colores a mano.** Blanco o `--brand-secondary` para el contenido,
+`hover:bg-white/10`, y el anillo de foco en `white/40`. Son los mismos tres
+que ya usan la flecha de volver de `PublicHeader` y los chips de filtro — si
+dos controles comparten banda, comparten tokens, y si uno no se parece al
+otro es que uno de los dos está mal.
+
+**Cómo se comprueba, porque «se ve bien» no es una medida**: leer el color
+calculado del icono y el fondo del `<header>` en el inspector y sacar el
+cociente. El `⋮` arreglado da 14,94:1 sobre `#272727`; antes daba menos de
+1,5:1. Un número medido se puede discutir; una impresión no.
+
 ## Las tarjetas oscuras son oscuras en los dos temas
 
 Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
