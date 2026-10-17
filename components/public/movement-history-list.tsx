@@ -10,6 +10,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -101,7 +102,19 @@ export function MovementHistoryList({
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                  <p className="text-xs text-muted-foreground">
+                  {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
+                      2026-10-16, por instrucción del dueño, y en esta
+                      pantalla pesa más que en la del tendero: quien la lee es
+                      el cliente, que no lleva dos libros en la cabeza y ve
+                      "$" y "€" alternándose en su propio historial sin más
+                      pista que el símbolo.
+
+                      Solo cuando la moneda existe. `null` es un negocio
+                      colombiano, donde no hay dos libros que separar. */}
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {m.currency ? (
+                      <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                    ) : null}
                     {getBalanceLabel(m.running_balance)} {balance.primary}
                   </p>
                 </div>
@@ -109,7 +122,10 @@ export function MovementHistoryList({
                   <div
                     className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
-                    <span>
+                    <span className="flex items-center gap-1">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                      ) : null}
                       {m.type === "charge" ? "+" : "-"}
                       {amount.primary}
                     </span>

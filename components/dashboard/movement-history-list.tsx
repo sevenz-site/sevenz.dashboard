@@ -10,6 +10,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -94,13 +95,30 @@ export function MovementHistoryList({
                     {formatDate(m.created_at)}
                     {m.source === "photo_import" ? " · de libreta" : ""}
                   </p>
-                  <p className="text-xs text-muted-foreground">Por cobrar {balance.primary}</p>
+                  {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
+                      2026-10-16, por instrucción del dueño. Esta lista es
+                      donde más falta hacía: en una cartera venezolana las
+                      filas en dólares y en euros se alternan, y lo único que
+                      las distinguía era el símbolo — "$" y "€" pegados a un
+                      número, que es justo el par que se confunde de un
+                      vistazo.
+
+                      Solo cuando la moneda existe. `null` es un negocio
+                      colombiano, donde no hay dos libros que separar y una
+                      bandera repetida en cada fila sería ruido. */}
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
+                    Por cobrar {balance.primary}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
                     className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
-                    <span>
+                    <span className="flex items-center gap-1">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                      ) : null}
                       {m.type === "charge" ? "+" : "-"}
                       {amount.primary}
                     </span>
