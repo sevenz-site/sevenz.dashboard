@@ -1,4 +1,6 @@
+import { OrdersCard } from "@/components/dashboard/orders-card";
 import { createClient } from "@/lib/supabase/server";
+import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { CatalogTable } from "@/components/dashboard/catalog-table";
 import { CatalogShareButton, CatalogMenu } from "@/components/dashboard/catalog-share";
@@ -56,6 +58,7 @@ export default async function ProductosPage({
     { data: catalogLink },
     country,
     rateContext,
+    ordenesSinAtender,
   ] = await Promise.all([
       supabase
         .from("products")
@@ -119,6 +122,9 @@ export default async function ProductosPage({
         .maybeSingle(),
       readOwnerCountry(supabase, user!.id),
       getOwnerRateContext(supabase, user!.id),
+      // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
+      // `head: true` count, so it costs a plan and no rows.
+      countUnattendedOrders(supabase, user!.id),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano
@@ -201,6 +207,19 @@ export default async function ProductosPage({
           search={<CatalogSearchField />}
           filters={<CatalogFilterChips />}
         />
+        {/* THE ORDERS SECTION, inside Catálogo -- the owner's decision of
+            2026-10-16 (CT-71), which asked for BOTH surfaces: the bell and a
+            section of its own here.
+
+            IT IS SHOWN EVEN AT ZERO, on purpose. Hiding it when empty would
+            mean the one screen that answers "has anybody ordered?" only
+            exists once somebody has, so a shopkeeper wondering could never
+            check. Same reasoning as DESIGN-SYSTEM.md's rule for empty values:
+            keep the row, say it is empty. */}
+        {/* The card itself is `OrdersCard`, shared with Inicio -- the
+            gradient is built from two theme tokens and a second hand-written
+            copy of it is a copy that drifts. */}
+        <OrdersCard unattended={ordenesSinAtender} place="catalogo" />
         <CatalogTable
           loadFailed={productsError != null}
           overrides={(overrides ?? []) as PriceOverrideRow[]}

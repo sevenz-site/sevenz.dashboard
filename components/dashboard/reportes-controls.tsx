@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { X } from "lucide-react";
 import { ClientResultList, CLIENT_RESULT_LIMIT } from "@/components/dashboard/client-result-list";
+import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { cn } from "@/lib/utils";
 import type { LendingPeriod } from "@/lib/lending-charts";
 
@@ -123,22 +124,20 @@ export function ReportesClientSearch({
 
   return (
     <div className="relative">
-      <input
-        type="text"
+      {/* `SearchField`, el mismo de Clientes, desde el 2026-10-16. Este campo
+          ya tenía exactamente su aspecto —50px, el relleno, el borde de 2px—
+          porque era una copia suya, pero le faltaba la rama del aspa, así que
+          la única forma de vaciarlo era borrar letra por letra. */}
+      <SearchField
+        tone="dark"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={setQuery}
         placeholder="Buscar cliente"
-        aria-label="Buscar cliente"
         onFocus={() => setFocused(true)}
         // The same delay as the other screens, and for the same reason: tapping
         // a result blurs the field, and unmounting the list in that instant
         // means the tap lands on whatever moved into its place.
         onBlur={() => setTimeout(() => setFocused(false), 150)}
-        className="h-[50px] w-full min-w-0 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-10 pl-4 text-[17px] text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"
-      />
-      <Search
-        aria-hidden="true"
-        className="absolute top-1/2 right-3 size-6 -translate-y-1/2 text-brand-secondary"
       />
 
       {focused && q !== "" ? (

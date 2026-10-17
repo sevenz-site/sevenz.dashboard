@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package } from "lucide-react";
+import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
 import type { NotificationItem } from "@/app/(app)/actions";
 import { restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { restoreProduct } from "@/app/(app)/productos/actions";
+import Link from "next/link";
 import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
 
 // The notification rows themselves, shared by the desktop header's popover
@@ -121,6 +122,24 @@ export function NotificationList({
                 </>
               ) : n.kind === "product_hidden" ? (
                 <ProductHideRow notification={n} />
+              ) : n.kind === "catalog_order" ? (
+                <>
+                  <ShoppingBag className="mt-0.5 size-4 shrink-0 text-brand" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{n.customerName} te hizo un pedido</p>
+                    <p className="text-xs text-muted-foreground">
+                      {n.itemCount} {n.itemCount === 1 ? "producto" : "productos"} ·{" "}
+                      {formatDateTime(n.occurredAt)}
+                    </p>
+                    {/* A LINK AND NOT A BUTTON, unlike the rows above: this
+                        one navigates, and the three states an order can reach
+                        -- attended, registered, discarded -- all live on its
+                        own page. The notice itself has nothing to toggle. */}
+                    <Button asChild type="button" variant="outline" size="sm" className="mt-1.5 h-7">
+                      <Link href={`/productos/ordenes/${n.orderId}`}>Ver pedido</Link>
+                    </Button>
+                  </div>
+                </>
               ) : (
                 <ClientHideRow notification={n} onRestored={handleClientRestored} />
               )}

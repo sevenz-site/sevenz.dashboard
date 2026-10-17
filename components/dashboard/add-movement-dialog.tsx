@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
+import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import {
   MontoCard,
   TipoButtons,
@@ -150,6 +151,8 @@ export function AddMovementDialog({
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"charge" | "payment">("charge");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
+  // "1" = pago único, que el servidor guarda como null. Ver `CuotasSelect`.
+  const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
@@ -516,7 +519,32 @@ export function AddMovementDialog({
             ) : null}
           </div>
 
-          {type === "charge" ? <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} /> : null}
+          {type === "charge" ? (
+            <>
+              <PlazoPagoSelect
+                value={plazoPago}
+                onValueChange={(v) => {
+                  setPlazoPago(v);
+                  // AL QUEDARSE SIN PLAZO, LAS CUOTAS VUELVEN A PAGO ÚNICO.
+                  // Si no, el campo se esconde con un «4» dentro y el fiado
+                  // se guardaría sin cuotas mientras el dueño cree que las
+                  // puso. El servidor ya lo ignora en ese caso; esto es para
+                  // que al volver a elegir plazo no reaparezca un número que
+                  // nadie acaba de decidir.
+                  if (v === "" || v === "sin_especificar") setCuotas("1");
+                }}
+              />
+              <CuotasSelect
+                value={cuotas}
+                onValueChange={setCuotas}
+                plazoDias={
+                  plazoPago && plazoPago !== "sin_especificar" && Number.isFinite(Number(plazoPago))
+                    ? Number(plazoPago)
+                    : null
+                }
+              />
+            </>
+          ) : null}
 
           {llevaDivisas ? (
             <MonedaTecleadaButtons
@@ -592,7 +620,7 @@ export function AddMovementDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="description">Detalle (opcional)</Label>
+            <Label htmlFor="description">Descripción (opcional)</Label>
             <Input id="description" name="description" />
           </div>
 

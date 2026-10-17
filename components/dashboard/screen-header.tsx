@@ -117,8 +117,20 @@ export function ScreenHeader({
         </div>
       )}
 
-      <div className="px-4 py-4">{search}</div>
-      <div className="px-4 pb-4">{filters}</div>
+      {/* A SLOT THAT IS NULL TAKES NO ROOM. Until 2026-10-16 both wrappers
+          rendered whatever happened, so a screen with neither — Pedidos is
+          the first — ended with 48px of empty black bar under its subtitle
+          (16+16 from the search row, 16 from the chips). Nothing was wrong
+          with it except that it looked like something had failed to load.
+
+          The screens that pass real nodes render exactly as before: this
+          only decides whether the wrapper exists at all. */}
+      {search ? <div className="px-4 py-4">{search}</div> : null}
+      {filters ? <div className="px-4 pb-4">{filters}</div> : null}
+      {/* And when neither is there, the bottom padding has to come from
+          somewhere: without this the subtitle sits flush against the edge of
+          the dark block. */}
+      {!search && !filters ? <div className="pb-4" /> : null}
     </header>
   );
 }

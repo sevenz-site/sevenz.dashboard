@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { WhatsappIcon } from "@/components/icons/whatsapp";
+import { ContactWhatsappLink } from "@/components/public/contact-whatsapp-link";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -11,6 +11,8 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { MovementHistoryList } from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -54,6 +56,9 @@ type SharedMovement = {
   running_balance: number;
   needs_review: boolean;
   plazo_dias: number | null;
+  // Arrives through migration `121`. It is null for everything stored before
+  // 2026-10-16, and the card only draws the table when it is not.
+  cuotas: number | null;
   created_at: string;
 };
 
@@ -100,11 +105,33 @@ type SharedBalance = {
 
 // One currency's balance as its own card, label left and figure right —
 // matching how the owner's own client screen shows the same two numbers.
-function BalanceRowCard({ label, children }: { label: string; children: React.ReactNode }) {
+// LA BANDERA VA PEGADA AL RÓTULO, no a la cifra. Instrucción del dueño,
+// 2026-10-16: *«todo lo que muestre moneda debe contener el ícono (flag)»*.
+//
+// Delante del rótulo y no detrás del número porque la fila ya tiene la cifra
+// en el extremo derecho con su equivalente en bolívares debajo; meter ahí un
+// icono más empuja los dos renglones y, a 375px, es justo donde menos sitio
+// hay. El rótulo, en cambio, tiene el flanco izquierdo libre.
+//
+// Y no reemplaza a la palabra: "Dólares" se queda. La bandera es lo que se ve
+// de un vistazo y la palabra lo que lo deja sin ambigüedad para quien no
+// distingue dos banderas pequeñas —o no las ve.
+function BalanceRowCard({
+  label,
+  currency,
+  children,
+}: {
+  label: string;
+  currency?: PriceCurrency | null;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+          {currency ? <CurrencyFlagIcon currency={currency} /> : null}
+          <span className="truncate">{label}</span>
+        </p>
         {children}
       </div>
     </div>
@@ -311,7 +338,7 @@ export default async function SharedBalancePage({
           negative amount. */}
       {rateContext ? (
         <>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_usd)} en Dólares`} currency="USD">
             <ExchangeRateBalanceDisplay
               balance={shared.balance_usd}
               currency="USD"
@@ -320,7 +347,7 @@ export default async function SharedBalancePage({
               mainClassName="text-3xl"
             />
           </BalanceRowCard>
-          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`}>
+          <BalanceRowCard label={`${getBalanceLabel(shared.balance_eur)} en Euros`} currency="EUR">
             <ExchangeRateBalanceDisplay
               balance={shared.balance_eur}
               currency="EUR"
@@ -353,21 +380,7 @@ export default async function SharedBalancePage({
           still returns payment_info, this page simply stops rendering it. */}
 
       {ownerWhatsappDigits ? (
-        <a
-          href={`https://wa.me/${ownerWhatsappDigits}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
-        >
-          {/* El nombre del negocio está en el encabezado, justo encima. El
-              botón lo repetía y en un nombre largo se partía en dos líneas. */}
-          Contactar vía WhatsApp
-          {/* El icono va DETRÁS del texto, como en "Compartir saldo vía
-              WhatsApp" de la ficha del cliente: los dos botones dicen lo mismo
-              a los dos lados del mismo trato, y tenerlos espejados se leía
-              como dos cosas distintas. */}
-          <WhatsappIcon className="size-4" />
-        </a>
+        <ContactWhatsappLink token={token} href={`https://wa.me/${ownerWhatsappDigits}`} />
       ) : null}
 
       <FeedbackBanner token={token} />
@@ -384,8 +397,14 @@ export default async function SharedBalancePage({
       />
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Historial</h2>
-        <MovementHistoryList movements={movements} ledger={ledger} compartir={compartir} />
+        {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
+            pueda ir a su derecha, en la misma fila. */}
+        <MovementHistoryList
+          titulo={<h2 className="text-sm font-medium text-muted-foreground">Historial</h2>}
+          movements={movements}
+          ledger={ledger}
+          compartir={compartir}
+        />
         {!showAll && shared.movement_total > movements.length ? (
           <div className="flex flex-col items-center gap-2 pt-1">
             <p className="text-xs text-muted-foreground">

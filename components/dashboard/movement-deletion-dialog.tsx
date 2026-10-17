@@ -18,6 +18,7 @@ import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-row
 import { restoreMovement } from "@/app/(app)/dashboard/actions";
 import type { NotificationItem } from "@/app/(app)/actions";
 import { formatCurrency, formatDateTime, formatPlazoDias } from "@/lib/format";
+import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import type { MovementCurrencyCode } from "@/lib/types";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -169,7 +170,21 @@ export function MovementDeletionDialog({
 
           <Grupo>
             <Fila nombre="Plazo de pago">{formatPlazoDias(notification.plazoDias)}</Fila>
-            <Fila nombre="Detalle">
+            {/* Same row, same wording and same function as the live movement's
+                card. A deleted fiado is still the one the owner agreed, and
+                "restore this?" is harder to answer from a card that hides half
+                of what was agreed. Only drawn when there are cuotas, for the
+                reason written in MovementDetailPopover. */}
+            {notification.cuotas != null && notification.plazoDias != null ? (
+              <CuotasTable
+                createdAt={notification.movementCreatedAt}
+                plazoDias={notification.plazoDias}
+                cuotas={notification.cuotas}
+                amount={notification.amount}
+                formatearMonto={enSuMoneda}
+              />
+            ) : null}
+            <Fila nombre="Descripción">
               <span className="break-words">{notification.description || "—"}</span>
             </Fila>
             <dt className="text-xs leading-5 text-muted-foreground">Foto</dt>

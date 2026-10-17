@@ -29,6 +29,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
+import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
@@ -45,6 +46,7 @@ export function MovementDetailPopover({
   description,
   ownerNote = null,
   plazoDias,
+  cuotas = null,
   createdAt,
   runningBalance,
   balanceLabel = "Por cobrar",
@@ -75,6 +77,25 @@ export function MovementDetailPopover({
   // por descuido.
   ownerNote?: string | null;
   plazoDias: number | null;
+  // How many cuotas the fiado was agreed in (migration `118`). null = single
+  // payment, which is what every row stored before today holds.
+  //
+  // THE CLIENT'S PAGE PASSES IT TOO, since migration `121`. Earlier on
+  // 2026-10-16 this comment said the opposite -- that the client deliberately
+  // did not see them, because `CT-86` asked for the next deadline on the
+  // balance card rather than the whole agreement on each movement. That was my
+  // reading, not the owner's: *«deben verse al igual que en la vista del
+  // dueño, mismo componente»*. `CT-86` is still open; it is a different
+  // surface.
+  //
+  // It needed a migration and not a prop, which is the part worth remembering:
+  // that page does not read `movements`, it reads `get_shared_balance()`, and
+  // that function builds each movement's JSON field by field. A column it does
+  // not name does not exist for the client.
+  //
+  // Still defaults to null, so a new screen that mounts this component shows
+  // nothing it was not given.
+  cuotas?: number | null;
   createdAt: string;
   runningBalance: number;
   // Label for the running-balance row — the owner's dashboard says "Por
@@ -279,7 +300,16 @@ export function MovementDetailPopover({
 
           <Grupo>
             <Fila nombre="Plazo de pago">{plazo}</Fila>
-            <Fila nombre="Detalle">
+            {cuotas != null && plazoDias != null ? (
+              <CuotasTable
+                createdAt={createdAt}
+                plazoDias={plazoDias}
+                cuotas={cuotas}
+                amount={amount}
+                formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
+              />
+            ) : null}
+            <Fila nombre="Descripción">
               <span className="break-words">{description || "—"}</span>
             </Fila>
             {/* La nota del dueño, y se dice en voz alta que el cliente no la ve.

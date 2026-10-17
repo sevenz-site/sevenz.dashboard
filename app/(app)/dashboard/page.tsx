@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
+import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
@@ -42,7 +44,14 @@ export default async function DashboardPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
+  const [
+    { data: summaries },
+    { data: clients },
+    { data: owner },
+    ownerRate,
+    monedaHabitual,
+    ordenesSinAtender,
+  ] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
@@ -67,6 +76,10 @@ export default async function DashboardPage({
     getOwnerRateContext(supabase, user!.id),
     // En que moneda escribio la ultima vez, para que el formulario abra ahi.
     getMonedaHabitual(supabase, user!.id),
+    // The red number on the Pedidos card. In the same batch and not after it:
+    // it is a `head: true` count, and waiting for it in series would hold the
+    // whole screen for a figure that decorates one line.
+    countUnattendedOrders(supabase, user!.id),
   ]);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de
@@ -302,6 +315,32 @@ export default async function DashboardPage({
                   }
                 : { main: copLedger, secondary: null })}
             />
+            {/* PEDIDOS, BETWEEN THE MONEY AND THE CALCULATOR -- the owner's
+                placement, 2026-10-16, from frame `1360:6592`.
+
+                IT IS SHOWN EVEN AT ZERO, same reasoning as in Catálogo:
+                hiding it when empty would mean the one screen that answers
+                "has anybody ordered?" only appears once somebody has, so a
+                shopkeeper wondering could never check.
+
+                AND IT IS SHOWN TO EVERY OWNER, with or without a published
+                catalogue. An order can only exist if a link was shared, so
+                for most this reads as "0 sin atender" -- which is the honest
+                answer to a question the home screen could not answer at all
+                until today.
+
+                14px between the heading and the card, which is the frame's
+                own spacing and not this screen's usual 8px for a heading. */}
+            <div className="flex flex-col gap-3.5">
+              {/* `font-semibold`, like "Por cobrar" and "Calculadora" on this
+                  same screen. The isolated frame draws it Medium, but the
+                  full-screen mock the owner sent shows the three headings
+                  reading alike, and a lighter one here would look like a
+                  subtitle of the card above it. */}
+              <h2 className="text-base font-semibold">Pedidos</h2>
+              <OrdersCard unattended={ordenesSinAtender} place="inicio" />
+            </div>
+
             {/* The rate goes AFTER the card, at the owner's request on
                 2026-09-20. It used to go before, on the argument that a card's
                 bolívar equivalent cannot be read without knowing what rate it

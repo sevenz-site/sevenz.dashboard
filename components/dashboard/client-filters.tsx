@@ -133,6 +133,7 @@ export function useClientFilters<T extends ClientSummary>(
           row.days_since_payment,
           row.oldest_unpaid_charge_at,
           row.oldest_unpaid_charge_plazo_dias,
+          row.oldest_unpaid_charge_due_at,
         );
         if (status !== statusFilter) return false;
       }

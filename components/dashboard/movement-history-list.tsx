@@ -10,6 +10,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
+import {
+  MovementTypeFilter,
+  type TipoFiltro,
+} from "@/components/dashboard/movement-type-filter";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -18,11 +23,27 @@ import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
 
+
+// EL FILTRO POR TIPO, pedido por el dueño el 2026-10-16: "Todos", "Fiado" y
+// "Abono", a la derecha del rótulo "Historial".
+//
+// EL RÓTULO ENTRA COMO PROP y no se escribe aquí. Las dos pantallas que usan
+// esta lista lo titulan distinto y con tipografías distintas —"Historial de
+// movimientos" en 20px en la ficha del tendero, "Historial" en 14px gris en
+// la del cliente—, así que el componente coloca el chip a su derecha sin
+// decidir cómo se ve el título.
+//
+// EL CHIP VIVE AQUÍ Y NO EN LA PÁGINA porque el estado es suyo: la lista es
+// la que filtra y la que pagina, y las dos cosas tienen que moverse juntas.
+// Un chip en la página sería otra vez dos hermanos compartiendo estado.
+
+
 export function MovementHistoryList({
   movements,
   photoUrls,
   ledger = null,
   compartir = null,
+  titulo = null,
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
@@ -31,19 +52,54 @@ export function MovementHistoryList({
   compartir?: DatosParaCompartir | null;
   // null = plain COP ledger — see MovementDetailPopover.
   ledger?: LedgerDisplay | null;
+  // El rótulo de la sección, para poder poner el filtro a su derecha. Ver el
+  // comentario de `FiltroDeTipo`.
+  titulo?: React.ReactNode;
 }) {
   const [page, setPage] = useState(1);
+  const [tipo, setTipo] = useState<TipoFiltro>("todos");
+
+  const visibles = tipo === "todos" ? movements : movements.filter((m) => m.type === tipo);
+
+  // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
+  // desapareciera con la lista, un filtro que no deja nada se llevaría por
+  // delante el único control que sirve para deshacerlo.
+  const cabecera = titulo ? (
+    <div className="flex items-center justify-between gap-3">
+      {titulo}
+      {movements.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} /> : null}
+    </div>
+  ) : null;
 
   if (movements.length === 0) {
-    return <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>;
+    return (
+      <div className="flex flex-col gap-2">
+        {cabecera}
+        <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
+      </div>
+    );
   }
 
-  const pageCount = Math.max(1, Math.ceil(movements.length / PAGE_SIZE));
+  // "No hay de ese tipo" no es "no hay ninguno", y la segunda frase sería
+  // falsa con la lista entera a un toque de distancia.
+  if (visibles.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        {cabecera}
+        <p className="text-sm text-muted-foreground">
+          Este cliente no tiene {tipo === "charge" ? "fiados" : "abonos"} registrados.
+        </p>
+      </div>
+    );
+  }
+
+  const pageCount = Math.max(1, Math.ceil(visibles.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const pagedMovements = movements.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedMovements = visibles.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-3">
+      {cabecera}
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagedMovements.map((m) => {
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
@@ -70,6 +126,7 @@ export function MovementHistoryList({
               description={m.description}
               ownerNote={m.owner_note}
               plazoDias={m.plazo_dias}
+              cuotas={m.cuotas}
               createdAt={m.created_at}
               runningBalance={m.running_balance}
               photoUrl={m.photo_path ? (photoUrls[m.photo_path] ?? null) : null}
@@ -94,13 +151,30 @@ export function MovementHistoryList({
                     {formatDate(m.created_at)}
                     {m.source === "photo_import" ? " · de libreta" : ""}
                   </p>
-                  <p className="text-xs text-muted-foreground">Por cobrar {balance.primary}</p>
+                  {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
+                      2026-10-16, por instrucción del dueño. Esta lista es
+                      donde más falta hacía: en una cartera venezolana las
+                      filas en dólares y en euros se alternan, y lo único que
+                      las distinguía era el símbolo — "$" y "€" pegados a un
+                      número, que es justo el par que se confunde de un
+                      vistazo.
+
+                      Solo cuando la moneda existe. `null` es un negocio
+                      colombiano, donde no hay dos libros que separar y una
+                      bandera repetida en cada fila sería ruido. */}
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
+                    Por cobrar {balance.primary}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
                     className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
                   >
-                    <span>
+                    <span className="flex items-center gap-1">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                      ) : null}
                       {m.type === "charge" ? "+" : "-"}
                       {amount.primary}
                     </span>

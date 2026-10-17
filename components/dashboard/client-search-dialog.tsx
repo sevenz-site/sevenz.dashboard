@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
+import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import {
   MontoCard,
   MonedaTecleadaButtons,
@@ -336,6 +337,11 @@ function ClientSearchDialogBody({
   const [documentIdValue, setDocumentIdValue] = useState("");
   const [addressValue, setAddressValue] = useState("");
   const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
+  // "1" = pago único, which the server stores as null. Same default as the
+  // other form -- this one was missing the field entirely until 2026-10-16,
+  // even though `createClientWithMovement` has always read `cuotas` from the
+  // form, so a new client's first fiado silently could not be split.
+  const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
   // Controlled like every other field in this form now — it used to be the
@@ -592,7 +598,30 @@ function ClientSearchDialogBody({
           </p>
         </div>
 
-        <PlazoPagoSelect value={plazoPago} onValueChange={setPlazoPago} />
+        {/* This form always registers a charge (the hidden `type` above), so
+            there is no `type === "charge"` guard here as there is in
+            add-movement-dialog -- a new client always starts owing. */}
+        <PlazoPagoSelect
+          value={plazoPago}
+          onValueChange={(v) => {
+            setPlazoPago(v);
+            // Losing the plazo sends cuotas back to "pago único", same as the
+            // other form: otherwise the field hides holding a "4", the fiado
+            // saves with no cuotas because the server ignores them without a
+            // plazo, and re-picking a plazo brings back a number nobody just
+            // chose.
+            if (v === "" || v === "sin_especificar") setCuotas("1");
+          }}
+        />
+        <CuotasSelect
+          value={cuotas}
+          onValueChange={setCuotas}
+          plazoDias={
+            plazoPago && plazoPago !== "sin_especificar" && Number.isFinite(Number(plazoPago))
+              ? Number(plazoPago)
+              : null
+          }
+        />
 
         {/* Por país, no por tasa: ver la nota larga en add-movement-dialog.
             Un dueño venezolano lleva dólares y euros aunque el BCV no
@@ -651,7 +680,7 @@ function ClientSearchDialogBody({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="description">Detalle (opcional)</Label>
+          <Label htmlFor="description">Descripción (opcional)</Label>
           <Input
             id="description"
             name="description"

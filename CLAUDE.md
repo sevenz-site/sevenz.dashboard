@@ -411,6 +411,97 @@ Real examples from 2026-09-04, all three reported as complete before they were:
   `?nuevo=1` marker still cleared on a normal close — could have re-broken a
   bug fixed earlier the same day.
 
+### A `qa/` script runs as the service role. The owner does not.
+
+Every script under `qa/` authenticates with `SUPABASE_SERVICE_ROLE_KEY`, which
+**bypasses RLS and needs no table grant**. The shopkeeper's session has
+neither privilege. So a suite built only on that key cannot see the two things
+that most often break a screen: a policy that filters the owner's rows away,
+and a missing `grant` that refuses the table outright.
+
+This is not theoretical. On 2026-10-16 migration `108` created
+`catalog_orders`, turned RLS on, wrote a correct `owner_id = auth.uid()`
+policy — and never granted anything to `authenticated`. Every read the owner
+made died with `42501`, the Pedidos screen said *«todavía no te ha llegado
+ningún pedido»* with three real orders in the table, and **`qa:pedidos` was
+passing 14 of 14 at that exact moment**. It was found by opening the screen in
+a browser. Migration `116` is the fix.
+
+**So: any suite covering a table the owner reads or writes directly gets at
+least one check that runs as the owner.** The session is free — the magic-link
+pattern in `qa/import-libreta.mjs` (`generateLink` + `verifyOtp`, no password
+typed), then a client carrying `Authorization: Bearer <access_token>`.
+`qa/pedidos.mjs` is the worked example: it reads as the owner, and its "mark
+as attended" goes through that session too, because `update` is a separate
+grant from `select` and a suite that writes with the service key would pass
+with the button broken for everyone.
+
+A table reached **only** through `security definer` functions needs none of
+this — that is the deliberate design of `whatsapp_sends`, `usdt_p2p_rate` and
+the catalogue's own `create_catalog_order`. The rule is about tables the app
+queries directly with the owner's client.
+
+### Una función puede estar redefinida más abajo: lee la ÚLTIMA
+
+En este repo las funciones de Postgres se reescriben con `create or replace`
+en migraciones sucesivas, así que **el mismo nombre está escrito varias veces
+y solo la última cuenta**. `get_oldest_unpaid_charge` vive en la `017`, en la
+`021` y en la `025`, y las tres son definiciones completas y distintas.
+
+El problema es que `grep` las devuelve **en orden de archivo, con la más vieja
+arriba**. Leer la primera y dar por hecho que es la que corre es un diagnóstico
+que sale perfectamente razonado y perfectamente falso.
+
+**Qué costó, el 2026-10-16**: se escribió la ficha `CT-78` —«el reparto de
+abonos no mira la moneda, un fiado en dólares lo puede pagar un abono en
+euros»— leyendo la `021`, donde es verdad. La `025` ya lo había arreglado un
+año antes. La ficha entró en `PENDIENTES.md` con su explicación en cristiano,
+su peor escenario y su «es un defecto de HOY, en producción», pasó a ser el
+**paso 2** del orden de despliegues del día siguiente, y de ella colgaba la
+dependencia que colocaba el USDT después. Nada de eso era cierto. Se cayó al
+ir a construirlo y montar el caso contra dev, que tardó dos minutos.
+
+**La regla, entonces:**
+
+1. Antes de diagnosticar nada sobre una función, `grep` por **todas** sus
+   definiciones y leer la de número más alto.
+2. Y cuando el diagnóstico va a decidir trabajo —una ficha, un orden de
+   despliegues, una migración— **comprobarlo contra la base**, no contra el
+   repo. Montar el caso con datos de prueba en dev y mirar qué contesta cuesta
+   minutos y es la única prueba que no depende de haber leído el archivo
+   correcto. Es la misma regla que ya está más arriba para las suites de `qa/`:
+   al menos un control tiene que mirar la realidad exterior.
+
+### Un campo nuevo entra por TODAS las puertas de su acción
+
+Antes de dar por puesto un campo de formulario, hay que buscar **quién más
+escribe en la misma acción del servidor**. No «quién más tiene un formulario
+parecido»: quién manda su `FormData` a la misma función.
+
+El 2026-10-16 el campo de **cuotas** se añadió a `add-movement-dialog.tsx` y se
+reportó el trabajo como terminado. Había un segundo formulario —«Registrar
+cliente nuevo», en `client-search-dialog.tsx`— que manda a
+`createClientWithMovement`, **y esa acción ya leía `cuotas` desde el primer
+día**. O sea que el servidor estaba listo y la pantalla no: un cliente nuevo a
+crédito se guardaba **siempre sin cuotas**, en silencio, sin error y sin que
+nada se viera raro. Lo descubrió el dueño mirando la pantalla, no una prueba.
+
+**Por qué este fallo no avisa, y por eso merece regla propia**: un campo que
+falta no rompe nada. El formulario envía, el servidor acepta, la fila se
+guarda. Lo único que pasa es que un dato que el tendero creía haber puesto no
+está — y eso se descubre semanas después, cuando la app contradice lo que él
+recuerda haber acordado con su cliente.
+
+La comprobación cuesta un `grep` por el nombre de la acción:
+
+```sh
+grep -rn "createClientWithMovement\|createMovement" --include=*.tsx components/
+```
+
+Y vale igual al revés: **una acción que empieza a leer un campo nuevo tiene que
+decir qué formularios se lo van a mandar**, porque los que no lo hagan van a
+guardar `null` sin quejarse.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
@@ -447,6 +538,48 @@ dialogs mounted, duplicate tour markers).
 
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
+
+## Todo evento de analítica documenta su pregunta de negocio
+
+**Un evento sin una pregunta escrita al lado es una columna que nadie va a
+mirar.** Pedido por el dueño el 2026-10-16, al encargar el primero que nació
+así: *«documenta la business question en el código del evento, agrega como
+norma en claude que todos los eventos deben documentar su business question»*.
+
+La regla, entera: **cada `trackServer(...)` y cada `track(...)` nuevo lleva,
+pegado en el código, la pregunta de negocio que contesta** — en las palabras
+del dueño cuando las haya, entre comillas y con su fecha. No «qué mide», que
+se deduce del nombre: **qué decisión cambia según la respuesta.**
+
+El ejemplo es el primero que se escribió así, `Business Contacted On WhatsApp`
+en `app/api/share-contact/route.ts`:
+
+> *«¿Con cuál frecuencia los clientes contactan al dueño del negocio a través
+> del botón de WhatsApp?»* — y debajo, lo que se hace con cada respuesta: si
+> casi todos escriben, la pantalla no está contestando lo que venían a buscar
+> y hay que ir a leer qué preguntan; si casi nadie escribe, está haciendo su
+> trabajo y el botón es una red de seguridad.
+
+**Por qué esto y no una hoja aparte.** Un documento de eventos envejece sin
+avisar: el evento se renombra, se deja de enviar o cambia de propiedades, y la
+hoja sigue describiendo el de antes. Pegado al código, lo lee quien lo va a
+tocar, sin buscarlo — que es la misma razón que separa un comentario del
+mensaje de un commit, más arriba en este archivo.
+
+**Y vale igual para los que ya existen.** No hay que volver atrás a
+documentarlos todos de golpe, pero el día que se toque uno —se renombre, se le
+añada una propiedad, se mueva de sitio— se le escribe su pregunta entonces.
+
+### Lo que la pregunta tiene que dejar claro, además de sí misma
+
+- **Bajo qué perfil se archiva.** Mixpanel aquí guarda todo bajo el id del
+  DUEÑO. Un evento que nace en una pantalla del cliente —`/s/[token]`,
+  `/c/[token]`— no tiene a quién atribuirlo sin resolverlo en el servidor, y
+  esa resolución es parte de la decisión, no un detalle de implementación.
+- **Si se puede perder, y cuánto.** Un evento que manda el navegador del
+  cliente es aproximado por diseño: hay un apartado entero más abajo sobre lo
+  que iOS se niega a hacer. Decir «este número es un suelo, no un recuento» en
+  el código evita que alguien lo presente como exacto en seis meses.
 
 ## Every requirement must account for iPhone
 

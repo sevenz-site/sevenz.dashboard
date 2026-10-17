@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye } from "lucide-react";
@@ -159,6 +160,7 @@ export function ClientTable({
                   row.days_since_payment,
                   row.oldest_unpaid_charge_at,
                   row.oldest_unpaid_charge_plazo_dias,
+                  row.oldest_unpaid_charge_due_at,
                 );
                 return (
                   <button
@@ -198,8 +200,24 @@ export function ClientTable({
                     <TableHead>Cliente</TableHead>
                     {rateContext ? (
                       <>
-                        <TableHead>Por cobrar USD</TableHead>
-                        <TableHead>Por cobrar EUR</TableHead>
+                        {/* Con su bandera, igual que las tarjetas de abajo
+                            y que las dos fichas de saldo, desde el
+                            2026-10-16. Es la misma pantalla en su otro
+                            ancho: dejar las siglas aquí y la bandera en la
+                            tarjeta sería la misma columna contada de dos
+                            formas según el tamaño del aparato. */}
+                        <TableHead>
+                          <span className="flex items-center gap-1.5">
+                            <CurrencyFlagIcon currency="USD" />
+                            Por cobrar USD
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="flex items-center gap-1.5">
+                            <CurrencyFlagIcon currency="EUR" />
+                            Por cobrar EUR
+                          </span>
+                        </TableHead>
                       </>
                     ) : (
                       <TableHead>Por cobrar</TableHead>
@@ -260,6 +278,7 @@ export function ClientTable({
                       row.days_since_payment,
                       row.oldest_unpaid_charge_at,
                       row.oldest_unpaid_charge_plazo_dias,
+                      row.oldest_unpaid_charge_due_at,
                     );
                     const score = scores?.[row.client_id];
                     return (

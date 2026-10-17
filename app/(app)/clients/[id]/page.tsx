@@ -9,6 +9,8 @@ import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import type { PriceCurrency } from "@/lib/products/price";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
@@ -169,6 +171,7 @@ export default async function ClientDetailPage({
     clientSummary?.days_since_payment ?? 0,
     clientSummary?.oldest_unpaid_charge_at ?? null,
     clientSummary?.oldest_unpaid_charge_plazo_dias ?? null,
+    clientSummary?.oldest_unpaid_charge_due_at ?? null,
   );
 
   return (
@@ -262,10 +265,10 @@ export default async function ClientDetailPage({
 
       {rateContext ? (
         <>
-          <BalanceRowCard label="Por cobrar Dólares">
+          <BalanceRowCard label="Por cobrar Dólares" currency="USD">
             <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
           </BalanceRowCard>
-          <BalanceRowCard label="Por cobrar Euros">
+          <BalanceRowCard label="Por cobrar Euros" currency="EUR">
             <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
           </BalanceRowCard>
         </>
@@ -292,6 +295,7 @@ export default async function ClientDetailPage({
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
           oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
+          oldestUnpaidChargeDueAt={clientSummary?.oldest_unpaid_charge_due_at ?? null}
           isFlagged={client.is_flagged}
         />
       </Suspense>
@@ -310,11 +314,34 @@ export default async function ClientDetailPage({
 // One currency's balance as its own outlined card, label left and figure
 // right. One card per currency rather than both in one: they're independent
 // debts, and a phone reads them faster as two rows than as two columns.
-function BalanceRowCard({ label, children }: { label: string; children: React.ReactNode }) {
+// LA BANDERA VA PEGADA AL RÓTULO, no a la cifra. Instrucción del dueño,
+// 2026-10-16: *«todo lo que muestre moneda debe contener el ícono (flag)»*.
+//
+// Delante del rótulo y no detrás del número porque la fila ya tiene la cifra
+// en el extremo derecho con su equivalente en bolívares debajo; meter ahí un
+// icono más empuja los dos renglones y, a 375px, es justo donde menos sitio
+// hay. El rótulo, en cambio, tiene el flanco izquierdo libre.
+//
+// Y no reemplaza a la palabra: "Dólares" se queda. La bandera es lo que se ve
+// de un vistazo y la palabra lo que lo deja sin ambigüedad para quien no
+// distingue dos banderas pequeñas —o no las ve.
+function BalanceRowCard({
+  label,
+  currency,
+  children,
+}: {
+  label: string;
+  // null para un negocio colombiano: allí no hay dos libros que distinguir.
+  currency?: PriceCurrency | null;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border bg-muted/30 px-3 py-2">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+          {currency ? <CurrencyFlagIcon currency={currency} /> : null}
+          <span className="truncate">{label}</span>
+        </p>
         {children}
       </div>
     </div>
@@ -348,6 +375,7 @@ async function CreditScoreSection({
   daysSincePayment,
   oldestUnpaidChargeAt,
   oldestUnpaidChargePlazoDias,
+  oldestUnpaidChargeDueAt,
   isFlagged,
 }: {
   clientId: string;
@@ -360,6 +388,8 @@ async function CreditScoreSection({
   daysSincePayment: number;
   oldestUnpaidChargeAt: string | null;
   oldestUnpaidChargePlazoDias: number | null;
+  // Migración `118`: el vencimiento de la próxima cuota sin pagar.
+  oldestUnpaidChargeDueAt: string | null;
   isFlagged: boolean;
 }) {
   const supabase = await createClient();
@@ -394,6 +424,7 @@ async function CreditScoreSection({
     daysSincePayment,
     oldestUnpaidChargeAt,
     oldestUnpaidChargePlazoDias,
+    oldestUnpaidChargeDueAt,
     isFlagged,
     mostRecentUnflaggedAt: lastUnflag?.unflagged_at ?? null,
   });
@@ -457,8 +488,11 @@ async function MovementHistory({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>
+      {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo pueda
+          ir a su derecha, en la misma fila. La tipografía se queda aquí: las
+          dos pantallas que usan esa lista titulan distinto. */}
       <MovementHistoryList
+        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>}
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
