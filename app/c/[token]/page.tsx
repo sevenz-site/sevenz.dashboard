@@ -12,6 +12,7 @@ import {
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
+import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
@@ -352,79 +353,86 @@ export default async function CatalogoPublicoPage({
             </p>
           </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {shared.products.map((p) => {
+          /* EL BUSCADOR RECIBE LAS TARJETAS YA PINTADAS, y la rejilla vive
+             ahora dentro de él. Añadido el 2026-10-17 a petición del dueño.
+             El porqué de pasarlas hechas en vez de mover estas ~110 líneas a
+             un componente de cliente está en `catalog-search-grid.tsx`. */
+          <CatalogSearchGrid
+            items={shared.products.map((p) => {
               // El fijado a mano manda sobre el calculado — es la precedencia que
               // `priceIn` ya respeta, y la razon por la que `pinned` viaja hasta
               // aqui en vez de quedarse en la ficha.
               const bs = bolivares.get(p.id) ?? null;
-              return (
-                <li key={p.id} className="flex">
-                  {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
+              return {
+                id: p.id,
+                name: p.name,
+                card: (
+                  <li key={p.id} className="flex">
+                    {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
                     entregable B (2026-10-14). Un `Link` y no un `onClick`: así
                     el cliente puede abrirlo en otra pestaña, copiarlo para
                     mandárselo a alguien, y el navegador le enseña a dónde va
                     antes de tocar — tres cosas que un div con manejador no
                     hace, en una página donde quien mira no conoce a Sevenz y
                     no tiene por qué fiarse. */}
-                  <Link
-                    href={`/c/${token}/${p.id}`}
-                    className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
-                  >
-                    <div className="relative aspect-square w-full bg-muted">
-                      {p.photo_path ? (
-                        <Image
-                          src={getPublicProductPhotoUrl(p.photo_path)}
-                          alt=""
-                          fill
-                          unoptimized
-                          sizes="(min-width: 640px) 33vw, 50vw"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
-                          <ImageOff className="size-6" aria-hidden="true" />
-                          <span className="text-[11px]">Sin foto</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-0.5 p-3">
-                      <span className="line-clamp-2 text-sm font-medium">
-                        {p.name}
-                      </span>
-                      <span className="text-sm tabular-nums">
-                        {formatPriceAmount(p.price, p.base_currency)}
-                      </span>
-                      {/* La equivalencia, con la palabra que ya decidio el dueño
+                    <Link
+                      href={`/c/${token}/${p.id}`}
+                      className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
+                    >
+                      <div className="relative aspect-square w-full bg-muted">
+                        {p.photo_path ? (
+                          <Image
+                            src={getPublicProductPhotoUrl(p.photo_path)}
+                            alt=""
+                            fill
+                            unoptimized
+                            sizes="(min-width: 640px) 33vw, 50vw"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                            <ImageOff className="size-6" aria-hidden="true" />
+                            <span className="text-[11px]">Sin foto</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-0.5 p-3">
+                        <span className="line-clamp-2 text-sm font-medium">
+                          {p.name}
+                        </span>
+                        <span className="text-sm tabular-nums">
+                          {formatPriceAmount(p.price, p.base_currency)}
+                        </span>
+                        {/* La equivalencia, con la palabra que ya decidio el dueño
                       el 2026-10-09: es «equivalente», no un segundo precio.
                       Aqui importa mas que en la ficha — quien lo lee va a
                       pagar con eso. */}
-                      {/* «Precio en bolívares» cuando el tendero lo fijó, y
+                        {/* «Precio en bolívares» cuando el tendero lo fijó, y
                       «equivale a» cuando lo calculamos nosotros. No es un
                       matiz: lo primero es un precio que él sostiene, lo
                       segundo es una conversión que se mueve con la tasa, y el
                       cliente paga distinto según cuál sea. Es la misma palabra
                       que ya decidió el dueño para la ficha el 2026-10-09. */}
-                      {bs != null ? (
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {bs.pinned ? "precio en " : "equivale a "}
-                          {formatBs(bs.amount)}
-                        </span>
-                      ) : null}
-                      {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
+                        {bs != null ? (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {bs.pinned ? "precio en " : "equivale a "}
+                            {formatBs(bs.amount)}
+                          </span>
+                        ) : null}
+                        {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
                       migracion 106 la tarjeta ensena el precio de UNA UNIDAD
                       -- detal si esta publicado, mayor si es lo unico que
                       hay-- en vez del mas bajo, que era el criterio de la 086.
                       Con un solo enlace, tarjeta y detalle son la misma
                       pagina en dos pasos: ensenar 4 en la tarjeta y cobrar 5
                       al entrar seria un cebo. */}
-                      <span className="text-xs text-muted-foreground">
-                        {p.tier === "wholesale"
-                          ? "precio al mayor"
-                          : "precio al detal"}
-                      </span>
+                        <span className="text-xs text-muted-foreground">
+                          {p.tier === "wholesale"
+                            ? "precio al mayor"
+                            : "precio al detal"}
+                        </span>
 
-                      {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
+                        {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
 
                       SIN CIFRA. Decisión del dueño el 2026-10-15, que cambia
                       lo acordado esa misma mañana: la etiqueta dice si HAY o
@@ -451,21 +459,22 @@ export default async function CatalogoPublicoPage({
                       página la ve un cliente que no eligió el tema de nadie, y
                       el verde y el rojo tienen que significar lo mismo en los
                       dos. */}
-                      <span
-                        className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
-                          p.stock === 0
-                            ? "border-red-200 bg-red-50 text-red-700"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        }`}
-                      >
-                        {p.stock === 0 ? "No disponible" : "Disponible"}
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              );
+                        <span
+                          className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
+                            p.stock === 0
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {p.stock === 0 ? "No disponible" : "Disponible"}
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                ),
+              };
             })}
-          </ul>
+          />
         )}
 
         {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame

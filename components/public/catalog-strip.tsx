@@ -76,7 +76,13 @@ export function CatalogStrip({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-medium">Productos</h2>
+        {/* `mt-1 text-xl font-semibold`, que es el ÚNICO estilo de título que
+            `DESIGN-SYSTEM.md` admite — «un solo estilo, en todas partes; no
+            existe una variante de rótulo pequeño». Nació incumpliéndolo el
+            2026-10-17 y lo corrigió el dueño el mismo día, mirando la
+            pantalla: «Pendiente», «Productos» e «Historial» se leían como
+            tres jerarquías distintas en una columna donde son lo mismo. */}
+        <h2 className="mt-1 text-xl font-semibold">Productos</h2>
         <Link
           href={href}
           onClick={registrar}

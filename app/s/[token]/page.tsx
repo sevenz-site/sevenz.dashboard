@@ -413,7 +413,15 @@ export default async function SharedBalancePage({
       </PublicHeader>
 
       <div className="flex flex-col gap-4 p-4">
-        <h2 className="text-xl font-semibold">Pendiente</h2>
+        {/* LOS TRES TÍTULOS DE ESTA PÁGINA LLEVAN LAS MISMAS CLASES desde el
+          2026-10-17: `mt-1 text-xl font-semibold`. Es lo que `DESIGN-SYSTEM.md`
+          manda y lo que la ficha del cliente del dueño ya usaba; aquí
+          «Historial» iba en gris y pequeño y «Productos» nació a medio camino.
+
+          El `mt-1` no es decoración: con el `gap-4` de esta columna produce
+          los 20px sobre cada título que el documento mide. «Pendiente» gana
+          esos 4px al unificarlos, que es lo único que cambia de él. */}
+        <h2 className="mt-1 text-xl font-semibold">Pendiente</h2>
 
         {/* One card per currency, label left and figure right. The label is
           getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
@@ -518,9 +526,7 @@ export default async function SharedBalancePage({
             pueda ir a su derecha, en la misma fila. */}
           <MovementHistoryList
             titulo={
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Historial
-              </h2>
+              <h2 className="mt-1 text-xl font-semibold">Historial</h2>
             }
             movements={movements}
             ledger={ledger}
