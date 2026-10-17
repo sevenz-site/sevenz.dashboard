@@ -91,10 +91,26 @@ async function nuevoCliente(ownerId, nombre) {
 try {
   const { data: owners, error: eOwners } = await admin
     .from("owners")
-    .select("id, country")
+    .select("id, country, whatsapp, whatsapp_opt_in_at, whatsapp_opt_out_at")
     .in("country", ["VE", "CO"]);
   if (eOwners) throw new Error(`owners: ${eOwners.message}`);
-  const ve = owners.find((o) => o.country === "VE");
+
+  // THE 10b OWNER HAS TO ACTUALLY RECEIVE WHATSAPP, or the check skips itself
+  // and reports nothing. The consent rule is copied from
+  // `whatsapp_destinatarios_atencion()`: opted in, and not opted out later.
+  //
+  // Picking the first VE owner that came back used to leave 10b skipped, which
+  // reads in the output as one line of prose among twelve PASSes — the exact
+  // shape of a check that nobody notices has stopped checking.
+  const recibeWhatsapp = (o) =>
+    Boolean(o.whatsapp) &&
+    Boolean(o.whatsapp_opt_in_at) &&
+    (!o.whatsapp_opt_out_at ||
+      new Date(o.whatsapp_opt_in_at) > new Date(o.whatsapp_opt_out_at));
+
+  const ve =
+    owners.filter((o) => o.country === "VE" && recibeWhatsapp(o))[0] ??
+    owners.find((o) => o.country === "VE");
   const co = owners.find((o) => o.country === "CO");
   if (!ve) throw new Error("Hace falta un dueño venezolano en dev.");
 
@@ -188,6 +204,67 @@ try {
     check("8. un negocio colombiano también reparte en cuotas", (await vencimiento(id, cargo)) === 10, "su moneda es null, que es un libro más");
   } else {
     console.log("SALTADA  8. no hay dueño colombiano en dev");
+  }
+  // ── 10. WHATSAPP TIENE QUE DECIR LO MISMO QUE LA PANTALLA ─────────────
+  //
+  // La comprobación que faltaba el 2026-10-17, y que salió de una pregunta
+  // del dueño y no de una prueba: `whatsapp_destinatarios_atencion()` se
+  // calculaba el vencimiento por su cuenta —`carga_at + plazo`, el plazo
+  // ENTERO— así que un cliente con una cuota vencida habría salido «Plazo
+  // vencido» en la pantalla del tendero y NO habría contado entre los
+  // `overdue_clients` de su propio resumen semanal. El mismo cliente, dos
+  // respuestas. La migración `119` lo arregla haciendo que lea la misma
+  // columna; esto es lo que avisa si alguien vuelve a rehacer la cuenta en
+  // otro sitio.
+  // SE MIDE LA DIFERENCIA, NO EL TOTAL, y esto es lo único que hace que la
+  // comprobación signifique algo. Escrita primero como `overdue_clients >= 1`,
+  // PASÓ en verde con la `119` sin aplicar y el defecto entero en pie: el dueño
+  // de prueba ya tenía 2 clientes vencidos por su cuenta, así que el umbral se
+  // cumplía sin mirar al cliente de la prueba. Un total no distingue «lo contó»
+  // de «ya había otros».
+  async function overdueDeWhatsapp(ownerId) {
+    const { data, error } = await admin.rpc("whatsapp_destinatarios_atencion");
+    if (error) throw new Error(`whatsapp_destinatarios_atencion: ${error.message}`);
+    const fila = (data ?? []).find((d) => d.owner_id === ownerId);
+    return fila ? Number(fila.overdue_clients) : null;
+  }
+
+  {
+    const antes = await overdueDeWhatsapp(ve.id);
+
+    const id = await nuevoCliente(ve.id, "whatsapp");
+    // 3 cuotas en 30 días sobre un cargo de hace 20: la primera cuota venció
+    // hace 10 días y el plazo entero todavía NO ha vencido. Es el caso exacto
+    // en el que las dos cuentas se separan.
+    await admin.from("movements").insert({
+      client_id: id, type: "charge", amount: 90, currency: "USD",
+      plazo_dias: 30, cuotas: 3, created_at: dias(20), source: "manual", description: `${MARCA} fiado`,
+    });
+    await admin.rpc("recalc_client_running_balance", { p_client_id: id });
+
+    const { data: r } = await admin
+      .from("client_summary")
+      .select("oldest_unpaid_charge_due_at")
+      .eq("client_id", id)
+      .single();
+    check(
+      "10a. la pantalla lo da por vencido: venció la cuota, no el plazo entero",
+      new Date(r.oldest_unpaid_charge_due_at) < new Date(),
+      r.oldest_unpaid_charge_due_at,
+    );
+
+    const despues = await overdueDeWhatsapp(ve.id);
+    if (antes === null || despues === null) {
+      console.log(
+        "SALTADA  10b. el dueño de prueba no recibe WhatsApp (sin opt-in), no sale en la lista",
+      );
+    } else {
+      check(
+        "10b. WhatsApp suma ese cliente a los vencidos, igual que la pantalla",
+        despues === antes + 1,
+        `overdue_clients ${antes} → ${despues}`,
+      );
+    }
   }
 } catch (e) {
   console.error("\nSE CAYÓ:", e instanceof Error ? e.message : e);
