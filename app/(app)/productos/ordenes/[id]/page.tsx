@@ -13,10 +13,18 @@ import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   isUnattended,
+  readOrderProducts,
   totalsByCurrency,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { getBolivarRates } from "@/lib/products/catalog";
+import {
+  OrderProductDialog,
+  OrderProductRowButton,
+} from "@/components/dashboard/order-product-dialog";
+import type { BolivarRates, PriceTier } from "@/lib/products/price";
 
 // ONE ORDER'S PAGE. Deliverable D, reading half.
 //
@@ -74,6 +82,26 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   if (errorItems) console.error("[orders] detail items:", errorItems.message);
 
   const items = (itemRows ?? []) as CatalogOrderItemRow[];
+
+  // EL CATÁLOGO DE HOY PARA CADA LÍNEA, y las tasas para los equivalentes en
+  // bolívares. Decisión del dueño del 2026-10-17 al mirar el frame
+  // `1371:7229`: lo sellado es la línea del pedido, el producto es el de hoy
+  // -- un inventario o un costo congelados no ayudan a decidir si se atiende.
+  //
+  // Las dos en el mismo viaje, y no al abrir el diálogo: el detalle ya está
+  // montado, así que pedirlo al tocar pondría una espera justo donde se
+  // espera una respuesta inmediata.
+  const [productosPorId, rateContext] = await Promise.all([
+    readOrderProducts(supabase, user!.id, items),
+    getOwnerRateContext(supabase, user!.id),
+  ]);
+
+  // Un negocio colombiano no tiene Bs/COP y no convierte nada: sin tasas, el
+  // diálogo enseña el precio de su escalón y ya. Ver la cabecera de
+  // lib/products/price.ts.
+  const rates: BolivarRates | null = rateContext
+    ? await getBolivarRates(rateContext.effectiveRate)
+    : null;
 
   // Digits only. The column is already normalised, so this only guards against
   // anything that reached the table by another door than the cart.
@@ -210,78 +238,124 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           </p>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="rounded-lg border bg-muted/30 px-3 py-2">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate font-medium">{item.product_name}</span>
-                {/* THE FLAG BESIDE THE AMOUNT, owner's request of
-                    2026-10-16. USDT prints no symbol of its own, so without
-                    it a USDT line is a bare number sitting next to lines that
-                    carry a `$` or a `€`. */}
-                <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold tabular-nums">
-                  <CurrencyFlagIcon currency={item.currency as PriceCurrency} />
-                  {formatPriceAmount(
-                    Number(item.quantity) * Number(item.unit_price),
-                    item.currency as PriceCurrency,
-                  )}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {Number(item.quantity)} ×{" "}
-                {formatPriceAmount(Number(item.unit_price), item.currency as PriceCurrency)}
-                {/* THE TIER, said out loud. Without it a cheap line looks
-                    the same as an invented discount: with it, the shopkeeper
-                    sees it was the wholesale price because they ordered six. */}
-                {" · "}
-                {item.tier === "wholesale" ? "al mayor" : "al detal"}
-              </p>
-              {/* THE COMMENT IS TEXT, NOT A FIELD. Owner's reference,
-                  2026-10-16. It used to render inside a bordered box with a
-                  white background, which on this screen reads as an input the
-                  shopkeeper could type into -- and it is the one thing on the
-                  page they cannot change. A label above it and plain text
-                  below says the same thing without the promise.
-
-                  `whitespace-pre-line` because the customer writes it in a
-                  `Textarea` of three rows (`product-detail.tsx`): their line
-                  breaks are part of what they wrote, and collapsing them runs
-                  two separate requests into one sentence.
-
-                  `break-words` for the pasted link or the unspaced string
-                  that would otherwise push the card sideways on a phone. */}
-              {item.comment ? (
-                <div className="mt-2 flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Comentario</span>
-                  <p className="text-sm leading-snug break-words whitespace-pre-line">
-                    {item.comment}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            // CADA LÍNEA ABRE SU PRODUCTO. Frame `1371:7229`: miniatura,
+            // nombre, cantidad por precio y escalón, el total con su bandera
+            // y un chevron que dice que hay algo detrás.
+            //
+            // EL COMENTARIO SE QUEDA FUERA DE LA FILA y se lee dentro. Antes
+            // vivía aquí debajo y podía ser un párrafo entero: con la fila
+            // ahora tocable, un bloque de texto dentro del botón convierte
+            // una lista de dos renglones en una pared.
+            <OrderProductDialog
+              key={item.id}
+              nombreEnElPedido={item.product_name}
+              cantidad={Number(item.quantity)}
+              precioUnitario={Number(item.unit_price)}
+              moneda={item.currency as PriceCurrency}
+              escalon={item.tier as PriceTier}
+              comentario={item.comment}
+              producto={item.product_id ? (productosPorId.get(item.product_id) ?? null) : null}
+              rates={rates}
+            >
+              <OrderProductRowButton
+                nombre={item.product_name}
+                cantidad={Number(item.quantity)}
+                precioUnitario={Number(item.unit_price)}
+                moneda={item.currency as PriceCurrency}
+                escalon={item.tier as PriceTier}
+                fotoPath={
+                  item.product_id
+                    ? (productosPorId.get(item.product_id)?.photo_path ?? null)
+                    : null
+                }
+              />
+            </OrderProductDialog>
           ))
         )}
       </div>
 
       {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of
           2026-10-14: there is no EUR→USD rate in this product, only BCV to
-          bolívares, so a single total would be an invented number. */}
+          bolívares, so a single total would be an invented number.
+
+          A HEADING AND A CARD EACH, from frame `1371:7229`. They used to be
+          two rows inside the same box as everything else, which read as the
+          last two facts of the order rather than as its bottom line -- and
+          the bottom line is what the shopkeeper opens this screen to see. */}
       {totales.length > 0 ? (
-        <div className="rounded-lg border bg-muted/30 px-3 py-2">
-          {totales.map((t) => (
-            // THE CURRENCY IS ALWAYS NAMED, even when the order carries a
-            // single one -- the owner's request of 2026-10-16. It used to say
-            // a bare "Total" for one currency, which is only unambiguous to
-            // somebody who has just read the lines above it; "Total en
-            // dólares" answers it on its own, and in words rather than the
-            // ISO code, which is bank vocabulary.
-            <Fila key={t.currency} nombre={`Total en ${currencyName(t.currency as PriceCurrency)}`}>
-              <span className="flex items-center justify-end gap-1.5 tabular-nums">
-                <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
-                {formatPriceAmount(t.amount, t.currency as PriceCurrency)}
-              </span>
-            </Fila>
-          ))}
-        </div>
+        <>
+          <h2 className="mt-1 text-xl font-semibold">Totales</h2>
+          {totales.map((t) => {
+            const moneda = t.currency as PriceCurrency;
+            // EL EQUIVALENTE EN BOLÍVARES ES EL DE HOY, y por eso no se
+            // sella: el total está cerrado, lo que vale en bolívares cambia
+            // cada día. Un negocio colombiano no tiene tasa y no lo enseña.
+            const bsPorUnidad =
+              rates == null
+                ? null
+                : moneda === "USD"
+                  ? rates.usd
+                  : moneda === "EUR"
+                    ? rates.eur
+                    : moneda === "USDT"
+                      ? rates.usdt
+                      : null;
+            return (
+              <div key={t.currency} className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    {/* LA MONEDA SIEMPRE NOMBRADA, aunque el pedido traiga
+                        una sola -- petición del dueño del 2026-10-16. Un
+                        «Total» a secas solo es inequívoco para quien acaba
+                        de leer las líneas de arriba. */}
+                    <span className="text-xs font-medium">
+                      Total en {currencyName(moneda)}
+                    </span>
+                    <span className="text-2xl font-semibold text-money-in tabular-nums">
+                      {formatPriceAmount(t.amount, moneda)}
+                    </span>
+                  </div>
+                  {/* CON MAYÚSCULA, como en el frame. `currencyName`
+                      devuelve minúscula porque está escrita para ir dentro de
+                      una frase --«Total en dólares»-- y aquí la palabra va
+                      sola, que en español se escribe como un rótulo. */}
+                  <span className="flex shrink-0 items-center gap-1 text-xs capitalize">
+                    {currencyName(moneda)}
+                    <CurrencyFlagIcon currency={moneda} />
+                  </span>
+                </div>
+                {bsPorUnidad != null ? (
+                  <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                    = {formatPriceAmount(t.amount * bsPorUnidad, "VES")}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
+        </>
       ) : null}
+
+      {/* «REGISTRAR PEDIDO», DEL FRAME `1371:7229`, Y DESHABILITADO A
+          PROPÓSITO. Decisión del dueño el 2026-10-17: la pantalla se lanza
+          cuando el paso 10 esté listo, así que el botón entra ya con su
+          texto definitivo -- pero lo que registra una orden como fiado o de
+          contado es `CT-70`, que está bloqueado por tres decisiones suyas y
+          todavía no existe.
+
+          HABILITARLO CON LA ACCIÓN DE HOY DETRÁS HABRÍA SIDO MENTIR: diría
+          «registrar pedido» y marcaría como atendido, que es otra cosa. Y
+          quitar «Marcar como atendido» mientras tanto le habría quitado a
+          esta pantalla lo único que hoy sabe hacer. Anotado en `CT-92` por
+          si se lanza antes de tiempo. */}
+      <div className="pt-1">
+        <Button type="button" className="w-full" disabled>
+          Registrar pedido
+        </Button>
+        <p className="pt-1.5 text-center text-xs text-muted-foreground">
+          Registrar el pedido como fiado o de contado llega en la próxima
+          entrega.
+        </p>
+      </div>
 
       <div className="pt-1">
         <OrderAttendButton

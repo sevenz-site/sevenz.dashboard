@@ -28,10 +28,11 @@ export type LineaDeProducto = {
 //
 // Two decimals, ordinary rounding: the same `redondear` the rest of the
 // pricing code uses.
-// Toma lo MÍNIMO que necesita --cantidad y precio-- y no un tipo concreto, para
-// que sirva igual a la línea que se está escribiendo en el formulario y a la
-// que ya está guardada. Dos funciones de sumar lo mismo es exactamente la
-// duplicación que esta función existe para evitar.
+//
+// IT TAKES THE MINIMUM IT NEEDS -- quantity and price -- rather than a named
+// type, so the same function serves the line being typed into the form and the
+// line already stored. Two functions adding up the same thing is exactly the
+// duplication this one exists to prevent.
 export function totalDeLineas(lineas: { quantity: number; unitPrice: number }[]): number {
   const total = lineas.reduce((acc, l) => acc + l.quantity * l.unitPrice, 0);
   return Math.round(total * 100) / 100;
