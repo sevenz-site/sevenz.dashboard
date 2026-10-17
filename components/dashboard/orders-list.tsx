@@ -11,10 +11,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDocumentId } from "@/lib/format";
-import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { type PriceCurrency } from "@/lib/products/price";
 import {
   isUnattended,
-  totalsByCurrency,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
@@ -31,7 +30,27 @@ import {
 // atendido" lives on the order's own page. A button here would compete with
 // the tap-anywhere gesture on a 375px screen.
 
-export type OrderWithItems = CatalogOrderRow & { items: CatalogOrderItemRow[] };
+// THE ROW ARRIVES WITH ITS TEXT ALREADY FORMATTED, and that is not tidiness.
+//
+// This component became a CLIENT component on 2026-10-16, when the search and
+// the status chip went in: the filter state lives above it, so it renders on
+// the client too. `Intl` then runs in two different engines -- Node for the
+// server HTML, the browser for the hydration -- and they do not agree
+// character for character. The date was the one that bit: Node writes
+// "7:34 p." + U+00A0 + "m." and the browser writes a different space, so React
+// threw `Hydration failed because the server rendered text didn't match` and
+// re-rendered the whole list on the client.
+//
+// Formatting upstream, in the page, which is a Server Component, means this
+// file runs no `Intl` at all. It also keeps the time zone where it belongs:
+// the business's, decided from the owner's country, never the browser's.
+export type OrderWithItems = CatalogOrderRow & {
+  items: CatalogOrderItemRow[];
+  // "16 oct. 2026, 7:34 p. m.", in the shop's zone.
+  llegoEl: string;
+  // One per currency, already written out: {currency: "USD", texto: "$204.00"}.
+  importes: { currency: string; texto: string }[];
+};
 
 // THE FLAG GOES BESIDE THE AMOUNT. Owner's request, 2026-10-16, for this
 // screen and for the detail's totals.
@@ -41,15 +60,14 @@ export type OrderWithItems = CatalogOrderRow & { items: CatalogOrderItemRow[] };
 // a bare number next to two that carry one. The flag is the only mark that
 // tells the three apart at a glance, which is the whole job of this column
 // when an order mixes currencies.
-function Importes({ items }: { items: CatalogOrderItemRow[] }) {
-  const totales = totalsByCurrency(items);
-  if (totales.length === 0) return <span className="text-muted-foreground">—</span>;
+function Importes({ importes }: { importes: OrderWithItems["importes"] }) {
+  if (importes.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="flex flex-col items-end gap-0.5 tabular-nums">
-      {totales.map((t) => (
-        <span key={t.currency} className="flex items-center justify-end gap-1.5">
-          <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
-          {formatPriceAmount(t.amount, t.currency as PriceCurrency)}
+      {importes.map((i) => (
+        <span key={i.currency} className="flex items-center justify-end gap-1.5">
+          <CurrencyFlagIcon currency={i.currency as PriceCurrency} />
+          {i.texto}
         </span>
       ))}
     </span>
@@ -66,29 +84,7 @@ function Estado({ order }: { order: CatalogOrderRow }) {
   return <Badge variant="secondary">Atendido</Badge>;
 }
 
-function cuandoLlego(iso: string, timeZone: string) {
-  return new Intl.DateTimeFormat("es-VE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    // EXPLICIT, ALWAYS. This screen renders on the server and Vercel runs
-    // in UTC: without this, an order placed at 8 p.m. in Caracas comes out
-    // dated the following day. It is DESIGN-SYSTEM.md's rule, and the defect
-    // `CT-81` records on the client's own page, where it is still live.
-    timeZone,
-  }).format(new Date(iso));
-}
-
-export function OrdersList({
-  orders,
-  timeZone,
-}: {
-  orders: OrderWithItems[];
-  timeZone: string;
-}) {
+export function OrdersList({ orders }: { orders: OrderWithItems[] }) {
   if (orders.length === 0) {
     return (
       <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
@@ -118,7 +114,7 @@ export function OrdersList({
                   be two lines tall. The name above still truncates, because
                   a name is recognised from its start. */}
               <span className="text-xs text-muted-foreground">
-                {cuandoLlego(order.created_at, timeZone)} ·{" "}
+                {order.llegoEl} ·{" "}
                 {/* The count and its noun break as one piece, so a second
                     line reads "2 productos" rather than leaving the "2"
                     stranded at the end of the first. */}
@@ -131,7 +127,7 @@ export function OrdersList({
               </span>
             </span>
             <span className="shrink-0 text-right text-sm font-semibold">
-              <Importes items={order.items} />
+              <Importes importes={order.importes} />
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
@@ -166,7 +162,7 @@ export function OrdersList({
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <Link href={`/productos/ordenes/${order.id}`} className="block">
-                    {cuandoLlego(order.created_at, timeZone)}
+                    {order.llegoEl}
                   </Link>
                 </TableCell>
                 <TableCell>
@@ -181,7 +177,7 @@ export function OrdersList({
                 </TableCell>
                 <TableCell className="text-right font-semibold">
                   <Link href={`/productos/ordenes/${order.id}`} className="block">
-                    <Importes items={order.items} />
+                    <Importes importes={order.importes} />
                   </Link>
                 </TableCell>
               </TableRow>

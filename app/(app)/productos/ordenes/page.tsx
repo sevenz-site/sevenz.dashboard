@@ -1,13 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
-import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
+import { type OrderWithItems } from "@/components/dashboard/orders-list";
+import {
+  OrdersFilterProvider,
+  OrdersSearchField,
+  OrdersFilterChips,
+  OrdersResults,
+} from "@/components/dashboard/orders-filters";
 import { readOwnerCountry } from "@/lib/owner-country";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
+  totalsByCurrency,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 
 // THE CATALOGUE'S ORDERS. Deliverable D, reading half.
 //
@@ -80,45 +88,76 @@ export default async function OrdenesPage() {
     else porPedido.set(item.order_id, [item]);
   }
 
-  const conLineas: OrderWithItems[] = rows.map((o) => ({
-    ...o,
-    items: porPedido.get(o.id) ?? [],
-  }));
+  // THE SHOP'S ZONE, never the server's: this page renders on Vercel, which
+  // runs in UTC.
+  const zona = country === "VE" ? "America/Caracas" : "America/Bogota";
+  const cuandoLlego = (iso: string) =>
+    new Intl.DateTimeFormat("es-VE", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: zona,
+    }).format(new Date(iso));
+
+  // DATES AND AMOUNTS ARE WRITTEN OUT HERE, not in the list. The list became a
+  // client component when the search and the chip went in, and `Intl` run
+  // twice -- once in Node for the HTML, once in the browser for the hydration
+  // -- does not produce the same characters: Node writes "7:34 p." + U+00A0 +
+  // "m." and the browser writes a different space, which React reports as a
+  // hydration mismatch and repairs by re-rendering the whole list. Formatting
+  // on the server leaves the list with no `Intl` at all.
+  const conLineas: OrderWithItems[] = rows.map((o) => {
+    const items = porPedido.get(o.id) ?? [];
+    return {
+      ...o,
+      items,
+      llegoEl: cuandoLlego(o.created_at),
+      importes: totalsByCurrency(items).map((t) => ({
+        currency: t.currency,
+        texto: formatPriceAmount(t.amount, t.currency as PriceCurrency),
+      })),
+    };
+  });
 
   const sinAtender = rows.filter((o) => o.status === "new").length;
 
   return (
-    <div className="flex flex-col gap-4">
-      <ScreenHeader
-        title="Pedidos"
-        subtitle={
-          sinAtender > 0
-            ? `${sinAtender} sin atender`
-            : "Lo que te piden desde tu enlace de catálogo"
-        }
-        // This screen has no search or filters yet, and `ScreenHeader`
-        // requires both. They go in as an explicit `null` rather than being
-        // made optional: the header reserves their space, so the day filters
-        // arrive they drop in without shifting anything else.
-        search={null}
-        filters={null}
-      />
-      <h2 className="mt-1 text-xl font-semibold">Pedidos recibidos</h2>
-      {errorOrders ? (
-        // The real reason is in the server log and stays there. What the
-        // shopkeeper needs is to know that the screen could not answer, so
-        // they do not read silence as "nobody ordered".
-        <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-          No pudimos cargar tus pedidos ahora mismo. Vuelve a intentarlo en un momento.
-        </p>
-      ) : (
-        <OrdersList
-          orders={conLineas}
-          // The owner's zone, never the server's: this page renders on
-          // Vercel, which runs in UTC.
-          timeZone={country === "VE" ? "America/Caracas" : "America/Bogota"}
+    // The provider wraps the header AND the list: the field and the chip are
+    // painted inside `ScreenHeader`, which is a sibling of the list, and two
+    // siblings share no state without something above them. Same shape as
+    // Catálogo's `CatalogFilterProvider`.
+    <OrdersFilterProvider orders={conLineas}>
+      <div className="flex flex-col gap-4">
+        <ScreenHeader
+          title="Pedidos"
+          // THE SUBTITLE COUNTS EVERYTHING, not what the filter leaves on
+          // screen. "2 sin atender" is the state of the business; the list
+          // below is a view of it. Making this follow the chip would mean the
+          // number drops to zero when the owner filters by "Atendido", which
+          // reads as "there is nothing left to do".
+          subtitle={
+            sinAtender > 0
+              ? `${sinAtender} sin atender`
+              : "Lo que te piden desde tu enlace de catálogo"
+          }
+          search={<OrdersSearchField />}
+          filters={<OrdersFilterChips />}
         />
-      )}
-    </div>
+        <h2 className="mt-1 text-xl font-semibold">Pedidos recibidos</h2>
+        {errorOrders ? (
+          // The real reason is in the server log and stays there. What the
+          // shopkeeper needs is to know that the screen could not answer, so
+          // they do not read silence as "nobody ordered".
+          <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No pudimos cargar tus pedidos ahora mismo. Vuelve a intentarlo en un momento.
+          </p>
+        ) : (
+          <OrdersResults />
+        )}
+      </div>
+    </OrdersFilterProvider>
   );
 }
