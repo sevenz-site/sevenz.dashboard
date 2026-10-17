@@ -29,9 +29,15 @@ import { markOrderAttended } from "@/app/(app)/productos/ordenes/actions";
 export function OrderAttendButton({
   orderId,
   atendido,
+  atendidoEl,
 }: {
   orderId: string;
   atendido: boolean;
+  // Already formatted, in the business's time zone, by the page that renders
+  // this. It is not a `Date` on purpose: formatting it here would use the
+  // phone's zone, and the order's own date two lines above is printed in the
+  // shop's -- two clocks on one screen.
+  atendidoEl: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -39,9 +45,24 @@ export function OrderAttendButton({
 
   if (atendido) {
     return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Check className="size-4" aria-hidden="true" />
-        Ya marcaste este pedido como atendido.
+      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+        <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <span>
+          {/* THE DATE IS PART OF THE SENTENCE, at the owner's request on
+              2026-10-16. "Ya lo marcaste" answers whether; "el 16 oct. 2026,
+              7:35 p. m." answers when, which is the question a shopkeeper
+              actually has when a customer rings asking about an order they
+              placed days ago.
+
+              Without a date the line also reads the same on the day it
+              happened and six months later.
+
+              THE FULL STOP IS ONLY IN THE BRANCH WITHOUT A DATE. The
+              formatter ends the time in "p. m." -- a period of its own -- so
+              adding another printed "8:42 p. m..", which is what the first
+              run of this line looked like on screen. */}
+          Ya marcaste este pedido como atendido{atendidoEl ? ` el ${atendidoEl}` : "."}
+        </span>
       </p>
     );
   }

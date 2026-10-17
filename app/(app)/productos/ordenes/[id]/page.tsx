@@ -87,15 +87,31 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   // The owner's zone, never the server's: this page renders on Vercel, which
   // runs in UTC.
   const zona = country === "VE" ? "America/Caracas" : "America/Bogota";
-  const cuando = new Intl.DateTimeFormat("es-VE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: zona,
-  }).format(new Date(pedido.created_at));
+  const fecha = (iso: string) =>
+    new Intl.DateTimeFormat("es-VE", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: zona,
+    }).format(new Date(iso));
+
+  const cuando = fecha(pedido.created_at);
+
+  // WHEN IT WAS ATTENDED, FORMATTED HERE AND NOT IN THE BUTTON. The button is
+  // a client component, and `Intl` with no `timeZone` there would use the
+  // phone's zone -- the owner's, usually, but not when they are travelling or
+  // their device is set to another country. This page already knows the
+  // business's zone and the line above it ("Fecha de pedido") is printed with
+  // it, so the two dates on the screen are read in the same clock.
+  //
+  // It can be null with the order already out of 'new': `registered` and
+  // `discarded` are set by buttons that do not exist yet (`CT-70`), and
+  // nothing forces them to stamp `seen_at`. The sentence then drops the date
+  // instead of printing "Invalid Date".
+  const atendidoEl = pedido.seen_at ? fecha(pedido.seen_at) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -252,7 +268,11 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
       ) : null}
 
       <div className="pt-1">
-        <OrderAttendButton orderId={pedido.id} atendido={!isUnattended(pedido)} />
+        <OrderAttendButton
+          orderId={pedido.id}
+          atendido={!isUnattended(pedido)}
+          atendidoEl={atendidoEl}
+        />
       </div>
     </div>
   );
