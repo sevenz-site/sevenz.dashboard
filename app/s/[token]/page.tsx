@@ -25,7 +25,6 @@ import {
   type LedgerDisplay,
 } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
-import { VerifyBadge } from "@/components/public/verify-badge";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { ShareDialogs } from "@/components/public/share-dialogs";
 import { ShareSettings } from "@/components/public/share-settings";
@@ -475,16 +474,26 @@ export default async function SharedBalancePage({
 
         <FeedbackBanner token={token} />
 
-        {/* Sin condición desde el 2026-09-21. Antes solo se pintaba si el
-          cliente tenía número guardado, y ahora que el número es opcional eso
-          dejaba a quien no lo tiene sin enterarse de que la verificación
-          existe. El propio componente decide qué enseñar: el campo de los 4
-          dígitos, o la explicación de por qué todavía no se puede. */}
-        <VerifyBadge
-          expectedLast4={shared.whatsapp_last4}
-          businessName={shared.business_name}
-          ownerWhatsapp={shared.owner_whatsapp}
-        />
+        {/* AQUÍ ESTUVO «¿Es tu cuenta? Verifica con tu WhatsApp», retirado el
+          2026-10-17 a petición del dueño.
+
+          LA RAZÓN POR LA QUE ESTABA, para el día que alguien se plantee
+          devolverlo: el enlace viaja por grupos y reenvíos, así que quien lo
+          abre no es necesariamente el cliente al que se le mandó, y el
+          componente le dejaba comprobar los 4 últimos dígitos de su número
+          para confirmar que la cuenta era suya. Se puso sin condición el
+          2026-09-21, justo para que lo viera también quien no tiene número
+          guardado.
+
+          Y ESTO DESPLAZA UNA DECISIÓN DEL MISMO DÍA: horas antes el dueño
+          había elegido conservar las cuatro cosas que el frame `1378:7916`
+          no dibuja, la verificación entre ellas. Al ver la pantalla montada
+          decidió lo contrario para esta. Las dos quedan escritas, que es lo
+          que pide `CLAUDE.md` cuando una decisión del dueño desplaza a otra.
+
+          El componente `VerifyBadge` NO se borra: sigue en
+          `components/public/verify-badge.tsx` con su lógica intacta. Lo que
+          se quita es el montaje. */}
 
         {/* LA FRANJA DEL CATALOGO, encima del historial y debajo de todo lo que
           el cliente vino a leer. Ese orden es del frame y tiene sentido: el

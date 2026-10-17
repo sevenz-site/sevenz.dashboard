@@ -26,6 +26,7 @@ export function PublicHeader({
   title,
   subtitle,
   back,
+  backSlot,
   actions,
   children,
 }: {
@@ -38,6 +39,15 @@ export function PublicHeader({
   // opened this from a WhatsApp message came from nowhere, and an arrow that
   // leaves the page is an exit nobody asked for.
   back?: { href: string; label: string };
+  // THE SAME CORNER, FOR A BACK CONTROL THAT IS NOT A PLAIN LINK -- today
+  // `BackToBalance`, which goes through the browser's history instead of an
+  // href so that no token has to travel in the URL. It positions itself, so
+  // the header only has to make room for it.
+  //
+  // `back` WINS WHEN BOTH ARRIVE, and that is deliberate rather than
+  // arbitrary: `back` is the shopkeeper's own preview, and two arrows stacked
+  // in one corner is a bug in any case.
+  backSlot?: ReactNode;
   // Top-right slot: today the "..." menu on the balance page, nothing on the
   // catalogue.
   actions?: ReactNode;
@@ -55,7 +65,9 @@ export function PublicHeader({
         >
           <ArrowLeft className="size-5" aria-hidden="true" />
         </Link>
-      ) : null}
+      ) : (
+        (backSlot ?? null)
+      )}
 
       {actions ? <div className="absolute top-4 right-4 z-10">{actions}</div> : null}
 

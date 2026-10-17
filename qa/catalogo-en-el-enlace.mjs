@@ -316,6 +316,60 @@ try {
     );
   }
 
+  // ── 6c. CON CATÁLOGO PERO SIN NADA PUBLICADO ────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-17: «cuando un negocio no tenga productos
+  // publicados, la sección de productos no se muestra». Es el cierre de
+  // `CT-94`.
+  //
+  // NO LO CUBRÍA NINGUNA FILA, y son dos estados distintos: la 6 mira un
+  // negocio SIN enlace de catálogo; este tiene el enlace y no tiene qué
+  // enseñar. La pantalla los junta —`catalog_token && products.length > 0`—
+  // pero la función tiene que distinguirlos, porque el día que se quiera
+  // avisar al tendero («tienes enlace y no has publicado nada») hará falta.
+  const { data: candidatos } = await admin
+    .from("owners")
+    .select("id")
+    .order("id");
+  let duenoVacio = null;
+  for (const o of candidatos ?? []) {
+    if (o.id === duenoA || o.id === duenoB) continue;
+    const { count } = await admin
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", o.id)
+      .is("trashed_at", null)
+      .or("published_retail.eq.true,published_wholesale.eq.true");
+    if (count === 0) {
+      duenoVacio = o.id;
+      break;
+    }
+  }
+
+  if (!duenoVacio) {
+    check(
+      "6c. con catálogo pero sin nada publicado: lista vacía",
+      false,
+      "NO COMPROBADA: no hay en dev ningún negocio sin productos publicados",
+    );
+  } else {
+    const { data: catVacio } = await admin
+      .from("catalog_share_links")
+      .insert({ owner_id: duenoVacio })
+      .select("id, token")
+      .single();
+    enlacesCatalogo.push(catVacio.id);
+    const cliVacio = await clienteConEnlace(duenoVacio, `${MARCA} cliente sin productos`);
+    const r6c = await preview(cliVacio.token);
+    check(
+      "6c. CON enlace de catálogo pero SIN productos publicados: lista vacía, y la pantalla no pinta la sección",
+      r6c?.catalog_token === catVacio.token &&
+        Array.isArray(r6c?.products) &&
+        r6c.products.length === 0,
+      JSON.stringify(r6c),
+    );
+  }
+
   // ── 7. UN CLIENTE EN LA PAPELERA ────────────────────────────────────────
   //
   // Mismo criterio que `share_link_owner`: un cliente borrado no puede seguir

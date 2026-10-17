@@ -46,7 +46,11 @@ export function CatalogStrip({
 }) {
   if (products.length === 0) return null;
 
-  const href = `/c/${catalogToken}`;
+  // `?desde=saldo` ENCIENDE LA FLECHA DE VOLVER del catálogo, y nada más. No
+  // lleva el token del cliente a propósito: ese abre su saldo, y el catálogo
+  // es justo la pantalla que alguien reenviaría. Ver
+  // `components/public/back-to-balance.tsx`.
+  const href = `/c/${catalogToken}?desde=saldo`;
 
   // THE TAP IS RECORDED BY THE SERVER, AND THE NAVIGATION DOES NOT WAIT FOR
   // IT. `keepalive` is what makes that safe: the request survives the page

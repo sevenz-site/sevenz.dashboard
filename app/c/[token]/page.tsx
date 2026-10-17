@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
+import { BackToBalance } from "@/components/public/back-to-balance";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
@@ -159,11 +160,18 @@ export default async function CatalogoPublicoPage({
   // sería una segunda copia de esta pantalla, y una copia se queda atrás del
   // original sin que nadie se entere. Lo que el tendero revisa tiene que ser
   // la página de verdad, byte por byte, o la revisión no vale.
-  searchParams: Promise<{ previa?: string }>;
+  // `?desde=saldo` LO PONE LA FRANJA DE PRODUCTOS de `/s/[token]`, y lo único
+  // que hace es encender la flecha de volver. Es una palabra sin información
+  // a propósito: el token del cliente abre su saldo, y meterlo en la URL del
+  // catálogo —que es la pantalla que un cliente sí querría reenviar— sería
+  // regalar su deuda a quien la reciba. El porqué entero está en
+  // `components/public/back-to-balance.tsx`.
+  searchParams: Promise<{ previa?: string; desde?: string }>;
 }) {
   const { token } = await params;
-  const { previa } = await searchParams;
+  const { previa, desde } = await searchParams;
   const esVistaPrevia = previa === "1";
+  const vieneDelSaldo = desde === "saldo";
 
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -316,6 +324,7 @@ export default async function CatalogoPublicoPage({
             ? { href: "/productos", label: "Volver al catálogo" }
             : undefined
         }
+        backSlot={vieneDelSaldo ? <BackToBalance /> : undefined}
         /* EL AVISO DE LA TASA, Y SOLO DONDE HAY TASA.
 
            Un negocio colombiano cobra en pesos y no tiene equivalencia que
