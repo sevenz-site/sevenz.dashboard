@@ -202,10 +202,27 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                 {" · "}
                 {item.tier === "wholesale" ? "al mayor" : "al detal"}
               </p>
+              {/* THE COMMENT IS TEXT, NOT A FIELD. Owner's reference,
+                  2026-10-16. It used to render inside a bordered box with a
+                  white background, which on this screen reads as an input the
+                  shopkeeper could type into -- and it is the one thing on the
+                  page they cannot change. A label above it and plain text
+                  below says the same thing without the promise.
+
+                  `whitespace-pre-line` because the customer writes it in a
+                  `Textarea` of three rows (`product-detail.tsx`): their line
+                  breaks are part of what they wrote, and collapsing them runs
+                  two separate requests into one sentence.
+
+                  `break-words` for the pasted link or the unspaced string
+                  that would otherwise push the card sideways on a phone. */}
               {item.comment ? (
-                <p className="mt-1 rounded border bg-background px-2 py-1 text-xs">
-                  {item.comment}
-                </p>
+                <div className="mt-2 flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">Comentario</span>
+                  <p className="text-sm leading-snug break-words whitespace-pre-line">
+                    {item.comment}
+                  </p>
+                </div>
               ) : null}
             </div>
           ))
