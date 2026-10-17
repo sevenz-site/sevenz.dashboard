@@ -1,6 +1,4 @@
-import Link from "next/link";
-import Image from "next/image";
-import { ChevronRight } from "lucide-react";
+import { OrdersCard } from "@/components/dashboard/orders-card";
 import { createClient } from "@/lib/supabase/server";
 import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
@@ -218,69 +216,10 @@ export default async function ProductosPage({
             exists once somebody has, so a shopkeeper wondering could never
             check. Same reasoning as DESIGN-SYSTEM.md's rule for empty values:
             keep the row, say it is empty. */}
-        {/* THE CARD FOLLOWS FRAME `1360:6518`, 2026-10-16. Three things in it
-            are the frame's and not improvisation, so they do not get "tidied"
-            later: the 82.76° gradient from `--accent` to `--background`, the
-            10px radius (not the `rounded-lg` the rest of the screen uses), and
-            the "Ver todo" label beside the count.
-
-            THE GRADIENT GOES IN A STYLE ATTRIBUTE and not a utility class
-            because it carries two theme TOKENS. Written as literal colours it
-            would be a white card painted over a dark background the day the
-            dark theme is switched on. */}
-        <Link
-          href="/productos/ordenes"
-          className="flex items-center justify-between gap-3 rounded-[10px] border p-3 drop-shadow-[0px_2px_1px_rgba(0,0,0,0.02)]"
-          style={{
-            backgroundImage:
-              "linear-gradient(82.76deg, var(--accent) 0%, var(--background) 100%)",
-          }}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-3">
-            {/* THE FRAME'S OWN ICON, downloaded from it rather than swapped
-                for the lucide `Package` the nav uses: they are different
-                drawings — this one is filled, lucide's is a stroke — and the
-                card was designed around this one.
-
-                ITS GREEN IS `--brand-whatsapp` (#7EC070), and that token's own
-                note in `globals.css` says it measures 2,17:1 on white and
-                "works on the dark header and nowhere light". This card IS
-                light, so the exception is deliberate and bounded: the icon is
-                decoration beside the word "Pedidos", which carries the whole
-                meaning on its own, so nothing is lost by a reader who cannot
-                make the green out. It is not a rule to copy for a green that
-                has to be READ on a light surface -- that still needs its own
-                darker value. */}
-            <Image
-              src="/icon-pedidos.svg"
-              alt=""
-              width={32}
-              height={32}
-              className="shrink-0"
-              aria-hidden="true"
-            />
-            <span className="flex min-w-0 flex-col justify-center">
-              <span className="font-medium">Pedidos</span>
-              <span className="text-xs leading-4 text-primary">
-                {ordenesSinAtender > 0
-                  ? `${ordenesSinAtender} sin atender`
-                  : "Lo que te piden desde tu enlace"}
-              </span>
-            </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-0.5">
-            <span className="text-xs leading-4">Ver todo</span>
-            {ordenesSinAtender > 0 ? (
-              // 16px round, as drawn. `min-w-4` and not `size-4`: the frame
-              // shows one digit, and a fixed circle would clip the second the
-              // day a shopkeeper has twelve orders waiting.
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full border border-primary-foreground bg-destructive px-1 text-xs leading-4 text-primary-foreground">
-                {ordenesSinAtender}
-              </span>
-            ) : null}
-            <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-          </span>
-        </Link>
+        {/* The card itself is `OrdersCard`, shared with Inicio -- the
+            gradient is built from two theme tokens and a second hand-written
+            copy of it is a copy that drifts. */}
+        <OrdersCard unattended={ordenesSinAtender} place="catalogo" />
         <CatalogTable
           loadFailed={productsError != null}
           overrides={(overrides ?? []) as PriceOverrideRow[]}
