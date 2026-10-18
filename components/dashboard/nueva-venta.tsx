@@ -353,7 +353,7 @@ export function NuevaVenta({
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-normal">Nueva venta</h1>
         <p className="text-sm text-muted-foreground">
-          {paso}/{pasos} {["Producto", "Carrito", "Pago", "Cliente"][paso - 1]}
+          {paso}/{pasos} {["Producto", "Carrito", "Pago", "Información del cliente"][paso - 1]}
         </p>
         {/* `aria-hidden` porque la línea de arriba ya dice «1/3 Producto» con
             palabras: repetirlo en el lector de pantalla sería ruido, no
