@@ -1388,10 +1388,6 @@ function PagoSheet({
     }
     return formatAmountForInput(pendiente);
   });
-  const [equivalencia, setEquivalencia] = useState(() => {
-    const previo = tipo === "contado" ? inicial.contado : inicial.credito;
-    return formatAmountForInput(previo?.amount ?? pendiente);
-  });
   const [usarPrevista, setUsarPrevista] = useState(inicial.credito?.usarPrevista ?? false);
   const [photoPath, setPhotoPath] = useState<string | null>(
     (tipo === "contado" ? inicial.contado?.photoPath : inicial.credito?.photoPath) ?? null,
@@ -1402,9 +1398,7 @@ function PagoSheet({
     (tipo === "contado" ? inicial.contado?.description : inicial.credito?.description) ?? "",
   );
 
-  // LAS DOS CIFRAS SON DOS HECHOS DISTINTOS, y por eso la equivalencia se
-  // pinta SIEMPRE —el dueño lo corrigió el 2026-10-18— aunque las monedas
-  // coincidan:
+  // LAS DOS CIFRAS SON DOS HECHOS DISTINTOS, y la segunda se CALCULA:
   //
   //   «Monto»        lo que el cliente puso en la mano, en la moneda en que lo
   //                  puso. Va a `entry_amount` / `entry_currency`, que es el
@@ -1412,14 +1406,30 @@ function PagoSheet({
   //   «Equivalencia» lo que eso vale en el libro. Va a `amount`, y es lo que
   //                  descuenta de la venta.
   //
-  // Coincidiendo la moneda suelen ser el mismo número —escribir en «Monto»
-  // arrastra la equivalencia— pero no tienen por qué: un tendero que recibe
-  // 10 y da la cuenta por cerrada en 9,50 acaba de hacer un descuento, y las
-  // dos cifras cuentan lo que pasó. Esconder la segunda lo volvía
-  // inexpresable.
+  // EN EL FRAME ES UNA CIFRA, NO UNA CASILLA — cambió así el 2026-10-18,
+  // después de que yo la hubiera hecho editable. La versión editable permitía
+  // expresar un descuento («recibo 10 y doy la cuenta por cerrada en 9,50»),
+  // pero abría la puerta a que el libro y lo entregado contaran historias
+  // distintas sin que nada chille. Se sigue el frame.
   const entregaEnOtraMoneda = monedaEntrega === "VES";
   const entregado = parseAmount(monto) ?? 0;
-  const enElLibro = parseAmount(equivalencia) ?? 0;
+
+  // EL CÉNTIMO QUE CONVIERTE UNA VENTA PAGADA EN UN FIADO, y por qué hay un
+  // ajuste aquí: 5.756,66 Bs a 985,73 son 5,8399… que redondea a 5,84 y
+  // cuadra. Pero no siempre cae así — con otras cifras la división deja 19,99
+  // sobre un total de 20, y la venta nace con un fiado de 0,01 que nadie
+  // entiende y nadie cobra.
+  //
+  // Siendo la equivalencia una cifra calculada, el tendero ya no puede
+  // corregirla a mano, así que el ajuste tiene que estar aquí: si lo convertido
+  // queda a un céntimo de lo que falta, se usa lo que falta. Un céntimo de
+  // holgura sobre una conversión no inventa dinero; un fiado fantasma sí
+  // ensucia el saldo de alguien para siempre.
+  const convertido = entregaEnOtraMoneda && tasa ? entregado / tasa : entregado;
+  const enElLibro =
+    Math.abs(convertido - pendiente) <= 0.01 && pendiente > 0
+      ? pendiente
+      : Math.round(convertido * 100) / 100;
   const deMas = enElLibro - total > 0.005;
   const listo = enElLibro > 0 && entregado > 0 && !deMas;
 
@@ -1436,7 +1446,6 @@ function PagoSheet({
     const previo = siguiente === "contado" ? inicial.contado : inicial.credito;
     const base = previo?.amount ?? pendiente;
     setMonto(formatAmountForInput(base));
-    setEquivalencia(formatAmountForInput(base));
     setMonedaEntrega(
       siguiente === "contado" && inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
     );
@@ -1523,17 +1532,17 @@ function PagoSheet({
                     className="min-w-0 flex-1"
                     inputMode="decimal"
                     value={monto}
-                    onChange={(e) => {
-                      setMonto(e.target.value);
-                      // Con la moneda del libro, la equivalencia ES el monto.
-                      if (!entregaEnOtraMoneda) setEquivalencia(e.target.value);
-                    }}
+                    onChange={(e) => setMonto(e.target.value)}
                     placeholder="00"
                   />
                   {/* EL SELECTOR SOLO CON TASA. Sin ella no hay bolívares que
                       ofrecer, y un desplegable de una sola opción no decide
                       nada. */}
-                  {tasa && tipo === "contado" ? (
+                  {/* EN LAS DOS RAMAS. Lo tenía solo en el contado y los dos
+                      frames lo dibujan igual: un fiado pactado en bolívares es
+                      tan posible como un cobro en bolívares, y la deuda se
+                      guarda convertida al libro exactamente igual. */}
+                  {tasa ? (
                     <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
                       <CurrencyFlagIcon
                         currency={monedaEntrega === "VES" ? "VES" : moneda}
@@ -1542,14 +1551,7 @@ function PagoSheet({
                       <select
                         aria-label="Moneda que te entrega"
                         value={monedaEntrega}
-                        onChange={(e) => {
-                          const siguiente = e.target.value as "VES" | PriceCurrency;
-                          setMonedaEntrega(siguiente);
-                          // Al volver a la moneda del libro, las dos cifras se
-                          // igualan: dejar una equivalencia vieja escribiría en
-                          // el libro un número que ya no corresponde.
-                          if (siguiente !== "VES") setEquivalencia(monto);
-                        }}
+                        onChange={(e) => setMonedaEntrega(e.target.value as "VES" | PriceCurrency)}
                         className="bg-transparent text-base outline-none"
                       >
                         <option value={moneda}>{NOMBRE[moneda] ?? moneda}</option>
@@ -1581,29 +1583,22 @@ function PagoSheet({
                 </label>
               ) : null}
 
-              {/* SIEMPRE VISIBLE. Ver el comentario de `enElLibro`. */}
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="pago-equivalencia">Equivalencia</Label>
-                <div className="flex items-start gap-1">
-                  <Input
-                    id="pago-equivalencia"
-                    className="min-w-0 flex-1"
-                    inputMode="decimal"
-                    value={equivalencia}
-                    onChange={(e) => setEquivalencia(e.target.value)}
-                    placeholder="00"
-                  />
-                  <span className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 text-xs">
-                    <CurrencyFlagIcon currency={moneda} className="size-4" />
-                    {NOMBRE[moneda] ?? moneda}
+              {/* LA EQUIVALENCIA, SIEMPRE VISIBLE Y SIEMPRE CALCULADA. Es lo
+                  que va a quedar escrito en el libro, así que se enseña grande
+                  y en verde —`money-in`, el token con el que esta app pinta el
+                  dinero que entra; el frame la fija en #176349—. No se puede
+                  teclear: ver el comentario de `enElLibro`. */}
+              <div className="flex items-center justify-between gap-2 py-2">
+                <span className="flex flex-col justify-center gap-[3px]">
+                  <span className="text-xs font-medium">Equivalencia</span>
+                  <span className="text-xl font-semibold tabular-nums text-money-in">
+                    {formatPriceAmount(enElLibro, moneda)}
                   </span>
-                </div>
-                {tasa && entregaEnOtraMoneda ? (
-                  <p className="text-xs tabular-nums text-muted-foreground">
-                    A la tasa de hoy, {formatPriceAmount(entregado, "VES")} son{" "}
-                    {formatPriceAmount(entregado / tasa, moneda)}
-                  </p>
-                ) : null}
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-xs">
+                  {NOMBRE[moneda] ?? moneda}
+                  <CurrencyFlagIcon currency={moneda} className="size-4" />
+                </span>
               </div>
 
               {deMas ? (
@@ -1694,10 +1689,11 @@ function PagoSheet({
                         amount,
                         entryCurrency: entregaEnOtraMoneda ? "VES" : null,
                         // LO ENTREGADO SE GUARDA SIEMPRE, no solo en
-                        // bolívares: con la misma moneda suele coincidir con
-                        // `amount`, y cuando no coincide es porque el tendero
-                        // dio la cuenta por cerrada por menos — un descuento
-                        // que sin esto se perdería.
+                        // bolívares. Con la misma moneda coincide con `amount`
+                        // salvo por el ajuste del céntimo; en bolívares es la
+                        // única constancia de cuántos cambiaron de mano, que es
+                        // para lo que existe `entry_amount` desde la migración
+                        // `022` — una tasa se revisa, un billete contado no.
                         entryAmount: entregado,
                         photoPath,
                         description: nota,
