@@ -369,6 +369,19 @@ export type CreditoDeVentaEntrada = {
   // Se ignora sin ruido si no hay prevista o si ya entró en vigor: ahí la
   // tasa correcta es la vigente, que es lo que se sella.
   usarPrevista?: boolean;
+  // EL COMPROBANTE Y LA NOTA DEL FIADO, que van al movimiento del cargo:
+  // `movements.photo_path` y `movements.description`, los mismos campos que
+  // usa el fiado manual.
+  //
+  // ESTABAN LLEGÁNDOLE Y SE CAÍAN EN SILENCIO. La pantalla ya los mandaba y
+  // este tipo no los declaraba, y `tsc` no dijo nada porque un `.map()` no
+  // dispara la comprobación de propiedades de más — el array ya viene con su
+  // tipo inferido, así que no hay literal «fresco» que revisar. Es exactamente
+  // el fallo que `CLAUDE.md` describe el 2026-10-16: el formulario envía, el
+  // servidor acepta, la fila se guarda sin el campo, y nadie se entera hasta
+  // semanas después.
+  photoPath?: string | null;
+  description?: string | null;
 };
 
 export type VentaEntrada = {
@@ -729,13 +742,17 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         type: "charge",
         amount: resto.amount,
         currency: sello.currency,
-        // LO QUE EL CLIENTE VA A LEER EN SU SALDO. No dice «venta»: dice qué se
-        // llevó, y el detalle está en las líneas de la venta.
-        description: lineasResueltas
-          .filter((l) => l.currency === resto.currency)
-          .map((l) => l.name)
-          .join(", ")
-          .slice(0, 500),
+        // LO QUE EL CLIENTE VA A LEER EN SU SALDO: lo que el tendero escribió
+        // al pactar el fiado, si escribió algo; si no, qué se llevó. No dice
+        // «venta» en ningún caso — el detalle está en las líneas.
+        description: (credito.description?.trim()
+          ? credito.description.trim()
+          : lineasResueltas
+              .filter((l) => l.currency === resto.currency)
+              .map((l) => l.name)
+              .join(", ")
+        ).slice(0, 500),
+        photo_path: credito.photoPath ?? null,
         source: "manual",
         plazo_dias: credito.plazoDias,
         cuotas: credito.cuotas,

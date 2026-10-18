@@ -26,6 +26,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
+import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
@@ -199,6 +200,7 @@ export function NuevaVenta({
           total={total}
           rates={catalogo?.rates ?? null}
           prevista={catalogo?.prevista ?? null}
+          ownerId={ownerId}
           onVolver={() => setPaso(2)}
         />
       ) : null}
@@ -920,6 +922,7 @@ function PasoPago({
   total,
   rates,
   prevista,
+  ownerId,
   onVolver,
 }: {
   clientes: Cliente[];
@@ -931,6 +934,7 @@ function PasoPago({
   total: { currency: PriceCurrency; amount: number }[];
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
+  ownerId: string;
   onVolver: () => void;
 }) {
   const router = useRouter();
@@ -1014,6 +1018,7 @@ function PasoPago({
           amount: c.cobrado,
           entryCurrency: c.registros.contado?.entryCurrency ?? c.currency,
           entryAmount: c.registros.contado?.entryAmount ?? null,
+          photoPath: c.registros.contado?.photoPath ?? null,
           description: c.registros.contado?.description ?? "",
         })),
       // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
@@ -1037,6 +1042,8 @@ function PasoPago({
             // migración `118` empieza en 2.
             cuotas: Number(k?.cuotas ?? "1") > 1 ? Number(k?.cuotas) : null,
             usarPrevista: k?.usarPrevista === true,
+            photoPath: k?.photoPath ?? null,
+            description: k?.description ?? "",
           };
         }),
     });
@@ -1158,6 +1165,7 @@ function PasoPago({
           open
           onOpenChange={(abierto: boolean) => !abierto && setCobrando(null)}
           moneda={cobrando}
+          ownerId={ownerId}
           total={cuentas.find((c) => c.currency === cobrando)?.amount ?? 0}
           pendiente={Math.max(0, cuentas.find((c) => c.currency === cobrando)?.suelto ?? 0)}
           rates={rates}
@@ -1279,9 +1287,12 @@ function ClienteSheet({
 type Cobro = {
   // Lo que entra en el libro de esta moneda.
   amount: number;
-  // Lo que de verdad entregaron, cuando no fue en la moneda del libro.
+  // Lo que de verdad entregaron, y en qué. `null` = en la moneda del libro.
   entryCurrency: "VES" | null;
   entryAmount: number | null;
+  // El comprobante. `sale_payments.photo_path` existe desde la migración
+  // `124`, así que esto se guarda de verdad y no es decoración.
+  photoPath: string | null;
   description: string;
 };
 
@@ -1290,6 +1301,9 @@ type Credito = {
   plazo: string;
   cuotas: string;
   usarPrevista: boolean;
+  // Va a `movements.photo_path`, el mismo sitio donde el fiado manual guarda
+  // el suyo.
+  photoPath: string | null;
   description: string;
 };
 
@@ -1325,6 +1339,7 @@ function PagoSheet({
   open,
   onOpenChange,
   moneda,
+  ownerId,
   total,
   pendiente,
   rates,
@@ -1336,6 +1351,8 @@ function PagoSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   moneda: PriceCurrency;
+  // Para el subidor de la foto, que escribe en el bucket de este negocio.
+  ownerId: string;
   // Lo que suma la venta en esta moneda, para la tarjeta de arriba.
   total: number;
   // Lo que queda por registrar, para rellenar el monto. Es el caso corriente:
@@ -1376,21 +1393,35 @@ function PagoSheet({
     return formatAmountForInput(previo?.amount ?? pendiente);
   });
   const [usarPrevista, setUsarPrevista] = useState(inicial.credito?.usarPrevista ?? false);
+  const [photoPath, setPhotoPath] = useState<string | null>(
+    (tipo === "contado" ? inicial.contado?.photoPath : inicial.credito?.photoPath) ?? null,
+  );
   const [plazo, setPlazo] = useState(inicial.credito?.plazo ?? DEFAULT_PLAZO_PAGO);
   const [cuotas, setCuotas] = useState(inicial.credito?.cuotas ?? "1");
   const [descripcion, setDescripcion] = useState(
     (tipo === "contado" ? inicial.contado?.description : inicial.credito?.description) ?? "",
   );
 
-  // EL MONTO DEL LIBRO. Cuando le entregan en la moneda del libro, «Monto» y
-  // «Equivalencia» son el mismo número y el segundo campo no se pinta: dos
-  // casillas con la misma cifra invitan a que una se quede vieja.
+  // LAS DOS CIFRAS SON DOS HECHOS DISTINTOS, y por eso la equivalencia se
+  // pinta SIEMPRE —el dueño lo corrigió el 2026-10-18— aunque las monedas
+  // coincidan:
+  //
+  //   «Monto»        lo que el cliente puso en la mano, en la moneda en que lo
+  //                  puso. Va a `entry_amount` / `entry_currency`, que es el
+  //                  registro más defendible en una disputa (migración `022`).
+  //   «Equivalencia» lo que eso vale en el libro. Va a `amount`, y es lo que
+  //                  descuenta de la venta.
+  //
+  // Coincidiendo la moneda suelen ser el mismo número —escribir en «Monto»
+  // arrastra la equivalencia— pero no tienen por qué: un tendero que recibe
+  // 10 y da la cuenta por cerrada en 9,50 acaba de hacer un descuento, y las
+  // dos cifras cuentan lo que pasó. Esconder la segunda lo volvía
+  // inexpresable.
   const entregaEnOtraMoneda = monedaEntrega === "VES";
-  const enElLibro = entregaEnOtraMoneda
-    ? (parseAmount(equivalencia) ?? 0)
-    : (parseAmount(monto) ?? 0);
+  const entregado = parseAmount(monto) ?? 0;
+  const enElLibro = parseAmount(equivalencia) ?? 0;
   const deMas = enElLibro - total > 0.005;
-  const listo = enElLibro > 0 && !deMas && (!entregaEnOtraMoneda || (parseAmount(monto) ?? 0) > 0);
+  const listo = enElLibro > 0 && entregado > 0 && !deMas;
 
   const plazoDias =
     plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo)) ? Number(plazo) : null;
@@ -1409,6 +1440,7 @@ function PagoSheet({
     setMonedaEntrega(
       siguiente === "contado" && inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
     );
+    setPhotoPath(previo?.photoPath ?? null);
     setDescripcion(previo?.description ?? "");
   }
 
@@ -1529,50 +1561,50 @@ function PagoSheet({
               </div>
 
               {entregaEnOtraMoneda ? (
-                <>
-                  <p className="text-xs leading-4 text-muted-foreground">
-                    Un pago parcial queda guardado en {NOMBRE[moneda] ?? moneda} a la tasa
-                    equivalente.
-                  </p>
-
-                  {/* LA PREVISTA SOLO SI EXISTE. Es una CASILLA y no una cifra:
-                      el navegador no manda ningún número, solo pide que se use
-                      la tasa que el servidor ya tiene guardada. */}
-                  {prevista ? (
-                    <label className="flex cursor-pointer items-center gap-2 text-xs">
-                      <Checkbox
-                        checked={usarPrevista}
-                        onCheckedChange={(v) => setUsarPrevista(v === true)}
-                      />
-                      Aplicar tasa BCV prevista para el {formatDate(prevista.fecha)}
-                    </label>
-                  ) : null}
-
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="pago-equivalencia">Equivalencia</Label>
-                    <div className="flex items-start gap-1">
-                      <Input
-                        id="pago-equivalencia"
-                        className="min-w-0 flex-1"
-                        inputMode="decimal"
-                        value={equivalencia}
-                        onChange={(e) => setEquivalencia(e.target.value)}
-                        placeholder="00"
-                      />
-                      <span className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 text-xs">
-                        <CurrencyFlagIcon currency={moneda} className="size-4" />
-                        {NOMBRE[moneda] ?? moneda}
-                      </span>
-                    </div>
-                    {tasa ? (
-                      <p className="text-xs text-muted-foreground tabular-nums">
-                        A la tasa de hoy, {formatPriceAmount(parseAmount(monto) ?? 0, "VES")} son{" "}
-                        {formatPriceAmount((parseAmount(monto) ?? 0) / tasa, moneda)}
-                      </p>
-                    ) : null}
-                  </div>
-                </>
+                <p className="text-xs leading-4 text-muted-foreground">
+                  Un pago parcial queda guardado en {NOMBRE[moneda] ?? moneda} a la tasa
+                  equivalente.
+                </p>
               ) : null}
+
+              {/* LA PREVISTA SOLO SI EXISTE, y solo si hay algo que convertir.
+                  Es una CASILLA y no una cifra: el navegador no manda ningún
+                  número, solo pide que se use la tasa que el servidor ya tiene
+                  guardada. */}
+              {prevista && entregaEnOtraMoneda ? (
+                <label className="flex cursor-pointer items-center gap-2 text-xs">
+                  <Checkbox
+                    checked={usarPrevista}
+                    onCheckedChange={(v) => setUsarPrevista(v === true)}
+                  />
+                  Aplicar tasa BCV prevista para el {formatDate(prevista.fecha)}
+                </label>
+              ) : null}
+
+              {/* SIEMPRE VISIBLE. Ver el comentario de `enElLibro`. */}
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="pago-equivalencia">Equivalencia</Label>
+                <div className="flex items-start gap-1">
+                  <Input
+                    id="pago-equivalencia"
+                    className="min-w-0 flex-1"
+                    inputMode="decimal"
+                    value={equivalencia}
+                    onChange={(e) => setEquivalencia(e.target.value)}
+                    placeholder="00"
+                  />
+                  <span className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 text-xs">
+                    <CurrencyFlagIcon currency={moneda} className="size-4" />
+                    {NOMBRE[moneda] ?? moneda}
+                  </span>
+                </div>
+                {tasa && entregaEnOtraMoneda ? (
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    A la tasa de hoy, {formatPriceAmount(entregado, "VES")} son{" "}
+                    {formatPriceAmount(entregado / tasa, moneda)}
+                  </p>
+                ) : null}
+              </div>
 
               {deMas ? (
                 <p className="text-xs text-destructive">
@@ -1623,6 +1655,19 @@ function PagoSheet({
             </>
           ) : null}
 
+          {/* FOTO (OPCIONAL) — está en los DOS frames y se me había quedado
+              fuera entera; lo corrigió el dueño el 2026-10-18.
+
+              `AttachmentUploader` es el mismo que usa el comprobante de un
+              movimiento: ya resuelve subir desde la galería o abrir la cámara
+              en un teléfono, y sube al bucket que la ficha del movimiento lee.
+              Rehacerlo aquí habría sido copiar esa lógica para que un día una
+              de las dos deje de abrir la cámara. */}
+          <div className="flex flex-col gap-2">
+            <Label>Foto (opcional)</Label>
+            <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+          </div>
+
           <div className="flex flex-col gap-1">
             <Label htmlFor="pago-nota">Descripción (opcional)</Label>
             <Textarea
@@ -1648,13 +1693,19 @@ function PagoSheet({
                       contado: {
                         amount,
                         entryCurrency: entregaEnOtraMoneda ? "VES" : null,
-                        entryAmount: entregaEnOtraMoneda ? (parseAmount(monto) ?? 0) : null,
+                        // LO ENTREGADO SE GUARDA SIEMPRE, no solo en
+                        // bolívares: con la misma moneda suele coincidir con
+                        // `amount`, y cuando no coincide es porque el tendero
+                        // dio la cuenta por cerrada por menos — un descuento
+                        // que sin esto se perdería.
+                        entryAmount: entregado,
+                        photoPath,
                         description: nota,
                       },
                     }
                   : {
                       ...inicial,
-                      credito: { amount, plazo, cuotas, usarPrevista, description: nota },
+                      credito: { amount, plazo, cuotas, usarPrevista, photoPath, description: nota },
                     },
               );
             }}
