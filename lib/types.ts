@@ -159,6 +159,9 @@ export type Client = {
   whatsapp: string | null;
   address: string | null;
   document_id: string | null;
+  // V/E/J en Venezuela, CC/CE/NIT en Colombia (migración 125). NULL = se
+  // guardó antes de que el selector existiera, o no se sabe el país.
+  document_type: string | null;
   // Which country issued document_id. Inherited from the owner's own
   // country when the client is created, correctable per client — CO and VE
   // cédulas can share the same digits and belong to different people, so

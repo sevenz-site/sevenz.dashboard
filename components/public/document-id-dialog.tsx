@@ -81,6 +81,7 @@ export function DocumentIdDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="shared_document_id">Número de cédula</Label>
             <DocumentIdInput
+          sinTipo
               id="shared_document_id"
               country={ownerCountry}
               required

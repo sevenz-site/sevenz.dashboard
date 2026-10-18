@@ -726,6 +726,7 @@ export function DetalleDelCliente({
                 solo rellena documentos que estén en null, así que un campo
                 editable aceptaría el cambio y lo tiraría en silencio. */}
             <DocumentIdInput
+          sinTipo
               id="detalle-documento"
               country={country}
               disabled={Boolean(documentoGuardado)}

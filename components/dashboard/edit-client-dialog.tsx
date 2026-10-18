@@ -27,6 +27,7 @@ import {
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import type { DocumentType } from "@/lib/document-id";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -214,6 +215,11 @@ export function EditClientDialog({
             <DocumentIdInput
               id="edit_document_id"
               country={ownerCountry}
+              // EL TIPO QUE YA TIENE LA FICHA. Sin él, editar la dirección de
+              // un cliente guardado como «E» lo convertiría en «V» sin decir
+              // nada: el selector arrancaría en el primero de la lista y eso es
+              // lo que se guardaría.
+              defaultType={(client.document_type as DocumentType | null) ?? null}
               value={documentIdValue}
               onChange={(next) => {
                 setDocumentIdValue(next);

@@ -1792,6 +1792,7 @@ export function ImportFlow({
                   Cédula
                 </Label>
                 <DocumentIdInput
+          sinTipo
                   id="shared-document"
                   country={country}
                   value={sharedDocument}

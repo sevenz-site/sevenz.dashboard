@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { isDocumentTypeFor } from "@/lib/document-id";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
@@ -68,6 +69,9 @@ export async function updateClient(
   // editarla `documentChanged` sale true contra el "123" filtrado, asi que
   // la comprobacion de duplicados corre y la ficha queda normalizada sola.
   const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
+  // EL TIPO (migración 125), que el `select` de `DocumentIdInput` manda con
+  // este mismo formulario. Ver `createClientWithMovement`, que lo lee igual.
+  const documentTypeRaw = String(formData.get("document_type") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
 
   if (!clientId) return { error: "Cliente inválido.", success: false };
@@ -94,7 +98,11 @@ export async function updateClient(
   // below. This file already learned it once.
   const { data: previous } = await supabase
     .from("clients")
-    .select("document_id")
+    // `document_country` viaja aquí y no se escribe: decide qué letras valen.
+    // Es del CLIENTE y no del negocio porque es la que emitió su documento —
+    // ver el comentario de `document_country` más abajo, que explica por qué
+    // esta acción nunca la toca.
+    .select("document_id, document_country")
     .eq("id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -208,6 +216,13 @@ export async function updateClient(
       // rellenar el hueco, y ese cliente nunca volvería a recibir uno.
       whatsapp: whatsapp || null,
       document_id: documentId,
+      // SIN DOCUMENTO NO HAY TIPO. Y un tipo que no corresponde al país del
+      // cliente se descarta en vez de guardarse: es lo mismo que hace el alta.
+      document_type:
+        documentId &&
+        isDocumentTypeFor(previous?.document_country as "VE" | "CO" | null, documentTypeRaw)
+          ? documentTypeRaw
+          : null,
       ...(documentChanged ? { document_source: DOCUMENT_SOURCE.OWNER } : {}),
       address: address || null,
     })

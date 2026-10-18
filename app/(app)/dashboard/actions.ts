@@ -14,6 +14,7 @@ import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { isDocumentTypeFor } from "@/lib/document-id";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import type { LineaDeProducto } from "@/lib/sale-lines";
@@ -388,6 +389,15 @@ export async function createClientWithMovement(
   // exime a la de abajo. Ver la migracion 079, que cierra la misma puerta en
   // la unica de las tres que se alcanza sin iniciar sesion.
   const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
+  // EL TIPO DE DOCUMENTO (migración 125). Lo manda el `select` que vive dentro
+  // de `DocumentIdInput`, así que llega desde CUALQUIER pantalla que envíe
+  // este formulario sin que haya que acordarse de añadirlo — que es la razón
+  // de que ese control sea parte del campo y no un prop de cada pantalla.
+  //
+  // SE VALIDA CONTRA EL PAÍS DEL NEGOCIO, abajo: un 'NIT' llegando de un
+  // negocio venezolano es un error o una petición escrita a mano, y en los dos
+  // casos se descarta en vez de guardarse.
+  const documentTypeRaw = String(formData.get("document_type") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
   // Inherited from the owner's own country rather than asked for in the
   // form: which country issued a client's cédula is a database concern, not
@@ -473,6 +483,12 @@ export async function createClientWithMovement(
       whatsapp: whatsapp || null,
       address: address || null,
       document_id: documentId || null,
+      // Sin documento no hay tipo que guardar: un tipo suelto describiría un
+      // número que no existe.
+      document_type:
+        documentId && isDocumentTypeFor(documentCountry as "VE" | "CO" | null, documentTypeRaw)
+          ? documentTypeRaw
+          : null,
       // Always typed by the shopkeeper at registration. See supabase/063.
       document_source: documentId ? DOCUMENT_SOURCE.OWNER : null,
       document_country: documentCountry,
