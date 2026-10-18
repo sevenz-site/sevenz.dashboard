@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ClientAvatar } from "@/components/dashboard/client-avatar";
@@ -64,6 +65,7 @@ export function ClientDetailHeader({
   owesMoney,
   hasMovements,
   ownerId,
+  acciones,
 }: {
   // Si el teléfono de este cliente acepta avisos hoy (MS-35). Llega desde la
   // página, que lo pregunta a client_accepts_whatsapp, la misma función que
@@ -80,6 +82,13 @@ export function ClientDetailHeader({
   owesMoney: boolean;
   hasMovements: boolean;
   ownerId: string;
+  // «Agregar abono» y «Agregar fiado», que la página pasa ya montados. Viajan
+  // como nodo y no como un par de `onClick` porque quien los dibuja es
+  // `AddMovementDialog`, que trae su diálogo, su guardia de mala paga y su
+  // `autoOpen` — rehacer sus botones aquí sería tener dos fuentes para el
+  // mismo control. `null` para un cliente en la papelera, que no acepta
+  // movimientos nuevos.
+  acciones?: ReactNode;
 }) {
   // Nothing to freeze on this screen: there is no search field to type in, so
   // the collapse has no reason to pause. The other three pass the field's
@@ -133,52 +142,99 @@ export function ClientDetailHeader({
           derived from this element's height. Splitting it into siblings is how
           the flicker of 2026-10-04 came back. */}
       {collapsed ? null : (
-        <div ref={collapsibleRef} className="flex flex-col items-center gap-3.5 px-4 pb-4">
-          <ClientAvatar
-            clientId={client.id}
-            clientName={client.name}
-            ownerId={ownerId}
-            picturePath={client.profile_picture_path}
-            editable={!client.trashed_at}
-            onDark
-          />
+        <div ref={collapsibleRef}>
+          <div className="flex flex-col items-center gap-3.5 px-4 pb-4">
+            <ClientAvatar
+              clientId={client.id}
+              clientName={client.name}
+              ownerId={ownerId}
+              picturePath={client.profile_picture_path}
+              editable={!client.trashed_at}
+              onDark
+            />
 
-          {/* 24px, regular, #F5F5F5 — 13,70:1 on this header. `min-w-0` plus
-              `truncate` rather than wrapping: a four-word name pushing the
-              contact lines down moves the button, and the button is the thing
-              the owner is aiming at. */}
-          <h1 className="w-full truncate text-center text-2xl font-normal text-[#f5f5f5]">
-            {client.name}
-          </h1>
+            {/* 24px, regular, #F5F5F5 — 13,70:1 on this header. `min-w-0` plus
+                `truncate` rather than wrapping: a four-word name pushing the
+                contact lines down moves the button, and the button is the thing
+                the owner is aiming at. */}
+            <h1 className="w-full truncate text-center text-2xl font-normal text-[#f5f5f5]">
+              {client.name}
+            </h1>
 
-          {/* Labels on screen and not only in `dt`: an empty value keeps its
-              row and shows a dash, so the absence of a phone or an address is
-              itself visible instead of the row vanishing and the block
-              changing height per client. */}
-          <dl className="flex w-full flex-col gap-1 text-sm text-brand-muted">
-            {rows.map((row) => (
-              <div key={row.label} className="flex items-center justify-center gap-1.5">
-                <dt>{row.label}:</dt>
-                <dd className="min-w-0 truncate">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
+            {/* Labels on screen and not only in `dt`: an empty value keeps its
+                row and shows a dash, so the absence of a phone or an address is
+                itself visible instead of the row vanishing and the block
+                changing height per client. */}
+            <dl className="flex w-full flex-col gap-1 text-sm text-brand-muted">
+              {rows.map((row) => (
+                <div key={row.label} className="flex items-center justify-center gap-1.5">
+                  <dt>{row.label}:</dt>
+                  <dd className="min-w-0 truncate">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+            </div>
+
+          {/* 24 below and 16 above, from the spec. The bigger gap underneath is
+              what separates the dark block from the page.
+
+              SE VA CON EL COLAPSO desde el 2026-10-18, y por eso se mudó aquí
+              DENTRO del envoltorio medido. Antes se quedaba, así que al bajar
+              el dedo lo pegado arriba era la barra oscura MÁS el botón de
+              WhatsApp, y los dos botones de registrar —que es a lo que el
+              tendero va— se iban por arriba. El mockup del dueño deja arriba
+              la barra y esos dos, nada más.
+
+              DEJARLO FUERA Y SOLO ESCONDERLO HABRÍA DEVUELTO EL PARPADEO del
+              2026-10-04, y no de milagro: el umbral para colapsar es la altura
+              MEDIDA de este envoltorio más 24px, y toda la aritmética de
+              `useCollapseOnScroll` descansa en que el encogimiento no puede ser
+              mayor que lo medido. Escondiendo también estos ~80px, el salto que
+              el navegador da al anclar el scroll aterriza por debajo del umbral
+              de expandir, que expande, que devuelve los 80, que vuelve a
+              colapsar: el bucle a 1 Hz que ese archivo documenta. */}
+          <div className="px-4 pt-4 pb-6">
+            <ShareActions
+              clientId={client.id}
+              clientName={client.name}
+              whatsapp={client.whatsapp}
+              balanceText={balanceText}
+              variant="whatsapp-button"
+              ownerCountry={ownerCountry}
+            />
+          </div>
         </div>
       )}
 
-      {/* 24 below and 16 above, from the spec. The bigger gap underneath is
-          what separates the dark block from the page, and the collapsed header
-          leans on it too. */}
-      <div className="px-4 pt-4 pb-6">
-        <ShareActions
-          clientId={client.id}
-          clientName={client.name}
-          whatsapp={client.whatsapp}
-          balanceText={balanceText}
-          variant="whatsapp-button"
-          ownerCountry={ownerCountry}
-        />
-      </div>
+      {/* ── LOS DOS BOTONES, DENTRO DE LA CABECERA ──────────────────────
+          «cuando se haga scrolldown solo se vea el header oscuro más los
+          botones de registrar abono y fiado» — el dueño, 2026-10-18.
+
+          ESTÁN AQUÍ DENTRO Y NO DEBAJO, y es la misma regla que el comentario
+          de arriba del `<header>` ya enuncia: **un solo elemento sticky, no
+          tres**. Un `sticky` hermano solo se pega dentro de su bloque
+          contenedor, así que pegar los botones por su cuenta los despega en
+          cuanto la cabecera pasa de largo. `home-header.tsx` lo aprendió a
+          golpes.
+
+          Y SE PINTAN EN LOS DOS ESTADOS, no solo al colapsar. Alternarlos
+          entre la cabecera y la página desmontaría `AddMovementDialog` al
+          hacer scroll — y ese componente tiene `autoOpen`, así que remontarlo
+          volvería a abrir el diálogo solo. Un montaje, un sitio.
+
+          LA BANDA ES BLANCA porque la cabecera es `bg-brand-primary`: sin un
+          fondo propio los botones saldrían sobre el oscuro, donde `outline` es
+          ilegible — la trampa que `DESIGN-SYSTEM.md` ya recoge.
+
+          `w-full` JUNTO A `mx-auto`, y no sobra: un hijo flex con `mx-auto` y
+          sin `w-full` se encoge a su contenido y el `max-w-md` lo recorta, que
+          es el desbordamiento horizontal que costó seis contenedores el
+          2026-10-17. */}
+      {acciones ? (
+        <div className="bg-background px-4 pb-3 pt-3">
+          <div className="mx-auto w-full max-w-md">{acciones}</div>
+        </div>
+      ) : null}
     </header>
   );
 }

@@ -201,6 +201,41 @@ export default async function ClientDetailPage({
         owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
         hasMovements={(movementCount ?? 0) > 0}
         ownerId={user!.id}
+        // LOS DOS BOTONES VIAJAN A LA CABECERA (2026-10-18, mockup del dueño):
+        // «cuando se haga scrolldown solo se vea el header oscuro más los
+        // botones de registrar abono y fiado». Debajo no se podían pegar — un
+        // `sticky` hermano se despega en cuanto la cabecera pasa de largo— así
+        // que entran dentro del único elemento sticky de la pantalla.
+        //
+        // Un cliente en la papelera no acepta movimientos nuevos —addMovement
+        // los rechaza en el servidor—, y ofrecer un botón que siempre falla es
+        // peor que no ofrecerlo. El aviso de abajo dice cómo recuperarlo.
+        acciones={
+          client.trashed_at ? null : (
+            <AddMovementDialog
+              clientId={client.id}
+              clientName={client.name}
+              clientWhatsapp={client.whatsapp}
+              ownerId={user!.id}
+              ownerCountry={ownerCountry}
+              currentDebtCop={balance}
+              currentDebtUsd={balanceUsd}
+              currentDebtEur={balanceEur}
+              isFlagged={client.is_flagged}
+              consentAsked={
+                // Migración 093, llega por el select("*") de arriba. Mientras
+                // la migración no esté corrida vale undefined, que cae del lado
+                // seguro: la casilla se enseña.
+                Boolean(client.whatsapp_consent_asked_at)
+              }
+              consentGranted={aceptaAvisos === true}
+              triggerClassName="w-full"
+              autoOpen={autoOpenType}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
+          )
+        }
       />
 
       {/* A client reached from the Papelera looks identical to a live one
@@ -216,36 +251,6 @@ export default async function ClientDetailPage({
           </p>
         </div>
       ) : null}
-
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 text-center">
-        {/* Un cliente en la papelera no acepta movimientos nuevos —addMovement
-            los rechaza en el servidor—, y ofrecer un botón que siempre falla es
-            peor que no ofrecerlo. El aviso de arriba dice cómo recuperarlo. */}
-        {client.trashed_at ? null : (
-          <AddMovementDialog
-            clientId={client.id}
-            clientName={client.name}
-            clientWhatsapp={client.whatsapp}
-            ownerId={user!.id}
-            ownerCountry={ownerCountry}
-            currentDebtCop={balance}
-            currentDebtUsd={balanceUsd}
-            currentDebtEur={balanceEur}
-            isFlagged={client.is_flagged}
-            consentAsked={
-              // Migración 093, llega por el select("*") de arriba. Mientras
-              // la migración no esté corrida vale undefined, que cae del lado
-              // seguro: la casilla se enseña.
-              Boolean(client.whatsapp_consent_asked_at)
-            }
-            consentGranted={aceptaAvisos === true}
-            triggerClassName="w-full"
-            autoOpen={autoOpenType}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
-        )}
-      </div>
 
       {/* El estado va junto al título de la sección y no dentro de una tarjeta
           de saldo: juzga la cuenta entera, y abajo hay una tarjeta por moneda. */}
