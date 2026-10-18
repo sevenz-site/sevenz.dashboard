@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
+import { ProductDetail } from "@/components/public/product-detail";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -391,6 +392,11 @@ function PasoProducto({
   const [cargando, setCargando] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [creando, setCreando] = useState(false);
+  // El producto abierto, si hay uno. Es una VISTA DENTRO del paso y no una
+  // ruta: el carrito del asistente vive en memoria, así que navegar a
+  // `/c/<token>/<id>` —que es donde vive ese detalle para el cliente— lo
+  // perdería entero.
+  const [detalle, setDetalle] = useState<ProductoParaVenta | null>(null);
   // El producto que la hoja acaba de crear y que entra al carrito en cuanto la
   // cuadrícula vuelva con él (ver `onCreado`).
   //
@@ -471,6 +477,60 @@ function PasoProducto({
 
   const enElCarrito = lineas.reduce((n, l) => n + l.quantity, 0);
 
+  // ── EL DETALLE, QUE ES EL MISMO QUE VE EL CLIENTE ───────────────────
+  //
+  // `ProductDetail` es literalmente el componente de `/c/[token]/[productId]`.
+  // No se copia: los escalones, el mínimo de mayoreo, las monedas con su
+  // equivalencia en bolívares y el aviso por debajo del mínimo son reglas de
+  // precio que no pueden tener dos versiones — el día que una cambie y la otra
+  // no, el tendero cobraría un precio y su cliente vería otro.
+  if (detalle) {
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-10 self-start px-2 text-sm"
+          onClick={() => setDetalle(null)}
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Volver a productos
+        </Button>
+        <ProductDetail
+          // TOKEN VACÍO A PROPÓSITO. Solo lo usan el carrito del cliente
+          // (`useCarrito`) y el enlace de vuelta al catálogo público, y con
+          // `alAgregar` puesto no se llega a ninguno de los dos: `useCarrito`
+          // LEE al montar y no escribe si no se le llama. Pasar el token real
+          // del negocio obligaría a crear su enlace de catálogo solo por abrir
+          // esta pantalla.
+          token=""
+          productId={detalle.id}
+          producto={detalle.producto}
+          rates={catalogo?.rates ?? null}
+          // SIN EXISTENCIAS: la búsqueda de la venta no las trae, y enseñar un
+          // «quedan 0» que no se ha consultado sería peor que no enseñar nada.
+          stock={null}
+          monedasPermitidas={catalogo?.monedasDelLibro ?? []}
+          alAgregar={({ quantity, currency }) => {
+            onAgregar({
+              productId: detalle.id,
+              name: detalle.name,
+              unit: detalle.unit,
+              photoPath: detalle.photoPath,
+              producto: detalle.producto,
+              quantity,
+              currency,
+            });
+            // DE VUELTA A LA CUADRÍCULA, igual que el catálogo del cliente
+            // vuelve a su lista: quien acaba de añadir algo no quiere seguir
+            // mirando lo que ya añadió, quiere seguir comprando.
+            setDetalle(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LOS DOS CONTROLES VAN A 8px ENTRE SÍ y no a los 16 del resto: en el
@@ -514,7 +574,7 @@ function PasoProducto({
             producto={p}
             rates={catalogo?.rates ?? null}
             monedasDelLibro={catalogo?.monedasDelLibro ?? []}
-            onAgregar={onAgregar}
+            onAbrir={setDetalle}
           />
         ))}
       </ul>
@@ -568,12 +628,17 @@ function TarjetaDeProducto({
   producto,
   rates,
   monedasDelLibro,
-  onAgregar,
+  onAbrir,
 }: {
   producto: ProductoParaVenta;
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
-  onAgregar: (l: LineaVenta) => void;
+  // ABRE EL DETALLE, no mete al carrito. Lo pidió el dueño el 2026-10-18: «al
+  // seleccionar el producto redirigirás al mismo detalle del producto que se
+  // muestra en el catálogo». Tocando la tarjeta se añadía una unidad al precio
+  // de detal y ya — sin poder elegir cantidad ni moneda, que es justo lo que
+  // esa pantalla sirve para decidir.
+  onAbrir: (p: ProductoParaVenta) => void;
 }) {
   const minimo = cantidadMinima(producto.producto);
   const escalon = escalonParaCantidad(producto.producto, minimo);
@@ -594,19 +659,8 @@ function TarjetaDeProducto({
         // SIN PRECIO NO SE PUEDE VENDER, y la tarjeta lo dice apagándose en vez
         // de dejar meter al carrito una línea que luego no se puede cobrar.
         disabled={sinPrecio}
-        aria-label={`Agregar ${producto.name}`}
-        onClick={() => {
-          if (sinPrecio) return;
-          onAgregar({
-            productId: producto.id,
-            name: producto.name,
-            unit: producto.unit,
-            photoPath: producto.photoPath,
-            producto: producto.producto,
-            quantity: minimo,
-            currency: moneda,
-          });
-        }}
+        aria-label={`Ver ${producto.name}`}
+        onClick={() => !sinPrecio && onAbrir(producto)}
         className="relative flex h-[180px] w-full flex-col justify-end overflow-hidden rounded-lg bg-brand-primary p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         {foto ? (

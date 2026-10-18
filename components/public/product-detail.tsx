@@ -97,6 +97,8 @@ export function ProductDetail({
   stock,
   isPreview = false,
   volverAlCatalogo,
+  alAgregar,
+  monedasPermitidas,
 }: {
   token: string;
   productId: string;
@@ -117,6 +119,28 @@ export function ProductDetail({
   // esto, añadir algo devolvía a la vista NORMAL y el tendero perdía su
   // previa a mitad — el mismo `CT-95` por la puerta de al lado.
   volverAlCatalogo?: string;
+  // ── EL MISMO DETALLE, DENTRO DE UNA VENTA DEL TENDERO ───────────────
+  //
+  // Cuando viene, «Agregar» NO toca el carrito del cliente ni navega: entrega
+  // la línea a quien monte esta pantalla. Lo usa el asistente de venta desde
+  // el 2026-10-18, a petición del dueño — «al seleccionar el producto
+  // redirigirás al mismo detalle del producto que se muestra en el catálogo».
+  //
+  // SE REUTILIZA ESTE COMPONENTE Y NO SE COPIA porque es literalmente la misma
+  // pantalla: los escalones, el mínimo de mayoreo, las monedas con sus
+  // equivalencias en bolívares y el aviso rojo por debajo del mínimo son
+  // reglas de precio que no pueden tener dos versiones. El día que una cambie
+  // y la otra no, el tendero cobraría un precio y su cliente vería otro.
+  //
+  // Y EL CAMBIO ES ADITIVO A PROPÓSITO: sin esta prop, todo lo de abajo se
+  // comporta exactamente como antes. Esta pantalla la ven clientes reales, así
+  // que la forma de tocarla es que lo que ya funciona no dependa de lo nuevo.
+  alAgregar?: (linea: { productId: string; quantity: number; currency: PriceCurrency }) => void;
+  // LAS MONEDAS QUE SE PUEDEN ELEGIR, cuando quien mira no es el cliente. Va
+  // junto a `alAgregar` y por el mismo motivo: el libro del tendero no admite
+  // bolívares ni USDT. Sin ella, esta pantalla ofrecería una moneda que la
+  // venta rechaza al guardar.
+  monedasPermitidas?: PriceCurrency[];
   // NO `baseCurrency` NOR `currencies` AS PROPS SINCE MIGRATION 114. Both
   // belong to the TIER now and travel inside each `BloquePrecio`, so this
   // screen cannot hold one base while showing two tiers' prices -- which is
@@ -137,8 +161,20 @@ export function ProductDetail({
   const escalon = escalonParaCantidad(producto, n);
   const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
   const monedas = useMemo(
-    () => monedasDelBloque(bloque, rates),
-    [bloque, rates],
+    () => {
+      const todas = monedasDelBloque(bloque, rates);
+      // SIN FILTRO, LO DE SIEMPRE: el cliente paga en lo que el producto
+      // ofrezca, bolívares y USDT incluidos.
+      if (!monedasPermitidas) return todas;
+      // CON FILTRO —la venta del tendero— SOLO LAS QUE SU LIBRO SABE GUARDAR.
+      // `movements.currency` admite dólares y euros, o nada en un negocio
+      // colombiano; ni bolívares ni USDT son un libro. Sin esto, esta pantalla
+      // ofrecería al tendero cobrar en bolívares y `registrarVenta` lo
+      // rechazaría después de haber montado el carrito: ofrecer lo que el
+      // servidor rechaza es mover el fallo a más tarde, no evitarlo.
+      return todas.filter((c) => monedasPermitidas.includes(c));
+    },
+    [bloque, rates, monedasPermitidas],
   );
 
   // LA MONEDA ELEGIDA NO ES UN ESTADO INDEPENDIENTE, y eso evita un fallo que
@@ -405,7 +441,11 @@ export function ProductDetail({
           mano la URL del carrito llega igual. Es que lo que el tendero revisa
           tiene que ser lo que su cliente verá, y un carrito que él mismo
           llenó probando no es eso. */}
-      {isPreview ? null : (
+      {/* NI EN LA VISTA PREVIA NI EN UNA VENTA DEL TENDERO. «Agrega
+          comentarios al dueño» enseñado AL dueño no significa nada — es la
+          misma razón por la que la vista previa lo esconde, aplicada a quien
+          está cobrando en vez de a quien está revisando. */}
+      {isPreview || alAgregar ? null : (
         <div className="flex flex-col gap-2">
           <Label htmlFor="comentario">Comentarios</Label>
           <Textarea
@@ -463,6 +503,14 @@ export function ProductDetail({
             disabled={bloque == null || moneda == null || total == null}
             onClick={() => {
               if (bloque == null || moneda == null || total == null) return;
+              // EN UNA VENTA DEL TENDERO la línea sale por aquí y no se toca
+              // nada más: ni el carrito del cliente en `localStorage`, ni el
+              // aviso, ni la navegación. El asistente de venta guarda su
+              // carrito en memoria y se encarga de volver a la cuadrícula.
+              if (alAgregar) {
+                alAgregar({ productId, quantity: n, currency: moneda });
+                return;
+              }
               agregar({
                 productId,
                 quantity: n,
