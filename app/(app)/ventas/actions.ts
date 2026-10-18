@@ -209,6 +209,66 @@ export async function buscarProductosParaVenta(query: string): Promise<Productos
 }
 
 // ===========================================================================
+// EL CLIENTE MOSTRADOR, resuelto cuando el tendero lo pide
+// ===========================================================================
+//
+// EL NOMBRE DEL CLIENTE COMODÍN vive aquí y no en la base por una razón: es
+// texto que el tendero lee, así que cambiarlo es cambiar una palabra en un
+// archivo, no una migración sobre filas de 24 negocios.
+const NOMBRE_MOSTRADOR = "Mostrador";
+
+// SE CREA AL ELEGIRLO, NO AL ABRIR LA PANTALLA. Hasta el 2026-10-18 esto
+// pasaba en la propia página, así que entrar en `/ventas/nueva` creaba la fila
+// aunque la venta fuera para un cliente con nombre — y desde que «Agregar» de
+// Inicio abre aquí, eso le habría pasado a TODOS los dueños al primer toque,
+// con `CT-99` todavía abierto: un cliente llamado «Mostrador» en su lista sin
+// haber hecho una sola venta de mostrador.
+//
+// Y tampoco se crea en la migración `124`: 24 filas para negocios que quizá
+// nunca vendan al mostrador son 24 filas que alguien tiene que explicar
+// después. Nace la primera vez que hace falta.
+export async function resolverMostrador(): Promise<{ id: string; name: string } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  // EL ÍNDICE ÚNICO PARCIAL ES QUIEN DE VERDAD GARANTIZA QUE HAYA UNO SOLO.
+  // Dos pestañas pidiéndolo a la vez pasarían las dos por esta lectura sin
+  // encontrar nada y las dos intentarían crearlo; la segunda falla en la base,
+  // y entonces se vuelve a leer. Sin ese segundo intento, una de las dos se
+  // quedaría sin mostrador por una carrera que dura milisegundos.
+  const existente = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("owner_id", user.id)
+    .eq("is_walk_in", true)
+    .maybeSingle();
+  if (existente.data) return existente.data;
+
+  const creado = await supabase
+    .from("clients")
+    .insert({ owner_id: user.id, name: NOMBRE_MOSTRADOR, is_walk_in: true })
+    .select("id, name")
+    .maybeSingle();
+  if (creado.data) return creado.data;
+
+  const segunda = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("owner_id", user.id)
+    .eq("is_walk_in", true)
+    .maybeSingle();
+  if (segunda.data) return segunda.data;
+
+  // Ni con las dos: aquí ya no es una carrera, es que algo falla de verdad. El
+  // detalle real al log y una frase que no cuenta la forma de la base.
+  console.error("resolverMostrador:", creado.error?.message);
+  return { error: "No pudimos abrir la venta de mostrador. Vuelve a intentarlo." };
+}
+
+// ===========================================================================
 // GUARDAR LA VENTA
 // ===========================================================================
 

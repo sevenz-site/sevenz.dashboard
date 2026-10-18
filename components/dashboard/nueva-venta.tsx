@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronRight, ImageOff, Minus, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ChevronRight, ImageOff, Minus, Plus, Store, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   buscarProductosParaVenta,
   registrarVenta,
+  resolverMostrador,
   type ProductoParaVenta,
   type ProductosParaVenta,
 } from "@/app/(app)/ventas/actions";
@@ -72,18 +74,24 @@ type LineaVenta = {
 };
 
 type Cliente = { id: string; name: string };
+// El cliente elegido, con la única cosa que la pantalla necesita saber además
+// de su nombre: si es el comodín, porque al mostrador no se le puede fiar.
+type Elegido = Cliente & { esMostrador: boolean };
 
 export function NuevaVenta({
-  cliente,
-  esMostrador,
+  clientes,
+  inicial,
 }: {
-  cliente: Cliente;
-  // La venta de mostrador apunta al cliente comodín del negocio. La pantalla
-  // lo dice para que el tendero no crea que le está fiando a alguien.
-  esMostrador: boolean;
+  // La lista del buscador del paso 1, sin el mostrador: se elige con su propio
+  // botón y no buscándolo por nombre.
+  clientes: Cliente[];
+  // Ya resuelto cuando se entra desde la ficha de un cliente (`?cliente=`).
+  // `null` = se entró por «Agregar» de Inicio y hay que elegir.
+  inicial: Elegido | null;
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
+  const [cliente, setCliente] = useState<Elegido | null>(inicial);
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [catalogo, setCatalogo] = useState<ProductosParaVenta | null>(null);
 
@@ -117,7 +125,12 @@ export function NuevaVenta({
       </div>
 
       {paso === 1 ? (
-        <PasoCliente cliente={cliente} esMostrador={esMostrador} onContinuar={() => setPaso(2)} />
+        <PasoCliente
+          clientes={clientes}
+          cliente={cliente}
+          onElegir={setCliente}
+          onContinuar={() => setPaso(2)}
+        />
       ) : null}
 
       {paso === 2 ? (
@@ -142,11 +155,15 @@ export function NuevaVenta({
         />
       ) : null}
 
-      {paso === 4 ? (
+      {/* LOS PASOS 2 A 4 NO EXISTEN SIN CLIENTE. No puede pasar —al paso 2 solo
+          se llega desde el 1, que exige elegir— pero escrito así el tipo lo
+          garantiza en vez de obligar a un `!` que el día que cambie el flujo
+          dejaría pasar un `undefined` a la acción que escribe la deuda. */}
+      {paso === 4 && cliente ? (
         <PasoPago
           clienteId={cliente.id}
           nombreCliente={cliente.name}
-          esMostrador={esMostrador}
+          esMostrador={cliente.esMostrador}
           lineas={lineas}
           total={total}
           rates={catalogo?.rates ?? null}
@@ -158,36 +175,162 @@ export function NuevaVenta({
 }
 
 // ── 1/4 ────────────────────────────────────────────────────────────────
+// A QUIÉN LE VENDE. Dos estados en la misma pantalla: elegir, y ya elegido.
+//
+// SE ENTRA POR AQUÍ DESDE EL «AGREGAR» DE INICIO (2026-10-18). Antes este paso
+// solo informaba de un cliente que ya venía resuelto en la URL, y sin ese
+// parámetro la venta caía siempre en el mostrador — así que «Todo fiado» era
+// **inalcanzable** entrando desde el panel, y el propio paso decía «vuelve y
+// elige a la persona» sin que hubiera nada atrás a lo que volver.
 function PasoCliente({
+  clientes,
   cliente,
-  esMostrador,
+  onElegir,
   onContinuar,
 }: {
-  cliente: Cliente;
-  esMostrador: boolean;
+  clientes: Cliente[];
+  cliente: Elegido | null;
+  onElegir: (c: Elegido | null) => void;
   onContinuar: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [abriendoMostrador, setAbriendoMostrador] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // ── YA ELEGIDO ──────────────────────────────────────────────────────
+  if (cliente) {
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <div className="flex flex-col gap-1 rounded-xl border p-4">
+          <p className="text-xs text-muted-foreground">
+            {cliente.esMostrador ? "Venta de mostrador" : "Le vendes a"}
+          </p>
+          <p className="text-lg font-semibold">{cliente.name}</p>
+          {cliente.esMostrador ? (
+            // LO QUE ESTO SIGNIFICA, DICHO AQUÍ Y NO EN UNA AYUDA: una venta de
+            // mostrador no se le puede fiar a nadie, porque no hay a quién
+            // cobrarle después. Enterarse de eso en el paso 4, con el cliente
+            // delante, sería tarde.
+            <p className="pt-1 text-xs leading-relaxed text-muted-foreground">
+              No queda a nombre de ningún cliente, así que esta venta se cobra completa. Si vas a
+              fiar, elige a la persona.
+            </p>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-10 self-start px-2 text-sm"
+          onClick={() => {
+            onElegir(null);
+            setQuery("");
+          }}
+        >
+          Es para otra persona
+        </Button>
+        <div className="flex-1" />
+        <Button type="button" className="h-12 w-full" onClick={onContinuar}>
+          Continuar
+        </Button>
+      </div>
+    );
+  }
+
+  // ── ELIGIENDO ───────────────────────────────────────────────────────
+  //
+  // SE FILTRA EN EL NAVEGADOR y no con una consulta por cada letra: la lista
+  // llega entera con la pantalla, y es la misma que alimenta el buscador de
+  // «agregar movimiento» de Inicio. Un negocio con 214 clientes —el mayor que
+  // hay hoy— son unos pocos kilobytes.
+  const texto = query.trim().toLowerCase();
+  const encontrados = texto === "" ? clientes : clientes.filter((c) => c.name.toLowerCase().includes(texto));
+
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex flex-col gap-1 rounded-xl border p-4">
-        <p className="text-xs text-muted-foreground">
-          {esMostrador ? "Venta de mostrador" : "Le vendes a"}
-        </p>
-        <p className="text-lg font-semibold">{cliente.name}</p>
-        {esMostrador ? (
-          // LO QUE ESTO SIGNIFICA, DICHO AQUÍ Y NO EN UNA AYUDA: una venta de
-          // mostrador no se le puede fiar a nadie, porque no hay a quién
-          // cobrarle después. Enterarse de eso en el paso 4, con el cliente
-          // delante, sería tarde.
-          <p className="pt-1 text-xs leading-relaxed text-muted-foreground">
-            No queda a nombre de ningún cliente, así que esta venta se cobra completa. Si vas a
-            fiar, vuelve y elige a la persona.
+      <SearchField value={query} onChange={setQuery} placeholder="Buscar cliente" />
+
+      {/* EL MOSTRADOR, ARRIBA Y CON SU PROPIO BOTÓN. No sale en la lista de
+          abajo a propósito: ahí parecería un cliente llamado «Mostrador» al que
+          se le puede fiar, que es justo lo que el paso 4 prohíbe.
+
+          Y la fila en la base NO EXISTE hasta que se pulsa esto — ver
+          `resolverMostrador`. Crearla al abrir la pantalla le habría puesto un
+          cliente «Mostrador» en la lista a todos los dueños al primer toque de
+          «Agregar», con `CT-99` todavía sin cerrar. */}
+      <button
+        type="button"
+        disabled={abriendoMostrador}
+        onClick={async () => {
+          setError(null);
+          setAbriendoMostrador(true);
+          const r = await resolverMostrador();
+          if ("error" in r) {
+            setError(r.error);
+            setAbriendoMostrador(false);
+            return;
+          }
+          onElegir({ ...r, esMostrador: true });
+        }}
+        className="flex items-center gap-3 rounded-xl border p-4 text-left disabled:opacity-60"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Store className="size-5" aria-hidden="true" />
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium">
+            {abriendoMostrador ? "Abriendo…" : "Venta de mostrador"}
+          </span>
+          <span className="text-xs leading-relaxed text-muted-foreground">
+            Sin cliente. Se cobra completa, no se puede fiar.
+          </span>
+        </span>
+      </button>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      {encontrados.length > 0 ? (
+        <div className="flex flex-col overflow-hidden rounded-xl border">
+          {encontrados.map((c, i) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onElegir({ ...c, esMostrador: false })}
+              className={`flex items-center justify-between gap-3 p-4 text-left ${i > 0 ? "border-t" : ""}`}
+            >
+              <span className="truncate text-sm font-medium">{c.name}</span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed px-6 py-8 text-center">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {clientes.length === 0
+              ? "Todavía no tienes clientes registrados."
+              : `Ningún cliente se llama «${query.trim()}».`}
           </p>
-        ) : null}
-      </div>
+        </div>
+      )}
+
       <div className="flex-1" />
-      <Button type="button" className="h-12 w-full" onClick={onContinuar}>
-        Continuar
+
+      {/* CLIENTE NUEVO: VA AL ALTA QUE YA EXISTE, no a un formulario nuevo aquí.
+          Esa pantalla pide el WhatsApp con su permiso (`MS-34`), avisa de
+          nombres duplicados y guarda el primer movimiento con su plazo y sus
+          cuotas. Rehacerla dentro del asistente sería duplicar el formulario
+          más delicado de la app para ahorrar una navegación.
+
+          LO QUE ESTO NO HACE, dicho porque se va a notar: el alta crea al
+          cliente CON su primer movimiento, que es un fiado, no una venta con
+          productos. Para que un cliente nuevo pueda nacer con una venta hay que
+          dejar que `registrarVenta` lo cree — lo mismo que hace
+          `createClientWithMovement`— y eso es trabajo propio, no un añadido a
+          este botón. */}
+      <Button asChild variant="outline" className="h-12 w-full">
+        <Link href="/dashboard?nuevo=1">
+          <UserPlus className="size-4" aria-hidden="true" />
+          Registrar cliente nuevo
+        </Link>
       </Button>
     </div>
   );

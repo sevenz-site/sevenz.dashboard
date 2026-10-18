@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { NewSaleButton } from "@/components/dashboard/new-sale-button";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
 import {
@@ -271,16 +272,17 @@ export default async function DashboardPage({
                 is the trigger, at md and up there is no bottom bar and this
                 button is the only one. With the old `sm` there was a 128px band
                 — 640 to 768 — where BOTH were on screen. */}
+            {/* DESDE EL 2026-10-18 ABRE LA VENTA, no el diálogo de registrar
+                movimiento. Decisión del dueño: *«los cuatro pasos se mostrarán
+                al presionar el botón "Agregar" en el home, ahí abre el paso
+                1/4»*. El diálogo de siempre sigue montado más abajo —lo abre
+                `?nuevo=1`, que es a donde manda «Registrar cliente nuevo» del
+                paso 1— pero ya no tiene disparador visible en ninguna anchura.
+                `NewSaleButton` lleva el marcador del tour que el disparador del
+                diálogo llevaba. */}
             <HideWhileResults>
               <div className="hidden md:block">
-                <ClientSearchDialog
-                  clients={clients ?? []}
-                  ownerId={user!.id}
-                  businessName={owner?.business_name || user!.email || "tu negocio"}
-                  ownerCountry={ownerCountry}
-                  rateContext={rateContext}
-                  monedaHabitual={monedaHabitual}
-                />
+                <NewSaleButton />
               </div>
             </HideWhileResults>
           </div>
@@ -365,22 +367,25 @@ export default async function DashboardPage({
           </div>
         </HideWhileResults>
 
-        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
-            autoOpen lives here; the desktop one must not also receive it or both
-            would open and stack.
+        {/* EL DIÁLOGO DE REGISTRAR MOVIMIENTO, sin disparador visible y en TODAS
+            las anchuras.
 
             NO VISIBLE BUTTON since delivery 3: the floating "Agregar" took over
-            as the trigger. What stays is the DIALOG, and it has to — the
-            floating button navigates to `?nuevo=1`, and this instance is what
-            reads that marker and opens. Deleting the component instead of its
-            button would leave that button pointing at a screen with nothing to
-            open on it.
+            as the trigger. What stays is the DIALOG, and it has to — something
+            has to read `?nuevo=1` and open.
+
+            DEJÓ DE SER `md:hidden` EL 2026-10-18, y es la mitad que se olvida
+            del cambio de «Agregar»: en escritorio ya no hay ninguna otra
+            instancia —la de arriba pasó a ser `NewSaleButton`— así que con la
+            clase puesta, «Registrar cliente nuevo» del paso 1/4 mandaría a
+            `/dashboard?nuevo=1` y no se abriría nada. Una navegación que no
+            hace nada, sin error, solo en escritorio.
 
             It still moves aside while the match list is open, like the capital
             card: the dialog is invisible, but a mounted Radix trigger is not
             the only thing that can swallow a tap near the list's edge. */}
         <HideWhileResults>
-          <div className="md:hidden">
+          <div>
             <ClientSearchDialog
               clients={clients ?? []}
               ownerId={user!.id}

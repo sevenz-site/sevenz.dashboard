@@ -6,17 +6,12 @@ import { NuevaVenta } from "@/components/dashboard/nueva-venta";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
 
-// EL NOMBRE DEL CLIENTE COMODÍN, y vive aquí y no en la base por una razón:
-// es texto que el tendero lee, así que cambiarlo es cambiar una palabra en un
-// archivo, no una migración sobre filas de 24 negocios.
-const NOMBRE_MOSTRADOR = "Mostrador";
-
 export default async function NuevaVentaPage({
   searchParams,
 }: {
-  // `?cliente=<id>` LO PONE EL BOTÓN «Venta o fiado» de la ficha del cliente,
-  // que es de donde el sitemap hace salir este asistente. Sin él, la venta es
-  // de mostrador.
+  // `?cliente=<id>` LO PONE EL BOTÓN «Venta o fiado» de la ficha del cliente.
+  // Sin él se entra por el paso 1, que es lo que abre el «Agregar» de Inicio
+  // desde el 2026-10-18, y ahí el tendero elige a quién le vende.
   searchParams: Promise<{ cliente?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
@@ -28,6 +23,24 @@ export default async function NuevaVentaPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // LA LISTA PARA EL BUSCADOR DEL PASO 1. Mismos filtros que la del «agregar
+  // movimiento» de Inicio, Clientes y Malas pagas: los ocultos quedan fuera
+  // (decisión O2), para que «oculto» signifique lo mismo en todas.
+  //
+  // EL MOSTRADOR TAMBIÉN QUEDA FUERA, y aquí sí importa: aparecería como un
+  // cliente llamado «Mostrador» al que se le puede fiar, que es justo lo que
+  // la pantalla de pago prohíbe. Se elige con su propio botón, no buscándolo.
+  // (Es la única exclusión que existe hoy: `CT-99` sigue abierto para el resto
+  // de las listas.)
+  const { data: clientes } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("owner_id", user.id)
+    .is("trashed_at", null)
+    .is("deleted_at", null)
+    .eq("is_walk_in", false)
+    .order("name");
+
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
   // solo por RLS. Es la regla de `CLAUDE.md` para toda lectura por un id que
   // llega del navegador, y aquí decide a nombre de quién va a quedar una
@@ -35,61 +48,23 @@ export default async function NuevaVentaPage({
   if (clienteId) {
     const { data } = await supabase
       .from("clients")
-      .select("id, name")
+      .select("id, name, is_walk_in")
       .eq("id", clienteId)
       .eq("owner_id", user.id)
       .is("trashed_at", null)
       .maybeSingle();
-    // Un id que no es suyo no da error ni explicación: cae en la venta de
-    // mostrador, igual que si no hubiera traído ninguno. Quien pruebe ids al
+    // Un id que no es suyo no da error ni explicación: cae en el paso 1 con el
+    // buscador, igual que si no hubiera traído ninguno. Quien pruebe ids al
     // azar no aprende nada de la diferencia.
-    if (data) return <NuevaVenta cliente={data} esMostrador={false} />;
+    if (data) {
+      return (
+        <NuevaVenta
+          clientes={clientes ?? []}
+          inicial={{ id: data.id, name: data.name, esMostrador: data.is_walk_in }}
+        />
+      );
+    }
   }
 
-  // ── EL CLIENTE MOSTRADOR ────────────────────────────────────────────
-  //
-  // SE CREA AQUÍ Y NO EN LA MIGRACIÓN `124`, a propósito: crear 24 filas para
-  // negocios que quizá nunca hagan una venta de mostrador son 24 filas que
-  // alguien tiene que explicar después. Nace la primera vez que hace falta.
-  //
-  // EL ÍNDICE ÚNICO PARCIAL ES QUIEN DE VERDAD GARANTIZA QUE HAYA UNO SOLO.
-  // Dos pestañas abriendo esta pantalla a la vez pasarían las dos por el
-  // `maybeSingle` de abajo sin encontrar nada y las dos intentarían crearlo;
-  // la segunda falla en la base, y entonces se vuelve a leer. Sin ese
-  // segundo intento, una de las dos pestañas se quedaría sin mostrador por
-  // una carrera que dura milisegundos y pasa una vez al año.
-  const existente = await supabase
-    .from("clients")
-    .select("id, name")
-    .eq("owner_id", user.id)
-    .eq("is_walk_in", true)
-    .maybeSingle();
-  if (existente.data) return <NuevaVenta cliente={existente.data} esMostrador />;
-
-  const creado = await supabase
-    .from("clients")
-    .insert({ owner_id: user.id, name: NOMBRE_MOSTRADOR, is_walk_in: true })
-    .select("id, name")
-    .maybeSingle();
-  if (creado.data) return <NuevaVenta cliente={creado.data} esMostrador />;
-
-  const segundaLectura = await supabase
-    .from("clients")
-    .select("id, name")
-    .eq("owner_id", user.id)
-    .eq("is_walk_in", true)
-    .maybeSingle();
-  if (segundaLectura.data) return <NuevaVenta cliente={segundaLectura.data} esMostrador />;
-
-  // NI CON LAS DOS: aquí ya no es una carrera, es que algo falla de verdad.
-  // El detalle real al log y una frase que no cuenta la forma de la base.
-  console.error("[nuevaVenta] no se pudo resolver el cliente mostrador:", creado.error?.message);
-  return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <h1 className="text-xl font-semibold">No pudimos abrir la venta</h1>
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        Vuelve a intentarlo en un momento. Si sigue pasando, escríbenos.
-      </p>
-    </main>
-  );
+  return <NuevaVenta clientes={clientes ?? []} inicial={null} />;
 }

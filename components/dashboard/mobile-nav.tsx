@@ -231,11 +231,26 @@ export function MobileNav() {
   // out of the way of.
   //
   // So it navigates to `?nuevo=1` and the catalogue opens its own dialog from
-  // that marker, exactly as Inicio already does. The mechanism is proven,
+  // that marker, exactly as Inicio already did. The mechanism is proven,
   // including the two traps `ClientSearchDialog` documents: repeat taps, and
   // clearing the marker through the router rather than `replaceState`.
+  //
+  // ========================================================================
+  // DESDE EL 2026-10-18 «AGREGAR» ABRE LA VENTA, NO EL DIÁLOGO DE MOVIMIENTO
+  //
+  // Decisión del dueño: *«los cuatro pasos se mostrarán al presionar el botón
+  // "Agregar" en el home, ahí abre el paso 1/4»*. Es el paso 8 del sitemap
+  // `1269:6051`: Sevenz deja de ser solo un libro de fiados, así que la puerta
+  // grande es la venta y un fiado manual es «una venta sin pago».
+  //
+  // ES UNA RUTA, NO UN MARCADOR, y eso cambia una cosa que no se ve: se navega
+  // con `push` y no con `replace`. El `replace` era correcto para `?nuevo=1`
+  // —un marcador en la misma página, que con `push` quedaría en el historial y
+  // reabriría el diálogo al volver atrás— pero con una ruta de verdad borraría
+  // la entrada de Inicio, y la flecha del paso 1/4 llama a `router.back()`:
+  // sacaría al tendero de la app.
   const enCatalogo = pathname === "/productos";
-  const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/dashboard?nuevo=1";
+  const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/ventas/nueva";
   const agregarLabel = enCatalogo ? "Crear producto" : "Agregar";
 
   // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
@@ -390,7 +405,11 @@ export function MobileNav() {
             // there, but the guard stays cheap and correct if that changes.
             if (tour.step === 1) tour.advance();
             setGoingTo(agregarHref);
-            startTransition(() => router.replace(agregarHref));
+            // `replace` solo para el marcador del catálogo; ver el comentario
+            // de `agregarHref`.
+            startTransition(() =>
+              enCatalogo ? router.replace(agregarHref) : router.push(agregarHref),
+            );
           });
         }}
         // Sits one gap above the bar, inside the strip `AppMain` already
