@@ -1172,6 +1172,57 @@ una acción por defecto evidente. Mientras era solo un libro de fiados,
 tendero que viene a anotar un abono y el que viene de vender son el mismo
 número de tenderos, y un botón que elija por ellos se equivoca con la mitad.
 
+### Un `startsWith` de ruta alcanza a las pantallas que todavía no existen
+
+**`/ventas` dejó de significar «el asistente» el 2026-10-18**, el día que nació
+`/ventas/<id>`, el resumen de la venta (frame `1389:8595`). Hasta esa mañana la
+barra de abajo y la cabecera lo escondían todo con un
+`pathname.startsWith("/ventas")`, y era correcto: no había más que el asistente
+debajo de ese prefijo.
+
+**La ruta nueva heredó el escondite sin que nadie lo decidiera.** El frame del
+resumen dibuja la barra, y esa pantalla **no tiene cabecera**: sin la barra se
+queda sin ninguna salida. El `startsWith` no falla, no avisa y no sale en
+ningún diff — la regla que escondía la barra está en `mobile-nav.tsx`, y quien
+escribe la pantalla nueva no tiene razón para abrir ese archivo. Es el mismo
+fallo que ya le pasó a `/papelera`, al catálogo y al propio asistente, pero al
+revés: ahí sobraba una barra, aquí faltaba.
+
+**La regla, entonces**: al añadir una ruta bajo un prefijo que ya aparece en
+`mobile-nav.tsx` o en `app-header.tsx`, se abren los dos y se decide si el
+prefijo todavía dice lo que quería decir. Hoy son
+`startsWith("/ventas/nueva")` para el asistente —ni barra ni flotante— y
+cualquier otra `/ventas/` para el resumen, que lleva barra y **no** flotante:
+«Registrar» empieza OTRA venta, encima del resumen de la que se acaba de hacer.
+
+### La imagen que se comparte no tiene frame, y no por eso se dibuja a ojo
+
+El frame dibuja la **pantalla**: lo que el tendero mira con la venta delante,
+dentro de Sevenz y sin salir. El fichero que sale por «Compartir» acaba en un
+chat ajeno, quizá reenviado, quizá abierto mañana — y ahí hay tres cosas que la
+pantalla no necesita y la imagen sí:
+
+- **De quién es la cuenta.** Un resumen de deuda sin nombre no sirve para nada
+  fuera de la pantalla donde se acaba de registrar.
+- **La marca.** Sin logo, un texto sobre dinero es una captura cualquiera.
+- **El aviso antifraude.** Es justo la situación para la que existe: un mensaje
+  sobre dinero, con cifras, desde un número que el destinatario no tiene
+  agendado.
+
+Los tres salieron del recibo del carrito (`lib/cart/recibo-imagen.ts`, 2026-10-15),
+y la petición del dueño el 2026-10-18 fue literalmente *«igual que se comparte
+la imagen de la orden de compra»*. Copiar su pie no es inventar: es la frase que
+pedía.
+
+**Lo que NO se improvisa es el resto.** Las cifras de la imagen y las de la
+pantalla salen de las mismas funciones —`formatPriceAmount`, `formatCantidad`,
+`formatBs`, `priceIn`—, así que pueden separarse en maqueta pero nunca en
+número. Y el borde de cada tarjeta se traza **después** del contenido, con la
+altura que de verdad ocupó: la primera versión la sumaba aparte para poderlo
+pintar primero y se quedó doce píxeles corta, con la última fila montada sobre
+su propio borde. En un canvas no hay `height: auto`; lo más parecido es no
+adelantarse.
+
 ### Un componente que se desmonta solo no puede ser el padre de lo que provoca ese desmontaje
 
 **Colgó la app entera el 2026-10-18**, el mismo día que se construyó la hoja, y

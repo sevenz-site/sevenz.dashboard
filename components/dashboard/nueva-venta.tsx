@@ -330,10 +330,19 @@ export function NuevaVenta({
       return;
     }
 
-    // A LA FICHA DEL CLIENTE, que es donde el fiado se ve y se cobra. Para una
-    // venta de mostrador no hay ficha que valga —el comodín no se visita— así
-    // que vuelve al panel.
-    router.push(destino.esMostrador ? "/dashboard" : `/clients/${destino.id}`);
+    // AL RESUMEN DE LA VENTA, frame `1389:8595`. Encargo del dueño el
+    // 2026-10-18: «Al completar el pago se debe mostrar resumen de la compra».
+    //
+    // ANTES IBA A LA FICHA DEL CLIENTE —o al panel, en el mostrador—, y eso
+    // dejaba al tendero mirando un saldo nuevo sin decirle de dónde salía.
+    // Peor en el contado: la venta pagada no escribe nada en `movements`, así
+    // que el panel se veía EXACTAMENTE igual que antes de cobrar y la única
+    // señal de que algo se había guardado era que la pantalla cambió.
+    //
+    // `push` y no `replace`: el resumen es el final del camino y el botón de
+    // atrás tiene que poder volver a él, que es lo que pasa en cuanto el
+    // tendero toca algo de la barra de abajo y se arrepiente.
+    router.push(`/ventas/${resultado.saleId}`);
   }
 
 

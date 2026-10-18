@@ -233,7 +233,20 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // Y ADEMAS ESTORBA DE VERDAD: el flotante dice «Registrar» y abre la hoja que
   // empieza una venta, flotando ENCIMA de la venta que el tendero ya esta
   // haciendo. Pulsarlo tiraria el carrito sin avisar.
-  const enVenta = pathname.startsWith("/ventas");
+  //
+  // SOLO EL ASISTENTE, desde el 2026-10-18. El resumen de la venta
+  // (`/ventas/<id>`, frame `1389:8595`) SÍ dibuja la barra, y con razón: el
+  // asistente es un flujo a medias del que no se sale sin tirar el carrito, y
+  // el resumen es el final — el tendero ya terminó y lo siguiente que hace es
+  // irse a otro sitio. Quitarle la barra ahí lo dejaría sin salida, porque esa
+  // pantalla tampoco lleva cabecera.
+  const enAsistenteDeVenta = pathname.startsWith("/ventas/nueva");
+
+  // Y EN EL RESUMEN SE VA SOLO EL FLOTANTE, no la barra. El frame no lo
+  // dibuja, y es el mismo motivo que en el asistente llevado un paso más
+  // allá: «Registrar» abre la hoja que empieza OTRA venta, encima del resumen
+  // de la que se acaba de hacer. Lo que esa pantalla ofrece es compartir.
+  const enResumenDeVenta = pathname.startsWith("/ventas/") && !enAsistenteDeVenta;
 
   // THE FLOATING BUTTON CHANGES WHAT IT DOES ON THE CATALOGUE.
   //
@@ -393,7 +406,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  if (onClientDetail || enVenta) return null;
+  if (onClientDetail || enAsistenteDeVenta) return null;
 
   return (
     <>
@@ -413,7 +426,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
           Y no sale en /import, ni en /profile, ni en Pedidos: ver
           `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !enResumenDeVenta && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

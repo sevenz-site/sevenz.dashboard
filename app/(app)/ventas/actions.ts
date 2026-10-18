@@ -940,3 +940,160 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     fiado,
   };
 }
+
+// ===========================================================================
+// EL RESUMEN DE UNA VENTA YA GUARDADA
+// ===========================================================================
+
+export type BloqueDelResumen = {
+  currency: PriceCurrency;
+  lineas: { name: string; quantity: number; total: number }[];
+  total: number;
+  // Lo que el cliente entregó hoy en este libro.
+  cobrado: number;
+  // Lo que quedó debiendo de ESTA venta.
+  debe: number;
+  // Lo que ya debía ANTES de esta venta, en este mismo libro. `null` cuando no
+  // hay cuenta que mirar: una venta de mostrador no es de nadie.
+  deudaAntigua: number | null;
+};
+
+export type ResumenDeVenta =
+  | {
+      ok: true;
+      saleId: string;
+      businessName: string;
+      // `null` en el mostrador. Es lo que decide si la pantalla nombra a
+      // alguien y si tiene sentido hablar de deuda antigua.
+      clientName: string | null;
+      bloques: BloqueDelResumen[];
+      rates: BolivarRates | null;
+    }
+  | { ok: false; error: string };
+
+// LO QUE LA VENTA DEJÓ, RECONSTRUIDO DESDE LA BASE Y NO DESDE LA PANTALLA.
+//
+// `registrarVenta` ya devuelve `cobrado` y `fiado`, así que el asistente
+// podría pintar este resumen con lo que tiene en memoria y ahorrarse esta
+// consulta. No se hace, por dos razones que no son de estilo:
+//
+//   · ESTA PANTALLA TIENE URL. El tendero puede recargarla, volver a ella o
+//     compartirla con el teléfono en la mano media hora después; un resumen
+//     que vive en el estado de React se queda en blanco en cuanto eso pasa.
+//   · Y LO QUE SE ENSEÑA ES LO QUE SE GUARDÓ. Un resumen dibujado con las
+//     cifras del navegador diría que todo salió bien aunque el servidor
+//     hubiera redondeado distinto o topado un pago. Esta pantalla es lo que
+//     el tendero le enseña a su cliente: tiene que salir del mismo sitio del
+//     que sale su saldo.
+export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  // LA VENTA SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
+  // solo por RLS -- la regla de `CLAUDE.md` para toda fila leída por un id que
+  // llega del navegador. Aquí se leería la compra de un cliente de otro
+  // negocio, con sus productos y su deuda.
+  const { data: venta } = await supabase
+    .from("sales")
+    .select("id, client_id, created_at")
+    .eq("id", saleId)
+    .eq("owner_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!venta) return { ok: false, error: "No encontramos esa venta." };
+
+  const [{ data: lineas }, { data: pagos }, { data: cliente }, { data: duenio }, contexto] =
+    await Promise.all([
+      supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", venta.id),
+      supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
+      supabase.from("clients").select("name, is_walk_in").eq("id", venta.client_id).maybeSingle(),
+      supabase.from("owners").select("business_name").eq("id", user.id).maybeSingle(),
+      contextoDeVenta(supabase, user.id),
+    ]);
+
+  // LO QUE DEBÍA ANTES, Y «ANTES» ES UNA FECHA, no «el saldo de hoy menos esta
+  // venta». La resta parece equivalente y solo lo es en el instante justo
+  // después de guardar: el día que el tendero vuelva a abrir este enlace —o
+  // simplemente registre un abono y use el botón de atrás— el saldo ya no es
+  // el mismo y la resta empieza a inventar una cifra que nunca existió.
+  //
+  // Con la fecha, «Deuda antigua» es un hecho histórico y dice lo mismo hoy
+  // que dentro de un año, que es lo que una pantalla compartible necesita.
+  //
+  // `sale_id` se descarta además de la fecha: los cargos de esta venta se
+  // escriben inmediatamente después de la fila de `sales` y dos marcas de
+  // tiempo iguales harían que su propia deuda se contara como antigua.
+  const { data: previos } = venta.client_id
+    ? await supabase
+        .from("movements")
+        .select("type, amount, currency, sale_id")
+        .eq("client_id", venta.client_id)
+        .is("deleted_at", null)
+        .lte("created_at", venta.created_at)
+    : { data: [] };
+
+  const deudaPrevia = new Map<PriceCurrency, number>();
+  for (const m of previos ?? []) {
+    if (m.sale_id === venta.id) continue;
+    // `currency` nulo es el libro de un negocio colombiano, que es una
+    // respuesta y no una ausencia -- el mismo criterio que `libroDeMoneda`.
+    const libro = (m.currency ?? "COP") as PriceCurrency;
+    const signo = m.type === "charge" ? 1 : -1;
+    deudaPrevia.set(libro, (deudaPrevia.get(libro) ?? 0) + signo * Number(m.amount));
+  }
+
+  const totales = new Map<PriceCurrency, number>();
+  const porMoneda = new Map<PriceCurrency, { name: string; quantity: number; total: number }[]>();
+  for (const l of lineas ?? []) {
+    const moneda = l.currency as PriceCurrency;
+    const total = redondear(Number(l.quantity) * Number(l.unit_price));
+    porMoneda.set(moneda, [
+      ...(porMoneda.get(moneda) ?? []),
+      { name: l.name as string, quantity: Number(l.quantity), total },
+    ]);
+    totales.set(moneda, redondear((totales.get(moneda) ?? 0) + total));
+  }
+
+  const cobrados = new Map<PriceCurrency, number>();
+  for (const p of pagos ?? []) {
+    const moneda = p.currency as PriceCurrency;
+    cobrados.set(moneda, redondear((cobrados.get(moneda) ?? 0) + Number(p.amount)));
+  }
+
+  // EL ORDEN ES EL DEL FRAME —dólares, euros, pesos—, no el de llegada de las
+  // filas: dos ventas con los mismos libros tienen que enseñar sus tarjetas en
+  // el mismo orden, o el tendero las compara mal.
+  const ORDEN: PriceCurrency[] = ["USD", "EUR", "COP"];
+  const monedas = ORDEN.filter((c) => totales.has(c) || cobrados.has(c));
+
+  const esMostrador = cliente?.is_walk_in === true;
+  const bloques: BloqueDelResumen[] = monedas.map((currency) => {
+    const total = totales.get(currency) ?? 0;
+    const cobrado = cobrados.get(currency) ?? 0;
+    const debe = redondear(Math.max(0, total - cobrado));
+    return {
+      currency,
+      lineas: porMoneda.get(currency) ?? [],
+      total,
+      cobrado,
+      debe,
+      // Una deuda previa negativa es un cliente con saldo a favor. Se enseña
+      // como cero y no en negativo: la fila dice «Deuda antigua», y un número
+      // rojo con signo menos debajo de esa palabra se lee al revés de lo que
+      // significa.
+      deudaAntigua: esMostrador ? null : redondear(Math.max(0, deudaPrevia.get(currency) ?? 0)),
+    };
+  });
+
+  return {
+    ok: true,
+    saleId: venta.id,
+    businessName: (duenio?.business_name as string | null) ?? "",
+    clientName: esMostrador ? null : ((cliente?.name as string | null) ?? null),
+    bloques,
+    rates: contexto.ok ? contexto.rates : null,
+  };
+}
