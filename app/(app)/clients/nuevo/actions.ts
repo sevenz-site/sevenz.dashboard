@@ -75,16 +75,23 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
     .maybeSingle();
   const documentCountry = (ownerRow?.country as string | undefined) ?? null;
 
-  // DUPLICADOS: aquí se BLOQUEA, sin «confírmalo y sigo».
+  // ── DUPLICADOS: SE PARA, Y SE PUEDE CONFIRMAR ───────────────────────
   //
-  // El diálogo de siempre deja confirmarlo porque un negocio informal a veces
-  // lleva dos cuentas de la misma persona a propósito («Pepito» y «Pepito
-  // negocio»), y ahí el tendero tiene el caso delante. Esta pantalla no ofrece
-  // esa salida todavía: enseñar «ya existe» y parar es la respuesta correcta
-  // el 99 % de las veces, y la que no pierde datos. Quien de verdad quiera la
-  // segunda ficha la crea por la otra puerta.
+  // La mayoría de las veces el mismo documento bajo un dueño es un descuido —
+  // un error de tecleo, o no recordar que esa persona ya está apuntada—. Pero
+  // a veces es deliberado: un negocio informal sin registro propio se lleva
+  // como una segunda cuenta de la misma persona («Pepito» y «Pepito negocio»).
+  //
+  // Así que se para la primera vez y se deja seguir si el tendero lo confirma,
+  // igual que hace `createClientWithMovement` desde siempre.
+  //
+  // LO TUVE BLOQUEADO SIN SALIDA entre el 2026-10-18 y hoy mismo, razonando
+  // que parar era correcto el 99 % de las veces. Lo era — y el 1 % restante se
+  // quedaba sin forma de hacer lo que la otra puerta sí permitía, que es la
+  // definición de dos puertas que se separan.
+  const confirmado = formData.get("confirm_duplicate") === "true";
   const duplicado = await buscarDocumentoDuplicado(supabase, user.id, documentId);
-  if (duplicado) {
+  if (duplicado && !confirmado) {
     return {
       ok: false,
       error: mensajeDeDuplicado(duplicado),

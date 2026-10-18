@@ -11,7 +11,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
-import type { LedgerCurrency } from "@/lib/types";
+import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
 
 // LOS PRODUCTOS QUE EL TENDERO PUEDE VENDER, con sus precios ya resueltos.
 //
@@ -411,6 +411,55 @@ export async function guardarPermisoDeVenta(
     seMostro: true,
     acepta: true,
   });
+}
+
+// ===========================================================================
+// LA CUENTA DE UN CLIENTE, PARA MIRARLA SIN SALIR DE LA VENTA
+// ===========================================================================
+//
+// Lo que enseña la hoja de «Ver cuenta de…» cuando la cédula tecleada ya
+// pertenece a alguien (frame del 2026-10-18). Sirve para una sola decisión:
+// ¿es la misma persona que ya tengo apuntada, o de verdad hace falta una
+// cuenta aparte?
+//
+// Por eso trae su ficha Y sus movimientos: el nombre solo no basta —dos
+// hermanos comparten apellido y a veces hasta el apodo— y lo que de verdad
+// distingue es qué le fiaron y cuándo.
+export type CuentaDelCliente = {
+  fila: ClientSummary | null;
+  movimientos: Movement[];
+};
+
+export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { fila: null, movimientos: [] };
+
+  // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
+  // `CLAUDE.md` para toda fila leída por un id que llega del navegador, y aquí
+  // se leería el historial de un cliente de otro negocio.
+  const { data: fila } = await supabase
+    .from("client_summary")
+    .select("*")
+    .eq("client_id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!fila) return { fila: null, movimientos: [] };
+
+  // LOS ÚLTIMOS CINCUENTA. Es una mirada para decidir, no la ficha: quien
+  // necesite el historial entero lo tiene en la pantalla del cliente, y traer
+  // mil filas dentro de una venta cuesta espera en el momento de cobrar.
+  const { data: movimientos } = await supabase
+    .from("movements")
+    .select("*")
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  return { fila: fila as ClientSummary, movimientos: (movimientos ?? []) as Movement[] };
 }
 
 // ===========================================================================

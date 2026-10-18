@@ -79,6 +79,7 @@ import {
   clientCardShell,
 } from "@/components/dashboard/client-card";
 import { cn } from "@/lib/utils";
+import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 
@@ -184,6 +185,7 @@ export function NuevaVenta({
   const total = useMemo(() => totalesPorMoneda(lineas, catalogo?.rates ?? null), [lineas, catalogo]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicado, setDuplicado] = useState<{ id: string; name: string } | null>(null);
   const rates = catalogo?.rates ?? null;
   const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registro>>>({});
   // LO QUE EL CLIENTE YA DEBÍA ANTES DE ESTA VENTA, para la fila «Deuda
@@ -352,13 +354,24 @@ export function NuevaVenta({
     }
     setError(null);
     setGuardando(true);
-    const r = await registrarCliente(new FormData(form));
+
+    // EL SEGUNDO INTENTO LLEVA LA CONFIRMACIÓN. El servidor para la primera
+    // vez y devuelve de quién es la cédula; si el tendero insiste —ahora el
+    // botón dice «Crear cuenta separada»— se manda `confirm_duplicate` y se
+    // crea la segunda ficha, que es lo que la otra puerta de alta permite
+    // desde siempre.
+    const datos = new FormData(form);
+    if (duplicado) datos.set("confirm_duplicate", "true");
+
+    const r = await registrarCliente(datos);
     if (!r.ok) {
       setError(r.error);
+      setDuplicado(r.duplicado ?? null);
       setGuardando(false);
       return;
     }
-    const nuevo = { id: r.clientId, name: String(new FormData(form).get("name") ?? "").trim(), esMostrador: false };
+    setDuplicado(null);
+    const nuevo = { id: r.clientId, name: String(datos.get("name") ?? "").trim(), esMostrador: false };
     setCliente(nuevo);
     await guardar(nuevo);
   }
@@ -459,6 +472,7 @@ export function NuevaVenta({
           ownerCountry={ownerCountry}
           aceptaAvisos={delElegido ? delElegido.aceptaAvisos : null}
           ledger={ledger}
+          duplicado={duplicado}
           guardando={guardando}
           error={error}
           onFinalizar={(form, permiso) => void finalizar(form, permiso)}
@@ -1293,6 +1307,7 @@ function PasoCliente({
   ownerCountry,
   aceptaAvisos,
   ledger,
+  duplicado,
   guardando,
   error,
   onFinalizar,
@@ -1306,6 +1321,8 @@ function PasoCliente({
   // la casilla del permiso o la frase de que ya los recibe.
   aceptaAvisos: boolean | null;
   ledger: LedgerDisplay | null;
+  // El cliente que ya lleva la cédula tecleada, si el servidor lo rechazó.
+  duplicado: { id: string; name: string } | null;
   guardando: boolean;
   error: string | null;
   // El segundo argumento es la casilla del permiso para un cliente que YA
@@ -1318,6 +1335,10 @@ function PasoCliente({
   const [nombre, setNombre] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [acepta, setAcepta] = useState(false);
+  // EL CLIENTE QUE YA LLEVA ESA CÉDULA, cuando el servidor lo rechaza. Lo
+  // devuelve `registrarCliente` con el error, así que no hace falta una
+  // consulta propia: la misma comprobación que para el alta es la que avisa.
+  const [verCuenta, setVerCuenta] = useState(false);
 
   // SE FILTRA EN EL NAVEGADOR y no con una consulta por cada letra: la lista
   // llega entera con la pantalla, y es la misma que alimenta el buscador de
@@ -1529,6 +1550,28 @@ function PasoCliente({
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
+      {/* ── LA CÉDULA YA ES DE ALGUIEN ──────────────────────────────────
+          Dos salidas, y las dos hacen falta porque el choque significa dos
+          cosas distintas:
+
+            · Es la misma persona y no me acordaba → mirar su cuenta y usarla.
+            · Es una segunda cuenta a propósito —«Pepito» y «Pepito negocio»,
+              el caso del negocio informal sin registro propio— → crearla.
+
+          Sin la primera, el tendero duplica a alguien sin saberlo. Sin la
+          segunda, se queda sin hacer lo que la otra puerta de alta sí
+          permite. */}
+      {duplicado ? (
+        <Button
+          type="button"
+          variant="link"
+          className="h-auto self-start px-0"
+          onClick={() => setVerCuenta(true)}
+        >
+          Ver cuenta de {duplicado.name}
+        </Button>
+      ) : null}
+
       <div className="flex-1" />
       <Button
         type="button"
@@ -1538,12 +1581,24 @@ function PasoCliente({
       >
         {guardando
           ? "Guardando…"
-          : hayNombre
-            ? "Finalizar"
-            : obligatorio
-              ? "Escribe o elige un cliente"
-              : "Finalizar sin cliente"}
+          : duplicado
+            ? "Crear cuenta separada"
+            : hayNombre
+              ? "Finalizar"
+              : obligatorio
+                ? "Escribe o elige un cliente"
+                : "Finalizar sin cliente"}
       </Button>
+
+      {duplicado && verCuenta ? (
+        <ClientAccountSheet
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setVerCuenta(false)}
+          clientId={duplicado.id}
+          clientName={duplicado.name}
+          ledger={ledger}
+        />
+      ) : null}
     </div>
   );
 }
