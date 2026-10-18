@@ -600,7 +600,16 @@ function PasoPago({
     const tecleado = parseAmount(cobro.monto) ?? 0;
     const pagado =
       cobro.modo === "todo" ? t.amount : cobro.modo === "fiado" ? 0 : Math.min(tecleado, t.amount);
-    return { ...t, cobro, pagado, resto: Math.round((t.amount - pagado) * 100) / 100 };
+    // EL PLAZO EN DÍAS, O NULL. «Sin especificar» es una de las cinco opciones
+    // de `PLAZO_PAGO_OPTIONS` y vale como respuesta: el fiado manual la admite
+    // desde siempre. Pasarla tal cual como texto hacía que el servidor leyera
+    // `Number("sin_especificar")` y devolviera un error de plazo por una
+    // elección correcta.
+    const plazoDias =
+      cobro.plazo && cobro.plazo !== "sin_especificar" && Number.isFinite(Number(cobro.plazo))
+        ? Number(cobro.plazo)
+        : null;
+    return { ...t, cobro, pagado, plazoDias, resto: Math.round((t.amount - pagado) * 100) / 100 };
   });
 
   const hayFiado = cuentas.some((c) => c.resto > 0);
@@ -608,7 +617,9 @@ function PasoPago({
   // vacío. Se pide antes de guardar para que el tendero no crea que registró
   // un abono que no existe.
   const parcialSinMonto = cuentas.some((c) => c.cobro.modo === "parte" && c.pagado <= 0);
-  const faltaPlazo = cuentas.some((c) => c.resto > 0 && !c.cobro.plazo);
+  // SOLO BLOQUEA EL CAMPO VACÍO de «Otro plazo…», no «Sin especificar»: esa es
+  // una respuesta, y un fiado sin fecha es lo que el fiado manual ya permite.
+  const faltaPlazo = cuentas.some((c) => c.resto > 0 && c.cobro.plazo === "");
   const bolivaresSinMonto = cuentas.some(
     (c) => c.pagado > 0 && c.cobro.enBolivares && (parseAmount(c.cobro.montoBs) ?? 0) <= 0,
   );
@@ -636,7 +647,7 @@ function PasoPago({
         .filter((c) => c.resto > 0)
         .map((c) => ({
           currency: c.currency,
-          plazoDias: Number(c.cobro.plazo),
+          plazoDias: c.plazoDias,
           // Una sola cuota se manda como null: es lo mismo y es el
           // comportamiento de siempre. El `check` de la `118` empieza en 2.
           cuotas: Number(c.cobro.cuotas) > 1 ? Number(c.cobro.cuotas) : null,
@@ -776,13 +787,7 @@ function PasoPago({
               <CuotasSelect
                 value={c.cobro.cuotas}
                 onValueChange={(v) => cambiar(c.currency, { cuotas: v })}
-                plazoDias={
-                  c.cobro.plazo &&
-                  c.cobro.plazo !== "sin_especificar" &&
-                  Number.isFinite(Number(c.cobro.plazo))
-                    ? Number(c.cobro.plazo)
-                    : null
-                }
+                plazoDias={c.plazoDias}
               />
             </div>
           ) : null}

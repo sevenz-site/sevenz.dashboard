@@ -248,9 +248,16 @@ export type PagoDeVentaEntrada = {
 // venta puede quedar a medias en dos libros a la vez —cinco dólares y tres
 // euros— y cada deuda es independiente: el `recalc` del saldo nunca suma un
 // libro con el otro.
+//
+// `plazoDias` PUEDE SER NULL, y no es una concesión: «Sin especificar» es una
+// de las cinco opciones de `PLAZO_PAGO_OPTIONS` y el fiado manual la admite
+// desde siempre. La primera versión de esto pedía un número obligatorio, así
+// que elegir esa opción perfectamente normal devolvía «El plazo tiene que
+// estar entre 1 y 365 días» — un error sobre algo que el tendero no había
+// hecho mal y no podía arreglar sin adivinar.
 export type CreditoDeVentaEntrada = {
   currency: PriceCurrency;
-  plazoDias: number;
+  plazoDias: number | null;
   cuotas: number | null;
 };
 
@@ -472,15 +479,23 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   for (const resto of restos) {
     const credito = creditoPorMoneda.get(resto.currency);
     if (!credito) return { ok: false, error: "Falta decir en cuánto tiempo te pagan lo que queda." };
-    if (!Number.isInteger(credito.plazoDias) || credito.plazoDias < 1 || credito.plazoDias > 365) {
+    if (
+      credito.plazoDias != null &&
+      (!Number.isInteger(credito.plazoDias) || credito.plazoDias < 1 || credito.plazoDias > 365)
+    ) {
       return { ok: false, error: "El plazo tiene que estar entre 1 y 365 días." };
     }
-    // Las cuotas van de 2 a 36 y necesitan plazo: es el `check` de la migración
-    // `118`, comprobado aquí para que el tendero lea una frase y no un error de
-    // Postgres. Una sola cuota se guarda como null, que es lo mismo y es el
-    // comportamiento de siempre.
-    if (credito.cuotas != null && (!Number.isInteger(credito.cuotas) || credito.cuotas < 2 || credito.cuotas > 36)) {
-      return { ok: false, error: "Las cuotas van de 2 a 36." };
+    // Las cuotas van de 2 a 36 y NECESITAN PLAZO para dividirlo: las dos cosas
+    // son el `check` de la migración `118`, comprobadas aquí para que el
+    // tendero lea una frase y no un error de Postgres. Una sola cuota se guarda
+    // como null, que es lo mismo y es el comportamiento de siempre.
+    if (credito.cuotas != null) {
+      if (!Number.isInteger(credito.cuotas) || credito.cuotas < 2 || credito.cuotas > 36) {
+        return { ok: false, error: "Las cuotas van de 2 a 36." };
+      }
+      if (credito.plazoDias == null) {
+        return { ok: false, error: "Para pactar cuotas hace falta un plazo que repartir." };
+      }
     }
   }
 
