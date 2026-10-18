@@ -60,6 +60,9 @@ export type ProductosParaVenta = {
   // `entry_currency` desde la migración `022`. El USDT no porque vuelve con
   // el paso 11 (`CT-79`).
   monedasDelLibro: PriceCurrency[];
+  // La fecha de la tasa prevista, si la hay. Solo para la casilla de la hoja
+  // de cobro: la cifra nunca viaja desde el navegador.
+  prevista: { fecha: string } | null;
 };
 
 // LA MISMA LISTA DE COLUMNAS PARA LAS DOS CONSULTAS, y no por ahorrar letras:
@@ -105,7 +108,17 @@ type FilaDeProducto = {
 // el PAÍS, que es el dato que de verdad decide el libro, y la tasa solo sirve
 // para convertir.
 type ContextoDeVenta =
-  | { ok: true; rates: BolivarRates | null; monedasDelLibro: PriceCurrency[] }
+  | {
+      ok: true;
+      rates: BolivarRates | null;
+      monedasDelLibro: PriceCurrency[];
+      // LA TASA QUE EL BCV YA PUBLICÓ PERO QUE AÚN NO RIGE. La hoja de cobro
+      // ofrece aplicarla —«Aplicar tasa BCV prevista para el lunes…»— y para
+      // eso necesita su FECHA, que es lo que el tendero lee. La cifra no viaja
+      // al servidor: allí se vuelve a buscar, porque un número que llega del
+      // navegador podría sellar cualquier cosa en el respaldo de un fiado.
+      prevista: { fecha: string } | null;
+    }
   | { ok: false; error: string };
 
 async function contextoDeVenta(
@@ -117,17 +130,24 @@ async function contextoDeVenta(
   if (resultado.kind === "pais_desconocido") {
     return { ok: false, error: "No pudimos leer los datos de tu negocio. Vuelve a intentarlo en un momento." };
   }
-  if (resultado.kind === "co") return { ok: true, rates: null, monedasDelLibro: ["COP"] };
+  if (resultado.kind === "co") return { ok: true, rates: null, monedasDelLibro: ["COP"], prevista: null };
 
   // Venezolano sin tasa: el libro sigue siendo dólares y euros. Lo que no se
   // puede es convertir, así que `precioEnMoneda` dejará fuera las monedas
   // derivadas y ofrecerá solo la base y las fijadas a mano. Una caja que vende
   // menos monedas es un problema; una que archiva el fiado en el libro
   // equivocado es otro mucho peor.
-  if (resultado.kind === "ve_sin_tasa") return { ok: true, rates: null, monedasDelLibro: ["USD", "EUR"] };
+  if (resultado.kind === "ve_sin_tasa") {
+    return { ok: true, rates: null, monedasDelLibro: ["USD", "EUR"], prevista: null };
+  }
 
   const rates = await getBolivarRates(resultado.context.effectiveRate);
-  return { ok: true, rates, monedasDelLibro: ["USD", "EUR"] };
+  return {
+    ok: true,
+    rates,
+    monedasDelLibro: ["USD", "EUR"],
+    prevista: resultado.context.prevista ? { fecha: resultado.context.prevista.fecha } : null,
+  };
 }
 
 // LOS PRECIOS FIJADOS A MANO Y LAS MONEDAS ACTIVAS, en dos consultas para toda
@@ -192,11 +212,11 @@ export async function buscarProductosParaVenta(query: string): Promise<Productos
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { productos: [], rates: null, monedasDelLibro: [] };
+  if (!user) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
 
   const contexto = await contextoDeVenta(supabase, user.id);
-  if (!contexto.ok) return { productos: [], rates: null, monedasDelLibro: [] };
-  const { rates, monedasDelLibro } = contexto;
+  if (!contexto.ok) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
+  const { rates, monedasDelLibro, prevista } = contexto;
 
   const texto = query.trim();
   let consulta = supabase
@@ -215,10 +235,15 @@ export async function buscarProductosParaVenta(query: string): Promise<Productos
   const { data, error } = await consulta;
   if (error) {
     console.error("buscarProductosParaVenta:", error.message);
-    return { productos: [], rates, monedasDelLibro };
+    return { productos: [], rates, monedasDelLibro, prevista };
   }
 
-  return { rates, monedasDelLibro, productos: await armarProductos(supabase, (data ?? []) as FilaDeProducto[]) };
+  return {
+    rates,
+    monedasDelLibro,
+    prevista,
+    productos: await armarProductos(supabase, (data ?? []) as FilaDeProducto[]),
+  };
 }
 
 // ===========================================================================
@@ -336,6 +361,14 @@ export type CreditoDeVentaEntrada = {
   currency: PriceCurrency;
   plazoDias: number | null;
   cuotas: number | null;
+  // LA CASILLA «Aplicar tasa BCV prevista», y es una MARCA, no una cifra: el
+  // navegador no manda ningún número, solo pide que se use la tasa que el
+  // servidor ya tiene guardada. Si mandara el número, una petición hecha a
+  // mano podría sellar cualquier cosa en el respaldo de un fiado.
+  //
+  // Se ignora sin ruido si no hay prevista o si ya entró en vigor: ahí la
+  // tasa correcta es la vigente, que es lo que se sella.
+  usarPrevista?: boolean;
 };
 
 export type VentaEntrada = {
@@ -676,7 +709,12 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   const fiado: { currency: PriceCurrency; amount: number; movementId: string }[] = [];
   for (const resto of restos) {
     const credito = creditoPorMoneda.get(resto.currency)!;
-    const snapshot = await resolveMovementRateSnapshot(supabase, user.id, libroDeMoneda(resto.currency));
+    const snapshot = await resolveMovementRateSnapshot(
+      supabase,
+      user.id,
+      libroDeMoneda(resto.currency),
+      credito.usarPrevista === true,
+    );
     if (!snapshot.ok) {
       await deshacer("tasa", snapshot.reason);
       return { ok: false, error: snapshot.error };

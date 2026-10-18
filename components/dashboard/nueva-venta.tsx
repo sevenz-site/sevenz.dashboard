@@ -4,11 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Banknote, ChevronRight, ImageOff, Minus, Plus, Store, Trash2, UserPlus } from "lucide-react";
+import {
+  ArrowLeft,
+  Banknote,
+  Check,
+  ChevronRight,
+  ImageOff,
+  Minus,
+  Percent,
+  Plus,
+  Store,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
@@ -40,6 +53,7 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 import { formatCantidad } from "@/lib/products/cantidad";
+import { formatDate } from "@/lib/format";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
@@ -184,6 +198,7 @@ export function NuevaVenta({
           lineas={lineas}
           total={total}
           rates={catalogo?.rates ?? null}
+          prevista={catalogo?.prevista ?? null}
           onVolver={() => setPaso(2)}
         />
       ) : null}
@@ -894,41 +909,9 @@ function TarjetaDeLinea({
 //
 // EL COBRO, UNA TARJETA POR MONEDA — frame `1389:8451`.
 //
-// ===========================================================================
-// LO QUE EL FRAME CAMBIÓ RESPECTO A LA PRIMERA VERSIÓN
-//
-// La construí el 2026-10-18 antes de tener este frame, con tres modos por
-// moneda —«Pagó todo» / «Pagó una parte» / «Todo fiado»— y los campos abiertos
-// en la propia tarjeta. El frame dice otra cosa y es mejor: cada moneda enseña
-// su total y un botón **Pagar**, y lo que no se pague queda fiado al
-// **Finalizar**. El tendero no clasifica la venta de antemano; cobra lo que le
-// den y lo que sobre se fía solo.
-//
-// ===========================================================================
-// LO QUE EL FRAME NO DIBUJA, Y AQUÍ ESTÁ PUESTO DE MI PARTE
-//
-// Dos cosas que la venta necesita y no aparecen en ningún sitio del frame:
-//
-// 1. QUÉ ABRE «Pagar». Aquí abre `PagoSheet`, que pide el monto, admite que
-//    se lo hayan pagado en bolívares y deja una nota. Esa mecánica hace falta
-//    sí o sí —es lo que `sale_payments` guarda— pero su MAQUETA es mía.
-// 2. DÓNDE SE PIDEN EL PLAZO, LAS CUOTAS Y EL CLIENTE cuando algo queda
-//    debiendo. Aquí se piden al pulsar «Finalizar», en `FiadoSheet`, porque es
-//    el último momento en que se sabe cuánto queda — preguntarlo antes
-//    obligaría a adivinar si va a haber fiado.
-//
-// Las dos están marcadas para que se vea qué es del frame y qué no.
-type PagoRegistrado = {
-  // Lo que entra en el libro de esa moneda.
-  amount: number;
-  // Lo que de verdad le entregaron, si fue en bolívares. Migración `022`.
-  entryCurrency: "VES" | null;
-  entryAmount: number | null;
-  description: string;
-};
-
-type CreditoLocal = { plazo: string; cuotas: string };
-
+// Cada moneda enseña su total y un botón que abre la hoja de registrar pago.
+// Lo que no se cobre ni se pacte queda fiado al «Finalizar». El tendero no
+// clasifica la venta de antemano: cobra lo que le den y lo que sobre se fía.
 function PasoPago({
   clientes,
   cliente,
@@ -936,35 +919,50 @@ function PasoPago({
   lineas,
   total,
   rates,
+  prevista,
   onVolver,
 }: {
   clientes: Cliente[];
   // `null` = se entró por «Fiado o venta» sin decir a quién. No se pregunta
-  // hasta que haga falta — ver `FiadoSheet`.
+  // hasta que haga falta: una venta de contado no necesita cliente.
   cliente: Elegido | null;
   onElegirCliente: (c: Elegido | null) => void;
   lineas: LineaVenta[];
   total: { currency: PriceCurrency; amount: number }[];
   rates: BolivarRates | null;
+  prevista: { fecha: string } | null;
   onVolver: () => void;
 }) {
   const router = useRouter();
-  const [pagos, setPagos] = useState<Partial<Record<PriceCurrency, PagoRegistrado>>>({});
+  // DOS HUECOS POR MONEDA, no uno: la misma moneda admite un cobro Y un fiado
+  // —«una compra por 10 USD puede abonar 5 y quedar debiendo 5», el dueño el
+  // 2026-10-17— y con un solo hueco registrar el fiado borraría el abono que
+  // acaba de entrar en la caja.
+  const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registros>>>({});
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
-  const [finalizando, setFinalizando] = useState(false);
+  const [pidiendoCliente, setPidiendoCliente] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // LO PAGADO Y LO QUE QUEDA, por moneda. Se calcula en el render y no se
-  // guarda aparte: un total derivado que vive por su cuenta es un total que
-  // algún día se queda viejo.
+  // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
+  // render y no se guarda aparte: un total derivado que vive por su cuenta es
+  // un total que algún día se queda viejo.
   const cuentas = total.map((t) => {
-    const pago = pagos[t.currency] ?? null;
-    const pagado = pago?.amount ?? 0;
-    return { ...t, pago, pagado, resto: Math.round((t.amount - pagado) * 100) / 100 };
+    const r = registros[t.currency] ?? {};
+    const cobrado = r.contado?.amount ?? 0;
+    const fiado = r.credito?.amount ?? 0;
+    return {
+      ...t,
+      registros: r,
+      cobrado,
+      fiado,
+      // Lo que no se ha dicho qué es. Al finalizar se va como fiado sin plazo,
+      // que es lo que la base ya admite.
+      suelto: Math.round((t.amount - cobrado - fiado) * 100) / 100,
+    };
   });
 
-  const hayFiado = cuentas.some((c) => c.resto > 0.005);
+  const hayDeuda = cuentas.some((c) => c.fiado > 0.005 || c.suelto > 0.005);
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -972,20 +970,13 @@ function PasoPago({
   // SUMA MONEDAS DISTINTAS, y conviene decir por qué aquí sí: lo que esta app
   // nunca suma son los SALDOS de un cliente, porque cinco dólares y tres euros
   // son dos deudas independientes que se cobran por separado. Esto es otra
-  // cosa — es lo que cuesta esta cesta, hoy, si se pagara entera en efectivo —
-  // y es una referencia para el que está cobrando, no un saldo que se guarde.
-  // No se escribe en ninguna parte.
+  // cosa — lo que cuesta esta cesta, hoy, si se pagara entera — y es una
+  // referencia para quien está cobrando. No se escribe en ninguna parte.
   const totalEnBolivares = rates
-    ? cuentas.reduce(
-        (acc, c) => acc + c.amount * (c.currency === "EUR" ? rates.eur : rates.usd),
-        0,
-      )
+    ? cuentas.reduce((acc, c) => acc + c.amount * (c.currency === "EUR" ? rates.eur : rates.usd), 0)
     : null;
 
-  const enBolivares = (monto: number, moneda: PriceCurrency) =>
-    rates ? monto * (moneda === "EUR" ? rates.eur : rates.usd) : null;
-
-  async function guardar(credito: Partial<Record<PriceCurrency, CreditoLocal>>) {
+  async function guardar() {
     setError(null);
     setGuardando(true);
 
@@ -995,8 +986,8 @@ function PasoPago({
     // ENTERAMENTE a través del cliente, así que no hay venta sin uno. Lo que
     // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe para
     // eso, y se resuelve AL GUARDAR y no al entrar — crear la fila al abrir la
-    // pantalla le pondría un cliente «Mostrador» en la lista a cualquiera que
-    // solo mire el catálogo.
+    // pantalla le pondría un «Mostrador» en la lista a cualquiera que solo
+    // mire el catálogo.
     let destino = cliente;
     if (!destino) {
       const r = await resolverMostrador();
@@ -1017,23 +1008,27 @@ function PasoPago({
         currency: l.currency,
       })),
       pagos: cuentas
-        .filter((c) => c.pagado > 0)
+        .filter((c) => c.cobrado > 0)
         .map((c) => ({
           currency: c.currency,
-          amount: c.pagado,
-          entryCurrency: c.pago?.entryCurrency ?? c.currency,
-          entryAmount: c.pago?.entryAmount ?? null,
-          description: c.pago?.description ?? "",
+          amount: c.cobrado,
+          entryCurrency: c.registros.contado?.entryCurrency ?? c.currency,
+          entryAmount: c.registros.contado?.entryAmount ?? null,
+          description: c.registros.contado?.description ?? "",
         })),
+      // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
+      // resto él mismo —total menos pagos— y de aquí solo toma los TÉRMINOS.
+      // Por eso lo pactado y lo que quedó suelto se mandan en una sola fila:
+      // son la misma deuda.
       credito: cuentas
-        .filter((c) => c.resto > 0.005)
+        .filter((c) => c.fiado > 0.005 || c.suelto > 0.005)
         .map((c) => {
-          const k = credito[c.currency];
+          const k = c.registros.credito;
           const plazo = k?.plazo ?? "";
           return {
             currency: c.currency,
-            // «Sin especificar» es una respuesta válida y se manda como null:
-            // el fiado manual la admite desde siempre.
+            // «Sin especificar» es una respuesta válida y viaja como null: el
+            // fiado manual la admite desde siempre.
             plazoDias:
               plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
                 ? Number(plazo)
@@ -1041,6 +1036,7 @@ function PasoPago({
             // Una sola cuota va como null: es lo mismo, y el `check` de la
             // migración `118` empieza en 2.
             cuotas: Number(k?.cuotas ?? "1") > 1 ? Number(k?.cuotas) : null,
+            usarPrevista: k?.usarPrevista === true,
           };
         }),
     });
@@ -1060,8 +1056,8 @@ function PasoPago({
   return (
     <div className="flex flex-1 flex-col gap-2">
       {/* TOTAL EN BOLÍVARES — la primera tarjeta del frame. Sin botón: no se
-          cobra en bolívares como libro propio, se cobra en dólares o en euros
-          y se anota lo que de verdad entregaron. Esta cifra es para que el
+          cobra en bolívares como libro propio, se cobra en dólares o en euros y
+          se anota lo que de verdad entregaron. Esta cifra es para que el
           tendero sepa qué pedir. */}
       {totalEnBolivares != null ? (
         <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
@@ -1076,7 +1072,7 @@ function PasoPago({
       ) : null}
 
       {cuentas.map((c) => {
-        const bs = enBolivares(c.amount, c.currency);
+        const bs = rates ? c.amount * (c.currency === "EUR" ? rates.eur : rates.usd) : null;
         return (
           <div key={c.currency} className="flex items-center gap-3 rounded-[10px] border px-4 py-2">
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
@@ -1088,24 +1084,30 @@ function PasoPago({
                 </span>
               </span>
               {bs != null ? (
-                <span className="pl-5 text-xs text-muted-foreground tabular-nums">
+                <span className="pl-5 text-xs tabular-nums text-muted-foreground">
                   {formatPriceAmount(bs, "VES")}
                 </span>
               ) : null}
 
-              {/* LO YA COBRADO Y LO QUE QUEDA. No está en el frame —ahí las
-                  tarjetas sólo tienen el total— pero sin esto el tendero pulsa
-                  «Pagar», vuelve, y la pantalla está idéntica: no hay forma de
-                  saber si el cobro se registró. */}
-              {c.pagado > 0 ? (
-                <span className="text-xs tabular-nums">
-                  <span className="text-money-in">
-                    Cobrado {formatPriceAmount(c.pagado, c.currency)}
-                  </span>
-                  {c.resto > 0.005 ? (
+              {/* LO YA REGISTRADO. No está en el frame —ahí las tarjetas solo
+                  tienen el total— pero sin esto el tendero pulsa «Pagar»,
+                  vuelve, y la pantalla está idéntica: no hay forma de saber si
+                  lo que hizo se guardó. */}
+              {c.cobrado > 0 || c.fiado > 0 ? (
+                <span className="flex flex-wrap gap-x-2 text-xs tabular-nums">
+                  {c.cobrado > 0 ? (
+                    <span className="text-money-in">
+                      Cobrado {formatPriceAmount(c.cobrado, c.currency)}
+                    </span>
+                  ) : null}
+                  {c.fiado > 0 ? (
                     <span className="text-destructive">
-                      {" "}
-                      · queda {formatPriceAmount(c.resto, c.currency)}
+                      Fiado {formatPriceAmount(c.fiado, c.currency)}
+                    </span>
+                  ) : null}
+                  {c.suelto > 0.005 ? (
+                    <span className="text-muted-foreground">
+                      queda {formatPriceAmount(c.suelto, c.currency)}
                     </span>
                   ) : null}
                 </span>
@@ -1118,7 +1120,7 @@ function PasoPago({
               className="h-10 shrink-0"
               onClick={() => setCobrando(c.currency)}
             >
-              {c.pagado > 0 ? "Cambiar" : "Pagar"}
+              Pagar
             </Button>
           </div>
         );
@@ -1132,11 +1134,10 @@ function PasoPago({
         className="h-10 w-full"
         disabled={guardando}
         onClick={() => {
-          // CON TODO COBRADO SE GUARDA DIRECTO. La hoja del fiado sólo tiene
-          // sentido cuando queda algo debiendo: abrirla para decir «no debe
-          // nada» sería un paso que no decide nada.
-          if (hayFiado) setFinalizando(true);
-          else void guardar({});
+          // SIN DEUDA NO HACE FALTA CLIENTE: la venta se va al mostrador sin
+          // preguntar nada, que es lo que le ahorra un toque a la mayoría.
+          if (hayDeuda && !cliente) setPidiendoCliente(true);
+          else void guardar();
         }}
       >
         {guardando ? "Guardando…" : "Finalizar"}
@@ -1158,194 +1159,45 @@ function PasoPago({
           onOpenChange={(abierto: boolean) => !abierto && setCobrando(null)}
           moneda={cobrando}
           total={cuentas.find((c) => c.currency === cobrando)?.amount ?? 0}
+          pendiente={Math.max(0, cuentas.find((c) => c.currency === cobrando)?.suelto ?? 0)}
           rates={rates}
-          inicial={pagos[cobrando] ?? null}
-          onGuardar={(p) => {
-            setPagos((xs) => ({ ...xs, [cobrando]: p }));
+          prevista={prevista}
+          inicial={registros[cobrando] ?? {}}
+          onGuardar={(r) => {
+            setRegistros((xs) => ({ ...xs, [cobrando]: r }));
             setCobrando(null);
           }}
           onQuitar={() => {
-            setPagos((xs) => {
-              const copia = { ...xs };
-              delete copia[cobrando];
-              return copia;
-            });
+            setRegistros((xs) => ({ ...xs, [cobrando]: {} }));
             setCobrando(null);
           }}
         />
       ) : null}
 
-      {finalizando ? (
-        <FiadoSheet
+      {pidiendoCliente ? (
+        <ClienteSheet
           open
-          onOpenChange={(abierto: boolean) => !abierto && setFinalizando(false)}
-          restos={cuentas.filter((c) => c.resto > 0.005).map((c) => ({ currency: c.currency, amount: c.resto }))}
+          onOpenChange={(abierto: boolean) => !abierto && setPidiendoCliente(false)}
           clientes={clientes}
           cliente={cliente}
           onElegirCliente={onElegirCliente}
           guardando={guardando}
-          onConfirmar={(credito) => void guardar(credito)}
+          onConfirmar={() => void guardar()}
         />
       ) : null}
     </div>
   );
 }
 
-// ── «PAGAR» ────────────────────────────────────────────────────────────
+// ── A QUIÉN SE LE FÍA ──────────────────────────────────────────────────
 //
-// SU MAQUETA ES MÍA: el frame `1389:8451` dibuja el botón y no lo que abre.
-// Lo que sí es del dominio y no se inventa es qué se pregunta — `sale_payments`
-// guarda el monto en el libro, lo que de verdad entregaron y la tasa.
-function PagoSheet({
+// NO ESTÁ EN NINGÚN FRAME, y hace falta: un fiado sin dueño no se puede cobrar
+// después. Se pregunta al pulsar «Finalizar» y SOLO si quedó deuda — una venta
+// cobrada entera se va al mostrador sin preguntar nada, que es la decisión del
+// dueño del 2026-10-18 y lo que le ahorra un toque a la mayoría de las ventas.
+function ClienteSheet({
   open,
   onOpenChange,
-  moneda,
-  total,
-  rates,
-  inicial,
-  onGuardar,
-  onQuitar,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  moneda: PriceCurrency;
-  total: number;
-  rates: BolivarRates | null;
-  inicial: PagoRegistrado | null;
-  onGuardar: (p: PagoRegistrado) => void;
-  onQuitar: () => void;
-}) {
-  // ARRANCA CON EL TOTAL PUESTO, que es el caso corriente: le pagan todo. Quien
-  // reciba menos lo corrige, y eso es una tecla menos para la mayoría.
-  const [monto, setMonto] = useState(
-    inicial ? formatAmountForInput(inicial.amount) : formatAmountForInput(total),
-  );
-  const [enBolivares, setEnBolivares] = useState(inicial?.entryCurrency === "VES");
-  const [montoBs, setMontoBs] = useState(
-    inicial?.entryAmount != null ? formatAmountForInput(inicial.entryAmount) : "",
-  );
-  const [descripcion, setDescripcion] = useState(inicial?.description ?? "");
-
-  const cantidad = parseAmount(monto) ?? 0;
-  const bs = parseAmount(montoBs) ?? 0;
-  const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
-  const deMas = cantidad - total > 0.005;
-  const listo = cantidad > 0 && !deMas && (!enBolivares || bs > 0);
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
-        <SheetHeader>
-          <SheetTitle className="text-base font-medium">
-            Cobrar en {NOMBRE[moneda] ?? moneda}
-          </SheetTitle>
-        </SheetHeader>
-
-        <div className="flex flex-col gap-4 px-4 pb-6">
-          <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
-            <span className="text-sm">Total de la venta</span>
-            <span className="text-base font-semibold tabular-nums">
-              {formatPriceAmount(total, moneda)}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="pago-monto">¿Cuánto te pagó?</Label>
-            <Input
-              id="pago-monto"
-              inputMode="decimal"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              placeholder="0,00"
-            />
-            {/* MÁS DE LO QUE SUMA LA VENTA NO ES UN COBRO, es un error de
-                tecleo. El servidor lo rechaza igual; decirlo aquí evita montar
-                la venta entera para que falle al guardar. */}
-            {deMas ? (
-              <p className="text-xs text-destructive">
-                No puedes cobrar más de {formatPriceAmount(total, moneda)}.
-              </p>
-            ) : null}
-          </div>
-
-          {/* LOS BOLÍVARES SOLO CUANDO HAY TASA. Se guarda lo que de verdad
-              entregaron —migración `022`— y el monto del libro sigue siendo el
-              de arriba: el servidor sella la tasa pero NO divide una cifra por
-              la otra, porque eso convertía una venta pagada completa en un
-              fiado de un céntimo. */}
-          {tasa ? (
-            <div className="flex flex-col gap-2 border-t pt-4">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={enBolivares}
-                  onCheckedChange={(v) => setEnBolivares(v === true)}
-                />
-                Me pagó en bolívares
-              </label>
-              {enBolivares ? (
-                <>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    aria-label="Bolívares recibidos"
-                    value={montoBs}
-                    onChange={(e) => setMontoBs(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {formatPriceAmount(cantidad, moneda)} a la tasa de hoy son{" "}
-                    {formatPriceAmount(cantidad * tasa, "VES")}
-                  </p>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="pago-nota">Nota (opcional)</Label>
-            <Input
-              id="pago-nota"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Pago móvil, efectivo…"
-            />
-          </div>
-
-          <Button
-            type="button"
-            className="h-10 w-full"
-            disabled={!listo}
-            onClick={() =>
-              onGuardar({
-                amount: Math.round(cantidad * 100) / 100,
-                entryCurrency: enBolivares ? "VES" : null,
-                entryAmount: enBolivares ? bs : null,
-                description: descripcion.trim(),
-              })
-            }
-          >
-            Guardar cobro
-          </Button>
-          {inicial ? (
-            <Button type="button" variant="outline" className="h-10 w-full" onClick={onQuitar}>
-              Quitar este cobro
-            </Button>
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// ── LO QUE QUEDA DEBIENDO ──────────────────────────────────────────────
-//
-// TAMPOCO ESTÁ EN EL FRAME, y hace falta: un fiado sin plazo ni dueño no se
-// puede cobrar después. Se pregunta al pulsar «Finalizar» porque es el último
-// momento en que se sabe cuánto queda — antes habría que adivinar si va a
-// haber fiado, que es justo lo que el frame del paso 3 quitó de en medio.
-function FiadoSheet({
-  open,
-  onOpenChange,
-  restos,
   clientes,
   cliente,
   onElegirCliente,
@@ -1354,95 +1206,467 @@ function FiadoSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  restos: { currency: PriceCurrency; amount: number }[];
   clientes: Cliente[];
   cliente: Elegido | null;
   onElegirCliente: (c: Elegido | null) => void;
   guardando: boolean;
-  onConfirmar: (credito: Partial<Record<PriceCurrency, CreditoLocal>>) => void;
+  onConfirmar: () => void;
 }) {
-  const [credito, setCredito] = useState<Partial<Record<PriceCurrency, CreditoLocal>>>({});
-  const de = (c: PriceCurrency) => credito[c] ?? { plazo: DEFAULT_PLAZO_PAGO, cuotas: "1" };
-  const cambiar = (c: PriceCurrency, parche: Partial<CreditoLocal>) =>
-    setCredito((xs) => ({ ...xs, [c]: { ...de(c), ...parche } }));
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle className="text-base font-medium">¿A quién le queda debiendo?</SheetTitle>
+        </SheetHeader>
 
-  const plazoDias = (c: PriceCurrency) => {
-    const p = de(c).plazo;
-    return p && p !== "sin_especificar" && Number.isFinite(Number(p)) ? Number(p) : null;
-  };
-  // Sólo bloquea el campo vacío de «Otro plazo…», no «Sin especificar»: esa es
-  // una respuesta, y un fiado sin fecha es lo que el fiado manual ya permite.
-  const faltaPlazo = restos.some((r) => de(r.currency).plazo === "");
+        <div className="flex flex-col gap-4 px-4 pb-6">
+          <SelectorDeCliente
+            clientes={clientes}
+            cliente={cliente}
+            onElegir={onElegirCliente}
+            // SIN MOSTRADOR: al comodín no se le puede fiar —es uno por
+            // negocio, así que su deuda sería la de «todos los que pasaron por
+            // la caja»— y ofrecerlo sería ofrecer lo que el servidor rechaza.
+            sinMostrador
+          />
+
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={guardando || !cliente}
+            onClick={onConfirmar}
+          >
+            {guardando ? "Guardando…" : cliente ? `Fiar a ${cliente.name}` : "Elige un cliente"}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── «PAGAR» ────────────────────────────────────────────────────────────
+//
+// UN FORMULARIO CON DOS RAMAS — frames `1389:9222` (contado) y `1389:9296`
+// (fiado o crédito). «Ambos es el mismo formulario, lo que cambia son los
+// campos según si selecciona "de contado" o "fiado o crédito"» — el dueño,
+// 2026-10-18.
+//
+// ===========================================================================
+// POR QUÉ UNA MONEDA PUEDE LLEVAR LAS DOS COSAS
+//
+// La hoja se abre desde la tarjeta de una moneda y registra UNA de las dos, la
+// que diga el chip. Pero la misma moneda admite las dos a la vez, y ese es el
+// caso que el dueño describió con sus palabras el 2026-10-17: «una compra por
+// 10 USD puede abonar 5 y quedar debiendo 5». Se abre la hoja dos veces —una
+// de contado por 5, otra a crédito por 5— y la tarjeta enseña las dos.
+//
+// Por eso `PasoPago` guarda DOS huecos por moneda y no uno. Con un solo hueco,
+// registrar el fiado borraría el abono que acaba de entrar en la caja.
+//
+// ===========================================================================
+// «MONTO» Y «EQUIVALENCIA» SON LAS DOS CARAS DEL MISMO DINERO
+//
+// Lo que el cliente entrega y lo que entra en el libro. En un negocio
+// venezolano suelen ser distintas —paga en bolívares, el libro es en dólares—
+// y las dos se guardan: `entry_amount` con su moneda es lo que de verdad pasó
+// de mano a mano, y es el registro más defendible en una disputa (migración
+// `022`); `amount` es lo que descuenta de la venta.
+//
+// LA EQUIVALENCIA SE PUEDE CORREGIR A MANO, y no es un descuido del frame:
+// el tendero puede aceptar unos bolívares de menos y dar la cuenta por
+// cerrada. El servidor sella la tasa pero NO divide una cifra por la otra —
+// hacerlo convertía una venta pagada completa en un fiado de un céntimo.
+type Cobro = {
+  // Lo que entra en el libro de esta moneda.
+  amount: number;
+  // Lo que de verdad entregaron, cuando no fue en la moneda del libro.
+  entryCurrency: "VES" | null;
+  entryAmount: number | null;
+  description: string;
+};
+
+type Credito = {
+  amount: number;
+  plazo: string;
+  cuotas: string;
+  usarPrevista: boolean;
+  description: string;
+};
+
+type Registros = { contado?: Cobro; credito?: Credito };
+
+// LAS CUOTAS, TAL COMO LAS CALCULA LA BASE. Migración `118`: «el vencimiento
+// de la cuota i es created_at + plazo_dias * i / cuotas». Aquí se repite para
+// ENSEÑARLAS antes de guardar, que es lo que el frame pide — no para decidir
+// nada, porque quien decide es el `check` de la migración.
+//
+// Se reparte en partes iguales y el resto se le suma a la ÚLTIMA: tres cuotas
+// de 10 son 3,33 · 3,33 · 3,34, no tres de 3,33 que suman 9,99. Ese céntimo
+// perdido es el que hace que un cliente que pagó todo siga debiendo.
+function calendarioDeCuotas(
+  monto: number,
+  plazoDias: number | null,
+  cuotas: number,
+): { numero: number; vence: string | null; monto: number }[] {
+  const n = Math.max(1, cuotas);
+  const base = Math.floor((monto / n) * 100) / 100;
+  const hoy = Date.now();
+  return Array.from({ length: n }, (_, i) => ({
+    numero: i + 1,
+    vence:
+      plazoDias == null
+        ? null
+        : new Date(hoy + (plazoDias * (i + 1) * 86400000) / n).toISOString(),
+    monto: i === n - 1 ? Math.round((monto - base * (n - 1)) * 100) / 100 : base,
+  }));
+}
+
+function PagoSheet({
+  open,
+  onOpenChange,
+  moneda,
+  total,
+  pendiente,
+  rates,
+  prevista,
+  inicial,
+  onGuardar,
+  onQuitar,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  moneda: PriceCurrency;
+  // Lo que suma la venta en esta moneda, para la tarjeta de arriba.
+  total: number;
+  // Lo que queda por registrar, para rellenar el monto. Es el caso corriente:
+  // le pagan lo que falta.
+  pendiente: number;
+  rates: BolivarRates | null;
+  prevista: { fecha: string } | null;
+  inicial: Registros;
+  onGuardar: (r: Registros) => void;
+  onQuitar: () => void;
+}) {
+  // EL CHIP ARRANCA EN «De contado» salvo que ya hubiera un crédito guardado.
+  // Cobrar es lo corriente; fiar es la excepción, aunque sea la que le da
+  // nombre a la app.
+  const [tipo, setTipo] = useState<"contado" | "credito">(
+    inicial.credito && !inicial.contado ? "credito" : "contado",
+  );
+
+  const yaGuardado = tipo === "contado" ? inicial.contado : inicial.credito;
+  const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
+
+  // EN QUÉ MONEDA LE ENTREGAN. Con tasa son bolívares o la del libro; sin
+  // tasa —un negocio colombiano— solo cabe la del libro, así que el selector
+  // no se pinta.
+  const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(
+    inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
+  );
+  const [monto, setMonto] = useState(() => {
+    const previo = tipo === "contado" ? inicial.contado : inicial.credito;
+    if (previo) {
+      const entregado = tipo === "contado" ? inicial.contado?.entryAmount : null;
+      return formatAmountForInput(entregado ?? previo.amount);
+    }
+    return formatAmountForInput(pendiente);
+  });
+  const [equivalencia, setEquivalencia] = useState(() => {
+    const previo = tipo === "contado" ? inicial.contado : inicial.credito;
+    return formatAmountForInput(previo?.amount ?? pendiente);
+  });
+  const [usarPrevista, setUsarPrevista] = useState(inicial.credito?.usarPrevista ?? false);
+  const [plazo, setPlazo] = useState(inicial.credito?.plazo ?? DEFAULT_PLAZO_PAGO);
+  const [cuotas, setCuotas] = useState(inicial.credito?.cuotas ?? "1");
+  const [descripcion, setDescripcion] = useState(
+    (tipo === "contado" ? inicial.contado?.description : inicial.credito?.description) ?? "",
+  );
+
+  // EL MONTO DEL LIBRO. Cuando le entregan en la moneda del libro, «Monto» y
+  // «Equivalencia» son el mismo número y el segundo campo no se pinta: dos
+  // casillas con la misma cifra invitan a que una se quede vieja.
+  const entregaEnOtraMoneda = monedaEntrega === "VES";
+  const enElLibro = entregaEnOtraMoneda
+    ? (parseAmount(equivalencia) ?? 0)
+    : (parseAmount(monto) ?? 0);
+  const deMas = enElLibro - total > 0.005;
+  const listo = enElLibro > 0 && !deMas && (!entregaEnOtraMoneda || (parseAmount(monto) ?? 0) > 0);
+
+  const plazoDias =
+    plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo)) ? Number(plazo) : null;
+  const calendario =
+    tipo === "credito" ? calendarioDeCuotas(enElLibro, plazoDias, Number(cuotas) || 1) : [];
+
+  // AL CAMBIAR DE CHIP SE RECALCULA LO QUE EL CAMPO DEBE DECIR. Dejar el monto
+  // del contado al pasar a crédito haría que el tendero fiara, sin querer, la
+  // cifra que acababa de cobrar.
+  function cambiarTipo(siguiente: "contado" | "credito") {
+    setTipo(siguiente);
+    const previo = siguiente === "contado" ? inicial.contado : inicial.credito;
+    const base = previo?.amount ?? pendiente;
+    setMonto(formatAmountForInput(base));
+    setEquivalencia(formatAmountForInput(base));
+    setMonedaEntrega(
+      siguiente === "contado" && inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
+    );
+    setDescripcion(previo?.description ?? "");
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
         <SheetHeader>
-          <SheetTitle className="text-base font-medium">Lo que queda fiado</SheetTitle>
+          <SheetTitle className="text-xl font-medium">Registrar pago</SheetTitle>
         </SheetHeader>
 
-        <div className="flex flex-col gap-4 px-4 pb-6">
-          {restos.map((r) => (
-            <div key={r.currency} className="flex flex-col gap-3 rounded-[10px] border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1 text-sm">
-                  <CurrencyFlagIcon currency={r.currency} className="size-4" />
-                  {NOMBRE[r.currency] ?? r.currency}
-                </span>
-                <span className="text-base font-semibold tabular-nums text-destructive">
-                  {formatPriceAmount(r.amount, r.currency)}
-                </span>
-              </div>
-              <PlazoPagoSelect
-                value={de(r.currency).plazo}
-                onValueChange={(v) =>
-                  cambiar(r.currency, {
-                    plazo: v,
-                    // Al quedarse sin plazo, las cuotas vuelven a pago único:
-                    // el campo se esconde y un número dentro se guardaría sin
-                    // que nadie lo haya decidido.
-                    ...(v === "" || v === "sin_especificar" ? { cuotas: "1" } : {}),
-                  })
-                }
-              />
-              <CuotasSelect
-                value={de(r.currency).cuotas}
-                onValueChange={(v) => cambiar(r.currency, { cuotas: v })}
-                plazoDias={plazoDias(r.currency)}
-              />
-            </div>
-          ))}
-
-          {/* EL CLIENTE, AQUÍ Y NO ANTES. Una venta de contado no necesita
-              ninguno; sólo al fiar hace falta saber a quién cobrarle. */}
-          <div className="flex flex-col gap-3 rounded-[10px] border p-4">
-            <p className="text-sm font-medium">¿A quién le queda debiendo?</p>
-            <SelectorDeCliente
-              clientes={clientes}
-              cliente={cliente}
-              onElegir={onElegirCliente}
-              // SIN MOSTRADOR: al comodín no se le puede fiar —es uno por
-              // negocio, así que su deuda sería la de «todos los que pasaron
-              // por la caja»— y ofrecerlo sería ofrecer lo que el servidor
-              // rechaza.
-              sinMostrador
-            />
+        <div className="flex flex-col gap-5 px-4 pb-6">
+          {/* LA TARJETA DEL TOTAL, la misma que la del paso 3. Sirve de
+              recordatorio: la hoja tapa la pantalla entera en un teléfono. */}
+          <div className="flex flex-col justify-center gap-1 rounded-[10px] border px-4 py-2">
+            <span className="text-sm">Total en {NOMBRE[moneda] ?? moneda}</span>
+            <span className="flex items-center gap-1">
+              <CurrencyFlagIcon currency={moneda} className="size-4" />
+              <span className="text-base font-semibold tabular-nums">
+                {formatPriceAmount(total, moneda)}
+              </span>
+            </span>
+            {tasa ? (
+              <span className="pl-5 text-xs text-muted-foreground tabular-nums">
+                {formatPriceAmount(total * tasa, "VES")}
+              </span>
+            ) : null}
           </div>
 
-          {faltaPlazo ? (
-            <p className="text-sm text-destructive">
-              Elige en cuánto tiempo te pagan lo que queda.
-            </p>
+          <div className="flex flex-col gap-4">
+            <p className="text-base font-semibold">Detalles de pago</p>
+
+            <div className="flex flex-col gap-2 rounded-[10px] border p-4">
+              <div className="flex flex-col gap-2">
+                <p className="text-sm">¿Cuánto paga?</p>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { valor: "contado" as const, texto: "De contado", Icono: Check },
+                      { valor: "credito" as const, texto: "Fiado o crédito", Icono: Percent },
+                    ]
+                  ).map(({ valor, texto, Icono }) => {
+                    const activo = tipo === valor;
+                    return (
+                      <button
+                        key={valor}
+                        type="button"
+                        onClick={() => cambiarTipo(valor)}
+                        aria-pressed={activo}
+                        className="flex items-center gap-1 rounded-full border p-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                            activo ? "border-foreground" : "border-muted-foreground/40"
+                          }`}
+                        >
+                          {activo ? <span className="size-2 rounded-full bg-foreground" /> : null}
+                        </span>
+                        {texto}
+                        {/* EL GLIFO DE CADA CHIP, del frame: un visto para el
+                            contado y un porcentaje para el crédito. En rojo el
+                            segundo porque es el que deja deuda — el mismo
+                            criterio con el que el resto de la app pinta un
+                            cargo. */}
+                        <Icono
+                          className={`size-4 shrink-0 ${valor === "credito" ? "text-destructive" : "text-money-in"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="pago-monto">Monto</Label>
+                <div className="flex items-start gap-1">
+                  <Input
+                    id="pago-monto"
+                    className="min-w-0 flex-1"
+                    inputMode="decimal"
+                    value={monto}
+                    onChange={(e) => {
+                      setMonto(e.target.value);
+                      // Con la moneda del libro, la equivalencia ES el monto.
+                      if (!entregaEnOtraMoneda) setEquivalencia(e.target.value);
+                    }}
+                    placeholder="00"
+                  />
+                  {/* EL SELECTOR SOLO CON TASA. Sin ella no hay bolívares que
+                      ofrecer, y un desplegable de una sola opción no decide
+                      nada. */}
+                  {tasa && tipo === "contado" ? (
+                    <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
+                      <CurrencyFlagIcon
+                        currency={monedaEntrega === "VES" ? "VES" : moneda}
+                        className="size-4"
+                      />
+                      <select
+                        aria-label="Moneda que te entrega"
+                        value={monedaEntrega}
+                        onChange={(e) => {
+                          const siguiente = e.target.value as "VES" | PriceCurrency;
+                          setMonedaEntrega(siguiente);
+                          // Al volver a la moneda del libro, las dos cifras se
+                          // igualan: dejar una equivalencia vieja escribiría en
+                          // el libro un número que ya no corresponde.
+                          if (siguiente !== "VES") setEquivalencia(monto);
+                        }}
+                        className="bg-transparent text-base outline-none"
+                      >
+                        <option value={moneda}>{NOMBRE[moneda] ?? moneda}</option>
+                        <option value="VES">Bolívares</option>
+                      </select>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {entregaEnOtraMoneda ? (
+                <>
+                  <p className="text-xs leading-4 text-muted-foreground">
+                    Un pago parcial queda guardado en {NOMBRE[moneda] ?? moneda} a la tasa
+                    equivalente.
+                  </p>
+
+                  {/* LA PREVISTA SOLO SI EXISTE. Es una CASILLA y no una cifra:
+                      el navegador no manda ningún número, solo pide que se use
+                      la tasa que el servidor ya tiene guardada. */}
+                  {prevista ? (
+                    <label className="flex cursor-pointer items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={usarPrevista}
+                        onCheckedChange={(v) => setUsarPrevista(v === true)}
+                      />
+                      Aplicar tasa BCV prevista para el {formatDate(prevista.fecha)}
+                    </label>
+                  ) : null}
+
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="pago-equivalencia">Equivalencia</Label>
+                    <div className="flex items-start gap-1">
+                      <Input
+                        id="pago-equivalencia"
+                        className="min-w-0 flex-1"
+                        inputMode="decimal"
+                        value={equivalencia}
+                        onChange={(e) => setEquivalencia(e.target.value)}
+                        placeholder="00"
+                      />
+                      <span className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 text-xs">
+                        <CurrencyFlagIcon currency={moneda} className="size-4" />
+                        {NOMBRE[moneda] ?? moneda}
+                      </span>
+                    </div>
+                    {tasa ? (
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        A la tasa de hoy, {formatPriceAmount(parseAmount(monto) ?? 0, "VES")} son{" "}
+                        {formatPriceAmount((parseAmount(monto) ?? 0) / tasa, moneda)}
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              {deMas ? (
+                <p className="text-xs text-destructive">
+                  No puedes registrar más de {formatPriceAmount(total, moneda)}.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {/* ── LA RAMA DEL CRÉDITO ────────────────────────────────────── */}
+          {tipo === "credito" ? (
+            <>
+              <PlazoPagoSelect
+                value={plazo}
+                onValueChange={(v) => {
+                  setPlazo(v);
+                  // Sin plazo no hay nada que repartir, así que las cuotas
+                  // vuelven a pago único — el `check` de la `118` lo exige, y
+                  // si no, el campo se esconde con un número dentro que nadie
+                  // acaba de decidir.
+                  if (v === "" || v === "sin_especificar") setCuotas("1");
+                }}
+              />
+              <CuotasSelect value={cuotas} onValueChange={setCuotas} plazoDias={plazoDias} />
+
+              {/* EL CALENDARIO, que es lo que convierte «3 cuotas en 30 días»
+                  en algo que el tendero puede repetirle a su cliente. Se pinta
+                  solo cuando hay plazo: sin fecha, una tabla de vencimientos
+                  son tres rayas. */}
+              {plazoDias != null && calendario.length > 1 ? (
+                <div className="flex flex-col gap-2 rounded-[10px] border p-3">
+                  <div className="flex gap-2 text-sm">
+                    <span className="w-4">#</span>
+                    <span className="flex-1">Vence</span>
+                    <span className="flex-1 text-right">Monto</span>
+                  </div>
+                  {calendario.map((c) => (
+                    <div key={c.numero} className="flex items-center gap-2 text-xs">
+                      <span className="w-4 tabular-nums">{c.numero}</span>
+                      <span className="min-w-0 flex-1">{c.vence ? formatDate(c.vence) : "—"}</span>
+                      <span className="flex-1 text-right tabular-nums">
+                        {formatPriceAmount(c.monto, moneda)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : null}
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pago-nota">Descripción (opcional)</Label>
+            <Textarea
+              id="pago-nota"
+              className="h-[120px]"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Descripción"
+            />
+          </div>
 
           <Button
             type="button"
             className="h-10 w-full"
-            disabled={guardando || !cliente || faltaPlazo}
-            onClick={() => onConfirmar(credito)}
+            disabled={!listo}
+            onClick={() => {
+              const amount = Math.round(enElLibro * 100) / 100;
+              const nota = descripcion.trim();
+              onGuardar(
+                tipo === "contado"
+                  ? {
+                      ...inicial,
+                      contado: {
+                        amount,
+                        entryCurrency: entregaEnOtraMoneda ? "VES" : null,
+                        entryAmount: entregaEnOtraMoneda ? (parseAmount(monto) ?? 0) : null,
+                        description: nota,
+                      },
+                    }
+                  : {
+                      ...inicial,
+                      credito: { amount, plazo, cuotas, usarPrevista, description: nota },
+                    },
+              );
+            }}
           >
-            {guardando ? "Guardando…" : cliente ? `Fiar a ${cliente.name}` : "Elige un cliente"}
+            Pagar
           </Button>
+
+          {yaGuardado ? (
+            <Button type="button" variant="outline" className="h-10 w-full" onClick={onQuitar}>
+              Quitar {tipo === "contado" ? "este cobro" : "este fiado"}
+            </Button>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
