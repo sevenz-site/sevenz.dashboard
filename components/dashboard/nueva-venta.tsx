@@ -878,9 +878,14 @@ function TarjetaDeLinea({
             tendero, quitarlo — así que el icono cambia a una papelera para que
             nadie lo pulse creyendo que resta. */}
         <span className="flex shrink-0 items-start gap-1">
+          {/* EL MISMO BOTÓN CAMBIA DE PAPEL EN EL MÍNIMO: resta mientras hay
+              de sobra, y quita la línea cuando ya no. Desde el 2026-10-18
+              también cambia de COLOR —`destructive` en vez de `outline`— a
+              petición del dueño: el icono solo avisa a quien lo mire, y en el
+              mínimo este botón deja de ser reversible de un toque. */}
           <Button
             type="button"
-            variant="outline"
+            variant={linea.quantity <= minimo ? "destructive" : "outline"}
             size="icon"
             className="size-10 rounded-xl"
             aria-label={linea.quantity <= minimo ? `Quitar ${linea.name}` : "Quitar uno"}
@@ -1289,18 +1294,30 @@ function PasoCliente({
   if (cliente) {
     return (
       <div className="flex flex-1 flex-col gap-4">
-        <div className="flex flex-col gap-1 rounded-xl border p-4">
-          <p className="text-xs text-muted-foreground">Le vendes a</p>
-          <p className="text-lg font-semibold">{cliente.name}</p>
+        {/* LA PAPELERA VA DENTRO DE LA TARJETA, a petición del dueño el
+            2026-10-18, en lugar del «Es para otra persona» que había debajo.
+            Dentro, el control pertenece a lo que quita y se lee sin leerlo;
+            fuera, era una frase que había que interpretar.
+
+            `destructive` y no `ghost`: quitar al cliente de una venta que ya
+            puede llevar un fiado registrado no es una acción neutra, y el
+            color es lo que lo dice antes de pulsarlo. */}
+        <div className="flex items-center gap-3 rounded-xl border p-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="text-xs text-muted-foreground">Le vendes a</p>
+            <p className="truncate text-lg font-semibold">{cliente.name}</p>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            size="icon"
+            className="size-10 shrink-0"
+            aria-label={`Quitar a ${cliente.name} de esta venta`}
+            onClick={() => onElegirCliente(null)}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-10 self-start px-2 text-sm"
-          onClick={() => onElegirCliente(null)}
-        >
-          Es para otra persona
-        </Button>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
