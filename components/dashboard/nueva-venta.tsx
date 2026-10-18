@@ -202,7 +202,6 @@ export function NuevaVenta({
           rates={catalogo?.rates ?? null}
           prevista={catalogo?.prevista ?? null}
           ownerId={ownerId}
-          onVolver={() => setPaso(2)}
         />
       ) : null}
     </div>
@@ -924,7 +923,6 @@ function PasoPago({
   rates,
   prevista,
   ownerId,
-  onVolver,
 }: {
   clientes: Cliente[];
   // `null` = se entró por «Fiado o venta» sin decir a quién. No se pregunta
@@ -936,14 +934,9 @@ function PasoPago({
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
   ownerId: string;
-  onVolver: () => void;
 }) {
   const router = useRouter();
-  // DOS HUECOS POR MONEDA, no uno: la misma moneda admite un cobro Y un fiado
-  // —«una compra por 10 USD puede abonar 5 y quedar debiendo 5», el dueño el
-  // 2026-10-17— y con un solo hueco registrar el fiado borraría el abono que
-  // acaba de entrar en la caja.
-  const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registros>>>({});
+  const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registro>>>({});
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
   const [pidiendoCliente, setPidiendoCliente] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -989,21 +982,20 @@ function PasoPago({
   // render y no se guarda aparte: un total derivado que vive por su cuenta es
   // un total que algún día se queda viejo.
   const cuentas = total.map((t) => {
-    const r = registros[t.currency] ?? {};
-    const cobrado = r.contado?.amount ?? 0;
-    const fiado = r.credito?.amount ?? 0;
+    const r = registros[t.currency] ?? null;
+    const cobrado = r?.amount ?? 0;
     return {
       ...t,
-      registros: r,
+      registro: r,
       cobrado,
-      fiado,
-      // Lo que no se ha dicho qué es. Al finalizar se va como fiado sin plazo,
-      // que es lo que la base ya admite.
-      suelto: Math.round((t.amount - cobrado - fiado) * 100) / 100,
+      // LO QUE QUEDA DEBIENDO, calculado. Sin registro es la venta entera: una
+      // moneda que el tendero no toca queda fiada completa, que es lo que el
+      // paso 3 dice con «Finalizar».
+      debe: Math.round((t.amount - cobrado) * 100) / 100,
     };
   });
 
-  const hayDeuda = cuentas.some((c) => c.fiado > 0.005 || c.suelto > 0.005);
+  const hayDeuda = cuentas.some((c) => c.debe > 0.005);
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -1053,19 +1045,19 @@ function PasoPago({
         .map((c) => ({
           currency: c.currency,
           amount: c.cobrado,
-          entryCurrency: c.registros.contado?.entryCurrency ?? c.currency,
-          entryAmount: c.registros.contado?.entryAmount ?? null,
-          photoPath: c.registros.contado?.photoPath ?? null,
-          description: c.registros.contado?.description ?? "",
+          entryCurrency: c.registro?.entryCurrency ?? c.currency,
+          entryAmount: c.registro?.entryAmount ?? null,
+          photoPath: c.registro?.photoPath ?? null,
+          description: c.registro?.description ?? "",
         })),
       // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
       // resto él mismo —total menos pagos— y de aquí solo toma los TÉRMINOS.
       // Por eso lo pactado y lo que quedó suelto se mandan en una sola fila:
       // son la misma deuda.
       credito: cuentas
-        .filter((c) => c.fiado > 0.005 || c.suelto > 0.005)
+        .filter((c) => c.debe > 0.005)
         .map((c) => {
-          const k = c.registros.credito;
+          const k = c.registro;
           const plazo = k?.plazo ?? "";
           return {
             currency: c.currency,
@@ -1120,9 +1112,9 @@ function PasoPago({
         // LA DEUDA QUE DEJA ESTA VENTA: lo pactado a crédito más lo que quedó
         // suelto. Las dos cosas acaban en el mismo cargo — el servidor calcula
         // el resto él mismo y de la pantalla solo toma los términos.
-        const debeEstaVenta = Math.round((c.fiado + Math.max(0, c.suelto)) * 100) / 100;
+        const debeEstaVenta = Math.max(0, c.debe);
         const antigua = saldoDelElegido[c.currency] ?? null;
-        const registrado = c.cobrado > 0 || c.fiado > 0;
+        const registrado = c.registro != null;
 
         return (
           <div
@@ -1254,16 +1246,6 @@ function PasoPago({
       >
         {guardando ? "Guardando…" : "Finalizar"}
       </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-10 w-full"
-        disabled={guardando}
-        onClick={onVolver}
-      >
-        Volver al carrito
-      </Button>
-
       {cobrando ? (
         <PagoSheet
           key={cobrando}
@@ -1272,10 +1254,9 @@ function PasoPago({
           moneda={cobrando}
           ownerId={ownerId}
           total={cuentas.find((c) => c.currency === cobrando)?.amount ?? 0}
-          pendiente={Math.max(0, cuentas.find((c) => c.currency === cobrando)?.suelto ?? 0)}
           rates={rates}
           prevista={prevista}
-          inicial={registros[cobrando] ?? {}}
+          inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
             setCobrando(null);
@@ -1385,30 +1366,35 @@ function ClienteSheet({
 // el tendero puede aceptar unos bolívares de menos y dar la cuenta por
 // cerrada. El servidor sella la tasa pero NO divide una cifra por la otra —
 // hacerlo convertía una venta pagada completa en un fiado de un céntimo.
-type Cobro = {
-  // Lo que entra en el libro de esta moneda.
+// LO QUE SE REGISTRA EN UNA MONEDA: UNA COSA, no dos.
+//
+// Lo tuve dos días como dos huecos —un cobro y un fiado por separado— y el
+// dueño lo corrigió el 2026-10-18 con una regla que los une: «al seleccionar
+// "De contado" en el input de monto se pone el monto total; si el monto se
+// edita a un monto diferente al total, entonces debe seleccionarse el chip
+// "Fiado o crédito"».
+//
+// O sea que EL CHIP NO ES UN CAMPO, ES UNA CONSECUENCIA: paga todo o no paga
+// todo. `amount` es lo que entrega hoy y el resto —total menos eso— es la
+// deuda, calculada, nunca tecleada aparte. Con dos huecos se podía registrar
+// 5,84 de cobro y 2,03 de fiado sobre una venta de 5,84; con uno, eso es
+// inexpresable.
+type Registro = {
+  // Lo que entra HOY en el libro de esta moneda.
   amount: number;
   // Lo que de verdad entregaron, y en qué. `null` = en la moneda del libro.
   entryCurrency: "VES" | null;
   entryAmount: number | null;
-  // El comprobante. `sale_payments.photo_path` existe desde la migración
-  // `124`, así que esto se guarda de verdad y no es decoración.
-  photoPath: string | null;
-  description: string;
-};
-
-type Credito = {
-  amount: number;
+  // Solo valen si `amount` no cubre el total. Si lo cubre, no hay fiado que
+  // pactar y el servidor los ignora porque no escribe ningún cargo.
   plazo: string;
   cuotas: string;
   usarPrevista: boolean;
-  // Va a `movements.photo_path`, el mismo sitio donde el fiado manual guarda
-  // el suyo.
+  // El comprobante. Va a `sale_payments.photo_path` si hubo cobro, y a
+  // `movements.photo_path` del cargo si quedó deuda.
   photoPath: string | null;
   description: string;
 };
-
-type Registros = { contado?: Cobro; credito?: Credito };
 
 // LAS CUOTAS, TAL COMO LAS CALCULA LA BASE. Migración `118`: «el vencimiento
 // de la cuota i es created_at + plazo_dias * i / cuotas». Aquí se repite para
@@ -1442,7 +1428,6 @@ function PagoSheet({
   moneda,
   ownerId,
   total,
-  pendiente,
   rates,
   prevista,
   inicial,
@@ -1455,21 +1440,11 @@ function PagoSheet({
   ownerId: string;
   // Lo que suma la venta en esta moneda, para la tarjeta de arriba.
   total: number;
-  // Lo que queda por registrar, para rellenar el monto. Es el caso corriente:
-  // le pagan lo que falta.
-  pendiente: number;
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
-  inicial: Registros;
-  onGuardar: (r: Registros) => void;
+  inicial: Registro | null;
+  onGuardar: (r: Registro) => void;
 }) {
-  // EL CHIP ARRANCA EN «De contado» salvo que ya hubiera un crédito guardado.
-  // Cobrar es lo corriente; fiar es la excepción, aunque sea la que le da
-  // nombre a la app.
-  const [tipo, setTipo] = useState<"contado" | "credito">(
-    inicial.credito && !inicial.contado ? "credito" : "contado",
-  );
-
   const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
 
   // ── EN QUÉ MONEDA LE ENTREGAN ───────────────────────────────────────
@@ -1484,42 +1459,37 @@ function PagoSheet({
   //
   // Sin tasa —un negocio colombiano— no hay bolívares que ofrecer: cae en la
   // moneda del libro y el selector no se pinta.
-  //
-  // CUÁL VIENE PUESTA, escrito una vez y usado al abrir Y al cambiar de chip:
-  // dos copias de esta regla discrepan, y el síntoma sería que tocar un chip
-  // mueve la cifra sin motivo.
-  const entregaDe = (previo: Cobro | Credito | undefined): "VES" | PriceCurrency => {
-    if (previo && "entryCurrency" in previo) return previo.entryCurrency === "VES" ? "VES" : moneda;
-    if (previo) return moneda;
-    return tasa ? "VES" : moneda;
-  };
+  const entregaInicial: "VES" | PriceCurrency = inicial
+    ? inicial.entryCurrency === "VES"
+      ? "VES"
+      : moneda
+    : tasa
+      ? "VES"
+      : moneda;
 
   // EL MONTO ARRANCA EXPRESADO EN LA MONEDA DE ENTREGA, y esto no sobra: con
   // bolívares por defecto, sembrarlo con lo que falta EN EL LIBRO abriría la
   // hoja enseñando «5,84» con la etiqueta «Bolívares» — una cifra mil veces
   // más pequeña de la que el tendero va a recibir, y perfectamente creíble.
-  const siembraDe = (previo: Cobro | Credito | undefined, entrega: "VES" | PriceCurrency) => {
-    if (previo && "entryAmount" in previo && previo.entryAmount != null) {
-      return formatAmountForInput(previo.entryAmount);
-    }
-    const base = previo?.amount ?? pendiente;
-    return formatAmountForInput(entrega === "VES" && tasa ? base * tasa : base);
-  };
+  //
+  // Y ARRANCA CON EL TOTAL, no con cero: «al seleccionar "De contado" en el
+  // input de monto se pone el monto total de pago» (el dueño, 2026-10-18). Le
+  // pagan todo en la mayoría de las ventas, así que el caso corriente es cero
+  // teclas.
+  const enEntrega = (enElLibro: number) =>
+    formatAmountForInput(entregaInicial === "VES" && tasa ? enElLibro * tasa : enElLibro);
 
-  const previoInicial = tipo === "contado" ? inicial.contado : inicial.credito;
-  const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(() =>
-    entregaDe(previoInicial),
+  const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(entregaInicial);
+  const [monto, setMonto] = useState(() =>
+    inicial?.entryAmount != null
+      ? formatAmountForInput(inicial.entryAmount)
+      : enEntrega(inicial?.amount ?? total),
   );
-  const [monto, setMonto] = useState(() => siembraDe(previoInicial, entregaDe(previoInicial)));
-  const [usarPrevista, setUsarPrevista] = useState(inicial.credito?.usarPrevista ?? false);
-  const [photoPath, setPhotoPath] = useState<string | null>(
-    (tipo === "contado" ? inicial.contado?.photoPath : inicial.credito?.photoPath) ?? null,
-  );
-  const [plazo, setPlazo] = useState(inicial.credito?.plazo ?? DEFAULT_PLAZO_PAGO);
-  const [cuotas, setCuotas] = useState(inicial.credito?.cuotas ?? "1");
-  const [descripcion, setDescripcion] = useState(
-    (tipo === "contado" ? inicial.contado?.description : inicial.credito?.description) ?? "",
-  );
+  const [usarPrevista, setUsarPrevista] = useState(inicial?.usarPrevista ?? false);
+  const [photoPath, setPhotoPath] = useState<string | null>(inicial?.photoPath ?? null);
+  const [plazo, setPlazo] = useState(inicial?.plazo ?? DEFAULT_PLAZO_PAGO);
+  const [cuotas, setCuotas] = useState(inicial?.cuotas ?? "1");
+  const [descripcion, setDescripcion] = useState(inicial?.description ?? "");
 
   // LAS DOS CIFRAS SON DOS HECHOS DISTINTOS, y la segunda se CALCULA:
   //
@@ -1550,59 +1520,51 @@ function PagoSheet({
   // ensucia el saldo de alguien para siempre.
   const convertido = entregaEnOtraMoneda && tasa ? entregado / tasa : entregado;
 
-  // ── EL TOPE ES LO QUE FALTA, NO EL TOTAL ──────────────────────────
-  //
-  // FALLO REAL, visto por el dueño en una captura el 2026-10-18: sobre una
-  // venta de 5,84 € la pantalla enseñaba «Cobrado €5,84 · Fiado €2,03». Suman
-  // 7,87 y la venta valía 5,84.
-  //
-  // La causa: este tope comparaba cada registro contra el TOTAL, ignorando el
-  // otro hueco. Cobrar 5,84 y luego fiar 2,03 pasaba las dos veces, porque
-  // ninguna de las dos pasa de 5,84 por separado.
-  //
-  // El tope es lo que queda por registrar MÁS lo que este mismo hueco ya
-  // tenía: sin ese sumando, reabrir un cobro guardado para subirlo un céntimo
-  // se rechazaría por su propio importe.
-  const yaEnEsteHueco =
-    (tipo === "contado" ? inicial.contado?.amount : inicial.credito?.amount) ?? 0;
-  const tope = Math.round((pendiente + yaEnEsteHueco) * 100) / 100;
-
   // EL CÉNTIMO QUE CONVIERTE UNA VENTA PAGADA EN UN FIADO. 5.756,66 Bs a
   // 985,73 dan 5,8399… que redondea bien, pero con otras cifras la división
   // deja 19,99 sobre un total de 20 y la venta nace con un fiado de 0,01 que
   // nadie entiende y nadie cobra. Siendo la equivalencia calculada, el tendero
   // no puede corregirla, así que el ajuste está aquí.
-  //
-  // SE COMPARA CONTRA `tope` Y NO CONTRA `pendiente`, y la diferencia es justo
-  // el caso de EDITAR: reabriendo un cobro ya registrado no queda nada
-  // pendiente —`pendiente` vale 0— así que con la versión anterior el ajuste
-  // no entraba y volver a teclear los mismos bolívares podía dejar 5,83 donde
-  // antes había 5,84. `tope` incluye lo que ese hueco ya tenía, así que
-  // completar la venta sigue cuadrando al reabrirla.
   const enElLibro =
-    tope > 0 && Math.abs(convertido - tope) <= 0.01
-      ? tope
+    total > 0 && Math.abs(convertido - total) <= 0.01
+      ? total
       : Math.round(convertido * 100) / 100;
 
-  const deMas = enElLibro - tope > 0.005;
+  // ── EL CHIP NO SE ELIGE: SE DEDUCE DEL MONTO ──────────────────────
+  //
+  // Regla del dueño, 2026-10-18: «al seleccionar "De contado" en el input de
+  // monto se pone el monto total de pago; si el monto se edita a un monto
+  // diferente al total, entonces debe seleccionarse el chip "Fiado o
+  // crédito"».
+  //
+  // Así que no hay un estado `tipo` que pueda discrepar de la cifra: paga todo
+  // o no paga todo, y el chip lo dice. Es lo que hace imposible el caso que el
+  // dueño vio en una captura —«Cobrado €5,84 · Fiado €2,03» sobre una venta de
+  // 5,84— porque ya no hay dos cifras que puedan sumarse de más.
+  const esContado = Math.abs(enElLibro - total) <= 0.005;
+  const deMas = enElLibro - total > 0.005;
   const listo = enElLibro > 0 && entregado > 0 && !deMas;
 
   const plazoDias =
     plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo)) ? Number(plazo) : null;
-  const calendario =
-    tipo === "credito" ? calendarioDeCuotas(enElLibro, plazoDias, Number(cuotas) || 1) : [];
+  // LO QUE QUEDARÁ DEBIENDO, que es sobre lo que se reparten las cuotas.
+  const debe = Math.round((total - enElLibro) * 100) / 100;
+  const calendario = esContado
+    ? []
+    : calendarioDeCuotas(debe, plazoDias, Number(cuotas) || 1);
 
-  // AL CAMBIAR DE CHIP SE RECALCULA LO QUE EL CAMPO DEBE DECIR. Dejar el monto
-  // del contado al pasar a crédito haría que el tendero fiara, sin querer, la
-  // cifra que acababa de cobrar.
-  function cambiarTipo(siguiente: "contado" | "credito") {
-    setTipo(siguiente);
-    const previo = siguiente === "contado" ? inicial.contado : inicial.credito;
-    const entrega = entregaDe(previo);
-    setMonedaEntrega(entrega);
-    setMonto(siembraDe(previo, entrega));
-    setPhotoPath(previo?.photoPath ?? null);
-    setDescripcion(previo?.description ?? "");
+  // TOCAR UN CHIP ES ESCRIBIR EN EL MONTO, porque el chip es la consecuencia.
+  //
+  // «De contado» pone el total: es la regla del dueño, y el caso corriente.
+  // «Fiado o crédito» VACÍA el campo para que escriba lo que de verdad le
+  // dieron — dejarlo con el total sería un chip que dice «no paga todo» sobre
+  // una cifra que es todo, y el propio chip saltaría de vuelta.
+  function ponerTipo(siguiente: "contado" | "credito") {
+    if (siguiente === "contado") {
+      setMonto(enEntrega(total));
+      return;
+    }
+    if (esContado) setMonto("");
   }
 
   return (
@@ -1643,12 +1605,12 @@ function PagoSheet({
                       { valor: "credito" as const, texto: "Fiado o crédito", Icono: Percent },
                     ]
                   ).map(({ valor, texto, Icono }) => {
-                    const activo = tipo === valor;
+                    const activo = (valor === "contado") === esContado;
                     return (
                       <button
                         key={valor}
                         type="button"
-                        onClick={() => cambiarTipo(valor)}
+                        onClick={() => ponerTipo(valor)}
                         aria-pressed={activo}
                         className="flex items-center gap-1 rounded-full border p-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
@@ -1769,15 +1731,14 @@ function PagoSheet({
 
               {deMas ? (
                 <p className="text-xs text-destructive">
-                  No puedes registrar más de {formatPriceAmount(tope, moneda)} — es lo que falta de
-                  esta venta.
+                  No puedes cobrar más de {formatPriceAmount(total, moneda)}.
                 </p>
               ) : null}
             </div>
           </div>
 
           {/* ── LA RAMA DEL CRÉDITO ────────────────────────────────────── */}
-          {tipo === "credito" ? (
+          {!esContado ? (
             <>
               <PlazoPagoSelect
                 value={plazo}
@@ -1845,33 +1806,30 @@ function PagoSheet({
             type="button"
             className="h-10 w-full"
             disabled={!listo}
-            onClick={() => {
-              const amount = Math.round(enElLibro * 100) / 100;
-              const nota = descripcion.trim();
-              onGuardar(
-                tipo === "contado"
-                  ? {
-                      ...inicial,
-                      contado: {
-                        amount,
-                        entryCurrency: entregaEnOtraMoneda ? "VES" : null,
-                        // LO ENTREGADO SE GUARDA SIEMPRE, no solo en
-                        // bolívares. Con la misma moneda coincide con `amount`
-                        // salvo por el ajuste del céntimo; en bolívares es la
-                        // única constancia de cuántos cambiaron de mano, que es
-                        // para lo que existe `entry_amount` desde la migración
-                        // `022` — una tasa se revisa, un billete contado no.
-                        entryAmount: entregado,
-                        photoPath,
-                        description: nota,
-                      },
-                    }
-                  : {
-                      ...inicial,
-                      credito: { amount, plazo, cuotas, usarPrevista, photoPath, description: nota },
-                    },
-              );
-            }}
+            onClick={() =>
+              onGuardar({
+                // LO QUE ENTRA HOY EN EL LIBRO. Lo que falte hasta el total es
+                // la deuda, y la calcula el servidor: aquí no se teclea.
+                amount: Math.round(enElLibro * 100) / 100,
+                entryCurrency: entregaEnOtraMoneda ? "VES" : null,
+                // LO ENTREGADO SE GUARDA SIEMPRE, no solo en bolívares. Con la
+                // misma moneda coincide con `amount` salvo por el ajuste del
+                // céntimo; en bolívares es la única constancia de cuántos
+                // cambiaron de mano, que es para lo que existe `entry_amount`
+                // desde la migración `022` — una tasa se revisa, un billete
+                // contado no.
+                entryAmount: entregado,
+                // EL PLAZO Y LAS CUOTAS VIAJAN SIEMPRE y el servidor los ignora
+                // cuando no hay deuda que pactar, porque entonces no escribe
+                // ningún cargo. Limpiarlos aquí según el chip obligaría a
+                // volver a elegirlos si el tendero baja el monto y lo sube.
+                plazo,
+                cuotas,
+                usarPrevista,
+                photoPath,
+                description: descripcion.trim(),
+              })
+            }
           >
             Pagar
           </Button>
