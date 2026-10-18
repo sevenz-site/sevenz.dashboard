@@ -51,12 +51,15 @@ type Opcion = {
 };
 
 const OPCIONES: Opcion[] = [
-  // EL ALTA QUE YA EXISTE, abierta directamente en su formulario. `?nuevo=`
-  // es el mismo marcador que el botón flotante usaba desde hace meses y que
-  // `ClientSearchDialog` documenta con sus dos trampas resueltas —los toques
-  // repetidos y limpiar el marcador por el router—, así que no se estrena
-  // mecanismo para esto.
-  { href: "/dashboard?nuevo=cliente", etiqueta: "Nuevo cliente", Icono: User, marcador: true },
+  // LA PANTALLA DE ALTA, frame `1389:8313`. Crea un cliente y NADA MÁS —sin
+  // monto, sin plazo, sin cuotas— y termina ofreciendo seguir con una venta.
+  //
+  // Apuntaba a `/dashboard?nuevo=cliente` durante unas horas del 2026-10-18,
+  // que abría el diálogo de siempre en su paso de alta. Ese diálogo sigue
+  // existiendo y sigue creando cliente + primer fiado de una vez, que es lo
+  // que hace falta cuando el tendero ya tiene la deuda delante; lo que ya no
+  // hace es ser la única forma de apuntar a una persona.
+  { href: "/clients/nuevo", etiqueta: "Nuevo cliente", Icono: User, marcador: false },
   // EL ASISTENTE DE CUATRO PASOS. Un fiado manual es «una venta sin pago»
   // desde la migración `124`, y por eso las dos palabras van en el mismo
   // botón en vez de en dos.

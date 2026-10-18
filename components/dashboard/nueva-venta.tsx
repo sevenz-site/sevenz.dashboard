@@ -327,11 +327,13 @@ function PasoCliente({
           `createClientWithMovement`— y eso es trabajo propio, no un añadido a
           este botón. */}
       <Button asChild variant="outline" className="h-12 w-full">
-        {/* `?nuevo=cliente` y no `?nuevo=1` desde que existe la hoja de
-            «Registrar» (2026-10-18): abre el alta directamente en su
-            formulario, en vez de en el buscador con un botón que repite lo que
-            el tendero ya dijo aquí. */}
-        <Link href="/dashboard?nuevo=cliente">
+        {/* A LA PANTALLA DE ALTA, y eso cierra el hueco que este mismo
+            comentario describía esta mañana: el diálogo de siempre crea al
+            cliente CON un fiado, así que desde aquí no había forma de que
+            alguien nuevo naciera con una venta. Esa pantalla termina en
+            «Continuar con venta», que vuelve justo aquí con el cliente ya
+            puesto. */}
+        <Link href="/clients/nuevo">
           <UserPlus className="size-4" aria-hidden="true" />
           Registrar cliente nuevo
         </Link>

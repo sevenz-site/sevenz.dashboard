@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, normalizeDocumentId } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -15,6 +15,7 @@ import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { isDocumentTypeFor } from "@/lib/document-id";
+import { buscarDocumentoDuplicado, mensajeDeDuplicado } from "@/lib/clients/duplicate-document";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import type { LineaDeProducto } from "@/lib/sale-lines";
@@ -450,28 +451,19 @@ export async function createClientWithMovement(
   // explicitly confirm it's a separate account via confirm_duplicate.
   // Compared normalized (punctuation/case-insensitive) since document_id is
   // stored exactly as typed, with no fixed format.
-  const normalizedDocumentId = normalizeDocumentId(documentId);
+  // LA BÚSQUEDA Y LA FRASE VIVEN EN `lib/clients/duplicate-document.ts` desde
+  // el 2026-10-18, cuando la pantalla de cliente nuevo pasó a necesitar lo
+  // mismo. No se movió por orden: dos copias de esta comprobación se separan,
+  // y lo que se cuela por la que se quede atrás es el MISMO cliente registrado
+  // dos veces, con la mitad de lo que debe en cada ficha. El comportamiento es
+  // idéntico al de antes, incluidos los ocultos y la comparación normalizada.
   const confirmDuplicate = formData.get("confirm_duplicate") === "true";
-  // Hidden clients are deliberately included here. Excluding them would let an
-  // owner re-create someone they had hidden and start their history over —
-  // which is the one thing keeping the identity (decision D1) is meant to
-  // prevent — and would leave one person split across two records.
-  const { data: ownerClients } = await supabase
-    .from("clients")
-    .select("id, name, document_id, trashed_at, deleted_at")
-    .eq("owner_id", user.id)
-    .not("document_id", "is", null);
-  const duplicate = ownerClients?.find(
-    (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
-  );
+  const duplicate = await buscarDocumentoDuplicado(supabase, user.id, documentId);
   if (duplicate && !confirmDuplicate) {
-    const hidden = Boolean(duplicate.trashed_at || duplicate.deleted_at);
     return {
-      error: hidden
-        ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera en vez de crearlo otra vez.`
-        : `Ya existe un cliente con esta cédula: ${duplicate.name}`,
+      error: mensajeDeDuplicado(duplicate),
       clientId: null,
-      duplicate: { id: duplicate.id as string, name: duplicate.name as string },
+      duplicate: { id: duplicate.id, name: duplicate.name },
     };
   }
 
