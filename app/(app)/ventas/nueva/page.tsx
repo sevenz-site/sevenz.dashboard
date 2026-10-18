@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NuevaVenta } from "@/components/dashboard/nueva-venta";
+import type { OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
 
@@ -36,6 +37,16 @@ export default async function NuevaVentaPage({
   // la pantalla de pago prohíbe. Se elige con su propio botón, no buscándolo.
   // (Es la única exclusión que existe hoy: `CT-99` sigue abierto para el resto
   // de las listas.)
+  // EL PAÍS DEL NEGOCIO decide las letras del documento (V/E/J o CC/CE/NIT) y
+  // el prefijo del WhatsApp en el paso 4, que es donde se puede registrar a un
+  // cliente nuevo sin salir de la venta.
+  const { data: owner } = await supabase
+    .from("owners")
+    .select("country")
+    .eq("id", user.id)
+    .maybeSingle();
+  const ownerCountry = (owner?.country as OwnerCountry | null) ?? null;
+
   const { data: clientes } = await supabase
     .from("clients")
     .select("id, name")
@@ -67,10 +78,18 @@ export default async function NuevaVentaPage({
           clientes={clientes ?? []}
           inicial={{ id: data.id, name: data.name, esMostrador: data.is_walk_in }}
           ownerId={user.id}
+          ownerCountry={ownerCountry}
         />
       );
     }
   }
 
-  return <NuevaVenta clientes={clientes ?? []} inicial={null} ownerId={user.id} />;
+  return (
+    <NuevaVenta
+      clientes={clientes ?? []}
+      inicial={null}
+      ownerId={user.id}
+      ownerCountry={ownerCountry}
+    />
+  );
 }
