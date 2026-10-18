@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -119,12 +119,168 @@ export function NuevaVenta({
   ownerId: string;
 }) {
   const router = useRouter();
-  const [paso, setPaso] = useState<1 | 2 | 3>(1);
+  const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
+
+  // ── CUÁNTOS PASOS TIENE ESTA VENTA ──────────────────────────────────
+  //
+  // Tres o cuatro, y lo decide POR DÓNDE SE ENTRÓ. Regla del dueño,
+  // 2026-10-18:
+  //
+  //   · Entrando con el cliente ya puesto —«Continuar con venta» del alta, o
+  //     el botón de la ficha de alguien— son TRES y el botón dice «Finalizar»:
+  //     la venta ya sabe a nombre de quién queda.
+  //   · Entrando por «Fiado o venta» de la hoja de Registrar son CUATRO: el
+  //     tercero dice «Continuar» y el cuarto capta al cliente.
+  //
+  // SE FIJA CON `inicial` Y NO CON `cliente`, que cambia. Si dependiera del
+  // estado, elegir a alguien en el paso 4 convertiría el total en 3 y la
+  // pantalla diría «4/3».
+  const pasos = inicial ? 3 : 4;
   const [cliente, setCliente] = useState<Elegido | null>(inicial);
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [catalogo, setCatalogo] = useState<ProductosParaVenta | null>(null);
 
   const total = useMemo(() => totalesPorMoneda(lineas, catalogo?.rates ?? null), [lineas, catalogo]);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const rates = catalogo?.rates ?? null;
+  const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registro>>>({});
+  // LO QUE EL CLIENTE YA DEBÍA ANTES DE ESTA VENTA, para la fila «Deuda
+  // antigua» del frame `1389:8504`. Vacío mientras no haya cliente: hasta
+  // entonces no hay saldo que leer, y un «0,00» ahí afirmaría que no debe
+  // nada, que es una afirmación y no una ausencia.
+  //
+  // SE GUARDA JUNTO AL ID DEL CLIENTE AL QUE PERTENECE, y eso hace dos cosas
+  // a la vez. La obvia: cambiando de cliente, el saldo del anterior deja de
+  // enseñarse en cuanto el id no coincide, sin esperar a que llegue la
+  // consulta nueva — enseñar la deuda de Pedro bajo el nombre de Ana aunque
+  // sea medio segundo es decirle al tendero algo falso sobre dinero.
+  //
+  // La menos obvia: sin él haría falta limpiar el estado en el cuerpo del
+  // efecto cuando no hay cliente, y `react-hooks/set-state-in-effect` lo
+  // prohíbe con razón.
+  const [saldoAnterior, setSaldoAnterior] = useState<{
+    clienteId: string;
+    saldo: Partial<Record<PriceCurrency, number>>;
+  } | null>(null);
+
+  // SE PIDE AL CAMBIAR DE CLIENTE, no en cada render. La dependencia es
+  // `cliente?.id` y no el objeto: `SelectorDeCliente` entrega uno nuevo cada
+  // vez que se repinta, y con el objeto esto consultaría en bucle.
+  const clienteId = cliente?.id ?? null;
+  useEffect(() => {
+    if (!clienteId) return;
+    let vivo = true;
+    void saldoAnteriorDelCliente(clienteId).then((saldo) => {
+      if (vivo) setSaldoAnterior({ clienteId, saldo });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [clienteId]);
+
+  const saldoDelElegido =
+    clienteId && saldoAnterior?.clienteId === clienteId ? saldoAnterior.saldo : {};
+
+  // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
+  // render y no se guarda aparte: un total derivado que vive por su cuenta es
+  // un total que algún día se queda viejo.
+  const cuentas = total.map((t) => {
+    const r = registros[t.currency] ?? null;
+    const cobrado = r?.amount ?? 0;
+    return {
+      ...t,
+      registro: r,
+      cobrado,
+      // LO QUE QUEDA DEBIENDO, calculado. Sin registro es la venta entera: una
+      // moneda que el tendero no toca queda fiada completa, que es lo que el
+      // paso 3 dice con «Finalizar».
+      debe: Math.round((t.amount - cobrado) * 100) / 100,
+    };
+  });
+
+  const hayDeuda = cuentas.some((c) => c.debe > 0.005);
+
+  async function guardar() {
+    setError(null);
+    setGuardando(true);
+
+    // ── A NOMBRE DE QUIÉN QUEDA ESTA VENTA ──────────────────────────
+    //
+    // `sales.client_id` es `not null` y la RLS de `movements` deriva el dueño
+    // ENTERAMENTE a través del cliente, así que no hay venta sin uno. Lo que
+    // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe para
+    // eso, y se resuelve AL GUARDAR y no al entrar — crear la fila al abrir la
+    // pantalla le pondría un «Mostrador» en la lista a cualquiera que solo
+    // mire el catálogo.
+    let destino = cliente;
+    if (!destino) {
+      const r = await resolverMostrador();
+      if ("error" in r) {
+        setError(r.error);
+        setGuardando(false);
+        return;
+      }
+      destino = { ...r, esMostrador: true };
+      setCliente(destino);
+    }
+
+    const resultado = await registrarVenta({
+      clientId: destino.id,
+      lineas: lineas.map((l) => ({
+        productId: l.productId,
+        quantity: l.quantity,
+        currency: l.currency,
+      })),
+      pagos: cuentas
+        .filter((c) => c.cobrado > 0)
+        .map((c) => ({
+          currency: c.currency,
+          amount: c.cobrado,
+          entryCurrency: c.registro?.entryCurrency ?? c.currency,
+          entryAmount: c.registro?.entryAmount ?? null,
+          photoPath: c.registro?.photoPath ?? null,
+          description: c.registro?.description ?? "",
+        })),
+      // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
+      // resto él mismo —total menos pagos— y de aquí solo toma los TÉRMINOS.
+      // Por eso lo pactado y lo que quedó suelto se mandan en una sola fila:
+      // son la misma deuda.
+      credito: cuentas
+        .filter((c) => c.debe > 0.005)
+        .map((c) => {
+          const k = c.registro;
+          const plazo = k?.plazo ?? "";
+          return {
+            currency: c.currency,
+            // «Sin especificar» es una respuesta válida y viaja como null: el
+            // fiado manual la admite desde siempre.
+            plazoDias:
+              plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
+                ? Number(plazo)
+                : null,
+            // Una sola cuota va como null: es lo mismo, y el `check` de la
+            // migración `118` empieza en 2.
+            cuotas: Number(k?.cuotas ?? "1") > 1 ? Number(k?.cuotas) : null,
+            usarPrevista: k?.usarPrevista === true,
+            photoPath: k?.photoPath ?? null,
+            description: k?.description ?? "",
+          };
+        }),
+    });
+
+    if (!resultado.ok) {
+      setError(resultado.error);
+      setGuardando(false);
+      return;
+    }
+
+    // A LA FICHA DEL CLIENTE, que es donde el fiado se ve y se cobra. Para una
+    // venta de mostrador no hay ficha que valga —el comodín no se visita— así
+    // que vuelve al panel.
+    router.push(destino.esMostrador ? "/dashboard" : `/clients/${destino.id}`);
+  }
+
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
@@ -134,7 +290,7 @@ export function NuevaVenta({
           variant="ghost"
           size="icon"
           aria-label="Volver"
-          onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2))}
+          onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2 | 3))}
         >
           <ArrowLeft className="size-5" aria-hidden="true" />
         </Button>
@@ -157,7 +313,7 @@ export function NuevaVenta({
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-normal">Nueva venta</h1>
         <p className="text-sm text-muted-foreground">
-          {paso}/3 {["Producto", "Carrito", "Pago"][paso - 1]}
+          {paso}/{pasos} {["Producto", "Carrito", "Pago", "Cliente"][paso - 1]}
         </p>
         {/* `aria-hidden` porque la línea de arriba ya dice «1/3 Producto» con
             palabras: repetirlo en el lector de pantalla sería ruido, no
@@ -165,7 +321,7 @@ export function NuevaVenta({
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div
             className="h-full rounded-full bg-foreground transition-all"
-            style={{ width: `${(paso / 3) * 100}%` }}
+            style={{ width: `${(paso / pasos) * 100}%` }}
           />
         </div>
       </div>
@@ -194,14 +350,33 @@ export function NuevaVenta({
 
       {paso === 3 ? (
         <PasoPago
+          conCliente={inicial != null}
+          registros={registros}
+          setRegistros={setRegistros}
+          saldoDelElegido={saldoDelElegido}
+          cuentas={cuentas}
+          guardando={guardando}
+          error={error}
+          rates={rates}
+          prevista={catalogo?.prevista ?? null}
+          ownerId={ownerId}
+          onContinuar={() => setPaso(4)}
+          guardar={() => void guardar()}
+        />
+      ) : null}
+
+      {paso === 4 ? (
+        <PasoCliente
           clientes={clientes}
           cliente={cliente}
           onElegirCliente={setCliente}
-          lineas={lineas}
-          total={total}
-          rates={catalogo?.rates ?? null}
-          prevista={catalogo?.prevista ?? null}
-          ownerId={ownerId}
+          // OBLIGATORIO SOLO SI QUEDÓ DEUDA: «si se registra al menos 1 pago
+          // como parcial, el registro del cliente es obligatorio; cuando se
+          // registran de contado, es opcional» — el dueño, 2026-10-18.
+          obligatorio={hayDeuda}
+          guardando={guardando}
+          error={error}
+          onFinalizar={() => void guardar()}
         />
       ) : null}
     </div>
@@ -915,87 +1090,41 @@ function TarjetaDeLinea({
 // Lo que no se cobre ni se pacte queda fiado al «Finalizar». El tendero no
 // clasifica la venta de antemano: cobra lo que le den y lo que sobre se fía.
 function PasoPago({
-  clientes,
-  cliente,
-  onElegirCliente,
-  lineas,
-  total,
+  conCliente,
+  registros,
+  setRegistros,
+  saldoDelElegido,
+  cuentas,
+  guardando,
+  error,
   rates,
   prevista,
   ownerId,
+  onContinuar,
+  guardar,
 }: {
-  clientes: Cliente[];
-  // `null` = se entró por «Fiado o venta» sin decir a quién. No se pregunta
-  // hasta que haga falta: una venta de contado no necesita cliente.
-  cliente: Elegido | null;
-  onElegirCliente: (c: Elegido | null) => void;
-  lineas: LineaVenta[];
-  total: { currency: PriceCurrency; amount: number }[];
+  // POR DÓNDE SE ENTRÓ, no si hay cliente ahora. Decide si el botón dice
+  // «Finalizar» o «Continuar».
+  conCliente: boolean;
+  registros: Partial<Record<PriceCurrency, Registro>>;
+  setRegistros: Dispatch<SetStateAction<Partial<Record<PriceCurrency, Registro>>>>;
+  saldoDelElegido: Partial<Record<PriceCurrency, number>>;
+  cuentas: {
+    currency: PriceCurrency;
+    amount: number;
+    registro: Registro | null;
+    cobrado: number;
+    debe: number;
+  }[];
+  guardando: boolean;
+  error: string | null;
+  onContinuar: () => void;
+  guardar: () => void;
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
   ownerId: string;
 }) {
-  const router = useRouter();
-  const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registro>>>({});
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
-  const [pidiendoCliente, setPidiendoCliente] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // LO QUE EL CLIENTE YA DEBÍA ANTES DE ESTA VENTA, para la fila «Deuda
-  // antigua» del frame `1389:8504`. Vacío mientras no haya cliente: hasta
-  // entonces no hay saldo que leer, y un «0,00» ahí afirmaría que no debe
-  // nada, que es una afirmación y no una ausencia.
-  //
-  // SE GUARDA JUNTO AL ID DEL CLIENTE AL QUE PERTENECE, y eso hace dos cosas
-  // a la vez. La obvia: cambiando de cliente, el saldo del anterior deja de
-  // enseñarse en cuanto el id no coincide, sin esperar a que llegue la
-  // consulta nueva — enseñar la deuda de Pedro bajo el nombre de Ana aunque
-  // sea medio segundo es decirle al tendero algo falso sobre dinero.
-  //
-  // La menos obvia: sin él haría falta limpiar el estado en el cuerpo del
-  // efecto cuando no hay cliente, y `react-hooks/set-state-in-effect` lo
-  // prohíbe con razón.
-  const [saldoAnterior, setSaldoAnterior] = useState<{
-    clienteId: string;
-    saldo: Partial<Record<PriceCurrency, number>>;
-  } | null>(null);
-
-  // SE PIDE AL CAMBIAR DE CLIENTE, no en cada render. La dependencia es
-  // `cliente?.id` y no el objeto: `SelectorDeCliente` entrega uno nuevo cada
-  // vez que se repinta, y con el objeto esto consultaría en bucle.
-  const clienteId = cliente?.id ?? null;
-  useEffect(() => {
-    if (!clienteId) return;
-    let vivo = true;
-    void saldoAnteriorDelCliente(clienteId).then((saldo) => {
-      if (vivo) setSaldoAnterior({ clienteId, saldo });
-    });
-    return () => {
-      vivo = false;
-    };
-  }, [clienteId]);
-
-  const saldoDelElegido =
-    clienteId && saldoAnterior?.clienteId === clienteId ? saldoAnterior.saldo : {};
-
-  // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
-  // render y no se guarda aparte: un total derivado que vive por su cuenta es
-  // un total que algún día se queda viejo.
-  const cuentas = total.map((t) => {
-    const r = registros[t.currency] ?? null;
-    const cobrado = r?.amount ?? 0;
-    return {
-      ...t,
-      registro: r,
-      cobrado,
-      // LO QUE QUEDA DEBIENDO, calculado. Sin registro es la venta entera: una
-      // moneda que el tendero no toca queda fiada completa, que es lo que el
-      // paso 3 dice con «Finalizar».
-      debe: Math.round((t.amount - cobrado) * 100) / 100,
-    };
-  });
-
-  const hayDeuda = cuentas.some((c) => c.debe > 0.005);
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -1009,85 +1138,6 @@ function PasoPago({
     ? cuentas.reduce((acc, c) => acc + c.amount * (c.currency === "EUR" ? rates.eur : rates.usd), 0)
     : null;
 
-  async function guardar() {
-    setError(null);
-    setGuardando(true);
-
-    // ── A NOMBRE DE QUIÉN QUEDA ESTA VENTA ──────────────────────────
-    //
-    // `sales.client_id` es `not null` y la RLS de `movements` deriva el dueño
-    // ENTERAMENTE a través del cliente, así que no hay venta sin uno. Lo que
-    // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe para
-    // eso, y se resuelve AL GUARDAR y no al entrar — crear la fila al abrir la
-    // pantalla le pondría un «Mostrador» en la lista a cualquiera que solo
-    // mire el catálogo.
-    let destino = cliente;
-    if (!destino) {
-      const r = await resolverMostrador();
-      if ("error" in r) {
-        setError(r.error);
-        setGuardando(false);
-        return;
-      }
-      destino = { ...r, esMostrador: true };
-      onElegirCliente(destino);
-    }
-
-    const resultado = await registrarVenta({
-      clientId: destino.id,
-      lineas: lineas.map((l) => ({
-        productId: l.productId,
-        quantity: l.quantity,
-        currency: l.currency,
-      })),
-      pagos: cuentas
-        .filter((c) => c.cobrado > 0)
-        .map((c) => ({
-          currency: c.currency,
-          amount: c.cobrado,
-          entryCurrency: c.registro?.entryCurrency ?? c.currency,
-          entryAmount: c.registro?.entryAmount ?? null,
-          photoPath: c.registro?.photoPath ?? null,
-          description: c.registro?.description ?? "",
-        })),
-      // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
-      // resto él mismo —total menos pagos— y de aquí solo toma los TÉRMINOS.
-      // Por eso lo pactado y lo que quedó suelto se mandan en una sola fila:
-      // son la misma deuda.
-      credito: cuentas
-        .filter((c) => c.debe > 0.005)
-        .map((c) => {
-          const k = c.registro;
-          const plazo = k?.plazo ?? "";
-          return {
-            currency: c.currency,
-            // «Sin especificar» es una respuesta válida y viaja como null: el
-            // fiado manual la admite desde siempre.
-            plazoDias:
-              plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
-                ? Number(plazo)
-                : null,
-            // Una sola cuota va como null: es lo mismo, y el `check` de la
-            // migración `118` empieza en 2.
-            cuotas: Number(k?.cuotas ?? "1") > 1 ? Number(k?.cuotas) : null,
-            usarPrevista: k?.usarPrevista === true,
-            photoPath: k?.photoPath ?? null,
-            description: k?.description ?? "",
-          };
-        }),
-    });
-
-    if (!resultado.ok) {
-      setError(resultado.error);
-      setGuardando(false);
-      return;
-    }
-
-    // A LA FICHA DEL CLIENTE, que es donde el fiado se ve y se cobra. Para una
-    // venta de mostrador no hay ficha que valga —el comodín no se visita— así
-    // que vuelve al panel.
-    router.push(destino.esMostrador ? "/dashboard" : `/clients/${destino.id}`);
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-2">
@@ -1233,19 +1283,26 @@ function PasoPago({
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="flex-1" />
+      {/* ── «FINALIZAR» O «CONTINUAR», y lo decide por dónde se entró ─────
+          Regla del dueño, 2026-10-18:
+
+            · Con el cliente ya puesto —«Continuar con venta» del alta, o el
+              botón de la ficha de alguien— el botón dice «Finalizar» y guarda:
+              la venta ya sabe a nombre de quién queda.
+            · Sin cliente, dice «Continuar» y lleva a un paso más para captarlo.
+
+          Lo decide `conCliente`, que es por dónde se ENTRÓ, y no si hay
+          cliente ahora mismo: en el paso 4 se elige uno, y con la otra regla
+          el botón cambiaría de palabra a mitad del recorrido. */}
       <Button
         type="button"
         className="h-10 w-full"
         disabled={guardando}
-        onClick={() => {
-          // SIN DEUDA NO HACE FALTA CLIENTE: la venta se va al mostrador sin
-          // preguntar nada, que es lo que le ahorra un toque a la mayoría.
-          if (hayDeuda && !cliente) setPidiendoCliente(true);
-          else void guardar();
-        }}
+        onClick={() => (conCliente ? void guardar() : onContinuar())}
       >
-        {guardando ? "Guardando…" : "Finalizar"}
+        {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
       </Button>
+
       {cobrando ? (
         <PagoSheet
           key={cobrando}
@@ -1263,74 +1320,81 @@ function PasoPago({
           }}
         />
       ) : null}
-
-      {pidiendoCliente ? (
-        <ClienteSheet
-          open
-          onOpenChange={(abierto: boolean) => !abierto && setPidiendoCliente(false)}
-          clientes={clientes}
-          cliente={cliente}
-          onElegirCliente={onElegirCliente}
-          guardando={guardando}
-          onConfirmar={() => void guardar()}
-        />
-      ) : null}
     </div>
   );
 }
 
-// ── A QUIÉN SE LE FÍA ──────────────────────────────────────────────────
+// ── 4/4 ────────────────────────────────────────────────────────────────
 //
-// NO ESTÁ EN NINGÚN FRAME, y hace falta: un fiado sin dueño no se puede cobrar
-// después. Se pregunta al pulsar «Finalizar» y SOLO si quedó deuda — una venta
-// cobrada entera se va al mostrador sin preguntar nada, que es la decisión del
-// dueño del 2026-10-18 y lo que le ahorra un toque a la mayoría de las ventas.
-function ClienteSheet({
-  open,
-  onOpenChange,
+// A QUIÉN SE LE REGISTRA ESTA VENTA.
+//
+// Solo existe entrando por «Fiado o venta» de la hoja de Registrar, que es la
+// única puerta que no trae cliente. Reglas del dueño, 2026-10-18:
+//
+//   · Si quedó algo debiendo —un pago «parcial»— elegir cliente es
+//     OBLIGATORIO: un fiado sin dueño no se puede cobrar después, y la base lo
+//     rechaza igual (`sales.client_id` es `not null`, y la RLS de `movements`
+//     deriva el dueño a través del cliente).
+//   · Si todo se cobró de contado es OPCIONAL: la venta se va al mostrador.
+//
+// CÓMO SE EXPRESA «OPCIONAL» ES MÍO, y no sale de ningún frame: el botón de
+// abajo queda habilitado sin haber elegido a nadie y dice «Finalizar sin
+// cliente». Un paso del que no se puede salir sin tocar algo no es opcional,
+// y un botón que no dice qué va a pasar con la venta tampoco.
+function PasoCliente({
   clientes,
   cliente,
   onElegirCliente,
+  obligatorio,
   guardando,
-  onConfirmar,
+  error,
+  onFinalizar,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   clientes: Cliente[];
   cliente: Elegido | null;
   onElegirCliente: (c: Elegido | null) => void;
+  obligatorio: boolean;
   guardando: boolean;
-  onConfirmar: () => void;
+  error: string | null;
+  onFinalizar: () => void;
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
-        <SheetHeader>
-          <SheetTitle className="text-base font-medium">¿A quién le queda debiendo?</SheetTitle>
-        </SheetHeader>
+    <div className="flex flex-1 flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {obligatorio
+          ? "Queda un saldo pendiente, así que esta venta tiene que quedar a nombre de alguien."
+          : "La venta está cobrada completa. Puedes dejarla a nombre de un cliente o guardarla como venta de mostrador."}
+      </p>
 
-        <div className="flex flex-col gap-4 px-4 pb-6">
-          <SelectorDeCliente
-            clientes={clientes}
-            cliente={cliente}
-            onElegir={onElegirCliente}
-            // SIN MOSTRADOR: al comodín no se le puede fiar —es uno por
-            // negocio, así que su deuda sería la de «todos los que pasaron por
-            // la caja»— y ofrecerlo sería ofrecer lo que el servidor rechaza.
-            sinMostrador
-          />
+      <SelectorDeCliente
+        clientes={clientes}
+        cliente={cliente}
+        onElegir={onElegirCliente}
+        // SIN MOSTRADOR EN LA LISTA: al comodín no se le puede fiar —es uno por
+        // negocio, así que su deuda sería la de «todos los que pasaron por la
+        // caja»— y cuando la venta está cobrada completa se llega a él sin
+        // elegirlo, con el botón de abajo.
+        sinMostrador
+      />
 
-          <Button
-            type="button"
-            className="h-10 w-full"
-            disabled={guardando || !cliente}
-            onClick={onConfirmar}
-          >
-            {guardando ? "Guardando…" : cliente ? `Fiar a ${cliente.name}` : "Elige un cliente"}
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <div className="flex-1" />
+      <Button
+        type="button"
+        className="h-10 w-full"
+        disabled={guardando || (obligatorio && !cliente)}
+        onClick={onFinalizar}
+      >
+        {guardando
+          ? "Guardando…"
+          : cliente
+            ? `Finalizar · ${cliente.name}`
+            : obligatorio
+              ? "Elige un cliente"
+              : "Finalizar sin cliente"}
+      </Button>
+    </div>
   );
 }
 
