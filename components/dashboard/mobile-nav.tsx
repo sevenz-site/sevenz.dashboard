@@ -194,7 +194,12 @@ function NavItem({
   );
 }
 
-export function MobileNav() {
+// ── LA BARRA ────────────────────────────────────────────────────────────
+//
+// SE DESMONTA ENTERA cuando hay un diálogo encima (`return null`, más abajo).
+// Por eso recibe `onRegistrar` en vez de abrir la hoja ella misma: ver el
+// comentario de `MobileNav`, al final del archivo, que cuenta el cuelgue.
+function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { guard } = useUnsavedChangesGuard();
@@ -209,9 +214,6 @@ export function MobileNav() {
   // default was prevented never reports a pending state.
   const [isPending, startTransition] = useTransition();
   const [goingTo, setGoingTo] = useState<string | null>(null);
-  // La hoja de «Registrar». Vive aquí y no en la página porque el botón que
-  // la abre es este, que se pinta en todas las pantallas con barra.
-  const [registrar, setRegistrar] = useState(false);
 
   // The bar does not render at all on a client's own screen — see below.
   // Note the trailing slash: /clients (the list) keeps its bar, only
@@ -421,7 +423,7 @@ export function MobileNav() {
             // cosas, y lo que deja que el botón funcione igual desde Clientes
             // o Malas pagas sin mandar al tendero a Inicio primero.
             if (!enCatalogo) {
-              setRegistrar(true);
+              onRegistrar();
               return;
             }
             setGoingTo(agregarHref);
@@ -502,6 +504,41 @@ export function MobileNav() {
           </button>
         </div>
       </nav>
+    </>
+  );
+}
+
+// ── LA BARRA Y LA HOJA, HERMANAS ────────────────────────────────────────
+//
+// LA HOJA NO PUEDE VIVIR DENTRO DE LA BARRA, y no es una cuestión de orden:
+// colgaba la app entera. Se midió el 2026-10-18, el mismo día que se
+// construyó, y el bucle es éste:
+//
+//   1. El botón flotante abre la hoja.
+//   2. Radix monta `[role="dialog"][data-state="open"]`.
+//   3. El `MutationObserver` de `useOverlayOpen` lo ve → `overlayOpen` pasa a
+//      true.
+//   4. `MobileNavBar` hace `return null` — esconderse cuando hay un diálogo
+//      encima es justo su trabajo— y con ella se DESMONTA la hoja.
+//   5. El observer ve que ya no hay diálogo abierto → `overlayOpen` vuelve a
+//      false.
+//   6. La barra se vuelve a montar, el estado «abierta» sigue siendo true, la
+//      hoja se abre otra vez → paso 2.
+//
+// A velocidad de `MutationObserver`, que es cada microtarea: el navegador se
+// queda sin hilo y no responde. No se parece a un bucle de render normal
+// —React no avisa de «máximo de actualizaciones»— porque el ciclo pasa por el
+// DOM y por un observer, no por un `setState` dentro de un render.
+//
+// LA REGLA QUE SE SACA DE AQUÍ: un componente que se desmonta solo bajo cierta
+// condición no puede ser el padre de algo que PROVOCA esa condición. El
+// `return null` de la barra y la hoja que lo dispara tienen que estar en
+// niveles distintos, y por eso el estado vive aquí arriba.
+export function MobileNav() {
+  const [registrar, setRegistrar] = useState(false);
+  return (
+    <>
+      <MobileNavBar onRegistrar={() => setRegistrar(true)} />
       <RegisterSheet open={registrar} onOpenChange={setRegistrar} />
     </>
   );

@@ -1158,6 +1158,52 @@ sola vez hace que solo funcione el primer toque, y limpiar el marcador con
 `history.replaceState` en vez del router deja al router creyendo que sigue en
 `?nuevo=1`, así que el siguiente toque gira el spinner y no abre nada.
 
+### El flotante cambió otra vez el 2026-10-18: ahora dice «Registrar» y abre una hoja
+
+El rótulo y el destino los cambió el dueño ese día. Fuera del catálogo ya no
+navega a ningún sitio: abre una hoja con **Nuevo cliente**, **Fiado o venta** y
+**Abono** (frame `1389:11227`). Dentro del catálogo sigue diciendo «Crear
+producto» y navegando a `?nuevo=1`, que es el único camino que todavía navega
+desde ese botón.
+
+**Por qué dejó de llevar a un sitio**: con la venta dentro de Sevenz ya no hay
+una acción por defecto evidente. Mientras era solo un libro de fiados,
+«Agregar» podía significar «agregar un movimiento» sin ambigüedad; ahora el
+tendero que viene a anotar un abono y el que viene de vender son el mismo
+número de tenderos, y un botón que elija por ellos se equivoca con la mitad.
+
+### Un componente que se desmonta solo no puede ser el padre de lo que provoca ese desmontaje
+
+**Colgó la app entera el 2026-10-18**, el mismo día que se construyó la hoja, y
+no se parece a un bucle de render normal: React no avisa de «máximo de
+actualizaciones», porque el ciclo no pasa por un `setState` dentro de un
+render — pasa por el DOM y por un `MutationObserver`.
+
+La hoja se montó **dentro** de `MobileNav`, que hace `return null` cuando hay un
+diálogo encima (`useOverlayOpen`). El ciclo:
+
+1. El botón abre la hoja.
+2. Radix monta `[role="dialog"][data-state="open"]`.
+3. El observer lo ve → `overlayOpen` pasa a `true`.
+4. La barra hace `return null` —esconderse cuando hay un diálogo encima es
+   justo su trabajo— y con ella **se desmonta la hoja**.
+5. El observer ve que ya no hay diálogo → `overlayOpen` vuelve a `false`.
+6. La barra se vuelve a montar, el estado «abierta» sigue en `true`, la hoja se
+   abre otra vez → paso 2.
+
+A velocidad de microtarea. El navegador se queda sin hilo.
+
+**La regla, que vale para cualquier overlay y no solo para esta hoja**: si un
+componente se desmonta bajo cierta condición, no puede contener aquello que
+provoca esa condición. El `return null` y el disparador van en **niveles
+distintos** — en `mobile-nav.tsx` el estado vive en un envoltorio y la barra y
+la hoja son hermanas.
+
+Lo mismo aplica a `HideWhileResults`, que también desmonta a sus hijos. Hoy no
+puede entrar en bucle porque depende de la lista de coincidencias y no de que
+haya un diálogo abierto, pero un overlay cuyo estado viva debajo de él
+desaparecería al abrirse la lista.
+
 ## `flex-1` dentro de una columna estira a lo alto, y eso rompió un gráfico
 
 Vale para cualquier componente que se mueva de sitio. `WeeklyLendingChart` lleva
