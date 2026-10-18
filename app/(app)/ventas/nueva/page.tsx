@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NuevaVenta } from "@/components/dashboard/nueva-venta";
-import type { OwnerCountry } from "@/lib/types";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
 
@@ -47,14 +48,26 @@ export default async function NuevaVentaPage({
     .maybeSingle();
   const ownerCountry = (owner?.country as OwnerCountry | null) ?? null;
 
-  const { data: clientes } = await supabase
-    .from("clients")
-    .select("id, name")
+  // DE `client_summary` Y NO DE `clients`, desde el 2026-10-18: la tarjeta del
+  // paso 4 es la MISMA que la de Clientes (frame `1411:12272`), y esa enseña
+  // documento, estado y saldo. Con `id, name` a secas no se puede pintar.
+  //
+  // `is_walk_in` NO ESTÁ EN LA VISTA, así que el mostrador se quita con la
+  // lista de ids de abajo en vez de con un filtro. Aparecería como un cliente
+  // llamado «Mostrador» al que se le puede fiar, que es justo lo que el paso 3
+  // prohíbe; se llega a él sin elegirlo, con el botón de finalizar.
+  const [{ data: comodin }, rateContext] = await Promise.all([
+    supabase.from("clients").select("id").eq("owner_id", user.id).eq("is_walk_in", true),
+    getOwnerRateContext(supabase, user.id),
+  ]);
+  const idsComodin = new Set((comodin ?? []).map((c) => c.id as string));
+
+  const { data: filas } = await supabase
+    .from("client_summary")
+    .select("*")
     .eq("owner_id", user.id)
-    .is("trashed_at", null)
-    .is("deleted_at", null)
-    .eq("is_walk_in", false)
     .order("name");
+  const clientes = ((filas ?? []) as ClientSummary[]).filter((c) => !idsComodin.has(c.client_id));
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
   // solo por RLS. Es la regla de `CLAUDE.md` para toda lectura por un id que
@@ -75,10 +88,11 @@ export default async function NuevaVentaPage({
     if (data) {
       return (
         <NuevaVenta
-          clientes={clientes ?? []}
+          clientes={clientes}
           inicial={{ id: data.id, name: data.name, esMostrador: data.is_walk_in }}
           ownerId={user.id}
           ownerCountry={ownerCountry}
+          rateContext={rateContext}
         />
       );
     }
@@ -86,10 +100,11 @@ export default async function NuevaVentaPage({
 
   return (
     <NuevaVenta
-      clientes={clientes ?? []}
+      clientes={clientes}
       inicial={null}
       ownerId={user.id}
       ownerCountry={ownerCountry}
+      rateContext={rateContext}
     />
   );
 }

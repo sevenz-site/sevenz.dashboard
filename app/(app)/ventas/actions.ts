@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -322,31 +323,94 @@ export async function resolverMostrador(): Promise<{ id: string; name: string } 
 // `balance_eur` separados porque son dos deudas independientes que se cobran
 // por separado — sumarlas aquí sería inventar una cifra que el tendero no
 // puede cobrar. Un negocio colombiano lleva una sola, en `balance`.
-export async function saldoAnteriorDelCliente(
-  clientId: string,
-): Promise<Partial<Record<PriceCurrency, number>>> {
+//
+// DEVUELVE TAMBIÉN SI ACEPTA AVISOS, y no en una llamada aparte: el paso 4
+// necesita las dos cosas del mismo cliente en el mismo momento, y dos
+// consultas separadas pueden volver en distinto orden y dejar la tarjeta
+// contando una mezcla de dos personas.
+export type DatosDelCliente = {
+  saldo: Partial<Record<PriceCurrency, number>>;
+  // `client_accepts_whatsapp`, la MISMA función que usa la puerta de envío.
+  // Preguntarlo con una consulta propia aquí sería tener dos definiciones de
+  // «acepta», y la que decide si sale un mensaje es la suya.
+  aceptaAvisos: boolean;
+};
+
+export async function datosDelCliente(clientId: string): Promise<DatosDelCliente> {
+  const vacio: DatosDelCliente = { saldo: {}, aceptaAvisos: false };
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return {};
+  if (!user) return vacio;
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente. Es
   // la regla de `CLAUDE.md` para toda fila que se lee por un id que llega del
   // navegador, y aquí se leería el saldo de otro negocio.
-  const { data } = await supabase
-    .from("client_summary")
-    .select("balance, balance_usd, balance_eur")
-    .eq("client_id", clientId)
-    .eq("owner_id", user.id)
-    .maybeSingle();
-  if (!data) return {};
+  const [{ data }, acepta] = await Promise.all([
+    supabase
+      .from("client_summary")
+      .select("balance, balance_usd, balance_eur")
+      .eq("client_id", clientId)
+      .eq("owner_id", user.id)
+      .maybeSingle(),
+    supabase.rpc("client_accepts_whatsapp", { p_client_id: clientId }),
+  ]);
+  if (!data) return vacio;
 
   return {
-    USD: Number(data.balance_usd ?? 0),
-    EUR: Number(data.balance_eur ?? 0),
-    COP: Number(data.balance ?? 0),
+    saldo: {
+      USD: Number(data.balance_usd ?? 0),
+      EUR: Number(data.balance_eur ?? 0),
+      COP: Number(data.balance ?? 0),
+    },
+    aceptaAvisos: acepta.data === true,
   };
+}
+
+// ===========================================================================
+// EL PERMISO DE WHATSAPP DE UN CLIENTE QUE YA EXISTE
+// ===========================================================================
+//
+// La casilla del paso 4 cuando el tendero eligió a alguien de su lista (frame
+// `1411:12272`). El alta de un cliente nuevo lo manda dentro de su `FormData`;
+// aquí no hay formulario que enviar, así que va por su cuenta.
+//
+// SOLO ESCRIBE UN SÍ. Desmarcarla no retira un permiso: la casilla solo se
+// pinta cuando el cliente NO los tiene activados, así que lo único que puede
+// decir es «hoy me autorizó». Retirar un permiso es otra acción, vive en la
+// ficha del cliente y tiene su propia pantalla.
+export async function guardarPermisoDeVenta(
+  clientId: string,
+  clientName: string,
+  acepta: boolean,
+): Promise<void> {
+  if (!acepta) return;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
+  // `CLAUDE.md` para toda fila que se toca por un id que llega del navegador,
+  // y aquí se escribiría un permiso en la ficha de otro negocio.
+  const { data: cliente } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!cliente) return;
+
+  await guardarPermisoDeclarado(supabase, {
+    clientId,
+    ownerId: user.id,
+    clientName,
+    source: "owner_movement_form",
+    seMostro: true,
+    acepta: true,
+  });
 }
 
 // ===========================================================================

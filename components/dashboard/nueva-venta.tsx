@@ -41,9 +41,11 @@ import {
   buscarProductosParaVenta,
   registrarVenta,
   resolverMostrador,
-  saldoAnteriorDelCliente,
+  datosDelCliente,
+  guardarPermisoDeVenta,
   type ProductoParaVenta,
   type ProductosParaVenta,
+  type DatosDelCliente,
 } from "@/app/(app)/ventas/actions";
 // LA MISMA ACCIÓN QUE USA `/clients/nuevo`, y no una copia: el alta del paso 4
 // y la pantalla de cliente nuevo crean la misma fila con las mismas
@@ -65,7 +67,20 @@ import {
 } from "@/lib/products/price";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatDate } from "@/lib/format";
-import { DEFAULT_PLAZO_PAGO, type OwnerCountry } from "@/lib/types";
+import {
+  DEFAULT_PLAZO_PAGO,
+  getClientStatus,
+  type ClientSummary,
+  type OwnerCountry,
+} from "@/lib/types";
+import {
+  ClientCardBody,
+  CLIENT_CARD_INNER,
+  clientCardShell,
+} from "@/components/dashboard/client-card";
+import { cn } from "@/lib/utils";
+import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
@@ -107,16 +122,23 @@ type LineaVenta = {
   currency: PriceCurrency;
 };
 
-type Cliente = { id: string; name: string };
+// LA FILA DE `client_summary`, no `{id, name}`: la tarjeta del paso 4 es la
+// misma que la de la lista de Clientes y necesita documento, estado y saldo.
+type Cliente = ClientSummary;
 // El cliente elegido, con la única cosa que la pantalla necesita saber además
 // de su nombre: si es el comodín, porque al mostrador no se le puede fiar.
-type Elegido = Cliente & { esMostrador: boolean };
+// A QUIÉN SE LE REGISTRA, y es SU PROPIO TIPO y no una fila de la lista: el
+// mostrador no está en la lista, y un cliente recién creado en el paso 4
+// tampoco —llegó después de que el servidor la mandara—. Pedirle aquí las
+// dieciséis columnas de `client_summary` haría inexpresables esos dos casos.
+type Elegido = { id: string; name: string; esMostrador: boolean };
 
 export function NuevaVenta({
   clientes,
   inicial,
   ownerId,
   ownerCountry,
+  rateContext,
 }: {
   // La lista del buscador del paso 3, sin el mostrador: se elige con su propio
   // botón y no buscándolo por nombre.
@@ -127,6 +149,9 @@ export function NuevaVenta({
   // pregunta todavía: ver el comentario de los tres pasos, abajo.
   inicial: Elegido | null;
   ownerId: string;
+  // Para pintar los saldos de la tarjeta del paso 4 en el libro del negocio.
+  // `null` en uno colombiano: no hay equivalencias que enseñar.
+  rateContext: OwnerRateContext | null;
   // Decide las letras del documento (V/E/J o CC/CE/NIT) y el prefijo del
   // WhatsApp en el paso 4.
   ownerCountry: OwnerCountry | null;
@@ -149,6 +174,9 @@ export function NuevaVenta({
   // estado, elegir a alguien en el paso 4 convertiría el total en 3 y la
   // pantalla diría «4/3».
   const pasos = inicial ? 3 : 4;
+  // El mismo `ledger` que arma la lista de Clientes, para que las dos tarjetas
+  // enseñen la misma cifra del mismo modo.
+  const ledger = rateContext ? { rate: rateContext.effectiveRate } : null;
   const [cliente, setCliente] = useState<Elegido | null>(inicial);
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [catalogo, setCatalogo] = useState<ProductosParaVenta | null>(null);
@@ -172,10 +200,7 @@ export function NuevaVenta({
   // La menos obvia: sin él haría falta limpiar el estado en el cuerpo del
   // efecto cuando no hay cliente, y `react-hooks/set-state-in-effect` lo
   // prohíbe con razón.
-  const [saldoAnterior, setSaldoAnterior] = useState<{
-    clienteId: string;
-    saldo: Partial<Record<PriceCurrency, number>>;
-  } | null>(null);
+  const [datos, setDatos] = useState<{ clienteId: string; valores: DatosDelCliente } | null>(null);
 
   // SE PIDE AL CAMBIAR DE CLIENTE, no en cada render. La dependencia es
   // `cliente?.id` y no el objeto: `SelectorDeCliente` entrega uno nuevo cada
@@ -184,16 +209,16 @@ export function NuevaVenta({
   useEffect(() => {
     if (!clienteId) return;
     let vivo = true;
-    void saldoAnteriorDelCliente(clienteId).then((saldo) => {
-      if (vivo) setSaldoAnterior({ clienteId, saldo });
+    void datosDelCliente(clienteId).then((d) => {
+      if (vivo) setDatos({ clienteId, valores: d });
     });
     return () => {
       vivo = false;
     };
   }, [clienteId]);
 
-  const saldoDelElegido =
-    clienteId && saldoAnterior?.clienteId === clienteId ? saldoAnterior.saldo : {};
+  const delElegido = clienteId && datos?.clienteId === clienteId ? datos.valores : null;
+  const saldoDelElegido = delElegido?.saldo ?? {};
 
   // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
   // render y no se guarda aparte: un total derivado que vive por su cuenta es
@@ -316,8 +341,12 @@ export function NuevaVenta({
   // —guardar primero— habría que decidir qué hacer con una venta ya cerrada a
   // nombre del mostrador cuando el cliente que iba a llevarla no se pudo
   // crear.
-  async function finalizar(form: HTMLFormElement | null) {
+  async function finalizar(form: HTMLFormElement | null, permiso: boolean) {
     if (!form) {
+      // CLIENTE QUE YA EXISTE. El permiso va por su cuenta y ANTES de guardar:
+      // si la venta falla, el tendero reintenta y no vuelve a ver la casilla
+      // —ya está marcada— así que escribirlo después la dejaría perdida.
+      if (cliente && permiso) await guardarPermisoDeVenta(cliente.id, cliente.name, true);
       void guardar();
       return;
     }
@@ -428,9 +457,11 @@ export function NuevaVenta({
           // registran de contado, es opcional» — el dueño, 2026-10-18.
           obligatorio={hayDeuda}
           ownerCountry={ownerCountry}
+          aceptaAvisos={delElegido ? delElegido.aceptaAvisos : null}
+          ledger={ledger}
           guardando={guardando}
           error={error}
-          onFinalizar={(form) => void finalizar(form)}
+          onFinalizar={(form, permiso) => void finalizar(form, permiso)}
         />
       ) : null}
     </div>
@@ -1260,6 +1291,8 @@ function PasoCliente({
   onElegirCliente,
   obligatorio,
   ownerCountry,
+  aceptaAvisos,
+  ledger,
   guardando,
   error,
   onFinalizar,
@@ -1269,9 +1302,16 @@ function PasoCliente({
   onElegirCliente: (c: Elegido | null) => void;
   obligatorio: boolean;
   ownerCountry: OwnerCountry | null;
+  // `null` mientras no se sabe — la consulta no ha vuelto. Decide si se pinta
+  // la casilla del permiso o la frase de que ya los recibe.
+  aceptaAvisos: boolean | null;
+  ledger: LedgerDisplay | null;
   guardando: boolean;
   error: string | null;
-  onFinalizar: (form: HTMLFormElement | null) => void;
+  // El segundo argumento es la casilla del permiso para un cliente que YA
+  // existe: el alta lo manda dentro de su `FormData`, pero aquí no hay
+  // formulario que enviar.
+  onFinalizar: (form: HTMLFormElement | null, permiso: boolean) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [query, setQuery] = useState("");
@@ -1291,32 +1331,93 @@ function PasoCliente({
   const encontrados = texto === "" ? [] : clientes.filter((c) => c.name.toLowerCase().includes(texto));
 
   // ── YA ELEGIDO ──────────────────────────────────────────────────────
+  //
+  // LA MISMA TARJETA QUE LA LISTA DE CLIENTES, por decisión del dueño el
+  // 2026-10-18 y no por ahorrar trabajo: ahí el tendero ya aprendió que la
+  // pestaña de color es el estado y que debajo del nombre va la cédula.
+  // Dibujar otra cosa aquí le pediría aprenderlo dos veces, y el día que la
+  // de Clientes cambie —como cambió entera el 2026-10-04— esta se quedaría
+  // vieja sin que nadie lo note.
+  //
+  // Y EL BUSCADOR SE QUEDA EN PANTALLA, también del frame: elegir mal es un
+  // toque, y teniendo el buscador delante se corrige sin tener que descubrir
+  // antes cómo se deshace.
   if (cliente) {
+    const fila = clientes.find((c) => c.client_id === cliente.id) ?? null;
+    const status = fila
+      ? getClientStatus(
+          fila.balance,
+          fila.days_since_payment,
+          fila.oldest_unpaid_charge_at,
+          fila.oldest_unpaid_charge_plazo_dias,
+          fila.oldest_unpaid_charge_due_at,
+        )
+      : "sin_deuda";
+
     return (
       <div className="flex flex-1 flex-col gap-4">
-        {/* LA PAPELERA VA DENTRO DE LA TARJETA, a petición del dueño el
-            2026-10-18, en lugar del «Es para otra persona» que había debajo.
-            Dentro, el control pertenece a lo que quita y se lee sin leerlo;
-            fuera, era una frase que había que interpretar.
+        <SearchField value={query} onChange={setQuery} placeholder="Buscar cliente" />
 
-            `destructive` y no `ghost`: quitar al cliente de una venta que ya
-            puede llevar un fiado registrado no es una acción neutra, y el
-            color es lo que lo dice antes de pulsarlo. */}
-        <div className="flex items-center gap-3 rounded-xl border p-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <p className="text-xs text-muted-foreground">Le vendes a</p>
-            <p className="truncate text-lg font-semibold">{cliente.name}</p>
+        <div className={clientCardShell(status)}>
+          <div className={cn(CLIENT_CARD_INNER, "flex flex-col gap-1.5 px-4 py-2")}>
+            <div className="flex items-start gap-1.5">
+              {fila ? (
+                <ClientCardBody
+                  name={fila.name}
+                  documentId={fila.document_id}
+                  status={status}
+                  isFlagged={fila.is_flagged}
+                  balance={fila.balance}
+                  balanceUsd={fila.balance_usd}
+                  balanceEur={fila.balance_eur}
+                  ledger={ledger}
+                />
+              ) : (
+                // UN CLIENTE RECIÉN CREADO EN ESTA MISMA PANTALLA no está en
+                // la lista, que llegó con el servidor. Se enseña su nombre y ya
+                // — inventarle un estado sería afirmar que no debe nada antes
+                // de que la venta se guarde.
+                <span className="min-w-0 flex-1 truncate text-lg font-medium">{cliente.name}</span>
+              )}
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="size-10 shrink-0"
+                aria-label={`Quitar a ${cliente.name} de esta venta`}
+                onClick={() => onElegirCliente(null)}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+
+            {/* ── EL PERMISO DE WHATSAPP, DENTRO DE LA TARJETA ──────────
+                La casilla SOLO si este cliente no tiene los avisos activados;
+                si ya los tiene, una frase y nada que tocar. Es del frame, y
+                además es lo correcto: volver a pedir un permiso que ya está
+                dado invita a desmarcarlo sin querer, y aquí desmarcar no
+                significa «retirar el permiso» — significa «no lo guardo esta
+                vez», que no es lo que el tendero leería.
+
+                MIENTRAS NO SE SABE no se pinta ninguna de las dos: `delCliente`
+                llega `null` hasta que vuelve la consulta, y enseñar la casilla
+                a alguien que ya aceptó, aunque sea medio segundo, es ofrecerle
+                deshacer algo por error. */}
+            {aceptaAvisos === true ? (
+              <p className="rounded-lg border bg-accent p-2.5 text-xs leading-4 text-muted-foreground">
+                {cliente.name} ya recibe notificaciones de abono y cobro por WhatsApp.
+              </p>
+            ) : aceptaAvisos === false ? (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
+                <Checkbox
+                  checked={acepta}
+                  onCheckedChange={(v) => setAcepta(v === true)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs leading-4">{textoPermisoDeclarado(cliente.name)}</span>
+              </label>
+            ) : null}
           </div>
-          <Button
-            type="button"
-            variant="destructive"
-            size="icon"
-            className="size-10 shrink-0"
-            aria-label={`Quitar a ${cliente.name} de esta venta`}
-            onClick={() => onElegirCliente(null)}
-          >
-            <Trash2 className="size-4" aria-hidden="true" />
-          </Button>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -1326,7 +1427,7 @@ function PasoCliente({
           type="button"
           className="h-10 w-full"
           disabled={guardando}
-          onClick={() => onFinalizar(null)}
+          onClick={() => onFinalizar(null, acepta)}
         >
           {guardando ? "Guardando…" : `Finalizar · ${cliente.name}`}
         </Button>
@@ -1344,9 +1445,9 @@ function PasoCliente({
         <div className="flex flex-col overflow-hidden rounded-xl border">
           {encontrados.map((c, i) => (
             <button
-              key={c.id}
+              key={c.client_id}
               type="button"
-              onClick={() => onElegirCliente({ ...c, esMostrador: false })}
+              onClick={() => onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false })}
               className={`flex items-center justify-between gap-3 p-4 text-left ${i > 0 ? "border-t" : ""}`}
             >
               <span className="truncate text-sm font-medium">{c.name}</span>
@@ -1433,7 +1534,7 @@ function PasoCliente({
         type="button"
         className="h-10 w-full"
         disabled={guardando || (obligatorio && !hayNombre)}
-        onClick={() => onFinalizar(hayNombre ? formRef.current : null)}
+        onClick={() => onFinalizar(hayNombre ? formRef.current : null, acepta)}
       >
         {guardando
           ? "Guardando…"
