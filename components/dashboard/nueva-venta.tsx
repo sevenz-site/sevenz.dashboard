@@ -1280,8 +1280,13 @@ function PasoPago({
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
             setCobrando(null);
           }}
-          onQuitar={() => {
-            setRegistros((xs) => ({ ...xs, [cobrando]: {} }));
+          onQuitar={(cual) => {
+            setRegistros((xs) => {
+              const actual = xs[cobrando] ?? {};
+              const siguiente = { ...actual };
+              delete siguiente[cual];
+              return { ...xs, [cobrando]: siguiente };
+            });
             setCobrando(null);
           }}
         />
@@ -1467,7 +1472,13 @@ function PagoSheet({
   prevista: { fecha: string } | null;
   inicial: Registros;
   onGuardar: (r: Registros) => void;
-  onQuitar: () => void;
+  // QUÉ hueco se quita, no «quita todo». Hasta el 2026-10-18 esto no llevaba
+  // argumento y el paso 3 vaciaba los dos: pulsar «Quitar este fiado» en una
+  // moneda que además tenía un cobro registrado se llevaba el cobro por
+  // delante, sin avisar. Una moneda admite las dos cosas a la vez — es el
+  // «abona 5 y queda debiendo 5» del dueño— así que quitar tiene que ser tan
+  // específico como guardar.
+  onQuitar: (cual: "contado" | "credito") => void;
 }) {
   // EL CHIP ARRANCA EN «De contado» salvo que ya hubiera un crédito guardado.
   // Cobrar es lo corriente; fiar es la excepción, aunque sea la que le da
@@ -1556,10 +1567,6 @@ function PagoSheet({
   // holgura sobre una conversión no inventa dinero; un fiado fantasma sí
   // ensucia el saldo de alguien para siempre.
   const convertido = entregaEnOtraMoneda && tasa ? entregado / tasa : entregado;
-  const enElLibro =
-    Math.abs(convertido - pendiente) <= 0.01 && pendiente > 0
-      ? pendiente
-      : Math.round(convertido * 100) / 100;
 
   // ── EL TOPE ES LO QUE FALTA, NO EL TOTAL ──────────────────────────
   //
@@ -1577,6 +1584,24 @@ function PagoSheet({
   const yaEnEsteHueco =
     (tipo === "contado" ? inicial.contado?.amount : inicial.credito?.amount) ?? 0;
   const tope = Math.round((pendiente + yaEnEsteHueco) * 100) / 100;
+
+  // EL CÉNTIMO QUE CONVIERTE UNA VENTA PAGADA EN UN FIADO. 5.756,66 Bs a
+  // 985,73 dan 5,8399… que redondea bien, pero con otras cifras la división
+  // deja 19,99 sobre un total de 20 y la venta nace con un fiado de 0,01 que
+  // nadie entiende y nadie cobra. Siendo la equivalencia calculada, el tendero
+  // no puede corregirla, así que el ajuste está aquí.
+  //
+  // SE COMPARA CONTRA `tope` Y NO CONTRA `pendiente`, y la diferencia es justo
+  // el caso de EDITAR: reabriendo un cobro ya registrado no queda nada
+  // pendiente —`pendiente` vale 0— así que con la versión anterior el ajuste
+  // no entraba y volver a teclear los mismos bolívares podía dejar 5,83 donde
+  // antes había 5,84. `tope` incluye lo que ese hueco ya tenía, así que
+  // completar la venta sigue cuadrando al reabrirla.
+  const enElLibro =
+    tope > 0 && Math.abs(convertido - tope) <= 0.01
+      ? tope
+      : Math.round(convertido * 100) / 100;
+
   const deMas = enElLibro - tope > 0.005;
   const listo = enElLibro > 0 && entregado > 0 && !deMas;
 
@@ -1870,7 +1895,12 @@ function PagoSheet({
           </Button>
 
           {yaGuardado ? (
-            <Button type="button" variant="outline" className="h-10 w-full" onClick={onQuitar}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full"
+              onClick={() => onQuitar(tipo)}
+            >
               Quitar {tipo === "contado" ? "este cobro" : "este fiado"}
             </Button>
           ) : null}
