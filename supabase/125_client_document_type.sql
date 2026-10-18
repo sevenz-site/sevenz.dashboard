@@ -87,8 +87,11 @@ comment on column public.clients.document_type is
 -- propósito. Un «E-12345678» guardado así no es una V, y marcarlo como V sería
 -- exactamente perder el dato real que esa rama existe para no perder.
 --
--- `is distinct from` y no `is null`: es idempotente. Correrlo dos veces no
--- pisa un tipo que alguien haya cambiado a mano entre una vez y otra.
+-- EL `document_type is null` DEL FILTRO ES LO QUE HACE ESTO RE-EJECUTABLE, y
+-- hace falta: la segunda pasada no encuentra ninguna fila que tocar, porque
+-- las de la primera ya valen 'V'. Y de paso respeta lo corregido a mano —
+-- alguien que cambie un cliente a 'J' no lo ve volver a 'V' al re-correr el
+-- archivo. Sin ese filtro, un `update` a secas pisaria esa correccion.
 update public.clients
 set document_type = 'V'
 where document_country = 'VE'
