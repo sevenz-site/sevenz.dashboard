@@ -1280,15 +1280,6 @@ function PasoPago({
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
             setCobrando(null);
           }}
-          onQuitar={(cual) => {
-            setRegistros((xs) => {
-              const actual = xs[cobrando] ?? {};
-              const siguiente = { ...actual };
-              delete siguiente[cual];
-              return { ...xs, [cobrando]: siguiente };
-            });
-            setCobrando(null);
-          }}
         />
       ) : null}
 
@@ -1456,7 +1447,6 @@ function PagoSheet({
   prevista,
   inicial,
   onGuardar,
-  onQuitar,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1472,13 +1462,6 @@ function PagoSheet({
   prevista: { fecha: string } | null;
   inicial: Registros;
   onGuardar: (r: Registros) => void;
-  // QUÉ hueco se quita, no «quita todo». Hasta el 2026-10-18 esto no llevaba
-  // argumento y el paso 3 vaciaba los dos: pulsar «Quitar este fiado» en una
-  // moneda que además tenía un cobro registrado se llevaba el cobro por
-  // delante, sin avisar. Una moneda admite las dos cosas a la vez — es el
-  // «abona 5 y queda debiendo 5» del dueño— así que quitar tiene que ser tan
-  // específico como guardar.
-  onQuitar: (cual: "contado" | "credito") => void;
 }) {
   // EL CHIP ARRANCA EN «De contado» salvo que ya hubiera un crédito guardado.
   // Cobrar es lo corriente; fiar es la excepción, aunque sea la que le da
@@ -1487,7 +1470,6 @@ function PagoSheet({
     inicial.credito && !inicial.contado ? "credito" : "contado",
   );
 
-  const yaGuardado = tipo === "contado" ? inicial.contado : inicial.credito;
   const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
 
   // ── EN QUÉ MONEDA LE ENTREGAN ───────────────────────────────────────
@@ -1894,16 +1876,6 @@ function PagoSheet({
             Pagar
           </Button>
 
-          {yaGuardado ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 w-full"
-              onClick={() => onQuitar(tipo)}
-            >
-              Quitar {tipo === "contado" ? "este cobro" : "este fiado"}
-            </Button>
-          ) : null}
         </div>
       </SheetContent>
     </Sheet>
