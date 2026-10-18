@@ -383,6 +383,53 @@ try {
     eSegundo != null,
     eSegundo?.message ?? "ACEPTÓ EL SEGUNDO",
   );
+  // ── 8b. BORRAR LA VENTA SE LLEVA SUS LÍNEAS Y SUS PAGOS ─────────────
+  //
+  // ESTA FILA NO COMPRUEBA UNA REGLA DE NEGOCIO: comprueba la suposición de la
+  // que depende el deshacer de `registrarVenta`. Esa acción escribe en cuatro
+  // tablas y no puede hacerlo en una transacción desde el cliente de Supabase,
+  // así que cuando un paso falla borra la venta y confía en que el `on delete
+  // cascade` se lleve todo lo demás. Si no se lo llevara, un fallo a mitad
+  // dejaría el pago de un cliente guardado dentro de una venta que ya no
+  // existe — dinero cobrado sin nada que lo explique.
+  //
+  // Se comprueba contra la BASE y no leyendo la migración `124`, que es de
+  // donde salió la suposición. Es la misma regla de `CLAUDE.md`: al menos un
+  // control tiene que mirar la realidad exterior, porque tres que se escriben
+  // mirándose entre sí coinciden y pueden estar los tres equivocados.
+  const { data: ventaEfimera } = await admin
+    .from("sales")
+    .insert({ owner_id: ve.id, client_id: cliente.id })
+    .select("id")
+    .single();
+  await admin.from("sale_lines").insert({
+    sale_id: ventaEfimera.id,
+    product_id: prod.id,
+    name: `${MARCA} efímera`,
+    quantity: 1,
+    unit_price: 10,
+    currency: "USD",
+  });
+  await admin.from("sale_payments").insert({
+    sale_id: ventaEfimera.id,
+    currency: "USD",
+    amount: 10,
+  });
+  await admin.from("sales").delete().eq("id", ventaEfimera.id);
+
+  const { count: lineasHuerfanas } = await admin
+    .from("sale_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("sale_id", ventaEfimera.id);
+  const { count: pagosHuerfanos } = await admin
+    .from("sale_payments")
+    .select("id", { count: "exact", head: true })
+    .eq("sale_id", ventaEfimera.id);
+  check(
+    "8b. borrar la venta se lleva sus líneas y sus pagos — el deshacer de registrarVenta depende de esto",
+    lineasHuerfanas === 0 && pagosHuerfanos === 0,
+    `${lineasHuerfanas} líneas · ${pagosHuerfanos} pagos sobrevivieron`,
+  );
 } catch (e) {
   check("la suite llegó al final", false, e instanceof Error ? e.message : String(e));
 } finally {

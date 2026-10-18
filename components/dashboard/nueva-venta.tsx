@@ -5,11 +5,18 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronRight, ImageOff, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { CuotasSelect } from "@/components/dashboard/cuotas-select";
+import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   buscarProductosParaVenta,
+  registrarVenta,
   type ProductoParaVenta,
   type ProductosParaVenta,
 } from "@/app/(app)/ventas/actions";
@@ -20,16 +27,20 @@ import {
   precioEnMoneda,
   type ProductoPublico,
 } from "@/lib/products/public-pricing";
-import { formatPriceAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, parseAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import { formatCantidad } from "@/lib/products/cantidad";
+import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
 //
-// Cuatro pasos: cliente, producto, carrito y pago. Esta entrega cubre los
-// TRES PRIMEROS y deja el cuarto marcado como lo que es, sin construir. Está
-// dicho en pantalla y no solo aquí: un botón que promete lo que no hace es
-// peor que un botón ausente, y eso ya costó una ficha hoy (`CT-92`).
+// Cuatro pasos: cliente, producto, carrito y pago.
+//
+// LO QUE EL PASO 4 NO TIENE TODAVÍA es la foto del comprobante. La acción del
+// servidor ya acepta `photoPath`, así que conectarla es una línea — pero el
+// componente que sube la foto y devuelve su ruta vive dentro del diálogo de
+// movimientos y no está extraído. Se deja fuera a propósito en vez de dejar un
+// control que no sube nada: es la lección de `CT-92`.
 //
 // ===========================================================================
 // EL PRECIO SALE DE LAS MISMAS FUNCIONES QUE VE EL CLIENTE
@@ -131,7 +142,17 @@ export function NuevaVenta({
         />
       ) : null}
 
-      {paso === 4 ? <PasoPagoSinConstruir total={total} onVolver={() => setPaso(3)} /> : null}
+      {paso === 4 ? (
+        <PasoPago
+          clienteId={cliente.id}
+          nombreCliente={cliente.name}
+          esMostrador={esMostrador}
+          lineas={lineas}
+          total={total}
+          rates={catalogo?.rates ?? null}
+          onVolver={() => setPaso(3)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -509,42 +530,312 @@ function TarjetaDeLinea({
   );
 }
 
-// ── 4/4, todavía no ────────────────────────────────────────────────────
-function PasoPagoSinConstruir({
+// ── 4/4 ────────────────────────────────────────────────────────────────
+//
+// EL COBRO, UNA TARJETA POR MONEDA. Va por moneda y no una vez para toda la
+// venta porque los libros no se suman: un carrito con cinco dólares y tres
+// euros son DOS cuentas, y el cliente puede pagar una entera y dejar la otra
+// a deber. Es la misma razón por la que `recalc_client_running_balance` nunca
+// mezcla `balance_usd` con `balance_eur`.
+//
+// TRES MODOS Y NO UN CAMPO DE MONTO SUELTO: «pagó todo», «pagó una parte» y
+// «todo fiado». El tendero no piensa en montos, piensa en esas tres
+// situaciones, y las dos de los extremos son las corrientes. Un campo vacío
+// obligaría a teclear el total exacto en el caso más frecuente de todos.
+type Modo = "todo" | "parte" | "fiado";
+
+type Cobro = {
+  modo: Modo;
+  // Lo que entregó, cuando pagó una parte. Texto y no número: es lo que hay en
+  // el input, y `parseAmount` ya sabe leer «1.234,56» y «1234.56».
+  monto: string;
+  enBolivares: boolean;
+  montoBs: string;
+  descripcion: string;
+  plazo: string;
+  cuotas: string;
+};
+
+const COBRO_NUEVO: Cobro = {
+  modo: "todo",
+  monto: "",
+  enBolivares: false,
+  montoBs: "",
+  descripcion: "",
+  plazo: DEFAULT_PLAZO_PAGO,
+  cuotas: "1",
+};
+
+function PasoPago({
+  clienteId,
+  nombreCliente,
+  esMostrador,
+  lineas,
   total,
+  rates,
   onVolver,
 }: {
+  clienteId: string;
+  nombreCliente: string;
+  esMostrador: boolean;
+  lineas: LineaVenta[];
   total: { currency: PriceCurrency; amount: number }[];
+  rates: BolivarRates | null;
   onVolver: () => void;
 }) {
+  const router = useRouter();
+  const [cobros, setCobros] = useState<Partial<Record<PriceCurrency, Cobro>>>({});
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cobroDe = (c: PriceCurrency) => cobros[c] ?? COBRO_NUEVO;
+  const cambiar = (c: PriceCurrency, parche: Partial<Cobro>) =>
+    setCobros((xs) => ({ ...xs, [c]: { ...(xs[c] ?? COBRO_NUEVO), ...parche } }));
+
+  // LO PAGADO Y LO QUE QUEDA, por moneda. Se calcula en el render y no se
+  // guarda en el estado: un total derivado que vive aparte es un total que
+  // algún día se queda viejo.
+  const cuentas = total.map((t) => {
+    const cobro = cobroDe(t.currency);
+    const tecleado = parseAmount(cobro.monto) ?? 0;
+    const pagado =
+      cobro.modo === "todo" ? t.amount : cobro.modo === "fiado" ? 0 : Math.min(tecleado, t.amount);
+    return { ...t, cobro, pagado, resto: Math.round((t.amount - pagado) * 100) / 100 };
+  });
+
+  const hayFiado = cuentas.some((c) => c.resto > 0);
+  // Un parcial de cero no es «pagó una parte», es «todo fiado» con un campo
+  // vacío. Se pide antes de guardar para que el tendero no crea que registró
+  // un abono que no existe.
+  const parcialSinMonto = cuentas.some((c) => c.cobro.modo === "parte" && c.pagado <= 0);
+  const faltaPlazo = cuentas.some((c) => c.resto > 0 && !c.cobro.plazo);
+  const bolivaresSinMonto = cuentas.some(
+    (c) => c.pagado > 0 && c.cobro.enBolivares && (parseAmount(c.cobro.montoBs) ?? 0) <= 0,
+  );
+
+  async function guardar() {
+    setError(null);
+    setGuardando(true);
+    const resultado = await registrarVenta({
+      clientId: clienteId,
+      lineas: lineas.map((l) => ({
+        productId: l.productId,
+        quantity: l.quantity,
+        currency: l.currency,
+      })),
+      pagos: cuentas
+        .filter((c) => c.pagado > 0)
+        .map((c) => ({
+          currency: c.currency,
+          amount: c.pagado,
+          entryCurrency: c.cobro.enBolivares ? ("VES" as const) : c.currency,
+          entryAmount: c.cobro.enBolivares ? parseAmount(c.cobro.montoBs) : null,
+          description: c.cobro.descripcion,
+        })),
+      credito: cuentas
+        .filter((c) => c.resto > 0)
+        .map((c) => ({
+          currency: c.currency,
+          plazoDias: Number(c.cobro.plazo),
+          // Una sola cuota se manda como null: es lo mismo y es el
+          // comportamiento de siempre. El `check` de la `118` empieza en 2.
+          cuotas: Number(c.cobro.cuotas) > 1 ? Number(c.cobro.cuotas) : null,
+        })),
+    });
+
+    if (!resultado.ok) {
+      setError(resultado.error);
+      setGuardando(false);
+      return;
+    }
+
+    // A LA FICHA DEL CLIENTE, que es donde el fiado se ve y se cobra. Para una
+    // venta de mostrador no hay ficha que valga —el comodín no se visita— así
+    // que vuelve al panel.
+    router.push(esMostrador ? "/dashboard" : `/clients/${clienteId}`);
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex flex-col gap-2 rounded-xl border p-4">
-        {total.map((t) => (
-          <div key={t.currency} className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-sm">
-              <CurrencyFlagIcon currency={t.currency} className="size-4" />
-              Total en {NOMBRE[t.currency] ?? t.currency}
+      {cuentas.map((c) => (
+        <div key={c.currency} className="flex flex-col gap-3 rounded-xl border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <CurrencyFlagIcon currency={c.currency} className="size-4" />
+              {NOMBRE[c.currency] ?? c.currency}
             </span>
             <span className="text-base font-semibold tabular-nums">
-              {formatPriceAmount(t.amount, t.currency)}
+              {formatPriceAmount(c.amount, c.currency)}
             </span>
           </div>
-        ))}
-      </div>
 
-      {/* SE DICE QUE NO ESTÁ, en vez de poner un botón apagado que prometa lo
-          que no hace. Es la lección de `CT-92` del mismo día: un control
-          muerto en la pantalla del dinero se lee como app rota. */}
-      <div className="rounded-xl border border-dashed p-4">
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          El cobro todavía no está construido. Esta venta no se ha guardado: nada se ha cobrado y
-          ningún saldo ha cambiado.
-        </p>
-      </div>
+          <RadioGroup
+            value={c.cobro.modo}
+            onValueChange={(v) => cambiar(c.currency, { modo: v as Modo })}
+            className="flex flex-row flex-wrap gap-2"
+          >
+            {(
+              [
+                { value: "todo", nombre: "Pagó todo" },
+                { value: "parte", nombre: "Pagó una parte" },
+                { value: "fiado", nombre: "Todo fiado" },
+              ] as const
+            ).map((o) => (
+              <label
+                key={o.value}
+                className={`flex h-10 items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm ${
+                  o.value !== "todo" && esMostrador ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                }`}
+              >
+                <RadioGroupItem value={o.value} disabled={o.value !== "todo" && esMostrador} />
+                <span className="whitespace-nowrap">{o.nombre}</span>
+              </label>
+            ))}
+          </RadioGroup>
+
+          {/* EL MOSTRADOR NO PUEDE FIAR, y se explica en vez de dejar dos
+              botones apagados sin motivo. El cliente comodín es UNO por
+              negocio: una deuda suya sería la de «todos los que pasaron por la
+              caja», y nadie podría cobrar eso. */}
+          {esMostrador ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Una venta de mostrador se cobra completa. Para dejar algo fiado, vuelve atrás y elige
+              o crea un cliente.
+            </p>
+          ) : null}
+
+          {c.cobro.modo === "parte" ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`monto-${c.currency}`}>Cuánto entregó</Label>
+              <Input
+                id={`monto-${c.currency}`}
+                inputMode="decimal"
+                placeholder="0,00"
+                value={c.cobro.monto}
+                onChange={(e) => cambiar(c.currency, { monto: e.target.value })}
+              />
+            </div>
+          ) : null}
+
+          {/* LOS BOLÍVARES SOLO CUANDO HAY TASA Y HAY ALGO QUE COBRAR. Se
+              guarda lo que de verdad entregó —migración `022`— y el monto del
+              libro sigue siendo el de arriba: el servidor sella la tasa pero no
+              divide una cifra por la otra, porque eso convertía una venta
+              pagada completa en un fiado de un céntimo. */}
+          {rates && c.pagado > 0 ? (
+            <div className="flex flex-col gap-2 border-t pt-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox
+                  checked={c.cobro.enBolivares}
+                  onCheckedChange={(v) => cambiar(c.currency, { enBolivares: v === true })}
+                />
+                Me pagó en bolívares
+              </label>
+              {c.cobro.enBolivares ? (
+                <>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    aria-label={`Bolívares recibidos por los ${NOMBRE[c.currency] ?? c.currency}`}
+                    value={c.cobro.montoBs}
+                    onChange={(e) => cambiar(c.currency, { montoBs: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {formatPriceAmount(c.pagado, c.currency)} a la tasa de hoy son{" "}
+                    {formatPriceAmount(
+                      c.pagado * (c.currency === "EUR" ? rates.eur : rates.usd),
+                      "VES",
+                    )}
+                  </p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {c.resto > 0 ? (
+            <div className="flex flex-col gap-3 border-t pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm">Queda fiado</span>
+                <span className="text-base font-semibold tabular-nums text-destructive">
+                  {formatPriceAmount(c.resto, c.currency)}
+                </span>
+              </div>
+              <PlazoPagoSelect
+                value={c.cobro.plazo}
+                onValueChange={(v) =>
+                  cambiar(c.currency, {
+                    plazo: v,
+                    // Al quedarse sin plazo, las cuotas vuelven a pago único:
+                    // el campo se esconde y un número dentro se guardaría sin
+                    // que nadie lo haya decidido. Mismo motivo que en
+                    // `add-movement-dialog`.
+                    ...(v === "" || v === "sin_especificar" ? { cuotas: "1" } : {}),
+                  })
+                }
+              />
+              <CuotasSelect
+                value={c.cobro.cuotas}
+                onValueChange={(v) => cambiar(c.currency, { cuotas: v })}
+                plazoDias={
+                  c.cobro.plazo &&
+                  c.cobro.plazo !== "sin_especificar" &&
+                  Number.isFinite(Number(c.cobro.plazo))
+                    ? Number(c.cobro.plazo)
+                    : null
+                }
+              />
+            </div>
+          ) : null}
+
+          {c.pagado > 0 ? (
+            <div className="flex flex-col gap-2 border-t pt-3">
+              <Label htmlFor={`nota-${c.currency}`}>Nota del pago (opcional)</Label>
+              <Input
+                id={`nota-${c.currency}`}
+                placeholder="Pago móvil, efectivo…"
+                value={c.cobro.descripcion}
+                onChange={(e) => cambiar(c.currency, { descripcion: e.target.value })}
+              />
+            </div>
+          ) : null}
+        </div>
+      ))}
+
+      {/* UN PLAZO SIN ELEGIR ES LO ÚNICO QUE BLOQUEA DE VERDAD: las cuotas
+          necesitan plazo para dividirlo, y es el `check` de la `118`. Se dice
+          aquí y no al pulsar, para que el botón apagado tenga una razón
+          visible al lado. */}
+      {faltaPlazo ? (
+        <p className="text-sm text-destructive">Elige en cuánto tiempo te pagan lo que queda fiado.</p>
+      ) : null}
+      {parcialSinMonto ? (
+        <p className="text-sm text-destructive">Escribe cuánto te entregó, o marca «Todo fiado».</p>
+      ) : null}
+      {bolivaresSinMonto ? (
+        <p className="text-sm text-destructive">Escribe cuántos bolívares te entregó.</p>
+      ) : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="flex-1" />
-      <Button type="button" variant="outline" className="h-12 w-full" onClick={onVolver}>
+      <Button
+        type="button"
+        className="h-12 w-full"
+        disabled={guardando || faltaPlazo || parcialSinMonto || bolivaresSinMonto}
+        onClick={guardar}
+      >
+        {guardando
+          ? "Guardando…"
+          : hayFiado
+            ? `Guardar venta y fiar a ${nombreCliente}`
+            : "Guardar venta"}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12 w-full"
+        disabled={guardando}
+        onClick={onVolver}
+      >
         Volver al carrito
       </Button>
     </div>
