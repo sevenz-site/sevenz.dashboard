@@ -212,7 +212,19 @@ export function NuevaVenta({
     };
   });
 
-  const hayDeuda = cuentas.some((c) => c.debe > 0.005);
+  const hayDeuda = cuentas.some((c) => c.registro != null && c.debe > 0.005);
+
+  // ── NO SE TERMINA UNA VENTA A MEDIO REGISTRAR ──────────────────────
+  //
+  // Regla del dueño, 2026-10-18: «el botón Finalizar debe poder seleccionarse
+  // solo cuando se han pagado todos los saldos en las respectivas monedas,
+  // bien sean pagos de contado o fiados».
+  //
+  // Antes, una moneda que el tendero no tocara se iba como fiado completo al
+  // pulsar «Finalizar». Era una decisión tomada por la app sobre el dinero de
+  // alguien, en silencio y por omisión — exactamente lo contrario de lo que
+  // debería hacer la pantalla donde se cobra.
+  const sinRegistrar = cuentas.filter((c) => c.registro == null);
 
   // `destinoForzado` LLEGA DEL PASO 4 cuando acaba de crear al cliente. Sin
   // él, `guardar` leería `cliente` del cierre del render anterior —todavía
@@ -394,6 +406,7 @@ export function NuevaVenta({
           registros={registros}
           setRegistros={setRegistros}
           saldoDelElegido={saldoDelElegido}
+          sinRegistrar={sinRegistrar.map((c) => c.currency)}
           cuentas={cuentas}
           guardando={guardando}
           error={error}
@@ -950,6 +963,7 @@ function PasoPago({
   registros,
   setRegistros,
   saldoDelElegido,
+  sinRegistrar,
   cuentas,
   guardando,
   error,
@@ -965,6 +979,9 @@ function PasoPago({
   registros: Partial<Record<PriceCurrency, Registro>>;
   setRegistros: Dispatch<SetStateAction<Partial<Record<PriceCurrency, Registro>>>>;
   saldoDelElegido: Partial<Record<PriceCurrency, number>>;
+  // LAS MONEDAS QUE TODAVÍA NO SE HAN REGISTRADO. Se calcula arriba, donde
+  // vive `cuentas`, para que el paso 4 pueda leerlo también sin recalcularlo.
+  sinRegistrar: PriceCurrency[];
   cuentas: {
     currency: PriceCurrency;
     amount: number;
@@ -981,6 +998,10 @@ function PasoPago({
   ownerId: string;
 }) {
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
+  // El aviso de «te falta registrar…». Se limpia solo al registrar algo, en el
+  // `onGuardar` de la hoja: dejarlo puesto después de arreglar lo que señalaba
+  // convierte un aviso útil en ruido que se aprende a ignorar.
+  const [faltan, setFaltan] = useState<string | null>(null);
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -1018,9 +1039,17 @@ function PasoPago({
         // LA DEUDA QUE DEJA ESTA VENTA: lo pactado a crédito más lo que quedó
         // suelto. Las dos cosas acaban en el mismo cargo — el servidor calcula
         // el resto él mismo y de la pantalla solo toma los términos.
-        const debeEstaVenta = Math.max(0, c.debe);
-        const antigua = saldoDelElegido[c.currency] ?? null;
         const registrado = c.registro != null;
+        // LA DEUDA SOLO EXISTE SI SE REGISTRÓ ALGO. El frame `1389:8476`
+        // dibuja la tarjeta por defecto con el total y «Pagar», y nada más.
+        //
+        // LO TENÍA MAL Y SE VEÍA EN LA PANTALLA: trataba «sin registrar» como
+        // «debe todo», así que una venta recién abierta ya enseñaba «Debe
+        // (esta venta)» y «Deuda total» por el importe entero — afirmando una
+        // deuda que el tendero no ha pactado y que puede acabar siendo un
+        // cobro de contado.
+        const debeEstaVenta = registrado ? Math.max(0, c.debe) : 0;
+        const antigua = saldoDelElegido[c.currency] ?? null;
 
         return (
           <div
@@ -1150,11 +1179,28 @@ function PasoPago({
           Lo decide `conCliente`, que es por dónde se ENTRÓ, y no si hay
           cliente ahora mismo: en el paso 4 se elige uno, y con la otra regla
           el botón cambiaría de palabra a mitad del recorrido. */}
+      {/* EL AVISO VA PEGADO AL BOTÓN, debajo, que es donde el tendero está
+          mirando cuando lo pulsa. Arriba del todo se lo perdería: a 375px las
+          tarjetas ya ocupan la pantalla. */}
+      {faltan ? <p className="text-sm text-destructive">{faltan}</p> : null}
+
+      {/* NO SE DESHABILITA, SE EXPLICA. Un botón apagado significa que
+          pulsarlo no hace nada, y lo que hace falta aquí es que DIGA por qué
+          no se puede — es el mismo criterio que `TipoButtons` ya aplica al
+          abono imposible en el diálogo de movimientos. */}
       <Button
         type="button"
         className="h-10 w-full"
         disabled={guardando}
-        onClick={() => (conCliente ? void guardar() : onContinuar())}
+        onClick={() => {
+          if (sinRegistrar.length > 0) {
+            setFaltan(textoFaltaRegistrar(sinRegistrar));
+            return;
+          }
+          setFaltan(null);
+          if (conCliente) void guardar();
+          else onContinuar();
+        }}
       >
         {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
       </Button>
@@ -1172,6 +1218,7 @@ function PasoPago({
           inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
+            setFaltan(null);
             setCobrando(null);
           }}
         />
@@ -1887,6 +1934,27 @@ function PagoSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+// EL AVISO DE «TE FALTA REGISTRAR», propuesto el 2026-10-18 a petición del
+// dueño: «al seleccionar el botón se debe mostrar mensaje de support texto de
+// error mencionando que se deben pagar los saldos de las monedas
+// correspondientes».
+//
+// NOMBRA LAS MONEDAS QUE FALTAN, no dice «faltan monedas»: la pantalla puede
+// tener dos tarjetas y un aviso genérico obligaría a mirarlas una por una para
+// descubrir cuál. Y dice QUÉ HACER —tocar «Pagar»— y que fiar también cuenta
+// como registrar, porque la queja natural al leerlo es «pero si no me lo va a
+// pagar hoy».
+//
+// Tono in-app: neutro y sin jerga. Es la pantalla del dinero.
+function textoFaltaRegistrar(monedas: PriceCurrency[]): string {
+  const nombres = monedas.map((c) => NOMBRE[c] ?? c);
+  const lista =
+    nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}` : nombres[0];
+  return nombres.length > 1
+    ? `Falta registrar el pago en ${lista}. Toca «Pagar» en cada una y di si fue de contado o fiado.`
+    : `Falta registrar el pago en ${lista}. Toca «Pagar» en esa tarjeta y di si fue de contado o fiado.`;
 }
 
 const NOMBRE: Partial<Record<PriceCurrency, string>> = {
