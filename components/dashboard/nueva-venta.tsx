@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
-import { ProductDetail } from "@/components/public/product-detail";
+import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -477,60 +477,6 @@ function PasoProducto({
 
   const enElCarrito = lineas.reduce((n, l) => n + l.quantity, 0);
 
-  // ── EL DETALLE, QUE ES EL MISMO QUE VE EL CLIENTE ───────────────────
-  //
-  // `ProductDetail` es literalmente el componente de `/c/[token]/[productId]`.
-  // No se copia: los escalones, el mínimo de mayoreo, las monedas con su
-  // equivalencia en bolívares y el aviso por debajo del mínimo son reglas de
-  // precio que no pueden tener dos versiones — el día que una cambie y la otra
-  // no, el tendero cobraría un precio y su cliente vería otro.
-  if (detalle) {
-    return (
-      <div className="flex flex-1 flex-col gap-4">
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-10 self-start px-2 text-sm"
-          onClick={() => setDetalle(null)}
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          Volver a productos
-        </Button>
-        <ProductDetail
-          // TOKEN VACÍO A PROPÓSITO. Solo lo usan el carrito del cliente
-          // (`useCarrito`) y el enlace de vuelta al catálogo público, y con
-          // `alAgregar` puesto no se llega a ninguno de los dos: `useCarrito`
-          // LEE al montar y no escribe si no se le llama. Pasar el token real
-          // del negocio obligaría a crear su enlace de catálogo solo por abrir
-          // esta pantalla.
-          token=""
-          productId={detalle.id}
-          producto={detalle.producto}
-          rates={catalogo?.rates ?? null}
-          // SIN EXISTENCIAS: la búsqueda de la venta no las trae, y enseñar un
-          // «quedan 0» que no se ha consultado sería peor que no enseñar nada.
-          stock={null}
-          monedasPermitidas={catalogo?.monedasDelLibro ?? []}
-          alAgregar={({ quantity, currency }) => {
-            onAgregar({
-              productId: detalle.id,
-              name: detalle.name,
-              unit: detalle.unit,
-              photoPath: detalle.photoPath,
-              producto: detalle.producto,
-              quantity,
-              currency,
-            });
-            // DE VUELTA A LA CUADRÍCULA, igual que el catálogo del cliente
-            // vuelve a su lista: quien acaba de añadir algo no quiere seguir
-            // mirando lo que ya añadió, quiere seguir comprando.
-            setDetalle(null);
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LOS DOS CONTROLES VAN A 8px ENTRE SÍ y no a los 16 del resto: en el
@@ -584,6 +530,38 @@ function PasoProducto({
         <Button type="button" className="h-12 w-full" onClick={onIrAlCarrito}>
           Ver carrito ({formatCantidad(enElCarrito)})
         </Button>
+      ) : null}
+
+      {/* LA HOJA DEL PRODUCTO — frame `1389:8949`. Es una HOJA y no una vista
+          que reemplace la cuadrícula: así, al cerrarla el tendero sigue donde
+          estaba, con su scroll y su búsqueda escrita. Quien vende abre tres o
+          cuatro productos seguidos antes de cobrar.
+
+          `key` CON EL ID: sin ella, abrir un segundo producto reutilizaría los
+          `useState` del primero —la cantidad y la moneda elegidas— y el
+          tendero vería «12» en un producto que acaba de abrir. Es la misma
+          trampa que `catalog-table.tsx` documenta para su ficha. */}
+      {detalle ? (
+        <ProductSheet
+          key={detalle.id}
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setDetalle(null)}
+          producto={detalle}
+          rates={catalogo?.rates ?? null}
+          monedasPermitidas={catalogo?.monedasDelLibro ?? []}
+          onAgregar={({ quantity, currency }) => {
+            onAgregar({
+              productId: detalle.id,
+              name: detalle.name,
+              unit: detalle.unit,
+              photoPath: detalle.photoPath,
+              producto: detalle.producto,
+              quantity,
+              currency,
+            });
+            setDetalle(null);
+          }}
+        />
       ) : null}
 
       {/* MONTADA SOLO MIENTRAS SE USA. Radix deja el nodo en el DOM al

@@ -41,6 +41,8 @@ export type ProductoParaVenta = {
   name: string;
   unit: string | null;
   photoPath: string | null;
+  description: string | null;
+  stock: number | null;
   producto: ProductoPublico;
 };
 
@@ -66,13 +68,20 @@ export type ProductosParaVenta = {
 // a una sola hace que el servidor cobre con datos distintos de los que el
 // tendero vio, y la diferencia no se nota hasta que un precio no cuadra.
 const COLUMNAS_PRODUCTO =
-  "id, name, unit, photo_path, price_retail, price_wholesale, base_currency, base_currency_retail, base_currency_wholesale, wholesale_min_quantity";
+  "id, name, unit, photo_path, description, stock_opening, price_retail, price_wholesale, base_currency, base_currency_retail, base_currency_wholesale, wholesale_min_quantity";
 
 type FilaDeProducto = {
   id: string;
   name: string;
   unit: string | null;
   photo_path: string | null;
+  description: string | null;
+  // `stock_opening` y no `stock`, y el nombre dice por qué: es el asiento de
+  // APERTURA que el tendero escribió al crear el producto. Nadie lo mueve —
+  // fiar no descuenta— hasta que exista la máquina de eventos (migración 084).
+  // La hoja lo enseña como «Disponible: N» porque es lo único que hay, y es
+  // mejor que el dato que el tendero puso que ningún dato.
+  stock_opening: number | string | null;
   price_retail: number | string | null;
   price_wholesale: number | string | null;
   base_currency: string | null;
@@ -165,6 +174,8 @@ async function armarProductos(
     name: p.name,
     unit: p.unit,
     photoPath: p.photo_path,
+    description: p.description,
+    stock: p.stock_opening == null ? null : Number(p.stock_opening),
     producto: {
       // `bloqueDesdeRpc` es la misma traducción que hace el catálogo público,
       // incluido su respaldo para la ventana en la que el código está
