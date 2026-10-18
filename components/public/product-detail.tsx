@@ -81,7 +81,11 @@ import {
 // luego 3 más son 6 — y a 6 el precio cambia. Un precio congelado aquí sería
 // el de detal para una cantidad que ya es de mayor.
 
-const ETIQUETA_MONEDA: Record<string, string> = {
+// SE EXPORTA desde el 2026-10-18: el carrito de la venta enseña las mismas
+// filas en su hoja de «Selecciona moneda» (frame `1389:8910`), y dos tablas
+// con los mismos rótulos acaban diciendo cosas distintas el día que una se
+// toque.
+export const ETIQUETA_MONEDA: Record<string, string> = {
   USD: "Paga en USD",
   EUR: "Paga en EURO",
   USDT: "Paga en USDT",

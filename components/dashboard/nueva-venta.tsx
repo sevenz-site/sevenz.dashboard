@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, ImageOff, Minus, Plus, Store, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Banknote, ChevronRight, ImageOff, Minus, Plus, Store, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
+import { CurrencySheet } from "@/components/dashboard/currency-sheet";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -163,7 +164,6 @@ export function NuevaVenta({
           lineas={lineas}
           rates={catalogo?.rates ?? null}
           monedasDelLibro={catalogo?.monedasDelLibro ?? []}
-          total={total}
           onCambiar={setLineas}
           onSeguirComprando={() => setPaso(1)}
           onIrAPago={() => setPaso(3)}
@@ -690,7 +690,6 @@ function PasoCarrito({
   lineas,
   rates,
   monedasDelLibro,
-  total,
   onCambiar,
   onSeguirComprando,
   onIrAPago,
@@ -698,7 +697,6 @@ function PasoCarrito({
   lineas: LineaVenta[];
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
-  total: { currency: PriceCurrency; amount: number }[];
   onCambiar: (l: LineaVenta[]) => void;
   onSeguirComprando: () => void;
   onIrAPago: () => void;
@@ -712,7 +710,7 @@ function PasoCarrito({
           </p>
         </div>
         <div className="flex-1" />
-        <Button type="button" variant="outline" className="h-12 w-full" onClick={onSeguirComprando}>
+        <Button type="button" variant="outline" className="h-10 w-full" onClick={onSeguirComprando}>
           Elegir productos
         </Button>
       </div>
@@ -720,46 +718,34 @@ function PasoCarrito({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
+    <div className="flex flex-1 flex-col gap-4">
       {lineas.map((l, i) => (
         <TarjetaDeLinea
           key={`${l.productId}-${l.currency}`}
           linea={l}
           rates={rates}
           monedasDelLibro={monedasDelLibro}
-          onCantidad={(q) =>
-            onCambiar(lineas.map((x, j) => (j === i ? { ...x, quantity: q } : x)))
-          }
+          onCantidad={(q) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, quantity: q } : x)))}
           onMoneda={(c) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, currency: c } : x)))}
           onQuitar={() => onCambiar(lineas.filter((_, j) => j !== i))}
         />
       ))}
 
-      <div className="flex flex-col gap-1 rounded-xl border p-4">
-        {total.map((t) => (
-          <div key={t.currency} className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-sm">
-              <CurrencyFlagIcon currency={t.currency} className="size-4" />
-              Total
-            </span>
-            <span className="text-base font-semibold tabular-nums">
-              {formatPriceAmount(t.amount, t.currency)}
-            </span>
-          </div>
-        ))}
-      </div>
-
       <div className="flex-1" />
-      <Button type="button" variant="outline" className="h-12 w-full" onClick={onSeguirComprando}>
-        Agregar más productos
-      </Button>
-      <Button type="button" className="h-12 w-full" onClick={onIrAPago}>
+
+      {/* EL TOTAL NO SALE EN EL FRAME, y no se añade: cada línea ya enseña su
+          subtotal con su bandera, y la pantalla de pago abre con una tarjeta
+          por moneda y su total. Ponerlo aquí además sería la misma cifra dicha
+          dos veces, y la primera —sin el contexto del cobro— no decide nada. */}
+      <Button type="button" className="h-10 w-full" onClick={onIrAPago}>
+        <Banknote className="size-6" aria-hidden="true" />
         Ir a pago
       </Button>
     </div>
   );
 }
 
+// UNA LÍNEA DEL CARRITO — frame `1389:8379`.
 function TarjetaDeLinea({
   linea,
   rates,
@@ -775,21 +761,35 @@ function TarjetaDeLinea({
   onMoneda: (c: PriceCurrency) => void;
   onQuitar: () => void;
 }) {
+  const [eligiendoMoneda, setEligiendoMoneda] = useState(false);
+
   // EL ESCALÓN SE DECIDE POR LA CANTIDAD, en cada render. Subir de 5 a 6
-  // unidades puede cruzar el mínimo del mayoreo y bajar el precio unitario:
-  // si esto se calculara una vez al agregar, el carrito cobraría el precio de
+  // unidades puede cruzar el mínimo del mayoreo y bajar el precio unitario: si
+  // esto se calculara una vez al agregar, el carrito cobraría el precio de
   // detal por una cantidad de mayoreo.
   const escalon = escalonParaCantidad(linea.producto, linea.quantity);
   const bloque = escalon === "wholesale" ? linea.producto.wholesale : linea.producto.retail;
-  const monedas = monedasDelBloque(bloque, rates).filter((c) => monedasDelLibro.includes(c));
-  const unitario = precioEnMoneda(bloque, linea.currency, rates);
   const minimo = cantidadMinima(linea.producto);
   const foto = linea.photoPath ? getPublicProductPhotoUrl(linea.photoPath) : null;
+  const unitario = precioEnMoneda(bloque, linea.currency, rates);
+
+  // LAS MONEDAS CON SU SUBTOTAL, que es lo que la hoja enseña. Cada cifra sale
+  // de `precioEnMoneda` para SU moneda y no de convertir la primera, y eso es
+  // lo que respeta un precio fijado a mano: un producto con 10 $ y 9 € escritos
+  // por el tendero tiene que enseñar 9 €, no los 9,20 que daría la tasa.
+  const opciones = monedasDelBloque(bloque, rates)
+    .filter((c) => monedasDelLibro.includes(c))
+    .map((c) => ({ currency: c, precio: precioEnMoneda(bloque, c, rates) }))
+    .filter((o): o is { currency: PriceCurrency; precio: number } => o.precio != null)
+    .map((o) => ({
+      currency: o.currency,
+      subtotal: Math.round(o.precio * linea.quantity * 100) / 100,
+    }));
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border p-3">
-      <div className="flex items-center gap-3">
-        <span className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
+    <div className="flex flex-col gap-3 rounded-[10px] border p-2.5">
+      <div className="flex items-center gap-2">
+        <span className="relative size-12 shrink-0 overflow-hidden bg-muted">
           {foto ? (
             <Image src={foto} alt="" fill unoptimized sizes="48px" className="object-cover" />
           ) : (
@@ -799,71 +799,87 @@ function TarjetaDeLinea({
           )}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium">{linea.name}</span>
+          <span className="text-base leading-6 font-semibold">{linea.name}</span>
           {escalon === "wholesale" ? (
             <span className="text-xs text-muted-foreground">precio al mayor</span>
           ) : null}
         </span>
-        <Button type="button" variant="ghost" size="icon" aria-label={`Quitar ${linea.name}`} onClick={onQuitar}>
-          <Trash2 className="size-4" aria-hidden="true" />
-        </Button>
-      </div>
 
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="size-10 shrink-0"
-          aria-label="Quitar uno"
-          disabled={linea.quantity <= minimo}
-          onClick={() => onCantidad(Math.max(minimo, linea.quantity - 1))}
-        >
-          <Minus className="size-4" aria-hidden="true" />
-        </Button>
-        <span className="w-12 text-center text-base tabular-nums">{formatCantidad(linea.quantity)}</span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="size-10 shrink-0"
-          aria-label="Agregar uno"
-          onClick={() => onCantidad(linea.quantity + 1)}
-        >
-          <Plus className="size-4" aria-hidden="true" />
-        </Button>
-
-        <span className="flex-1" />
-
-        <span className="text-right text-sm tabular-nums">
-          {unitario != null ? formatPriceAmount(unitario * linea.quantity, linea.currency) : "—"}
-        </span>
-      </div>
-
-      {/* «CAMBIAR» — la moneda de ESTA línea, que es lo que el sitemap pide.
-          Un `select` nativo y no una hoja: en un teléfono abre la rueda del
-          sistema, que es más rápida de usar con una mano y no hay que
-          construirla. El precio se recalcula solo porque sale de
-          `precioEnMoneda` arriba — ver `CT-101`. */}
-      <div className="flex items-center justify-between gap-2 border-t pt-3">
-        <span className="text-xs text-muted-foreground">Cobrar en</span>
-        <span className="flex items-center gap-2">
-          <CurrencyFlagIcon currency={linea.currency} className="size-4" />
-          <select
-            value={linea.currency}
-            onChange={(e) => onMoneda(e.target.value as PriceCurrency)}
-            aria-label={`Moneda de ${linea.name}`}
-            className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        {/* EL «−» EN EL MÍNIMO QUITA LA LÍNEA, y es la única salida del carrito:
+            el frame no dibuja papelera, y sin una, un producto tocado por error
+            se queda dentro para siempre. Bajar de uno es, en la cabeza del
+            tendero, quitarlo — así que el icono cambia a una papelera para que
+            nadie lo pulse creyendo que resta. */}
+        <span className="flex shrink-0 items-start gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-10 rounded-xl"
+            aria-label={linea.quantity <= minimo ? `Quitar ${linea.name}` : "Quitar uno"}
+            onClick={() => (linea.quantity <= minimo ? onQuitar() : onCantidad(linea.quantity - 1))}
           >
-            {monedas.map((c) => (
-              <option key={c} value={c}>
-                {NOMBRE[c] ?? c}
-              </option>
-            ))}
-          </select>
-          <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+            {linea.quantity <= minimo ? (
+              <Trash2 className="size-4" aria-hidden="true" />
+            ) : (
+              <Minus className="size-4" aria-hidden="true" />
+            )}
+          </Button>
+          <span className="flex size-10 items-center justify-center rounded-xl border text-base font-semibold tabular-nums">
+            {formatCantidad(linea.quantity)}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-10 rounded-xl"
+            aria-label="Agregar uno"
+            onClick={() => onCantidad(linea.quantity + 1)}
+          >
+            <Plus className="size-4" aria-hidden="true" />
+          </Button>
         </span>
       </div>
+
+      <div className="flex items-center justify-between gap-2 p-2">
+        <span className="text-sm">Subtotal</span>
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-sm tabular-nums">
+            {unitario != null ? formatPriceAmount(unitario * linea.quantity, linea.currency) : "—"}
+          </span>
+          <CurrencyFlagIcon currency={linea.currency} className="size-4 shrink-0" />
+        </span>
+        {/* «CAMBIAR» ABRE LA HOJA CON LAS EQUIVALENCIAS, que es lo que el dueño
+            pidió el 2026-10-18: la pregunta real no es «¿dólares o euros?», es
+            «¿cuánto le cobro en cada uno?». Antes esto era un `select` nativo
+            que solo listaba nombres.
+
+            NO SE PINTA CON UNA SOLA MONEDA: un control que abre una hoja con
+            una única opción ya marcada no cambia nada y hace dudar de si faltan
+            precios. Pasa de verdad en un negocio colombiano, donde el libro es
+            pesos y nada más. */}
+        {opciones.length > 1 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto shrink-0 px-1 py-1.5 text-sm font-normal"
+            onClick={() => setEligiendoMoneda(true)}
+          >
+            Cambiar
+            <ChevronRight className="size-5" aria-hidden="true" />
+          </Button>
+        ) : null}
+      </div>
+
+      {eligiendoMoneda ? (
+        <CurrencySheet
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setEligiendoMoneda(false)}
+          opciones={opciones}
+          seleccionada={linea.currency}
+          onSeleccionar={onMoneda}
+        />
+      ) : null}
     </div>
   );
 }
