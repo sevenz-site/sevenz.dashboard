@@ -311,6 +311,45 @@ export async function resolverMostrador(): Promise<{ id: string; name: string } 
 }
 
 // ===========================================================================
+// LO QUE ESTE CLIENTE YA DEBÍA
+// ===========================================================================
+//
+// «Deuda antigua» en la tarjeta del paso 3 (frame `1389:8504`): lo que el
+// cliente arrastra de ANTES de esta venta, para que «Deuda total» diga lo que
+// de verdad va a deber al terminar.
+//
+// POR MONEDA Y SIN SUMAR NADA. `client_summary` lleva `balance_usd` y
+// `balance_eur` separados porque son dos deudas independientes que se cobran
+// por separado — sumarlas aquí sería inventar una cifra que el tendero no
+// puede cobrar. Un negocio colombiano lleva una sola, en `balance`.
+export async function saldoAnteriorDelCliente(
+  clientId: string,
+): Promise<Partial<Record<PriceCurrency, number>>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente. Es
+  // la regla de `CLAUDE.md` para toda fila que se lee por un id que llega del
+  // navegador, y aquí se leería el saldo de otro negocio.
+  const { data } = await supabase
+    .from("client_summary")
+    .select("balance, balance_usd, balance_eur")
+    .eq("client_id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!data) return {};
+
+  return {
+    USD: Number(data.balance_usd ?? 0),
+    EUR: Number(data.balance_eur ?? 0),
+    COP: Number(data.balance ?? 0),
+  };
+}
+
+// ===========================================================================
 // GUARDAR LA VENTA
 // ===========================================================================
 

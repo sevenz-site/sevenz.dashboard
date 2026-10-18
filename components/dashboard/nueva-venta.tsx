@@ -36,6 +36,7 @@ import {
   buscarProductosParaVenta,
   registrarVenta,
   resolverMostrador,
+  saldoAnteriorDelCliente,
   type ProductoParaVenta,
   type ProductosParaVenta,
 } from "@/app/(app)/ventas/actions";
@@ -947,6 +948,42 @@ function PasoPago({
   const [pidiendoCliente, setPidiendoCliente] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // LO QUE EL CLIENTE YA DEBÍA ANTES DE ESTA VENTA, para la fila «Deuda
+  // antigua» del frame `1389:8504`. Vacío mientras no haya cliente: hasta
+  // entonces no hay saldo que leer, y un «0,00» ahí afirmaría que no debe
+  // nada, que es una afirmación y no una ausencia.
+  //
+  // SE GUARDA JUNTO AL ID DEL CLIENTE AL QUE PERTENECE, y eso hace dos cosas
+  // a la vez. La obvia: cambiando de cliente, el saldo del anterior deja de
+  // enseñarse en cuanto el id no coincide, sin esperar a que llegue la
+  // consulta nueva — enseñar la deuda de Pedro bajo el nombre de Ana aunque
+  // sea medio segundo es decirle al tendero algo falso sobre dinero.
+  //
+  // La menos obvia: sin él haría falta limpiar el estado en el cuerpo del
+  // efecto cuando no hay cliente, y `react-hooks/set-state-in-effect` lo
+  // prohíbe con razón.
+  const [saldoAnterior, setSaldoAnterior] = useState<{
+    clienteId: string;
+    saldo: Partial<Record<PriceCurrency, number>>;
+  } | null>(null);
+
+  // SE PIDE AL CAMBIAR DE CLIENTE, no en cada render. La dependencia es
+  // `cliente?.id` y no el objeto: `SelectorDeCliente` entrega uno nuevo cada
+  // vez que se repinta, y con el objeto esto consultaría en bucle.
+  const clienteId = cliente?.id ?? null;
+  useEffect(() => {
+    if (!clienteId) return;
+    let vivo = true;
+    void saldoAnteriorDelCliente(clienteId).then((saldo) => {
+      if (vivo) setSaldoAnterior({ clienteId, saldo });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [clienteId]);
+
+  const saldoDelElegido =
+    clienteId && saldoAnterior?.clienteId === clienteId ? saldoAnterior.saldo : {};
 
   // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
   // render y no se guarda aparte: un total derivado que vive por su cuenta es
@@ -1080,55 +1117,123 @@ function PasoPago({
 
       {cuentas.map((c) => {
         const bs = rates ? c.amount * (c.currency === "EUR" ? rates.eur : rates.usd) : null;
-        return (
-          <div key={c.currency} className="flex items-center gap-3 rounded-[10px] border px-4 py-2">
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-              <span className="text-sm">Total en {NOMBRE[c.currency] ?? c.currency}</span>
-              <span className="flex items-center gap-1">
-                <CurrencyFlagIcon currency={c.currency} className="size-4 shrink-0" />
-                <span className="text-base font-semibold tabular-nums">
-                  {formatPriceAmount(c.amount, c.currency)}
-                </span>
-              </span>
-              {bs != null ? (
-                <span className="pl-5 text-xs tabular-nums text-muted-foreground">
-                  {formatPriceAmount(bs, "VES")}
-                </span>
-              ) : null}
+        // LA DEUDA QUE DEJA ESTA VENTA: lo pactado a crédito más lo que quedó
+        // suelto. Las dos cosas acaban en el mismo cargo — el servidor calcula
+        // el resto él mismo y de la pantalla solo toma los términos.
+        const debeEstaVenta = Math.round((c.fiado + Math.max(0, c.suelto)) * 100) / 100;
+        const antigua = saldoDelElegido[c.currency] ?? null;
+        const registrado = c.cobrado > 0 || c.fiado > 0;
 
-              {/* LO YA REGISTRADO. No está en el frame —ahí las tarjetas solo
-                  tienen el total— pero sin esto el tendero pulsa «Pagar»,
-                  vuelve, y la pantalla está idéntica: no hay forma de saber si
-                  lo que hizo se guardó. */}
-              {c.cobrado > 0 || c.fiado > 0 ? (
-                <span className="flex flex-wrap gap-x-2 text-xs tabular-nums">
-                  {c.cobrado > 0 ? (
-                    <span className="text-money-in">
-                      Cobrado {formatPriceAmount(c.cobrado, c.currency)}
-                    </span>
-                  ) : null}
-                  {c.fiado > 0 ? (
-                    <span className="text-destructive">
-                      Fiado {formatPriceAmount(c.fiado, c.currency)}
-                    </span>
-                  ) : null}
-                  {c.suelto > 0.005 ? (
-                    <span className="text-muted-foreground">
-                      queda {formatPriceAmount(c.suelto, c.currency)}
-                    </span>
-                  ) : null}
+        return (
+          <div
+            key={c.currency}
+            className="flex flex-col justify-center rounded-[10px] border px-4 py-2"
+          >
+            {/* ── LA CABECERA, IGUAL EN LOS TRES ESTADOS ──────────────── */}
+            <div className="flex items-center justify-between gap-3 py-2">
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+                <span className="text-sm">Total en {NOMBRE[c.currency] ?? c.currency}</span>
+                <span className="flex items-center gap-1">
+                  <CurrencyFlagIcon currency={c.currency} className="size-4 shrink-0" />
+                  <span className="text-base font-semibold tabular-nums">
+                    {formatPriceAmount(c.amount, c.currency)}
+                  </span>
                 </span>
-              ) : null}
+                {bs != null ? (
+                  <span className="pl-5 text-xs tabular-nums text-muted-foreground">
+                    {formatPriceAmount(bs, "VES")}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* SIN NADA REGISTRADO, UN BOTÓN; CON ALGO, UNA FLECHA. Es lo que
+                  dibuja el frame y dice la verdad: el botón invita a empezar, y
+                  una vez hay cifras debajo lo que se ofrece es volver a
+                  abrirlas. Dejar «Pagar» sobre una tarjeta que ya enseña un
+                  cobro haría dudar de si se va a cobrar dos veces. */}
+              {registrado ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 shrink-0"
+                  aria-label={`Cambiar el pago en ${NOMBRE[c.currency] ?? c.currency}`}
+                  onClick={() => setCobrando(c.currency)}
+                >
+                  <ChevronRight className="size-5" aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 shrink-0"
+                  onClick={() => setCobrando(c.currency)}
+                >
+                  Pagar
+                </Button>
+              )}
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 shrink-0"
-              onClick={() => setCobrando(c.currency)}
-            >
-              Pagar
-            </Button>
+            {/* ── LO COBRADO ─────────────────────────────────────────────
+                «Pago de contado» cuando la venta queda saldada, «Abonó en X»
+                cuando además queda debiendo. No es adorno: la primera cierra
+                la cuenta y la segunda es un abono a una deuda que sigue viva,
+                y el tendero necesita saber cuál de las dos acaba de registrar. */}
+            {c.cobrado > 0 ? (
+              <div className="flex items-center justify-end gap-1 border-t py-3">
+                <span className="text-xs">
+                  {debeEstaVenta > 0.005
+                    ? `Abonó en ${NOMBRE[c.currency] ?? c.currency}`
+                    : "Pago de contado"}
+                </span>
+                <span className="flex-1 text-right text-xs tabular-nums">
+                  {formatPriceAmount(c.cobrado, c.currency)}
+                </span>
+              </div>
+            ) : null}
+
+            {/* ── LO QUE QUEDA DEBIENDO ──────────────────────────────── */}
+            {debeEstaVenta > 0.005 ? (
+              <div className="flex flex-col gap-2 border-t pt-3 pb-1">
+                <div className="flex items-center justify-end gap-1">
+                  <span className="text-xs">Debe (esta venta)</span>
+                  <span className="flex-1 text-right text-xs tabular-nums">
+                    {formatPriceAmount(debeEstaVenta, c.currency)}
+                  </span>
+                </div>
+
+                {/* «DEUDA ANTIGUA» SOLO CUANDO SE SABE DE QUIÉN. Hasta que el
+                    cliente no está elegido no hay saldo que leer, y poner un
+                    «0,00» ahí diría que no debe nada — que es una afirmación,
+                    no una ausencia. La fila aparece al elegirlo. */}
+                {antigua != null ? (
+                  <div className="flex items-center justify-end gap-1">
+                    <span className="text-xs">Deuda antigua</span>
+                    <span className="flex-1 text-right text-xs tabular-nums">
+                      {formatPriceAmount(antigua, c.currency)}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="flex items-start gap-1">
+                  <span className="text-base font-semibold">Deuda total</span>
+                  <span className="flex flex-1 flex-col items-end gap-1">
+                    <span className="text-base font-semibold tabular-nums">
+                      {formatPriceAmount(debeEstaVenta + (antigua ?? 0), c.currency)}
+                    </span>
+                    {rates ? (
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {formatPriceAmount(
+                          (debeEstaVenta + (antigua ?? 0)) *
+                            (c.currency === "EUR" ? rates.eur : rates.usd),
+                          "VES",
+                        )}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -1455,7 +1560,24 @@ function PagoSheet({
     Math.abs(convertido - pendiente) <= 0.01 && pendiente > 0
       ? pendiente
       : Math.round(convertido * 100) / 100;
-  const deMas = enElLibro - total > 0.005;
+
+  // ── EL TOPE ES LO QUE FALTA, NO EL TOTAL ──────────────────────────
+  //
+  // FALLO REAL, visto por el dueño en una captura el 2026-10-18: sobre una
+  // venta de 5,84 € la pantalla enseñaba «Cobrado €5,84 · Fiado €2,03». Suman
+  // 7,87 y la venta valía 5,84.
+  //
+  // La causa: este tope comparaba cada registro contra el TOTAL, ignorando el
+  // otro hueco. Cobrar 5,84 y luego fiar 2,03 pasaba las dos veces, porque
+  // ninguna de las dos pasa de 5,84 por separado.
+  //
+  // El tope es lo que queda por registrar MÁS lo que este mismo hueco ya
+  // tenía: sin ese sumando, reabrir un cobro guardado para subirlo un céntimo
+  // se rechazaría por su propio importe.
+  const yaEnEsteHueco =
+    (tipo === "contado" ? inicial.contado?.amount : inicial.credito?.amount) ?? 0;
+  const tope = Math.round((pendiente + yaEnEsteHueco) * 100) / 100;
+  const deMas = enElLibro - tope > 0.005;
   const listo = enElLibro > 0 && entregado > 0 && !deMas;
 
   const plazoDias =
@@ -1640,7 +1762,8 @@ function PagoSheet({
 
               {deMas ? (
                 <p className="text-xs text-destructive">
-                  No puedes registrar más de {formatPriceAmount(total, moneda)}.
+                  No puedes registrar más de {formatPriceAmount(tope, moneda)} — es lo que falta de
+                  esta venta.
                 </p>
               ) : null}
             </div>
