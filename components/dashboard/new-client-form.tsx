@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { registrarCliente } from "@/app/(app)/clients/nuevo/actions";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD, textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 import type { OwnerCountry } from "@/lib/types";
@@ -122,7 +123,26 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
               después; un número falso es indistinguible de uno bueno y el día
               que se enciendan los avisos le manda la deuda de alguien a un
               tercero. */}
-          <WhatsappInput id="whatsapp" name="whatsapp" />
+          {/* EL PREFIJO ARRANCA EN EL PAÍS DEL NEGOCIO, y faltaba: sin esto el
+              selector se quedaba en su primera opción —Colombia, +57— y un
+              tendero venezolano guardaba a TODOS sus clientes con un prefijo
+              que no es el suyo. Lo vio el dueño en una captura el 2026-10-18.
+
+              No es cosmético: el número guardado es el que la puerta de envío
+              va a marcar el día que se enciendan los avisos al cliente, así
+              que un +57 de más es un mensaje que no llega — o que llega a
+              otro.
+
+              `OWNER_COUNTRY_DIAL_CODE` y no una constante aquí: es el mismo
+              mapa que usan las otras cuatro pantallas con este campo.
+
+              SIN PAÍS NO SE SUGIERE NADA y el selector se queda como venga.
+              Adivinar aquí es exactamente el fallo que se está arreglando. */}
+          <WhatsappInput
+            id="whatsapp"
+            name="whatsapp"
+            preferredDialCode={ownerCountry ? OWNER_COUNTRY_DIAL_CODE[ownerCountry] : undefined}
+          />
         </div>
 
         <div className="flex flex-col gap-1">

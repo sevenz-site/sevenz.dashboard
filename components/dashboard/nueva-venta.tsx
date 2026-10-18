@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { CatalogProductDialog } from "@/components/dashboard/catalog-product-dialog";
+import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -391,6 +391,14 @@ function PasoProducto({
   const [cargando, setCargando] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [creando, setCreando] = useState(false);
+  // El producto que la hoja acaba de crear y que entra al carrito en cuanto la
+  // cuadrícula vuelva con él (ver `onCreado`).
+  //
+  // UNA REF Y NO ESTADO: nadie lo pinta, así que guardarlo en `useState`
+  // provocaría un render de más por cada producto creado y encima obligaría a
+  // leerlo desde dentro de su propio actualizador para no quedarse con el
+  // valor del render anterior.
+  const pendiente = useRef<{ productId: string; cantidad: number } | null>(null);
   // Se incrementa al guardar un producto nuevo, y el efecto de abajo lo mira:
   // es lo que hace que la cuadrícula se vuelva a pedir sin tocar `query`, para
   // que el recién creado aparezca donde el tendero lo está esperando.
@@ -419,6 +427,40 @@ function PasoProducto({
       onCatalogo(r);
       setCargando(false);
       setBuscado(true);
+
+      // EL PRODUCTO RECIÉN CREADO ENTRA AL CARRITO AQUÍ, cuando la lista ya
+      // trae su ficha completa.
+      //
+      // PUEDE NO VENIR, y por eso se comprueba: la búsqueda devuelve doce por
+      // orden alfabético, así que un producto nuevo que caiga más allá del
+      // doce no está en esta respuesta. En ese caso se deja como está —el
+      // tendero lo busca por su nombre— en vez de meter al carrito una línea
+      // armada a mano que se comportaría distinto de las demás.
+      const p = pendiente.current;
+      // SE LIMPIA SIEMPRE, entre o no entre: dejarlo puesto haría que la
+      // siguiente búsqueda —una letra más en el buscador— volviera a meterlo.
+      pendiente.current = null;
+      if (p) {
+        const nuevo = r.productos.find((x) => x.id === p.productId);
+        const minimo = nuevo ? cantidadMinima(nuevo.producto) : 0;
+        const cantidad = Math.max(p.cantidad, minimo);
+        const escalon = nuevo ? escalonParaCantidad(nuevo.producto, cantidad) : null;
+        const bloque = escalon === "wholesale" ? nuevo!.producto.wholesale : nuevo?.producto.retail;
+        const moneda = monedasDelBloque(bloque ?? null, r.rates).filter((c) =>
+          r.monedasDelLibro.includes(c),
+        )[0];
+        if (nuevo && moneda) {
+          onAgregar({
+            productId: nuevo.id,
+            name: nuevo.name,
+            unit: nuevo.unit,
+            photoPath: nuevo.photoPath,
+            producto: nuevo.producto,
+            quantity: cantidad,
+            currency: moneda,
+          });
+        }
+      }
     }, 250);
     return () => {
       vivo = false;
@@ -484,23 +526,25 @@ function PasoProducto({
         </Button>
       ) : null}
 
-      {/* MONTADO SOLO MIENTRAS SE USA. Radix deja el nodo del diálogo en el DOM
-          al cerrarse, y este trae dentro un formulario entero con sus propios
-          `useState`: dejarlo montado haría que la segunda vez abriera con lo
-          que se escribió la primera. */}
+      {/* MONTADA SOLO MIENTRAS SE USA. Radix deja el nodo en el DOM al
+          cerrarse, y esta hoja trae dentro un formulario entero con sus
+          propios `useState`: dejarla montada haría que la segunda vez abriera
+          con lo que se escribió la primera. */}
       {creando ? (
-        <CatalogProductDialog
+        <QuickProductSheet
           open
-          onOpenChange={(next) => !next && setCreando(false)}
-          product={null}
-          rates={catalogo?.rates ?? null}
-          defaultCurrency={catalogo?.monedasDelLibro[0] ?? "USD"}
-          overrides={{ retail: {}, wholesale: {} }}
-          initialCurrencies={{ retail: [], wholesale: [] }}
-          supplierSuggestions={[]}
+          onOpenChange={(next: boolean) => !next && setCreando(false)}
           ownerId={ownerId}
-          onSaved={() => {
+          monedas={catalogo?.monedasDelLibro ?? []}
+          onCreado={(productId, cantidad) => {
             setCreando(false);
+            // SE PIDE EL PRODUCTO RECIÉN CREADO ANTES DE METERLO AL CARRITO, y
+            // no se arma aquí con lo que se acaba de teclear: el carrito
+            // necesita la ficha ENTERA —escalones, monedas activas, precios
+            // fijados— para recalcular el precio al cambiar de moneda o al
+            // cruzar el mínimo de mayoreo. Montarla a mano daría una línea que
+            // se comporta distinto de las demás hasta recargar la pantalla.
+            pendiente.current = { productId, cantidad };
             setRecarga((n) => n + 1);
           }}
         />

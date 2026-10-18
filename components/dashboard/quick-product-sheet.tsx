@@ -1,0 +1,238 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Minus, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
+import { createProduct } from "@/app/(app)/productos/actions";
+import { currencyName, formatPriceAmount, parseAmount, type PriceCurrency } from "@/lib/products/price";
+
+// REGISTRAR UN PRODUCTO SIN SALIR DE LA VENTA — frame `1389:9169`, 2026-10-18.
+//
+// ===========================================================================
+// ES UN FORMULARIO SINTETIZADO, Y ESO ES LA DECISIÓN, NO UN ATAJO
+//
+// La ficha completa del catálogo (`CatalogProductDialog`) pide escalón al
+// detal y al mayor, monedas activas por escalón, precios fijados a mano, costo
+// con su moneda, margen, proveedor, stock inicial y mínimo de mayoreo. Todo
+// eso existe porque el catálogo lo necesita.
+//
+// Aquí el tendero tiene un cliente delante y un producto en la mano que no
+// está apuntado. Pedirle veinte campos en ese momento es garantizar que no lo
+// apunte. El frame pide seis —nombre, precio, moneda, cuántas, publicar,
+// foto— y una descripción opcional.
+//
+// LO QUE NO SE PREGUNTA SE GUARDA VACÍO, NO INVENTADO: sin costo no hay
+// margen, sin mayoreo no hay mínimo. El producto queda a medias a propósito y
+// se puede completar después desde el catálogo, que es donde esos campos
+// tienen sentido.
+//
+// ===========================================================================
+// Y CREA **Y** AGREGA, en un solo botón
+//
+// «Agregar $00.00» es lo que dice el frame, y describe las dos cosas: el
+// producto nace en el catálogo y entra en el carrito con la cantidad elegida.
+// Separarlo en «Guardar» y luego buscarlo en la cuadrícula sería devolverle al
+// tendero el trabajo que esta hoja existe para quitarle.
+export function QuickProductSheet({
+  open,
+  onOpenChange,
+  ownerId,
+  monedas,
+  onCreado,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  ownerId: string;
+  // Las monedas en las que este negocio puede cobrar. La primera viene puesta.
+  // Vienen del catálogo ya cargado — las mismas que ofrece el carrito.
+  monedas: PriceCurrency[];
+  // El producto recién creado y cuántas unidades van al carrito. La pantalla
+  // de venta se encarga de recargar la cuadrícula y de meterlo.
+  onCreado: (productId: string, cantidad: number) => void;
+}) {
+  const [nombre, setNombre] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [moneda, setMoneda] = useState<PriceCurrency>(monedas[0] ?? "USD");
+  const [cantidad, setCantidad] = useState(1);
+  const [publicar, setPublicar] = useState(true);
+  const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [descripcion, setDescripcion] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, startTransition] = useTransition();
+
+  const unitario = parseAmount(precio) ?? 0;
+  const total = Math.round(unitario * cantidad * 100) / 100;
+  const listo = nombre.trim() !== "" && unitario > 0;
+
+  function guardar() {
+    setError(null);
+    startTransition(async () => {
+      const r = await createProduct({
+        name: nombre.trim(),
+        unit: null,
+        // UNA SOLA MONEDA Y SOLO AL DETAL. La primera de la lista es la base,
+        // que es donde `createProduct` guarda `price_retail`. El mayoreo se
+        // queda vacío: no se preguntó, y un escalón al mayor inventado haría
+        // que el carrito cobrara otro precio al subir la cantidad.
+        activeCurrenciesRetail: [moneda],
+        activeCurrenciesWholesale: [],
+        priceRetail: precio,
+        priceWholesale: null,
+        fixedRetail: {},
+        fixedWholesale: {},
+        cost: null,
+        costCurrency: null,
+        costCurrencyOther: null,
+        marginRetailPct: null,
+        marginWholesalePct: null,
+        stockOpening: null,
+        supplier: null,
+        wholesaleMinQuantity: null,
+        publishedRetail: publicar,
+        // PUBLICAR ES UNA SOLA CASILLA EN EL FRAME, y se aplica al detal. El
+        // mayor no se publica porque no se creó: publicar un escalón sin
+        // precio dejaría al cliente viendo un producto que no puede pedir.
+        publishedWholesale: false,
+        photoPath,
+        description: descripcion.trim() || null,
+      });
+      if (r.error || !r.id) {
+        setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
+        return;
+      }
+      onCreado(r.id, cantidad);
+      onOpenChange(false);
+    });
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {/* `dvh` y no `vh`: en un teléfono con la barra del navegador a la vista,
+          `vh` mide el viewport grande. Y `overflow-y-auto` porque esta hoja
+          tiene siete campos y a 375px no caben sin desplazar. */}
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle className="text-xl font-medium">Registrar producto</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex flex-col gap-5 p-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-nombre">Nombre del producto</Label>
+            <Input
+              id="qp-nombre"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Escribe nombre"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-precio">Precio unitario</Label>
+            <div className="flex items-start gap-1">
+              <Input
+                id="qp-precio"
+                className="min-w-0 flex-1"
+                inputMode="decimal"
+                value={precio}
+                onChange={(e) => setPrecio(e.target.value)}
+                placeholder="00"
+              />
+              {/* UN `select` NATIVO Y NO UNA LISTA PROPIA: en un teléfono abre
+                  la rueda del sistema, que se usa con una mano y no hay que
+                  construirla. Es lo mismo que hace el carrito con su
+                  «Cambiar».
+
+                  `text-base` Y NO MENOS: por debajo de 16px, Safari en iPhone
+                  hace zoom al enfocar y deja la pantalla corrida. */}
+              <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
+                <CurrencyFlagIcon currency={moneda} className="size-4" />
+                <select
+                  aria-label="Moneda del precio"
+                  value={moneda}
+                  onChange={(e) => setMoneda(e.target.value as PriceCurrency)}
+                  className="bg-transparent text-base outline-none"
+                >
+                  {monedas.map((c) => (
+                    <option key={c} value={c}>
+                      {currencyName(c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label>¿Cuántas unidades compra?</Label>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-10 shrink-0"
+                aria-label="Quitar una unidad"
+                disabled={cantidad <= 1}
+                onClick={() => setCantidad((n) => Math.max(1, n - 1))}
+              >
+                <Minus className="size-4" aria-hidden="true" />
+              </Button>
+              <span className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-md border text-center text-base tabular-nums">
+                {cantidad}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-10 shrink-0"
+                aria-label="Agregar una unidad"
+                onClick={() => setCantidad((n) => n + 1)}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+
+          <label className="flex items-center justify-between gap-2 rounded-xl border px-3 py-3.5">
+            <span className="text-sm">Publicar producto en catálogo</span>
+            <Switch checked={publicar} onCheckedChange={setPublicar} />
+          </label>
+
+          <div className="flex flex-col gap-2">
+            <Label>Foto (opcional)</Label>
+            <ProductPhotoInput ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-desc">Descripción (opcional)</Label>
+            <Textarea
+              id="qp-desc"
+              className="h-[120px]"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Escribe descripción del producto"
+            />
+          </div>
+
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+
+        <div className="p-4">
+          {/* EL TOTAL EN EL BOTÓN, como el frame. Dice lo que va a entrar en el
+              carrito —precio por cantidad— y no solo «Agregar»: es la última
+              cifra que el tendero ve antes de que la venta la dé por buena. */}
+          <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={guardar}>
+            {guardando ? "Guardando…" : `Agregar ${formatPriceAmount(total, moneda)}`}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
