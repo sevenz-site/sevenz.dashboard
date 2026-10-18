@@ -1374,20 +1374,45 @@ function PagoSheet({
   const yaGuardado = tipo === "contado" ? inicial.contado : inicial.credito;
   const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
 
-  // EN QUÉ MONEDA LE ENTREGAN. Con tasa son bolívares o la del libro; sin
-  // tasa —un negocio colombiano— solo cabe la del libro, así que el selector
-  // no se pinta.
-  const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(
-    inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
-  );
-  const [monto, setMonto] = useState(() => {
-    const previo = tipo === "contado" ? inicial.contado : inicial.credito;
-    if (previo) {
-      const entregado = tipo === "contado" ? inicial.contado?.entryAmount : null;
-      return formatAmountForInput(entregado ?? previo.amount);
+  // ── EN QUÉ MONEDA LE ENTREGAN ───────────────────────────────────────
+  //
+  // BOLÍVARES POR DEFECTO, por decisión del dueño el 2026-10-18: «la moneda
+  // por defecto en el monto a pagar debe ser Bolívares».
+  //
+  // Y no es una preferencia de pantalla, es cómo se cobra de verdad en
+  // Venezuela: el libro está en dólares o en euros, pero lo que pasa de mano a
+  // mano son bolívares. Arrancar en la moneda del libro le pedía al tendero
+  // cambiar el selector en casi todos los cobros.
+  //
+  // Sin tasa —un negocio colombiano— no hay bolívares que ofrecer: cae en la
+  // moneda del libro y el selector no se pinta.
+  //
+  // CUÁL VIENE PUESTA, escrito una vez y usado al abrir Y al cambiar de chip:
+  // dos copias de esta regla discrepan, y el síntoma sería que tocar un chip
+  // mueve la cifra sin motivo.
+  const entregaDe = (previo: Cobro | Credito | undefined): "VES" | PriceCurrency => {
+    if (previo && "entryCurrency" in previo) return previo.entryCurrency === "VES" ? "VES" : moneda;
+    if (previo) return moneda;
+    return tasa ? "VES" : moneda;
+  };
+
+  // EL MONTO ARRANCA EXPRESADO EN LA MONEDA DE ENTREGA, y esto no sobra: con
+  // bolívares por defecto, sembrarlo con lo que falta EN EL LIBRO abriría la
+  // hoja enseñando «5,84» con la etiqueta «Bolívares» — una cifra mil veces
+  // más pequeña de la que el tendero va a recibir, y perfectamente creíble.
+  const siembraDe = (previo: Cobro | Credito | undefined, entrega: "VES" | PriceCurrency) => {
+    if (previo && "entryAmount" in previo && previo.entryAmount != null) {
+      return formatAmountForInput(previo.entryAmount);
     }
-    return formatAmountForInput(pendiente);
-  });
+    const base = previo?.amount ?? pendiente;
+    return formatAmountForInput(entrega === "VES" && tasa ? base * tasa : base);
+  };
+
+  const previoInicial = tipo === "contado" ? inicial.contado : inicial.credito;
+  const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(() =>
+    entregaDe(previoInicial),
+  );
+  const [monto, setMonto] = useState(() => siembraDe(previoInicial, entregaDe(previoInicial)));
   const [usarPrevista, setUsarPrevista] = useState(inicial.credito?.usarPrevista ?? false);
   const [photoPath, setPhotoPath] = useState<string | null>(
     (tipo === "contado" ? inicial.contado?.photoPath : inicial.credito?.photoPath) ?? null,
@@ -1444,11 +1469,9 @@ function PagoSheet({
   function cambiarTipo(siguiente: "contado" | "credito") {
     setTipo(siguiente);
     const previo = siguiente === "contado" ? inicial.contado : inicial.credito;
-    const base = previo?.amount ?? pendiente;
-    setMonto(formatAmountForInput(base));
-    setMonedaEntrega(
-      siguiente === "contado" && inicial.contado?.entryCurrency === "VES" ? "VES" : moneda,
-    );
+    const entrega = entregaDe(previo);
+    setMonedaEntrega(entrega);
+    setMonto(siembraDe(previo, entrega));
     setPhotoPath(previo?.photoPath ?? null);
     setDescripcion(previo?.description ?? "");
   }
@@ -1551,7 +1574,21 @@ function PagoSheet({
                       <select
                         aria-label="Moneda que te entrega"
                         value={monedaEntrega}
-                        onChange={(e) => setMonedaEntrega(e.target.value as "VES" | PriceCurrency)}
+                        onChange={(e) => {
+                          const siguiente = e.target.value as "VES" | PriceCurrency;
+                          if (siguiente === monedaEntrega || !tasa) return;
+                          // SE REEXPRESA LA CIFRA AL CAMBIAR. Dejar 5.756,66
+                          // rotulado «Dólares» no sería un fallo silencioso
+                          // —el tope de la venta lo frena— pero sí un susto, y
+                          // obliga a reteclear lo que la app ya sabe convertir.
+                          const actual = parseAmount(monto) ?? 0;
+                          setMonto(
+                            formatAmountForInput(
+                              siguiente === "VES" ? actual * tasa : actual / tasa,
+                            ),
+                          );
+                          setMonedaEntrega(siguiente);
+                        }}
                         className="bg-transparent text-base outline-none"
                       >
                         <option value={moneda}>{NOMBRE[moneda] ?? moneda}</option>
