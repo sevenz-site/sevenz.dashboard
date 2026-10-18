@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { CatalogProductDialog } from "@/components/dashboard/catalog-product-dialog";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -81,16 +82,20 @@ type Elegido = Cliente & { esMostrador: boolean };
 export function NuevaVenta({
   clientes,
   inicial,
+  ownerId,
 }: {
-  // La lista del buscador del paso 1, sin el mostrador: se elige con su propio
+  // La lista del buscador del paso 3, sin el mostrador: se elige con su propio
   // botón y no buscándolo por nombre.
   clientes: Cliente[];
-  // Ya resuelto cuando se entra desde la ficha de un cliente (`?cliente=`).
-  // `null` = se entró por «Agregar» de Inicio y hay que elegir.
+  // YA RESUELTO cuando se entra con `?cliente=` — desde la ficha de alguien, o
+  // desde «Continuar con venta» de la pantalla de cliente nuevo. `null` = se
+  // entró por «Fiado o venta» de la hoja de Registrar, y entonces NO se
+  // pregunta todavía: ver el comentario de los tres pasos, abajo.
   inicial: Elegido | null;
+  ownerId: string;
 }) {
   const router = useRouter();
-  const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
+  const [paso, setPaso] = useState<1 | 2 | 3>(1);
   const [cliente, setCliente] = useState<Elegido | null>(inicial);
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [catalogo, setCatalogo] = useState<ProductosParaVenta | null>(null);
@@ -105,69 +110,74 @@ export function NuevaVenta({
           variant="ghost"
           size="icon"
           aria-label="Volver"
-          onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2 | 3))}
+          onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2))}
         >
           <ArrowLeft className="size-5" aria-hidden="true" />
         </Button>
       </div>
 
+      {/* ── TRES PASOS, Y EL CLIENTE NO ES UNO DE ELLOS ──────────────────
+          Frame `1389:8329`, que dice «1/3 Producto». Hasta esta mañana eran
+          cuatro y el primero preguntaba a quién se le vende.
+
+          POR QUÉ SE CAE ESE PASO, decisión del dueño del 2026-10-18: **una
+          venta de contado no necesita cliente**. Preguntarlo de entrada le
+          cobraba un toque a todo el mundo para un dato que la mayoría de las
+          ventas no usa. Ahora se pregunta en el paso 3, y SOLO si algo queda
+          fiado — que es el único caso en que hace falta saber a quién cobrarle
+          después.
+
+          Quien entra con `?cliente=` —desde la ficha de alguien, o desde
+          «Continuar con venta» de la pantalla de cliente nuevo— ya lo trae
+          puesto y no ve la pregunta en ningún momento. */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Nueva venta</h1>
+        <h1 className="text-2xl font-normal">Nueva venta</h1>
         <p className="text-sm text-muted-foreground">
-          {paso}/4 {["Información del cliente", "Producto", "Carrito", "Pago"][paso - 1]}
+          {paso}/3 {["Producto", "Carrito", "Pago"][paso - 1]}
         </p>
-        {/* LA BARRA DE PROGRESO del sitemap. `aria-hidden` porque la línea de
-            arriba ya dice «2/4 Producto» con palabras: repetirlo en el lector
-            de pantalla sería ruido, no accesibilidad. */}
+        {/* `aria-hidden` porque la línea de arriba ya dice «1/3 Producto» con
+            palabras: repetirlo en el lector de pantalla sería ruido, no
+            accesibilidad. */}
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${paso * 25}%` }} />
+          <div
+            className="h-full rounded-full bg-foreground transition-all"
+            style={{ width: `${(paso / 3) * 100}%` }}
+          />
         </div>
       </div>
 
       {paso === 1 ? (
-        <PasoCliente
-          clientes={clientes}
-          cliente={cliente}
-          onElegir={setCliente}
-          onContinuar={() => setPaso(2)}
-        />
-      ) : null}
-
-      {paso === 2 ? (
         <PasoProducto
           catalogo={catalogo}
           onCatalogo={setCatalogo}
           lineas={lineas}
           onAgregar={(l) => setLineas((xs) => agregar(xs, l))}
-          onIrAlCarrito={() => setPaso(3)}
+          onIrAlCarrito={() => setPaso(2)}
+          ownerId={ownerId}
         />
       ) : null}
 
-      {paso === 3 ? (
+      {paso === 2 ? (
         <PasoCarrito
           lineas={lineas}
           rates={catalogo?.rates ?? null}
           monedasDelLibro={catalogo?.monedasDelLibro ?? []}
           total={total}
           onCambiar={setLineas}
-          onSeguirComprando={() => setPaso(2)}
-          onIrAPago={() => setPaso(4)}
+          onSeguirComprando={() => setPaso(1)}
+          onIrAPago={() => setPaso(3)}
         />
       ) : null}
 
-      {/* LOS PASOS 2 A 4 NO EXISTEN SIN CLIENTE. No puede pasar —al paso 2 solo
-          se llega desde el 1, que exige elegir— pero escrito así el tipo lo
-          garantiza en vez de obligar a un `!` que el día que cambie el flujo
-          dejaría pasar un `undefined` a la acción que escribe la deuda. */}
-      {paso === 4 && cliente ? (
+      {paso === 3 ? (
         <PasoPago
-          clienteId={cliente.id}
-          nombreCliente={cliente.name}
-          esMostrador={cliente.esMostrador}
+          clientes={clientes}
+          cliente={cliente}
+          onElegirCliente={setCliente}
           lineas={lineas}
           total={total}
           rates={catalogo?.rates ?? null}
-          onVolver={() => setPaso(3)}
+          onVolver={() => setPaso(2)}
         />
       ) : null}
     </div>
@@ -175,23 +185,35 @@ export function NuevaVenta({
 }
 
 // ── 1/4 ────────────────────────────────────────────────────────────────
-// A QUIÉN LE VENDE. Dos estados en la misma pantalla: elegir, y ya elegido.
+// A QUIÉN LE VENDE. Dos estados: elegir, y ya elegido.
 //
-// SE ENTRA POR AQUÍ DESDE EL «AGREGAR» DE INICIO (2026-10-18). Antes este paso
-// solo informaba de un cliente que ya venía resuelto en la URL, y sin ese
-// parámetro la venta caía siempre en el mostrador — así que «Todo fiado» era
-// **inalcanzable** entrando desde el panel, y el propio paso decía «vuelve y
-// elige a la persona» sin que hubiera nada atrás a lo que volver.
-function PasoCliente({
+// FUE UN PASO ENTERO DEL ASISTENTE DURANTE UNAS HORAS del 2026-10-18, el 1 de
+// 4, y dejó de serlo esa misma tarde: el frame `1389:8329` numera «1/3
+// Producto», y la razón es que **una venta de contado no necesita cliente**.
+// Preguntarlo de entrada le cobraba un toque a todo el mundo por un dato que
+// la mayoría de las ventas no usa.
+//
+// Ahora esto vive DENTRO del paso de pago y solo se pinta cuando algo queda
+// fiado. Sigue siendo un componente propio y no código suelto ahí porque es
+// exactamente la misma pregunta, con la misma lista y el mismo botón de
+// mostrador — y el día que haga falta en una tercera pantalla no habrá que
+// escribirla otra vez.
+function SelectorDeCliente({
   clientes,
   cliente,
   onElegir,
   onContinuar,
+  sinMostrador,
 }: {
   clientes: Cliente[];
   cliente: Elegido | null;
   onElegir: (c: Elegido | null) => void;
-  onContinuar: () => void;
+  // Solo cuando esto es un paso con su propio botón de avanzar. Dentro del
+  // pago no hay «continuar»: elegir ya es la respuesta.
+  onContinuar?: () => void;
+  // Esconde «Venta de mostrador». Lo pasa el pago: al comodín no se le puede
+  // fiar, así que ofrecerlo ahí sería ofrecer lo que el servidor rechaza.
+  sinMostrador?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [abriendoMostrador, setAbriendoMostrador] = useState(false);
@@ -228,10 +250,14 @@ function PasoCliente({
         >
           Es para otra persona
         </Button>
-        <div className="flex-1" />
-        <Button type="button" className="h-12 w-full" onClick={onContinuar}>
-          Continuar
-        </Button>
+        {onContinuar ? (
+          <>
+            <div className="flex-1" />
+            <Button type="button" className="h-12 w-full" onClick={onContinuar}>
+              Continuar
+            </Button>
+          </>
+        ) : null}
       </div>
     );
   }
@@ -257,6 +283,7 @@ function PasoCliente({
           `resolverMostrador`. Crearla al abrir la pantalla le habría puesto un
           cliente «Mostrador» en la lista a todos los dueños al primer toque de
           «Agregar», con `CT-99` todavía sin cerrar. */}
+      {sinMostrador ? null : (
       <button
         type="button"
         disabled={abriendoMostrador}
@@ -285,6 +312,7 @@ function PasoCliente({
           </span>
         </span>
       </button>
+      )}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -312,7 +340,7 @@ function PasoCliente({
         </div>
       )}
 
-      <div className="flex-1" />
+      {onContinuar ? <div className="flex-1" /> : null}
 
       {/* CLIENTE NUEVO: VA AL ALTA QUE YA EXISTE, no a un formulario nuevo aquí.
           Esa pantalla pide el WhatsApp con su permiso (`MS-34`), avisa de
@@ -349,16 +377,24 @@ function PasoProducto({
   lineas,
   onAgregar,
   onIrAlCarrito,
+  ownerId,
 }: {
   catalogo: ProductosParaVenta | null;
   onCatalogo: (c: ProductosParaVenta) => void;
   lineas: LineaVenta[];
   onAgregar: (l: LineaVenta) => void;
   onIrAlCarrito: () => void;
+  // Para el diálogo de alta de producto, que lo pide.
+  ownerId: string;
 }) {
   const [query, setQuery] = useState("");
   const [cargando, setCargando] = useState(false);
   const [buscado, setBuscado] = useState(false);
+  const [creando, setCreando] = useState(false);
+  // Se incrementa al guardar un producto nuevo, y el efecto de abajo lo mira:
+  // es lo que hace que la cuadrícula se vuelva a pedir sin tocar `query`, para
+  // que el recién creado aparezca donde el tendero lo está esperando.
+  const [recarga, setRecarga] = useState(0);
 
   // SE BUSCA AL ESCRIBIR, con el mismo retardo que el resto de los buscadores
   // de la app. La primera carga trae los doce primeros por orden alfabético
@@ -389,13 +425,23 @@ function PasoProducto({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, recarga]);
 
   const enElCarrito = lineas.reduce((n, l) => n + l.quantity, 0);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
       <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
+
+      {/* «AGREGAR PRODUCTO» ABRE EL DIÁLOGO AQUÍ MISMO, no lleva al catálogo.
+          Irse a `/productos?nuevo=1` habría sido una línea, y habría tirado el
+          carrito: el asistente guarda sus líneas en memoria, así que salir de
+          la pantalla pierde todo lo que el tendero llevara metido. Es el mismo
+          diálogo del catálogo, montado aquí. */}
+      <Button type="button" variant="outline" className="h-10 w-full" onClick={() => setCreando(true)}>
+        <Plus className="size-5" aria-hidden="true" />
+        Agregar producto
+      </Button>
 
       {catalogo && catalogo.productos.length === 0 && buscado && !cargando ? (
         <div className="rounded-xl border border-dashed px-6 py-10 text-center">
@@ -407,9 +453,16 @@ function PasoProducto({
         </div>
       ) : null}
 
-      <ul className="flex flex-col gap-2">
+      {/* DOS COLUMNAS FIJAS, como el frame. `grid` y no `flex-wrap`: con
+          envoltura, una fila con una sola tarjeta la deja a media anchura o
+          estirada según el `flex`, y la cuadrícula del frame es regular pase lo
+          que pase. `minmax(0,1fr)` y no `1fr` a secas — un hijo de grid tiene
+          `min-width:auto` por defecto y un nombre largo lo ensancharía más allá
+          de su columna, que es el desbordamiento horizontal que costó seis
+          contenedores el 2026-10-17. */}
+      <ul className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4">
         {(catalogo?.productos ?? []).map((p) => (
-          <FilaDeProducto
+          <TarjetaDeProducto
             key={p.id}
             producto={p}
             rates={catalogo?.rates ?? null}
@@ -425,11 +478,44 @@ function PasoProducto({
           Ver carrito ({formatCantidad(enElCarrito)})
         </Button>
       ) : null}
+
+      {/* MONTADO SOLO MIENTRAS SE USA. Radix deja el nodo del diálogo en el DOM
+          al cerrarse, y este trae dentro un formulario entero con sus propios
+          `useState`: dejarlo montado haría que la segunda vez abriera con lo
+          que se escribió la primera. */}
+      {creando ? (
+        <CatalogProductDialog
+          open
+          onOpenChange={(next) => !next && setCreando(false)}
+          product={null}
+          rates={catalogo?.rates ?? null}
+          defaultCurrency={catalogo?.monedasDelLibro[0] ?? "USD"}
+          overrides={{ retail: {}, wholesale: {} }}
+          initialCurrencies={{ retail: [], wholesale: [] }}
+          supplierSuggestions={[]}
+          ownerId={ownerId}
+          onSaved={() => {
+            setCreando(false);
+            setRecarga((n) => n + 1);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function FilaDeProducto({
+// UNA TARJETA, NO UNA FILA — frame `1389:8329`, 2026-10-18.
+//
+// La foto ocupa la tarjeta entera y el texto va encima, sobre un degradado que
+// baja a `#272727`. Eso NO es decoración: el nombre y el precio van en blanco y
+// una foto clara los dejaría ilegibles. El degradado es lo que garantiza el
+// contraste pase lo que pase en la imagen, que es la razón de que esté en el
+// frame y de que no se pueda quitar «porque se ve mejor sin él».
+//
+// SIN FOTO, FONDO OSCURO PLANO y el mismo texto encima. La alternativa —una
+// tarjeta clara con texto oscuro cuando no hay imagen— daría dos tarjetas que
+// se leen distinto en la misma cuadrícula.
+function TarjetaDeProducto({
   producto,
   rates,
   monedasDelLibro,
@@ -449,18 +535,19 @@ function FilaDeProducto({
   const monedas = monedasDelBloque(bloque, rates).filter((c) => monedasDelLibro.includes(c));
   const moneda = monedas[0] ?? null;
   const precio = moneda ? precioEnMoneda(bloque, moneda, rates) : null;
-
   const foto = producto.photoPath ? getPublicProductPhotoUrl(producto.photoPath) : null;
+  const sinPrecio = precio == null || moneda == null;
 
   return (
-    <li>
+    <li className="min-w-0">
       <button
         type="button"
-        // SIN PRECIO NO SE PUEDE VENDER, y el botón lo dice apagándose en vez
+        // SIN PRECIO NO SE PUEDE VENDER, y la tarjeta lo dice apagándose en vez
         // de dejar meter al carrito una línea que luego no se puede cobrar.
-        disabled={precio == null || moneda == null}
+        disabled={sinPrecio}
+        aria-label={`Agregar ${producto.name}`}
         onClick={() => {
-          if (precio == null || moneda == null) return;
+          if (sinPrecio) return;
           onAgregar({
             productId: producto.id,
             name: producto.name,
@@ -471,26 +558,47 @@ function FilaDeProducto({
             currency: moneda,
           });
         }}
-        className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="relative flex h-[180px] w-full flex-col justify-end overflow-hidden rounded-lg bg-brand-primary p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
-        <span className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
-          {foto ? (
-            <Image src={foto} alt="" fill unoptimized sizes="48px" className="object-cover" />
-          ) : (
-            <span className="flex h-full items-center justify-center">
-              <ImageOff className="size-4 text-muted-foreground" aria-hidden="true" />
-            </span>
-          )}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium">{producto.name}</span>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        {foto ? (
+          <Image src={foto} alt="" fill unoptimized sizes="(max-width: 448px) 50vw, 161px" className="object-cover" />
+        ) : (
+          <span className="absolute right-2.5 top-2.5">
+            <ImageOff className="size-4 text-white/40" aria-hidden="true" />
+          </span>
+        )}
+        {/* EL DEGRADADO SOLO CUANDO HAY FOTO: sobre el fondo plano no añade
+            nada y oscurecería de más la mitad de abajo. */}
+        {foto ? (
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-b from-transparent from-25% to-[#272727] to-[65%]"
+          />
+        ) : null}
+
+        <span className="relative flex flex-col gap-1 pr-10">
+          {/* DOS LÍNEAS COMO MUCHO. El frame enseña «Nombre del producto»
+              partido en dos; con tres, el precio se saldría de la tarjeta. */}
+          <span className="line-clamp-2 text-base font-semibold text-brand-secondary">
+            {producto.name}
+          </span>
+          <span className="flex items-center gap-1 text-xs text-brand-secondary">
             {moneda ? <CurrencyFlagIcon currency={moneda} className="size-3.5" /> : null}
             {precio != null && moneda ? formatPriceAmount(precio, moneda) : "Sin precio"}
             {escalon === "wholesale" ? " · al mayor" : ""}
           </span>
         </span>
-        <Plus className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+
+        {/* EL CUADRO DEL «+» es parte de la tarjeta y no un botón aparte: toda
+            la tarjeta agrega, y esto le dice al ojo qué pasa al tocarla. Un
+            segundo botón dentro de un botón no es maquetable y además daría dos
+            blancos para la misma acción. */}
+        <span
+          aria-hidden="true"
+          className="absolute bottom-2.5 right-2.5 flex size-8 items-center justify-center rounded-sm bg-brand-primary"
+        >
+          <Plus className="size-5 text-brand-secondary" />
+        </span>
       </button>
     </li>
   );
@@ -716,23 +824,26 @@ const COBRO_NUEVO: Cobro = {
 };
 
 function PasoPago({
-  clienteId,
-  nombreCliente,
-  esMostrador,
+  clientes,
+  cliente,
+  onElegirCliente,
   lineas,
   total,
   rates,
   onVolver,
 }: {
-  clienteId: string;
-  nombreCliente: string;
-  esMostrador: boolean;
+  clientes: Cliente[];
+  // `null` = se entró por «Fiado o venta» sin decir a quién. No se pregunta
+  // hasta que haga falta — ver `faltaCliente`, más abajo.
+  cliente: Elegido | null;
+  onElegirCliente: (c: Elegido | null) => void;
   lineas: LineaVenta[];
   total: { currency: PriceCurrency; amount: number }[];
   rates: BolivarRates | null;
   onVolver: () => void;
 }) {
   const router = useRouter();
+  const esMostrador = cliente?.esMostrador ?? false;
   const [cobros, setCobros] = useState<Partial<Record<PriceCurrency, Cobro>>>({});
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -772,12 +883,41 @@ function PasoPago({
   const bolivaresSinMonto = cuentas.some(
     (c) => c.pagado > 0 && c.cobro.enBolivares && (parseAmount(c.cobro.montoBs) ?? 0) <= 0,
   );
+  // UN FIADO SIN CLIENTE NO SE PUEDE GUARDAR, y es el único momento en que
+  // esta pantalla pregunta por él. Una venta cobrada entera se va al mostrador
+  // sin preguntar nada — decisión del dueño del 2026-10-18, y es lo que le
+  // ahorra un toque a la mayoría de las ventas.
+  const faltaCliente = hayFiado && !cliente;
 
   async function guardar() {
     setError(null);
     setGuardando(true);
+
+    // ── A NOMBRE DE QUIÉN QUEDA ESTA VENTA ──────────────────────────
+    //
+    // `sales.client_id` es `not null` y la RLS de `movements` deriva el dueño
+    // ENTERAMENTE a través del cliente, así que no hay venta sin uno. Lo que
+    // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe
+    // justamente para eso.
+    //
+    // SE RESUELVE AQUÍ Y NO AL ENTRAR porque crear la fila al abrir la
+    // pantalla le pondría un cliente «Mostrador» en la lista a todo el que
+    // simplemente mire el catálogo. Nace cuando una venta de verdad lo
+    // necesita, que es ahora.
+    let destino = cliente;
+    if (!destino) {
+      const r = await resolverMostrador();
+      if ("error" in r) {
+        setError(r.error);
+        setGuardando(false);
+        return;
+      }
+      destino = { ...r, esMostrador: true };
+      onElegirCliente(destino);
+    }
+
     const resultado = await registrarVenta({
-      clientId: clienteId,
+      clientId: destino.id,
       lineas: lineas.map((l) => ({
         productId: l.productId,
         quantity: l.quantity,
@@ -812,7 +952,7 @@ function PasoPago({
     // A LA FICHA DEL CLIENTE, que es donde el fiado se ve y se cobra. Para una
     // venta de mostrador no hay ficha que valga —el comodín no se visita— así
     // que vuelve al panel.
-    router.push(esMostrador ? "/dashboard" : `/clients/${clienteId}`);
+    router.push(destino.esMostrador ? "/dashboard" : `/clients/${destino.id}`);
   }
 
   return (
@@ -970,17 +1110,37 @@ function PasoPago({
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
+      {/* EL CLIENTE, SOLO CUANDO HAY FIADO. Aparece debajo de las tarjetas y
+          no arriba a propósito: la pregunta nace de lo que el tendero acaba de
+          marcar ahí, y leerla antes de que exista el motivo sería volver al
+          paso que este frame quitó. */}
+      {hayFiado ? (
+        <div className="flex flex-col gap-3 rounded-xl border p-4">
+          <p className="text-sm font-medium">¿A quién le queda debiendo?</p>
+          <SelectorDeCliente
+            clientes={clientes}
+            cliente={cliente}
+            onElegir={onElegirCliente}
+            // SIN MOSTRADOR EN ESTA LISTA: al comodín no se le puede fiar —es
+            // uno por negocio, así que su deuda sería la de «todos los que
+            // pasaron por la caja» y nadie podría cobrarla—. Ofrecerlo aquí
+            // sería ofrecer lo que el servidor rechaza.
+            sinMostrador
+          />
+        </div>
+      ) : null}
+
       <div className="flex-1" />
       <Button
         type="button"
         className="h-12 w-full"
-        disabled={guardando || faltaPlazo || parcialSinMonto || bolivaresSinMonto}
+        disabled={guardando || faltaCliente || faltaPlazo || parcialSinMonto || bolivaresSinMonto}
         onClick={guardar}
       >
         {guardando
           ? "Guardando…"
-          : hayFiado
-            ? `Guardar venta y fiar a ${nombreCliente}`
+          : hayFiado && cliente
+            ? `Guardar venta y fiar a ${cliente.name}`
             : "Guardar venta"}
       </Button>
       <Button

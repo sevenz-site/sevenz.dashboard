@@ -9,9 +9,12 @@ export const metadata = { title: "Nueva venta — Sevenz" };
 export default async function NuevaVentaPage({
   searchParams,
 }: {
-  // `?cliente=<id>` LO PONE EL BOTÓN «Venta o fiado» de la ficha del cliente.
-  // Sin él se entra por el paso 1, que es lo que abre el «Agregar» de Inicio
-  // desde el 2026-10-18, y ahí el tendero elige a quién le vende.
+  // `?cliente=<id>` LO PONEN DOS SITIOS: el botón de la ficha de un cliente, y
+  // «Continuar con venta» de la pantalla de cliente nuevo.
+  //
+  // SIN ÉL TAMBIÉN SE ENTRA, y esa es la novedad del 2026-10-18: se empieza
+  // directamente por el producto y no se pregunta a quién hasta el paso 3, y
+  // solo si algo queda fiado. Una venta de contado no necesita cliente.
   searchParams: Promise<{ cliente?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
@@ -23,9 +26,10 @@ export default async function NuevaVentaPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // LA LISTA PARA EL BUSCADOR DEL PASO 1. Mismos filtros que la del «agregar
-  // movimiento» de Inicio, Clientes y Malas pagas: los ocultos quedan fuera
-  // (decisión O2), para que «oculto» signifique lo mismo en todas.
+  // LA LISTA PARA EL BUSCADOR DEL PASO 3, el de pago, que es donde se pregunta
+  // a quién le queda debiendo. Mismos filtros que la del «agregar movimiento»
+  // de Inicio, Clientes y Malas pagas: los ocultos quedan fuera (decisión O2),
+  // para que «oculto» signifique lo mismo en todas.
   //
   // EL MOSTRADOR TAMBIÉN QUEDA FUERA, y aquí sí importa: aparecería como un
   // cliente llamado «Mostrador» al que se le puede fiar, que es justo lo que
@@ -53,18 +57,20 @@ export default async function NuevaVentaPage({
       .eq("owner_id", user.id)
       .is("trashed_at", null)
       .maybeSingle();
-    // Un id que no es suyo no da error ni explicación: cae en el paso 1 con el
-    // buscador, igual que si no hubiera traído ninguno. Quien pruebe ids al
-    // azar no aprende nada de la diferencia.
+    // Un id que no es suyo no da error ni explicación: entra como si no
+    // hubiera traído ninguno, y si la venta acaba teniendo fiado se le
+    // preguntará en el pago. Quien pruebe ids al azar no aprende nada de la
+    // diferencia.
     if (data) {
       return (
         <NuevaVenta
           clientes={clientes ?? []}
           inicial={{ id: data.id, name: data.name, esMostrador: data.is_walk_in }}
+          ownerId={user.id}
         />
       );
     }
   }
 
-  return <NuevaVenta clientes={clientes ?? []} inicial={null} />;
+  return <NuevaVenta clientes={clientes ?? []} inicial={null} ownerId={user.id} />;
 }
