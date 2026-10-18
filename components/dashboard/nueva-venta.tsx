@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -32,7 +32,13 @@ import {
   precioEnMoneda,
   type ProductoPublico,
 } from "@/lib/products/public-pricing";
-import { formatPriceAmount, parseAmount, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import {
+  formatAmountForInput,
+  formatPriceAmount,
+  parseAmount,
+  type BolivarRates,
+  type PriceCurrency,
+} from "@/lib/products/price";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 
@@ -884,41 +890,44 @@ function TarjetaDeLinea({
   );
 }
 
-// ── 4/4 ────────────────────────────────────────────────────────────────
+// ── 3/3 ────────────────────────────────────────────────────────────────
 //
-// EL COBRO, UNA TARJETA POR MONEDA. Va por moneda y no una vez para toda la
-// venta porque los libros no se suman: un carrito con cinco dólares y tres
-// euros son DOS cuentas, y el cliente puede pagar una entera y dejar la otra
-// a deber. Es la misma razón por la que `recalc_client_running_balance` nunca
-// mezcla `balance_usd` con `balance_eur`.
+// EL COBRO, UNA TARJETA POR MONEDA — frame `1389:8451`.
 //
-// TRES MODOS Y NO UN CAMPO DE MONTO SUELTO: «pagó todo», «pagó una parte» y
-// «todo fiado». El tendero no piensa en montos, piensa en esas tres
-// situaciones, y las dos de los extremos son las corrientes. Un campo vacío
-// obligaría a teclear el total exacto en el caso más frecuente de todos.
-type Modo = "todo" | "parte" | "fiado";
-
-type Cobro = {
-  modo: Modo;
-  // Lo que entregó, cuando pagó una parte. Texto y no número: es lo que hay en
-  // el input, y `parseAmount` ya sabe leer «1.234,56» y «1234.56».
-  monto: string;
-  enBolivares: boolean;
-  montoBs: string;
-  descripcion: string;
-  plazo: string;
-  cuotas: string;
+// ===========================================================================
+// LO QUE EL FRAME CAMBIÓ RESPECTO A LA PRIMERA VERSIÓN
+//
+// La construí el 2026-10-18 antes de tener este frame, con tres modos por
+// moneda —«Pagó todo» / «Pagó una parte» / «Todo fiado»— y los campos abiertos
+// en la propia tarjeta. El frame dice otra cosa y es mejor: cada moneda enseña
+// su total y un botón **Pagar**, y lo que no se pague queda fiado al
+// **Finalizar**. El tendero no clasifica la venta de antemano; cobra lo que le
+// den y lo que sobre se fía solo.
+//
+// ===========================================================================
+// LO QUE EL FRAME NO DIBUJA, Y AQUÍ ESTÁ PUESTO DE MI PARTE
+//
+// Dos cosas que la venta necesita y no aparecen en ningún sitio del frame:
+//
+// 1. QUÉ ABRE «Pagar». Aquí abre `PagoSheet`, que pide el monto, admite que
+//    se lo hayan pagado en bolívares y deja una nota. Esa mecánica hace falta
+//    sí o sí —es lo que `sale_payments` guarda— pero su MAQUETA es mía.
+// 2. DÓNDE SE PIDEN EL PLAZO, LAS CUOTAS Y EL CLIENTE cuando algo queda
+//    debiendo. Aquí se piden al pulsar «Finalizar», en `FiadoSheet`, porque es
+//    el último momento en que se sabe cuánto queda — preguntarlo antes
+//    obligaría a adivinar si va a haber fiado.
+//
+// Las dos están marcadas para que se vea qué es del frame y qué no.
+type PagoRegistrado = {
+  // Lo que entra en el libro de esa moneda.
+  amount: number;
+  // Lo que de verdad le entregaron, si fue en bolívares. Migración `022`.
+  entryCurrency: "VES" | null;
+  entryAmount: number | null;
+  description: string;
 };
 
-const COBRO_NUEVO: Cobro = {
-  modo: "todo",
-  monto: "",
-  enBolivares: false,
-  montoBs: "",
-  descripcion: "",
-  plazo: DEFAULT_PLAZO_PAGO,
-  cuotas: "1",
-};
+type CreditoLocal = { plazo: string; cuotas: string };
 
 function PasoPago({
   clientes,
@@ -931,7 +940,7 @@ function PasoPago({
 }: {
   clientes: Cliente[];
   // `null` = se entró por «Fiado o venta» sin decir a quién. No se pregunta
-  // hasta que haga falta — ver `faltaCliente`, más abajo.
+  // hasta que haga falta — ver `FiadoSheet`.
   cliente: Elegido | null;
   onElegirCliente: (c: Elegido | null) => void;
   lineas: LineaVenta[];
@@ -940,53 +949,43 @@ function PasoPago({
   onVolver: () => void;
 }) {
   const router = useRouter();
-  const esMostrador = cliente?.esMostrador ?? false;
-  const [cobros, setCobros] = useState<Partial<Record<PriceCurrency, Cobro>>>({});
+  const [pagos, setPagos] = useState<Partial<Record<PriceCurrency, PagoRegistrado>>>({});
+  const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
+  const [finalizando, setFinalizando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cobroDe = (c: PriceCurrency) => cobros[c] ?? COBRO_NUEVO;
-  const cambiar = (c: PriceCurrency, parche: Partial<Cobro>) =>
-    setCobros((xs) => ({ ...xs, [c]: { ...(xs[c] ?? COBRO_NUEVO), ...parche } }));
-
   // LO PAGADO Y LO QUE QUEDA, por moneda. Se calcula en el render y no se
-  // guarda en el estado: un total derivado que vive aparte es un total que
+  // guarda aparte: un total derivado que vive por su cuenta es un total que
   // algún día se queda viejo.
   const cuentas = total.map((t) => {
-    const cobro = cobroDe(t.currency);
-    const tecleado = parseAmount(cobro.monto) ?? 0;
-    const pagado =
-      cobro.modo === "todo" ? t.amount : cobro.modo === "fiado" ? 0 : Math.min(tecleado, t.amount);
-    // EL PLAZO EN DÍAS, O NULL. «Sin especificar» es una de las cinco opciones
-    // de `PLAZO_PAGO_OPTIONS` y vale como respuesta: el fiado manual la admite
-    // desde siempre. Pasarla tal cual como texto hacía que el servidor leyera
-    // `Number("sin_especificar")` y devolviera un error de plazo por una
-    // elección correcta.
-    const plazoDias =
-      cobro.plazo && cobro.plazo !== "sin_especificar" && Number.isFinite(Number(cobro.plazo))
-        ? Number(cobro.plazo)
-        : null;
-    return { ...t, cobro, pagado, plazoDias, resto: Math.round((t.amount - pagado) * 100) / 100 };
+    const pago = pagos[t.currency] ?? null;
+    const pagado = pago?.amount ?? 0;
+    return { ...t, pago, pagado, resto: Math.round((t.amount - pagado) * 100) / 100 };
   });
 
-  const hayFiado = cuentas.some((c) => c.resto > 0);
-  // Un parcial de cero no es «pagó una parte», es «todo fiado» con un campo
-  // vacío. Se pide antes de guardar para que el tendero no crea que registró
-  // un abono que no existe.
-  const parcialSinMonto = cuentas.some((c) => c.cobro.modo === "parte" && c.pagado <= 0);
-  // SOLO BLOQUEA EL CAMPO VACÍO de «Otro plazo…», no «Sin especificar»: esa es
-  // una respuesta, y un fiado sin fecha es lo que el fiado manual ya permite.
-  const faltaPlazo = cuentas.some((c) => c.resto > 0 && c.cobro.plazo === "");
-  const bolivaresSinMonto = cuentas.some(
-    (c) => c.pagado > 0 && c.cobro.enBolivares && (parseAmount(c.cobro.montoBs) ?? 0) <= 0,
-  );
-  // UN FIADO SIN CLIENTE NO SE PUEDE GUARDAR, y es el único momento en que
-  // esta pantalla pregunta por él. Una venta cobrada entera se va al mostrador
-  // sin preguntar nada — decisión del dueño del 2026-10-18, y es lo que le
-  // ahorra un toque a la mayoría de las ventas.
-  const faltaCliente = hayFiado && !cliente;
+  const hayFiado = cuentas.some((c) => c.resto > 0.005);
 
-  async function guardar() {
+  // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
+  // teniendo tasa — o sea, en un negocio venezolano.
+  //
+  // SUMA MONEDAS DISTINTAS, y conviene decir por qué aquí sí: lo que esta app
+  // nunca suma son los SALDOS de un cliente, porque cinco dólares y tres euros
+  // son dos deudas independientes que se cobran por separado. Esto es otra
+  // cosa — es lo que cuesta esta cesta, hoy, si se pagara entera en efectivo —
+  // y es una referencia para el que está cobrando, no un saldo que se guarde.
+  // No se escribe en ninguna parte.
+  const totalEnBolivares = rates
+    ? cuentas.reduce(
+        (acc, c) => acc + c.amount * (c.currency === "EUR" ? rates.eur : rates.usd),
+        0,
+      )
+    : null;
+
+  const enBolivares = (monto: number, moneda: PriceCurrency) =>
+    rates ? monto * (moneda === "EUR" ? rates.eur : rates.usd) : null;
+
+  async function guardar(credito: Partial<Record<PriceCurrency, CreditoLocal>>) {
     setError(null);
     setGuardando(true);
 
@@ -994,13 +993,10 @@ function PasoPago({
     //
     // `sales.client_id` es `not null` y la RLS de `movements` deriva el dueño
     // ENTERAMENTE a través del cliente, así que no hay venta sin uno. Lo que
-    // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe
-    // justamente para eso.
-    //
-    // SE RESUELVE AQUÍ Y NO AL ENTRAR porque crear la fila al abrir la
-    // pantalla le pondría un cliente «Mostrador» en la lista a todo el que
-    // simplemente mire el catálogo. Nace cuando una venta de verdad lo
-    // necesita, que es ahora.
+    // sí hay es una venta sin cliente CON NOMBRE: el mostrador existe para
+    // eso, y se resuelve AL GUARDAR y no al entrar — crear la fila al abrir la
+    // pantalla le pondría un cliente «Mostrador» en la lista a cualquiera que
+    // solo mire el catálogo.
     let destino = cliente;
     if (!destino) {
       const r = await resolverMostrador();
@@ -1025,19 +1021,28 @@ function PasoPago({
         .map((c) => ({
           currency: c.currency,
           amount: c.pagado,
-          entryCurrency: c.cobro.enBolivares ? ("VES" as const) : c.currency,
-          entryAmount: c.cobro.enBolivares ? parseAmount(c.cobro.montoBs) : null,
-          description: c.cobro.descripcion,
+          entryCurrency: c.pago?.entryCurrency ?? c.currency,
+          entryAmount: c.pago?.entryAmount ?? null,
+          description: c.pago?.description ?? "",
         })),
       credito: cuentas
-        .filter((c) => c.resto > 0)
-        .map((c) => ({
-          currency: c.currency,
-          plazoDias: c.plazoDias,
-          // Una sola cuota se manda como null: es lo mismo y es el
-          // comportamiento de siempre. El `check` de la `118` empieza en 2.
-          cuotas: Number(c.cobro.cuotas) > 1 ? Number(c.cobro.cuotas) : null,
-        })),
+        .filter((c) => c.resto > 0.005)
+        .map((c) => {
+          const k = credito[c.currency];
+          const plazo = k?.plazo ?? "";
+          return {
+            currency: c.currency,
+            // «Sin especificar» es una respuesta válida y se manda como null:
+            // el fiado manual la admite desde siempre.
+            plazoDias:
+              plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
+                ? Number(plazo)
+                : null,
+            // Una sola cuota va como null: es lo mismo, y el `check` de la
+            // migración `118` empieza en 2.
+            cuotas: Number(k?.cuotas ?? "1") > 1 ? Number(k?.cuotas) : null,
+          };
+        }),
     });
 
     if (!resultado.ok) {
@@ -1053,203 +1058,394 @@ function PasoPago({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4">
-      {cuentas.map((c) => (
-        <div key={c.currency} className="flex flex-col gap-3 rounded-xl border p-4">
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <CurrencyFlagIcon currency={c.currency} className="size-4" />
-              {NOMBRE[c.currency] ?? c.currency}
-            </span>
+    <div className="flex flex-1 flex-col gap-2">
+      {/* TOTAL EN BOLÍVARES — la primera tarjeta del frame. Sin botón: no se
+          cobra en bolívares como libro propio, se cobra en dólares o en euros
+          y se anota lo que de verdad entregaron. Esta cifra es para que el
+          tendero sepa qué pedir. */}
+      {totalEnBolivares != null ? (
+        <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
+          <span className="text-sm">Total en Bolívares</span>
+          <span className="flex items-center gap-1">
+            <CurrencyFlagIcon currency="VES" className="size-4" />
             <span className="text-base font-semibold tabular-nums">
-              {formatPriceAmount(c.amount, c.currency)}
+              {formatPriceAmount(totalEnBolivares, "VES")}
+            </span>
+          </span>
+        </div>
+      ) : null}
+
+      {cuentas.map((c) => {
+        const bs = enBolivares(c.amount, c.currency);
+        return (
+          <div key={c.currency} className="flex items-center gap-3 rounded-[10px] border px-4 py-2">
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+              <span className="text-sm">Total en {NOMBRE[c.currency] ?? c.currency}</span>
+              <span className="flex items-center gap-1">
+                <CurrencyFlagIcon currency={c.currency} className="size-4 shrink-0" />
+                <span className="text-base font-semibold tabular-nums">
+                  {formatPriceAmount(c.amount, c.currency)}
+                </span>
+              </span>
+              {bs != null ? (
+                <span className="pl-5 text-xs text-muted-foreground tabular-nums">
+                  {formatPriceAmount(bs, "VES")}
+                </span>
+              ) : null}
+
+              {/* LO YA COBRADO Y LO QUE QUEDA. No está en el frame —ahí las
+                  tarjetas sólo tienen el total— pero sin esto el tendero pulsa
+                  «Pagar», vuelve, y la pantalla está idéntica: no hay forma de
+                  saber si el cobro se registró. */}
+              {c.pagado > 0 ? (
+                <span className="text-xs tabular-nums">
+                  <span className="text-money-in">
+                    Cobrado {formatPriceAmount(c.pagado, c.currency)}
+                  </span>
+                  {c.resto > 0.005 ? (
+                    <span className="text-destructive">
+                      {" "}
+                      · queda {formatPriceAmount(c.resto, c.currency)}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 shrink-0"
+              onClick={() => setCobrando(c.currency)}
+            >
+              {c.pagado > 0 ? "Cambiar" : "Pagar"}
+            </Button>
+          </div>
+        );
+      })}
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <div className="flex-1" />
+      <Button
+        type="button"
+        className="h-10 w-full"
+        disabled={guardando}
+        onClick={() => {
+          // CON TODO COBRADO SE GUARDA DIRECTO. La hoja del fiado sólo tiene
+          // sentido cuando queda algo debiendo: abrirla para decir «no debe
+          // nada» sería un paso que no decide nada.
+          if (hayFiado) setFinalizando(true);
+          else void guardar({});
+        }}
+      >
+        {guardando ? "Guardando…" : "Finalizar"}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-10 w-full"
+        disabled={guardando}
+        onClick={onVolver}
+      >
+        Volver al carrito
+      </Button>
+
+      {cobrando ? (
+        <PagoSheet
+          key={cobrando}
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setCobrando(null)}
+          moneda={cobrando}
+          total={cuentas.find((c) => c.currency === cobrando)?.amount ?? 0}
+          rates={rates}
+          inicial={pagos[cobrando] ?? null}
+          onGuardar={(p) => {
+            setPagos((xs) => ({ ...xs, [cobrando]: p }));
+            setCobrando(null);
+          }}
+          onQuitar={() => {
+            setPagos((xs) => {
+              const copia = { ...xs };
+              delete copia[cobrando];
+              return copia;
+            });
+            setCobrando(null);
+          }}
+        />
+      ) : null}
+
+      {finalizando ? (
+        <FiadoSheet
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setFinalizando(false)}
+          restos={cuentas.filter((c) => c.resto > 0.005).map((c) => ({ currency: c.currency, amount: c.resto }))}
+          clientes={clientes}
+          cliente={cliente}
+          onElegirCliente={onElegirCliente}
+          guardando={guardando}
+          onConfirmar={(credito) => void guardar(credito)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ── «PAGAR» ────────────────────────────────────────────────────────────
+//
+// SU MAQUETA ES MÍA: el frame `1389:8451` dibuja el botón y no lo que abre.
+// Lo que sí es del dominio y no se inventa es qué se pregunta — `sale_payments`
+// guarda el monto en el libro, lo que de verdad entregaron y la tasa.
+function PagoSheet({
+  open,
+  onOpenChange,
+  moneda,
+  total,
+  rates,
+  inicial,
+  onGuardar,
+  onQuitar,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  moneda: PriceCurrency;
+  total: number;
+  rates: BolivarRates | null;
+  inicial: PagoRegistrado | null;
+  onGuardar: (p: PagoRegistrado) => void;
+  onQuitar: () => void;
+}) {
+  // ARRANCA CON EL TOTAL PUESTO, que es el caso corriente: le pagan todo. Quien
+  // reciba menos lo corrige, y eso es una tecla menos para la mayoría.
+  const [monto, setMonto] = useState(
+    inicial ? formatAmountForInput(inicial.amount) : formatAmountForInput(total),
+  );
+  const [enBolivares, setEnBolivares] = useState(inicial?.entryCurrency === "VES");
+  const [montoBs, setMontoBs] = useState(
+    inicial?.entryAmount != null ? formatAmountForInput(inicial.entryAmount) : "",
+  );
+  const [descripcion, setDescripcion] = useState(inicial?.description ?? "");
+
+  const cantidad = parseAmount(monto) ?? 0;
+  const bs = parseAmount(montoBs) ?? 0;
+  const tasa = rates ? (moneda === "EUR" ? rates.eur : rates.usd) : null;
+  const deMas = cantidad - total > 0.005;
+  const listo = cantidad > 0 && !deMas && (!enBolivares || bs > 0);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle className="text-base font-medium">
+            Cobrar en {NOMBRE[moneda] ?? moneda}
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="flex flex-col gap-4 px-4 pb-6">
+          <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
+            <span className="text-sm">Total de la venta</span>
+            <span className="text-base font-semibold tabular-nums">
+              {formatPriceAmount(total, moneda)}
             </span>
           </div>
 
-          <RadioGroup
-            value={c.cobro.modo}
-            onValueChange={(v) => cambiar(c.currency, { modo: v as Modo })}
-            className="flex flex-row flex-wrap gap-2"
-          >
-            {(
-              [
-                { value: "todo", nombre: "Pagó todo" },
-                { value: "parte", nombre: "Pagó una parte" },
-                { value: "fiado", nombre: "Todo fiado" },
-              ] as const
-            ).map((o) => (
-              <label
-                key={o.value}
-                className={`flex h-10 items-center gap-2 rounded-full border border-border bg-background px-3.5 text-sm ${
-                  o.value !== "todo" && esMostrador ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                }`}
-              >
-                <RadioGroupItem value={o.value} disabled={o.value !== "todo" && esMostrador} />
-                <span className="whitespace-nowrap">{o.nombre}</span>
-              </label>
-            ))}
-          </RadioGroup>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pago-monto">¿Cuánto te pagó?</Label>
+            <Input
+              id="pago-monto"
+              inputMode="decimal"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              placeholder="0,00"
+            />
+            {/* MÁS DE LO QUE SUMA LA VENTA NO ES UN COBRO, es un error de
+                tecleo. El servidor lo rechaza igual; decirlo aquí evita montar
+                la venta entera para que falle al guardar. */}
+            {deMas ? (
+              <p className="text-xs text-destructive">
+                No puedes cobrar más de {formatPriceAmount(total, moneda)}.
+              </p>
+            ) : null}
+          </div>
 
-          {/* EL MOSTRADOR NO PUEDE FIAR, y se explica en vez de dejar dos
-              botones apagados sin motivo. El cliente comodín es UNO por
-              negocio: una deuda suya sería la de «todos los que pasaron por la
-              caja», y nadie podría cobrar eso. */}
-          {esMostrador ? (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Una venta de mostrador se cobra completa. Para dejar algo fiado, vuelve atrás y elige
-              o crea un cliente.
-            </p>
-          ) : null}
-
-          {c.cobro.modo === "parte" ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`monto-${c.currency}`}>Cuánto entregó</Label>
-              <Input
-                id={`monto-${c.currency}`}
-                inputMode="decimal"
-                placeholder="0,00"
-                value={c.cobro.monto}
-                onChange={(e) => cambiar(c.currency, { monto: e.target.value })}
-              />
-            </div>
-          ) : null}
-
-          {/* LOS BOLÍVARES SOLO CUANDO HAY TASA Y HAY ALGO QUE COBRAR. Se
-              guarda lo que de verdad entregó —migración `022`— y el monto del
-              libro sigue siendo el de arriba: el servidor sella la tasa pero no
-              divide una cifra por la otra, porque eso convertía una venta
-              pagada completa en un fiado de un céntimo. */}
-          {rates && c.pagado > 0 ? (
-            <div className="flex flex-col gap-2 border-t pt-3">
+          {/* LOS BOLÍVARES SOLO CUANDO HAY TASA. Se guarda lo que de verdad
+              entregaron —migración `022`— y el monto del libro sigue siendo el
+              de arriba: el servidor sella la tasa pero NO divide una cifra por
+              la otra, porque eso convertía una venta pagada completa en un
+              fiado de un céntimo. */}
+          {tasa ? (
+            <div className="flex flex-col gap-2 border-t pt-4">
               <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <Checkbox
-                  checked={c.cobro.enBolivares}
-                  onCheckedChange={(v) => cambiar(c.currency, { enBolivares: v === true })}
+                  checked={enBolivares}
+                  onCheckedChange={(v) => setEnBolivares(v === true)}
                 />
                 Me pagó en bolívares
               </label>
-              {c.cobro.enBolivares ? (
+              {enBolivares ? (
                 <>
                   <Input
                     inputMode="decimal"
                     placeholder="0,00"
-                    aria-label={`Bolívares recibidos por los ${NOMBRE[c.currency] ?? c.currency}`}
-                    value={c.cobro.montoBs}
-                    onChange={(e) => cambiar(c.currency, { montoBs: e.target.value })}
+                    aria-label="Bolívares recibidos"
+                    value={montoBs}
+                    onChange={(e) => setMontoBs(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground tabular-nums">
-                    {formatPriceAmount(c.pagado, c.currency)} a la tasa de hoy son{" "}
-                    {formatPriceAmount(
-                      c.pagado * (c.currency === "EUR" ? rates.eur : rates.usd),
-                      "VES",
-                    )}
+                    {formatPriceAmount(cantidad, moneda)} a la tasa de hoy son{" "}
+                    {formatPriceAmount(cantidad * tasa, "VES")}
                   </p>
                 </>
               ) : null}
             </div>
           ) : null}
 
-          {c.resto > 0 ? (
-            <div className="flex flex-col gap-3 border-t pt-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pago-nota">Nota (opcional)</Label>
+            <Input
+              id="pago-nota"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Pago móvil, efectivo…"
+            />
+          </div>
+
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={!listo}
+            onClick={() =>
+              onGuardar({
+                amount: Math.round(cantidad * 100) / 100,
+                entryCurrency: enBolivares ? "VES" : null,
+                entryAmount: enBolivares ? bs : null,
+                description: descripcion.trim(),
+              })
+            }
+          >
+            Guardar cobro
+          </Button>
+          {inicial ? (
+            <Button type="button" variant="outline" className="h-10 w-full" onClick={onQuitar}>
+              Quitar este cobro
+            </Button>
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── LO QUE QUEDA DEBIENDO ──────────────────────────────────────────────
+//
+// TAMPOCO ESTÁ EN EL FRAME, y hace falta: un fiado sin plazo ni dueño no se
+// puede cobrar después. Se pregunta al pulsar «Finalizar» porque es el último
+// momento en que se sabe cuánto queda — antes habría que adivinar si va a
+// haber fiado, que es justo lo que el frame del paso 3 quitó de en medio.
+function FiadoSheet({
+  open,
+  onOpenChange,
+  restos,
+  clientes,
+  cliente,
+  onElegirCliente,
+  guardando,
+  onConfirmar,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  restos: { currency: PriceCurrency; amount: number }[];
+  clientes: Cliente[];
+  cliente: Elegido | null;
+  onElegirCliente: (c: Elegido | null) => void;
+  guardando: boolean;
+  onConfirmar: (credito: Partial<Record<PriceCurrency, CreditoLocal>>) => void;
+}) {
+  const [credito, setCredito] = useState<Partial<Record<PriceCurrency, CreditoLocal>>>({});
+  const de = (c: PriceCurrency) => credito[c] ?? { plazo: DEFAULT_PLAZO_PAGO, cuotas: "1" };
+  const cambiar = (c: PriceCurrency, parche: Partial<CreditoLocal>) =>
+    setCredito((xs) => ({ ...xs, [c]: { ...de(c), ...parche } }));
+
+  const plazoDias = (c: PriceCurrency) => {
+    const p = de(c).plazo;
+    return p && p !== "sin_especificar" && Number.isFinite(Number(p)) ? Number(p) : null;
+  };
+  // Sólo bloquea el campo vacío de «Otro plazo…», no «Sin especificar»: esa es
+  // una respuesta, y un fiado sin fecha es lo que el fiado manual ya permite.
+  const faltaPlazo = restos.some((r) => de(r.currency).plazo === "");
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle className="text-base font-medium">Lo que queda fiado</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex flex-col gap-4 px-4 pb-6">
+          {restos.map((r) => (
+            <div key={r.currency} className="flex flex-col gap-3 rounded-[10px] border p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm">Queda fiado</span>
+                <span className="flex items-center gap-1 text-sm">
+                  <CurrencyFlagIcon currency={r.currency} className="size-4" />
+                  {NOMBRE[r.currency] ?? r.currency}
+                </span>
                 <span className="text-base font-semibold tabular-nums text-destructive">
-                  {formatPriceAmount(c.resto, c.currency)}
+                  {formatPriceAmount(r.amount, r.currency)}
                 </span>
               </div>
               <PlazoPagoSelect
-                value={c.cobro.plazo}
+                value={de(r.currency).plazo}
                 onValueChange={(v) =>
-                  cambiar(c.currency, {
+                  cambiar(r.currency, {
                     plazo: v,
                     // Al quedarse sin plazo, las cuotas vuelven a pago único:
                     // el campo se esconde y un número dentro se guardaría sin
-                    // que nadie lo haya decidido. Mismo motivo que en
-                    // `add-movement-dialog`.
+                    // que nadie lo haya decidido.
                     ...(v === "" || v === "sin_especificar" ? { cuotas: "1" } : {}),
                   })
                 }
               />
               <CuotasSelect
-                value={c.cobro.cuotas}
-                onValueChange={(v) => cambiar(c.currency, { cuotas: v })}
-                plazoDias={c.plazoDias}
+                value={de(r.currency).cuotas}
+                onValueChange={(v) => cambiar(r.currency, { cuotas: v })}
+                plazoDias={plazoDias(r.currency)}
               />
             </div>
+          ))}
+
+          {/* EL CLIENTE, AQUÍ Y NO ANTES. Una venta de contado no necesita
+              ninguno; sólo al fiar hace falta saber a quién cobrarle. */}
+          <div className="flex flex-col gap-3 rounded-[10px] border p-4">
+            <p className="text-sm font-medium">¿A quién le queda debiendo?</p>
+            <SelectorDeCliente
+              clientes={clientes}
+              cliente={cliente}
+              onElegir={onElegirCliente}
+              // SIN MOSTRADOR: al comodín no se le puede fiar —es uno por
+              // negocio, así que su deuda sería la de «todos los que pasaron
+              // por la caja»— y ofrecerlo sería ofrecer lo que el servidor
+              // rechaza.
+              sinMostrador
+            />
+          </div>
+
+          {faltaPlazo ? (
+            <p className="text-sm text-destructive">
+              Elige en cuánto tiempo te pagan lo que queda.
+            </p>
           ) : null}
 
-          {c.pagado > 0 ? (
-            <div className="flex flex-col gap-2 border-t pt-3">
-              <Label htmlFor={`nota-${c.currency}`}>Nota del pago (opcional)</Label>
-              <Input
-                id={`nota-${c.currency}`}
-                placeholder="Pago móvil, efectivo…"
-                value={c.cobro.descripcion}
-                onChange={(e) => cambiar(c.currency, { descripcion: e.target.value })}
-              />
-            </div>
-          ) : null}
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={guardando || !cliente || faltaPlazo}
+            onClick={() => onConfirmar(credito)}
+          >
+            {guardando ? "Guardando…" : cliente ? `Fiar a ${cliente.name}` : "Elige un cliente"}
+          </Button>
         </div>
-      ))}
-
-      {/* UN PLAZO SIN ELEGIR ES LO ÚNICO QUE BLOQUEA DE VERDAD: las cuotas
-          necesitan plazo para dividirlo, y es el `check` de la `118`. Se dice
-          aquí y no al pulsar, para que el botón apagado tenga una razón
-          visible al lado. */}
-      {faltaPlazo ? (
-        <p className="text-sm text-destructive">Elige en cuánto tiempo te pagan lo que queda fiado.</p>
-      ) : null}
-      {parcialSinMonto ? (
-        <p className="text-sm text-destructive">Escribe cuánto te entregó, o marca «Todo fiado».</p>
-      ) : null}
-      {bolivaresSinMonto ? (
-        <p className="text-sm text-destructive">Escribe cuántos bolívares te entregó.</p>
-      ) : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      {/* EL CLIENTE, SOLO CUANDO HAY FIADO. Aparece debajo de las tarjetas y
-          no arriba a propósito: la pregunta nace de lo que el tendero acaba de
-          marcar ahí, y leerla antes de que exista el motivo sería volver al
-          paso que este frame quitó. */}
-      {hayFiado ? (
-        <div className="flex flex-col gap-3 rounded-xl border p-4">
-          <p className="text-sm font-medium">¿A quién le queda debiendo?</p>
-          <SelectorDeCliente
-            clientes={clientes}
-            cliente={cliente}
-            onElegir={onElegirCliente}
-            // SIN MOSTRADOR EN ESTA LISTA: al comodín no se le puede fiar —es
-            // uno por negocio, así que su deuda sería la de «todos los que
-            // pasaron por la caja» y nadie podría cobrarla—. Ofrecerlo aquí
-            // sería ofrecer lo que el servidor rechaza.
-            sinMostrador
-          />
-        </div>
-      ) : null}
-
-      <div className="flex-1" />
-      <Button
-        type="button"
-        className="h-12 w-full"
-        disabled={guardando || faltaCliente || faltaPlazo || parcialSinMonto || bolivaresSinMonto}
-        onClick={guardar}
-      >
-        {guardando
-          ? "Guardando…"
-          : hayFiado && cliente
-            ? `Guardar venta y fiar a ${cliente.name}`
-            : "Guardar venta"}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-12 w-full"
-        disabled={guardando}
-        onClick={onVolver}
-      >
-        Volver al carrito
-      </Button>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
