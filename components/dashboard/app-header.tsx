@@ -52,7 +52,22 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     // Es la clase de fallo que no se ve escribiendo la pantalla: la barra de
     // más la pone OTRO componente, y el que escribe la pantalla nueva no tiene
     // ninguna razón para abrir este archivo.
-    pathname.startsWith("/productos");
+    pathname.startsWith("/productos") ||
+    // ── Y LOS FLUJOS DE PANTALLA COMPLETA, desde el 2026-10-18 ──────
+    //
+    // `/ventas/nueva` (frames `1389:8329` y siguientes) no trae una cabecera
+    // OSCURA sino una clara —flecha, titulo, progreso— pero el efecto es el
+    // mismo y por eso entra en esta lista y no en `hasOwnBar`: es su cabecera
+    // a TODAS las anchuras, no una version de telefono. Dejar esta barra
+    // encima daria dos filas de navegacion y la marca repetida.
+    //
+    // `/clients/nuevo` ya estaba cubierto por `startsWith("/clients/")` de
+    // arriba, por suerte y no por diseno.
+    //
+    // ESTO SE ESCAPO AL CONSTRUIR LA PANTALLA, que es literalmente lo que
+    // avisa el comentario de `/productos` unas lineas mas arriba. Van tres
+    // veces: papelera, catalogo, y ahora la venta.
+    pathname.startsWith("/ventas");
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries

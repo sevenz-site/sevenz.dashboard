@@ -217,8 +217,23 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
   // The bar does not render at all on a client's own screen — see below.
   // Note the trailing slash: /clients (the list) keeps its bar, only
-  // /clients/<id> loses it.
+  // /clients/<id> loses it. Eso cubre tambien `/clients/nuevo`, que es un
+  // flujo de pantalla completa y por tanto quiere lo mismo.
   const onClientDetail = pathname.startsWith("/clients/");
+
+  // NI BARRA NI FLOTANTE EN EL ASISTENTE DE VENTA. El frame `1389:8329` dibuja
+  // una pantalla limpia: flecha, titulo, progreso y la cuadricula, y nada mas.
+  //
+  // SE ESCAPO AL CONSTRUIRLA, y es exactamente el fallo del que avisa el
+  // comentario de `app-header.tsx`: la barra de mas la pone OTRO componente, y
+  // quien escribe la pantalla nueva no tiene ninguna razon para abrir este
+  // archivo. Lo vio el dueno en una captura — «una interfaz muy distinta al
+  // frame».
+  //
+  // Y ADEMAS ESTORBA DE VERDAD: el flotante dice «Registrar» y abre la hoja que
+  // empieza una venta, flotando ENCIMA de la venta que el tendero ya esta
+  // haciendo. Pulsarlo tiraria el carrito sin avisar.
+  const enVenta = pathname.startsWith("/ventas");
 
   // THE FLOATING BUTTON CHANGES WHAT IT DOES ON THE CATALOGUE.
   //
@@ -378,7 +393,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  if (onClientDetail) return null;
+  if (onClientDetail || enVenta) return null;
 
   return (
     <>

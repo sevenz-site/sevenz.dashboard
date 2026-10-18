@@ -431,7 +431,11 @@ function PasoProducto({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
+      {/* LOS DOS CONTROLES VAN A 8px ENTRE SÍ y no a los 16 del resto: en el
+          frame forman un bloque —buscar o crear— frente a la cuadrícula de
+          abajo, y esa distinta separación es lo que los agrupa. */}
+      <div className="flex flex-col gap-2">
+        <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
 
       {/* «AGREGAR PRODUCTO» ABRE EL DIÁLOGO AQUÍ MISMO, no lleva al catálogo.
           Irse a `/productos?nuevo=1` habría sido una línea, y habría tirado el
@@ -442,6 +446,7 @@ function PasoProducto({
         <Plus className="size-5" aria-hidden="true" />
         Agregar producto
       </Button>
+      </div>
 
       {catalogo && catalogo.productos.length === 0 && buscado && !cargando ? (
         <div className="rounded-xl border border-dashed px-6 py-10 text-center">
@@ -597,7 +602,7 @@ function TarjetaDeProducto({
           aria-hidden="true"
           className="absolute bottom-2.5 right-2.5 flex size-8 items-center justify-center rounded-sm bg-brand-primary"
         >
-          <Plus className="size-5 text-brand-secondary" />
+          <Plus className="size-6 text-brand-secondary" />
         </span>
       </button>
     </li>
