@@ -8,6 +8,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
+import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
@@ -208,6 +209,9 @@ export function MobileNav() {
   // default was prevented never reports a pending state.
   const [isPending, startTransition] = useTransition();
   const [goingTo, setGoingTo] = useState<string | null>(null);
+  // La hoja de «Registrar». Vive aquí y no en la página porque el botón que
+  // la abre es este, que se pinta en todas las pantallas con barra.
+  const [registrar, setRegistrar] = useState(false);
 
   // The bar does not render at all on a client's own screen — see below.
   // Note the trailing slash: /clients (the list) keeps its bar, only
@@ -236,22 +240,30 @@ export function MobileNav() {
   // clearing the marker through the router rather than `replaceState`.
   //
   // ========================================================================
-  // DESDE EL 2026-10-18 «AGREGAR» ABRE LA VENTA, NO EL DIÁLOGO DE MOVIMIENTO
+  // DESDE EL 2026-10-18 «REGISTRAR» ABRE UNA HOJA, NO UNA PANTALLA
   //
-  // Decisión del dueño: *«los cuatro pasos se mostrarán al presionar el botón
-  // "Agregar" en el home, ahí abre el paso 1/4»*. Es el paso 8 del sitemap
-  // `1269:6051`: Sevenz deja de ser solo un libro de fiados, así que la puerta
-  // grande es la venta y un fiado manual es «una venta sin pago».
+  // Decisión del dueño, el mismo día y en dos pasos: primero *«los cuatro
+  // pasos se mostrarán al presionar el botón "Agregar"»*, y luego *«al
+  // seleccionar el botón "Registrar" mostrarás sheet con opciones: Nuevo
+  // cliente; Fiado o Venta; Abono»* (frame `1389:11227`).
   //
-  // ES UNA RUTA, NO UN MARCADOR, y eso cambia una cosa que no se ve: se navega
-  // con `push` y no con `replace`. El `replace` era correcto para `?nuevo=1`
-  // —un marcador en la misma página, que con `push` quedaría en el historial y
-  // reabriría el diálogo al volver atrás— pero con una ruta de verdad borraría
-  // la entrada de Inicio, y la flecha del paso 1/4 llama a `router.back()`:
-  // sacaría al tendero de la app.
+  // POR QUÉ CAMBIÓ DOS VECES EN UN DÍA, que es lo que conviene no perder: el
+  // paso 8 rompe la suposición de que hay UNA acción por defecto. Mientras
+  // Sevenz era solo un libro de fiados, «Agregar» podía significar «agregar un
+  // movimiento» sin ambigüedad. Con la venta dentro ya no: el tendero que abre
+  // la app para anotar un abono y el que viene de vender son el mismo número
+  // de tenderos, y un botón que elija por ellos se equivoca con la mitad.
+  //
+  // Y por eso el rótulo también cambió: «Agregar» nombra lo que hace el botón,
+  // «Registrar» nombra lo que el tendero viene a hacer.
+  //
+  // EL CATÁLOGO SIGUE SIENDO OTRA COSA: ahí este mismo botón crea un producto
+  // y navega a `?nuevo=1`, con `replace` porque es un marcador en la misma
+  // página —con `push` quedaría en el historial y reabriría el diálogo al
+  // volver atrás—. Es el único camino que todavía navega desde aquí.
   const enCatalogo = pathname === "/productos";
-  const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/ventas/nueva";
-  const agregarLabel = enCatalogo ? "Crear producto" : "Agregar";
+  const agregarHref = "/productos?nuevo=1";
+  const agregarLabel = enCatalogo ? "Crear producto" : "Registrar";
 
   // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
   // 2026-10-14, con una captura de la pantalla de carga de la foto.
@@ -396,7 +408,7 @@ export function MobileNav() {
         // the DOM; a marker on a button that opens a different dialog is a
         // tour that explains the wrong thing.
         data-tour={enCatalogo ? undefined : "new-client-button-mobile"}
-        aria-label={enCatalogo ? "Crear producto" : "Agregar movimiento"}
+        aria-label={enCatalogo ? "Crear producto" : "Registrar"}
         onClick={() => {
           if (guardia()) return;
           guard(() => {
@@ -404,12 +416,18 @@ export function MobileNav() {
             // unreachable from a client's page now that this returns null
             // there, but the guard stays cheap and correct if that changes.
             if (tour.step === 1) tour.advance();
+            // FUERA DEL CATÁLOGO NO NAVEGA: abre la hoja aquí mismo. Es lo que
+            // quita el parpadeo de ir a otra pantalla para elegir entre tres
+            // cosas, y lo que deja que el botón funcione igual desde Clientes
+            // o Malas pagas sin mandar al tendero a Inicio primero.
+            if (!enCatalogo) {
+              setRegistrar(true);
+              return;
+            }
             setGoingTo(agregarHref);
-            // `replace` solo para el marcador del catálogo; ver el comentario
-            // de `agregarHref`.
-            startTransition(() =>
-              enCatalogo ? router.replace(agregarHref) : router.push(agregarHref),
-            );
+            // `replace` y no `push`: es un marcador en la misma página; ver el
+            // comentario de `agregarHref`.
+            startTransition(() => router.replace(agregarHref));
           });
         }}
         // Sits one gap above the bar, inside the strip `AppMain` already
@@ -484,6 +502,7 @@ export function MobileNav() {
           </button>
         </div>
       </nav>
+      <RegisterSheet open={registrar} onOpenChange={setRegistrar} />
     </>
   );
 }

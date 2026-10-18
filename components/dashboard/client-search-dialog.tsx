@@ -90,6 +90,8 @@ export function ClientSearchDialog({
   showTourTarget = true,
   rateContext,
   monedaHabitual,
+  pasoInicial = "search",
+  movimientoAlElegir,
 }: {
   clients: ClientOption[];
   ownerId: string;
@@ -118,6 +120,16 @@ export function ClientSearchDialog({
   rateContext: MovementRateContext | null;
   // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
   monedaHabitual: MonedaHabitual | null;
+  // EN QUE PASO ABRE. La hoja de «Registrar» (frame `1389:11227`, 2026-10-18)
+  // tiene una opcion que es literalmente «Nuevo cliente», y llevarla al
+  // buscador para que el tendero pulse otro boton que dice lo mismo seria un
+  // paso de mas en el unico sitio donde ya dijo lo que queria.
+  pasoInicial?: "search" | "new";
+  // QUE DIALOGO ABRIR EN LA FICHA DEL CLIENTE QUE SE ELIJA. La opcion «Abono»
+  // de esa misma hoja necesita saber de quien es el abono antes de poder
+  // registrarlo, asi que pasa por el buscador y el proposito viaja con el:
+  // `/clients/<id>?movimiento=abono` es el marcador que esa pagina ya lee.
+  movimientoAlElegir?: "abono" | "fiado";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -244,6 +256,8 @@ export function ClientSearchDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto">
           <ClientSearchDialogBody
             key={instanceKey}
+            pasoInicial={pasoInicial}
+            movimientoAlElegir={movimientoAlElegir}
             clients={clients}
             ownerId={ownerId}
             businessName={businessName}
@@ -294,6 +308,8 @@ function ClientSearchDialogBody({
   ownerCountry,
   rateContext,
   monedaHabitual,
+  pasoInicial,
+  movimientoAlElegir,
   onDirtyChange,
   onDone,
 }: {
@@ -304,6 +320,8 @@ function ClientSearchDialogBody({
   rateContext: MovementRateContext | null;
   // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
   monedaHabitual: MonedaHabitual | null;
+  pasoInicial: "search" | "new";
+  movimientoAlElegir?: "abono" | "fiado";
   onDirtyChange: (dirty: boolean) => void;
   // Called once this instance is done with the dialog — a client was
   // created, an existing one was picked, or the owner confirmed abandoning
@@ -313,7 +331,10 @@ function ClientSearchDialogBody({
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
-  const [step, setStep] = useState<"search" | "new">("search");
+  // El valor inicial y no un efecto: el cuerpo se REMONTA con `instanceKey`
+  // cada vez que el dialogo se cierra del todo, asi que un estado sembrado
+  // aqui ya es «otra vez el que toca» en la siguiente apertura.
+  const [step, setStep] = useState<"search" | "new">(pasoInicial);
   const [query, setQuery] = useState("");
   const [nameValue, setNameValue] = useState("");
 
@@ -436,7 +457,9 @@ function ClientSearchDialogBody({
 
   function selectExisting(id: string) {
     onDone(true);
-    router.push(`/clients/${id}`);
+    // El proposito viaja con la navegacion: sin el, «Abono» dejaria al tendero
+    // en la ficha del cliente teniendo que buscar el boton que acaba de pedir.
+    router.push(movimientoAlElegir ? `/clients/${id}?movimiento=${movimientoAlElegir}` : `/clients/${id}`);
   }
 
   // Every field the form needs is React-controlled now, so the live DOM

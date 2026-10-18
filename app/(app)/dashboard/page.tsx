@@ -39,6 +39,19 @@ export default async function DashboardPage({
   // is where the movement will appear and where the client list already
   // lives. The dialog clears it from the address once open, so a reload
   // can't reopen it on its own.
+  //
+  // TRES VALORES DESDE EL 2026-10-18, no uno, y los tres abren el mismo
+  // diálogo en sitios distintos. Los pone la hoja de «Registrar» (frame
+  // `1389:11227`) y `1` sigue siendo el de siempre:
+  //
+  //   `1`       — el buscador, tal cual. Lo usa «Registrar cliente nuevo» del
+  //               paso 1/4 del asistente de venta.
+  //   `cliente` — abre directamente en el formulario de alta.
+  //   `abono`   — abre el buscador, y al elegir a alguien lleva a su ficha con
+  //               el diálogo de abono ya abierto.
+  //
+  // Un valor desconocido no abre nada, que es lo que debe pasar con una URL
+  // escrita a mano o con un marcador viejo guardado en un favorito.
   const { nuevo } = await searchParams;
   const supabase = await createClient();
   const {
@@ -272,14 +285,17 @@ export default async function DashboardPage({
                 is the trigger, at md and up there is no bottom bar and this
                 button is the only one. With the old `sm` there was a 128px band
                 — 640 to 768 — where BOTH were on screen. */}
-            {/* DESDE EL 2026-10-18 ABRE LA VENTA, no el diálogo de registrar
-                movimiento. Decisión del dueño: *«los cuatro pasos se mostrarán
-                al presionar el botón "Agregar" en el home, ahí abre el paso
-                1/4»*. El diálogo de siempre sigue montado más abajo —lo abre
-                `?nuevo=1`, que es a donde manda «Registrar cliente nuevo» del
-                paso 1— pero ya no tiene disparador visible en ninguna anchura.
-                `NewSaleButton` lleva el marcador del tour que el disparador del
-                diálogo llevaba. */}
+            {/* DESDE EL 2026-10-18 ABRE LA HOJA DE «REGISTRAR», no el diálogo
+                de movimiento. Decisión del dueño ese día, en dos pasos: primero
+                que «Agregar» abriera el asistente de venta, y luego que abriera
+                una hoja con las tres cosas que se pueden registrar — frame
+                `1389:11227`.
+
+                El diálogo de siempre sigue montado más abajo —lo abren los
+                marcadores `?nuevo=`, que es lo que la hoja navega— pero ya no
+                tiene disparador visible en ninguna anchura. `NewSaleButton`
+                lleva el marcador del tour que el disparador del diálogo
+                llevaba. */}
             <HideWhileResults>
               <div className="hidden md:block">
                 <NewSaleButton />
@@ -391,7 +407,9 @@ export default async function DashboardPage({
               ownerId={user!.id}
               businessName={owner?.business_name || user!.email || "tu negocio"}
               ownerCountry={ownerCountry}
-              autoOpen={nuevo === "1"}
+              autoOpen={nuevo === "1" || nuevo === "cliente" || nuevo === "abono"}
+              pasoInicial={nuevo === "cliente" ? "new" : "search"}
+              movimientoAlElegir={nuevo === "abono" ? "abono" : undefined}
               hideTrigger
               showTourTarget={false}
               rateContext={rateContext}

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
@@ -234,6 +236,10 @@ export async function resolverMostrador(): Promise<{ id: string; name: string } 
   } = await supabase.auth.getUser();
   if (!user) return { error: "Tu sesión se cerró. Vuelve a entrar." };
 
+  // CREAR EL MOSTRADOR ES CREAR UN CLIENTE, así que pasa por la misma puerta
+  // que el resto de las escrituras. Ver el comentario de `registrarVenta`.
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
+
   // EL ÍNDICE ÚNICO PARCIAL ES QUIEN DE VERDAD GARANTIZA QUE HAYA UNO SOLO.
   // Dos pestañas pidiéndolo a la vez pasarían las dos por esta lectura sin
   // encontrar nada y las dos intentarían crearlo; la segunda falla en la base,
@@ -358,6 +364,28 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar y repite la venta." };
+
+  // ── LA CUENTA PAUSADA NO ESCRIBE ────────────────────────────────────
+  //
+  // FALTABA, y es un hueco que entró con esta acción el 2026-10-17: todas las
+  // demás que escriben —las ocho de la ficha del cliente, las cuatro del
+  // panel, la del import— preguntan esto antes de tocar nada, y ésta nació sin
+  // preguntarlo.
+  //
+  // NO BASTA CON ESCONDER EL BOTÓN. La guardia de la pantalla vive en el botón
+  // flotante y en el disparador del diálogo; una venta se guarda con una
+  // petición al servidor, que un formulario a medio enviar o una pestaña
+  // abierta desde antes de la pausa puede disparar igual.
+  //
+  // Y SE PREGUNTA ANTES en vez de dejar que falle la RLS, por el mismo motivo
+  // que explica `createClientWithMovement`: un insert rechazado vuelve como
+  // «new row violates row-level security policy», y un update rechazado no
+  // vuelve como error en absoluto —afecta a cero filas y la pantalla diría que
+  // se guardó—. Preguntando antes, los dos casos dicen lo mismo y en
+  // castellano.
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
 
   if (entrada.lineas.length === 0) return { ok: false, error: "Agrega al menos un producto a la venta." };
   if (entrada.lineas.length > 60) return { ok: false, error: "Son demasiados productos para una sola venta." };
