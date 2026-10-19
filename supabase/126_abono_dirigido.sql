@@ -320,6 +320,18 @@ $$;
 -- `movements`' own policy decides which client ids are visible. An owner asking
 -- for someone else's client gets an empty table, not an error -- the same shape
 -- `get_oldest_unpaid_charge` has always had.
+--
+-- THE `revoke` IS NOT DECORATION, and it was missing in the first version of
+-- this file. Postgres grants EXECUTE on a new function to PUBLIC by default, so
+-- `grant ... to authenticated` adds nothing: `anon` could call it already.
+-- `qa:abono-dirigido` caught it on the first run.
+--
+-- Nothing leaked -- without `security definer` the function runs as `anon` and
+-- `movements`' policy hands it zero rows -- but a public surface that answers
+-- at all is a surface, and migration 114 already set the house pattern with
+-- `create_catalog_order`: revoke from public first, then grant to who should
+-- have it.
+revoke execute on function public.get_open_charges_for_client(uuid) from public;
 grant execute on function public.get_open_charges_for_client(uuid) to authenticated;
 
 insert into public.schema_migrations (key, description)

@@ -103,7 +103,12 @@ try {
     .single();
   creados.clientes.push(cliente.id);
 
+  // DEVUELVE TAMBIEN LA FECHA QUE SE USO AL CREARLO. Recalcular `hace(2)` al
+  // comparar fue un bug de esta suite en su primera corrida: `Date.now()` ya se
+  // habia movido unos milisegundos, asi que la igualdad no se cumplia nunca y
+  // el caso 2b salia rojo con la aplicacion correcta.
   const cargo = async (monto, dias, plazo = 15) => {
+    const at = hace(dias);
     const { data } = await admin
       .from("movements")
       .insert({
@@ -113,11 +118,11 @@ try {
         amount: monto,
         currency: "USD",
         plazo_dias: plazo,
-        created_at: hace(dias),
+        created_at: at,
       })
       .select("id")
       .single();
-    return data.id;
+    return { id: data.id, at };
   };
   const abono = async (monto, dias, dirigidoA = null) => {
     const { data } = await admin
@@ -148,8 +153,10 @@ try {
   // 1 y 2. LO VIEJO NO SE MUEVE — es lo único que de verdad puede romper
   //        a los 24 negocios, así que va primero.
   // ══════════════════════════════════════════════════════════════════════
-  const c1 = await cargo(100, 60); // el más viejo
-  const c2 = await cargo(50, 2);
+  const f1 = await cargo(100, 60); // el más viejo
+  const f2 = await cargo(50, 2);
+  const c1 = f1.id;
+  const c2 = f2.id;
 
   let r = await abiertos();
   check(
@@ -174,10 +181,17 @@ try {
     p_client_id: cliente.id,
     p_currency: "USD",
   });
+  // EL DETALLE ENSENA LAS DOS FECHAS, no una frase fija. La primera version
+  // decia «coincide» siempre que la cola devolviera algo, asi que al fallar
+  // conto lo contrario de lo que pasaba.
+  const esperado = new Date(f2.at).getTime();
+  const obtenido = cola1?.length ? new Date(cola1[0].charge_at).getTime() : null;
   check(
     "2b. y la cola que decide «plazo vencido» apunta a ese mismo fiado",
-    cola1?.length === 1 && new Date(cola1[0].charge_at).getTime() === new Date(hace(2)).getTime(),
-    cola1?.length ? "coincide con el de 2 días" : "la cola no devolvió nada",
+    cola1?.length === 1 && obtenido === esperado,
+    obtenido == null
+      ? "la cola no devolvió nada"
+      : `cola ${new Date(obtenido).toISOString()} · esperado ${f2.at}`,
   );
 
   // ══════════════════════════════════════════════════════════════════════
