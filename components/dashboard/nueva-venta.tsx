@@ -1993,7 +1993,37 @@ function PagoSheet({
   // 5,84— porque ya no hay dos cifras que puedan sumarse de más.
   const esContado = Math.abs(enElLibro - total) <= 0.005;
   const deMas = enElLibro - total > 0.005;
-  const listo = enElLibro > 0 && entregado > 0 && !deMas;
+
+  // ── CERO ENTREGADO ES UNA VENTA VÁLIDA: ES UN FIADO ENTERO ──────────
+  //
+  // Era `enElLibro > 0 && entregado > 0 && !deMas` hasta el 2026-10-19, y con
+  // eso UNA VENTA 100 % FIADA NO SE PODÍA REGISTRAR. `entregado` es lo que el
+  // cliente paga en el acto, así que al pulsar «Fiado o crédito» —que vacía el
+  // campo— valía 0 y el botón «Pagar» no se habilitaba nunca. Y el paso 3 no
+  // deja avanzar sin decidir esa tarjeta, así que las dos puertas quedaban
+  // cerradas a la vez y la venta no tenía salida: el tendero solo podía
+  // inventarse un abono que el cliente no hizo, o abandonarla.
+  //
+  // FIAR ES EL PRODUCTO, así que esto bloqueaba el caso corriente —«llévatelo
+  // y me pagas el viernes»— mientras el abono parcial, que es el menos
+  // frecuente, sí funcionaba. Medido en dev el 2026-10-19: campo vacío,
+  // deshabilitado; con un 0 escrito, deshabilitado; con 5 de 7,50, habilitado.
+  //
+  // Y EL SERVIDOR SIEMPRE LO ADMITIÓ. `registrarVenta` guarda una venta con
+  // `pagos: []` sin protestar — `qa/venta-accion.mjs` lo prueba en varios
+  // casos. Era solo la pantalla, que es la misma forma del fallo de las cuotas
+  // del 2026-10-16: la acción lista y el formulario no.
+  //
+  // POR QUÉ NO HABÍA QUE PROTEGER UN ESTADO «SIN TOCAR», que es para lo que
+  // parecía estar `entregado > 0`: el campo NACE con el total entero (ver
+  // `useState` de `monto` más arriba), así que el diálogo abre ya en «De
+  // contado». Llegar a cero exige un acto deliberado — pulsar el chip de
+  // crédito, o vaciar con la X. No hay ambigüedad que defender.
+  //
+  // `>= 0` Y NO SOLO `!deMas`: `parseAmount` devuelve el número tal cual, así
+  // que un «-5» escrito a mano pasaría como un pago negativo. Esa puerta se
+  // queda cerrada.
+  const listo = enElLibro >= 0 && !deMas;
 
   const plazoDias =
     plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo)) ? Number(plazo) : null;
