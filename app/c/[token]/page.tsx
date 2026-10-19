@@ -441,8 +441,22 @@ export default async function CatalogoPublicoPage({
                             lo que se corrige es la jerarquía DENTRO de la
                             tarjeta. El peso no se toca: con 14 frente a 16 ya
                             se lee, y quitar el `font-semibold` sería decidir
-                            algo que no se pidió. */}
-                        <span className="flex items-center gap-1 text-sm font-semibold tabular-nums">
+                            algo que no se pidió.
+
+                            EL COLOR ES `text-muted-foreground`, decisión del
+                            dueño el 2026-10-19, en la misma petición que bajó
+                            el tamaño. Entre las dos, el precio deja de
+                            competir con el nombre por dos vías —tamaño y
+                            color— y el nombre se queda solo como primer nivel.
+
+                            MEDIDO: 4,73:1 sobre el fondo de la tarjeta, con el
+                            piso de 4,5 que fija `DESIGN-SYSTEM.md`. Pasa, y es
+                            el margen MÁS AJUSTADO de toda la tabla de
+                            `qa:contraste` (+0,23). Si algún día se oscurece el
+                            fondo de la tarjeta, este es el primer texto que
+                            cae por debajo del piso — y no se verá, porque un
+                            gris sobre gris no parece un error. */}
+                        <span className="flex items-center gap-1 text-sm font-semibold text-muted-foreground tabular-nums">
                           <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
                           {formatPriceAmount(p.price, p.base_currency)}
                         </span>

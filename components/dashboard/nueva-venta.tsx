@@ -876,7 +876,7 @@ function TarjetaDeProducto({
             EL PESO NO SE TOCA. El dueño habló del tamaño, y con 14 frente a 16
             la jerarquía ya se lee; quitarle también el `font-semibold` sería
             una decisión que no pidió. */}
-        <span className="flex items-center gap-1 pr-10 text-sm font-semibold">
+        <span className="flex items-center gap-1 pr-10 text-sm font-semibold text-muted-foreground">
           {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4" /> : null}
           {precio != null && moneda ? formatPriceAmount(precio, moneda) : "Sin precio"}
         </span>
