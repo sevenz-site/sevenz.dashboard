@@ -20,6 +20,7 @@ import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/move
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
 import type { SaleLineRow } from "@/lib/sale-lines";
+import type { VentaDeContado } from "@/lib/ventas-de-contado";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 
 const PAGE_SIZE = 10;
@@ -46,6 +47,7 @@ export function MovementHistoryList({
   compartir = null,
   titulo = null,
   productosPorMovimiento,
+  ventasDeContado = [],
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
@@ -57,6 +59,12 @@ export function MovementHistoryList({
   // El rótulo de la sección, para poder poner el filtro a su derecha. Ver el
   // comentario de `FiltroDeTipo`.
   titulo?: React.ReactNode;
+  // LAS VENTAS PAGADAS ENTERAS, que no son movimientos y por eso llegan
+  // aparte. Ver `lib/ventas-de-contado.ts`: una venta pagada no escribe nada
+  // en `movements`, así que el historial las MEZCLA al pintar en vez de
+  // convertirlas en filas de esa tabla -- el saldo, el puntaje de crédito y
+  // las gráficas siguen leyendo solo `movements` y no se enteran.
+  ventasDeContado?: VentaDeContado[];
   // QUÉ SE LLEVÓ EL CLIENTE en cada movimiento, indexado por su id. La página
   // lo trae en una sola consulta para toda la lista; aquí solo se reparte.
   // Opcional porque la pantalla del cliente no lo pasa -- ver la nota de la
@@ -66,7 +74,23 @@ export function MovementHistoryList({
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
 
-  const visibles = tipo === "todos" ? movements : movements.filter((m) => m.type === tipo);
+  // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ─────────────────────
+  //
+  // Un movimiento y una venta de contado no comparten tabla ni forma, así que
+  // se juntan aquí con una marca y se ordenan por fecha. La alternativa
+  // --dos listas, una debajo de otra-- rompería lo único que el tendero busca
+  // en esta pantalla: qué pasó, en orden.
+  const filas: Fila[] = [
+    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  const visibles =
+    tipo === "todos"
+      ? filas
+      : filas.filter((f) =>
+          tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
+        );
 
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
@@ -74,11 +98,13 @@ export function MovementHistoryList({
   const cabecera = titulo ? (
     <div className="flex items-center justify-between gap-3">
       {titulo}
-      {movements.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} /> : null}
+      {movements.length + ventasDeContado.length > 0 ? (
+        <MovementTypeFilter tipo={tipo} setTipo={setTipo} conContado={ventasDeContado.length > 0} />
+      ) : null}
     </div>
   ) : null;
 
-  if (movements.length === 0) {
+  if (movements.length + ventasDeContado.length === 0) {
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
@@ -94,7 +120,9 @@ export function MovementHistoryList({
       <div className="flex flex-col gap-2">
         {cabecera}
         <p className="text-sm text-muted-foreground">
-          Este cliente no tiene {tipo === "charge" ? "fiados" : "abonos"} registrados.
+          Este cliente no tiene{" "}
+          {tipo === "charge" ? "fiados" : tipo === "payment" ? "abonos" : "ventas de contado"}{" "}
+          registrados.
         </p>
       </div>
     );
@@ -102,13 +130,17 @@ export function MovementHistoryList({
 
   const pageCount = Math.max(1, Math.ceil(visibles.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const pagedMovements = visibles.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagina = visibles.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-3">
       {cabecera}
       <ul className="flex flex-col divide-y rounded-lg border">
-        {pagedMovements.map((m) => {
+        {pagina.map((fila) => {
+          if (fila.clase === "contado") {
+            return <FilaDeContado key={`venta-${fila.v.saleId}-${fila.v.currency ?? "cop"}`} venta={fila.v} ledger={ledger} />;
+          }
+          const m = fila.m;
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
           // Si el movimiento se escribió en bolívares, la línea de abajo dice
           // ESOS bolívares y no lo que vale hoy la deuda.
@@ -177,7 +209,7 @@ export function MovementHistoryList({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-blue-600 dark:text-blue-400"}`}
                   >
                     <span className="flex items-center gap-1">
                       {m.currency ? (
@@ -235,5 +267,77 @@ export function MovementHistoryList({
         </Pagination>
       ) : null}
     </div>
+  );
+}
+
+// Una fila del historial: o un movimiento, o una venta pagada entera.
+type Fila =
+  | { clase: "movimiento"; fecha: string; m: Movement }
+  | { clase: "contado"; fecha: string; v: VentaDeContado };
+
+// UNA VENTA DE CONTADO EN EL HISTORIAL.
+//
+// ===========================================================================
+// VERDE, Y NO ES EL VERDE QUE HABÍA
+//
+// Decisión del dueño el 2026-10-18: el contado va en VERDE y el abono pasa a
+// AZUL. Hasta ese día el verde era del abono.
+//
+// Lo que distingue a las tres filas, y conviene tenerlo escrito porque los
+// colores solos no lo dicen: el fiado (rojo, «+») SUBE la deuda, el abono
+// (azul, «−») la BAJA, y el contado (verde, sin signo) NO LA TOCA. Por eso no
+// lleva signo: un «+» o un «−» prometerían un movimiento del saldo que no
+// ocurre.
+//
+// ===========================================================================
+// NO SE ABRE, TODAVÍA
+//
+// Las demás filas abren `MovementDetailPopover`, que está escrito sobre un
+// movimiento -- su id, su saldo acumulado, su comprobante, su plazo. Una venta
+// no tiene ninguna de esas cosas, así que esto es una fila de solo lectura
+// hasta que esa ficha exista. Queda dicho aquí y no solo en el chat: una fila
+// que no responde al toque cuando sus vecinas sí lo hacen parece rota, y el
+// siguiente que la vea merece saber que es deliberado.
+function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: LedgerDisplay | null }) {
+  const amount = formatLedgerAmount(venta.amount, venta.currency, ledger);
+  // Qué se llevó, en una línea. Es lo que la fila de un fiado pone después de
+  // «Fiado · », y aquí es lo único que identifica la compra.
+  const que = venta.lineas.map((l) => l.name).join(", ");
+
+  return (
+    <li>
+      <div className="flex w-full items-center justify-between gap-3 p-3 text-left">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {truncateText(`De contado${que ? ` · ${que}` : ""}`, 34)}
+          </p>
+          <p className="text-xs text-muted-foreground">{formatDate(venta.createdAt)}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* `emerald-700` Y NO `emerald-600`, que es el verde que usaba el
+              abono hasta hoy: medido contra blanco da 3,67:1 y el piso de
+              `DESIGN-SYSTEM.md` son 4,5:1. El 700 da 5,37:1.
+
+              O sea que el verde del abono llevaba fallando el contraste desde
+              siempre, y el cambio a azul lo arregla de rebote -- `blue-600`
+              da 5,26:1. No se heredó aquí el fallo por parecerse al de antes. */}
+          <div className="flex flex-col items-end tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="flex items-center gap-1">
+              {venta.currency ? (
+                <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
+              ) : null}
+              {amount.primary}
+            </span>
+            {amount.secondary ? (
+              <span className="font-normal text-muted-foreground">{amount.secondary}</span>
+            ) : null}
+          </div>
+          {/* El hueco del chevron de las otras filas, para que los importes
+              queden en la misma columna. Sin esto, la fila de contado se
+              desplaza cuatro píxeles a la derecha y la lista se ve torcida. */}
+          <span aria-hidden="true" className="size-4 shrink-0" />
+        </div>
+      </div>
+    </li>
   );
 }

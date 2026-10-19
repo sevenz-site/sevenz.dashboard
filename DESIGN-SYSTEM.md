@@ -1584,6 +1584,53 @@ habría separado — y el del cliente es el que nadie de este lado mira. Vive en
 **La señal de alarma, para la próxima**: si estás a punto de hacer el mismo
 cambio en dos archivos, el cambio no es el problema; la copia sí.
 
+## Las tres filas del historial, y qué dice cada color
+
+| Fila | Color | Signo | Qué le hace al saldo |
+|---|---|---|---|
+| Fiado | `--destructive` | `+` | Lo **sube** |
+| Abono | `blue-600` / `blue-400` | `−` | Lo **baja** |
+| De contado | `emerald-700` / `emerald-400` | ninguno | **No lo toca** |
+
+Decisión del dueño el 2026-10-18: *«verde y cambiar abono a azul»*. Hasta ese
+día el verde era del abono y el contado no salía en el historial.
+
+**El contado no lleva signo, y eso no es un olvido.** Un `+` o un `−` prometen
+un movimiento del saldo, y una venta pagada entera no mueve nada: no escribe
+en `movements` (migración `124`), así que ni el saldo, ni el puntaje de
+crédito, ni las gráficas de fiado la ven. La fila existe para que el tendero y
+su cliente sepan que esa compra ocurrió, no para explicar una deuda.
+
+**Y el verde es el 700, no el 600.** `emerald-600` sobre blanco da **3,67:1**,
+por debajo del piso de 4,5:1 de más abajo; el 700 da 5,37:1. O sea que el
+verde que llevaba el abono **llevaba fallando el contraste desde siempre**, y
+el cambio a azul lo arregla de rebote: `blue-600` da 5,26:1. No se heredó aquí
+el fallo por parecerse a lo de antes.
+
+**La gráfica de fiado se movió con él.** Su serie «Abono» pasó de
+`emerald-500` a `blue-500` el mismo día: dos pantallas que pintan «abono» de
+dos colores distintos son la clase de diferencia que nadie reporta y todos
+notan.
+
+### Una venta de contado no es un movimiento, y la lista las MEZCLA
+
+No se arregla metiendo la venta en `movements`: `recalc_client_running_balance`
+no tiene fila neutra, así que un tipo nuevo se leería como abono y **restaría
+del saldo**. Lo que hace el historial es juntar las dos fuentes al pintar y
+ordenarlas por fecha — ver `lib/ventas-de-contado.ts`.
+
+Tres reglas que salen de ahí y conviene no redescubrir:
+
+- **Una fila por moneda.** Una venta puede llevar café en dólares y refresco en
+  euros, y el historial es por libro. Y cada fila lista **solo los productos de
+  SU libro**: la primera versión repartía los de la venta entera y las dos
+  filas afirmaban llevar lo que llevaba la otra. Se vio en pantalla.
+- **Solo las pagadas enteras.** Una venta con parte fiada ya aparece como su
+  cargo; añadirle fila de contado la enseñaría dos veces.
+- **La fila no se abre.** `MovementDetailPopover` está escrito sobre un
+  movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
+  no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

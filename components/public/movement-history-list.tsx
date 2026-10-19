@@ -167,7 +167,7 @@ export function MovementHistoryList({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-blue-600 dark:text-blue-400"}`}
                   >
                     <span className="flex items-center gap-1">
                       {m.currency ? (

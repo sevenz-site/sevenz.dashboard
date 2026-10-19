@@ -16,7 +16,11 @@ import type { WeeklyLendingPoint } from "@/lib/lending-charts";
 // text-emerald-600), just as chart fill colors instead of text colors.
 const chartConfig = {
   fiado: { label: "Fiado", color: "var(--destructive)" },
-  abono: { label: "Abono", color: "var(--color-emerald-500)" },
+  // AZUL DESDE EL 2026-10-18, para no separarse del historial: ahí el abono
+  // dejó el verde y el verde pasó a las ventas de contado (decisión del
+  // dueño). Dos pantallas que pintan «abono» de dos colores distintos es la
+  // clase de diferencia que nadie reporta y todos notan.
+  abono: { label: "Abono", color: "var(--color-blue-500)" },
 } satisfies ChartConfig;
 
 export function WeeklyLendingChart({

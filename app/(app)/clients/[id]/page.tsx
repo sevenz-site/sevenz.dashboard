@@ -8,6 +8,7 @@ import { ClientDetailHeader } from "@/components/dashboard/client-detail-header"
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -512,6 +513,40 @@ async function MovementHistory({
       productosPorMovimiento.set(movementId, lista);
     }
   }
+  // ── LAS VENTAS PAGADAS ENTERAS ──────────────────────────────────
+  //
+  // No son movimientos y por eso no vienen en la consulta de arriba: una
+  // venta pagada no escribe nada en `movements` (migración `124`). Se traen
+  // aparte y la lista las mezcla al pintar. Ver `lib/ventas-de-contado.ts`,
+  // que explica por qué no se arregla metiéndolas en esa tabla.
+  //
+  // Lo reportó el dueño el 2026-10-18: «las transacciones como ventas
+  // directas no están apareciendo en el historial de movimiento del cliente».
+  const { data: ventasCrudas } = await supabase
+    .from("sales")
+    .select("id, created_at")
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  let ventasDeContado: VentaDeContado[] = [];
+  const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
+  if (idsDeVenta.length > 0) {
+    const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
+      supabase.from("sale_payments").select("sale_id, currency, amount").in("sale_id", idsDeVenta),
+      supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
+    ]);
+    // LAS VENTAS QUE DEJARON UN CARGO QUEDAN FUERA: ya tienen su fila, y es
+    // la del fiado. `ventaDelMovimiento` se construyó arriba con exactamente
+    // esas, así que se reutiliza en vez de volver a preguntarlo.
+    ventasDeContado = filasDeContado(
+      (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
+      pagos ?? [],
+      lineasDeVenta ?? [],
+      new Set(ventaDelMovimiento.keys()),
+    );
+  }
+
   const photoPaths = movementRows.map((m) => m.photo_path).filter((p): p is string => Boolean(p));
 
   const photoUrls = new Map<string, string>();
@@ -536,6 +571,7 @@ async function MovementHistory({
         ledger={ledger}
         compartir={compartir}
         productosPorMovimiento={productosPorMovimiento}
+        ventasDeContado={ventasDeContado}
       />
     </div>
   );
