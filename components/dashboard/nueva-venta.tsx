@@ -22,6 +22,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { CartPillButton } from "@/components/cart-pill-button";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
@@ -655,12 +656,21 @@ function PasoProducto({
         ))}
       </ul>
 
-      <div className="flex-1" />
-      {enElCarrito > 0 ? (
-        <Button type="button" className="h-12 w-full" onClick={onIrAlCarrito}>
-          Ver carrito ({formatCantidad(enElCarrito)})
-        </Button>
-      ) : null}
+      {/* LA MISMA PÍLDORA FLOTANTE QUE EL CATÁLOGO DEL CLIENTE, a petición del
+          dueño el 2026-10-18: «exactamente el mismo» componente.
+
+          Lo que gana sobre el botón ancho que había: estaba al FINAL de la
+          columna, así que con quince productos en la cuadrícula el tendero
+          tenía que recorrerla entera para ver que ya llevaba seis cosas. La
+          píldora flota y lleva la cuenta encima.
+
+          Y el hueco de abajo lo pone ella, no esta columna: `flex-1` empujaba
+          el botón contra el borde y ahora no hay nada que empujar. */}
+      <CartPillButton total={enElCarrito} onClick={onIrAlCarrito} />
+
+      {/* El aire que la píldora tapa. Sin esto, la última fila de la
+          cuadrícula queda debajo de ella y no se puede tocar. */}
+      {enElCarrito > 0 ? <div aria-hidden="true" className="h-16" /> : null}
 
       {/* LA HOJA DEL PRODUCTO — frame `1389:8949`. Es una HOJA y no una vista
           que reemplace la cuadrícula: así, al cerrarla el tendero sigue donde

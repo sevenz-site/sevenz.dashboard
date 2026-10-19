@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ShoppingBag } from "lucide-react";
+import { CartPillButton } from "@/components/cart-pill-button";
 import { useCarrito } from "@/lib/cart/store";
 import { cuantosArticulos } from "@/lib/cart/cart";
-import { formatCantidad } from "@/lib/products/cantidad";
 
-// LA PILDORA «VER CARRITO», del frame `1190:5765`.
+// CUÁNDO SALE LA PÍLDORA EN EL CATÁLOGO DEL CLIENTE.
+//
+// El dibujo vive en `CartPillButton`, compartido con el asistente de venta del
+// tendero desde el 2026-10-18. Aquí queda lo que es SOLO de esta pantalla: de
+// qué carrito se lee el total y en qué rutas no debe aparecer.
 //
 // Flota sobre el catalogo y sobre el detalle, y desaparece cuando el carrito
 // esta vacio. Es el unico camino a la pantalla del carrito: el frame no pone
@@ -38,21 +40,5 @@ export function CartPill({ token }: { token: string }) {
   const total = cuantosArticulos(lineas);
   if (total === 0 || enElCarrito || enLaVistaPrevia) return null;
 
-  return (
-    // `pb-[env(safe-area-inset-bottom)]` por los iPhone con barra de gestos:
-    // sin eso la pildora queda justo debajo de la raya del sistema, donde un
-    // toque la abre a medias o no la abre.
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <Link
-        href={`/c/${token}/carrito`}
-        className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-medium text-background shadow-lg transition-transform active:scale-95"
-      >
-        <ShoppingBag className="size-5" aria-hidden="true" />
-        Ver carrito
-        <span className="flex min-w-6 items-center justify-center rounded-full bg-background/20 px-1.5 text-xs tabular-nums">
-          {formatCantidad(total)}
-        </span>
-      </Link>
-    </div>
-  );
+  return <CartPillButton total={total} href={`/c/${token}/carrito`} />;
 }

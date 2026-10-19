@@ -77,12 +77,29 @@ export function QuickProductSheet({
       const r = await createProduct({
         name: nombre.trim(),
         unit: null,
-        // UNA SOLA MONEDA Y SOLO AL DETAL. La primera de la lista es la base,
-        // que es donde `createProduct` guarda `price_retail`. El mayoreo se
-        // queda vacío: no se preguntó, y un escalón al mayor inventado haría
-        // que el carrito cobrara otro precio al subir la cantidad.
+        // UNA SOLA MONEDA, Y LA MISMA EN LOS DOS ESCALONES.
+        //
+        // ESTO ESTABA ROTO Y NO FUNCIONÓ NI UNA VEZ. La primera versión mandaba
+        // el mayoreo VACÍO, razonando que no se había preguntado y que un
+        // escalón inventado haría que el carrito cobrara otro precio al subir
+        // la cantidad. El razonamiento era bueno y la consecuencia no se
+        // comprobó: `createProduct` exige al menos una moneda POR ESCALÓN, así
+        // que toda alta desde esta hoja moría con «Deja al menos una moneda en
+        // el precio al mayor» — un mensaje sobre un campo que esta pantalla ni
+        // siquiera enseña. Lo reportó el dueño el 2026-10-18 con una captura.
+        //
+        // LA MONEDA NO ES UN PRECIO. `priceWholesale` sigue siendo `null`, y
+        // `armarProductos` devuelve bloque nulo para todo escalón sin precio
+        // — así que el carrito nunca puede elegir el mayoreo y el temor de la
+        // primera versión no se cumple. Lo único que esto rellena es
+        // `base_currency_wholesale`, que la tabla exige NOT NULL desde la
+        // migración 114.
+        //
+        // Y NO ES UN ESTADO NUEVO: en dev hay cinco productos así —moneda de
+        // mayoreo puesta, precio nulo— creados desde el diálogo del catálogo,
+        // que es como se comprobó que esta forma ya vive y funciona.
         activeCurrenciesRetail: [moneda],
-        activeCurrenciesWholesale: [],
+        activeCurrenciesWholesale: [moneda],
         priceRetail: precio,
         priceWholesale: null,
         fixedRetail: {},
