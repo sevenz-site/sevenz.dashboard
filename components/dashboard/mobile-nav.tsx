@@ -12,6 +12,7 @@ import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -129,27 +130,6 @@ function useOverlayOpen() {
   return open;
 }
 
-function useKeyboardOpen() {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const vv = window.visualViewport;
-    // No signal available: keep the bar visible. A bar that shouldn't be there
-    // is cosmetic; a missing one removes navigation.
-    if (!vv) return;
-
-    // iOS doesn't resize the page when the keyboard appears — it overlays it,
-    // and the visual viewport shrinks while the layout viewport doesn't. That
-    // gap is the only reliable signal. Focus events look tempting but fire for
-    // buttons and selects too, and miss dismissal.
-    const onResize = () => setOpen(vv.height < window.innerHeight * 0.75);
-    vv.addEventListener("resize", onResize);
-    onResize();
-    return () => vv.removeEventListener("resize", onResize);
-  }, []);
-
-  return open;
-}
 
 // Only the three destinations can be marked — Menú opens a sheet and Agregar is
 // an action, so "selected" has no meaning for either. Deliberately exact-match

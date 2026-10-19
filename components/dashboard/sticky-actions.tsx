@@ -1,3 +1,7 @@
+"use client";
+
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+
 // LOS BOTONES DEL FLUJO DE REGISTRAR, SIEMPRE A LA VISTA.
 //
 // Petición del dueño el 2026-10-18: «todos los botones del flujo Registrar
@@ -36,6 +40,20 @@
 // los pusieran los dos, serían 80 y la barra se quedaría flotando a media
 // altura al final del scroll.
 export function StickyActions({ children }: { children: React.ReactNode }) {
+  // ── CON EL TECLADO ARRIBA, NO ──────────────────────────────────────
+  //
+  // La barra se queda flotando ENCIMA del teclado y tapa el campo que se está
+  // rellenando: el dueño lo vio el 2026-10-18 con «Registrar y finalizar»
+  // sobre el campo Documento. Es el mismo trato que ya tenía la barra de
+  // navegación, y por eso el hook se mudó a `hooks/` en vez de copiarse.
+  //
+  // DESAPARECER NO MUEVE NADA DE ARRIBA: la barra va al fondo con `mt-auto`,
+  // así que quitarla acorta la columna por abajo y el formulario se queda
+  // donde está. Y mientras el teclado ocupa media pantalla, el botón que
+  // cierra la venta no es lo que el tendero está buscando — está escribiendo.
+  const tecladoAbierto = useKeyboardOpen();
+  if (tecladoAbierto) return null;
+
   return (
     // `-mx-4 px-4` cancela el padding de `AppMain` y lo devuelve, para que la
     // línea de arriba llegue a los bordes como la de la barra de abajo. Dentro

@@ -186,30 +186,15 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
           <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
         </label>
 
-        {/* EL ERROR Y, PEGADO A ÉL, EL ENLACE. Del mockup del dueño del
-            2026-10-18: «Ya existe un cliente con esta cédula: Jesús · Ver
-            cliente.» en una sola línea.
+        {/* EL ERROR, SOLO. El enlace subrayado que llevaba al lado duró un
+            día: el dueño lo pidió como botón el 2026-10-18, y abajo está.
 
-            AQUÍ NAVEGA, y en el paso 4 del asistente abre una hoja. No es una
-            incoherencia: allí hay una venta a medias en memoria y salir la
-            tira entera; aquí no hay nada que perder. La misma palabra, dos
-            comportamientos, porque lo que está en juego es distinto. */}
-        {error ? (
-          <p className="text-sm text-destructive">
-            {error}
-            {duplicado ? (
-              <>
-                {" "}
-                <Link
-                  href={`/clients/${duplicado.id}`}
-                  className="font-medium text-foreground underline underline-offset-2"
-                >
-                  Ver cliente.
-                </Link>
-              </>
-            ) : null}
-          </p>
-        ) : null}
+            POR QUÉ UN BOTÓN Y NO UN ENLACE, en esta pantalla y no en el paso
+            4: aquí ese control NAVEGA —se sale de la pantalla— y los controles
+            que se salen viven en la barra de abajo, con los otros. En el
+            asistente abre una hoja y se queda donde está, así que allí el
+            enlace pegado al error sigue teniendo sentido. */}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </form>
 
       {/* LOS BOTONES, FUERA DEL `<form>` Y PEGADOS ABAJO, como el frame. Son
@@ -236,6 +221,20 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
               ? "Registrar a cuenta separada"
               : "Registrar y finalizar"}
         </Button>
+
+        {/* «VER CLIENTE», DEBAJO DEL RELLENO y no encima. Lo pidió así el
+            dueño, y es al revés que en el asistente — allí el orden es
+            outlined arriba, relleno abajo.
+
+            No es incoherencia: allí los dos botones REGISTRAN la venta y la
+            pregunta es en qué cuenta, así que el seguro va primero. Aquí el
+            relleno es la única forma de seguir y este solo sirve para mirar
+            antes de decidir. */}
+        {duplicado ? (
+          <Button type="button" variant="outline" className="h-10 w-full" asChild>
+            <Link href={`/clients/${duplicado.id}`}>Ver cliente</Link>
+          </Button>
+        ) : null}
         {/* «CONTINUAR CON VENTA» SE ESCONDE CON EL CHOQUE, a petición del
             dueño. Con una cédula repetida en pantalla hay una pregunta sin
             contestar —¿es él o es otro?»— y ese botón se la salta: crearía
