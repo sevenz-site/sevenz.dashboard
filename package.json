@@ -49,6 +49,7 @@
     "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
     "qa:cuotas": "node qa/cuotas.mjs",
     "qa:venta": "node qa/sale-lines.mjs",
+    "qa:venta-accion": "node qa/venta-accion.mjs",
     "qa:producto-rapido": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/producto-rapido.mjs",
     "qa:venta-resumen": "node qa/venta-resumen.mjs"
   },
