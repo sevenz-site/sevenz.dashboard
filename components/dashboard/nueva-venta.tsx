@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Banknote,
   Check,
   ChevronRight,
@@ -22,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
@@ -386,18 +386,27 @@ export function NuevaVenta({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Volver"
-          onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2 | 3))}
-        >
-          <ArrowLeft className="size-5" aria-hidden="true" />
-        </Button>
-      </div>
+    // SIN `p-4` PROPIO, desde el 2026-10-18. `AppMain` ya envuelve toda
+    // pantalla en 16px; este añadía otros 16 encima y el flujo entero salía
+    // con 32px de margen lateral. Lo vio el dueño con el inspector abierto
+    // —«los que agregaste son muy altos»— y la respuesta a cuánto quería fue
+    // exactamente lo que `AppMain` ya ponía: 16px.
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4">
+      {/* LA MISMA FILA QUE NOTIFICACIONES, a petición del dueño el 2026-10-18.
+          Antes era una flecha suelta flotando sobre el contenido; ahora es una
+          barra pegada arriba, de borde a borde y con su línea.
+
+          `soloEnTelefono={false}`: `app-header.tsx` esconde la cabecera de la
+          app en todo `/ventas`, así que esta es la ÚNICA cabecera a cualquier
+          anchura. Con el `sm:hidden` por defecto, un escritorio se quedaría
+          sin salida.
+
+          Y la flecha RETROCEDE UN PASO, no navega: es la diferencia entre
+          corregir el carrito y perderlo entero. */}
+      <ScreenBackRow
+        soloEnTelefono={false}
+        onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2 | 3))}
+      />
 
       {/* ── TRES PASOS, Y EL CLIENTE NO ES UNO DE ELLOS ──────────────────
           Frame `1389:8329`, que dice «1/3 Producto». Hasta esta mañana eran
@@ -712,17 +721,34 @@ function PasoProducto({
   );
 }
 
-// UNA TARJETA, NO UNA FILA — frame `1389:8329`, 2026-10-18.
+// UNA TARJETA DE PRODUCTO — frame `1389:8364`, 2026-10-18.
 //
-// La foto ocupa la tarjeta entera y el texto va encima, sobre un degradado que
-// baja a `#272727`. Eso NO es decoración: el nombre y el precio van en blanco y
-// una foto clara los dejaría ilegibles. El degradado es lo que garantiza el
-// contraste pase lo que pase en la imagen, que es la razón de que esté en el
-// frame y de que no se pueda quitar «porque se ve mejor sin él».
+// ===========================================================================
+// ERA UN MOSAICO OSCURO Y AHORA ES UNA FICHA CLARA
 //
-// SIN FOTO, FONDO OSCURO PLANO y el mismo texto encima. La alternativa —una
-// tarjeta clara con texto oscuro cuando no hay imagen— daría dos tarjetas que
-// se leen distinto en la misma cuadrícula.
+// Hasta esta mañana la foto ocupaba la tarjeta entera, con el nombre y el
+// precio en blanco encima de un degradado que bajaba a `#272727`. El frame
+// nuevo la parte en dos: la foto en su propio recuadro arriba y el texto en
+// tinta debajo, sobre fondo blanco y con borde.
+//
+// LO QUE SE GANA, y es lo que explica el cambio: el degradado existía para
+// garantizar el contraste del texto pasara lo que pasara en la imagen. Era
+// una defensa contra la foto, y costaba oscurecer la mitad de abajo de TODAS
+// las fotos, tuvieran o no el problema. Separando los dos, el texto ya no
+// depende de la imagen y la imagen se ve entera.
+//
+// ===========================================================================
+// EL «+» NO ES UN BOTÓN, AUNQUE AHORA LO PAREZCA MÁS
+//
+// Sobre blanco el cuadrado oscuro destaca mucho más que antes, así que la
+// pregunta se le hizo al dueño el 2026-10-18 y su respuesta fue dejarlo como
+// estaba: **abre el detalle, igual que toda la tarjeta**. Un solo blanco que
+// tocar, y la cantidad, la moneda y el escalón se eligen en la hoja, que es
+// para lo que sirve.
+//
+// Por eso es un `<span aria-hidden>` dentro del botón y no un `<button>`: un
+// botón dentro de otro no es HTML válido, y dos blancos para la misma acción
+// solo añaden la duda de cuál de los dos hace qué.
 function TarjetaDeProducto({
   producto,
   rates,
@@ -760,44 +786,53 @@ function TarjetaDeProducto({
         disabled={sinPrecio}
         aria-label={`Ver ${producto.name}`}
         onClick={() => !sinPrecio && onAbrir(producto)}
-        className="relative flex h-[180px] w-full flex-col justify-end overflow-hidden rounded-lg bg-brand-primary p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="relative flex w-full flex-col gap-2.5 rounded-[10px] border p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
-        {foto ? (
-          <Image src={foto} alt="" fill unoptimized sizes="(max-width: 448px) 50vw, 161px" className="object-cover" />
-        ) : (
-          <span className="absolute right-2.5 top-2.5">
-            <ImageOff className="size-4 text-white/40" aria-hidden="true" />
-          </span>
-        )}
-        {/* EL DEGRADADO SOLO CUANDO HAY FOTO: sobre el fondo plano no añade
-            nada y oscurecería de más la mitad de abajo. */}
-        {foto ? (
-          <span
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-transparent from-25% to-[#272727] to-[65%]"
-          />
-        ) : null}
-
-        <span className="relative flex flex-col gap-1 pr-10">
-          {/* DOS LÍNEAS COMO MUCHO. El frame enseña «Nombre del producto»
-              partido en dos; con tres, el precio se saldría de la tarjeta. */}
-          <span className="line-clamp-2 text-base font-semibold text-brand-secondary">
-            {producto.name}
-          </span>
-          <span className="flex items-center gap-1 text-xs text-brand-secondary">
-            {moneda ? <CurrencyFlagIcon currency={moneda} className="size-3.5" /> : null}
-            {precio != null && moneda ? formatPriceAmount(precio, moneda) : "Sin precio"}
-            {escalon === "wholesale" ? " · al mayor" : ""}
-          </span>
+        {/* EL RECUADRO DE LA FOTO, 127px de alto en el frame. Es un `div` con
+            la imagen dentro y no la imagen a secas: sin foto tiene que quedar
+            el mismo hueco gris, o las tarjetas de una cuadrícula mixta se
+            desalinean entre sí. */}
+        <span className="relative block h-[127px] w-full overflow-hidden bg-muted">
+          {foto ? (
+            <Image
+              src={foto}
+              alt=""
+              fill
+              unoptimized
+              sizes="(max-width: 448px) 50vw, 161px"
+              className="object-cover"
+            />
+          ) : (
+            // EL ICONO DE FOTO TACHADA SE QUEDA, decisión del dueño el
+            // 2026-10-18. Un recuadro gris liso se lee como una imagen que
+            // todavía está cargando; este dice que no hay ninguna.
+            <span className="absolute inset-0 flex items-center justify-center">
+              <ImageOff className="size-6 text-muted-foreground" aria-hidden="true" />
+            </span>
+          )}
         </span>
 
-        {/* EL CUADRO DEL «+» es parte de la tarjeta y no un botón aparte: toda
-            la tarjeta agrega, y esto le dice al ojo qué pasa al tocarla. Un
-            segundo botón dentro de un botón no es maquetable y además daría dos
-            blancos para la misma acción. */}
+        {/* DOS LÍNEAS COMO MUCHO. El frame enseña «Nombre del producto»
+            partido en dos; con tres, el precio se saldría de la tarjeta. */}
+        <span className="line-clamp-2 text-base font-semibold">{producto.name}</span>
+
+        {/* LA BANDERA SE QUEDA aunque el frame dibuje el precio pelado.
+            Decisión del dueño el 2026-10-18: un negocio venezolano vende en
+            dólares y en euros, y sin bandera «$10,00» y «€10,00» se distinguen
+            solo por el símbolo — que es un carácter, al final de la línea, en
+            una cuadrícula que se recorre de un vistazo.
+
+            EL «· al mayor» SÍ SE VA, en la misma decisión: el escalón se ve
+            entero en el detalle, con su cantidad mínima al lado, y ahí sí
+            significa algo. */}
+        <span className="flex items-center gap-1 pr-10 text-base font-semibold">
+          {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4" /> : null}
+          {precio != null && moneda ? formatPriceAmount(precio, moneda) : "Sin precio"}
+        </span>
+
         <span
           aria-hidden="true"
-          className="absolute bottom-2.5 right-2.5 flex size-8 items-center justify-center rounded-sm bg-brand-primary"
+          className="absolute bottom-2 right-2 flex size-8 items-center justify-center rounded-sm bg-brand-primary"
         >
           <Plus className="size-6 text-brand-secondary" />
         </span>

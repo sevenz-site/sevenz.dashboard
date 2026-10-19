@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
@@ -90,7 +91,7 @@ export default async function ImportPage() {
           one: flush to the top, edge to edge. The negative margins cancel main's
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
           up, where the real header returns. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
+      <ScreenBackRow>
         {/* CarteraBackButton y no un Link pelado: mientras hay una libreta
             leída sin guardar, esta es LA ÚNICA salida de la pantalla —la barra
             de abajo se esconde— y tiene que preguntar. Un Link normal aquí
@@ -98,7 +99,7 @@ export default async function ImportPage() {
             corregidos a mano, sin un aviso. Es el mismo componente y el mismo
             guard que usa "Mi negocio". */}
         <CarteraBackButton />
-      </div>
+      </ScreenBackRow>
       {/* El título vive dentro de `ImportFlow` desde CT-31: el botón de
           deshacer va alineado a su derecha y necesitan el mismo estado. */}
       {ownerCountry ? (

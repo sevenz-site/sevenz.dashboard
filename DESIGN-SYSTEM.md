@@ -1172,6 +1172,104 @@ una acción por defecto evidente. Mientras era solo un libro de fiados,
 tendero que viene a anotar un abono y el que viene de vender son el mismo
 número de tenderos, y un botón que elija por ellos se equivoca con la mitad.
 
+## La fila de la flecha es UN componente: `ScreenBackRow`
+
+Notificaciones, Mi negocio, Subir libreta, la ficha de un pedido y todo el
+flujo de registrar comparten la misma cabecera: barra pegada arriba, de borde
+a borde, con línea inferior y la flecha a la izquierda. Es
+`components/dashboard/screen-back-row.tsx` y se usa tal cual.
+
+**Hasta el 2026-10-18 eran cuatro copias escritas a mano**, carácter a
+carácter, del mismo `sticky top-0 z-20 -mx-4 -mt-4 … border-b … px-4 py-3`. No
+fue descuido: `app-header.tsx` incluso lo documentaba —*«any new screen that
+copies the "-mx-4 -mt-4 … sm:hidden" back-arrow row belongs in this list
+too»*— y aun así la quinta copia iba a entrar con la venta. Lo cortó el dueño:
+*«los headers… deben ser el mismo componente ya aplicado en la pantalla
+Notificaciones»*.
+
+Dos cosas que el componente guarda y conviene no redescubrir:
+
+- **Los márgenes negativos no son decorativos.** `AppMain` envuelve toda
+  pantalla en `p-4`; `-mx-4 -mt-4` cancelan ese padding para que la barra
+  llegue a los bordes, y su propio `px-4` lo devuelve para que la flecha quede
+  alineada con el contenido de debajo. Si `AppMain` deja de poner `p-4`, esto
+  se sale de la pantalla.
+- **`soloEnTelefono` por defecto es `true`**, porque en las cuatro pantallas
+  originales esta barra SUSTITUYE a la cabecera de la app, que vuelve a partir
+  de `sm`. El flujo de registrar lo pasa a `false`: ahí `app-header.tsx`
+  esconde su barra a todas las anchuras, así que sin esto un escritorio se
+  queda sin salida.
+
+## `AppMain` ya pone los 16px laterales. No se vuelven a poner.
+
+Toda pantalla vive dentro de `<main class="… p-4 …">`. Un `p-4` propio en la
+raíz de la pantalla no sustituye a ese: **se suma**, y el resultado son 32px de
+margen lateral en vez de 16.
+
+**Pasó en las tres pantallas del flujo de registrar a la vez**, y se descubrió
+con el inspector abierto, no leyendo código: el dueño señaló el `.p-4` y dijo
+*«los que agregaste son muy altos»*. Preguntado cuánto quería, contestó 16px —
+exactamente lo que `AppMain` ya ponía. El arreglo no fue cambiar un número:
+fue quitar el segundo.
+
+Por eso una pantalla nueva empieza con `flex flex-col gap-4` y **sin padding**,
+y solo añade `py-*` donde haga falta ritmo vertical.
+
+### El aire debajo del último botón: 40px en el flujo de registrar
+
+A petición del dueño el 2026-10-18: *«para que los botones no queden tan
+pegados a la parte inferior del teléfono ni el widget»*. Son 2,5rem, los pone
+`AppMain` y se miden hasta lo que haya debajo — el filo de la pantalla donde no
+hay barra, la barra donde la hay.
+
+**No es el nuevo valor de toda la app.** En una pantalla de lista los 16px de
+siempre son correctos, porque lo último no es un botón sino una fila más. Aquí
+lo último SÍ es el botón que cierra la venta.
+
+Y el contenedor del botón no vuelve a pagar su propio `pb`: con `py-4` encima,
+los 40 se convierten en 56. En el flujo, `pt-4`.
+
+### Una clase de Tailwind NO se puede componer con una variable
+
+```tsx
+// NO: esta clase no existe en la hoja de estilos y el padding no se aplica.
+const aire = cond ? "2.5rem" : "1rem";
+className={`pb-[calc(env(safe-area-inset-bottom)+${aire})]`}
+```
+
+Tailwind genera CSS **leyendo el texto de los ficheros**. Una clase formada en
+tiempo de ejecución no aparece en ese texto, así que no se genera. No da error
+de tipos ni de compilación: la pantalla sale sin ese padding y parece que el
+cambio no se hizo. Las variantes se escriben enteras, una por rama, aunque sean
+cuatro líneas casi iguales — ver `app-main.tsx`.
+
+## La tarjeta de producto del asistente es clara, no un mosaico oscuro
+
+Frame `1389:8364`, 2026-10-18. La foto va en su propio recuadro arriba (127px)
+y el texto en tinta debajo, sobre blanco y con borde.
+
+**Lo que se gana sobre la versión anterior**, que era la foto a sangre con el
+nombre en blanco encima de un degradado: ese degradado existía para garantizar
+el contraste pasara lo que pasara en la imagen. Era una defensa contra la foto,
+y costaba oscurecer la mitad de abajo de TODAS las fotos, tuvieran o no el
+problema. Separando los dos, el texto ya no depende de la imagen y la imagen se
+ve entera.
+
+Tres decisiones del dueño el mismo día, preguntadas antes de construir:
+
+- **El «+» no es un botón**, aunque sobre blanco lo parezca mucho más: abre el
+  detalle, igual que toda la tarjeta. Un solo blanco que tocar, y la cantidad,
+  la moneda y el escalón se eligen en la hoja. (Además, un `<button>` dentro de
+  otro no es HTML válido.)
+- **La bandera de la moneda se queda** aunque el frame dibuje el precio pelado:
+  un negocio venezolano vende en dólares y en euros, y sin ella «$10,00» y
+  «€10,00» se distinguen por un carácter al final de la línea.
+- **El «· al mayor» se va**: el escalón se ve entero en el detalle, con su
+  cantidad mínima al lado, y ahí sí significa algo.
+
+Y el recuadro gris sin foto lleva el icono de imagen tachada, no se queda liso:
+un gris plano se lee como una imagen que todavía está cargando.
+
 ### Un `startsWith` de ruta alcanza a las pantallas que todavía no existen
 
 **`/ventas` dejó de significar «el asistente» el 2026-10-18**, el día que nació

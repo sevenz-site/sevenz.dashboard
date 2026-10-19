@@ -20,15 +20,46 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // debajo del dueño: entrar y salir de la revisión ya cambia la pantalla
   // entera, no es el parpadeo de un diálogo abriéndose.
   const { revisando } = useRevisionEnCurso();
-  const hasBar = !pathname.startsWith("/clients/") && !revisando;
+
+  // EL ASISTENTE DE VENTA TAMPOCO LLEVA BARRA, y hasta el 2026-10-18 esto no
+  // lo sabía: `MobileNav` devuelve `null` en `/ventas/nueva` desde que la
+  // pantalla existe, y aquí se seguían reservando 4rem para una barra que no
+  // se dibuja. El resultado eran 80px de aire muerto debajo del botón de cada
+  // paso — justo la clase de hueco que este comentario lleva avisando desde
+  // que se escribió, y que nadie mide porque un hueco de más no rompe nada.
+  //
+  // El resumen (`/ventas/<id>`) SÍ la lleva: ver `mobile-nav.tsx`.
+  const enAsistenteDeVenta = pathname.startsWith("/ventas/nueva");
+  const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
+
+  // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────
+  //
+  // 40px en todo el flujo de registrar, a petición del dueño el 2026-10-18:
+  // «para que los botones no queden tan pegados a la parte inferior del
+  // teléfono ni el widget». Son 2,5rem, y se miden hasta lo que haya debajo —
+  // el filo de la pantalla donde no hay barra, la barra donde la hay.
+  //
+  // POR QUÉ ES UNA EXCEPCIÓN Y NO EL NUEVO VALOR DE TODA LA APP: en una
+  // pantalla de lista los 16px de siempre son correctos, porque lo último no
+  // es un botón sino una fila más y el aire de sobra se lee como «se acabó».
+  // Aquí lo último SÍ es el botón que cierra la venta, y es el único sitio
+  // donde el pulgar tiene que acertar a la primera.
+  // LAS CUATRO CLASES VAN ESCRITAS ENTERAS, Y NO ES VERBOSIDAD: Tailwind
+  // genera CSS leyendo el texto del fichero, así que una clase compuesta —
+  // `pb-[calc(…+${aire})]` — no existe en la hoja de estilos y el padding
+  // simplemente no se aplica. No da error de compilación ni de tipos: la
+  // pantalla sale con los botones pegados abajo y parece que el cambio no se
+  // hizo.
+  const enFlujoDeRegistrar = pathname.startsWith("/ventas/") || pathname === "/clients/nuevo";
 
   return (
     <main
       className={cn(
         "flex flex-1 flex-col gap-4 p-4 md:pb-4",
-        hasBar
-          ? "pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)]"
-          : "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
+        hasBar && enFlujoDeRegistrar && "pb-[calc(4rem+env(safe-area-inset-bottom)+2.5rem)]",
+        hasBar && !enFlujoDeRegistrar && "pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
+        !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
+        !hasBar && !enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
       )}
     >
       {children}

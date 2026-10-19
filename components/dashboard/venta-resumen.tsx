@@ -95,7 +95,7 @@ export function VentaResumen({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col">
-      <div className="flex flex-col items-center justify-center gap-3.5 px-4 pt-10 pb-2">
+      <div className="flex flex-col items-center justify-center gap-3.5 pt-10 pb-2">
         <CheckCircle2 className="size-20 text-emerald-600" aria-hidden="true" />
         {/* 20px REGULAR, no semibold: lo dice el frame y es la diferencia
             entre un aviso y una celebración. El tendero va a leer esto
@@ -105,7 +105,10 @@ export function VentaResumen({
         </h1>
       </div>
 
-      <div className="flex flex-col gap-4 p-4">
+      {/* NI `p-4` NI `py-4`: los 16px laterales y los 40 de abajo los pone
+          `AppMain`. Poner los laterales otra vez dejaba el flujo con 32, y el
+          de abajo converti­a los 40 en 56. */}
+      <div className="flex flex-col gap-4 pt-4">
         <div className="flex flex-col gap-4">
           {/* DATOS DEL COMPRADOR, primero de todo — frame `1414:12447`.
               Añadida el 2026-10-18, el día después de la primera versión.

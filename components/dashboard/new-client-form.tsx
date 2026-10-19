@@ -1,9 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -68,23 +67,20 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
-      <div className="flex items-center p-4">
-        <Button type="button" variant="ghost" size="icon" aria-label="Volver" asChild>
-          {/* Un enlace y no `router.back()`: a esta pantalla se llega desde la
-              hoja de «Registrar», que puede haberse abierto en cualquier
-              pantalla. `back()` devolvería a donde fuera que estuviera el
-              tendero, y el frame dibuja una flecha que sale de aquí. */}
-          <Link href="/dashboard">
-            <ArrowLeft className="size-6" aria-hidden="true" />
-          </Link>
-        </Button>
-      </div>
+      {/* LA MISMA FILA QUE NOTIFICACIONES —ver `ScreenBackRow`— y no una
+          flecha suelta. Un enlace y no `router.back()`: a esta pantalla se
+          llega desde la hoja de «Registrar», que puede haberse abierto en
+          cualquier sitio, y `back()` devolvería a donde fuera que estuviera el
+          tendero. */}
+      <ScreenBackRow href="/dashboard" soloEnTelefono={false} />
 
-      <div className="px-4 py-2">
+      <div className="py-2">
         <h1 className="text-2xl font-normal">Nuevo cliente</h1>
       </div>
 
-      <form ref={formRef} className="flex flex-1 flex-col gap-4 px-4 py-6">
+      {/* SIN `px-4` PROPIO: `AppMain` ya pone los 16px laterales y esto los
+          doblaba a 32. Ver el mismo comentario en `nueva-venta.tsx`. */}
+      <form ref={formRef} className="flex flex-1 flex-col gap-4 py-6">
         {/* Viaja siempre: la casilla se enseña siempre en esta pantalla, así
             que el cliente nace con `whatsapp_consent_asked_at` puesto y el alta
             de movimiento ya no vuelve a preguntar. */}
@@ -171,7 +167,9 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
           `type="button"` a propósito: con dos submits en un formulario, pulsar
           Intro en cualquier campo dispara el primero —aquí «Registrar y
           finalizar»— y el tendero se encontraría guardado a medio escribir. */}
-      <div className="flex flex-col gap-4 p-4">
+      {/* `pt-4` y no `py-4`: los 40px de aire que pidio el dueno los pone
+          `AppMain`, y un padding propio aqui abajo los convertia en 56. */}
+      <div className="flex flex-col gap-4 pt-4">
         <Button type="button" className="h-10 w-full" disabled={enviando} onClick={() => guardar("ficha")}>
           {enviando ? "Guardando…" : "Registrar y finalizar"}
         </Button>

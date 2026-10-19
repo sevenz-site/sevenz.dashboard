@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
@@ -159,13 +158,9 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           this screen with no way back on a laptop -- and `/productos/ordenes`
           is not in the sidebar, so it would take two clicks through
           Catálogo. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/productos/ordenes" aria-label="Volver a Pedidos">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-      </div>
+      {/* `soloEnTelefono={false}` porque esta pantalla nunca tuvo el
+          `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
+      <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
 
       <h1 className="text-2xl font-semibold">{pedido.customer_name}</h1>
 
