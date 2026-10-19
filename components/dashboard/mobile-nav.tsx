@@ -275,11 +275,16 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // pantalla tampoco lleva cabecera.
   const enAsistenteDeVenta = pathname.startsWith("/ventas/nueva");
 
-  // Y EN EL RESUMEN SE VA SOLO EL FLOTANTE, no la barra. El frame no lo
-  // dibuja, y es el mismo motivo que en el asistente llevado un paso más
-  // allá: «Registrar» abre la hoja que empieza OTRA venta, encima del resumen
-  // de la que se acaba de hacer. Lo que esa pantalla ofrece es compartir.
-  const enResumenDeVenta = pathname.startsWith("/ventas/") && !enAsistenteDeVenta;
+  // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
+  // dueño: «en la pantalla final de transacción exitosa se debe ver el botón
+  // flotante Registrar, agrégalo».
+  //
+  // LO HABÍA QUITADO YO, razonando que «Registrar» abre la hoja que empieza
+  // OTRA venta encima del resumen de la que se acaba de hacer. El razonamiento
+  // describe bien lo que el botón hace y se equivoca en lo que significa: en
+  // un mostrador, terminar una venta es exactamente el momento en que llega el
+  // siguiente cliente. Queda escrito con su motivo porque si algún día se
+  // vuelve a quitar, conviene saber que ya se quitó una vez y por qué volvió.
 
   // THE FLOATING BUTTON CHANGES WHAT IT DOES ON THE CATALOGUE.
   //
@@ -491,7 +496,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
           Y no sale en /import, ni en /profile, ni en Pedidos: ver
           `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !enResumenDeVenta && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

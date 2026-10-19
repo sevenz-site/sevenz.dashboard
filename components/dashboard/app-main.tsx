@@ -65,7 +65,15 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     <main
       className={cn(
         "flex flex-1 flex-col gap-4 p-4 md:pb-4",
-        hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+2.5rem)]",
+        // 5.5rem Y NO 2.5 EN EL RESUMEN, desde que recupero el boton flotante
+        // el 2026-10-18: ese boton mide 56px y flota a 1rem por encima de la
+        // barra, asi que con los 40 de antes se comia «Compartir» -- la unica
+        // accion de esa pantalla. 1rem + 56px + un hueco = 5,5rem.
+        //
+        // El resto de pantallas con flotante conviven con ese solape sobre la
+        // ultima fila de una lista, que molesta mucho menos que tapar un
+        // boton. Si algun dia estorba alli tambien, la cuenta esta aqui.
+        hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
         hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
         // CON BARRA DE BOTONES, NI UN PIXEL DE MAS. Solo el area segura del

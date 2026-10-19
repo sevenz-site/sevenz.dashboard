@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { Button } from "@/components/ui/button";
@@ -9,13 +10,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
-import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { registrarCliente } from "@/app/(app)/clients/nuevo/actions";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD, textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 import type { OwnerCountry } from "@/lib/types";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 
 // LA PANTALLA DE CLIENTE NUEVO — frame `1389:8313`, 2026-10-18.
 //
@@ -41,15 +40,7 @@ import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 // oculto. Los dos viajan solos con el `FormData`. Controlarlos desde aquí
 // obligaría a replicar su lógica —el prefijo del país, el filtrado a dígitos—
 // y la copia es lo que se queda atrás el día que la original cambie.
-export function NewClientForm({
-  ownerCountry,
-  ledger,
-}: {
-  ownerCountry: OwnerCountry | null;
-  // Para la hoja de la cuenta duplicada, que enseña saldos. `null` es el libro
-  // de un negocio colombiano.
-  ledger: LedgerDisplay | null;
-}) {
+export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | null }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [nombre, setNombre] = useState("");
@@ -75,7 +66,6 @@ export function NewClientForm({
   // El servidor ya sabía hacer las dos: para en la primera y acepta
   // `confirm_duplicate` en la segunda. Lo que faltaba era la pantalla.
   const [duplicado, setDuplicado] = useState<{ id: string; name: string } | null>(null);
-  const [verCuenta, setVerCuenta] = useState(false);
 
   // LOS DOS BOTONES GUARDAN LO MISMO Y TERMINAN EN SITIOS DISTINTOS. El
   // destino se decide aquí y no en el servidor: la acción crea un cliente, y a
@@ -196,9 +186,30 @@ export function NewClientForm({
           <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
         </label>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {/* EL ERROR Y, PEGADO A ÉL, EL ENLACE. Del mockup del dueño del
+            2026-10-18: «Ya existe un cliente con esta cédula: Jesús · Ver
+            cliente.» en una sola línea.
 
-
+            AQUÍ NAVEGA, y en el paso 4 del asistente abre una hoja. No es una
+            incoherencia: allí hay una venta a medias en memoria y salir la
+            tira entera; aquí no hay nada que perder. La misma palabra, dos
+            comportamientos, porque lo que está en juego es distinto. */}
+        {error ? (
+          <p className="text-sm text-destructive">
+            {error}
+            {duplicado ? (
+              <>
+                {" "}
+                <Link
+                  href={`/clients/${duplicado.id}`}
+                  className="font-medium text-foreground underline underline-offset-2"
+                >
+                  Ver cliente.
+                </Link>
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </form>
 
       {/* LOS BOTONES, FUERA DEL `<form>` Y PEGADOS ABAJO, como el frame. Son
@@ -209,52 +220,40 @@ export function NewClientForm({
           encima, estos dos botones solo aparecían al final del scroll. Ver
           `StickyActions`, que trae también el aire de abajo. */}
       <StickyActions>
-      {/* «VER CUENTA DE …», COMO BOTÓN Y ENCIMA DEL PRINCIPAL. Era un enlace
-          suelto bajo el error, en tinta normal; el dueño pidió el 2026-10-18
-          que fuera un botón outlined sobre «Crear cuenta separada».
+        {/* «REGISTRAR A CUENTA SEPARADA» cuando la cédula choca, y es la ÚNICA
+            acción que queda: aquí no hay transacción que llevar a la cuenta
+            existente — esta pantalla solo crea clientes. Por eso el mockup
+            tiene dos botones y esta pantalla uno; decisión del dueño el
+            2026-10-18, preguntada antes de construir.
 
-          POR QUÉ IMPORTA DÓNDE ESTÁ: las dos salidas de un choque de cédula no
-          pesan igual. Mirar la cuenta es lo que hay que hacer PRIMERO —casi
-          siempre es la misma persona— y crear la segunda es la excepción
-          deliberada. Un enlace perdido entre el error y el botón negro invita
-          a pulsar el negro sin mirar, que es justo cómo se duplica a alguien
-          sin querer. Dos botones, el seguro arriba. */}
-      {duplicado ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 w-full"
-          onClick={() => setVerCuenta(true)}
-        >
-          Ver cuenta de {duplicado.name}
-        </Button>
-      ) : null}
+            Y por eso se queda RELLENO en vez de pasar a outlined como en el
+            asistente: allí es la opción menos probable de dos, aquí es la
+            única. */}
         <Button type="button" className="h-10 w-full" disabled={enviando} onClick={() => guardar("ficha")}>
-          {enviando ? "Guardando…" : duplicado ? "Crear cuenta separada" : "Registrar y finalizar"}
+          {enviando
+            ? "Guardando…"
+            : duplicado
+              ? "Registrar a cuenta separada"
+              : "Registrar y finalizar"}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 w-full"
-          disabled={enviando}
-          onClick={() => guardar("venta")}
-        >
-          Continuar con venta
-        </Button>
+        {/* «CONTINUAR CON VENTA» SE ESCONDE CON EL CHOQUE, a petición del
+            dueño. Con una cédula repetida en pantalla hay una pregunta sin
+            contestar —¿es él o es otro?»— y ese botón se la salta: crearía
+            la cuenta separada y arrancaría una venta sobre ella de una vez,
+            que es la decisión menos reversible de las dos. */}
+        {duplicado ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full"
+            disabled={enviando}
+            onClick={() => guardar("venta")}
+          >
+            Continuar con venta
+          </Button>
+        )}
       </StickyActions>
 
-      {/* LA CUENTA DE QUIEN YA TIENE ESA CÉDULA. La misma hoja que el paso 4
-          del asistente: su ficha y su historial, que es lo que de verdad
-          distingue a dos hermanos con el mismo apellido. */}
-      {duplicado && verCuenta ? (
-        <ClientAccountSheet
-          open
-          onOpenChange={(abierto: boolean) => !abierto && setVerCuenta(false)}
-          clientId={duplicado.id}
-          clientName={duplicado.name}
-          ledger={ledger}
-        />
-      ) : null}
     </div>
   );
 }

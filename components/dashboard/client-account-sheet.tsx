@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import {
   ClientCardBody,
   CLIENT_CARD_INNER,
@@ -32,12 +33,28 @@ export function ClientAccountSheet({
   clientId,
   clientName,
   ledger,
+  onUsarEstaCuenta,
+  guardando = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientId: string;
   clientName: string;
   ledger: LedgerDisplay | null;
+  // EL ATAJO DESDE DENTRO DE LA HOJA, pedido por el dueño el 2026-10-18:
+  // «al seleccionar Ver cuenta de <nombre> dentro del sheet debe haber botón
+  // Registrar a cuenta existente».
+  //
+  // POR QUÉ AQUÍ Y NO SOLO EN LA PANTALLA DE ATRÁS: la hoja es donde el
+  // tendero RESUELVE la duda —mira el historial y reconoce a la persona— y
+  // obligarle a cerrarla para pulsar un botón que ya tiene delante es pedirle
+  // que sostenga la conclusión mientras navega.
+  //
+  // `undefined` donde no hay nada que registrar: el alta de cliente ya no monta
+  // esta hoja, pero si algún día la monta, sin venta en curso este botón no
+  // tendría qué guardar.
+  onUsarEstaCuenta?: () => void;
+  guardando?: boolean;
 }) {
   const [cuenta, setCuenta] = useState<CuentaDelCliente | null>(null);
 
@@ -97,6 +114,17 @@ export function ClientAccountSheet({
                   por una contra Storage, y esto es una mirada de diez segundos
                   para decidir si es la misma persona. Quien necesite ver un
                   comprobante abre la ficha del cliente, que es donde está. */}
+              {onUsarEstaCuenta ? (
+                <Button
+                  type="button"
+                  className="h-10 w-full"
+                  disabled={guardando}
+                  onClick={onUsarEstaCuenta}
+                >
+                  {guardando ? "Guardando…" : "Registrar a cuenta existente"}
+                </Button>
+              ) : null}
+
               <MovementHistoryList
                 movements={cuenta?.movimientos ?? []}
                 ventasDeContado={cuenta?.ventasDeContado ?? []}

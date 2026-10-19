@@ -3,8 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NewClientForm } from "@/components/dashboard/new-client-form";
-import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nuevo cliente — Sevenz" };
@@ -42,13 +40,8 @@ export default async function NuevoClientePage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // LA TASA, para la hoja de la cuenta duplicada: enseña saldos, y sin tasa no
-  // puede poner su equivalencia en bolívares. `null` en un negocio colombiano,
-  // que es la respuesta y no una ausencia.
-  const ownerRate = await getOwnerRateContext(supabase, user.id);
-  const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
-
-  return (
-    <NewClientForm ownerCountry={(owner?.country as OwnerCountry | null) ?? null} ledger={ledger} />
-  );
+  // LA TASA YA NO HACE FALTA AQUÍ: la hoja de la cuenta duplicada se fue el
+  // 2026-10-18 y en su lugar hay un enlace que navega a la ficha del cliente,
+  // que trae la suya.
+  return <NewClientForm ownerCountry={(owner?.country as OwnerCountry | null) ?? null} />;
 }

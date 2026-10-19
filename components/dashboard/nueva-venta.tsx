@@ -513,6 +513,11 @@ export function NuevaVenta({
           guardando={guardando}
           error={error}
           onFinalizar={(form, permiso) => void finalizar(form, permiso)}
+          // LA VENTA SE VA AL CLIENTE QUE YA ESTABA. `guardar` acepta un
+          // destino forzado desde que existe el paso 4 —se añadió para el
+          // cliente recién creado— y aquí sirve igual: no se crea a nadie y
+          // la venta queda en su cuenta.
+          onUsarExistente={(c) => void guardar({ ...c, esMostrador: false })}
         />
       ) : null}
     </div>
@@ -1385,6 +1390,7 @@ function PasoCliente({
   guardando,
   error,
   onFinalizar,
+  onUsarExistente,
 }: {
   clientes: Cliente[];
   cliente: Elegido | null;
@@ -1403,6 +1409,9 @@ function PasoCliente({
   // existe: el alta lo manda dentro de su `FormData`, pero aquí no hay
   // formulario que enviar.
   onFinalizar: (form: HTMLFormElement | null, permiso: boolean) => void;
+  // GUARDA LA VENTA EN EL CLIENTE QUE YA EXISTE, sin crear nada y sin tocar su
+  // ficha. Ver el comentario de los dos botones.
+  onUsarExistente: (c: { id: string; name: string }) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [query, setQuery] = useState("");
@@ -1546,17 +1555,29 @@ function PasoCliente({
           </div>
         </div>
 
+        {/* AQUÍ EL ERROR VA SOLO, SIN EL ENLACE «Ver cliente.». Con un
+            cliente ya elegido no se llama a `registrarCliente`, así que no
+            puede haber choque de cédula: lo que llegue aquí es un fallo al
+            guardar la venta. Un enlace a «ver al duplicado» sería un control
+            que nunca se enciende. */}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <div className="flex-1" />
-        <Button
-          type="button"
-          className="h-10 w-full"
-          disabled={guardando}
-          onClick={() => onFinalizar(null, acepta)}
-        >
-          {guardando ? "Guardando…" : `Finalizar · ${cliente.name}`}
-        </Button>
+        {/* SE LE OLVIDÓ LA BARRA A ESTA RAMA. El 2026-10-18 se pasaron a
+            `StickyActions` los botones del flujo, y esta —la del cliente ya
+            elegido— se quedó con el suyo al final de la columna: el mismo
+            fallo de dos ramas que hacen lo mismo y solo una entera que ya
+            costó el buscador sin vaciar, en este mismo componente y el mismo
+            día. */}
+        <StickyActions>
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={guardando}
+            onClick={() => onFinalizar(null, acepta)}
+          >
+            {guardando ? "Guardando…" : `Finalizar · ${cliente.name}`}
+          </Button>
+        </StickyActions>
       </div>
     );
   }
@@ -1674,53 +1695,72 @@ function PasoCliente({
         </label>
       </form>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {/* EL ERROR Y SU ENLACE, en una línea, del mockup del dueño del
+          2026-10-18. Aquí «Ver cliente.» ABRE LA HOJA y no navega: la venta
+          vive en memoria y salir de esta pantalla la tira entera. */}
+      {error ? (
+        <p className="text-sm text-destructive">
+          {error}
+          {duplicado ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={() => setVerCuenta(true)}
+                className="font-medium text-foreground underline underline-offset-2"
+              >
+                Ver cliente.
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
-      {/* ── LA CÉDULA YA ES DE ALGUIEN ──────────────────────────────────
-          Dos salidas, y las dos hacen falta porque el choque significa dos
-          cosas distintas:
+      {/* ── LA CÉDULA YA ES DE ALGUIEN: DOS FORMAS DE SEGUIR ───────
+          Del mockup del dueño del 2026-10-18, y el cambio no es de rótulos.
 
-            · Es la misma persona y no me acordaba → mirar su cuenta y usarla.
-            · Es una segunda cuenta a propósito —«Pepito» y «Pepito negocio»,
-              el caso del negocio informal sin registro propio— → crearla.
+          · «Registrar a cuenta SEPARADA» (outlined) crea un cliente nuevo con
+            el mismo documento y le carga la venta. Es lo que el botón negro
+            hacía antes, movido al lado menos probable.
+          · «Registrar a cuenta EXISTENTE» (relleno) guarda la venta en el
+            cliente que ya estaba. ESTO ES NUEVO: hasta hoy no había forma de
+            decir «sí, es él» sin salir de la pantalla y perder la venta.
 
-          Sin la primera, el tendero duplica a alguien sin saberlo. Sin la
-          segunda, se queda sin hacer lo que la otra puerta de alta sí
-          permite. */}
+          LO TECLEADO SE DESCARTA en el segundo caso —decisión del dueño,
+          preguntada antes de construir—: el nombre y el teléfono se
+          escribieron para crear a alguien que resultó existir, y pisarle la
+          ficha a un cliente con datos escritos deprisa en mitad de un cobro es
+          la clase de pérdida que nadie reporta. Nada de su ficha cambia.
 
-
-      <div className="flex-1" />
-      {/* «VER CUENTA DE …», COMO BOTÓN Y ENCIMA DEL PRINCIPAL. Era un enlace
-          suelto bajo el error, en tinta normal; el dueño pidió el 2026-10-18
-          que fuera un botón outlined sobre «Crear cuenta separada».
-
-          POR QUÉ IMPORTA DÓNDE ESTÁ: las dos salidas de un choque de cédula no
-          pesan igual. Mirar la cuenta es lo que hay que hacer PRIMERO —casi
-          siempre es la misma persona— y crear la segunda es la excepción
-          deliberada. Un enlace perdido entre el error y el botón negro invita
-          a pulsar el negro sin mirar, que es justo cómo se duplica a alguien
-          sin querer. Dos botones, el seguro arriba. */}
+          Y GUARDA EN EL ACTO, también su decisión: el rótulo dice «registrar»
+          y lo hace. La tarjeta del cliente no llega a verse, que es el precio
+          — por eso el enlace «Ver cliente.» de arriba y el botón de dentro de
+          la hoja existen: para mirar ANTES de decidir. */}
       <StickyActions>
         {duplicado ? (
           <Button
             type="button"
             variant="outline"
             className="h-10 w-full"
-            onClick={() => setVerCuenta(true)}
+            disabled={guardando}
+            onClick={() => onFinalizar(formRef.current, acepta)}
           >
-            Ver cuenta de {duplicado.name}
+            {guardando ? "Guardando…" : "Registrar a cuenta separada"}
           </Button>
         ) : null}
         <Button
           type="button"
           className="h-10 w-full"
-          disabled={guardando || (obligatorio && !hayNombre)}
-          onClick={() => onFinalizar(hayNombre ? formRef.current : null, acepta)}
+          disabled={guardando || (obligatorio && !hayNombre && !duplicado)}
+          onClick={() => {
+            if (duplicado) onUsarExistente(duplicado);
+            else onFinalizar(hayNombre ? formRef.current : null, acepta);
+          }}
         >
           {guardando
             ? "Guardando…"
             : duplicado
-              ? "Crear cuenta separada"
+              ? "Registrar a cuenta existente"
               : hayNombre
                 ? "Finalizar"
                 : obligatorio
@@ -1736,6 +1776,8 @@ function PasoCliente({
           clientId={duplicado.id}
           clientName={duplicado.name}
           ledger={ledger}
+          guardando={guardando}
+          onUsarEstaCuenta={() => onUsarExistente(duplicado)}
         />
       ) : null}
     </div>
