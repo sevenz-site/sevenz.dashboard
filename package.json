@@ -28,6 +28,7 @@
     "qa:precio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/product-price.mjs",
     "qa:productos": "node qa/products.mjs",
     "qa:catalogo": "node qa/catalogo.mjs",
+    "qa:catalogo-bordes": "node qa/catalogo-bordes.mjs",
     "qa:plantillas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-plantillas.mjs",
     "qa:import": "node qa/import-libreta.mjs",
     "qa:reconcile": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reconcile.mjs",
