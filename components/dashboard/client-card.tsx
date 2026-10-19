@@ -88,6 +88,7 @@ export function ClientCardBody({
   balanceEur,
   ledger,
   note,
+  conFlecha = true,
 }: {
   name: string;
   documentId: string | null;
@@ -104,6 +105,8 @@ export function ClientCardBody({
   // An extra muted line under the badges. Papelera puts the hiding date here;
   // the other three screens pass nothing.
   note?: React.ReactNode;
+  // `false` donde la tarjeta no se puede tocar. Ver el comentario de abajo.
+  conFlecha?: boolean;
 }) {
   const usd = formatLedgerAmount(balanceUsd, "USD", ledger);
   const eur = formatLedgerAmount(balanceEur, "EUR", ledger);
@@ -189,7 +192,18 @@ export function ClientCardBody({
         ) : null}
       </p>
 
-      <ChevronRight className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
+      {/* LA FLECHA SOLO DONDE LA TARJETA LLEVA A ALGÚN SITIO.
+          Hasta el 2026-10-18 se dibujaba siempre, y esta misma tarjeta se
+          reutiliza en dos sitios donde NO se puede tocar: la hoja de «Ver
+          cuenta de …» y el cliente ya elegido del paso 4 de la venta. Una
+          flecha ahí promete una pantalla que no existe — el dueño lo reportó
+          señalando las dos.
+
+          Por defecto `true`, que es lo que hacen las listas de Clientes,
+          Malas pagas y Papelera: ahí la tarjeta SÍ abre la ficha. */}
+      {conFlecha ? (
+        <ChevronRight className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
+      ) : null}
     </>
   );
 }

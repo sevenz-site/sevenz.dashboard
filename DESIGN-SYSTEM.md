@@ -1584,6 +1584,49 @@ habría separado — y el del cliente es el que nadie de este lado mira. Vive en
 **La señal de alarma, para la próxima**: si estás a punto de hacer el mismo
 cambio en dos archivos, el cambio no es el problema; la copia sí.
 
+## Con un buscador enfocado no hay barra ni botón flotante
+
+Desde el 2026-10-18. **Esto revierte una decisión del 2026-09-20, y las dos
+quedan escritas** porque la nueva no invalida el razonamiento de la vieja.
+
+Entonces se decidió **dejar** la barra, y se midió en las dos versiones:
+*«quitarla gana 64px más, pero deja al dueño sin navegación justo cuando más
+probable es que quiera salir de donde está»*. El comentario sigue en
+`search-focus-context.tsx` y el argumento sigue siendo bueno.
+
+**Lo que cambió no es el criterio, es el problema.** Aquello pesaba sitio para
+LEER. Esto es que la barra y el botón flotante se ponen **encima** de la lista
+de resultados y tapan el primero: el desplegable sale debajo del campo y
+«Registrar» flota justo sobre él. No es incomodidad, es un resultado que no se
+puede tocar. El dueño lo reportó con una captura.
+
+`useKeyboardOpen` ya lo cubría en un teléfono de verdad. Lo que no cubre es el
+campo enfocado **sin teclado** —un escritorio estrecho, un teclado físico, un
+móvil que no cambia el viewport visual— que es exactamente la captura.
+
+**La reserva de `AppMain` no se toca**, y eso no es un descuido: su franja es
+incondicional a propósito, porque un padding que apareciera y desapareciera con
+la barra haría saltar la página bajo el dedo del dueño. La barra se va; el
+hueco se queda.
+
+**El buscador oscuro del Inicio avisa por su cuenta.** No usa `SearchField`
+—es el de 50px con su propia maqueta— así que llama a `useSearchFocus` él
+mismo. Un buscador nuevo que no lo haga seguirá tapado por la barra, y no
+habrá ningún error que lo diga.
+
+### Una tarjeta sin acción no lleva flecha
+
+`ClientCardBody` dibujaba el `>` siempre. La misma tarjeta se reutiliza en dos
+sitios donde **no se puede tocar** —la hoja de «Ver cuenta de …» y el cliente
+ya elegido del paso 4 de la venta— y ahí la flecha prometía una pantalla que
+no existe. Desde el 2026-10-18 lleva `conFlecha`, por defecto `true`, y esos
+dos lo pasan a `false`.
+
+Es el precio de compartir una tarjeta entre cuatro pantallas: lo que en tres de
+ellas es correcto, en la cuarta es una promesa falsa. Reutilizarla sigue
+mereciendo la pena —el tendero ya aprendió a leerla— pero cada sitio nuevo
+tiene que decidir si la suya abre algo.
+
 ## Las tres filas del historial, y qué dice cada color
 
 | Fila | Color | Signo | Qué le hace al saldo |

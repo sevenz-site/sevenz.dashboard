@@ -10,6 +10,7 @@ import {
   useSearchResultsOpen,
   useSharedClientFilters,
 } from "@/components/dashboard/client-filter-context";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { track } from "@/lib/mixpanel";
 import { clientHref } from "@/lib/client-origin";
 
@@ -71,6 +72,12 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
   // El estado vive en el proveedor, no aquí: "Agregar movimiento" se aparta
   // con el mismo valor, y dos cálculos separados acabarían discrepando.
   const { open: abierta, setFocused } = useSearchResultsOpen();
+  // Y EL CONTEXTO COMPARTIDO, que es el que mira la barra de abajo. Este campo
+  // no usa `SearchField` —es el oscuro de 50px del Inicio, con su propia
+  // maqueta— así que avisa por su cuenta. Sin esto, la barra y el botón
+  // flotante se quedan tapando el primer resultado, que es justo donde el
+  // dueño busca a alguien para abrir su ficha.
+  const { setFocused: setBuscando } = useSearchFocus();
   if (!filters) return null;
 
   const c = filters.controls;
@@ -102,12 +109,18 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           onChange={(e) => c.setNameQuery(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            setBuscando(true);
+          }}
           // El proveedor retrasa el apagado: deja que el clic sobre un
           // resultado se resuelva antes de desmontar la lista. Los resultados
           // además evitan robar el foco en mousedown, pero un toque en el
           // borde de la lista sí lo quita.
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            setBuscando(false);
+          }}
           className="h-[50px] w-full min-w-0 rounded-xl border-2 border-brand-field-border bg-brand-field px-3 pr-9 text-base text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40 md:text-sm"
         />
         {c.nameQuery ? (

@@ -88,6 +88,7 @@ export function ClientAccountSheet({
                     balanceUsd={fila.balance_usd}
                     balanceEur={fila.balance_eur}
                     ledger={ledger}
+                    conFlecha={false}
                   />
                 </div>
               </div>
@@ -98,6 +99,7 @@ export function ClientAccountSheet({
                   comprobante abre la ficha del cliente, que es donde está. */}
               <MovementHistoryList
                 movements={cuenta?.movimientos ?? []}
+                ventasDeContado={cuenta?.ventasDeContado ?? []}
                 photoUrls={{}}
                 ledger={ledger}
                 titulo={<span className="text-sm font-medium">Últimas transacciones</span>}

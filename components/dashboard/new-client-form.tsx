@@ -197,16 +197,7 @@ export function NewClientForm({
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        {duplicado ? (
-          <Button
-            type="button"
-            variant="link"
-            className="h-auto self-start px-0"
-            onClick={() => setVerCuenta(true)}
-          >
-            Ver cuenta de {duplicado.name}
-          </Button>
-        ) : null}
+
       </form>
 
       {/* LOS BOTONES, FUERA DEL `<form>` Y PEGADOS ABAJO, como el frame. Son
@@ -216,6 +207,26 @@ export function NewClientForm({
       {/* `pt-4` y no `py-4`: los 40px de aire que pidio el dueno los pone
           `AppMain`, y un padding propio aqui abajo los convertia en 56. */}
       <div className="flex flex-col gap-4 pt-4">
+      {/* «VER CUENTA DE …», COMO BOTÓN Y ENCIMA DEL PRINCIPAL. Era un enlace
+          suelto bajo el error, en tinta normal; el dueño pidió el 2026-10-18
+          que fuera un botón outlined sobre «Crear cuenta separada».
+
+          POR QUÉ IMPORTA DÓNDE ESTÁ: las dos salidas de un choque de cédula no
+          pesan igual. Mirar la cuenta es lo que hay que hacer PRIMERO —casi
+          siempre es la misma persona— y crear la segunda es la excepción
+          deliberada. Un enlace perdido entre el error y el botón negro invita
+          a pulsar el negro sin mirar, que es justo cómo se duplica a alguien
+          sin querer. Dos botones, el seguro arriba. */}
+      {duplicado ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 w-full"
+          onClick={() => setVerCuenta(true)}
+        >
+          Ver cuenta de {duplicado.name}
+        </Button>
+      ) : null}
         <Button type="button" className="h-10 w-full" disabled={enviando} onClick={() => guardar("ficha")}>
           {enviando ? "Guardando…" : duplicado ? "Crear cuenta separada" : "Registrar y finalizar"}
         </Button>

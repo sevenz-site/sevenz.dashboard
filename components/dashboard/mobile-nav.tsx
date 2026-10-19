@@ -11,6 +11,7 @@ import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -387,12 +388,35 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // que nadie pidio.
   const guardia = useGuardiaDeCuentaPausada();
 
+  // ¿Hay un buscador con el foco? Lo pone `SearchField` y, desde el
+  // 2026-10-18, también el buscador oscuro del Inicio.
+  const { focused: buscando } = useSearchFocus();
+
   // Mientras una libreta leída espera confirmación, la barra se va: son
   // cuatro salidas de un toque junto al pulgar con veintitantos movimientos
   // sin guardar detrás. Todas preguntan antes de salir —van por el mismo
   // guard—, pero un diálogo que salta cuatro veces por error es peor que no
   // tener el atajo. Queda una sola salida, el chevron, y esa sí pregunta.
-  if (overlayOpen || keyboardOpen || revisando) return null;
+  // ── Y MIENTRAS SE BUSCA, TAMPOCO ────────────────────────────────
+  //
+  // ESTO REVIERTE UNA DECISIÓN DEL 2026-09-20, y las dos quedan escritas
+  // porque la nueva no invalida el razonamiento de la vieja: entonces se
+  // decidió DEJAR la barra —«quitarla gana 64px más, pero deja al dueño sin
+  // navegación justo cuando más probable es que quiera salir»— y se midió en
+  // las dos versiones. Ver `search-focus-context.tsx`.
+  //
+  // LO QUE CAMBIÓ NO ES EL CRITERIO, ES EL PROBLEMA. Aquello pesaba sitio
+  // para LEER; esto es que la barra y el botón flotante se ponen ENCIMA de la
+  // lista de resultados y tapan el primero. El dueño lo reportó con una
+  // captura el 2026-10-18: el desplegable sale debajo del campo y «Registrar»
+  // flota justo sobre él. No es incomodidad, es un resultado que no se puede
+  // tocar.
+  //
+  // `useKeyboardOpen` ya lo cubría en un teléfono de verdad; no cubre el caso
+  // en que el campo tiene el foco sin teclado —un escritorio estrecho, un
+  // teclado físico, un móvil que no cambia el viewport visual—, que es
+  // exactamente la captura.
+  if (overlayOpen || keyboardOpen || buscando || revisando) return null;
 
   // Mirrors the sidebar's own link behaviour exactly, including the guard.
   // Without it the bar walked straight out of "Mi negocio" with unsaved edits

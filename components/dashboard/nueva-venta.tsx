@@ -12,6 +12,7 @@ import {
   Percent,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1434,6 +1435,33 @@ function PasoCliente({
       <div className="flex flex-1 flex-col gap-4">
         <SearchField value={query} onChange={setQuery} placeholder="Buscar cliente" />
 
+        {/* EL BUSCADOR SIGUE BUSCANDO CON UN CLIENTE YA ELEGIDO, y elegir otro
+            lo CAMBIA. Petición del dueño el 2026-10-18.
+
+            Antes el campo se quedaba en pantalla —eso ya lo pedía el frame—
+            pero no dibujaba resultados: escribir no hacía nada. Un campo que
+            acepta letras y no contesta se lee como roto, y la única forma de
+            cambiar de cliente era el botón de la papelera, que no se parece a
+            «me equivoqué de persona».
+
+            LA LISTA VA ENTRE EL CAMPO Y LA TARJETA, no debajo: así se ve la
+            relación entre lo que se escribe y lo que va a sustituir a lo que
+            hay. */}
+        <ClientResultList
+          results={encontrados
+            .filter((c) => c.client_id !== cliente.id)
+            .map((c) => ({ id: c.client_id, name: c.name, documentId: c.document_id }))}
+          onSelect={(id) => {
+            const c = encontrados.find((x) => x.client_id === id);
+            if (!c) return;
+            onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+            // El campo se vacía al cambiar: la lista ya cumplió, y dejarla
+            // abierta encima de la tarjeta nueva tapa justo lo que se acaba de
+            // elegir.
+            setQuery("");
+          }}
+        />
+
         <div className={clientCardShell(status)}>
           <div className={cn(CLIENT_CARD_INNER, "flex flex-col gap-1.5 px-4 py-2")}>
             <div className="flex items-start gap-1.5">
@@ -1447,6 +1475,10 @@ function PasoCliente({
                   balanceUsd={fila.balance_usd}
                   balanceEur={fila.balance_eur}
                   ledger={ledger}
+                  // Esta tarjeta no se toca: lo que hay a su lado es la
+                  // papelera, y la flecha prometía abrir una ficha que desde
+                  // aquí no se puede abrir sin perder la venta.
+                  conFlecha={false}
                 />
               ) : (
                 // UN CLIENTE RECIÉN CREADO EN ESTA MISMA PANTALLA no está en
@@ -1624,18 +1656,29 @@ function PasoCliente({
           Sin la primera, el tendero duplica a alguien sin saberlo. Sin la
           segunda, se queda sin hacer lo que la otra puerta de alta sí
           permite. */}
+
+
+      <div className="flex-1" />
+      {/* «VER CUENTA DE …», COMO BOTÓN Y ENCIMA DEL PRINCIPAL. Era un enlace
+          suelto bajo el error, en tinta normal; el dueño pidió el 2026-10-18
+          que fuera un botón outlined sobre «Crear cuenta separada».
+
+          POR QUÉ IMPORTA DÓNDE ESTÁ: las dos salidas de un choque de cédula no
+          pesan igual. Mirar la cuenta es lo que hay que hacer PRIMERO —casi
+          siempre es la misma persona— y crear la segunda es la excepción
+          deliberada. Un enlace perdido entre el error y el botón negro invita
+          a pulsar el negro sin mirar, que es justo cómo se duplica a alguien
+          sin querer. Dos botones, el seguro arriba. */}
       {duplicado ? (
         <Button
           type="button"
-          variant="link"
-          className="h-auto self-start px-0"
+          variant="outline"
+          className="h-10 w-full"
           onClick={() => setVerCuenta(true)}
         >
           Ver cuenta de {duplicado.name}
         </Button>
       ) : null}
-
-      <div className="flex-1" />
       <Button
         type="button"
         className="h-10 w-full"
@@ -1973,14 +2016,40 @@ function PagoSheet({
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pago-monto">Monto</Label>
                 <div className="flex items-start gap-1">
-                  <Input
-                    id="pago-monto"
-                    className="min-w-0 flex-1"
-                    inputMode="decimal"
-                    value={monto}
-                    onChange={(e) => setMonto(e.target.value)}
-                    placeholder="00"
-                  />
+                  {/* LA «X» PARA VACIARLO DE UN TOQUE, a petición del dueño el
+                      2026-10-18.
+
+                      POR QUÉ HACE FALTA AQUÍ Y NO EN OTROS CAMPOS: este llega
+                      RELLENO —con el total de la venta cuando se elige «De
+                      contado»— y lo normal es querer otra cifra. Sin esto hay
+                      que borrar dígito a dígito con el teclado numérico
+                      abierto, que es donde «20000» tarda cinco toques en
+                      desaparecer.
+
+                      `onMouseDown` con `preventDefault` para no robarle el foco
+                      al campo: sin eso el teclado del teléfono se cierra al
+                      tocar la cruz y hay que volver a abrirlo para escribir. */}
+                  <div className="relative min-w-0 flex-1">
+                    <Input
+                      id="pago-monto"
+                      className={monto ? "pr-9" : undefined}
+                      inputMode="decimal"
+                      value={monto}
+                      onChange={(e) => setMonto(e.target.value)}
+                      placeholder="00"
+                    />
+                    {monto ? (
+                      <button
+                        type="button"
+                        aria-label="Borrar el monto"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setMonto("")}
+                        className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <X className="size-4" aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </div>
                   {/* EL SELECTOR SOLO CON TASA. Sin ella no hay bolívares que
                       ofrecer, y un desplegable de una sola opción no decide
                       nada. */}

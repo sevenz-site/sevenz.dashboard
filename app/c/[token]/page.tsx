@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
@@ -13,7 +14,6 @@ import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
-import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   priceIn,
@@ -271,7 +271,6 @@ export default async function CatalogoPublicoPage({
     }
   }
   const hayCalculadas = [...bolivares.values()].some((b) => !b.pinned);
-  const hayFijadas = [...bolivares.values()].some((b) => b.pinned);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
@@ -357,10 +356,6 @@ export default async function CatalogoPublicoPage({
              un componente de cliente está en `catalog-search-grid.tsx`. */
           <CatalogSearchGrid
             items={shared.products.map((p) => {
-              // El fijado a mano manda sobre el calculado — es la precedencia que
-              // `priceIn` ya respeta, y la razon por la que `pinned` viaja hasta
-              // aqui en vez de quedarse en la ficha.
-              const bs = bolivares.get(p.id) ?? null;
               return {
                 id: p.id,
                 name: p.name,
@@ -405,68 +400,35 @@ export default async function CatalogoPublicoPage({
                         )}
                       </div>
                       <div className="flex flex-col gap-0.5 p-3">
-                        <span className="line-clamp-2 text-sm font-medium">
+                        {/* LA MISMA TIPOGRAFÍA QUE LA TARJETA DEL ASISTENTE DE
+                            VENTA (frame `1389:8364`): nombre y precio en 16px
+                            semibold. Eran 14px y pesos distintos, y el dueño lo
+                            vio poniendo las dos pantallas una al lado de otra
+                            el 2026-10-18. Es el mismo producto enseñado al
+                            tendero y a su cliente; que se lean distinto hace
+                            dudar de si son el mismo catálogo. */}
+                        <span className="line-clamp-2 text-base font-semibold">
                           {p.name}
                         </span>
-                        <span className="text-sm tabular-nums">
+                        {/* LA BANDERA, Y SE VAN LA EQUIVALENCIA Y EL ESCALÓN.
+                            Petición del dueño el mismo día: «falta agregar la
+                            bandera de la moneda al lado del precio, oculta la
+                            equivalencia en bs y el texto que dice si el precio
+                            es al mayor o al detal, todo eso se ve en el
+                            detalle».
+
+                            LA BANDERA HACE EL TRABAJO QUE HACÍAN LAS DOS
+                            LÍNEAS, y por eso el cambio no pierde nada: en una
+                            cuadrícula de dólares y euros lo único que los
+                            separaba era el símbolo, un carácter al principio
+                            del número. La equivalencia y el escalón siguen
+                            enteros en la ficha, que es donde el cliente
+                            decide. */}
+                        <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                          <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
                           {formatPriceAmount(p.price, p.base_currency)}
                         </span>
-                        {/* La equivalencia, con la palabra que ya decidio el dueño
-                      el 2026-10-09: es «equivalente», no un segundo precio.
-                      Aqui importa mas que en la ficha — quien lo lee va a
-                      pagar con eso. */}
-                        {/* «Precio en bolívares» cuando el tendero lo fijó, y
-                      «equivale a» cuando lo calculamos nosotros. No es un
-                      matiz: lo primero es un precio que él sostiene, lo
-                      segundo es una conversión que se mueve con la tasa, y el
-                      cliente paga distinto según cuál sea. Es la misma palabra
-                      que ya decidió el dueño para la ficha el 2026-10-09. */}
-                        {bs != null ? (
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {bs.pinned ? "precio en " : "equivale a "}
-                            {formatBs(bs.amount)}
-                          </span>
-                        ) : null}
-                        {/* SIEMPRE SE DICE DE QUE PRECIO SE TRATA, y desde la
-                      migracion 106 la tarjeta ensena el precio de UNA UNIDAD
-                      -- detal si esta publicado, mayor si es lo unico que
-                      hay-- en vez del mas bajo, que era el criterio de la 086.
-                      Con un solo enlace, tarjeta y detalle son la misma
-                      pagina en dos pasos: ensenar 4 en la tarjeta y cobrar 5
-                      al entrar seria un cebo. */}
-                        <span className="text-xs text-muted-foreground">
-                          {p.tier === "wholesale"
-                            ? "precio al mayor"
-                            : "precio al detal"}
-                        </span>
 
-                        {/* LA ETIQUETA DE INVENTARIO, del frame `1190:5748`.
-
-                      SIN CIFRA. Decisión del dueño el 2026-10-15, que cambia
-                      lo acordado esa misma mañana: la etiqueta dice si HAY o
-                      NO HAY, nunca cuánto.
-
-                      Lo que se quita es enseñarle al cliente «Disponible: 1».
-                      Un número de inventario a la vista empuja justo lo que no
-                      conviene — «solo queda uno» es presión de venta falsa si
-                      el número está desactualizado, y «quedan 1.000» le dice a
-                      la competencia lo que el tendero tiene en el mostrador.
-                      Y hoy ese número no lo mantiene nadie (`CT-59`), así que
-                      publicarlo con dos decimales de precisión es prometer una
-                      exactitud que no existe.
-
-                      LOS TRES ESTADOS SIGUEN VIVOS POR DENTRO, y eso no es un
-                      detalle: `0` es «no disponible» y `null` es «no se sabe»,
-                      que se pinta como disponible. Aplanar el null a 0
-                      convertiría «no se sabe» en «no hay», y 5 de los 6
-                      productos de dev saldrían en rojo estando en el
-                      mostrador. Lo que desapareció es la CIFRA, no la
-                      distinción.
-
-                      El color no sale de un token semántico de tema: esta
-                      página la ve un cliente que no eligió el tema de nadie, y
-                      el verde y el rojo tienen que significar lo mismo en los
-                      dos. */}
                         <span
                           className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
                             p.stock === 0
@@ -485,20 +447,20 @@ export default async function CatalogoPublicoPage({
           />
         )}
 
-        {/* EL AVISO DE LA TASA YA NO ESTÁ AQUÍ: subió a la cabecera con el frame
-          `1190:5748` (2026-10-15). Durante un rato estuvo en los dos sitios a
-          la vez — se vio rindiendo la página, no leyéndola.
+        {/* EL AVISO DE LA TASA SUBIÓ A LA CABECERA con el frame `1190:5748`
+          (2026-10-15), y ahí sigue.
 
-          Lo que se queda abajo es esta otra frase, y solo donde HAY algún
-          precio fijado a mano. En un catálogo sin ninguno explicaría una
-          etiqueta que no aparece en la página: texto que no describe lo que se
-          está viendo. */}
-        {hayFijadas ? (
-          <p className="text-center text-xs leading-relaxed text-muted-foreground">
-            Los precios marcados «precio en Bs.» los fijó el negocio y no se
-            mueven solos.
-          </p>
-        ) : null}
+          AQUÍ HABÍA UNA SEGUNDA FRASE Y SE FUE EL 2026-10-18: decía «los
+          precios marcados "precio en Bs." los fijó el negocio y no se mueven
+          solos», y esa etiqueta dejó de existir en la tarjeta el mismo día —
+          el dueño pidió quitar de la cuadrícula la equivalencia y el escalón,
+          que ahora solo se ven en la ficha. Un pie que explica una marca que
+          la página no enseña es exactamente lo que su propio comentario
+          desaconsejaba: texto que no describe lo que se está viendo.
+
+          La explicación no se pierde: la ficha del producto sigue
+          distinguiendo «precio en Bs.» de «equivale a», que es donde el
+          cliente mira antes de pagar. */}
 
         {/* EL MISMO PIE ANTIFRAUDE QUE LLEVAN LAS PLANTILLAS DE WHATSAPP, y por
           la misma razon: este enlace llega por un mensaje sobre un negocio,

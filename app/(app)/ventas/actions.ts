@@ -12,6 +12,7 @@ import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { formatDocumentId } from "@/lib/format";
+import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { telefonoLegible } from "@/lib/phone";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
 
@@ -430,6 +431,9 @@ export async function guardarPermisoDeVenta(
 export type CuentaDelCliente = {
   fila: ClientSummary | null;
   movimientos: Movement[];
+  // Las ventas pagadas enteras, que no son movimientos. Ver el comentario
+  // dentro de la función.
+  ventasDeContado: VentaDeContado[];
 };
 
 export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
@@ -437,7 +441,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { fila: null, movimientos: [] };
+  if (!user) return { fila: null, movimientos: [], ventasDeContado: [] };
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
   // `CLAUDE.md` para toda fila leída por un id que llega del navegador, y aquí
@@ -448,7 +452,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .eq("client_id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
-  if (!fila) return { fila: null, movimientos: [] };
+  if (!fila) return { fila: null, movimientos: [], ventasDeContado: [] };
 
   // LOS ÚLTIMOS CINCUENTA. Es una mirada para decidir, no la ficha: quien
   // necesite el historial entero lo tiene en la pantalla del cliente, y traer
@@ -461,7 +465,49 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .order("created_at", { ascending: false })
     .limit(50);
 
-  return { fila: fila as ClientSummary, movimientos: (movimientos ?? []) as Movement[] };
+  // ── Y LAS VENTAS PAGADAS ENTERAS ────────────────────────────────
+  //
+  // NO SALÍAN. Esta hoja leía solo `movements`, y una venta pagada no escribe
+  // nada ahí (migración `124`), así que enseñaba los fiados y los abonos de un
+  // cliente y se callaba sus compras al contado. Lo reportó el dueño el
+  // 2026-10-18 abriendo «Ver cuenta de …»: la ficha del cliente ya las
+  // mezclaba desde esa mañana y esta hoja no, que es exactamente la clase de
+  // diferencia que aparece cuando una pantalla se arregla y su hermana no.
+  //
+  // MISMA FUNCIÓN QUE LA FICHA, `filasDeContado`, para que las dos cuenten lo
+  // mismo. Sin límite de 50 aquí: son las ventas de un solo cliente y la
+  // consulta ya está acotada por él.
+  const movementRows = (movimientos ?? []) as Movement[];
+  const ventasConCargo = new Set(
+    movementRows.map((m) => m.sale_id).filter((id): id is string => Boolean(id)),
+  );
+
+  const { data: ventasCrudas } = await supabase
+    .from("sales")
+    .select("id, created_at")
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  let ventasDeContado: VentaDeContado[] = [];
+  const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
+  if (idsDeVenta.length > 0) {
+    const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
+      supabase.from("sale_payments").select("sale_id, currency, amount").in("sale_id", idsDeVenta),
+      supabase
+        .from("sale_lines")
+        .select("sale_id, name, quantity, unit_price, currency")
+        .in("sale_id", idsDeVenta),
+    ]);
+    ventasDeContado = filasDeContado(
+      (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
+      pagos ?? [],
+      lineasDeVenta ?? [],
+      ventasConCargo,
+    );
+  }
+
+  return { fila: fila as ClientSummary, movimientos: movementRows, ventasDeContado };
 }
 
 // ===========================================================================
