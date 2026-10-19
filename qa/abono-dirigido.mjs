@@ -259,13 +259,28 @@ try {
   // ══════════════════════════════════════════════════════════════════════
   // 7. ANON NO PUEDE LLAMARLA
   // ══════════════════════════════════════════════════════════════════════
-  const { error: eAnon } = await anon.rpc("get_open_charges_for_client", {
+  // UN CLIENTE ANONIMO NUEVO, Y NO EL DE ARRIBA. El `anon` que abre este script
+  // deja de serlo en cuanto se le hace `verifyOtp` para sacar la sesion del
+  // dueno: `persistSession: false` evita que la guarde en disco, pero la sesion
+  // queda puesta EN MEMORIA. Con el contaminado, este caso salia rojo diciendo
+  // «LA LLAMO» — y era verdad, porque ya no era anonimo. Dos corridas perdidas.
+  const anonLimpio = createClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  const { error: eAnon } = await anonLimpio.rpc("get_open_charges_for_client", {
     p_client_id: cliente.id,
   });
+  // LO QUE DE VERDAD LO PARA ES EL PERMISO DE LA TABLA, no el de la funcion:
+  // `anon` no tiene SELECT sobre `movements`, asi que la llamada muere dentro
+  // aunque pudiera ejecutarse. Es mas fuerte que el `revoke` del grant, y
+  // conviene saberlo: quitar el revoke no abriria nada, y aun asi se deja
+  // puesto porque una superficie publica que contesta es una superficie.
   check(
-    "7. anon no puede llamar a get_open_charges_for_client",
-    eAnon != null,
-    eAnon ? `${eAnon.code}` : "LA LLAMÓ — el grant está de más",
+    "7. anon no puede leer por get_open_charges_for_client",
+    eAnon != null && eAnon.code === "42501",
+    eAnon ? `${eAnon.code}: ${eAnon.message.slice(0, 48)}` : "LA LLAMÓ Y DEVOLVIÓ DATOS",
   );
 } catch (e) {
   check("ERROR: la corrida se detuvo", false, e instanceof Error ? e.message : String(e));
