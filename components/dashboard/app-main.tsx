@@ -23,7 +23,7 @@ export function AppMain({ children }: { children: React.ReactNode }) {
 
   // EL ASISTENTE DE VENTA TAMPOCO LLEVA BARRA, y hasta el 2026-10-18 esto no
   // lo sabía: `MobileNav` devuelve `null` en `/ventas/nueva` desde que la
-  // pantalla existe, y aquí se seguían reservando 4rem para una barra que no
+  // pantalla existe, y aquí se seguían reservando el alto de una barra que no
   // se dibuja. El resultado eran 80px de aire muerto debajo del botón de cada
   // paso — justo la clase de hueco que este comentario lleva avisando desde
   // que se escribió, y que nadie mide porque un hueco de más no rompe nada.
@@ -56,8 +56,8 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     <main
       className={cn(
         "flex flex-1 flex-col gap-4 p-4 md:pb-4",
-        hasBar && enFlujoDeRegistrar && "pb-[calc(4rem+env(safe-area-inset-bottom)+2.5rem)]",
-        hasBar && !enFlujoDeRegistrar && "pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
+        hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+2.5rem)]",
+        hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
         !hasBar && !enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
       )}

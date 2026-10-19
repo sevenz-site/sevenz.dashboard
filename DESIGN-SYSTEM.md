@@ -1139,6 +1139,79 @@ Papelera**, no al final: el `gapBefore` de Papelera marca dónde acaban las
 pantallas del día a día y empiezan las ocasionales, y el catálogo es de las
 primeras.
 
+### El alto de la barra vive en `--nav-bar-h`, y no en tres clases sueltas
+
+Frame `1421:15026`, 2026-10-18. La barra mide **88px**: 8 de aire arriba, los
+64 de la fila de los cinco, y 16 abajo — los 8 del frame más 8 que el dueño
+pidió para *«levantarlo del widget inferior del teléfono»*. Encima de todo eso
+va `env(safe-area-inset-bottom)`, que en un iPhone añade los 34 de su raya y en
+un Android o un escritorio vale 0 — que es justo el caso que se veía pegado al
+filo.
+
+**Esa medida la tienen que saber otros dos sitios**: la franja que `AppMain`
+reserva debajo de cada pantalla, y el `bottom` del botón flotante. Estaban
+escritos a mano como `4rem` en tres clases distintas. Tres copias de un número
+que tiene que cuadrar al píxel: el día que la barra crece y una no se entera, el
+último botón de una pantalla queda debajo de ella.
+
+**Por qué una variable CSS y no una constante de TypeScript**: Tailwind genera
+las clases leyendo el texto de los ficheros, así que `` `pb-[calc(${ALTO}+…)]` ``
+no existe en la hoja de estilos. Una variable CSS **sí** viaja dentro de una
+clase literal: `pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]`
+es texto fijo, y el valor cambia en un solo sitio.
+
+### Los tres estados de un elemento de la barra
+
+Del mismo frame, y los tres los pidió el dueño el 2026-10-18:
+
+| Estado | Qué se ve |
+|---|---|
+| Seleccionado | Chip `bg-muted`, borde inferior de 4px en `foreground`, rótulo en tinta |
+| Normal | Sin chip, icono y rótulo en `muted-foreground` |
+| Pulsado | El chip aparece en `bg-muted/60` mientras el dedo está encima |
+
+**El subrayado es del chip, no una pastilla aparte.** Hasta ese día eran dos
+cajas apiladas con un hueco entre ellas, y la rayita medía 24px fuera cual
+fuera el rótulo. Con `border-b-4` mide lo que mide el chip, siempre. Y el borde
+se pinta **transparente** cuando no está seleccionado en vez de no ponerse: así
+los cinco chips miden igual y el rótulo no sube cuatro píxeles al cambiar de
+pantalla.
+
+**El pulsado no es adorno.** Entre tocar y que llegue la pantalla no pasaba
+NADA visible, y en un teléfono lento eso se lee como que el toque no entró. Va
+con el `active:` de CSS, que dispara con el dedo sin JavaScript y sin esperar
+al enrutador — al revés que el círculo girando, que solo aparece cuando Next ya
+empezó a navegar.
+
+**No hay `hover:`**, a propósito: la barra es `md:hidden`, así que solo existe
+donde no hay ratón, y ahí un `hover` se queda pegado después de tocar.
+
+#### Lo que NO se marca, y por qué
+
+- **Una subruta no marca a su padre.** En `/clients/123`, `/malas-pagas`,
+  `/papelera` o `/profile` no se enciende ninguno. Decisión del dueño el
+  2026-10-18, preguntada antes de tocarlo: esas pantallas son destinos propios,
+  no la sección.
+- **Menú nunca se marca.** Abre una hoja que tapa la pantalla, y esa hoja
+  desmonta la barra entera — marcarla no se lo enseñaría a nadie. Cambiar eso
+  significa cambiar cómo se desmonta la barra, que es justo lo que colgó la app
+  el 2026-10-18 (ver el apartado del componente que se desmonta solo).
+
+#### El icono relleno al seleccionar: medido, y no sale con lucide
+
+El dueño lo pidió el 2026-10-18. **`fill="currentColor"` sobre los iconos de
+lucide no sirve**, y no es una opinión: se renderizaron los cinco y se miraron.
+`Home` se convierte en un pentágono sólido sin tejado, `ChartColumn` en una
+esquina irreconocible y `Package` en un hexágono liso sin las aristas de la
+caja. Solo `Users` aguanta, y `Menu` no cambia porque no tiene ningún trazo
+cerrado.
+
+La razón es estructural: los iconos de lucide son **trazos**, no siluetas.
+Rellenarlos rellena el hueco que el trazo dibujaba. Tenerlos rellenos exige
+otro juego de iconos — Material Symbols, que es el que usa el frame y sí trae
+contorno y relleno del mismo icono — y eso es cambiar la familia de iconos de
+la barra, no un atributo. Queda pendiente de decisión.
+
 ### El flotante cambia de etiqueta según la pantalla
 
 En `/productos` el botón flotante dice **«Crear producto»** y navega a

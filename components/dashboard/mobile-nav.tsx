@@ -98,6 +98,10 @@ const DESTINATIONS = (
 // the desktop layout. That is the existing behaviour of every other responsive
 // piece in the app and was left alone on purpose; the tour is made resilient to
 // the switch instead.
+// LA FILA DE LOS CINCO, 64px. El ALTO TOTAL de la barra no sale de aqui: son
+// estos 64 mas el `py-2` de `navClass` mas los 8 extra de abajo, y esa suma
+// vive en `--nav-bar-h` (globals.css) porque la reserva de `AppMain` y el
+// `bottom` del boton flotante tienen que cuadrar con ella al pixel.
 const NAV_HEIGHT_CLASS = "h-16";
 
 function useOverlayOpen() {
@@ -164,6 +168,33 @@ function useKeyboardOpen() {
 // active, which on a bar of four is four different heights during a single
 // navigation. The pill can afford to come and go because it wraps the content
 // instead of sitting under it.
+// UN ELEMENTO DE LA BARRA — frame `1421:15026`, 2026-10-18.
+//
+// ===========================================================================
+// EL SUBRAYADO ES DEL CHIP, NO UNA PASTILLA APARTE
+//
+// Hasta hoy el chip y su rayita eran dos cajas apiladas con un hueco entre
+// ellas, y la rayita medía 24px fuera cual fuera el rótulo. El frame lo une:
+// el chip lleva `border-b-4` y por tanto el subrayado mide lo que mide el
+// chip, siempre.
+//
+// SE GANA ALGO QUE NO SE VE EN UNA CAPTURA: con dos cajas, el elemento sin
+// seleccionar reservaba igualmente el alto de la rayita invisible. Si alguien
+// la quitaba «porque no se ve», los cinco elementos se movían dos píxeles.
+//
+// ===========================================================================
+// TRES ESTADOS, Y LOS TRES LOS PIDIÓ EL DUEÑO EL 2026-10-18
+//
+//   · SELECCIONADO: fondo `muted`, borde inferior de 4px y el rótulo en tinta.
+//   · PULSADO: el chip se oscurece mientras el dedo está encima. No es adorno:
+//     entre tocar y que llegue la pantalla no pasaba NADA visible, y en un
+//     teléfono lento eso se lee como que el toque no entró. El `active:` de
+//     CSS dispara con el dedo, sin JavaScript y sin esperar al enrutador.
+//   · CARGANDO: el icono se cambia por un círculo girando. Es lo que ya había
+//     y el dueño pidió conservarlo; lo pone `glyph()` más abajo, no esto.
+//
+// NO HAY `hover:`, a propósito: esta barra es `md:hidden`, así que solo existe
+// donde no hay ratón. Un `hover` ahí se queda pegado después de tocar.
 function NavItem({
   active,
   children,
@@ -176,19 +207,20 @@ function NavItem({
 } & Record<string, unknown>) {
   return (
     <div className={cn("flex flex-1 items-center justify-center", className)} {...props}>
-      <div className="flex flex-col items-center gap-1.5">
-        <div
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors",
-            active ? "bg-muted text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {children}
-        </div>
-        <span
-          aria-hidden="true"
-          className={cn("h-0.5 w-6 rounded-full", active ? "bg-foreground" : "bg-transparent")}
-        />
+      <div
+        className={cn(
+          // `w-14` son los 56px del frame y `border-b-4` los 4 del subrayado.
+          // El borde se pinta TRANSPARENTE cuando no está seleccionado en vez
+          // de no ponerse: así los cinco chips miden lo mismo y el rótulo no
+          // sube cuatro píxeles al cambiar de pantalla.
+          "flex w-14 flex-col items-center gap-0.5 rounded-[4px] border-b-4 py-1",
+          "text-xs transition-colors",
+          active
+            ? "border-foreground bg-muted text-foreground"
+            : "border-transparent text-muted-foreground active:bg-muted/60",
+        )}
+      >
+        {children}
       </div>
     </div>
   );
@@ -394,9 +426,18 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
   // The bar's own classes. The layout reserves exactly this much space, and a
   // variant that measured differently would strand the last row of content.
+  // EL ALTO VIVE EN `--nav-bar-h` (globals.css) y de aquí solo salen sus
+  // partes: `py-2` son los 8px de aire de arriba y de abajo del frame, y el
+  // `pb` los sustituye abajo por 16 — los 8 del frame más 8 para despegar la
+  // barra de la raya del iPhone, que es lo que pidió el dueño el 2026-10-18.
+  //
+  // `env(safe-area-inset-bottom)` va ADEMÁS, no en vez de: en un iPhone el
+  // sistema reserva 34px para su raya y esos 16 son el aire por encima. En un
+  // Android o en un escritorio ese `env()` vale 0 y los 16 son todo lo que
+  // separa el chip del filo — que es justo el caso que se veía pegado.
   const navClass = cn(
     "fixed inset-x-0 bottom-0 z-40 border-t bg-background touch-manipulation md:hidden",
-    "pb-[env(safe-area-inset-bottom)]",
+    "py-2 pb-[calc(env(safe-area-inset-bottom)+1rem)]",
   );
 
   // Nothing at all on a client's own screen — neither the bar nor the floating
@@ -470,7 +511,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
           "fixed right-4 z-40 flex h-14 items-center gap-1 rounded-full bg-primary py-2 pr-2 pl-4",
           "text-[17px] font-medium text-primary-foreground shadow-lg transition-colors",
           "active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden",
-          "bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
+          "bottom-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         )}
       >
         {/* Label first, glyph second, from the spec. It reads as a sentence
