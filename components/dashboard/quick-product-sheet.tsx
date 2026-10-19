@@ -60,7 +60,18 @@ export function QuickProductSheet({
   const [nombre, setNombre] = useState("");
   const [precio, setPrecio] = useState("");
   const [moneda, setMoneda] = useState<PriceCurrency>(monedas[0] ?? "USD");
-  const [cantidad, setCantidad] = useState(1);
+  // LA CANTIDAD ES UNA CADENA, NO UN NÚMERO, y por eso el campo se puede
+  // escribir. Era `useState(1)` pintado en un `<span>` hasta el 2026-10-19:
+  // solo se podía mover con los botones «−» y «+», así que poner 24 eran
+  // veintitrés toques. Lo pidió el dueño con una captura del campo.
+  //
+  // CON UN `number` EN EL ESTADO NO SE PUEDE TECLEAR: para escribir «10» hay
+  // que pasar por el instante en que el campo está vacío, y un estado numérico
+  // no sabe representar «vacío» — o lo convierte en 0 y el cursor salta, o
+  // rechaza la pulsación. Guardar el texto y parsearlo al leerlo es el mismo
+  // patrón que ya usa `components/public/product-detail.tsx`, que es la otra
+  // pantalla donde se elige una cantidad.
+  const [cantidad, setCantidad] = useState("1");
   const [publicar, setPublicar] = useState(true);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [descripcion, setDescripcion] = useState("");
@@ -68,8 +79,23 @@ export function QuickProductSheet({
   const [guardando, startTransition] = useTransition();
 
   const unitario = parseAmount(precio) ?? 0;
-  const total = Math.round(unitario * cantidad * 100) / 100;
-  const listo = nombre.trim() !== "" && unitario > 0;
+  // La coma como separador decimal, igual que en la ficha pública: un tendero
+  // venezolano escribe «2,5» antes que «2.5».
+  const unidades = Number(cantidad.replace(",", ".")) || 0;
+  const total = Math.round(unitario * unidades * 100) / 100;
+  // `unidades > 0` ENTRA EN EL GUARDIA desde que el campo se puede escribir.
+  // Antes el estado era un número que nunca bajaba de 1, así que no hacía
+  // falta; ahora el tendero puede dejarlo vacío o en 0 mientras teclea, y sin
+  // esto el botón ofrecería guardar un producto de cero unidades.
+  const listo = nombre.trim() !== "" && unitario > 0 && unidades > 0;
+
+  // Los botones «−» y «+» siguen funcionando igual y respetan lo tecleado:
+  // leen lo que hay, suman o restan uno, y no bajan de 1.
+  const paso = (delta: number) =>
+    setCantidad((prev) => {
+      const actual = Number(String(prev).replace(",", ".")) || 0;
+      return String(Math.max(1, actual + delta));
+    });
 
   function guardar() {
     setError(null);
@@ -124,7 +150,7 @@ export function QuickProductSheet({
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
       }
-      onCreado(r.id, cantidad);
+      onCreado(r.id, unidades);
       onOpenChange(false);
     });
   }
@@ -196,21 +222,30 @@ export function QuickProductSheet({
                 size="icon"
                 className="size-10 shrink-0"
                 aria-label="Quitar una unidad"
-                disabled={cantidad <= 1}
-                onClick={() => setCantidad((n) => Math.max(1, n - 1))}
+                disabled={unidades <= 1}
+                onClick={() => paso(-1)}
               >
                 <Minus className="size-4" aria-hidden="true" />
               </Button>
-              <span className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-md border text-center text-base tabular-nums">
-                {cantidad}
-              </span>
+              {/* `inputMode="decimal"` Y NO `type="number"`: el teclado del
+                  teléfono sale numérico igual, y se evitan las dos cosas que
+                  `number` trae de serie y aquí estorban — la rueda del ratón
+                  cambiando la cifra sin querer, y un navegador que rechaza la
+                  coma decimal que el tendero sí escribe. */}
+              <input
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                inputMode="decimal"
+                aria-label="Cantidad"
+                className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-md border bg-transparent text-center text-base tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="size-10 shrink-0"
                 aria-label="Agregar una unidad"
-                onClick={() => setCantidad((n) => n + 1)}
+                onClick={() => paso(1)}
               >
                 <Plus className="size-4" aria-hidden="true" />
               </Button>
