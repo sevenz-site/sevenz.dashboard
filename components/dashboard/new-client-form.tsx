@@ -232,7 +232,7 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
             antes de decidir. */}
         {duplicado ? (
           <Button type="button" variant="outline" className="h-10 w-full" asChild>
-            <Link href={`/clients/${duplicado.id}`}>Ver cliente</Link>
+            <Link href={`/clients/${duplicado.id}`}>Ver cuenta de {duplicado.name}</Link>
           </Button>
         ) : null}
         {/* «CONTINUAR CON VENTA» SE ESCONDE CON EL CHOQUE, a petición del

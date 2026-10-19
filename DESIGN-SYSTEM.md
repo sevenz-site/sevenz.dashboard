@@ -1619,6 +1619,42 @@ pantalla, no leyendo el código.
 Es la misma trampa que la del `p-4` doblado de unos días antes: dos sitios
 poniendo el mismo espacio, cada uno convencido de ser el único.
 
+## El teclado se detecta por el FOCO, no midiendo el viewport
+
+`hooks/use-keyboard-open.ts`. Lo miran las dos barras pegadas al borde
+inferior: la de navegación y la de botones del flujo de registrar.
+
+**La primera versión no funcionaba en Android y estuvo meses rota sin que
+nadie lo notara.** Medía `visualViewport.height < window.innerHeight * 0.75`,
+que vale en iOS —ahí el teclado se superpone, el viewport visual encoge y el
+de maquetación no— y **no vale en Android**, donde el navegador suele
+redimensionar los dos: la proporción se queda cerca de 1 y la condición no se
+cumple nunca.
+
+No se notó porque las pantallas donde se habría visto esconden la barra de
+navegación por otros motivos. Apareció cuando una segunda barra empezó a usar
+el mismo hook en una pantalla que sí la enseña. El dueño lo reportó **dos
+veces**: la primera lo tapé sin saberlo añadiendo la señal del buscador —que
+es un evento de foco, y por eso sí funcionaba— y la segunda ya no hubo dónde
+esconderlo.
+
+**La señal que manda es: hay un campo de texto con el foco.** Es lo que de
+verdad significa «el teclado está arriba», no depende de cómo redimensione
+cada navegador, y es un evento en vez de una medida. La del viewport se queda
+como red de seguridad, comparando contra el **máximo visto** y no contra
+`innerHeight`.
+
+Tres detalles que cuestan una tarde si se redescubren:
+
+- **Solo en `pointer: coarse`.** En un escritorio no hay teclado que tape
+  nada, y esconder la barra en cada clic sobre un campo sería un parpadeo.
+- **Un `select` no cuenta.** Abre una rueda, no un teclado. Si contara, la
+  barra desaparecería al tocar el selector de documento o el prefijo del
+  teléfono.
+- **En `focusout` el `activeElement` todavía no se ha actualizado.** Hay que
+  esperar un tick, y de paso eso evita el parpadeo al saltar de un campo al
+  siguiente.
+
 ## Con un buscador enfocado no hay barra ni botón flotante
 
 Desde el 2026-10-18. **Esto revierte una decisión del 2026-09-20, y las dos
