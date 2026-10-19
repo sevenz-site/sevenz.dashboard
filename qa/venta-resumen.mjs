@@ -141,9 +141,18 @@ try {
   }
 
   // ── EL FIXTURE ──────────────────────────────────────────────────────
+  // CON DOCUMENTO Y TELÉFONO, que es lo que la tarjeta «Datos del comprador»
+  // enseña desde el 2026-10-18. Se guardan en crudo —dígitos pegados, como los
+  // guarda la app— justo para que la comprobación 1c mire el FORMATEO y no
+  // una cadena que ya venía con puntos.
   const { data: cliente } = await admin
     .from("clients")
-    .insert({ owner_id: ve.id, name: `${MARCA} cliente` })
+    .insert({
+      owner_id: ve.id,
+      name: `${MARCA} cliente`,
+      document_id: "12345678",
+      whatsapp: "584141234567",
+    })
     .select("id")
     .single();
   clientes.push(cliente.id);
@@ -257,6 +266,22 @@ try {
     r1.status === 200 ? "" : "la página ni siquiera cargó",
   );
 
+  // ── 1c. LOS DATOS DEL COMPRADOR, Y YA FORMATEADOS ────────────
+  //
+  // Frame `1414:12447`. Se comprueban las tres filas Y su formato: el
+  // documento con sus puntos y el teléfono partido en operadora y número. Si
+  // solo se mirara que el dato está, un «584141234567» seguido pasaría igual
+  // de verde — y esa tarjeta existe para que alguien compruebe de un vistazo
+  // que la cuenta es la suya.
+  check(
+    "1c. la tarjeta «Datos del comprador», con el documento y el teléfono legibles",
+    r1.html.includes("Datos del comprador") &&
+      r1.html.includes("Nombre y apellido") &&
+      r1.html.includes("12.345.678") &&
+      r1.html.includes("+58 414 1234567"),
+    "ver el HTML si falla",
+  );
+
   // ── 2. LAS DOS TARJETAS, EN EL ORDEN DEL FRAME ──────────────────────
   const iUsd = r1.html.indexOf("Resumen de compra en Dólares");
   const iEur = r1.html.indexOf("Resumen de compra en Euros");
@@ -359,6 +384,14 @@ try {
       !r6.html.includes("Deuda antigua") &&
       !r6.html.includes("Deuda total"),
     `HTTP ${r6.status}`,
+  );
+  // Y SIN TARJETA DE COMPRADOR, porque no hay comprador que nombrar. Una
+  // tarjeta con tres rayas diría que faltan datos de alguien, cuando lo cierto
+  // es que no hay alguien.
+  check(
+    "6b. y sin la tarjeta «Datos del comprador», que no tendría a quién nombrar",
+    !r6.html.includes("Datos del comprador"),
+    r6.html.includes("Datos del comprador") ? "la dibujó vacía" : "no se dibuja",
   );
 
   // ── 7. LA VENTA DE OTRO NEGOCIO NO SE ABRE ──────────────────────────

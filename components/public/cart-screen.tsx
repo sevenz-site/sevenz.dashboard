@@ -41,7 +41,7 @@ import {
   type BolivarRates,
 } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { splitForInput } from "@/lib/phone";
+import { telefonoLegible } from "@/lib/phone";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
@@ -1030,30 +1030,6 @@ const NOMBRE_MONEDA: Record<string, string> = {
   COP: "Pesos",
   VES: "Bolívares",
 };
-
-// EL TELÉFONO SE LEE, NO SE DESCIFRA.
-//
-// Lo que viaja es la cadena combinada de `WhatsappInput`: dígitos pegados,
-// «584148889977». Esta pantalla existe para que el comprador compruebe que
-// sus datos son los suyos, y doce dígitos seguidos no se comprueban de un
-// vistazo — hay que contarlos.
-//
-// Se separa con `splitForInput`, que es la misma función que usa el campo
-// para abrir un número guardado. No se parte a mano por longitud: la
-// migración 073 documenta lo que cuesta — un móvil venezolano «4149900094»
-// se leía como +41 Suiza.
-function telefonoLegible(combinado: string): string {
-  const { dialCode, local } = splitForInput(combinado);
-  if (local === "") return combinado;
-  // OPERADORA Y NÚMERO: los tres primeros dígitos aparte y el resto junto.
-  // Es como se dice un móvil en los dos países donde Sevenz opera — «412
-  // 1234567», «300 1112233» — y no un troceado mecánico.
-  //
-  // La primera versión partía de tres en tres y dejaba «412 123 456 7», con
-  // un dígito suelto al final. Se vio en pantalla, no leyendo el código.
-  if (local.length <= 3) return `+${dialCode} ${local}`;
-  return `+${dialCode} ${local.slice(0, 3)} ${local.slice(3)}`;
-}
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (

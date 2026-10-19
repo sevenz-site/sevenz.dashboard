@@ -40,8 +40,7 @@ export default async function ResumenDeVentaPage({
 
   return (
     <VentaResumen
-      businessName={resumen.businessName}
-      clientName={resumen.clientName}
+      comprador={resumen.comprador}
       bloques={resumen.bloques}
       rates={resumen.rates}
     />

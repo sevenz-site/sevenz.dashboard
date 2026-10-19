@@ -58,8 +58,9 @@ export type BloqueDeResumen = {
 };
 
 export type DatosDelResumen = {
-  businessName: string;
-  clientName: string | null;
+  // `null` en una venta de mostrador: ahi no hay a quien nombrar, asi que la
+  // tarjeta no se dibuja. Ver el comentario de la pantalla.
+  comprador: { nombre: string; documento: string; telefono: string } | null;
   bloques: BloqueDeResumen[];
   rates: BolivarRates | null;
 };
@@ -252,21 +253,59 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
   }
   y += 10 * ESCALA;
 
-  // EL NOMBRE DEL CLIENTE, que la pantalla no lleva y la imagen sí. No es un
-  // añadido al frame: el frame es una pantalla que el tendero mira con la
-  // venta recién hecha delante, y esto es un fichero que acaba en un chat,
-  // quizá reenviado, quizá abierto mañana. Un resumen de deuda sin decir de
-  // quién es no sirve para nada en ese segundo sitio.
-  if (datos.clientName) {
-    y += 16 * ESCALA;
-    if (ctx) {
-      ctx.font = fuente(13, "500");
-      ctx.fillStyle = TINTA;
-      ctx.fillText(datos.clientName, centro, y);
-    }
-  }
   if (ctx) ctx.textAlign = "left";
   y += 24 * ESCALA;
+
+  // ── Datos del comprador ─────────────────────────────────────
+  //
+  // Frame `1414:12570`, del 2026-10-18. La primera versión de esta imagen
+  // ponía el nombre del cliente suelto bajo el título; ahora va en su tarjeta,
+  // con el documento y el teléfono, igual que en la pantalla.
+  //
+  // POR QUÉ LA IMAGEN NECESITA LOS TRES y no solo el nombre: esto acaba en un
+  // chat, reenviado, abierto días después. Dos clientes se llaman igual; su
+  // cédula no.
+  if (datos.comprador) {
+    const inicioFicha = y;
+    const xIzqFicha = MARGEN + 16 * ESCALA;
+    const xDerFicha = ANCHO - MARGEN - 16 * ESCALA;
+
+    let fy = y + 30 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(16, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText("Datos del comprador", xIzqFicha, fy);
+    }
+    fy += 22 * ESCALA;
+
+    const filas: [string, string][] = [
+      ["Nombre y apellido", datos.comprador.nombre],
+      ["Documento", datos.comprador.documento],
+      ["Teléfono", datos.comprador.telefono],
+    ];
+    for (const [etiqueta, valor] of filas) {
+      medidor.font = fuente(14);
+      // El valor se recorta y la etiqueta no: la etiqueta es fija y corta, y
+      // el nombre de un cliente puede ser cualquier cosa. Lo que no puede es
+      // montarse encima de su propio rótulo.
+      const corto = recortar(medidor, valor, xDerFicha - xIzqFicha - 90 * ESCALA);
+      if (ctx) {
+        ctx.font = fuente(12);
+        ctx.fillStyle = TENUE;
+        ctx.fillText(etiqueta, xIzqFicha, fy);
+        ctx.font = fuente(14);
+        ctx.fillStyle = TINTA;
+        ctx.textAlign = "right";
+        ctx.fillText(corto, xDerFicha, fy);
+        ctx.textAlign = "left";
+      }
+      fy += 20 * ESCALA;
+    }
+
+    const altoFicha = fy - inicioFicha + 8 * ESCALA;
+    if (ctx) tarjeta(ctx, inicioFicha, altoFicha);
+    y = inicioFicha + altoFicha + 16 * ESCALA;
+  }
 
   // ── Una tarjeta por moneda ────────────────────────────────────────────
   for (const b of datos.bloques) {
@@ -410,46 +449,40 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     y = inicio + alto + 16 * ESCALA;
   }
 
-  // ── La marca y el pie antifraude ──────────────────────────────────────
+  // ── La marca y el pie antifraude ─────────────────────────────
   //
-  // NO ESTÁN EN EL FRAME, Y LA IMAGEN SÍ LOS LLEVA. El frame dibuja la
-  // PANTALLA, que el tendero mira con la venta delante y sin salir de Sevenz.
-  // Esto es un fichero hecho para reenviarse: acaba en un chat donde no se ve
-  // nada más nuestro, que es exactamente la situación para la que existe el
-  // aviso. El encargo decía «igual que se comparte la imagen de la orden de
-  // compra», y la orden de compra los lleva desde el 2026-10-15.
+  // ESTÁN EN EL FRAME DE LA IMAGEN Y NO EN EL DE LA PANTALLA, y la diferencia
+  // es el sitio donde se mira cada una: la pantalla la mira el tendero dentro
+  // de Sevenz, y esto es un fichero hecho para reenviarse — acaba en un chat
+  // donde no se ve nada más nuestro, que es exactamente la situación para la
+  // que existe el aviso. Un mensaje sobre dinero, con cifras y sin firma, es
+  // lo que manda quien nos imita.
   //
-  // Un mensaje sobre dinero, con cifras y sin firma, es lo que manda quien
-  // nos imita.
+  // EL NOMBRE DEL NEGOCIO ESTUVO AQUÍ UN DÍA Y SE FUE. Lo puse copiando el
+  // recibo del carrito, que sí lo lleva; el dueño preguntó de dónde salía al
+  // ver «Secuence» —su `owners.business_name` en dev— debajo del logo. No
+  // estaba en ningún frame. Queda escrito porque la razón por la que el
+  // recibo del carrito sí lo lleva sigue siendo buena ALLÍ: ese lo manda un
+  // COMPRADOR que quizá no recuerda a qué tienda pidió. Este lo manda el
+  // tendero a su propio cliente, por su propio chat.
   y += 18 * ESCALA;
-  const altoLogo = 18 * ESCALA;
-  // RELACIÓN 1186:428, la del fichero. Calcularla a partir del propio SVG en
-  // vez de escribir dos números sueltos es lo que evita que el logo salga
-  // aplastado el día que se cambie el archivo.
+  // 111 x 40 en el frame; la relación del fichero es 1186:428, así que se fija
+  // el alto y el ancho se calcula — escribir los dos números sueltos es cómo
+  // el logo sale aplastado el día que se cambie el archivo.
+  const altoLogo = 22 * ESCALA;
   const anchoLogo = altoLogo * (1186 / 428);
   if (dibujarSiLista(ctx, "logo", centro - anchoLogo / 2, y, anchoLogo, altoLogo)) {
-    y += altoLogo + 10 * ESCALA;
-  }
-
-  if (datos.businessName.trim() !== "") {
-    y += 14 * ESCALA;
-    if (ctx) {
-      ctx.font = fuente(11, "500");
-      ctx.fillStyle = TINTA;
-      ctx.textAlign = "center";
-      ctx.fillText(datos.businessName, centro, y);
-      ctx.textAlign = "left";
-    }
+    y += altoLogo + 12 * ESCALA;
   }
 
   const pie =
     "Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. " +
     "Pagos y abonos deben hacerse directamente con el dueño del comercio.";
-  medidor.font = fuente(10);
-  for (const linea of envolver(medidor, pie, ANCHO - MARGEN * 2 - 20 * ESCALA)) {
-    y += 14 * ESCALA;
+  medidor.font = fuente(12);
+  for (const linea of envolver(medidor, pie, ANCHO - MARGEN * 2 - 16 * ESCALA)) {
+    y += 16 * ESCALA;
     if (ctx) {
-      ctx.font = fuente(10);
+      ctx.font = fuente(12);
       ctx.fillStyle = TENUE;
       ctx.textAlign = "center";
       ctx.fillText(linea, centro, y);
@@ -457,16 +490,28 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     }
   }
 
-  y += 20 * ESCALA;
+  // SUBRAYADO A MANO, porque un canvas no tiene `text-decoration`. Se mide el
+  // texto y se traza la línea debajo; sin eso la dirección queda igual que el
+  // aviso de arriba y deja de leerse como el sitio al que se puede ir a
+  // comprobar que Sevenz existe, que es su único trabajo aquí.
+  y += 30 * ESCALA;
   if (ctx) {
-    ctx.font = fuente(10, "500");
+    const dominio = "sevenz.site";
+    ctx.font = fuente(12);
     ctx.fillStyle = TENUE;
     ctx.textAlign = "center";
-    ctx.fillText("sevenz.site", centro, y);
+    ctx.fillText(dominio, centro, y);
     ctx.textAlign = "left";
+    const anchoDominio = ctx.measureText(dominio).width;
+    ctx.strokeStyle = TENUE;
+    ctx.lineWidth = 1 * ESCALA;
+    ctx.beginPath();
+    ctx.moveTo(centro - anchoDominio / 2, y + 2 * ESCALA);
+    ctx.lineTo(centro + anchoDominio / 2, y + 2 * ESCALA);
+    ctx.stroke();
   }
 
-  return y + 22 * ESCALA;
+  return y + 24 * ESCALA;
 }
 
 function medirCon(): CanvasRenderingContext2D {

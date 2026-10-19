@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Share2 } from "lucide-react";
+import { CheckCircle2, Share2, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -8,7 +8,7 @@ import { dibujarResumenDeVenta } from "@/lib/sales/resumen-imagen";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type BolivarRates } from "@/lib/products/price";
-import type { BloqueDelResumen } from "@/app/(app)/ventas/actions";
+import type { BloqueDelResumen, CompradorDelResumen } from "@/app/(app)/ventas/actions";
 
 // LO QUE LA VENTA DEJÓ -- frame `1389:8595`.
 //
@@ -38,13 +38,11 @@ import type { BloqueDelResumen } from "@/app/(app)/ventas/actions";
 // sigue escondido: empezar otra venta encima del resumen de la anterior no es
 // lo que el frame ofrece.
 export function VentaResumen({
-  businessName,
-  clientName,
+  comprador,
   bloques,
   rates,
 }: {
-  businessName: string;
-  clientName: string | null;
+  comprador: CompradorDelResumen | null;
   bloques: BloqueDelResumen[];
   rates: BolivarRates | null;
 }) {
@@ -63,7 +61,7 @@ export function VentaResumen({
   //   3. El texto -> si el dibujo falla. Un canvas puede no estar disponible,
   //      y quedarse sin compartir nada por eso sería peor que compartir texto.
   function compartir() {
-    const blob = dibujarResumenDeVenta({ businessName, clientName, bloques, rates });
+    const blob = dibujarResumenDeVenta({ comprador, bloques, rates });
 
     if (blob != null) {
       const fichero = new File([blob], "venta-sevenz.png", { type: "image/png" });
@@ -84,7 +82,7 @@ export function VentaResumen({
       return;
     }
 
-    const texto = textoDelResumen(businessName, clientName, bloques);
+    const texto = textoDelResumen(comprador, bloques);
     if (navigator.share) {
       void navigator.share({ text: texto }).catch(() => {});
       return;
@@ -109,6 +107,20 @@ export function VentaResumen({
 
       <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-4">
+          {/* DATOS DEL COMPRADOR, primero de todo — frame `1414:12447`.
+              Añadida el 2026-10-18, el día después de la primera versión.
+
+              POR QUÉ ARRIBA Y NO AL FINAL: esta pantalla se le enseña al
+              cliente, y lo primero que comprueba cualquiera cuando le ponen
+              una cuenta delante es que sea la suya. Las cifras solo importan
+              después de eso.
+
+              NO SALE EN UNA VENTA DE MOSTRADOR, porque ahí no hay a quién
+              nombrar. Una tarjeta con tres rayas sería peor que ninguna: dice
+              que faltan datos de alguien, cuando lo cierto es que no hay
+              alguien. */}
+          {comprador ? <TarjetaDelComprador comprador={comprador} /> : null}
+
           {bloques.map((b) => (
             <TarjetaDeMoneda key={b.currency} bloque={b} rates={rates} />
           ))}
@@ -123,6 +135,34 @@ export function VentaResumen({
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </Button>
       </div>
+    </div>
+  );
+}
+
+function TarjetaDelComprador({ comprador }: { comprador: CompradorDelResumen }) {
+  return (
+    <section className="flex flex-col rounded-[10px] border p-4">
+      <div className="flex items-center justify-between gap-2 pt-2 pb-4">
+        <h2 className="text-base font-semibold">Datos del comprador</h2>
+        <User className="size-6 shrink-0" aria-hidden="true" />
+      </div>
+      <div className="flex flex-col gap-2 pb-3">
+        <Dato etiqueta="Nombre y apellido" valor={comprador.nombre} />
+        <Dato etiqueta="Documento" valor={comprador.documento} />
+        <Dato etiqueta="Teléfono" valor={comprador.telefono} />
+      </div>
+    </section>
+  );
+}
+
+// Rótulo tenue a la izquierda con su ancho fijo, valor a la derecha y más
+// grande: el frame le da 12px apagados al rótulo y 14px de tinta al dato,
+// porque lo que se comprueba es el dato y la etiqueta solo dice qué es.
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-[124px] shrink-0 text-xs text-muted-foreground">{etiqueta}</span>
+      <span className="min-w-0 flex-1 text-right text-sm break-words">{valor}</span>
     </div>
   );
 }
@@ -245,12 +285,17 @@ const NOMBRE_MONEDA: Record<string, string> = {
 // camino bueno —el dueño pidió imagen «para evitar que se edite el texto»—
 // pero quedarse sin compartir nada sería peor que compartir algo editable.
 function textoDelResumen(
-  businessName: string,
-  clientName: string | null,
+  comprador: CompradorDelResumen | null,
   bloques: BloqueDelResumen[],
 ): string {
   const lineas = ["Transacción registrada"];
-  if (clientName) lineas.push(clientName);
+  if (comprador) {
+    lineas.push(
+      comprador.nombre,
+      `Documento: ${comprador.documento}`,
+      `Teléfono: ${comprador.telefono}`,
+    );
+  }
   for (const b of bloques) {
     const nombre = NOMBRE_MONEDA[b.currency] ?? b.currency;
     lineas.push("", `Resumen de compra en ${nombre}`);
@@ -275,7 +320,6 @@ function textoDelResumen(
       );
     }
   }
-  if (businessName.trim() !== "") lineas.push("", businessName);
   lineas.push(
     "",
     "Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben hacerse directamente con el dueño del comercio.",

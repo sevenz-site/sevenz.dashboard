@@ -165,3 +165,33 @@ export function consentPhoneKey(raw: string | null | undefined): string | null {
   const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
   return digits.length >= 10 && digits.length <= 15 ? digits : null;
 }
+
+// EL TELÉFONO SE LEE, NO SE DESCIFRA.
+//
+// Lo que viaja es la cadena combinada de `WhatsappInput`: dígitos pegados,
+// «584148889977». Doce dígitos seguidos no se comprueban de un vistazo — hay
+// que contarlos— y las pantallas que enseñan los datos de alguien existen
+// justo para que los compruebe.
+//
+// Se separa con `splitForInput`, que es la misma función que usa el campo para
+// abrir un número guardado. No se parte a mano por longitud: la migración 073
+// documenta lo que cuesta — un móvil venezolano «4149900094» se leía como
+// +41 Suiza.
+//
+// VIVÍA DENTRO DE `components/public/cart-screen.tsx` hasta el 2026-10-18, y
+// se mudó aquí el día que el resumen de una venta tuvo que enseñar lo mismo en
+// la pantalla Y en la imagen que se comparte. Tres copias de una misma forma
+// de leer un número acaban enseñando tres números distintos para el mismo
+// cliente, que es la clase de diferencia que nadie reporta y todos notan.
+export function telefonoLegible(combinado: string): string {
+  const { dialCode, local } = splitForInput(combinado);
+  if (local === "") return combinado;
+  // OPERADORA Y NÚMERO: los tres primeros dígitos aparte y el resto junto.
+  // Es como se dice un móvil en los dos países donde Sevenz opera — «412
+  // 1234567», «300 1112233» — y no un troceado mecánico.
+  //
+  // La primera versión partía de tres en tres y dejaba «412 123 456 7», con
+  // un dígito suelto al final. Se vio en pantalla, no leyendo el código.
+  if (local.length <= 3) return `+${dialCode} ${local}`;
+  return `+${dialCode} ${local.slice(0, 3)} ${local.slice(3)}`;
+}

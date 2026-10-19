@@ -1195,33 +1195,58 @@ prefijo todavía dice lo que quería decir. Hoy son
 cualquier otra `/ventas/` para el resumen, que lleva barra y **no** flotante:
 «Registrar» empieza OTRA venta, encima del resumen de la que se acaba de hacer.
 
-### La imagen que se comparte no tiene frame, y no por eso se dibuja a ojo
+### La imagen que se comparte es OTRO frame, no una deducción del de la pantalla
 
-El frame dibuja la **pantalla**: lo que el tendero mira con la venta delante,
-dentro de Sevenz y sin salir. El fichero que sale por «Compartir» acaba en un
-chat ajeno, quizá reenviado, quizá abierto mañana — y ahí hay tres cosas que la
-pantalla no necesita y la imagen sí:
+Lo que se comparte y lo que se mira no son la misma pieza, y la diferencia no
+se adivina: el resumen de una venta tiene **dos frames** —`1414:12447` la
+pantalla, `1414:12570` la imagen— y lo que cambia entre ellos es justo lo que
+depende de dónde se mira cada una.
 
-- **De quién es la cuenta.** Un resumen de deuda sin nombre no sirve para nada
-  fuera de la pantalla donde se acaba de registrar.
-- **La marca.** Sin logo, un texto sobre dinero es una captura cualquiera.
-- **El aviso antifraude.** Es justo la situación para la que existe: un mensaje
-  sobre dinero, con cifras, desde un número que el destinatario no tiene
-  agendado.
+| | Pantalla | Imagen |
+|---|---|---|
+| Barra de abajo | sí | no |
+| Botón «Compartir» | sí | no |
+| Logo, aviso antifraude, `sevenz.site` | no | sí |
+| Datos del comprador | sí | sí |
 
-Los tres salieron del recibo del carrito (`lib/cart/recibo-imagen.ts`, 2026-10-15),
-y la petición del dueño el 2026-10-18 fue literalmente *«igual que se comparte
-la imagen de la orden de compra»*. Copiar su pie no es inventar: es la frase que
-pedía.
+La pantalla la mira el tendero dentro de Sevenz; la imagen acaba en un chat
+donde no se ve nada más nuestro, que es exactamente la situación para la que
+existe el aviso. Un mensaje sobre dinero, con cifras y sin firma, es lo que
+manda quien nos imita.
 
-**Lo que NO se improvisa es el resto.** Las cifras de la imagen y las de la
-pantalla salen de las mismas funciones —`formatPriceAmount`, `formatCantidad`,
-`formatBs`, `priceIn`—, así que pueden separarse en maqueta pero nunca en
-número. Y el borde de cada tarjeta se traza **después** del contenido, con la
-altura que de verdad ocupó: la primera versión la sumaba aparte para poderlo
-pintar primero y se quedó doce píxeles corta, con la última fila montada sobre
-su propio borde. En un canvas no hay `height: auto`; lo más parecido es no
-adelantarse.
+**Lo que costó deducirlo en vez de pedirlo, el 2026-10-18.** La primera versión
+de la imagen se construyó sin frame propio, copiando el recibo del carrito
+(`lib/cart/recibo-imagen.ts`). De ahí salió bien el logo y bien el pie —los dos
+siguen— y mal **el nombre del negocio**, que el recibo del carrito sí lleva y
+este no. El dueño lo vio al día siguiente: *«¿de dónde salió ese label que dice
+"Secuence"?»*. Era su `owners.business_name` en dev, debajo del logo, en una
+imagen que él nunca había dibujado.
+
+**Y la razón por la que el recibo del carrito sí lo lleva sigue siendo buena
+ALLÍ**, que es lo que hace esto fácil de repetir: ese lo manda un **comprador**
+que quizá no recuerda a qué tienda pidió. Este lo manda el **tendero** a su
+propio cliente, por su propio chat. Copiar una decisión correcta a un sitio
+donde su motivo no se cumple es cómo entra un dato que nadie pidió.
+
+### Dibujar una tarjeta en canvas: el borde va DESPUÉS del contenido
+
+Las cifras de la imagen y las de la pantalla salen de las mismas funciones
+—`formatPriceAmount`, `formatCantidad`, `formatBs`, `priceIn`, `formatDocumentId`,
+`telefonoLegible`—, así que pueden separarse en maqueta pero nunca en número.
+Lo que sí hay que resolver a mano es la altura.
+
+**El borde de cada tarjeta se traza después del contenido, con la altura que de
+verdad ocupó.** La primera versión la sumaba aparte —una expresión con un
+sumando por fila— para poder pintarlo primero, y se quedó doce píxeles corta:
+la última fila de la tarjeta de euros salió montada sobre su propio borde. En
+un canvas no hay `height: auto`; lo más parecido es no adelantarse. Se puede
+porque la tarjeta es solo un trazo —no rellena—, así que no tapa el texto que
+ya está debajo.
+
+**Y un canvas no tiene `text-decoration`**: un subrayado se mide con
+`measureText` y se traza a mano. `sevenz.site` lo lleva porque sin él queda
+igual que el aviso de encima y deja de leerse como el sitio al que se puede ir
+a comprobar que Sevenz existe, que es su único trabajo ahí.
 
 ### Un componente que se desmonta solo no puede ser el padre de lo que provoca ese desmontaje
 

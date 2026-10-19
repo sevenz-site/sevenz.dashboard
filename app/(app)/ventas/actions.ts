@@ -11,6 +11,8 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { formatDocumentId } from "@/lib/format";
+import { telefonoLegible } from "@/lib/phone";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
 
 // LOS PRODUCTOS QUE EL TENDERO PUEDE VENDER, con sus precios ya resueltos.
@@ -958,14 +960,27 @@ export type BloqueDelResumen = {
   deudaAntigua: number | null;
 };
 
+// QUIÉN SE LLEVÓ LA COMPRA, tal y como lo enseña la tarjeta «Datos del
+// comprador» de los frames `1414:12447` y `1414:12570`. Ya formateado: el
+// documento con sus puntos y el teléfono separado en operadora y número, que
+// es como se comprueba de un vistazo.
+//
+// `null` ENTERO EN EL MOSTRADOR, y por eso es un objeto y no tres campos
+// sueltos: una venta sin cliente no tiene estos datos a medias, no los tiene.
+// Con tres campos nullables la pantalla tendría que decidir cuántos huecos
+// hacen falta para no dibujar la tarjeta, y ahí es donde aparece una tarjeta
+// con tres rayas.
+export type CompradorDelResumen = {
+  nombre: string;
+  documento: string;
+  telefono: string;
+};
+
 export type ResumenDeVenta =
   | {
       ok: true;
       saleId: string;
-      businessName: string;
-      // `null` en el mostrador. Es lo que decide si la pantalla nombra a
-      // alguien y si tiene sentido hablar de deuda antigua.
-      clientName: string | null;
+      comprador: CompradorDelResumen | null;
       bloques: BloqueDelResumen[];
       rates: BolivarRates | null;
     }
@@ -1005,14 +1020,16 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     .maybeSingle();
   if (!venta) return { ok: false, error: "No encontramos esa venta." };
 
-  const [{ data: lineas }, { data: pagos }, { data: cliente }, { data: duenio }, contexto] =
-    await Promise.all([
-      supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", venta.id),
-      supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
-      supabase.from("clients").select("name, is_walk_in").eq("id", venta.client_id).maybeSingle(),
-      supabase.from("owners").select("business_name").eq("id", user.id).maybeSingle(),
-      contextoDeVenta(supabase, user.id),
-    ]);
+  const [{ data: lineas }, { data: pagos }, { data: cliente }, contexto] = await Promise.all([
+    supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", venta.id),
+    supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
+    supabase
+      .from("clients")
+      .select("name, document_id, whatsapp, is_walk_in")
+      .eq("id", venta.client_id)
+      .maybeSingle(),
+    contextoDeVenta(supabase, user.id),
+  ]);
 
   // LO QUE DEBÍA ANTES, Y «ANTES» ES UNA FECHA, no «el saldo de hoy menos esta
   // venta». La resta parece equivalente y solo lo es en el instante justo
@@ -1091,8 +1108,21 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   return {
     ok: true,
     saleId: venta.id,
-    businessName: (duenio?.business_name as string | null) ?? "",
-    clientName: esMostrador ? null : ((cliente?.name as string | null) ?? null),
+    // SE FORMATEA AQUÍ Y NO EN CADA PANTALLA. Esto lo leen dos sitios —la
+    // pantalla y el canvas de la imagen— y un documento con puntos en una y
+    // sin ellos en la otra es la misma venta contando dos cosas distintas.
+    //
+    // `formatDocumentId` ya devuelve «—» cuando no hay, que es la regla de
+    // `DESIGN-SYSTEM.md`: la fila se queda y el hueco se ve, en vez de que un
+    // dato que falta desaparezca sin dejar rastro.
+    comprador:
+      esMostrador || !cliente
+        ? null
+        : {
+            nombre: cliente.name as string,
+            documento: formatDocumentId((cliente.document_id as string | null) ?? null),
+            telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp as string) : "—",
+          },
     bloques,
     rates: contexto.ok ? contexto.rates : null,
   };
