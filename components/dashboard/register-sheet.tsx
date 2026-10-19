@@ -63,7 +63,7 @@ const OPCIONES: Opcion[] = [
   // EL ASISTENTE DE CUATRO PASOS. Un fiado manual es «una venta sin pago»
   // desde la migración `124`, y por eso las dos palabras van en el mismo
   // botón en vez de en dos.
-  { href: "/ventas/nueva", etiqueta: "Fiado o venta", Icono: ArrowUpRight, marcador: false },
+  { href: "/ventas/nueva", etiqueta: "Venta o fiado", Icono: ArrowUpRight, marcador: false },
   // UN ABONO NECESITA SABER DE QUIÉN, así que pasa por el buscador de
   // clientes y el marcador viaja con él: al elegir a alguien se aterriza en su
   // ficha con el diálogo de abono ya abierto.

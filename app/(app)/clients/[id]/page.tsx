@@ -231,6 +231,7 @@ export default async function ClientDetailPage({
               }
               consentGranted={aceptaAvisos === true}
               triggerClassName="w-full"
+              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
               autoOpen={autoOpenType}
               rateContext={rateContext}
               monedaHabitual={monedaHabitual}
@@ -261,7 +262,7 @@ export default async function ClientDetailPage({
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
             {CLIENT_STATUS_LABEL[status]}
           </Badge>
-          {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+          {clientSummary?.has_pending_review ? <Badge variant="outline">transacciones por revisar</Badge> : null}
           {client.is_flagged ? (
             <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
               Mala paga
@@ -565,7 +566,7 @@ async function MovementHistory({
           ir a su derecha, en la misma fila. La tipografía se queda aquí: las
           dos pantallas que usan esa lista titulan distinto. */}
       <MovementHistoryList
-        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>}
+        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de transacciones</h2>}
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}

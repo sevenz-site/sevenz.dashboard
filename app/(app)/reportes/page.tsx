@@ -172,11 +172,11 @@ export default async function ReportesPage({
           {everAny ? (
             <>
               <p className="font-medium">
-                {selected ? `${selected.name} no tiene movimientos` : "No hay movimientos"} en{" "}
+                {selected ? `${selected.name} no tiene transacciones` : "No hay transacciones"} en{" "}
                 {PERIOD_LABEL[period]}
               </p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                {selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve el movimiento
+                {selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve la transacción
                 del periodo que elijas.
               </p>
             </>

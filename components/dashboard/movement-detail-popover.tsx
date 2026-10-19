@@ -200,7 +200,7 @@ export function MovementDetailPopover({
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
-    toast.success("Movimiento eliminado");
+    toast.success("Transacción eliminada");
     setOpen(false);
     router.refresh();
   }
@@ -259,7 +259,7 @@ export function MovementDetailPopover({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Detalle de movimiento</DialogTitle>
+          <DialogTitle>Detalle de transacción</DialogTitle>
         </DialogHeader>
 
         {/* gap-4 entre grupos, gap-1.5 dentro. Esa diferencia es toda la
@@ -352,7 +352,7 @@ export function MovementDetailPopover({
                     <a href={photoUrl} target="_blank" rel="noopener noreferrer">
                       <Image
                         src={photoUrl}
-                        alt="Foto del movimiento"
+                        alt="Foto de la transacción"
                         width={640}
                         height={360}
                         unoptimized
@@ -425,7 +425,7 @@ export function MovementDetailPopover({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar este movimiento?</AlertDialogTitle>
+                  <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
                   <AlertDialogDescription>
                     Se recalculará el saldo de este cliente y el capital por cobrar. Podrás
                     restaurarlo después desde Notificaciones.

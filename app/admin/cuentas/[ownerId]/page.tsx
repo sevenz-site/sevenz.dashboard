@@ -191,7 +191,7 @@ export default async function CuentaDetallePage({
         </div>
 
         {historial.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sin movimientos todavía.</p>
+          <p className="text-sm text-muted-foreground">Sin transacciones todavía.</p>
         ) : (
           <ul className="flex flex-col divide-y rounded-lg border">
             {historial.map((e) => (

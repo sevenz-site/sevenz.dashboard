@@ -90,7 +90,7 @@ export function ConfirmarImportacion({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            ¿Subir {cuantas} {cuantas === 1 ? "movimiento" : "movimientos"}
+            ¿Subir {cuantas} {cuantas === 1 ? "transacción" : "transacciones"}
             {soloEsteCliente ? " de este cliente" : ""}?
           </AlertDialogTitle>
           <AlertDialogDescription>

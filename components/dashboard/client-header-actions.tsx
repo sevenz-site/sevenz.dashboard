@@ -337,7 +337,7 @@ export function ClientHeaderActions({
                   Papelera cuando quieras.
                 </>
               ) : (
-                <>Este cliente no tiene movimientos. Puedes restaurarlo desde Papelera cuando quieras.</>
+                <>Este cliente no tiene transacciones. Puedes restaurarlo desde Papelera cuando quieras.</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

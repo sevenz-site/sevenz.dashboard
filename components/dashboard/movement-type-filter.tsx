@@ -20,7 +20,7 @@ import { FilterChip } from "@/components/dashboard/client-filters";
 // `cash` Y NO `sale`: lo que distingue a esa fila no es que venga de una venta
 // —un fiado también— sino que se pagó entera en el momento.
 const TIPOS = [
-  { value: "todos", label: "Todos" },
+  { value: "todos", label: "Todas" },
   { value: "charge", label: "Fiado" },
   { value: "payment", label: "Abono" },
   { value: "cash", label: "De contado" },
@@ -47,7 +47,7 @@ export function MovementTypeFilter({
   // owner stopped asking the moment he saw it, and that the new "Filtrar por"
   // label now answers anyway. "Todos" answers the one that is actually live:
   // what am I looking at right now. Owner's decision, 2026-10-16.
-  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todos";
+  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todas";
 
   return (
     // The label is a sibling of the chip, not part of it: the chip fills in

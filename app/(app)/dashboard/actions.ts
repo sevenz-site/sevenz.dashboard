@@ -172,7 +172,7 @@ async function guardarVentaDelMovimiento(
     .single();
   if (errorVenta || !venta) {
     console.error("guardarVentaDelMovimiento: alta de venta:", errorVenta?.message);
-    return { error: "No pudimos guardar los productos de este movimiento." };
+    return { error: "No pudimos guardar los productos de esta transacción." };
   }
 
   const filas: { sale_id: string; product_id: string | null; name: string; quantity: number; unit_price: number; currency: string }[] = [];
@@ -224,7 +224,7 @@ async function guardarVentaDelMovimiento(
   const { error } = await supabase.from("sale_lines").insert(filas);
   if (error) {
     console.error("guardarVentaDelMovimiento: lineas:", error.message);
-    return { error: "No pudimos guardar los productos de este movimiento." };
+    return { error: "No pudimos guardar los productos de esta transacción." };
   }
 
   // EL ENLACE, AL FINAL. Si esto falla, la venta y sus líneas existen y solo
@@ -265,7 +265,7 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   const productos = type === "charge" ? parsearProductos(String(formData.get("productos") ?? "")) : [];
 
   if (type !== "charge" && type !== "payment") {
-    return { error: "Selecciona el tipo de movimiento." };
+    return { error: "Selecciona el tipo de transacción." };
   }
   const amount = Number(amountRaw);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -552,7 +552,7 @@ export async function createClientWithMovement(
   }).select("id").single();
 
   if (movementError) {
-    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
+    return { error: mensajeDeError("guardar la transacción", movementError, "movement"), clientId: null };
   }
 
   // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
@@ -623,7 +623,7 @@ export async function addMovement(
   // The client detail page already hides the form for a trashed client; this
   // is the guard behind it, since the form is reachable by other routes.
   if (clientRow.trashed_at || clientRow.deleted_at) {
-    return { error: "Este cliente está en la papelera. Restáuralo para registrar movimientos.", clientId: null };
+    return { error: "Este cliente está en la papelera. Restáuralo para registrar transacciones.", clientId: null };
   }
 
   // Se sigue OFRECIENDO para el cliente que no tiene número, y se guarda si el
@@ -741,7 +741,7 @@ export async function addMovement(
   }).select("id").single();
 
   if (movementError) {
-    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
+    return { error: mensajeDeError("guardar la transacción", movementError, "movement"), clientId: null };
   }
 
   // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
@@ -841,7 +841,7 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos ese movimiento." };
+    return { error: "No encontramos esa transacción." };
   }
 
   const { error: deleteError } = await supabase
@@ -850,7 +850,7 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     .eq("id", movementId);
 
   if (deleteError) {
-    return { error: mensajeDeError("eliminar el movimiento", deleteError, "deleteMovement") };
+    return { error: mensajeDeError("eliminar la transacción", deleteError, "deleteMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
@@ -902,7 +902,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos ese movimiento eliminado." };
+    return { error: "No encontramos esa transacción eliminada." };
   }
 
   const { error: restoreError } = await supabase
@@ -911,7 +911,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     .eq("id", movementId);
 
   if (restoreError) {
-    return { error: mensajeDeError("restaurar el movimiento", restoreError, "restoreMovement") };
+    return { error: mensajeDeError("restaurar la transacción", restoreError, "restoreMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {

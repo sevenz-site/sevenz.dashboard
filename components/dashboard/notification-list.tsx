@@ -104,7 +104,7 @@ export function NotificationList({
                 <>
                   <RotateCcw className="mt-0.5 size-4 shrink-0 text-destructive" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium">Se eliminó un movimiento de {n.clientName}</p>
+                    <p className="font-medium">Se eliminó una transacción de {n.clientName}</p>
                     <p className="text-xs text-muted-foreground">
                       {n.type === "charge" ? "Fiado" : "Abono"} · {formatCurrency(n.amount)} ·{" "}
                       {formatDateTime(n.occurredAt)}

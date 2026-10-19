@@ -94,7 +94,7 @@ export async function resolveMovementRateSnapshot(
     return {
       ok: false,
       reason: "ve_sin_moneda",
-      error: "No pudimos saber si el movimiento es en dólares o en euros. Vuelve a intentarlo eligiendo la moneda.",
+      error: "No pudimos saber si la transacción es en dólares o en euros. Vuelve a intentarlo eligiendo la moneda.",
     };
   }
 

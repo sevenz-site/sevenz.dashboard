@@ -58,7 +58,7 @@ export function ClientTable({
   scores,
   rateContext = null,
   ownerCountry,
-  emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
+  emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra una transacción manual.",
   source,
 }: {
   rows: ClientSummary[];

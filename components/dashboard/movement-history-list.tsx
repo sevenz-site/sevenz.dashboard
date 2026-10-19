@@ -108,7 +108,21 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
+        {/* EL HUECO SE DIBUJA, no se deja en blanco. Del mock del dueño del
+            2026-10-18: una caja con la frase centrada y, debajo, qué hacer
+            para llenarla. Un «Todavía no hay…» suelto a la izquierda se lee
+            como un error de carga; esto se lee como una pantalla nueva.
+
+            LOS DOS BOTONES QUE CITA SON LOS QUE ESTÁN JUSTO ENCIMA, y por eso
+            se nombran con sus palabras exactas. El día que uno se renombre
+            —«Agregar fiado» pasó a «Venta o fiado» ese mismo día— esta frase
+            hay que cambiarla con él, o manda a buscar algo que no existe. */}
+        <div className="rounded-lg border px-6 py-8 text-center">
+          <p className="text-base">Todavía no hay transacciones registradas.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Para registrar una transacción selecciona “Agregar abono” o “Venta o fiado”
+          </p>
+        </div>
       </div>
     );
   }

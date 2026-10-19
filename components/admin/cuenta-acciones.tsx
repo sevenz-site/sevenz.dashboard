@@ -119,7 +119,7 @@ function Desbloquear({ cuenta }: { cuenta: Cuenta }) {
   return (
     <DialogoDeAccion
       titulo={`Reactivar a ${cuenta.business_name}`}
-      descripcion="Vuelve a poder registrar movimientos. Queda como activa, no como demo."
+      descripcion="Vuelve a poder registrar transacciones. Queda como activa, no como demo."
       disparador={
         <Button type="button" variant="outline" size="sm">
           <Undo2 className="size-4" />

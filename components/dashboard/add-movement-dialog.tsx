@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useActionState, useEffect, useState } from "react";
 import {
   WhatsappConsentDialog,
@@ -75,6 +77,7 @@ import {
 const initialState: MovementFormState = { error: null, clientId: null };
 
 export function AddMovementDialog({
+  hrefVentaOFiado = null,
   clientId,
   clientName,
   clientWhatsapp,
@@ -130,6 +133,10 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
+  // A DÓNDE LLEVA EL SEGUNDO BOTÓN. `null` lo deja como estaba -- abriendo
+  // este diálogo en modo cargo-- y es lo que usan los montajes que no son la
+  // ficha de un cliente.
+  hrefVentaOFiado?: string | null;
   // Which movement the mobile bar asked for while the owner is looking at
   // this client. Only ever passed to the mobile instance of this dialog —
   // the page renders a second one for the sm+ layout, and both receiving it
@@ -416,7 +423,7 @@ export function AddMovementDialog({
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
-      toast.success("Movimiento registrado");
+      toast.success("Transacción registrada");
       // "Movement Added" is tracked server-side in addMovement — see the note
       // in client-search-dialog.tsx on why it isn't tracked here too.
       router.refresh();
@@ -437,10 +444,33 @@ export function AddMovementDialog({
             <Plus className="size-4" />
             Agregar abono
           </Button>
-          <Button size="sm" className="flex-1" onClick={openForCharge}>
-            <Plus className="size-4" />
-            Agregar fiado
-          </Button>
+          {/* «VENTA O FIADO», Y ABRE EL ASISTENTE DE VENTA.
+              Decisión del dueño el 2026-10-18: «renombra el botón de agregar
+              fiado y al seleccionarlo abre el nuevo flujo diseñado para
+              agregar venta o fiado».
+
+              POR QUÉ UN ENLACE Y NO ESTE DIÁLOGO: el asistente pregunta qué
+              se llevó el cliente antes que cuánto debe, y termina pudiendo
+              cobrar parte en el momento. Este diálogo solo sabe de un monto.
+              Un fiado sin productos sigue siendo posible — es una venta sin
+              pago, y el asistente la hace igual.
+
+              EL DIÁLOGO NO SE VA: sigue siendo el de «Agregar abono», y su
+              rama de cargo se alcanza todavía por `?movimiento=fiado`. Lo que
+              cambia es cuál de los dos ofrece ESTA pantalla. */}
+          {hrefVentaOFiado ? (
+            <Button size="sm" className="flex-1" asChild>
+              <Link href={hrefVentaOFiado}>
+                <Plus className="size-4" />
+                Venta o fiado
+              </Link>
+            </Button>
+          ) : (
+            <Button size="sm" className="flex-1" onClick={openForCharge}>
+              <Plus className="size-4" />
+              Agregar fiado
+            </Button>
+          )}
         </div>
       )}
       <Dialog
@@ -459,7 +489,7 @@ export function AddMovementDialog({
           100vh que CLAUDE.md ya nombra para iPhone. */}
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Agregar movimiento</DialogTitle>
+          <DialogTitle>Agregar transacción</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
         {/* gap-8 y no gap-4: los bloques del formulario son cajas con su propio

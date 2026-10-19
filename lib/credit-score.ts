@@ -160,7 +160,7 @@ export function computeCreditScore(params: {
           detail:
             sorted.length > 0
               ? `Cliente desde hace ${Math.max(0, Math.round(monthsActive))} meses`
-              : "Cliente nuevo, todavía sin movimientos",
+              : "Cliente nuevo, todavía sin transacciones",
         },
         {
           label: "Puntualidad histórica",

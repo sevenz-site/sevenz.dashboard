@@ -100,7 +100,7 @@ export function ClientAccountSheet({
                 movements={cuenta?.movimientos ?? []}
                 photoUrls={{}}
                 ledger={ledger}
-                titulo={<span className="text-sm font-medium">Últimos movimientos</span>}
+                titulo={<span className="text-sm font-medium">Últimas transacciones</span>}
               />
             </>
           ) : (

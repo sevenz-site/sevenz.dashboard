@@ -85,7 +85,13 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
+        {/* LA MISMA CAJA, PERO SIN LA SEGUNDA LÍNEA. La del tendero dice qué
+            botón tocar; aquí esos botones no existen —el cliente no registra
+            nada, solo mira— y una instrucción que no se puede seguir es peor
+            que ninguna. */}
+        <div className="rounded-lg border px-6 py-8 text-center">
+          <p className="text-base">Todavía no hay transacciones registradas.</p>
+        </div>
       </div>
     );
   }

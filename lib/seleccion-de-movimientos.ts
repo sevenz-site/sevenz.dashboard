@@ -43,7 +43,7 @@ export function alternar(seleccion: Set<string>, rowId: string): Set<string> {
 // encima de un botón que dice "Eliminar movimientos", y tres palabras para la
 // misma cosa en diez centímetros es una de más.
 export function textoDeSeleccion(cuantos: number): string {
-  return cuantos === 1 ? "1 movimiento seleccionado" : `${cuantos} movimientos seleccionados`;
+  return cuantos === 1 ? "1 transacción seleccionada" : `${cuantos} transacciones seleccionadas`;
 }
 
 // Lo que dice el botón de eliminar. Lleva el número porque es destructivo: un
@@ -51,7 +51,7 @@ export function textoDeSeleccion(cuantos: number): string {
 // pulsarlo, que se van a ir los tres que se querían y no los cuatro que había
 // marcados de antes.
 export function textoDeEliminar(cuantos: number): string {
-  return cuantos === 1 ? "Eliminar 1 movimiento" : `Eliminar ${cuantos} movimientos`;
+  return cuantos === 1 ? "Eliminar 1 transacción" : `Eliminar ${cuantos} transacciones`;
 }
 
 // Lo que dice cada radio de moneda. Cambia con el estado PORQUE hace dos cosas

@@ -163,7 +163,7 @@ export function SaldoDeApertura({
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <p className="text-sm">
         Si esta página continúa otra, escribe el saldo con el que empieza. Lo añadiremos como una
-        línea de <strong>Saldo anterior</strong> antes de los demás movimientos.
+        línea de <strong>Saldo anterior</strong> antes de las demás transacciones.
       </p>
       <CampoManual
         currency={currency}

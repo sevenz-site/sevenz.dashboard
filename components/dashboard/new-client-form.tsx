@@ -8,11 +8,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { registrarCliente } from "@/app/(app)/clients/nuevo/actions";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD, textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 import type { OwnerCountry } from "@/lib/types";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 
 // LA PANTALLA DE CLIENTE NUEVO — frame `1389:8313`, 2026-10-18.
 //
@@ -38,7 +40,15 @@ import type { OwnerCountry } from "@/lib/types";
 // oculto. Los dos viajan solos con el `FormData`. Controlarlos desde aquí
 // obligaría a replicar su lógica —el prefijo del país, el filtrado a dígitos—
 // y la copia es lo que se queda atrás el día que la original cambie.
-export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | null }) {
+export function NewClientForm({
+  ownerCountry,
+  ledger,
+}: {
+  ownerCountry: OwnerCountry | null;
+  // Para la hoja de la cuenta duplicada, que enseña saldos. `null` es el libro
+  // de un negocio colombiano.
+  ledger: LedgerDisplay | null;
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [nombre, setNombre] = useState("");
@@ -46,6 +56,25 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
   const [acepta, setAcepta] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, startTransition] = useTransition();
+  // ── LA CÉDULA QUE YA ES DE ALGUIEN ───────────────────────────────
+  //
+  // Esta pantalla se quedaba en la frase roja y ahí terminaba: el tendero no
+  // podía ni mirar de quién era esa cédula ni crear la segunda cuenta a
+  // propósito. El paso 4 del asistente de venta sí lo permitía desde el
+  // 2026-10-18, y el dueño pidió el mismo comportamiento aquí: «recuerda que
+  // esto lo ajustamos en la pantalla de registrar cliente pero en el último
+  // paso del registro del fiado. Debe ser exactamente el mismo».
+  //
+  // DOS SALIDAS, y las dos hacen falta porque el choque significa dos cosas:
+  //
+  //   · Es la misma persona y no me acordaba -> mirar su cuenta y usarla.
+  //   · Es una segunda cuenta a propósito --«Pepito» y «Pepito negocio», el
+  //     negocio informal sin registro propio-- -> crearla.
+  //
+  // El servidor ya sabía hacer las dos: para en la primera y acepta
+  // `confirm_duplicate` en la segunda. Lo que faltaba era la pantalla.
+  const [duplicado, setDuplicado] = useState<{ id: string; name: string } | null>(null);
+  const [verCuenta, setVerCuenta] = useState(false);
 
   // LOS DOS BOTONES GUARDAN LO MISMO Y TERMINAN EN SITIOS DISTINTOS. El
   // destino se decide aquí y no en el servidor: la acción crea un cliente, y a
@@ -55,12 +84,18 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
     if (!form) return;
     setError(null);
     const datos = new FormData(form);
+    // EL SEGUNDO INTENTO LLEVA LA CONFIRMACIÓN. Si el tendero insiste --ahora
+    // el botón dice «Crear cuenta separada»-- se manda `confirm_duplicate` y
+    // se crea la segunda ficha.
+    if (duplicado) datos.set("confirm_duplicate", "true");
     startTransition(async () => {
       const r = await registrarCliente(datos);
       if (!r.ok) {
         setError(r.error);
+        setDuplicado(r.duplicado ?? null);
         return;
       }
+      setDuplicado(null);
       router.push(destino === "venta" ? `/ventas/nueva?cliente=${r.clientId}` : `/clients/${r.clientId}`);
     });
   }
@@ -161,6 +196,17 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
         </label>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+        {duplicado ? (
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto self-start px-0"
+            onClick={() => setVerCuenta(true)}
+          >
+            Ver cuenta de {duplicado.name}
+          </Button>
+        ) : null}
       </form>
 
       {/* LOS BOTONES, FUERA DEL `<form>` Y PEGADOS ABAJO, como el frame. Son
@@ -171,7 +217,7 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
           `AppMain`, y un padding propio aqui abajo los convertia en 56. */}
       <div className="flex flex-col gap-4 pt-4">
         <Button type="button" className="h-10 w-full" disabled={enviando} onClick={() => guardar("ficha")}>
-          {enviando ? "Guardando…" : "Registrar y finalizar"}
+          {enviando ? "Guardando…" : duplicado ? "Crear cuenta separada" : "Registrar y finalizar"}
         </Button>
         <Button
           type="button"
@@ -183,6 +229,19 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
           Continuar con venta
         </Button>
       </div>
+
+      {/* LA CUENTA DE QUIEN YA TIENE ESA CÉDULA. La misma hoja que el paso 4
+          del asistente: su ficha y su historial, que es lo que de verdad
+          distingue a dos hermanos con el mismo apellido. */}
+      {duplicado && verCuenta ? (
+        <ClientAccountSheet
+          open
+          onOpenChange={(abierto: boolean) => !abierto && setVerCuenta(false)}
+          clientId={duplicado.id}
+          clientName={duplicado.name}
+          ledger={ledger}
+        />
+      ) : null}
     </div>
   );
 }

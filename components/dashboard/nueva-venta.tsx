@@ -22,6 +22,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { ClientResultList } from "@/components/dashboard/client-result-list";
 import { CartPillButton } from "@/components/cart-pill-button";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -1516,21 +1517,29 @@ function PasoCliente({
     <div className="flex flex-1 flex-col gap-4">
       <SearchField value={query} onChange={setQuery} placeholder="Buscar cliente" />
 
-      {encontrados.length > 0 ? (
-        <div className="flex flex-col overflow-hidden rounded-xl border">
-          {encontrados.map((c, i) => (
-            <button
-              key={c.client_id}
-              type="button"
-              onClick={() => onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false })}
-              className={`flex items-center justify-between gap-3 p-4 text-left ${i > 0 ? "border-t" : ""}`}
-            >
-              <span className="truncate text-sm font-medium">{c.name}</span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {/* EL MISMO DESPLEGABLE QUE EL BUSCADOR DEL INICIO, a petición del dueño
+          el 2026-10-18. Tenía una lista propia: nombre y una flecha, sin
+          documento.
+
+          LO QUE FALTABA ERA EL DOCUMENTO, y no es un adorno: dos clientes que
+          se llaman igual son corrientes en una bodega —hermanos, padre e
+          hijo— y el nombre solo no los distingue. Esa es justo la pantalla
+          donde elegir mal pone una deuda en la cuenta equivocada.
+
+          `ClientResultList` ya existía y lo montan el buscador de Inicio y el
+          diálogo de buscar cliente. Esta era la tercera lista de resultados
+          del mismo producto, y la única sin cédula. */}
+      <ClientResultList
+        results={encontrados.map((c) => ({
+          id: c.client_id,
+          name: c.name,
+          documentId: c.document_id,
+        }))}
+        onSelect={(id) => {
+          const c = encontrados.find((x) => x.client_id === id);
+          if (c) onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+        }}
+      />
 
       {/* EL ALTA, DEBAJO DEL BUSCADOR Y SIEMPRE A LA VISTA. Es el mismo
           formulario de `/clients/nuevo` y los mismos campos — pero NO se

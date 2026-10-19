@@ -133,7 +133,7 @@ function DecisionDelTotal({
       importe: esc,
       // Se dice ANTES de marcarlo lo que va a pasar, porque lo que pasa es que
       // aparece un movimiento nuevo en la cuenta de una persona.
-      pie: `Agregaremos un movimiento por valor de ${importeDe(Math.abs(diferencia), currency)} para que cuadren las cuentas`,
+      pie: `Agregaremos una transacción por valor de ${importeDe(Math.abs(diferencia), currency)} para que cuadren las cuentas`,
     },
     {
       cual: "suma" as const,
@@ -353,7 +353,7 @@ function FilaMovimiento({
         variant="ghost"
         size="icon"
         className="size-8 shrink-0"
-        aria-label={esAjuste || soloLectura ? "Ver este movimiento" : "Editar este movimiento"}
+        aria-label={esAjuste || soloLectura ? "Ver esta transacción" : "Editar esta transacción"}
         onClick={onEditar}
       >
         {/* EL ICONO DICE LO QUE EL BOTÓN HACE. Cuando la fila es de solo lectura
@@ -368,7 +368,7 @@ function FilaMovimiento({
           variant="ghost"
           size="icon"
           className="size-8 shrink-0"
-          aria-label="Quitar este movimiento"
+          aria-label="Quitar esta transacción"
           onClick={onEliminar}
         >
           <Trash2 className="size-4" />
@@ -594,7 +594,7 @@ export function DetalleDelCliente({
             />
           )}
           <p className="text-sm text-muted-foreground">
-            {filas.length} {filas.length === 1 ? "movimiento" : "movimientos"}
+            {filas.length} {filas.length === 1 ? "transacción" : "transacciones"}
             {filas.length === 1 ? " registrado" : " registrados"}
           </p>
           <span
@@ -638,7 +638,7 @@ export function DetalleDelCliente({
               <AlertDialogTitle>¿Quitar a {cliente.name} de esta subida?</AlertDialogTitle>
               <AlertDialogDescription>
                 Se quitan sus {filas.length}{" "}
-                {filas.length === 1 ? "movimiento" : "movimientos"} y no se guardará nada suyo. El
+                {filas.length === 1 ? "transacción" : "transacciones"} y no se guardará nada suyo. El
                 resto de la libreta se sube igual. La foto no se borra: puedes volver a empezar la
                 revisión si te equivocas.
               </AlertDialogDescription>
@@ -844,7 +844,7 @@ export function DetalleDelCliente({
           y el título tiene que decir eso antes de que nadie toque nada. */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium">Movimientos</p>
+          <p className="text-sm font-medium">Transacciones</p>
           {/* EL CONTADOR Y SU SALIDA, EN LA MISMA FILA. Un modo en el que se ha
               entrado por un gesto que no se ve tiene que decir dos cosas a la
               vez: en qué modo estás, y cómo sales. Separarlos deja al dueño
@@ -1008,7 +1008,7 @@ export function DetalleDelCliente({
                 variant="ghost"
                 size="icon"
                 className="size-8 shrink-0 text-destructive hover:text-destructive"
-                aria-label="Recuperar este movimiento"
+                aria-label="Recuperar esta transacción"
                 onClick={() => e.mov.uid && onRestaurar(e.mov.uid)}
               >
                 <RotateCcw className="size-4" />

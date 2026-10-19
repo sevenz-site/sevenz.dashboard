@@ -126,7 +126,7 @@ export function ImportProvider({
         // Importar cartera", y con el nombre nuevo quedaría "en Subir libreta"
         // — el título de la pantalla es ahora una ACCIÓN, y un sitio no se
         // llama "Subir libreta". Además el dueño ya está ahí cuando esto salta.
-        toast.success("Libreta procesada — revisa los movimientos antes de guardar.");
+        toast.success("Libreta procesada — revisa las transacciones antes de guardar.");
       })();
     },
     [updateJob],
