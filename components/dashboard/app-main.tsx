@@ -50,7 +50,16 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // simplemente no se aplica. No da error de compilación ni de tipos: la
   // pantalla sale con los botones pegados abajo y parece que el cambio no se
   // hizo.
-  const enFlujoDeRegistrar = pathname.startsWith("/ventas/") || pathname === "/clients/nuevo";
+  // LAS DOS PANTALLAS QUE LLEVAN `StickyActions` NO ENTRAN: su barra de
+  // botones trae su propio aire de 40px, y sumarle el de aqui lo doblaria a
+  // 80 -- la barra se quedaria flotando a media altura al final del scroll.
+  //
+  // El resumen de la venta (`/ventas/<id>`) si entra: sus botones no estan en
+  // una barra, y su «Compartir» es la ultima cosa de una pagina que se
+  // desplaza.
+  const conBarraDeBotones =
+    pathname.startsWith("/ventas/nueva") || pathname === "/clients/nuevo";
+  const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
 
   return (
     <main
@@ -59,7 +68,13 @@ export function AppMain({ children }: { children: React.ReactNode }) {
         hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+2.5rem)]",
         hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
-        !hasBar && !enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
+        // CON BARRA DE BOTONES, NI UN PIXEL DE MAS. Solo el area segura del
+        // iPhone, porque la barra se pega al borde y su propio `pb` ya pone
+        // los 40. Con el `1rem` de la rama de abajo el hueco salia de 56, que
+        // es lo que se midio en pantalla antes de poner esta linea.
+        !hasBar && conBarraDeBotones && "pb-[env(safe-area-inset-bottom)]",
+        !hasBar && !enFlujoDeRegistrar && !conBarraDeBotones &&
+          "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
       )}
     >
       {children}

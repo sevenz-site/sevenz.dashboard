@@ -25,6 +25,7 @@ import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
 import { CartPillButton } from "@/components/cart-pill-button";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { ProductSheet } from "@/components/dashboard/product-sheet";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
@@ -485,7 +486,22 @@ export function NuevaVenta({
         <PasoCliente
           clientes={clientes}
           cliente={cliente}
-          onElegirCliente={setCliente}
+          onElegirCliente={(c) => {
+            setCliente(c);
+            // ── Y SE LLEVA EL ERROR POR DELANTE ──────────────────────
+            //
+            // El choque de cédula hablaba del formulario de alta; elegir a
+            // alguien de la lista es resolverlo —«ah, es él»— y la frase roja
+            // se quedaba en pantalla contradiciendo a la tarjeta que acababa
+            // de salir encima. El dueño lo reportó el 2026-10-18: «al
+            // seleccionarlo me sigue mostrando el mensaje de error».
+            //
+            // VA AQUÍ Y NO EN `PasoCliente` porque los dos estados viven en
+            // este componente: el paso solo los pinta. Ponerlo allí obligaría
+            // a subir dos avisos más por props para lo mismo.
+            setError(null);
+            setDuplicado(null);
+          }}
           // OBLIGATORIO SOLO SI QUEDÓ DEUDA: «si se registra al menos 1 pago
           // como parcial, el registro del cliente es obligatorio; cuando se
           // registran de contado, es opcional» — el dueño, 2026-10-18.
@@ -899,16 +915,16 @@ function PasoCarrito({
         />
       ))}
 
-      <div className="flex-1" />
-
       {/* EL TOTAL NO SALE EN EL FRAME, y no se añade: cada línea ya enseña su
           subtotal con su bandera, y la pantalla de pago abre con una tarjeta
           por moneda y su total. Ponerlo aquí además sería la misma cifra dicha
           dos veces, y la primera —sin el contexto del cobro— no decide nada. */}
-      <Button type="button" className="h-10 w-full" onClick={onIrAPago}>
-        <Banknote className="size-6" aria-hidden="true" />
-        Ir a pago
-      </Button>
+      <StickyActions>
+        <Button type="button" className="h-10 w-full" onClick={onIrAPago}>
+          <Banknote className="size-6" aria-hidden="true" />
+          Ir a pago
+        </Button>
+      </StickyActions>
     </div>
   );
 }
@@ -1294,22 +1310,24 @@ function PasoPago({
           pulsarlo no hace nada, y lo que hace falta aquí es que DIGA por qué
           no se puede — es el mismo criterio que `TipoButtons` ya aplica al
           abono imposible en el diálogo de movimientos. */}
-      <Button
-        type="button"
-        className="h-10 w-full"
-        disabled={guardando}
-        onClick={() => {
-          if (sinRegistrar.length > 0) {
-            setFaltan(textoFaltaRegistrar(sinRegistrar));
-            return;
-          }
-          setFaltan(null);
-          if (conCliente) void guardar();
-          else onContinuar();
-        }}
-      >
-        {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
-      </Button>
+      <StickyActions>
+        <Button
+          type="button"
+          className="h-10 w-full"
+          disabled={guardando}
+          onClick={() => {
+            if (sinRegistrar.length > 0) {
+              setFaltan(textoFaltaRegistrar(sinRegistrar));
+              return;
+            }
+            setFaltan(null);
+            if (conCliente) void guardar();
+            else onContinuar();
+          }}
+        >
+          {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
+        </Button>
+      </StickyActions>
 
       {cobrando ? (
         <PagoSheet
@@ -1569,7 +1587,20 @@ function PasoCliente({
         }))}
         onSelect={(id) => {
           const c = encontrados.find((x) => x.client_id === id);
-          if (c) onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+          if (!c) return;
+          onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+          // EL BUSCADOR SE VACÍA, igual que al cambiar de cliente más abajo.
+          //
+          // SE OLVIDÓ EN ESTA RAMA Y SOLO EN ESTA, que es por qué el dueño lo
+          // vio «una sola vez»: la PRIMERA elección dejaba el texto escrito,
+          // así que al redibujarse la pantalla con el cliente puesto la lista
+          // salía otra vez —ahora sin él— encima de su propia tarjeta. De la
+          // segunda en adelante ya se limpiaba.
+          //
+          // Dos ramas que hacen lo mismo y solo una lo hacía entero: por eso
+          // el `setQuery("")` va pegado a cada `onElegirCliente` y no dentro
+          // de él, donde sería invisible desde aquí.
+          setQuery("");
         }}
       />
 
@@ -1669,32 +1700,34 @@ function PasoCliente({
           deliberada. Un enlace perdido entre el error y el botón negro invita
           a pulsar el negro sin mirar, que es justo cómo se duplica a alguien
           sin querer. Dos botones, el seguro arriba. */}
-      {duplicado ? (
+      <StickyActions>
+        {duplicado ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full"
+            onClick={() => setVerCuenta(true)}
+          >
+            Ver cuenta de {duplicado.name}
+          </Button>
+        ) : null}
         <Button
           type="button"
-          variant="outline"
           className="h-10 w-full"
-          onClick={() => setVerCuenta(true)}
+          disabled={guardando || (obligatorio && !hayNombre)}
+          onClick={() => onFinalizar(hayNombre ? formRef.current : null, acepta)}
         >
-          Ver cuenta de {duplicado.name}
+          {guardando
+            ? "Guardando…"
+            : duplicado
+              ? "Crear cuenta separada"
+              : hayNombre
+                ? "Finalizar"
+                : obligatorio
+                  ? "Escribe o elige un cliente"
+                  : "Finalizar sin cliente"}
         </Button>
-      ) : null}
-      <Button
-        type="button"
-        className="h-10 w-full"
-        disabled={guardando || (obligatorio && !hayNombre)}
-        onClick={() => onFinalizar(hayNombre ? formRef.current : null, acepta)}
-      >
-        {guardando
-          ? "Guardando…"
-          : duplicado
-            ? "Crear cuenta separada"
-            : hayNombre
-              ? "Finalizar"
-              : obligatorio
-                ? "Escribe o elige un cliente"
-                : "Finalizar sin cliente"}
-      </Button>
+      </StickyActions>
 
       {duplicado && verCuenta ? (
         <ClientAccountSheet

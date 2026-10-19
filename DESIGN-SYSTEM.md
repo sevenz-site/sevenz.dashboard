@@ -1584,6 +1584,41 @@ habría separado — y el del cliente es el que nadie de este lado mira. Vive en
 **La señal de alarma, para la próxima**: si estás a punto de hacer el mismo
 cambio en dos archivos, el cambio no es el problema; la copia sí.
 
+## Los botones del flujo de registrar van en una barra pegada: `StickyActions`
+
+Petición del dueño el 2026-10-18: *«todos los botones del flujo Registrar deben
+mantenerse visibles en la parte inferior de la pantalla»*. Los monta el
+asistente de venta (pasos 2, 3 y 4) y «Nuevo cliente».
+
+**Lo que se gana no es comodidad.** Estaban al FINAL de la columna: en el
+carrito con ocho líneas, o en el paso 4 con el formulario de alta debajo, «Ir a
+pago» y «Finalizar» solo aparecían tras recorrer la pantalla entera. El tendero
+que ya decidió cobrar tenía que buscar el botón que cierra la venta, con el
+cliente delante.
+
+### `sticky` y no `fixed`, que es la decisión que importa
+
+Un `fixed` flota fuera del flujo, así que hay que **reservarle sitio a mano** en
+`AppMain` — tantos píxeles como mida la barra. Esa cuenta se descuadra el día
+que una pantalla ponga dos botones en vez de uno, y este flujo ya tiene las
+dos: `/clients/nuevo` pone dos, el carrito pone uno.
+
+`sticky` ocupa su sitio en la columna: el contenido nunca queda debajo porque el
+navegador ya lo tuvo en cuenta, y la altura la decide el contenido real. Con
+`mt-auto` se va al fondo cuando la pantalla sobra, y se pega al borde inferior
+mientras haya scroll.
+
+### El aire de abajo vive en la barra, y `AppMain` deja de ponerlo
+
+Los 40px que el dueño pidió —«para que los botones no queden tan pegados a la
+parte inferior del teléfono ni el widget»— los pone `StickyActions`. En esas dos
+rutas `AppMain` baja a **solo el área segura del iPhone**: con su `1rem` de
+siempre, el hueco medido salía de **56px**, no de 40. Se vio midiendo en
+pantalla, no leyendo el código.
+
+Es la misma trampa que la del `p-4` doblado de unos días antes: dos sitios
+poniendo el mismo espacio, cada uno convencido de ser el único.
+
 ## Con un buscador enfocado no hay barra ni botón flotante
 
 Desde el 2026-10-18. **Esto revierte una decisión del 2026-09-20, y las dos

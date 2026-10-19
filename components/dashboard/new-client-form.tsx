@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -204,9 +205,10 @@ export function NewClientForm({
           `type="button"` a propósito: con dos submits en un formulario, pulsar
           Intro en cualquier campo dispara el primero —aquí «Registrar y
           finalizar»— y el tendero se encontraría guardado a medio escribir. */}
-      {/* `pt-4` y no `py-4`: los 40px de aire que pidio el dueno los pone
-          `AppMain`, y un padding propio aqui abajo los convertia en 56. */}
-      <div className="flex flex-col gap-4 pt-4">
+      {/* LA BARRA PEGADA ABAJO desde el 2026-10-18: con el formulario entero
+          encima, estos dos botones solo aparecían al final del scroll. Ver
+          `StickyActions`, que trae también el aire de abajo. */}
+      <StickyActions>
       {/* «VER CUENTA DE …», COMO BOTÓN Y ENCIMA DEL PRINCIPAL. Era un enlace
           suelto bajo el error, en tinta normal; el dueño pidió el 2026-10-18
           que fuera un botón outlined sobre «Crear cuenta separada».
@@ -239,7 +241,7 @@ export function NewClientForm({
         >
           Continuar con venta
         </Button>
-      </div>
+      </StickyActions>
 
       {/* LA CUENTA DE QUIEN YA TIENE ESA CÉDULA. La misma hoja que el paso 4
           del asistente: su ficha y su historial, que es lo que de verdad
