@@ -1017,6 +1017,12 @@ export type BloqueDelResumen = {
 // hacen falta para no dibujar la tarjeta, y ahí es donde aparece una tarjeta
 // con tres rayas.
 export type CompradorDelResumen = {
+  // EL ID VA DENTRO DEL COMPRADOR, y no suelto en `ResumenDeVenta`, porque el
+  // botón «Ver ‹nombre›» tiene exactamente la misma condición que la tarjeta
+  // «Datos del comprador»: existe cuando hay alguien a quien nombrar. En una
+  // venta de mostrador `comprador` es `null` y las dos cosas desaparecen
+  // juntas, sin que haya que acordarse de repetir la condición.
+  id: string;
   nombre: string;
   documento: string;
   telefono: string;
@@ -1071,7 +1077,11 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
     supabase
       .from("clients")
-      .select("name, document_id, whatsapp, is_walk_in")
+      // `id` LO LLEVA EL COMPRADOR desde el 2026-10-19, para el botón «Ver
+      // ‹nombre›» del resumen. Sale de aquí y no del navegador: la página ya
+      // comprobó que la venta es del dueño de la sesión, así que este id es el
+      // del cliente de ESA venta y no uno que alguien pueda cambiar en la URL.
+      .select("id, name, document_id, whatsapp, is_walk_in")
       .eq("id", venta.client_id)
       .maybeSingle(),
     contextoDeVenta(supabase, user.id),
@@ -1165,6 +1175,7 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
       esMostrador || !cliente
         ? null
         : {
+            id: cliente.id as string,
             nombre: cliente.name as string,
             documento: formatDocumentId((cliente.document_id as string | null) ?? null),
             telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp as string) : "—",

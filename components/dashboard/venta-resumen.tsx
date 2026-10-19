@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { CheckCircle2, Share2, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -137,6 +138,31 @@ export function VentaResumen({
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </Button>
+
+        {/* «VER ‹NOMBRE›», DEBAJO DE «COMPARTIR». Pedido por el dueño el
+            2026-10-19.
+
+            AQUÍ SÍ NAVEGA, y en el paso 4 del asistente el botón del mismo
+            nombre abre una hoja. No es una incoherencia: allí hay una venta a
+            medias en memoria y salir la tira entera. Aquí la venta YA está
+            guardada, así que no hay nada que perder — y es justo lo que el
+            tendero quiere hacer después de cobrar: ver cómo quedó la cuenta.
+
+            NO SALE EN UNA VENTA DE MOSTRADOR, por la misma condición que la
+            tarjeta «Datos del comprador»: `comprador` es `null` y no hay
+            cuenta que abrir. Por eso el id vive DENTRO de `comprador` y no
+            suelto — así las dos cosas aparecen y desaparecen juntas sin que
+            haya que repetir la condición en dos sitios.
+
+            MISMO `variant="outline"` QUE «COMPARTIR», sin inventar una
+            jerarquía que el dueño no pidió: lo que lo lee como secundario es
+            el orden, no un peso distinto. Sin icono, porque el de «Compartir»
+            está ahí para la acción nativa y dos iconos seguidos compiten. */}
+        {comprador ? (
+          <Button asChild variant="outline" className="w-full text-base font-semibold">
+            <Link href={`/clients/${comprador.id}`}>Ver {comprador.nombre}</Link>
+          </Button>
+        ) : null}
       </div>
     </div>
   );
