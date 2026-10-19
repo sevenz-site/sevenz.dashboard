@@ -176,6 +176,28 @@ function useOverlayOpen() {
 //
 // NO HAY `hover:`, a propósito: esta barra es `md:hidden`, así que solo existe
 // donde no hay ratón. Un `hover` ahí se queda pegado después de tocar.
+//
+// ===========================================================================
+// EL ICONO SELECCIONADO NO SE RELLENA. DECISIÓN DEL DUEÑO EL 2026-10-19
+//
+// El frame `1421:15026` dibuja el estado seleccionado con el icono RELLENO, y
+// no está puesto. No es un olvido: con los iconos de este proyecto no se puede.
+//
+// LO QUE SE MIDIÓ, el 2026-10-18: lucide dibuja con `stroke` y las formas
+// vienen abiertas, así que un `fill="currentColor"` no las rellena — las
+// convierte en otra cosa. `Home` sale como un pentágono macizo y `Package`
+// como un hexágono liso: dos siluetas que ya no se reconocen. No es que quede
+// feo, es que deja de decir qué pantalla es.
+//
+// Rellenarlos de verdad exigía traer una segunda familia de iconos (Material
+// Symbols, que publica cada glifo en relleno y en línea) y convivir con dos.
+// Preguntado al dueño, decidió lo contrario: **«no extraigas Material Symbols,
+// deja los íconos originales del design system que estamos usando»**.
+//
+// Así que el estado seleccionado se distingue por el fondo, el subrayado de
+// 4px y la tinta del rótulo — tres señales, que es más de lo que el frame
+// pedía. Si algún día se cambia de familia de iconos, esto se puede retomar;
+// mientras la familia sea lucide, no hay nada que probar aquí.
 function NavItem({
   active,
   children,

@@ -73,6 +73,21 @@ export function AppMain({ children }: { children: React.ReactNode }) {
         // El resto de pantallas con flotante conviven con ese solape sobre la
         // ultima fila de una lista, que molesta mucho menos que tapar un
         // boton. Si algun dia estorba alli tambien, la cuenta esta aqui.
+        //
+        // QUEDAN 2,75px DE SOLAPE y se quedan. Decision del dueno el
+        // 2026-10-19: «dejalo como esta».
+        //
+        // Medido el 2026-10-18 en un resumen CORTO —una sola linea de producto,
+        // sin deuda antigua, a 375px— donde la pagina no llega a desplazarse:
+        // ahi el boton flotante muerde 2,75px del borde superior de
+        // «Compartir». Con cualquier resumen mas largo no pasa, porque la
+        // pagina se desplaza y el `pb` hace su trabajo.
+        //
+        // POR QUE NO SE PERSIGUE: cerrarlo pide que el `pb` sepa si la pagina
+        // se desplaza o no, que es un calculo en tiempo de ejecucion, con su
+        // observador y su reflow, para 2,75px que no tapan ni el texto ni el
+        // area tocable del boton. Si alguna vez un tendero reporta que no
+        // puede darle a «Compartir», el numero a subir es este 5.5rem.
         hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
         hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
