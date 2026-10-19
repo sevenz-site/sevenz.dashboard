@@ -858,7 +858,25 @@ function TarjetaDeProducto({
             EL «· al mayor» SÍ SE VA, en la misma decisión: el escalón se ve
             entero en el detalle, con su cantidad mínima al lado, y ahí sí
             significa algo. */}
-        <span className="flex items-center gap-1 pr-10 text-base font-semibold">
+        {/* EL PRECIO EN 14/20 (`text-sm`) Y EL NOMBRE EN 16: decisión del dueño
+            el 2026-10-19. *«Tanto título de producto como precio tienen la
+            misma jerarquía»* — y la tenían, los dos en `text-base
+            font-semibold`.
+
+            ESTO REVIERTE A MEDIAS SU PROPIA DECISIÓN DEL 2026-10-18, y las dos
+            quedan escritas. Ese día el precio SUBIÓ de 14px a 16 semibold
+            justamente para igualarlo al nombre: los dos tamaños y pesos
+            andaban descuadrados entre esta pantalla y el catálogo del cliente,
+            y el dueño lo vio poniendo las dos una al lado de otra. La razón
+            vieja no era el tamaño, era la IGUALDAD ENTRE LAS DOS PANTALLAS —
+            así que se mantiene: el mismo cambio entra en la tarjeta de
+            `app/c/[token]/page.tsx`. Lo que se corrige es la jerarquía DENTRO
+            de la tarjeta, que es otra cosa.
+
+            EL PESO NO SE TOCA. El dueño habló del tamaño, y con 14 frente a 16
+            la jerarquía ya se lee; quitarle también el `font-semibold` sería
+            una decisión que no pidió. */}
+        <span className="flex items-center gap-1 pr-10 text-sm font-semibold">
           {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4" /> : null}
           {precio != null && moneda ? formatPriceAmount(precio, moneda) : "Sin precio"}
         </span>

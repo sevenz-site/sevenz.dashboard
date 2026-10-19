@@ -401,12 +401,17 @@ export default async function CatalogoPublicoPage({
                       </div>
                       <div className="flex flex-col gap-0.5 p-3">
                         {/* LA MISMA TIPOGRAFÍA QUE LA TARJETA DEL ASISTENTE DE
-                            VENTA (frame `1389:8364`): nombre y precio en 16px
-                            semibold. Eran 14px y pesos distintos, y el dueño lo
-                            vio poniendo las dos pantallas una al lado de otra
-                            el 2026-10-18. Es el mismo producto enseñado al
-                            tendero y a su cliente; que se lean distinto hace
-                            dudar de si son el mismo catálogo. */}
+                            VENTA (frame `1389:8364`). El nombre en 16px
+                            semibold; el PRECIO en 14/20 desde el 2026-10-19,
+                            ver su comentario más abajo.
+
+                            POR QUÉ IMPORTA QUE SEAN LA MISMA: eran 14px y pesos
+                            distintos, y el dueño lo vio poniendo las dos
+                            pantallas una al lado de otra el 2026-10-18. Es el
+                            mismo producto enseñado al tendero y a su cliente;
+                            que se lean distinto hace dudar de si son el mismo
+                            catálogo. Así que cualquier cambio aquí entra
+                            también en `nueva-venta.tsx`, y al revés. */}
                         <span className="line-clamp-2 text-base font-semibold">
                           {p.name}
                         </span>
@@ -424,7 +429,20 @@ export default async function CatalogoPublicoPage({
                             del número. La equivalencia y el escalón siguen
                             enteros en la ficha, que es donde el cliente
                             decide. */}
-                        <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                        {/* EL PRECIO EN 14/20 (`text-sm`), DECISIÓN DEL DUEÑO
+                            EL 2026-10-19: *«tanto título de producto como
+                            precio tienen la misma jerarquía»*. La tenían — los
+                            dos en `text-base font-semibold`.
+
+                            Revierte a medias su decisión del 2026-10-18, que
+                            subió el precio a 16 semibold para igualarlo al
+                            nombre. Lo que esa decisión perseguía era la
+                            IGUALDAD ENTRE LAS DOS PANTALLAS y eso se mantiene;
+                            lo que se corrige es la jerarquía DENTRO de la
+                            tarjeta. El peso no se toca: con 14 frente a 16 ya
+                            se lee, y quitar el `font-semibold` sería decidir
+                            algo que no se pidió. */}
+                        <span className="flex items-center gap-1 text-sm font-semibold tabular-nums">
                           <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
                           {formatPriceAmount(p.price, p.base_currency)}
                         </span>
