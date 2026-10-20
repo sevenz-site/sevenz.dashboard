@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -84,13 +85,29 @@ function Estado({ order }: { order: CatalogOrderRow }) {
   return <Badge variant="secondary">Atendido</Badge>;
 }
 
-export function OrdersList({ orders }: { orders: OrderWithItems[] }) {
+export function OrdersList({
+  orders,
+  vacio,
+}: {
+  orders: OrderWithItems[];
+  // EL ESTADO VACÍO LO PINTA LA PÁGINA Y LLEGA HECHO. Desde el 2026-10-19 lleva
+  // dos botones --«Compartir catálogo» y «Crear producto»-- y el primero
+  // necesita el enlace del catálogo y cuántos productos hay publicados, que son
+  // datos del servidor. Montarlo aquí obligaría a hacerlos viajar hasta un
+  // componente de cliente que no los usa para nada más.
+  //
+  // El respaldo de abajo se queda por si alguien monta esta lista sin pasarlo:
+  // una pantalla sin estado vacío se lee como una que no cargó.
+  vacio?: ReactNode;
+}) {
   if (orders.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-        Todavía no te ha llegado ningún pedido por el catálogo. Cuando alguien pida desde tu
-        enlace, aparece aquí.
-      </p>
+      vacio ?? (
+        <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
+          Todavía no te ha llegado ningún pedido por el catálogo. Cuando alguien pida desde tu
+          enlace, aparece aquí.
+        </p>
+      )
     );
   }
 

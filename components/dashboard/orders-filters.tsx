@@ -134,7 +134,7 @@ export function OrdersFilterChips() {
   );
 }
 
-export function OrdersResults() {
+export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
   const { visible, total } = useOrdersFilters();
 
   // "NOTHING MATCHES" IS NOT "NOTHING HAS ARRIVED", and `OrdersList`'s own
@@ -149,5 +149,5 @@ export function OrdersResults() {
     );
   }
 
-  return <OrdersList orders={visible} />;
+  return <OrdersList orders={visible} vacio={vacio} />;
 }

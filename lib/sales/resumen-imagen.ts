@@ -57,12 +57,37 @@ export type BloqueDeResumen = {
   deudaAntigua: number | null;
 };
 
+// LO QUE SE ABONÓ, para la imagen de la pantalla de éxito del abono dirigido.
+//
+// Es la MISMA imagen que la de una venta salvo por su tarjeta central: mismo
+// visto verde, misma ficha del comprador, mismo logo y mismo pie antifraude. Un
+// segundo dibujante para repetir cuatro quintas partes de este fichero es cómo
+// acaban divergiendo el margen, el radio y la escala — y con ellos, dos recibos
+// del mismo negocio que no se parecen.
+export type AbonoDelResumen = {
+  currency: PriceCurrency;
+  // Lo que quedó anotado, en la moneda del fiado.
+  abonado: number;
+  // Los bolívares que el tendero TECLEÓ, si pagó así. `null` si no.
+  //
+  // Tecleados y no convertidos, por la misma razón que la fila del historial:
+  // escribió 900 y leer 899,09 no se explica, aunque sea cierto.
+  entregadoBs: number | null;
+  // Lo que ese cliente sigue debiendo en esa moneda DESPUÉS del abono. Cero
+  // cuando quedó saldado, y entonces la tarjeta lo dice con palabras.
+  deuda: number;
+};
+
 export type DatosDelResumen = {
   // `null` en una venta de mostrador: ahi no hay a quien nombrar, asi que la
   // tarjeta no se dibuja. Ver el comentario de la pantalla.
   comprador: { nombre: string; documento: string; telefono: string } | null;
   bloques: BloqueDeResumen[];
   rates: BolivarRates | null;
+  // Cuando viene, se dibuja ESTO en vez de las tarjetas por moneda, y el título
+  // cambia. Un abono no tiene líneas de producto ni total de compra: tiene lo
+  // que pagó y lo que le queda.
+  abono?: AbonoDelResumen | null;
 };
 
 const NOMBRE_MONEDA: Record<string, string> = {
@@ -185,6 +210,29 @@ function tarjeta(ctx: CanvasRenderingContext2D, y: number, alto: number) {
  * were sold.
  */
 export function dibujarResumenDeVenta(datos: DatosDelResumen): Blob | null {
+  return dibujar(datos);
+}
+
+/**
+ * The same picture for the directed abono's success screen -- owner's request
+ * of 2026-10-19, who chose the PNG over sharing plain text.
+ *
+ * It is a separate entry point and not a flag the caller sets, because the two
+ * screens are two different things and the name is what says which one you are
+ * getting. What they share is `recorrer`, so the header, the buyer card, the
+ * logo and the anti-fraud footer can never drift apart.
+ */
+export function dibujarResumenDeAbono(datos: {
+  comprador: DatosDelResumen["comprador"];
+  abono: AbonoDelResumen;
+  rates: BolivarRates | null;
+}): Blob | null {
+  // `bloques` vacío a propósito: un abono no tiene tarjetas por moneda, y
+  // pasar las dos cosas dibujaría un recibo con dos resúmenes distintos.
+  return dibujar({ comprador: datos.comprador, bloques: [], rates: datos.rates, abono: datos.abono });
+}
+
+function dibujar(datos: DatosDelResumen): Blob | null {
   try {
     const alto = recorrer(null, datos);
     const canvas = document.createElement("canvas");
@@ -249,7 +297,11 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     ctx.font = fuente(17);
     ctx.fillStyle = TINTA;
     ctx.textAlign = "center";
-    ctx.fillText("¡Transacción registrada con éxito!", centro, y);
+    ctx.fillText(
+      datos.abono ? "¡Abono registrado con éxito!" : "¡Transacción registrada con éxito!",
+      centro,
+      y,
+    );
   }
   y += 10 * ESCALA;
 
@@ -305,6 +357,86 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     const altoFicha = fy - inicioFicha + 8 * ESCALA;
     if (ctx) tarjeta(ctx, inicioFicha, altoFicha);
     y = inicioFicha + altoFicha + 16 * ESCALA;
+  }
+
+  // ── LA TARJETA DEL ABONO, cuando esto es el recibo de un pago ─────────
+  //
+  // Las mismas tres piezas que la pantalla de éxito, en el mismo orden:
+  // «Abonó en X», los bolívares entregados si pagó así, y en qué queda la
+  // cuenta. Y la misma regla para el cero: no se escribe «$0,00», se dice que
+  // no debe nada, que es lo que el cliente va a leer en su chat.
+  if (datos.abono) {
+    const a = datos.abono;
+    const nombre = NOMBRE_MONEDA[a.currency] ?? a.currency;
+    const hayDeuda = a.deuda > 0.005;
+    const deudaEnBs =
+      datos.rates && hayDeuda && a.currency !== "VES"
+        ? priceIn("VES", { amount: a.deuda, currency: a.currency }, datos.rates)?.amount ?? null
+        : null;
+
+    const inicio = y;
+    const xIzq = MARGEN + 16 * ESCALA;
+    const xDer = ANCHO - MARGEN - 16 * ESCALA;
+
+    let by = y + 30 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(16, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText(`Resumen de transacción en ${nombre}`, xIzq, by);
+    }
+    const lado = 20 * ESCALA;
+    dibujarSiLista(ctx, a.currency, xDer - lado, by - lado + 3 * ESCALA, lado, lado);
+    by += 24 * ESCALA;
+
+    const fila = (etiqueta: string, valor: string, peso = "400", px = 12) => {
+      if (!ctx) return;
+      ctx.font = fuente(px, peso);
+      ctx.fillStyle = TINTA;
+      ctx.fillText(etiqueta, xIzq, by);
+      ctx.textAlign = "right";
+      ctx.fillText(valor, xDer, by);
+      ctx.textAlign = "left";
+    };
+
+    const separar = () => {
+      by += 2 * ESCALA;
+      if (ctx) {
+        ctx.strokeStyle = LINEA;
+        ctx.lineWidth = 1 * ESCALA;
+        ctx.beginPath();
+        ctx.moveTo(MARGEN, by);
+        ctx.lineTo(ANCHO - MARGEN, by);
+        ctx.stroke();
+      }
+      by += 16 * ESCALA;
+    };
+
+    fila(`Abonó en ${nombre}`, formatPriceAmount(a.abonado, a.currency));
+    by += 18 * ESCALA;
+
+    if (a.entregadoBs != null) {
+      fila("Entregó", formatBs(a.entregadoBs));
+      by += 18 * ESCALA;
+    }
+
+    by += 4 * ESCALA;
+    separar();
+    fila("Deuda total", hayDeuda ? formatPriceAmount(a.deuda, a.currency) : "Sin deuda", "600", 16);
+
+    if (deudaEnBs != null) {
+      by += 16 * ESCALA;
+      if (ctx) {
+        ctx.font = fuente(12);
+        ctx.fillStyle = TENUE;
+        ctx.textAlign = "right";
+        ctx.fillText(`${formatBs(deudaEnBs)} hoy`, xDer, by);
+        ctx.textAlign = "left";
+      }
+    }
+
+    const alto = by - inicio + 14 * ESCALA;
+    if (ctx) tarjeta(ctx, inicio, alto);
+    y = inicio + alto + 16 * ESCALA;
   }
 
   // ── Una tarjeta por moneda ────────────────────────────────────────────

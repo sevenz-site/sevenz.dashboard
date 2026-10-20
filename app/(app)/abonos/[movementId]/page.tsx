@@ -8,6 +8,7 @@ import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { AbonoCompartir } from "@/components/dashboard/abono-compartir";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDocumentId } from "@/lib/format";
 import { telefonoLegible } from "@/lib/phone";
@@ -165,6 +166,34 @@ export default async function AbonoRegistradoPage({
           </div>
         </div>
       </section>
+
+      {/* «COMPARTIR», ENCIMA DE «VER CUENTA». Pedido del dueño el 2026-10-19,
+          y manda la MISMA IMAGEN PNG que el resumen de una venta — fue su
+          elección entre eso y mandar texto. El orden es el del resumen de
+          venta: compartir primero, porque es lo que el tendero hace nada más
+          cobrar, con el cliente todavía delante.
+
+          `rates` puede ser `null` en un negocio colombiano, y entonces la
+          imagen simplemente no lleva la línea de bolívares. */}
+      <AbonoCompartir
+        comprador={{
+          nombre: cliente.name,
+          documento: formatDocumentId(cliente.document_id),
+          telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp) : "—",
+        }}
+        abono={{
+          currency: moneda,
+          abonado: Number(abono.amount),
+          // Los bolívares TECLEADOS, no una conversión de hoy. Misma razón que
+          // la fila «Entregó» de arriba.
+          entregadoBs:
+            abono.entry_currency === "VES" && abono.entry_amount != null
+              ? Number(abono.entry_amount)
+              : null,
+          deuda: deudaTotal,
+        }}
+        rates={rates}
+      />
 
       {/* EL BOTON VA EN EL FLUJO, NO PEGADO ABAJO, y es a proposito: esta
           pantalla SI lleva barra de navegacion —vive en `/abonos/<id>`, fuera

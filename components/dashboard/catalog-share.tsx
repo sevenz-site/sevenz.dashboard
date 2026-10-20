@@ -62,10 +62,24 @@ export function CatalogShareButton({
   publishedCount,
   businessName,
   initialToken,
+  variante = "cabecera",
+  etiqueta = "Compartir",
 }: {
   publishedCount: PublishedCount;
   businessName: string;
   initialToken: string | null;
+  // CÓMO SE VE, no qué hace. El comportamiento —crear el enlace, el aviso de
+  // «no has publicado nada», el `navigator.share` sin `await` delante que iOS
+  // exige— es lo caro y es el mismo en los dos sitios; lo que cambia es que en
+  // la cabecera oscura es texto suelto y en el estado vacío de Pedidos es el
+  // botón principal de la tarjeta (frame `1467:9437`).
+  //
+  // Entra como variante y no como `className` a propósito: los colores de
+  // «cabecera» están escritos a fuego porque viven sobre un fondo que no se
+  // invierte con el tema, y dejar que quien llama los pise es cómo ese cuidado
+  // se pierde en el segundo sitio.
+  variante?: "cabecera" | "relleno";
+  etiqueta?: string;
 }) {
   const [token, setToken] = useState<string | null>(initialToken);
   const [pending, startTransition] = useTransition();
@@ -152,14 +166,18 @@ export function CatalogShareButton({
           hace rompe el contraste en silencio. */}
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
+        variant={variante === "relleno" ? "default" : "ghost"}
+        size={variante === "relleno" ? "default" : "sm"}
         onClick={() => void compartir()}
         disabled={pending}
-        className="h-auto px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
+        className={
+          variante === "relleno"
+            ? "h-10 w-full text-base font-semibold [&_svg]:size-5"
+            : "h-auto px-0 py-1.5 text-sm text-brand-secondary hover:bg-transparent hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:size-5"
+        }
       >
         {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Share2 aria-hidden="true" />}
-        Compartir
+        {etiqueta}
       </Button>
     </>
   );

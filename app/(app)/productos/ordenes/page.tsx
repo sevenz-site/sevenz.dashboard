@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
+import { OrdersEmpty } from "@/components/dashboard/orders-empty";
 import { type OrderWithItems } from "@/components/dashboard/orders-list";
 import {
   OrdersFilterProvider,
@@ -40,7 +41,13 @@ export default async function OrdenesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: orders, error: errorOrders }, country] = await Promise.all([
+  const [
+    { data: orders, error: errorOrders },
+    country,
+    { data: owner },
+    { data: catalogLink },
+    { data: publicables },
+  ] = await Promise.all([
     supabase
       .from("catalog_orders")
       .select(ORDER_COLUMNS)
@@ -52,7 +59,39 @@ export default async function OrdenesPage() {
       .order("status", { ascending: true })
       .order("created_at", { ascending: false }),
     readOwnerCountry(supabase, user!.id),
+    // ── LO QUE EL ESTADO VACÍO NECESITA ──────────────────────────────
+    //
+    // Su botón «Compartir catálogo» es el MISMO de la cabecera de Catálogo, y
+    // ese componente pide tres cosas: el nombre del negocio para el mensaje,
+    // el enlace ya servido y cuántos productos hay publicados.
+    //
+    // EN EL MISMO VIAJE QUE LOS PEDIDOS y no después: son tres consultas
+    // diminutas, y encadenarlas detrás de la lista le costaría a esta pantalla
+    // una vuelta entera por algo que casi siempre no se va a dibujar.
+    //
+    // EL ENLACE VIENE SERVIDO, no se crea al pulsar: `navigator.share` tiene
+    // que salir del gesto del dedo, y un `await` entre el toque y la hoja es
+    // lo que iOS Safari rechaza. Misma razón escrita en `productos/page.tsx`.
+    supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
+    supabase.from("catalog_share_links").select("token").eq("owner_id", user!.id).maybeSingle(),
+    supabase
+      .from("products")
+      .select("published_retail, published_wholesale")
+      .eq("owner_id", user!.id)
+      .is("deleted_at", null),
   ]);
+
+  // Las tres cifras que el botón distingue: sin NINGUNA publicada avisa en vez
+  // de compartir una página que diría «este negocio no tiene productos».
+  const filasPublicables = (publicables ?? []) as {
+    published_retail: boolean;
+    published_wholesale: boolean;
+  }[];
+  const publishedCount = {
+    retail: filasPublicables.filter((p) => p.published_retail).length,
+    wholesale: filasPublicables.filter((p) => p.published_wholesale).length,
+    any: filasPublicables.filter((p) => p.published_retail || p.published_wholesale).length,
+  };
 
   // A FAILED READ IS NOT AN EMPTY SHOP, and until 2026-10-16 this screen said
   // it was. Migration 108 created these tables with RLS on and no grant for
@@ -155,7 +194,15 @@ export default async function OrdenesPage() {
             No pudimos cargar tus pedidos ahora mismo. Vuelve a intentarlo en un momento.
           </p>
         ) : (
-          <OrdersResults />
+          <OrdersResults
+            vacio={
+              <OrdersEmpty
+                publishedCount={publishedCount}
+                businessName={owner?.business_name || "mi negocio"}
+                initialToken={catalogLink?.token ?? null}
+              />
+            }
+          />
         )}
       </div>
     </OrdersFilterProvider>
