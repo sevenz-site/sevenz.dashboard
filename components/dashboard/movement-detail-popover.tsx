@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowDownLeft, ArrowUpRight, EyeOff, ImageOff, Share2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, EyeOff, ImageOff, MoreVertical, Percent, Share2, Trash2 } from "lucide-react";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { toast } from "sonner";
 import {
@@ -22,9 +23,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
@@ -62,6 +68,7 @@ export function MovementDetailPopover({
   ledger = null,
   compartir = null,
   fiadoAplicado = null,
+  pendiente = null,
   rates = null,
   onVerFiado,
   open: openControlado,
@@ -145,6 +152,9 @@ export function MovementDetailPopover({
   // es la verdad y es la frase que el dueño eligió. Una ficha vacía justo en
   // los clientes con más historia habría parecido un fallo.
   fiadoAplicado?: FiadoAbierto | null;
+  // Lo que ESTE movimiento todavía debe, cuando es un fiado. Decide si el
+  // menú ofrece «Pagar»: un fiado saldado lo rechazaría al llegar.
+  pendiente?: number | null;
   // Para el «Bs. … hoy» de esa tarjeta. Sin tasa la línea no se dibuja.
   rates?: BolivarRates | null;
   // Qué hacer al pulsar la tarjeta: *«al seleccionar el card se debe abrir el
@@ -159,6 +169,11 @@ export function MovementDetailPopover({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  // La confirmación de borrado, abierta desde el menú. CONTROLADA Y NO CON
+  // `AlertDialogTrigger`: al elegir una opción el menú se cierra y desmonta a
+  // sus hijos, así que un disparador que viva dentro desaparece en el mismo
+  // gesto que debería abrirlo.
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [openInterno, setOpenInterno] = useState(false);
   const open = openControlado ?? openInterno;
   const setOpen = onOpenChangeControlado ?? setOpenInterno;
@@ -309,12 +324,89 @@ export function MovementDetailPopover({
     }
   }
 
+  // ── EL MENÚ «more», Y POR QUÉ SOLO LO VE EL DUEÑO ───────────────────
+  //
+  // Las tres opciones van dentro — decisión del dueño el 2026-10-19 — y el menú
+  // entero solo existe en su pantalla. Es su otra decisión, del 2026-10-18:
+  // *«Cliente no ve ninguna opción ni el botón more»*. `movementId` es la
+  // marca: solo lo pasa el historial del dueño, nunca `/s/[token]`.
+  //
+  // Al cliente le queda «Compartir» como botón al final de la ficha, como
+  // hasta hoy. Un menú de un solo elemento es peor que el botón que esconde.
+  const esDelDueno = Boolean(movementId);
+
+  // «Pagar» SOLO SI QUEDA ALGO QUE PAGAR. En un abono no hay nada que abonar, y
+  // en un fiado saldado el flujo lo rechazaría con «ese fiado ya está saldado»
+  // — ofrecerlo sería mandar al tendero a un callejón sin salida.
+  const puedePagar = esDelDueno && type === "charge" && (pendiente ?? 0) > 0.005;
+
+  const acciones = esDelDueno ? (
+    <>
+      {compartir ? (
+        <DropdownMenuItem onSelect={() => void handleShare()}>
+          <Share2 className="size-4" />
+          Compartir
+        </DropdownMenuItem>
+      ) : null}
+      {puedePagar ? (
+        <DropdownMenuItem asChild>
+          <Link href={`/abonos/nuevo/${movementId}/monto`}>
+            <Percent className="size-4" />
+            Pagar
+          </Link>
+        </DropdownMenuItem>
+      ) : null}
+      <DropdownMenuItem
+        variant="destructive"
+        onSelect={(e) => {
+          // Sin esto el menú se cierra ANTES de que el estado cambie y la
+          // confirmación se abre sobre un diálogo que se está desmontando.
+          e.preventDefault();
+          setConfirmarBorrado(true);
+        }}
+      >
+        <Trash2 className="size-4" />
+        Eliminar transacción
+      </DropdownMenuItem>
+    </>
+  ) : null;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Detalle de transacción</DialogTitle>
+          {/* EL TÍTULO Y EL «more», EN LA MISMA FILA — frames `1465:18349` y
+              `1463:18100`.
+
+              LAS TRES OPCIONES VAN DENTRO DEL MENÚ y no sueltas abajo:
+              decisión del dueño el 2026-10-19, preguntado porque el plan de
+              ese mismo día decía una cosa y los frames dibujaban otra. Antes
+              «Compartir» y «Eliminar movimiento» eran dos botones al final de
+              la ficha.
+
+              `pr-6` deja sitio a la «X» que `DialogContent` dibuja en la
+              esquina: sin él, el «more» cae justo debajo y se pulsa la que no
+              era. */}
+          <div className="flex items-center justify-between gap-2 pr-6">
+            <DialogTitle>Detalle de transacción</DialogTitle>
+            {acciones ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="-my-1 size-8 shrink-0"
+                    aria-label="Más opciones"
+                  >
+                    <MoreVertical className="size-5" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">{acciones}</DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
         </DialogHeader>
 
         {/* gap-4 entre grupos, gap-1.5 dentro. Esa diferencia es toda la
@@ -481,48 +573,36 @@ export function MovementDetailPopover({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-1">
-          {compartir ? (
-            <Button type="button" variant="outline" onClick={handleShare} className="w-full">
-              Compartir
-              <Share2 className="size-4" />
-            </Button>
-          ) : null}
+        {/* AL CLIENTE LE QUEDA «Compartir» COMO BOTÓN, como hasta hoy. En la
+            pantalla del dueño esta zona desaparece: sus tres acciones viven en
+            el menú de arriba desde el 2026-10-19. */}
+        {!esDelDueno && compartir ? (
+          <Button type="button" variant="outline" onClick={handleShare} className="w-full">
+            Compartir
+            <Share2 className="size-4" />
+          </Button>
+        ) : null}
 
-          {movementId ? (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                {/* Discreto a propósito. Borrar y compartir no son dos acciones
-                    del mismo peso: una manda un mensaje, la otra deshace un
-                    apunte de dinero. Un botón rojo del mismo tamaño al lado
-                    invita a pulsarlo por simetría. */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground hover:text-destructive"
-                >
-                  Eliminar movimiento
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Se recalculará el saldo de este cliente y el capital por cobrar. Podrás
-                    restaurarlo después desde Notificaciones.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={deleting}>
-                    {deleting ? "Eliminando..." : "Eliminar"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          ) : null}
-        </div>
+        {/* LA CONFIRMACIÓN DE BORRADO, CONTROLADA Y FUERA DEL MENÚ. Ver el
+            comentario de `confirmarBorrado`: dentro del menú su disparador se
+            desmonta en el mismo gesto que debería abrirla. */}
+        <AlertDialog open={confirmarBorrado} onOpenChange={setConfirmarBorrado}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se recalculará el saldo de este cliente y el capital por cobrar. Podrás
+                restaurarlo después desde Notificaciones.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Eliminando..." : "Eliminar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

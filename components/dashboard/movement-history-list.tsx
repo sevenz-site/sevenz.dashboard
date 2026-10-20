@@ -250,6 +250,7 @@ export function MovementHistoryList({
               ledger={ledger}
               compartir={compartir}
               fiadoAplicado={tarjetaDelFiado(m)}
+              pendiente={pendientePorFiado?.get(m.id) ?? 0}
               rates={rates}
               onVerFiado={verFiado}
               open={abierto === m.id}
