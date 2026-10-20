@@ -6,7 +6,7 @@ import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
+import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { BolivarRates } from "@/lib/products/price";
@@ -152,9 +152,6 @@ export function DetalleDeTransaccion({
         : { texto: formatBs(amount * exchangeRateUsed), moneda: "VES" as MovementCurrencyCode }
       : null;
 
-  const tasa =
-    currency && exchangeRateUsed != null ? formatRateEquivalence(currency, exchangeRateUsed) : null;
-
   // EL ACUERDO: de un fiado, el suyo; de un abono dirigido, el del fiado que
   // pagó. Un abono nunca tuvo plazo propio —son columnas del cargo y la
   // restricción de la base las rechaza en otra cosa— así que esto rellena tres
@@ -250,31 +247,6 @@ export function DetalleDeTransaccion({
           )
         ) : null}
 
-        {/* LO QUE SE HA ABONADO A ESTE FIADO — el reflejo exacto de la tarjeta
-            de arriba, encargado por el dueño el 2026-10-20: *«mismo patrón
-            como abono muestra los fiados»*.
-
-            SOLO SALEN LOS ABONOS DIRIGIDOS, y los cientos de antes de la
-            migración `126` no lo son: la cola FIFO los repartió sobre el saldo
-            y no hay ningún «este pagó a aquel» que enseñar. Por eso un fiado
-            viejo dice «Todavía sin abonos» aunque el cliente haya pagado —y
-            por eso la frase dice «sin abonos» y no «no se ha pagado nada»,
-            que sería otra cosa y podría ser falsa. */}
-        {type === "charge" && abonosRecibidos ? (
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-xs leading-5 text-muted-foreground">Abonos a este fiado</dt>
-            {abonosRecibidos.length > 0 ? (
-              <dd className="flex flex-col gap-1.5">
-                {abonosRecibidos.map((a) => (
-                  <TarjetaDeAbono key={a.movementId} abono={a} rates={rates} href={a.href} />
-                ))}
-              </dd>
-            ) : (
-              <dd className="text-sm">Todavía sin abonos</dd>
-            )}
-          </div>
-        ) : null}
-
         {productos.length > 0 ? (
           <ProductosDelMovimiento
             productos={productos}
@@ -283,17 +255,34 @@ export function DetalleDeTransaccion({
           />
         ) : null}
 
+        {/* LOS ABONOS DE ESTE FIADO, bajo el rótulo «Abonó» — frame
+            `1479:9456`, nodos `1479:9631` y `1479:9693`.
+
+            VA AQUÍ Y NO ARRIBA DEL TODO: el frame los coloca entre las líneas
+            de producto y «Equivalencia», con una línea de separación encima.
+            Estuvo arriba de la tarjeta y con el rótulo «Abonos a este fiado»,
+            que me inventé — el frame dice «Abonó».
+
+            SIN TEXTO CUANDO NO HAY NINGUNO. También estuvo «Todavía sin
+            abonos», inventado: el frame del fiado sin abonos (`1463:18100`)
+            no dice eso. Qué debe decir esa fila ahí está preguntado. */}
+        {type === "charge" && abonosRecibidos && abonosRecibidos.length > 0 ? (
+          <div className="flex flex-col gap-2 border-t pt-2">
+            <dt className="py-1 text-xs leading-4 text-muted-foreground">Abonó</dt>
+            <dd className="flex flex-col gap-2">
+              {abonosRecibidos.map((a) => (
+                <TarjetaDeAbono key={a.movementId} abono={a} rates={rates} href={a.href} />
+              ))}
+            </dd>
+          </div>
+        ) : null}
+
         <Fila nombre={type === "payment" ? "Abonó" : "Monto"}>
           <span className="inline-flex items-center gap-1.5 tabular-nums">
             {monto}
             {monedaDelMonto ? <CurrencyFlagIcon currency={monedaDelMonto} /> : null}
           </span>
         </Fila>
-        {tasa ? (
-          <Fila nombre="Tasa del día">
-            <span className="tabular-nums">{tasa}</span>
-          </Fila>
-        ) : null}
         {equivalente ? (
           <Fila nombre="Equivalencia">
             <span className="inline-flex flex-col items-end">

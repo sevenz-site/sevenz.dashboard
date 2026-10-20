@@ -42,43 +42,53 @@ export function CuotasTable({
   const filas = calcularCuotas({ createdAt, plazoDias, cuotas, amount });
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-4 text-xs leading-5">
-        <span className="text-muted-foreground">Cuotas</span>
-        {/* The sentence the single line used to carry stays, shortened: it is
-            the rule, and the rule is what explains why the dates fall where
-            they do. The dates answer "when"; this answers "why those". */}
-        <span className="text-muted-foreground">
-          {cuotas} cuotas dentro de {plazoDias} días
-        </span>
+    <div className="flex flex-col gap-4">
+      {/* LA FILA «Cuotas», AL LADO DE «Plazo de pago» Y CON SU MISMA FORMA.
+          Frames `1463:18100` y `1479:9456`: dicen «00 cuotas» y nada más.
+
+          DECÍA «3 cuotas dentro de 30 días» hasta el 2026-10-20. La frase era
+          mía, no del frame: explicaba de dónde salen las fechas. Lo explica la
+          tabla de abajo, que las enseña — y el plazo ya está escrito en la
+          fila justo encima, así que la frase lo repetía. */}
+      <div className="flex items-baseline justify-between gap-4 py-1">
+        <span className="text-xs leading-4 text-muted-foreground">Cuotas</span>
+        <span className="text-sm leading-5 tabular-nums">{cuotas} cuotas</span>
       </div>
 
-      <table className="w-full table-fixed text-xs leading-5">
-        <thead>
-          <tr className="text-muted-foreground">
-            <th scope="col" className="w-8 text-left font-normal">
-              #
-            </th>
-            <th scope="col" className="text-left font-normal">
-              Vence
-            </th>
-            <th scope="col" className="text-right font-normal">
-              Monto
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map((c) => (
-            <tr key={c.numero}>
-              <td className="text-muted-foreground tabular-nums">{c.numero}</td>
-              <td>{formatDate(c.fecha.toISOString())}</td>
-              <td className="text-right tabular-nums">
-                {formatearMonto(c.monto)}
-              </td>
+      {/* «Próximas cuotas», EN SU PROPIO RECUADRO. El frame lo dibuja con el
+          mismo borde y el mismo radio que «Resumen de compra», con su título
+          dentro. Iba sin recuadro y sin título, pegado a la fila de arriba:
+          se leía como la continuación de «Cuotas» y no como lo que es, una
+          tabla con su propia cabecera. */}
+      <div className="flex flex-col gap-2 rounded-[10px] border p-2.5">
+        <p className="py-2 text-sm leading-5">Próximas cuotas</p>
+        <table className="w-full table-fixed">
+          <thead>
+            <tr className="border-b text-sm leading-5">
+              {/* «N°» Y NO «#», que es lo que decía. Es el rótulo del frame, y
+                  además se lee en voz alta — «número» — donde «#» no. */}
+              <th scope="col" className="w-8 text-left font-normal">
+                N°
+              </th>
+              <th scope="col" className="text-left font-normal">
+                Vence
+              </th>
+              <th scope="col" className="text-right font-normal">
+                Monto
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filas.map((c) => (
+              <tr key={c.numero} className="text-xs leading-4">
+                <td className="py-1 tabular-nums">{c.numero}</td>
+                <td className="py-1">{formatDate(c.fecha.toISOString())}</td>
+                <td className="py-1 text-right tabular-nums">{formatearMonto(c.monto)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

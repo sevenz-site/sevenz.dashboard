@@ -35,16 +35,27 @@ export function ProductosDelMovimiento({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-4 text-xs leading-5">
-        <span className="text-muted-foreground">Se llevó</span>
-        <span className="tabular-nums text-muted-foreground">{formatearMonto(total)}</span>
-      </div>
+      {/* AQUÍ ESTUVO «Se llevó» CON LA SUMA DE LOS PRODUCTOS, retirada el
+          2026-10-20: *«el campo "Se llevó" no existe»*. Los frames
+          `1463:18100` y `1479:9456` dibujan las líneas de producto solas,
+          dentro de «Resumen de compra», sin rótulo encima y sin total.
 
-      <ul className="flex flex-col gap-0.5 text-xs leading-5">
+          Y EL TOTAL NO SE PIERDE DE VISTA: la fila «Total por cobrar» del
+          mismo recuadro lo lleva. Lo que se quita es la suma de las líneas,
+          que es otra cifra —puede no cuadrar con el monto guardado— y de eso
+          se encarga la frase de abajo. */}
+      <ul className="flex flex-col gap-0.5">
         {productos.map((p, i) => (
-          <li key={`${p.name}-${i}`} className="flex items-baseline justify-between gap-4">
-            <span className="min-w-0 break-words">{p.name}</span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
+          <li key={`${p.name}-${i}`} className="flex items-baseline justify-between gap-4 py-1">
+            {/* EL NOMBRE ES EL RÓTULO Y LA CANTIDAD EL VALOR, en ese peso y no
+                al revés: en el frame `<nombre de producto>` va en 12 y gris
+                —como «Plazo de pago» o «Descripción»— y `00 x $00.00` en 14 y
+                negro, a la derecha. Es la misma anatomía que el resto de filas
+                de la ficha, y por eso la lista se lee como parte de ella. */}
+            <span className="min-w-0 break-words text-xs leading-4 text-muted-foreground">
+              {p.name}
+            </span>
+            <span className="shrink-0 text-sm leading-5 tabular-nums">
               {p.quantity} × {formatearMonto(p.unitPrice)}
             </span>
           </li>
