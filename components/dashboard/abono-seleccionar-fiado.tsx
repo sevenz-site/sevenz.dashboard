@@ -6,6 +6,7 @@ import { ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip } from "@/components/dashboard/client-filters";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate } from "@/lib/format";
@@ -235,13 +236,29 @@ function TarjetaDeFiado({ fiado, rates }: { fiado: FiadoAbierto; rates: BolivarR
         {/* LO QUE DE VERDAD DECIDE CUÁL SE ELIGE. Va aquí abajo, en el tamaño
             pequeño del frame, pero es la cifra nueva: lo que queda de ESTE
             fiado, no lo que fue. */}
-        <span className="text-xs text-muted-foreground tabular-nums">
+        {/* LA BANDERA PEGADA A CADA CIFRA, en las dos — pedido del dueno el
+            2026-10-19: «al igual que las transacciones del historial». Y el
+            tamano es el mismo de alli, `size-3.5`, no el de 24 de las
+            cabeceras: aqui acompana a un texto de 12 y una bandera grande lo
+            dominaria.
+
+            NO ES ADORNO EN UNA BODEGA VENEZOLANA: el mismo cliente puede tener
+            un fiado en dolares y otro en euros, y sin bandera lo unico que los
+            separa es un simbolo de un caracter al principio del numero. La
+            captura del dueno tiene justamente dos fiados de 5,84 seguidos. */}
+        <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+          {fiado.currency ? (
+            <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
+          ) : null}
           Debe {formatPriceAmount(fiado.pending, fiado.currency ?? "COP")}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex flex-col items-end">
-          <span className="text-xs font-medium tabular-nums text-destructive">
+          <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-destructive">
+            {fiado.currency ? (
+              <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
+            ) : null}
             +{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
           </span>
           {enBs != null ? (

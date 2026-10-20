@@ -157,10 +157,12 @@ export default async function ConfirmarFiadoPage({
 
       {/* ── EL RESUMEN DE LA COMPRA ─────────────────────────────────── */}
       <section className="flex flex-col rounded-[10px] border p-2.5">
-        <div className="flex items-center justify-between py-2">
-          <h2 className="text-sm">Resumen de compra en {nombreDeMoneda(moneda)}</h2>
-          <CurrencyFlagIcon currency={moneda} className="size-6 shrink-0" />
-        </div>
+        {/* SIN BANDERA EN EL TITULO, y es decision del dueno el 2026-10-19:
+            «es muy redundante». El titulo ya dice «en Euros» con todas sus
+            letras — la bandera al lado repite el mismo dato en el mismo
+            renglon. Donde si va es pegada a cada CIFRA, que es donde distingue
+            un libro de otro de un vistazo. */}
+        <h2 className="py-2 text-sm">Resumen de compra en {nombreDeMoneda(moneda)}</h2>
 
         {/* SIN LÍNEAS NO SE INVENTA NINGUNA. Un fiado de la libreta importada, o
             uno registrado a mano antes de que existieran las ventas, no tiene
