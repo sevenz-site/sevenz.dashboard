@@ -29,7 +29,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // que se escribió, y que nadie mide porque un hueco de más no rompe nada.
   //
   // El resumen (`/ventas/<id>`) SÍ la lleva: ver `mobile-nav.tsx`.
-  const enAsistenteDeVenta = pathname.startsWith("/ventas/nueva");
+  // El flujo del abono se comporta igual que el de venta: sin barra, y su
+  // propio aire abajo. Anadido el 2026-10-19 con `/abonos/nuevo`.
+  const enAsistenteDeVenta =
+    pathname.startsWith("/ventas/nueva") || pathname.startsWith("/abonos/nuevo");
   const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
 
   // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────

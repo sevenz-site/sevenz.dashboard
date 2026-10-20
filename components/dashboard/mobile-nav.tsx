@@ -275,7 +275,10 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // el resumen es el final — el tendero ya terminó y lo siguiente que hace es
   // irse a otro sitio. Quitarle la barra ahí lo dejaría sin salida, porque esa
   // pantalla tampoco lleva cabecera.
-  const enAsistenteDeVenta = pathname.startsWith("/ventas/nueva");
+  // EL FLUJO DEL ABONO TAMPOCO LLEVA BARRA, desde el 2026-10-19: son tres
+  // pasos con su propia barra de progreso, igual que el asistente de venta.
+  const enAsistenteDeVenta =
+    pathname.startsWith("/ventas/nueva") || pathname.startsWith("/abonos/nuevo");
 
   // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
   // dueño: «en la pantalla final de transacción exitosa se debe ver el botón

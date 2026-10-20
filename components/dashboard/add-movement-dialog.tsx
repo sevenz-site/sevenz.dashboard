@@ -78,6 +78,7 @@ const initialState: MovementFormState = { error: null, clientId: null };
 
 export function AddMovementDialog({
   hrefVentaOFiado = null,
+  hrefAbono = null,
   clientId,
   clientName,
   clientWhatsapp,
@@ -137,6 +138,9 @@ export function AddMovementDialog({
   // este diálogo en modo cargo-- y es lo que usan los montajes que no son la
   // ficha de un cliente.
   hrefVentaOFiado?: string | null;
+  // EL ABONO TAMBIEN SE VA A SU PROPIA PANTALLA, desde el 2026-10-19. Ver el
+  // comentario del boton.
+  hrefAbono?: string | null;
   // Which movement the mobile bar asked for while the owner is looking at
   // this client. Only ever passed to the mobile instance of this dialog —
   // the page renders a second one for the sm+ layout, and both receiving it
@@ -440,10 +444,37 @@ export function AddMovementDialog({
         // phone bar these buttons replaced. Desktop follows the same order so
         // the two viewports do not disagree about which side is which.
         <div className={cn("flex gap-2", triggerClassName)}>
-          <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
-            <Plus className="size-4" />
-            Agregar abono
-          </Button>
+          {/* «AGREGAR ABONO» ABRE SU PROPIA PANTALLA, no este dialogo.
+              Decision del dueno el 2026-10-19: el abono SIEMPRE se dirige a un
+              fiado concreto, asi que registrarlo empieza por elegir cual —
+              pantalla 1/3, `/abonos/nuevo`.
+
+              ES EL MISMO MOVIMIENTO QUE HIZO «Venta o fiado» el 2026-10-18, y
+              por la misma razon: este dialogo solo sabe de un monto, y las dos
+              acciones pasaron a preguntar algo antes que el monto.
+
+              EL DIALOGO NO SE VA. Su rama de abono se sigue alcanzando por
+              `?movimiento=abono`, y la de cargo por `?movimiento=fiado`. Lo que
+              cambia es cual de los dos ofrece ESTA pantalla.
+
+              `disabled={!canPayAny}` SE QUEDA Y AHORA ES DOBLE RED: un cliente
+              sin deuda no tiene fiados que listar, asi que la pantalla 1/3 le
+              ensenaria su estado vacio. Apagar el boton se lo ahorra, y el
+              estado vacio cubre el caso en que la deuda se salde entre que la
+              pagina se dibuja y el tendero toca. */}
+          {hrefAbono && canPayAny ? (
+            <Button size="sm" variant="outline" className="flex-1" asChild>
+              <Link href={hrefAbono}>
+                <Plus className="size-4" />
+                Agregar abono
+              </Link>
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
+              <Plus className="size-4" />
+              Agregar abono
+            </Button>
+          )}
           {/* «VENTA O FIADO», Y ABRE EL ASISTENTE DE VENTA.
               Decisión del dueño el 2026-10-18: «renombra el botón de agregar
               fiado y al seleccionarlo abre el nuevo flujo diseñado para
