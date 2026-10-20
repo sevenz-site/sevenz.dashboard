@@ -7,7 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
-import { DetalleAcciones } from "@/components/dashboard/detalle-acciones";
+import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { SaleLineRow } from "@/lib/sale-lines";
@@ -133,6 +133,7 @@ export default async function TransaccionPage({
   // Las dos preguntas son del mismo movimiento y solo tienen sentido en un
   // cargo, así que comparten el `if`.
   let puedePagar = false;
+  let abonoInicial = 0;
   let abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
@@ -142,6 +143,25 @@ export default async function TransaccionPage({
       (c) => c.movement_id === m.id,
     );
     puedePagar = abierto != null && Number(abierto.pending) > 0.005;
+
+    // EL ABONO PARCIAL DEL MOMENTO DE LA VENTA, que es lo que el frame llama
+    // «Abonó» en un fiado (`1463:18100`, nodo `1463:18127`).
+    //
+    // VIVE EN `sale_payments` Y NO EN `movements`: la migración `124` escribe
+    // el cargo por LO QUE QUEDA y nunca por el total --«una compra por 10 USD
+    // puede abonar 5 y quedar debiendo 5», palabras del dueño--, así que lo
+    // que pagó en el momento no está en el movimiento.
+    //
+    // CERO CUANDO NO HUBO NINGUNO, y se dibuja: instrucción del dueño el
+    // 2026-10-20. Un fiado sin venta detrás --todo lo anterior a la `124` y lo
+    // que entra por la libreta-- también da cero, que es la verdad.
+    if (m.sale_id) {
+      const { data: pagos } = await supabase
+        .from("sale_payments")
+        .select("amount")
+        .eq("sale_id", m.sale_id);
+      abonoInicial = (pagos ?? []).reduce((suma, p) => suma + Number(p.amount), 0);
+    }
 
     // LOS ABONOS DIRIGIDOS A ESTE FIADO. Encargo del dueño el 2026-10-20.
     //
@@ -236,7 +256,28 @@ export default async function TransaccionPage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        abonoInicial={abonoInicial}
         rates={rates}
+      />
+
+      {/* LOS BOTONES DEL FRAME, FUERA DEL «⋮» Y REPETIDOS A PROPÓSITO.
+          Instrucción del dueño el 2026-10-20: *«te dije que se redundaban, en
+          el caso del fiado se ven los botones "Compartir" y "Pagar" también
+          fuera del botón more y en el caso de abono solo se ve el botón
+          "Compartir"»*.
+
+          O SEA QUE LA REDUNDANCIA ES LA DECISIÓN, no un descuido: las mismas
+          acciones están arriba en el menú y abajo como botones. Frames
+          `1463:18100` (fiado: los dos) y `1465:18349` (abono: solo
+          «Compartir»).
+
+          «Pagar» SOLO SI QUEDA ALGO QUE PAGAR, igual que en el menú: el flujo
+          rechazaría un fiado saldado con «ese fiado ya está saldado», y
+          ofrecerlo sería mandar al tendero a un callejón sin salida. */}
+      <DetalleBotones
+        movementId={m.id}
+        compartir={compartir}
+        puedePagar={puedePagar}
       />
     </div>
   );

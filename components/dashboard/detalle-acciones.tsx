@@ -37,6 +37,49 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // SOLO EN LA PANTALLA DEL DUEÑO. Es su otra decisión, del 2026-10-18: *«Cliente
 // no ve ninguna opción ni el botón more»*. La página del cliente sencillamente
 // no monta este componente.
+// COMPARTIR, FUERA DE LOS DOS COMPONENTES QUE LO USAN.
+//
+// Desde el 2026-10-20 hay dos disparadores para la misma acción: la opción del
+// menú «⋮» y el botón «Compartir» de abajo, que el dueño pidió que se
+// repitieran. Dos copias de esta función es exactamente como acaban mandando
+// mensajes distintos.
+async function compartirSaldo(compartir: DatosParaCompartir | null) {
+  if (!compartir) return;
+  try {
+    // El dueño no tiene el enlace a mano y hay que pedirlo. El cliente lo
+    // tiene en la barra de direcciones — y además no podría pedirlo, porque
+    // crearlo solo responde a un dueño con sesión.
+    let url: string;
+    if (compartir.enlace.de === "cliente") {
+      url = `${window.location.origin}/s/${compartir.enlace.token}`;
+    } else {
+      const result = await getOrCreateShareLink(compartir.enlace.clientId);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      url = `${window.location.origin}/s/${result.token}`;
+    }
+
+    const mensaje = mensajeDeSaldo(compartir.clientName, compartir.balanceText, url);
+
+    // `navigator.share` no existe en el escritorio de casi nadie. Portapapeles
+    // como respaldo, con el mensaje entero y no solo el enlace: lo que se pega
+    // tiene que ser lo mismo que habría mandado el menú.
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({ text: mensaje });
+      return;
+    }
+    await navigator.clipboard.writeText(mensaje);
+    toast.success("Mensaje copiado", { description: mensaje });
+  } catch (error) {
+    // Cerrar el menú de compartir cuenta como un error para el navegador, y no
+    // lo es: el dueño cambió de idea.
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    toast.error("No pudimos compartir el enlace. Inténtalo de nuevo.");
+  }
+}
+
 export function DetalleAcciones({
   movementId,
   clientId,
@@ -58,42 +101,7 @@ export function DetalleAcciones({
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
 
-  async function handleShare() {
-    if (!compartir) return;
-    try {
-      // El dueño no tiene el enlace a mano y hay que pedirlo. El cliente lo
-      // tiene en la barra de direcciones — y además no podría pedirlo, porque
-      // crearlo solo responde a un dueño con sesión.
-      let url: string;
-      if (compartir.enlace.de === "cliente") {
-        url = `${window.location.origin}/s/${compartir.enlace.token}`;
-      } else {
-        const result = await getOrCreateShareLink(compartir.enlace.clientId);
-        if ("error" in result) {
-          toast.error(result.error);
-          return;
-        }
-        url = `${window.location.origin}/s/${result.token}`;
-      }
-
-      const mensaje = mensajeDeSaldo(compartir.clientName, compartir.balanceText, url);
-
-      // `navigator.share` no existe en el escritorio de casi nadie.
-      // Portapapeles como respaldo, con el mensaje entero y no solo el enlace:
-      // lo que se pega tiene que ser lo mismo que habría mandado el menú.
-      if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({ text: mensaje });
-        return;
-      }
-      await navigator.clipboard.writeText(mensaje);
-      toast.success("Mensaje copiado", { description: mensaje });
-    } catch (error) {
-      // Cerrar el menú de compartir cuenta como un error para el navegador, y
-      // no lo es: el dueño cambió de idea.
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.error("No pudimos compartir el enlace. Inténtalo de nuevo.");
-    }
-  }
+  const handleShare = () => compartirSaldo(compartir);
 
   async function handleDelete() {
     if (guardia()) return;
@@ -172,5 +180,50 @@ export function DetalleAcciones({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+// LOS DOS BOTONES DE ABAJO — frames `1463:18100` (fiado) y `1465:18349`
+// (abono).
+//
+// SON LOS MISMOS QUE EL MENÚ «⋮», Y ESO ES LO PEDIDO. El 2026-10-19 las tres
+// acciones se metieron dentro del menú; el 2026-10-20, viendo los frames, el
+// dueño aclaró que se repiten: *«te dije que se redundaban, en el caso del
+// fiado se ven los botones "Compartir" y "Pagar" también fuera del botón more
+// y en el caso de abono solo se ve el botón "Compartir"»*. Las dos decisiones
+// quedan escritas; esta desplaza a la otra en lo de «solo en el menú».
+//
+// «Eliminar transacción» NO baja: no está en ningún frame, y es la única de
+// las tres que no se puede deshacer de un toque. Un botón destructivo a ancho
+// completo al final de una pantalla que se recorre con el pulgar es justo
+// donde no debe estar.
+export function DetalleBotones({
+  movementId,
+  compartir,
+  puedePagar,
+}: {
+  movementId: string;
+  compartir: DatosParaCompartir | null;
+  puedePagar: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4 pt-6 pb-10">
+      {compartir ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 w-full"
+          onClick={() => void compartirSaldo(compartir)}
+        >
+          <Share2 className="size-5" aria-hidden />
+          Compartir
+        </Button>
+      ) : null}
+      {puedePagar ? (
+        <Button asChild className="h-10 w-full">
+          <Link href={`/abonos/nuevo/${movementId}/monto`}>Pagar</Link>
+        </Button>
+      ) : null}
+    </div>
   );
 }

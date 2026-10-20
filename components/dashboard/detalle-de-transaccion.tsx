@@ -70,6 +70,20 @@ export type DatosDelDetalle = {
   rates?: BolivarRates | null;
   // Ver `mostrarPendiente` en `TarjetaDeFiado`.
   mostrarPendienteDelFiado?: boolean;
+  // EL ABONO PARCIAL QUE SE HIZO AL REGISTRAR EL FIADO, que es lo que el
+  // frame llama «Abonó» en un cargo. Respuesta del dueño el 2026-10-20,
+  // preguntado: *«Abonó corresponde al abono parcial que hizo al registrar el
+  // fiado, sino hizo abono (= 0) al realizar el fiado entonces el valor de ese
+  // campo será = 0 y se mostrará en 0»*.
+  //
+  // CERO SE DIBUJA, no se esconde: esa fue la instrucción literal. Una fila
+  // ausente y una fila en cero contestan cosas distintas — la primera deja al
+  // tendero sin saber si se abonó algo y no se guardó.
+  //
+  // Sale de `sale_payments` de la venta que originó el cargo: la migración
+  // `124` escribe el movimiento por LO QUE QUEDA, nunca por el total, así que
+  // lo pagado en el momento no está en `movements` y hay que ir a buscarlo.
+  abonoInicial?: number | null;
   // LOS ABONOS DIRIGIDOS A ESTE FIADO, el reflejo de `fiadoAplicado`. Encargo
   // del dueño el 2026-10-20: *«Detalle de los fiados también deben mostrar la
   // lista de lo que se ha abonado (mismo patrón como abono muestra los
@@ -97,7 +111,7 @@ export function DetalleDeTransaccion({
   productos = [],
   createdAt,
   runningBalance,
-  balanceLabel = "Por cobrar",
+  balanceLabel = "Total por cobrar",
   photoUrl,
   entryCurrency = null,
   entryAmount = null,
@@ -107,6 +121,7 @@ export function DetalleDeTransaccion({
   hrefDelFiado = null,
   rates = null,
   mostrarPendienteDelFiado = true,
+  abonoInicial = null,
   abonosRecibidos,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
@@ -250,22 +265,28 @@ export function DetalleDeTransaccion({
         {productos.length > 0 ? (
           <ProductosDelMovimiento
             productos={productos}
-            amount={amount}
             formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
           />
         ) : null}
 
-        {/* LOS ABONOS DE ESTE FIADO, bajo el rótulo «Abonó» — frame
-            `1479:9456`, nodos `1479:9631` y `1479:9693`.
+        {/* «Abonó» — UNA SOLA SECCIÓN, CON TARJETAS O CON CIFRA.
+            Frames `1463:18100` (nodo `1463:18127`), `1465:18349` (nodo
+            `1465:18372`) y `1479:9456` (nodo `1479:9479`).
 
-            VA AQUÍ Y NO ARRIBA DEL TODO: el frame los coloca entre las líneas
-            de producto y «Equivalencia», con una línea de separación encima.
-            Estuvo arriba de la tarjeta y con el rótulo «Abonos a este fiado»,
-            que me inventé — el frame dice «Abonó».
+            LOS TRES FRAMES TIENEN UN SOLO «Abonó», y eso es lo que decide la
+            forma de este bloque. Estuvo dos veces --el rótulo de la lista y la
+            fila del importe-- y se leía como un error de la app.
 
-            SIN TEXTO CUANDO NO HAY NINGUNO. También estuvo «Todavía sin
-            abonos», inventado: el frame del fiado sin abonos (`1463:18100`)
-            no dice eso. Qué debe decir esa fila ahí está preguntado. */}
+              · ABONO: la cifra es lo que se pagó, el monto del movimiento.
+              · FIADO CON ABONOS DIRIGIDOS: las tarjetas, sin cifra. El frame
+                `1479:9456` deja el rótulo solo y pone las tarjetas debajo.
+              · FIADO SIN ABONOS DIRIGIDOS: la cifra del abono parcial que se
+                hizo AL REGISTRARLO, y CERO SE DIBUJA -- instrucción del dueño
+                el 2026-10-20: *«será = 0 y se mostrará en 0»*. El frame
+                `1463:18100` enseña ahí un importe, no un texto.
+
+            NO HAY FILA «Monto» EN NINGÚN FRAME: el importe del fiado no se
+            repite, porque lo que queda vivo es «Total por cobrar». */}
         {type === "charge" && abonosRecibidos && abonosRecibidos.length > 0 ? (
           <div className="flex flex-col gap-2 border-t pt-2">
             <dt className="py-1 text-xs leading-4 text-muted-foreground">Abonó</dt>
@@ -275,20 +296,25 @@ export function DetalleDeTransaccion({
               ))}
             </dd>
           </div>
-        ) : null}
+        ) : (
+          <Fila nombre="Abonó">
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              {type === "payment"
+                ? monto
+                : formatLedgerAmount(abonoInicial ?? 0, currency, ledger).primary}
+              {monedaDelMonto ? (
+                <CurrencyFlagIcon currency={monedaDelMonto} className="size-6" />
+              ) : null}
+            </span>
+          </Fila>
+        )}
 
-        <Fila nombre={type === "payment" ? "Abonó" : "Monto"}>
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
-            {monto}
-            {monedaDelMonto ? <CurrencyFlagIcon currency={monedaDelMonto} /> : null}
-          </span>
-        </Fila>
         {equivalente ? (
           <Fila nombre="Equivalencia">
             <span className="inline-flex flex-col items-end">
               <span className="inline-flex items-center gap-1.5 tabular-nums">
                 {equivalente.texto}
-                <CurrencyFlagIcon currency={equivalente.moneda} />
+                <CurrencyFlagIcon currency={equivalente.moneda} className="size-6" />
               </span>
               <span className="text-xs text-muted-foreground">Al día de la transacción</span>
             </span>

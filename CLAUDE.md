@@ -539,6 +539,52 @@ dialogs mounted, duplicate tour markers).
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
 
+## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
+
+**Un enlace a un frame de Figma es una instrucción de leerlo, no una
+referencia decorativa.** Nada de la pantalla se deduce, se recuerda de una
+captura, ni se copia de una pantalla parecida: se replica **al detalle** desde
+el frame — rótulo por rótulo, fila por fila, en el orden en que están.
+
+Exigido por el dueño el 2026-10-20, literalmente: *«SIEMPRE DEBES LEER LOS
+FRAMES Y REPLICARLOS AL DETALLE. SI TE LOS PASO ES PARA QUE LOS LEAS NO PARA
+QUE LOS IGNORES»*.
+
+**Cómo se leen**, porque «mirar la captura» no cuenta: los servidores de Figma
+que responden en este proyecto son los de `mcp__plugin_figma_figma__*`.
+`get_screenshot` da la imagen y **`get_design_context` da la estructura con los
+textos exactos y los `data-node-id`**, que es lo único que distingue «Monto» de
+«Abonó» o «#» de «N°». Si un servidor de Figma contesta que no puede acceder al
+recurso, se prueba otro antes de darse por vencido — el 2026-10-20 uno fallaba
+y otro respondía al mismo nodo.
+
+**Qué pasó por no hacerlo.** El detalle de transacción se construyó deduciendo
+la pantalla. Resultado, en una sola entrega: un campo inventado («Abonos a este
+fiado», que en el frame es «Abonó»), un estado vacío inventado («Todavía sin
+abonos», que en el frame es un importe), dos campos que no existen («Se llevó»
+y «Tasa del día»), las cuotas sin su recuadro «Próximas cuotas» y con «#» en vez
+de «N°», y una frase escrita por mí que nadie pidió. El dueño tuvo que pasar los
+frames y enumerarlo.
+
+**Y lo que de verdad cuesta no es el retrabajo**: es que cada invento se entrega
+con la misma seguridad que lo que sí está en el frame, así que quien lo recibe no
+puede distinguirlos sin abrir Figma él mismo. Eso convierte cada entrega en algo
+que hay que auditar entero.
+
+**La regla práctica, entonces:**
+
+1. **Antes de escribir una línea de UI para la que hay frame, se abre el frame**
+   con `get_design_context`, no solo la captura.
+2. **Si algo del frame no se entiende** —un rótulo ambiguo, un estado que no se
+   ve dibujado— se **pregunta**, y no se rellena con lo que parezca razonable.
+   Una pregunta cuesta un mensaje; un invento cuesta la confianza en todo lo
+   demás.
+3. **Si hay frames de varios estados, se abren TODOS** antes de empezar. El
+   2026-10-20 había uno del fiado sin abonos y otro con abonos, y el estado
+   vacío inventado salió de no abrir el primero.
+4. **Lo que se entregue y no esté en el frame se dice en voz alta** en el
+   reporte, marcado como tal.
+
 ## NUNCA añadas la cabecera de la app a una pantalla nueva
 
 **La barra oscura con el menú y el logo de Sevenz NO se pone nunca en una

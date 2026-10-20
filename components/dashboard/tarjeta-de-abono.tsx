@@ -67,17 +67,20 @@ export function TarjetaDeAbono({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex flex-col items-end">
-          {/* AZUL Y CON «−», como el abono en toda la app desde el 2026-10-18.
-              El fiado suma en rojo; este resta. Los dos signos importan más
-              aquí que en el historial: en esta lista todas las filas son
-              abonos, así que el signo no distingue una de otra -- distingue
-              esta tarjeta de la del fiado que está unos centímetros más
-              arriba en la misma pantalla. */}
+          {/* AZUL Y CON «+» — frame `1479:9456`, nodos `1479:9641` y
+              `1479:9700`: `+$00.00` en `#0062fb`.
+
+              LLEVABA «−» Y ERA MÍO. El razonamiento parecía bueno —un abono
+              resta de la deuda— pero el frame dibuja «+» en las dos tarjetas,
+              igual que la del fiado dentro de un abono (`1465:18552`, en
+              rojo). El signo aquí no es el del saldo: es el de la cifra que se
+              suma a lo abonado. Lo que distingue a las dos tarjetas es el
+              color, no el signo. */}
           <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-blue-600 dark:text-blue-400">
             {abono.currency ? (
               <CurrencyFlagIcon currency={abono.currency} className="size-3.5 shrink-0" />
             ) : null}
-            −{formatPriceAmount(abono.amount, abono.currency ?? "COP")}
+            +{formatPriceAmount(abono.amount, abono.currency ?? "COP")}
           </span>
           {enBs != null ? (
             <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>

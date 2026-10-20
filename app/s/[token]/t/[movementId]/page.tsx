@@ -33,6 +33,11 @@ type SharedMovement = {
   // Los dos que trae la migración `127`.
   applies_to_movement_id: string | null;
   photo_path: string | null;
+  // Y el de la `129`: lo que se abonó EN EL MOMENTO de registrar el fiado.
+  // Opcional porque durante un despliegue el código y la base no coinciden en
+  // un sentido o en el otro; ausente cae a 0, que es también lo que vale para
+  // todo lo que no tiene venta detrás.
+  abono_inicial?: number | null;
 };
 
 // LA TARJETA DE UN FIADO, tal y como la entrega la migración `128`: todo lo
@@ -243,6 +248,7 @@ export default async function DetalleDelClientePage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        abonoInicial={Number(m.abono_inicial ?? 0)}
         rates={rates}
       />
     </div>

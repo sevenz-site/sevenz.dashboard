@@ -1,4 +1,4 @@
-import { totalDeLineas, type SaleLineRow } from "@/lib/sale-lines";
+import type { SaleLineRow } from "@/lib/sale-lines";
 
 // QUÉ SE LLEVÓ EL CLIENTE, en la ficha de un movimiento ya guardado.
 //
@@ -19,20 +19,11 @@ import { totalDeLineas, type SaleLineRow } from "@/lib/sale-lines";
 // tercera columna con el subtotal obliga a decidir cuál de las tres mirar.
 export function ProductosDelMovimiento({
   productos,
-  amount,
   formatearMonto,
 }: {
   productos: SaleLineRow[];
-  // El monto que quedó guardado en el movimiento, que es la verdad del dinero.
-  amount: number;
   formatearMonto: (monto: number) => string;
 }) {
-  const total = totalDeLineas(productos);
-  // Un céntimo de margen: el total se redondea a dos decimales y el monto
-  // puede traer los suyos, así que una diferencia de 0,001 no es una rebaja,
-  // es aritmética.
-  const diferencia = Math.round((total - amount) * 100) / 100;
-
   return (
     <div className="flex flex-col gap-1.5">
       {/* AQUÍ ESTUVO «Se llevó» CON LA SUMA DE LOS PRODUCTOS, retirada el
@@ -62,13 +53,15 @@ export function ProductosDelMovimiento({
         ))}
       </ul>
 
-      {diferencia !== 0 ? (
-        <p className="text-xs leading-5 text-muted-foreground">
-          {diferencia > 0
-            ? `Se registró ${formatearMonto(Math.abs(diferencia))} menos que la suma de los productos.`
-            : `Se registró ${formatearMonto(Math.abs(diferencia))} más que la suma de los productos.`}
-        </p>
-      ) : null}
+      {/* AQUÍ ESTUVO «Se registró X menos que la suma de los productos»,
+          retirada el 2026-10-20 por instrucción del dueño. No está en ninguno
+          de los tres frames; la escribí yo.
+
+          LO QUE EXPLICABA, por si alguien se la encuentra en el historial: el
+          dueño decidió el 2026-10-17 que el monto se calcule desde los
+          productos pero SE PUEDA CORREGIR, así que las dos cifras pueden no
+          cuadrar. La frase ponía la diferencia a la vista. Quien la quiera
+          de vuelta, que la pida: la aritmética sigue siendo cierta. */}
     </div>
   );
 }
