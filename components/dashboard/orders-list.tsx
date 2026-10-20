@@ -18,6 +18,7 @@ import {
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
+import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 
 // THE CATALOGUE'S ORDERS. Deliverable D, reading half.
 //
@@ -77,7 +78,25 @@ function Importes({ importes }: { importes: OrderWithItems["importes"] }) {
 
 function Estado({ order }: { order: CatalogOrderRow }) {
   if (isUnattended(order)) {
-    return <Badge className="bg-destructive text-white hover:bg-destructive">Sin atender</Badge>;
+    // ── MISMO CHIP QUE UN CLIENTE EN «Crítico» ────────────────────────
+    //
+    // Instrucción del dueño el 2026-10-20: *«el estilo de esas chips debe ser
+    // el mismo de clientes en estado Crítico»*.
+    //
+    // Era `bg-destructive text-white`: un chip ROJO MACIZO, el único de la
+    // app. Los demás estados --de un cliente, de una cuota, de un plazo-- son
+    // todos pastel con borde, así que éste no se leía como «uno más de la
+    // familia» sino como una alerta de otro orden. Un pedido sin atender es
+    // urgente, no excepcional.
+    //
+    // Se reutiliza `CLIENT_STATUS_BADGE_CLASS.critico` y no se copian sus
+    // clases: lleva su variante oscura y su contraste medido, y una copia se
+    // quedaría atrás el día que ese token se afine.
+    return (
+      <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.critico}>
+        Sin atender
+      </Badge>
+    );
   }
   // The other three statuses read the same from here: none of them is
   // asking for anything any more. The detail page does tell them apart,

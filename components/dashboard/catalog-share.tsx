@@ -74,11 +74,16 @@ export function CatalogShareButton({
   // la cabecera oscura es texto suelto y en el estado vacío de Pedidos es el
   // botón principal de la tarjeta (frame `1467:9437`).
   //
+  // `tarjeta` ES LA TERCERA, del frame `1472:21674` (2026-10-20): una tarjeta
+  // de ancho completo que se queda en Pedidos cuando YA hay pedidos, para que
+  // compartir el catálogo no sea algo que solo se ofrece a quien no tiene
+  // ninguno. Ver su bloque más abajo.
+  //
   // Entra como variante y no como `className` a propósito: los colores de
   // «cabecera» están escritos a fuego porque viven sobre un fondo que no se
   // invierte con el tema, y dejar que quien llama los pise es cómo ese cuidado
   // se pierde en el segundo sitio.
-  variante?: "cabecera" | "relleno";
+  variante?: "cabecera" | "relleno" | "tarjeta";
   etiqueta?: string;
 }) {
   const [token, setToken] = useState<string | null>(initialToken);
@@ -149,6 +154,48 @@ export function CatalogShareButton({
     // habria mandado la hoja.
     await navigator.clipboard.writeText(mensaje);
     toast.success("Mensaje copiado");
+  }
+
+  // ── LA TARJETA ENTERA ES EL BOTÓN ───────────────────────────────────
+  //
+  // Frame `1472:21674`, y la instrucción del dueño el 2026-10-20: *«toda la
+  // card es clickeable y abre modal nativa de compartir»*.
+  //
+  // EL «Compartir» DE LA DERECHA NO ES UN BOTÓN, y no puede serlo: un `<button>`
+  // dentro de otro es HTML inválido y el navegador decide por su cuenta qué
+  // pasa al tocarlo. El frame dibuja ahí un `outlined_button`, así que se
+  // reproduce su aspecto con un `<span>` --borde, radio 8, 40px de alto-- y
+  // quien recibe el toque es la tarjeta. `pointer-events-none` lo deja fuera
+  // del camino del foco y del cursor.
+  //
+  // SIN `Button` DE LA LIBRERÍA. Sus variantes traen altura, relleno y estados
+  // de hover pensados para un botón de una línea; aquí el control es una
+  // tarjeta de dos columnas y pelearse con esas clases sale más caro que
+  // escribir las cuatro que el frame pide.
+  if (variante === "tarjeta") {
+    return (
+      <button
+        type="button"
+        onClick={() => void compartir()}
+        disabled={pending}
+        className="flex w-full items-center gap-1 rounded-[10px] border p-3 text-left shadow-[0px_2px_2px_0px_rgba(0,0,0,0.02)] transition-colors hover:bg-muted/40 disabled:opacity-60"
+      >
+        <span className="min-w-0 flex-1 pr-1 text-sm leading-5">
+          Comparte tu catálogo para recibir más pedidos
+        </span>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border p-2.5 text-base leading-6 font-semibold text-primary"
+        >
+          {pending ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            <Share2 className="size-5" />
+          )}
+          Compartir
+        </span>
+      </button>
+    );
   }
 
   return (

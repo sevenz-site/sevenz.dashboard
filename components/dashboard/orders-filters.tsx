@@ -134,6 +134,31 @@ export function OrdersFilterChips() {
   );
 }
 
+// LA TARJETA DE COMPARTIR, SOLO SI YA HAY PEDIDOS — frame `1472:21674`.
+//
+// Instrucción del dueño el 2026-10-20: *«esa card permanente solo se ve
+// cuando hay al menos un pedido en la sección de pedidos»*.
+//
+// ===========================================================================
+// MIRA `total`, NO `visible`, Y NO ES LO MISMO
+//
+// `visible` son los pedidos que pasan el filtro de arriba. Con «Atendidos»
+// marcado y ningún pedido atendido, `visible` es cero y `total` no — y
+// esconder la tarjeta ahí sería decirle al tendero que no tiene pedidos
+// porque acaba de filtrar. La condición del dueño es sobre lo que hay en la
+// sección, no sobre lo que se está mirando.
+//
+// VIVE AQUÍ Y NO EN LA PÁGINA porque la cuenta está en este contexto, y la
+// página es un componente de servidor. Lo que sí viaja desde allí es la
+// tarjeta ya montada: necesita el enlace del catálogo y cuántos productos hay
+// publicados, que son datos del servidor. Es la misma división que ya tiene
+// el estado vacío, explicada en `OrdersList`.
+export function OrdersShareCard({ children }: { children: ReactNode }) {
+  const { total } = useOrdersFilters();
+  if (total === 0) return null;
+  return <>{children}</>;
+}
+
 export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
   const { visible, total } = useOrdersFilters();
 

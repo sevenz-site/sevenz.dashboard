@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { OrdersEmpty } from "@/components/dashboard/orders-empty";
+import { CatalogShareButton } from "@/components/dashboard/catalog-share";
 import { type OrderWithItems } from "@/components/dashboard/orders-list";
 import {
   OrdersFilterProvider,
   OrdersSearchField,
   OrdersFilterChips,
   OrdersResults,
+  OrdersShareCard,
 } from "@/components/dashboard/orders-filters";
 import { readOwnerCountry } from "@/lib/owner-country";
 import {
@@ -186,6 +188,18 @@ export default async function OrdenesPage() {
           filters={<OrdersFilterChips />}
         />
         <h2 className="mt-1 text-xl font-semibold">Pedidos recibidos</h2>
+
+        {/* LA TARJETA DE COMPARTIR, encima de la lista y solo cuando ya hay
+            pedidos. `OrdersShareCard` pone la condición --ver su comentario--
+            y aquí se monta lo que necesita datos del servidor. */}
+        <OrdersShareCard>
+          <CatalogShareButton
+            publishedCount={publishedCount}
+            businessName={owner?.business_name || "mi negocio"}
+            initialToken={catalogLink?.token ?? null}
+            variante="tarjeta"
+          />
+        </OrdersShareCard>
         {errorOrders ? (
           // The real reason is in the server log and stays there. What the
           // shopkeeper needs is to know that the screen could not answer, so
