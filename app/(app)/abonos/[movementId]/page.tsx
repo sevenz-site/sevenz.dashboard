@@ -89,7 +89,17 @@ export default async function AbonoRegistradoPage({
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex flex-col items-center gap-4 pt-4">
-        <CheckCircle2 className="size-20 text-foreground" aria-hidden="true" />
+        {/* EL MISMO VERDE QUE LAS OTRAS CONFIRMACIONES, no el negro del texto.
+            Lo reportó el dueño el 2026-10-19 con el círculo en rojo sobre el
+            ícono: *«debe ser el mismo de las otras pantallas de confirmación,
+            este tiene un color distinto»*.
+
+            Las tres que ya existían —`venta-resumen.tsx`, el carrito del
+            cliente y la salud de servicios en `/admin`— llevan todas
+            `text-emerald-600`, y esta nació en `text-foreground`. Un check
+            negro no se lee como «salió bien», se lee como un ícono más de la
+            pantalla; el verde es lo único que dice que la operación terminó. */}
+        <CheckCircle2 className="size-20 text-emerald-600" aria-hidden="true" />
         <h1 className="text-center text-xl leading-7 font-normal">¡Abono registrado con éxito!</h1>
       </div>
 
