@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import { getBolivarRates } from "@/lib/products/catalog";
 import { AbonoMonto } from "@/components/dashboard/abono-monto";
-import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import type { LedgerCurrency } from "@/lib/types";
 
 export const metadata = { title: "Monto a abonar — Sevenz" };
 
@@ -29,12 +29,17 @@ export default async function MontoDelAbonoPage({
 
   const { data: fiado } = await supabase
     .from("movements")
-    .select("id, client_id, type, currency, created_at, clients!inner(id, name, owner_id)")
+    .select("id, client_id, type, currency, created_at, clients!inner(id, name, whatsapp, owner_id)")
     .eq("id", movementId)
     .is("deleted_at", null)
     .maybeSingle();
 
-  const cliente = fiado?.clients as unknown as { id: string; name: string; owner_id: string } | null;
+  const cliente = fiado?.clients as unknown as {
+    id: string;
+    name: string;
+    whatsapp: string | null;
+    owner_id: string;
+  } | null;
   if (!fiado || !cliente || cliente.owner_id !== user.id || fiado.type !== "charge") notFound();
 
   // EL PENDIENTE SALE DE LA MISMA FUNCIÓN QUE EL TOPE DE LA ACCIÓN. Si esta
@@ -48,25 +53,34 @@ export default async function MontoDelAbonoPage({
   ) as { pending: number } | undefined;
   if (!abierto) redirect(`/abonos/nuevo?cliente=${cliente.id}`);
 
-  // ── LA TASA Y LA PREVISTA ────────────────────────────────────────────
+  // ── LA TASA ──────────────────────────────────────────────────────────
+  //
+  // El MISMO objeto que recibe el formulario de «Agregar», armado igual que en
+  // `clients/[id]/page.tsx`. Los componentes de monto que esta pantalla reusa
+  // lo esperan, y con ello viene gratis la ventana de la tasa prevista: la
+  // casilla sale cuando toca y no cuando simplemente hay una guardada.
   const resultado = await getOwnerRateContextResult(supabase, user.id);
-  let rates: BolivarRates | null = null;
-  let prevista: string | null = null;
-  if (resultado.kind === "ve") {
-    rates = await getBolivarRates(resultado.context.effectiveRate);
-    prevista = resultado.context.prevista?.fecha ?? null;
-  }
+  const rateContext: MovementRateContext | null =
+    resultado.kind === "ve"
+      ? {
+          rateMode: resultado.context.rateMode,
+          effectiveRate: resultado.context.effectiveRate,
+          officialRateUsd: resultado.context.officialRate.usd,
+          prevista: resultado.context.prevista,
+          rateDate: resultado.context.rateDate,
+        }
+      : null;
 
   // ── ¿YA ACEPTA AVISOS? ───────────────────────────────────────────────
   //
-  // El interruptor del pie solo tiene sentido si NO los tiene activados — son
-  // las palabras del dueño: «para activar las notificaciones de WhatsApp en
-  // caso que no las tenga activadas». Enseñárselo encendido a quien ya aceptó
-  // es una pregunta sin respuesta posible.
+  // La casilla del pie solo tiene sentido si NO los tiene activados — son las
+  // palabras del dueño: «para activar las notificaciones de WhatsApp en caso
+  // que no las tenga activadas».
   //
-  // SE PREGUNTA A LA MISMA FUNCIÓN QUE USA LA PUERTA DE ENVÍO. Tener aquí una
-  // consulta propia sería tener dos definiciones de «acepta», y la que decide
-  // si sale un mensaje es la suya.
+  // SE PREGUNTA A LA MISMA FUNCIÓN QUE USA LA PUERTA DE ENVÍO. Una consulta
+  // propia aquí serían dos definiciones de «acepta», y la que decide si sale un
+  // mensaje es la suya. Pregunta por TELÉFONO y no por ficha, que es la
+  // diferencia que importa: media docena de fichas comparten número.
   const { data: acepta } = await supabase.rpc("client_accepts_whatsapp", {
     p_client_id: cliente.id,
   });
@@ -75,13 +89,11 @@ export default async function MontoDelAbonoPage({
     <AbonoMonto
       ownerId={user.id}
       fiadoId={fiado.id}
-      clienteId={cliente.id}
       clienteNombre={cliente.name}
-      moneda={(fiado.currency ?? "COP") as PriceCurrency}
-      esLibroDelPeso={fiado.currency == null}
+      clienteTieneWhatsapp={Boolean(cliente.whatsapp?.trim())}
+      libro={(fiado.currency ?? null) as LedgerCurrency | null}
       pendiente={Number(abierto.pending)}
-      rates={rates}
-      previstaFecha={prevista}
+      rateContext={rateContext}
       yaAceptaAvisos={acepta === true}
     />
   );

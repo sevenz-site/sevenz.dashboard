@@ -34,15 +34,24 @@ import { LEDGER_CURRENCIES, MONEDAS_TECLEABLES, type LedgerCurrency, type Moneda
 export function MonedaTecleadaButtons({
   value,
   onValueChange,
+  opciones = MONEDAS_TECLEABLES,
 }: {
   value: MonedaTecleada;
   onValueChange: (value: MonedaTecleada) => void;
+  // Which currencies are offered. The three of MONEDAS_TECLEABLES by default —
+  // the "Agregar" form lets the owner pick the book, so all three apply.
+  //
+  // The directed abono passes two: bolívares and the fiado's own currency. The
+  // book is already decided there, and $50 and €20 are two separate debts
+  // (see convert.ts), so offering euros against a dollar fiado would offer a
+  // conversion this product deliberately never does.
+  opciones?: { value: MonedaTecleada; label: string }[];
 }) {
   return (
     <div className="flex flex-col gap-2">
       <Label>Moneda a registrar</Label>
       <div className="flex flex-row flex-wrap gap-2">
-        {MONEDAS_TECLEABLES.map((m) => (
+        {opciones.map((m) => (
           <Button
             key={m.value}
             type="button"
@@ -213,7 +222,15 @@ export function MontoARegistrarRow({
 }: {
   bolivares: string;
   destino: LedgerCurrency;
-  onDestinoChange: (value: LedgerCurrency) => void;
+  // Absent when the destination book is NOT a choice: the directed abono goes
+  // to one fiado, and that fiado already has a currency. A dropdown there
+  // would offer a decision that does not exist, and picking the other option
+  // would mean paying a dollar debt with euros.
+  //
+  // In that case the currency is stated the same way the "Resumen" card below
+  // states it — name plus flag — so the figure never appears without saying
+  // which money it is.
+  onDestinoChange?: (value: LedgerCurrency) => void;
   rateContext: MovementRateContext;
   usarPrevista: boolean;
   type: "charge" | "payment";
@@ -235,7 +252,14 @@ export function MontoARegistrarRow({
             {monto === null ? "—" : formatDisplayCurrency(monto, destino)}
           </span>
         </div>
-        <LibroDestinoSelect value={destino} onValueChange={onDestinoChange} />
+        {onDestinoChange ? (
+          <LibroDestinoSelect value={destino} onValueChange={onDestinoChange} />
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {destino === "USD" ? "Dólares" : "Euros"}
+            <CurrencyFlagIcon currency={destino} />
+          </span>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         El fiado o abono queda guardado en {destino === "USD" ? "dólares" : "euros"} a la tasa

@@ -1,7 +1,9 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { enviarReciboAlCliente } from "@/lib/whatsapp/recibo-cliente";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -46,8 +48,13 @@ export type AbonoDirigidoEntrada = {
   usarPrevista?: boolean;
   photoPath?: string | null;
   descripcion?: string | null;
-  // El interruptor de encima del botón: enciende los avisos de WhatsApp para
-  // este cliente si no los tenía.
+  // Si la casilla del permiso llegó a estar en pantalla. Va aparte de
+  // `avisarPorWhatsapp` porque un «no» también se anota: sin eso, el cliente
+  // nunca queda marcado como preguntado y la casilla reaparece en cada
+  // movimiento. Es la misma pareja de banderas que manda `addMovement`.
+  permisoMostrado?: boolean;
+  // La casilla de encima del botón: enciende los avisos de WhatsApp para este
+  // cliente si no los tenía.
   avisarPorWhatsapp?: boolean;
 };
 
@@ -188,23 +195,51 @@ export async function registrarAbonoDirigido(
   // problema pequeño por el peor que tiene esta app. `guardarPermisoDeclarado`
   // es append-only, así que volver a concederlo cuando ya estaba no rompe nada
   // — deja otra fila, que es justo el rastro que Meta pide.
-  if (entrada.avisarPorWhatsapp) {
+  if (entrada.permisoMostrado || entrada.avisarPorWhatsapp) {
     try {
       await guardarPermisoDeclarado(supabase, {
         clientId: cliente.id,
         ownerId: user.id,
         clientName: cliente.name,
         source: "owner_movement_form",
-        seMostro: true,
-        acepta: true,
+        seMostro: entrada.permisoMostrado !== false,
+        acepta: entrada.avisarPorWhatsapp === true,
       });
     } catch (e) {
       console.error("[abono] permiso de whatsapp:", e instanceof Error ? e.message : e);
     }
   }
 
+  // ── EL RECIBO AL CLIENTE ────────────────────────────────────────────
+  //
+  // ESTO FALTABA, Y ES EL FALLO QUE ESTA PUERTA TRAÍA DE NACIMIENTO. El recibo
+  // de WhatsApp lo disparaba solo `addMovement`, en `dashboard/actions.ts`. Con
+  // la decisión del dueño del 2026-10-19 —*«el abono debería SIEMPRE
+  // dirigirse»*— esta acción pasa a ser POR DONDE SE REGISTRAN LOS ABONOS, así
+  // que sin esta llamada `abono_confirmation_v3` habría dejado de enviarse para
+  // todos, cuatro días después de arreglarla (`MS-39`).
+  //
+  // Es el caso de la regla de `CLAUDE.md` «un campo nuevo entra por TODAS las
+  // puertas de su acción», leída al revés: una puerta nueva hacia el mismo
+  // resultado que se salta un efecto que la vieja sí tenía. Y no avisa — el
+  // abono se guarda, la pantalla dice que todo bien, y el cliente simplemente
+  // no recibe nada. Igual que los 12 de 12 rechazados de `MS-39`.
+  //
+  // DESPUÉS DE LA RESPUESTA Y SIN PODER TUMBARLA, por las razones que
+  // `dispararRecibo` tiene escritas en `dashboard/actions.ts`: dentro va una
+  // llamada a Kapso por internet, y el tendero vino a registrar un abono, no a
+  // esperar a un proveedor externo. Si falla, el abono ya está guardado y el
+  // error queda en `whatsapp_sends`.
+  const idDelAbono = creado.id as string;
+  after(async () => {
+    const r = await enviarReciboAlCliente(idDelAbono);
+    // Un «omitido» normal —sin permiso, sin número, desactivado— no es un error
+    // y no ensucia el log. Un «fallido» sí: el cliente esperaba su comprobante.
+    if (r.estado === "fallido") console.error("[recibo]", idDelAbono, r.error);
+  });
+
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${cliente.id}`);
 
-  return { ok: true, movementId: creado.id as string, clientId: cliente.id };
+  return { ok: true, movementId: idDelAbono, clientId: cliente.id };
 }
