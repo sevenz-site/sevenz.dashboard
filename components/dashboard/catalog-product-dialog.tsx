@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Loader2, Minus, Plus, Sparkles, Trash2, Unlink } from "lucide-react";
+import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -553,9 +553,18 @@ export function CatalogProductDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          {editing ? null : <AiPhotoCard />}
+        {/* AQUÍ IBA «SUBE FOTO DEL PRODUCTO», y se retiró el 2026-10-19 a
+            petición del dueño.
 
+            Era una tarjeta a puntos, solo al crear, que ofrecía sacar los
+            datos de una foto — y cuyo botón no hacía más que avisar de que
+            «esto llega en una próxima actualización». Lo primero que veía
+            quien abre «Crear producto» era, entonces, la única cosa de ese
+            diálogo que no funcionaba todavía.
+
+            Vuelve cuando la extracción exista de verdad: el componente está en
+            el historial, en este mismo archivo, hasta este commit. */}
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="producto_nombre">Nombre del producto</Label>
             <Input
@@ -1000,30 +1009,6 @@ function PublishCheck({
       <Label htmlFor={id} className="text-sm font-normal">
         {label}
       </Label>
-    </div>
-  );
-}
-
-function AiPhotoCard() {
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed bg-muted/40 p-4">
-      <div className="flex items-start gap-3">
-        <Sparkles className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-sm font-medium">Sube foto del producto</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Sevenz extraerá los datos. Tú verificas lo que haga falta.
-          </p>
-        </div>
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => toast.info("Esto llega en una próxima actualización.")}
-      >
-        Subir recibo foto
-      </Button>
     </div>
   );
 }

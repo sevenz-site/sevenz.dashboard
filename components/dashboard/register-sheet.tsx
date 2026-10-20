@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowDownLeft, ArrowUpRight, User } from "lucide-react";
+import { ArrowUpRight, Percent, User } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // LAS TRES COSAS QUE EL TENDERO PUEDE REGISTRAR — frame `1389:11227`, encargo
@@ -67,7 +67,13 @@ const OPCIONES: Opcion[] = [
   // UN ABONO NECESITA SABER DE QUIÉN, así que pasa por el buscador de
   // clientes y el marcador viaja con él: al elegir a alguien se aterriza en su
   // ficha con el diálogo de abono ya abierto.
-  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: ArrowDownLeft, marcador: true },
+  //
+  // EL ÍCONO ES UN «%» Y NO UNA FLECHA. Decisión del dueño el 2026-10-19, con
+  // su mockup al lado. La flecha hacia abajo era la misma familia que la de
+  // «Venta o fiado» justo encima —una entra, otra sale—, y dos flechas
+  // opuestas en una lista de tres se distinguen mirándolas, no de un vistazo.
+  // El porcentaje no se parece a nada más de la hoja.
+  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: Percent, marcador: true },
 ];
 
 export function RegisterSheet({
