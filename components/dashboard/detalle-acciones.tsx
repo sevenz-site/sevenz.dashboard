@@ -80,6 +80,17 @@ async function compartirSaldo(compartir: DatosParaCompartir | null) {
   }
 }
 
+// ===========================================================================
+// «PAGAR» LLEVA UN `?desde=detalle`, Y NO ES COSMÉTICO
+//
+// La pantalla del monto es el paso 3/3 de un flujo de tres, y desde aquí se
+// entra directamente a ella. Sin ese marcador se presentaba como «3/3» y su
+// flecha de volver apuntaba al paso 2/3 — así que el tendero que llegó de la
+// ficha y se arrepentía salía caminando hacia atrás por dos pantallas que
+// nunca vio, en vez de volver a donde estaba.
+//
+// Lo reportó el dueño el 2026-10-20. Con el marcador, esa pantalla se enseña
+// como «1/1» y su flecha vuelve al detalle.
 export function DetalleAcciones({
   movementId,
   clientId,
@@ -139,7 +150,7 @@ export function DetalleAcciones({
             <DropdownMenuItem asChild>
               {/* AL PASO 3/3 DE ESE FIADO, no al 1/3: el fiado ya está elegido
                   y volver a pedir cuál sería preguntar algo ya contestado. */}
-              <Link href={`/abonos/nuevo/${movementId}/monto`}>
+              <Link href={`/abonos/nuevo/${movementId}/monto?desde=detalle`}>
                 {/* EL BILLETE, no el porcentaje. Pedido por el dueño el
                     2026-10-20: es el mismo icono que «Ir a pago» en el paso
                     2/4 de una venta nueva, y los dos llevan al mismo sitio.
@@ -227,7 +238,7 @@ export function DetalleBotones({
       ) : null}
       {puedePagar ? (
         <Button asChild className="h-10 w-full">
-          <Link href={`/abonos/nuevo/${movementId}/monto`}>Pagar</Link>
+          <Link href={`/abonos/nuevo/${movementId}/monto?desde=detalle`}>Pagar</Link>
         </Button>
       ) : null}
     </div>

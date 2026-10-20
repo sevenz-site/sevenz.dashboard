@@ -58,6 +58,7 @@ export function AbonoMonto({
   pendiente,
   rateContext,
   yaAceptaAvisos,
+  pasoUnico = false,
 }: {
   ownerId: string;
   fiadoId: string;
@@ -69,6 +70,9 @@ export function AbonoMonto({
   pendiente: number;
   rateContext: MovementRateContext | null;
   yaAceptaAvisos: boolean;
+  // SE LLEGÓ DESDE LA FICHA DEL FIADO, no desde el paso 2/3. Ver el porqué en
+  // la página que lo decide; aquí solo cambia el rótulo y la flecha.
+  pasoUnico?: boolean;
 }) {
   const router = useRouter();
   const [guardando, startTransition] = useTransition();
@@ -147,14 +151,31 @@ export function AbonoMonto({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* `soloEnTelefono={false}` porque `app-header.tsx` esconde la barra de la
+      {/* LA FLECHA VUELVE POR DONDE SE VINO.
+          Llegando del paso 2/3, al paso 2/3. Llegando del botón «Pagar» de la
+          ficha del fiado, a esa ficha -- que es lo que el dueño reportó el
+          2026-10-20: *«si el usuario desea regresar al detalle seleccionando
+          "Regresar" lo regresa a los dos pasos previos del flujo y eso está
+          mal»*.
+
+          `soloEnTelefono={false}` porque `app-header.tsx` esconde la barra de la
           app en todo `/abonos` a TODAS las anchuras: sin esto, desde `sm` la
           pantalla se quedaría sin ninguna salida. */}
-      <ScreenBackRow href={`/abonos/nuevo/${fiadoId}`} label={clienteNombre} soloEnTelefono={false} />
+      <ScreenBackRow
+        href={pasoUnico ? `/transacciones/${fiadoId}` : `/abonos/nuevo/${fiadoId}`}
+        label={pasoUnico ? "Volver al detalle" : clienteNombre}
+        soloEnTelefono={false}
+      />
 
       <div className="flex flex-col gap-2">
         <ScreenTitle>Registrar abono</ScreenTitle>
-        <p className="text-sm text-muted-foreground">3/3 Monto a abonar</p>
+        {/* «1/1» Y NO «3/3» cuando se entra por la ficha. El contador no es
+            decoración: dice cuántas pantallas quedan y cuántas hay detrás, y
+            un «3/3» con dos pasos que nunca ocurrieron promete un camino de
+            vuelta que no existe. */}
+        <p className="text-sm text-muted-foreground">
+          {pasoUnico ? "1/1" : "3/3"} Monto a abonar
+        </p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-full rounded-full bg-foreground transition-all" />
         </div>
