@@ -53,7 +53,8 @@
     "qa:venta-accion": "node qa/venta-accion.mjs",
     "qa:abono-accion": "node qa/abono-accion.mjs",
     "qa:producto-rapido": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/producto-rapido.mjs",
-    "qa:venta-resumen": "node qa/venta-resumen.mjs"
+    "qa:venta-resumen": "node qa/venta-resumen.mjs",
+    "qa:colombia": "node qa/fixtures-venta-colombia.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

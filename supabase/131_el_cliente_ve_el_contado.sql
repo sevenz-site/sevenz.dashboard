@@ -38,10 +38,34 @@
 -- charge. Excluding the whole sale was the bug the owner reported on
 -- 2026-10-20: the ten dollars he had charged appeared nowhere.
 --
--- `coalesce(currency, '')` IS NOT COSMETIC. A Colombian business stores NULL
--- in `currency`, and `NULL = NULL` is NULL, never true — so a plain join would
--- exclude nothing and every Colombian fiado would grow a phantom cash row
--- beside it. It would have looked fine in every Venezuelan test.
+-- ===========================================================================
+-- THE TWO TABLES DO NOT SPELL "COLOMBIA" THE SAME WAY
+--
+-- This is the trap, and the first version of this migration fell into it.
+--
+--   `sale_payments.currency` / `sale_lines.currency`   store 'COP'
+--   `movements.currency`                               stores NULL
+--
+-- Same book, two spellings. `registrarVenta` writes the sale tables with the
+-- catalogue's `PriceCurrency` and the movement with `libroDeMoneda(...)`,
+-- which maps 'COP' to NULL. The owner's side already knows this — its `libro()`
+-- helper in `lib/ventas-de-contado.ts` exists for exactly this translation —
+-- and the first draft of this file did not replicate it.
+--
+-- What that would have done: joined 'COP' against '', never matched, excluded
+-- nothing, and given **every Colombian fiado a phantom cash row beside it**,
+-- for the full amount, on the client's own screen. The customer would see his
+-- debt listed twice: once as owed and once as already paid.
+--
+-- AND NOTHING IN DEV WOULD HAVE CAUGHT IT. There is not one row with 'COP' in
+-- `sale_payments` — every Colombian business in dev has fiados and zero sales.
+-- The migration ran, returned correct rows for the Venezuelan client it was
+-- tested against, and was wrong for an entire country.
+--
+-- So every comparison below normalises FIRST, with the same rule as `libro()`:
+-- anything that is not USD or EUR is the null book. `coalesce(..., '')` on top
+-- is still needed because `NULL = NULL` is NULL and never true, so the null
+-- book would not match itself either.
 --
 -- ===========================================================================
 -- THE WINDOW, AND WHAT IT CANNOT PROMISE
@@ -227,15 +251,17 @@ begin
   -- side, written again here because this function builds its JSON field by
   -- field and a column it does not name does not exist for the client.
   --
-  -- `coalesce(currency, '')` IS THE JOIN KEY, not `currency` itself: a
-  -- Colombian business stores NULL, and NULL never equals NULL, so a plain
-  -- comparison would never exclude anything and every Colombian fiado would
-  -- also sprout a cash row beside it.
+  -- THE JOIN KEY IS THE NORMALISED BOOK, never the raw column: the sale
+  -- tables spell the Colombian book 'COP' and `movements` spells it NULL.
+  -- The header explains what skipping that costs.
   with pagos as (
     select
       s.id as sale_id,
       s.created_at,
-      sp.currency,
+      -- NORMALISED TO THE LEDGER'S SPELLING, see the header. Grouping by the
+      -- raw `sp.currency` would put a Colombian sale in a 'COP' bucket that
+      -- nothing downstream can match.
+      case when sp.currency in ('USD', 'EUR') then sp.currency end as currency,
       sum(sp.amount) as amount,
       -- Only when every payment of that book was typed the same way; mixing
       -- forms has no single honest figure and the screen falls back to what
@@ -249,7 +275,7 @@ begin
     from public.sales s
     join public.sale_payments sp on sp.sale_id = s.id
     where s.client_id = v_client.id and s.deleted_at is null
-    group by s.id, s.created_at, sp.currency
+    group by s.id, s.created_at, case when sp.currency in ('USD', 'EUR') then sp.currency end
   ),
   cargos as (
     select m.sale_id, coalesce(m.currency, '') as moneda
@@ -290,7 +316,10 @@ begin
               ) order by sl.name)
               from public.sale_lines sl
               where sl.sale_id = c.sale_id
-                and coalesce(sl.currency, '') = coalesce(c.currency, '')
+                -- Same normalisation as the payments: `sale_lines` spells the
+                -- Colombian book 'COP' and `c.currency` now holds NULL for it.
+                and coalesce(case when sl.currency in ('USD', 'EUR') then sl.currency end, '')
+                    = coalesce(c.currency, '')
             ),
             '[]'::json
           ) as lineas
@@ -348,8 +377,14 @@ grant execute on function public.get_shared_balance(text, int) to anon, authenti
 insert into public.schema_migrations (key, description)
 values (
   '131_el_cliente_ve_el_contado',
-  'get_shared_balance() devuelve ventas_de_contado y contado_total: las ventas pagadas enteras del cliente, una fila por (venta, libro), con sus lineas, lo que entrego, la tasa sellada del pago y su descripcion. Cierra CT-104, pedido por el dueno el 2026-10-19 y repetido el 2026-10-20. · POR QUE HACIA FALTA UNA MIGRACION: una venta pagada entera no escribe nada en movements (la 124), asi que la pantalla del DUENO la arma leyendo sales + sale_payments + sale_lines con su sesion, y la del CLIENTE no puede porque su unica puerta es esta funcion, que es security definer y arma el JSON campo a campo -- una columna que no nombra no existe para el cliente. El resultado era que el cliente pagaba de contado y no veia su compra, mientras el tendero si: los dos mirando la misma cuenta y leyendo cosas distintas. · LA REGLA ES POR (VENTA, LIBRO) y no por venta, la misma que filasDeContado en el lado del dueno: una venta mixta saca fila de contado en la moneda cobrada y ninguna en la fiada, que ya tiene su cargo. Escribirla dos veces es deliberado -- aquella es TypeScript en un modulo use server y no se puede llamar desde SQL. · coalesce(currency, '') en la clave del cruce: un negocio colombiano guarda NULL y NULL nunca es igual a NULL, asi que un cruce normal no excluiria nada y cada fiado colombiano sacaria ademas una fila de contado fantasma. Habria pasado cualquier prueba venezolana. · LA VENTANA NO ES UNICA: los movimientos y las ventas se acotan por separado con p_limit, asi que en el borde puede salir una venta mas vieja que el movimiento numero 50. Cada fila es cierta; lo que no es exacto es «estas son las N cosas mas recientes». · CORRE DESPUES DE LA 129; el cuerpo va copiado verbatim de ella con un bloque mas y dos claves mas.'
+  'get_shared_balance() devuelve ventas_de_contado y contado_total: las ventas pagadas enteras del cliente, una fila por (venta, libro), con sus lineas, lo que entrego, la tasa sellada del pago y su descripcion. Cierra CT-104, pedido por el dueno el 2026-10-19 y repetido el 2026-10-20. · POR QUE HACIA FALTA UNA MIGRACION: una venta pagada entera no escribe nada en movements (la 124), asi que la pantalla del DUENO la arma leyendo sales + sale_payments + sale_lines con su sesion, y la del CLIENTE no puede porque su unica puerta es esta funcion, que es security definer y arma el JSON campo a campo -- una columna que no nombra no existe para el cliente. El resultado era que el cliente pagaba de contado y no veia su compra, mientras el tendero si: los dos mirando la misma cuenta y leyendo cosas distintas. · LA REGLA ES POR (VENTA, LIBRO) y no por venta, la misma que filasDeContado en el lado del dueno: una venta mixta saca fila de contado en la moneda cobrada y ninguna en la fiada, que ya tiene su cargo. Escribirla dos veces es deliberado -- aquella es TypeScript en un modulo use server y no se puede llamar desde SQL. · coalesce(currency, '') en la clave del cruce: un negocio colombiano guarda NULL y NULL nunca es igual a NULL, asi que un cruce normal no excluiria nada y cada fiado colombiano sacaria ademas una fila de contado fantasma. Habria pasado cualquier prueba venezolana. · LA VENTANA NO ES UNICA: los movimientos y las ventas se acotan por separado con p_limit, asi que en el borde puede salir una venta mas vieja que el movimiento numero 50. Cada fila es cierta; lo que no es exacto es «estas son las N cosas mas recientes». · CORRE DESPUES DE LA 129; el cuerpo va copiado verbatim de ella con un bloque mas y dos claves mas. · CORREGIDA EL 2026-10-20 DESPUES DE CORRERSE EN DEV: la primera version cruzaba coalesce(sp.currency,'') contra coalesce(m.currency,''), y las dos tablas NO escriben Colombia igual -- sale_payments y sale_lines guardan 'COP' y movements guarda NULL. Asi que el cruce nunca casaba, no excluia nada, y CADA FIADO COLOMBIANO habria sacado ademas una fila de contado fantasma por su importe entero en la pantalla del propio cliente: su deuda listada dos veces, una como debida y otra como ya pagada. No lo habria cazado ninguna prueba en dev porque no hay NI UNA fila con 'COP' en sale_payments. Ahora toda comparacion normaliza primero con la misma regla que libro() en lib/ventas-de-contado.ts.'
 )
-on conflict (key) do nothing;
+-- `do update` Y NO `do nothing`, solo en esta migración y con motivo: el
+-- archivo se CORRIGIÓ después de correrse en dev --el cruce de monedas estaba
+-- mal para Colombia, ver la cabecera-- así que la fila que ya existe describe
+-- una versión que ya no está en ninguna parte. Con `do nothing` el ledger
+-- seguiría afirmando algo falso y la comparación de entornos lo daría por
+-- bueno. La clave no cambia; lo que se pone al día es lo que dice.
+on conflict (key) do update set description = excluded.description;
 
 commit;
