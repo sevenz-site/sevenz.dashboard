@@ -161,8 +161,41 @@ export function DetalleDeTransaccion({
   // tres filas de este grupo tienen que multiplicar entre sí; con la tasa del
   // día no cuadrarían y quien rehiciera la cuenta creería que la app se
   // equivocó. El valor de HOY vive abajo, en la tarjeta del saldo.
+  // ── SIN ABONO NO HAY «EQUIVALENCIA» ──────────────────────────────────
+  //
+  // Instrucción del dueño el 2026-10-20, con una captura: *«si no abonó el
+  // campo "Equivalencia" no se debe mostrar»*.
+  //
+  // POR QUÉ TENÍA RAZÓN, Y NO ES UNA PREFERENCIA. Esta fila va pegada debajo
+  // de «Abonó», así que se lee como la otra cara de ESA cifra. En un fiado sin
+  // abonos la pantalla decía:
+  //
+  //     Abonó          €0.00
+  //     Equivalencia   Bs. 29.669,16
+  //
+  // ...y esos bolívares no son del abono: son los del fiado entero. O sea que
+  // debajo de un «no ha pagado nada» salía una cifra de cinco dígitos. La
+  // lectura natural es que abonó 29 mil bolívares, que es lo contrario de lo
+  // que dice la línea de arriba.
+  //
+  // Y ADEMÁS SOBRABA: con cero abonado, esa cifra es exactamente la misma que
+  // «Total por cobrar» ya enseña dos filas más abajo en su línea de bolívares.
+  // La única diferencia entre las dos es la tasa --sellada aquí, de hoy allí--
+  // y el día del fiado las dos tasas son la misma, así que salía el mismo
+  // número dos veces sin nada que lo explicara.
+  //
+  // UN ABONO (`type === "payment"`) SIEMPRE LA ENSEÑA: ahí la cifra de arriba
+  // es el propio abono y ésta es su otra cara, que es justo lo que la fila
+  // promete. Por eso la condición mira lo pagado y no el tipo.
+  //
+  // Y UN FIADO QUE YA LISTA SUS ABONOS EN TARJETAS TAMBIÉN LA ENSEÑA, aunque
+  // su `abonoInicial` sea cero: ahí la fila «Abonó €0.00» no existe --en su
+  // sitio van las tarjetas, cada una con sus propios bolívares-- así que no
+  // hay ningún cero debajo del cual esta cifra se lea mal.
+  const seEnseñaAbonoEnCero =
+    type === "charge" && !(abonosRecibidos && abonosRecibidos.length > 0) && (abonoInicial ?? 0) <= 0.005;
   const equivalente =
-    currency && exchangeRateUsed != null
+    currency && exchangeRateUsed != null && !seEnseñaAbonoEnCero
       ? monedaRegistrada === "VES"
         ? { texto: formatDisplayCurrency(amount, currency), moneda: currency as MovementCurrencyCode }
         : { texto: formatBs(amount * exchangeRateUsed), moneda: "VES" as MovementCurrencyCode }
