@@ -9,7 +9,10 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
-import { MovementHistoryList } from "@/components/public/movement-history-list";
+import {
+  MovementHistoryList,
+  type SharedVentaDeContado,
+} from "@/components/public/movement-history-list";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -106,6 +109,11 @@ type SharedBalance = {
   // How many movements exist in total, counted before the limit is applied —
   // so the page can say what it's holding back and whether to offer "ver todo".
   movement_total: number;
+  // LAS VENTAS PAGADAS ENTERAS — migración `131`, `CT-104`. Opcionales porque
+  // entre desplegar este código y correr esa migración la clave no viene, y
+  // una pantalla que enseña lo de siempre es mejor que una que revienta.
+  ventas_de_contado?: SharedVentaDeContado[];
+  contado_total?: number;
   owner_country: "CO" | "VE" | null;
   rate_mode: ExchangeRateMode | null;
   current_bcv_usd: number | null;
@@ -185,6 +193,12 @@ export default async function SharedBalancePage({
 
   const shared = data as SharedBalance;
   const movements = [...shared.movements].reverse();
+
+  // CUÁNTAS FILAS SE ENSEÑAN Y CUÁNTAS HAY, contando las dos clases. Ver el
+  // comentario del pie de la lista, más abajo.
+  const ventasDeContado = shared.ventas_de_contado ?? [];
+  const filasVisibles = movements.length + ventasDeContado.length;
+  const totalDeTodo = shared.movement_total + (shared.contado_total ?? 0);
 
   // Pulled out of the JSX because TWO dialogs now depend on it: this decides
   // whether the cédula is asked for, and the WhatsApp permission waits its turn
@@ -516,14 +530,19 @@ export default async function SharedBalancePage({
               <h2 className="mt-1 text-xl font-semibold">Historial</h2>
             }
             movements={movements}
+            ventasDeContado={ventasDeContado}
             token={token}
             ledger={ledger}
           />
-          {!showAll && shared.movement_total > movements.length ? (
+          {/* EL PIE CUENTA LAS DOS COSAS desde la `131`. Antes contaba solo
+              movimientos, y con las ventas de contado en la lista decía
+              «mostrando 50 de 60» debajo de una lista de 57 filas. Una cifra
+              que no cuadra con lo que se ve encima es peor que no ponerla: el
+              cliente no sabe cuál de las dos creer. */}
+          {!showAll && totalDeTodo > filasVisibles ? (
             <div className="flex flex-col items-center gap-2 pt-1">
               <p className="text-xs text-muted-foreground">
-                Mostrando los {movements.length} movimientos más recientes de{" "}
-                {shared.movement_total}.
+                Mostrando las {filasVisibles} transacciones más recientes de {totalDeTodo}.
               </p>
               {/* h-10 so it matches every other labelled button in the app and
                 clears a thumb on a phone. */}

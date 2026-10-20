@@ -149,7 +149,7 @@ export function MovementHistoryList({
     <div className="flex items-center justify-between gap-3">
       {titulo}
       {filas.length > 0 ? (
-        <MovementTypeFilter tipo={tipo} setTipo={cambiarTipo} conContado={ventasDeContado.length > 0} />
+        <MovementTypeFilter tipo={tipo} setTipo={cambiarTipo} conAbono={false} conContado={ventasDeContado.length > 0} />
       ) : null}
     </div>
   ) : null;
