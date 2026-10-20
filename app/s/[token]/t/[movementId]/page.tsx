@@ -8,7 +8,6 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { getBolivarRates } from "@/lib/products/catalog";
-import { getBalanceLabel } from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
@@ -230,6 +229,23 @@ export default async function DetalleDelClientePage({
 
       <h1 className="text-2xl leading-8 font-normal">Detalle de transacción</h1>
 
+      {/* «Total por cobrar» TAMBIÉN EN LA PANTALLA DEL CLIENTE, igual que en
+          la del dueño. Decisión del dueño el 2026-10-20, preguntada: los
+          frames `1463:18100`, `1465:18349` y `1479:9456` son de SU pantalla,
+          así que se le planteó si el cliente debía llevar el mismo rótulo.
+          Dijo que sí, y por eso aquí no se pasa `balanceLabel`: el valor por
+          defecto del componente ya es ese.
+
+          Y DESPLAZA UNA DECISIÓN ANTERIOR, que queda escrita: esta pantalla
+          usaba `getBalanceLabel`, que dice «Debe», «A favor» o «Sin deuda»
+          según el signo del saldo. Era el rótulo del cliente desde que existe
+          su enlace, y estaba pensado para no decirle «debes −$20.00» a quien
+          ha pagado de más.
+
+          LO QUE CUESTA, para quien se plantee devolverlo: un cliente con saldo
+          a favor ahora lee «Total por cobrar −$20.00». `getBalanceLabel` sigue
+          existiendo y la tarjeta de saldo de `/s/[token]` lo sigue usando, así
+          que volver es pasar la prop otra vez. */}
       <DetalleDeTransaccion
         type={m.type}
         amount={Number(m.amount)}
@@ -239,7 +255,6 @@ export default async function DetalleDelClientePage({
         cuotas={m.cuotas}
         createdAt={m.created_at}
         runningBalance={Number(m.running_balance)}
-        balanceLabel={getBalanceLabel(Number(m.running_balance))}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount}
