@@ -11,6 +11,7 @@ import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { BolivarRates } from "@/lib/products/price";
 import type { SaleLineRow } from "@/lib/sale-lines";
+import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 // EL CUERPO DEL DETALLE DE UNA TRANSACCIÓN — frames `1465:18349` (abono) y
@@ -178,8 +179,44 @@ export function DetalleDeTransaccion({
         cuotas: fiadoAplicado.cuotas,
         desde: fiadoAplicado.fecha,
         importe: fiadoAplicado.amount,
+        // DESDE UN ABONO NO SE SABE LO QUE SE LLEVA ABONADO AL FIADO, y por
+        // eso van en cero: esta pantalla trae el fiado para heredar su
+        // acuerdo, no su reparto. La tabla dibuja entonces todas las cuotas
+        // como pendientes, que es lo único que puede afirmar desde aquí.
+        abonoInicial: 0,
+        abonos: [] as AbonoParaEstado[],
       }
-    : { plazoDias, cuotas, desde: createdAt, importe: amount };
+    : {
+        plazoDias,
+        cuotas,
+        desde: createdAt,
+        importe: amount,
+        abonoInicial: abonoInicial ?? 0,
+        abonos: (abonosRecibidos ?? []).map((a) => ({ fecha: a.fecha, amount: a.amount })),
+      };
+
+  // ── EL CHIP DE CADA ABONO ────────────────────────────────────────────
+  //
+  // Mide el estado de LA CUOTA QUE ESE ABONO CUBRIÓ, no el del fiado entero.
+  // Es la respuesta del dueño el 2026-10-20, preguntada antes de construirlo
+  // porque había dos lecturas: *«El chip mide el estado de la cuota que
+  // cubrió, si está en el plazo de la fecha de la cuota que se estableció en
+  // la sección de cuotas»*.
+  //
+  // Sin cuotas pactadas no hay ninguna fecha intermedia contra la que juzgar,
+  // así que cada abono se mide contra el plazo entero: eso es un fiado de una
+  // sola cuota, que es lo que se le pasa.
+  const estadoDeCadaAbono =
+    type === "charge" && plazoDias != null && abonosRecibidos
+      ? estadosDelFiado({
+          createdAt,
+          plazoDias,
+          cuotas: cuotas ?? 1,
+          amount,
+          abonoInicial: abonoInicial ?? 0,
+          abonos: abonosRecibidos.map((a) => ({ fecha: a.fecha, amount: a.amount })),
+        }).abonos.slice(abonoInicial && abonoInicial > 0.005 ? 1 : 0)
+      : [];
 
   const colorSaldo =
     runningBalance > 0 ? "text-destructive" : runningBalance < 0 ? "text-money-in" : "";
@@ -289,10 +326,20 @@ export function DetalleDeTransaccion({
             repite, porque lo que queda vivo es «Total por cobrar». */}
         {type === "charge" && abonosRecibidos && abonosRecibidos.length > 0 ? (
           <div className="flex flex-col gap-2 border-t pt-2">
-            <dt className="py-1 text-xs leading-4 text-muted-foreground">Abonó</dt>
+            {/* «Abonos», EN PLURAL Y EN 14 REGULAR — frame `1489:10209`, nodo
+                `1489:10230`. Decía «Abonó» hasta el 2026-10-20, que es el
+                rótulo de la FILA de un fiado sin abonos dirigidos: la de
+                arriba, con una sola cifra. Son dos cosas distintas y el frame
+                las llama distinto. */}
+            <dt className="py-1 text-sm leading-5">Abonos</dt>
             <dd className="flex flex-col gap-2">
-              {abonosRecibidos.map((a) => (
-                <TarjetaDeAbono key={a.movementId} abono={a} rates={rates} href={a.href} />
+              {abonosRecibidos.map((a, i) => (
+                <TarjetaDeAbono
+                  key={a.movementId}
+                  abono={a}
+                  href={a.href}
+                  estado={estadoDeCadaAbono[i]}
+                />
               ))}
             </dd>
           </div>
@@ -352,6 +399,15 @@ export function DetalleDeTransaccion({
             cuotas={acuerdo.cuotas}
             amount={acuerdo.importe}
             formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
+            // LO ABONADO A ESTE FIADO, para la columna «Estado». Son las dos
+            // cosas que lo pagan: el abono del momento de la venta (la `129`)
+            // y los dirigidos que vinieron después.
+            //
+            // EN UN ABONO SE PASAN LOS DEL FIADO QUE PAGÓ, no los suyos, por
+            // lo mismo que el plazo y las cuotas salen de ahí: la tabla
+            // describe el acuerdo de ese fiado, no el de este movimiento.
+            abonoInicial={acuerdo.abonoInicial}
+            abonos={acuerdo.abonos}
           />
         ) : null}
       </Grupo>

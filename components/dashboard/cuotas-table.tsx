@@ -1,5 +1,6 @@
-import { calcularCuotas } from "@/lib/cuotas";
 import { formatDate } from "@/lib/format";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 
 // THE AGREED CUOTAS, ONE PER LINE, WITH THE DATE EACH ONE FALLS DUE.
 //
@@ -26,11 +27,23 @@ export function CuotasTable({
   cuotas,
   amount,
   formatearMonto,
+  abonoInicial = 0,
+  abonos = [],
 }: {
   createdAt: string;
   plazoDias: number;
   cuotas: number;
   amount: number;
+  // LO ABONADO, para la columna «Estado» que pidió el dueño el 2026-10-20
+  // (frame `1489:10209`, nodo `1488:10146`). Sin esto la tabla no puede
+  // distinguir una cuota pagada de una vencida, que es justo lo que la
+  // columna contesta.
+  //
+  // Por defecto cero y vacío: una superficie que no sabe lo abonado --la
+  // ficha de un movimiento BORRADO, que no tiene reparto-- dibuja todas las
+  // cuotas como pendientes, que es lo único que puede afirmar.
+  abonoInicial?: number;
+  abonos?: AbonoParaEstado[];
   // THE CALLER FORMATS, and that is not indirection for its own sake: the two
   // cards that mount this table format differently on purpose -- the live
   // movement's shows the bolívar equivalent underneath, the deleted one does
@@ -39,7 +52,14 @@ export function CuotasTable({
   // missing ledger is Colombian pesos -- printing a dollar fiado as pesos.
   formatearMonto: (monto: number) => string;
 }) {
-  const filas = calcularCuotas({ createdAt, plazoDias, cuotas, amount });
+  const { cuotas: filas } = estadosDelFiado({
+    createdAt,
+    plazoDias,
+    cuotas,
+    amount,
+    abonoInicial,
+    abonos,
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,13 +75,16 @@ export function CuotasTable({
         <span className="text-sm leading-5 tabular-nums">{cuotas} cuotas</span>
       </div>
 
-      {/* «Próximas cuotas», EN SU PROPIO RECUADRO. El frame lo dibuja con el
-          mismo borde y el mismo radio que «Resumen de compra», con su título
-          dentro. Iba sin recuadro y sin título, pegado a la fila de arriba:
-          se leía como la continuación de «Cuotas» y no como lo que es, una
-          tabla con su propia cabecera. */}
-      <div className="flex flex-col gap-2 rounded-[10px] border p-2.5">
-        <p className="py-2 text-sm leading-5">Próximas cuotas</p>
+      {/* «Próximas cuotas» SIN RECUADRO Y EN 16 SEMIBOLD, que es como lo
+          dibuja el frame `1489:10209` (nodos `1489:10451` y `1489:10452`).
+
+          TUVO RECUADRO Y TÍTULO DE 14 hasta el 2026-10-20. No fue un capricho
+          quitarlo: la tarjeta de la moneda que lo contiene también perdió el
+          suyo ese día y pasó a separarse con una línea superior, así que un
+          recuadro aquí dentro habría quedado como el único marco de la
+          pantalla. */}
+      <div className="flex flex-col gap-2">
+        <p className="py-2 text-base leading-6 font-semibold">Próximas cuotas</p>
         <table className="w-full table-fixed">
           <thead>
             <tr className="border-b text-sm leading-5">
@@ -76,14 +99,28 @@ export function CuotasTable({
               <th scope="col" className="text-right font-normal">
                 Monto
               </th>
+              {/* LA CUARTA COLUMNA, del frame `1488:10146`.
+                  
+                  `w-24` Y NO EL `w-[106px]` DEL FRAME, medido a 375px el
+                  2026-10-20: con 112px la columna «Vence» se quedaba sin sitio
+                  y «07 de oct de 2026» caía en dos líneas. 96px siguen
+                  bastando para «Plazo vencido», que es la etiqueta más larga
+                  que cabe ahí -- «Dentro del plazo» se encoge sola porque el
+                  chip no fuerza su ancho. */}
+              <th scope="col" className="w-24 text-right font-normal">
+                Estado
+              </th>
             </tr>
           </thead>
           <tbody>
             {filas.map((c) => (
               <tr key={c.numero} className="text-xs leading-4">
                 <td className="py-1 tabular-nums">{c.numero}</td>
-                <td className="py-1">{formatDate(c.fecha.toISOString())}</td>
+                <td className="py-1 whitespace-nowrap">{formatDate(c.fecha.toISOString())}</td>
                 <td className="py-1 text-right tabular-nums">{formatearMonto(c.monto)}</td>
+                <td className="py-1 text-right">
+                  <ChipDeEstado estado={c.estado} />
+                </td>
               </tr>
             ))}
           </tbody>

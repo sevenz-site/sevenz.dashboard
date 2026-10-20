@@ -16,7 +16,7 @@ import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { BolivarRates } from "@/lib/products/price";
-import type { Movement } from "@/lib/types";
+import type { LedgerCurrency, Movement } from "@/lib/types";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -26,20 +26,47 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 // Era un diálogo hasta el 2026-10-19; el cuerpo y el porqué del cambio están en
 // `detalle-de-transaccion.tsx`. Aquí viven solo las dos cosas que son de esta
 // superficie: de dónde salen los datos, y qué acciones hay arriba.
-// Las líneas de la venta de la que nació un movimiento, si nació de una.
-// Devuelve lista vacía cuando no hay venta, que es el caso normal de todo lo
-// anterior a la migración `124` y de lo que entra por la libreta.
-async function lineasDe(supabase: SupabaseClient, saleId: string | null): Promise<SaleLineRow[]> {
+// Las líneas de la venta de la que nació un movimiento, SOLO LAS DE SU MONEDA.
+//
+// ===========================================================================
+// EL FILTRO POR MONEDA ES EL ARREGLO DE UN FALLO REPORTADO, no una precaución
+//
+// Esta función seleccionaba `name, quantity, unit_price` y **dejaba fuera
+// `currency`**, que la columna sí tiene desde la `124`. Luego la pantalla
+// formateaba cada línea con la moneda del MOVIMIENTO, así que una venta mixta
+// --unos productos en dólares, otros en euros-- salía entera como si fuera de
+// una sola.
+//
+// Lo reportó el dueño el 2026-10-20 con una captura. Confirmado contra dev:
+// guardado estaban «Casco 2 × 40,57 EUR» y «Lapicero 10 × 1,00 USD», y la
+// pantalla enseñaba «Lapicero 10 × €1,00» y sumaba los diez dólares a lo
+// abonado en euros. El total final salía bien por casualidad: esa cifra viene
+// del movimiento, no de la suma de arriba.
+//
+// UNA VENTA MIXTA SON DOS FILAS INDEPENDIENTES en el historial --decisión del
+// dueño el 2026-10-20-- así que la ficha de un movimiento enseña SOLO su
+// moneda. La parte en la otra moneda tiene su propia fila y su propia
+// pantalla; aquí no se anida ni se menciona.
+//
+// `moneda` nula es un negocio colombiano: un solo libro, y las líneas se
+// guardan con `currency` nulo. El filtro lo respeta.
+async function lineasDe(
+  supabase: SupabaseClient,
+  saleId: string | null,
+  moneda: LedgerCurrency | null,
+): Promise<SaleLineRow[]> {
   if (!saleId) return [];
   const { data } = await supabase
     .from("sale_lines")
-    .select("name, quantity, unit_price")
+    .select("name, quantity, unit_price, currency")
     .eq("sale_id", saleId);
-  return (data ?? []).map((l) => ({
-    name: l.name as string,
-    quantity: Number(l.quantity),
-    unitPrice: Number(l.unit_price),
-  }));
+  return (data ?? [])
+    .filter((l) => (l.currency ?? null) === moneda)
+    .map((l) => ({
+      name: l.name as string,
+      quantity: Number(l.quantity),
+      unitPrice: Number(l.unit_price),
+    }));
 }
 
 export default async function TransaccionPage({
@@ -86,7 +113,7 @@ export default async function TransaccionPage({
   }
 
   // ── QUÉ SE LLEVÓ EL CLIENTE, si este movimiento nació de una venta ───
-  const productos = await lineasDe(supabase, m.sale_id);
+  const productos = await lineasDe(supabase, m.sale_id, m.currency);
 
   // ── EL FIADO AL QUE FUE ESTE ABONO ───────────────────────────────────
   //
@@ -112,7 +139,7 @@ export default async function TransaccionPage({
       const abierto = ((abiertos ?? []) as { movement_id: string; pending: number }[]).find(
         (c) => c.movement_id === f.id,
       );
-      const lineas = await lineasDe(supabase, f.sale_id as string | null);
+      const lineas = await lineasDe(supabase, f.sale_id as string | null, f.currency as LedgerCurrency | null);
       fiadoAplicado = {
         movementId: f.id as string,
         saleId: (f.sale_id as string | null) ?? null,
@@ -134,6 +161,7 @@ export default async function TransaccionPage({
   // cargo, así que comparten el `if`.
   let puedePagar = false;
   let abonoInicial = 0;
+  let pendienteDelFiado: number | null = null;
   let abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
@@ -143,6 +171,21 @@ export default async function TransaccionPage({
       (c) => c.movement_id === m.id,
     );
     puedePagar = abierto != null && Number(abierto.pending) > 0.005;
+
+    // ── «TOTAL POR COBRAR» DE UN FIADO ES LO QUE ESE FIADO DEBE ─────────
+    //
+    // No `running_balance`, que es el saldo del CLIENTE justo después de este
+    // movimiento y no se mueve cuando llegan abonos posteriores.
+    //
+    // SE VIO EL 2026-10-20, en cuanto la tarjeta empezó a listar los abonos:
+    // un fiado de $85 con un abono de $42,50 listado encima decía «Total por
+    // cobrar $85.00». La tarjeta se contradecía a sí misma, y quien rehiciera
+    // la cuenta a mano creería que el abono no se guardó.
+    //
+    // Sale de `get_open_charges_for_client`, la MISMA función que alimenta el
+    // tope del abono y la tarjeta «Abonó a». Un fiado saldado no sale de esa
+    // lista y su pendiente es cero, que es lo correcto.
+    pendienteDelFiado = abierto == null ? 0 : Number(abierto.pending);
 
     // EL ABONO PARCIAL DEL MOMENTO DE LA VENTA, que es lo que el frame llama
     // «Abonó» en un fiado (`1463:18100`, nodo `1463:18127`).
@@ -156,11 +199,16 @@ export default async function TransaccionPage({
     // 2026-10-20. Un fiado sin venta detrás --todo lo anterior a la `124` y lo
     // que entra por la libreta-- también da cero, que es la verdad.
     if (m.sale_id) {
+      // POR MONEDA TAMBIÉN, por lo mismo que las líneas: en la venta mixta
+      // del 2026-10-20 esto sumaba los 40 dólares de contado al «Abonó» del
+      // fiado en euros y lo enseñaba como «€40,00».
       const { data: pagos } = await supabase
         .from("sale_payments")
-        .select("amount")
+        .select("amount, currency")
         .eq("sale_id", m.sale_id);
-      abonoInicial = (pagos ?? []).reduce((suma, p) => suma + Number(p.amount), 0);
+      abonoInicial = (pagos ?? [])
+        .filter((p) => (p.currency ?? null) === m.currency)
+        .reduce((suma, p) => suma + Number(p.amount), 0);
     }
 
     // LOS ABONOS DIRIGIDOS A ESTE FIADO. Encargo del dueño el 2026-10-20.
@@ -176,7 +224,7 @@ export default async function TransaccionPage({
     // últimamente», y el último abono es el que se viene a comprobar.
     const { data: pagos } = await supabase
       .from("movements")
-      .select("id, created_at, currency, amount, description")
+      .select("id, created_at, currency, amount, description, exchange_rate_used")
       .eq("client_id", cliente.id)
       .eq("applies_to_movement_id", m.id)
       .eq("type", "payment")
@@ -187,6 +235,8 @@ export default async function TransaccionPage({
       movementId: p.id as string,
       fecha: p.created_at as string,
       currency: p.currency as AbonoDirigido["currency"],
+      // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
+      tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
       amount: Number(p.amount),
       descripcion: (p.description as string | null) ?? null,
       href: `/transacciones/${p.id as string}`,
@@ -247,7 +297,7 @@ export default async function TransaccionPage({
         cuotas={m.cuotas}
         productos={productos}
         createdAt={m.created_at}
-        runningBalance={Number(m.running_balance)}
+        runningBalance={pendienteDelFiado ?? Number(m.running_balance)}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount == null ? null : Number(m.entry_amount)}

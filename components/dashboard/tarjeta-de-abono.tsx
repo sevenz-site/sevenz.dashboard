@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { CLASE_TARJETA } from "@/components/dashboard/tarjeta-de-fiado";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate } from "@/lib/format";
-import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 
 // UN ABONO, COMO TARJETA. El reflejo de `TarjetaDeFiado`.
 //
@@ -29,44 +31,59 @@ export type AbonoDirigido = {
   currency: PriceCurrency | null;
   amount: number;
   descripcion: string | null;
+  // LA TASA QUE ESTE ABONO SELLÓ, para los bolívares «al día del abono».
+  // `null` en un negocio colombiano y en todo lo anterior al sellado.
+  tasaSellada?: number | null;
 };
 
 export function TarjetaDeAbono({
   abono,
-  rates,
   href,
+  estado,
 }: {
   abono: AbonoDirigido;
-  rates: BolivarRates | null;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
   // de «elegir uno» dentro de un flujo, así que no necesita `onClick`.
   href: string;
+  // EL ESTADO DE LA CUOTA QUE ESTE ABONO CUBRIÓ — frame `1489:10209`, y es la
+  // respuesta del dueño del 2026-10-20 a qué mide el chip. `undefined` cuando
+  // el fiado no tiene plazo: no hay fecha contra la que juzgar y no se dibuja.
+  estado?: EstadoDelPlazo;
 }) {
-  // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Abono · lo que se escribió».
-  // Sin descripción se queda en «Abono» a secas, que sigue siendo cierto --y
-  // es el caso de casi todo lo que entra por la libreta.
+  // «Bs. … AL DÍA DEL ABONO», con la tasa SELLADA en el movimiento y no la de
+  // hoy — frame `1489:10209`, nodo `1489:10240`.
   //
-  // SIN PRODUCTOS, a diferencia de la tarjeta del fiado: un abono no se lleva
-  // nada, paga.
-  const titulo = abono.descripcion ? `Abono · ${abono.descripcion}` : "Abono";
-
-  // «Bs. … hoy», a la tasa de HOY y no a la del día del abono. Es la misma
-  // decisión que la tarjeta del fiado y por la misma razón: la pregunta que
-  // contesta esta línea es «cuánto es esto hoy», no «cuánto fue aquel día».
-  // Sin tasa no se dibuja: inventar una conversión es peor que no darla.
+  // LLEVABA LA TASA DE HOY hasta el 2026-10-20, copiando la tarjeta del fiado,
+  // y ahí la pregunta sí es «cuánto es esto hoy». Aquí es otra: ese dinero ya
+  // cambió de manos. Decirle al tendero que su abono de hace dos meses «son»
+  // los bolívares de hoy es contarle una conversión que nunca ocurrió.
+  //
+  // Sale de la tasa que el propio abono tiene guardada. Sin ella no se dibuja
+  // la línea: inventar una conversión es peor que no darla, y un movimiento
+  // anterior a que existiera el sellado no la tiene.
   const enBs =
-    rates && abono.currency
-      ? priceIn("VES", { amount: abono.amount, currency: abono.currency }, rates)?.amount
-      : null;
+    abono.tasaSellada != null ? abono.amount * abono.tasaSellada : null;
 
   return (
     <Link href={href} className={CLASE_TARJETA}>
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="truncate text-sm font-medium">{titulo}</span>
-        <span className="text-xs text-muted-foreground">{formatDate(abono.fecha)}</span>
+      {/* LA FECHA ARRIBA Y EL CHIP DEBAJO, sin título — frame `1489:10209`,
+          nodos `1489:10233` y el `chip_info` de al lado.
+
+          LLEVABA «Abono · descripción» y la fecha pequeña debajo, copiando la
+          fila del historial. El frame no lo pide: dentro de la ficha de su
+          fiado ya se sabe que son abonos, así que repetir la palabra en cada
+          tarjeta no distingue ninguna de otra. Lo que las distingue es cuándo
+          se pagaron y si llegaron a tiempo. */}
+      {/* `shrink-0` Y LA FECHA SIN PARTIR. Medido a 375px el 2026-10-20: con
+          `min-w-0` la columna cedía y «20 de oct de 2026» caía en dos líneas,
+          que es lo que identifica cada tarjeta de la lista. Lo que cede ahora
+          es la línea de bolívares de la derecha, que es la que sobra. */}
+      <div className="flex shrink-0 flex-col gap-1">
+        <span className="whitespace-nowrap text-sm leading-5">{formatDate(abono.fecha)}</span>
+        {estado ? <ChipDeEstado estado={estado} /> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <div className="flex flex-col items-end">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-col items-end">
           {/* AZUL Y CON «+» — frame `1479:9456`, nodos `1479:9641` y
               `1479:9700`: `+$00.00` en `#0062fb`.
 
@@ -83,7 +100,9 @@ export function TarjetaDeAbono({
             +{formatPriceAmount(abono.amount, abono.currency ?? "COP")}
           </span>
           {enBs != null ? (
-            <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {formatBs(enBs)} al día del abono
+            </span>
           ) : null}
         </div>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
