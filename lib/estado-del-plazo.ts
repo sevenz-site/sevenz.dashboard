@@ -158,8 +158,6 @@ export function estadoDelFiado({
   cuotas,
   amount,
   pendiente,
-  abonoInicial = 0,
-  abonos = [],
   ahora = new Date(),
 }: {
   createdAt: string;
@@ -169,8 +167,6 @@ export function estadoDelFiado({
   // Lo que ESE fiado todavía debe, de `get_open_charges_for_client`. Cero —o
   // ausente de la lista de abiertos— es un fiado saldado.
   pendiente: number;
-  abonoInicial?: number;
-  abonos?: AbonoParaEstado[];
   ahora?: Date;
 }): EstadoDelPlazo | null {
   // SALDADO MANDA SOBRE TODO LO DEMÁS, incluso si se pagó tarde. La fila dice
@@ -180,13 +176,26 @@ export function estadoDelFiado({
   if (plazoDias == null) return null;
 
   if (cuotas != null && cuotas > 1) {
+    // NO PIDE LA LISTA DE ABONOS, Y NO ES UN ATAJO. El estado de una cuota
+    // depende solo de CUÁNTO se lleva abonado en total --mira los `umbrales`
+    // de `estadosDelFiado`--, nunca de en cuántas veces se pagó ni de cuándo.
+    // Y ese total ya lo tiene esta función: es `amount - pendiente`.
+    //
+    // Hacérselo pedir al historial habría significado una consulta más por
+    // fiado para un dato que ya viajaba, y sobre todo una forma nueva de
+    // equivocarse: quien olvidara pasar los abonos recibiría un estado
+    // perfectamente formado y falso --«Plazo vencido» en un fiado con sus dos
+    // primeras cuotas pagadas-- sin un solo error por ningún lado.
+    //
+    // Se pasa como `abonoInicial` porque esa es la ranura del acumulado de
+    // partida. Lo que se pierde al hacerlo son los chips POR abono, que esta
+    // función no devuelve ni usa.
     const { cuotas: filas } = estadosDelFiado({
       createdAt,
       plazoDias,
       cuotas,
       amount,
-      abonoInicial,
-      abonos,
+      abonoInicial: Math.max(0, Math.round((amount - pendiente) * 100) / 100),
       ahora,
     });
     const siguiente = filas.find((c) => c.estado !== "pagado");

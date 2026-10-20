@@ -28,11 +28,27 @@ import type { SaleLineRow } from "@/lib/sale-lines";
 //     el historial es por libro: cada fila lleva su bandera y el saldo se
 //     lleva por moneda. Una fila con dos monedas no tendría dónde ponerse.
 //
-//   · SOLO LAS PAGADAS ENTERAS llevan fila de contado. Una venta con parte
-//     fiada YA aparece —como su cargo, que es un movimiento de verdad— y
-//     añadirle otra fila la enseñaría dos veces. Sus palabras: «una fila por
-//     venta con el reparto dentro de lo que pagó y quedó debiendo = es un
-//     Fiado; una fila con pago total del monto = es De contado».
+//   · CADA LIBRO DECIDE SOLO SI ES CONTADO O FIADO. Esto cambió el
+//     2026-10-20 y es lo contrario de lo que decía aquí antes.
+//
+//     La regla vieja era «solo las ventas pagadas ENTERAS llevan fila de
+//     contado», y descartaba la venta completa en cuanto dejara un cargo en
+//     cualquier moneda. Parecía bien y escondía una compra entera: el dueño
+//     compró lapiceros en dólares pagados al momento y un casco en euros a
+//     crédito, y el historial enseñaba el fiado de euros y NADA de los diez
+//     dólares cobrados. No había fila que los dijera.
+//
+//     Ahora el par (venta, libro) decide por su cuenta: los dólares están
+//     cubiertos, así que salen como «De contado»; los euros no, así que salen
+//     como «Fiado». Dos filas independientes, sin anidar, y lo único que
+//     comparten es la fecha. Palabras del dueño: *«ese fiado registra otra
+//     tarjeta en el historial por separada, y el detalle al abrirlas son
+//     independiente, no se vinculan entre una y otra, eso hará más fácil el
+//     filtrado del historial y la sección de reportes»*.
+//
+//     Lo que la regla vieja quería evitar sigue evitado, y por eso el descarte
+//     no desaparece sino que se afina: un libro que dejó cargo NO saca además
+//     una fila de contado, o la misma compra se contaría dos veces.
 export type VentaDeContado = {
   saleId: string;
   createdAt: string;
@@ -72,23 +88,29 @@ function libro(moneda: string): LedgerCurrency | null {
   return moneda === "USD" || moneda === "EUR" ? moneda : null;
 }
 
+// LA CLAVE DE UNA FILA: una venta Y un libro. No una venta.
+//
+// Se exporta porque quien llama tiene que construir el conjunto de claves con
+// cargo exactamente igual, y dos sitios formateando la misma cadena a mano es
+// cómo se separan sin que nada avise.
+export function claveDeFila(saleId: string, moneda: LedgerCurrency | null): string {
+  return `${saleId}|${moneda ?? ""}`;
+}
+
 /**
  * Convierte las ventas de un cliente en filas de historial.
  *
- * `idsConCargo` son las ventas que SÍ dejaron un cargo en `movements` — las
- * que quedaron a crédito, entera o parcialmente. Esas se descartan: ya tienen
- * su fila, y es la del cargo.
+ * `clavesConCargo` son los pares (venta, libro) que SÍ dejaron un cargo en
+ * `movements`. Esos se descartan: ya tienen su fila, y es la del fiado.
  */
 export function filasDeContado(
   ventas: VentaCruda[],
   pagos: PagoCrudo[],
   lineas: LineaCruda[],
-  idsConCargo: Set<string>,
+  clavesConCargo: Set<string>,
 ): VentaDeContado[] {
   const porVenta = new Map<string, VentaCruda>();
-  for (const v of ventas) {
-    if (!idsConCargo.has(v.id)) porVenta.set(v.id, v);
-  }
+  for (const v of ventas) porVenta.set(v.id, v);
   if (porVenta.size === 0) return [];
 
   // Indexadas por (venta, libro), no por venta: ver el comentario de
@@ -118,6 +140,16 @@ export function filasDeContado(
 
   const filas: VentaDeContado[] = [];
   for (const [clave, amount] of sumas) {
+    // EL DESCARTE ES POR MONEDA, NO POR VENTA, y ese es el cambio entero del
+    // 2026-10-20. Antes, una venta que dejara un cargo en CUALQUIER moneda
+    // perdía su fila de contado en TODAS -- así que la compra mixta del dueño
+    // (lapiceros en dólares pagados, casco en euros fiado) enseñaba solo el
+    // fiado y los diez dólares cobrados no aparecían en ninguna parte.
+    //
+    // Sus palabras, el 2026-10-20: *«esto registra un movimiento en dólares de
+    // "De contado" en el historial y lleva a fiado su cuenta en Euros, ese
+    // fiado registra otra tarjeta en el historial por separada»*.
+    if (clavesConCargo.has(clave)) continue;
     const [saleId, moneda] = clave.split("|");
     const venta = porVenta.get(saleId);
     if (!venta) continue;

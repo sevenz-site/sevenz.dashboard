@@ -128,6 +128,8 @@ export function ClientAccountSheet({
               <MovementHistoryList
                 movements={cuenta?.movimientos ?? []}
                 ventasDeContado={cuenta?.ventasDeContado ?? []}
+                estadosDeFiado={cuenta?.estadosDeFiado ?? {}}
+                pendientePorFiado={cuenta?.pendientePorFiado ?? {}}
                 ledger={ledger}
                 titulo={<span className="text-sm font-medium">Últimas transacciones</span>}
               />

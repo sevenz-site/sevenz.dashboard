@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreVertical, Percent, Share2, Trash2 } from "lucide-react";
+import { Banknote, MoreVertical, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -140,7 +140,13 @@ export function DetalleAcciones({
               {/* AL PASO 3/3 DE ESE FIADO, no al 1/3: el fiado ya está elegido
                   y volver a pedir cuál sería preguntar algo ya contestado. */}
               <Link href={`/abonos/nuevo/${movementId}/monto`}>
-                <Percent className="size-4" />
+                {/* EL BILLETE, no el porcentaje. Pedido por el dueño el
+                    2026-10-20: es el mismo icono que «Ir a pago» en el paso
+                    2/4 de una venta nueva, y los dos llevan al mismo sitio.
+                    El `%` venía de que un abono es parte de una deuda, que es
+                    una idea de contabilidad; un billete es lo que el tendero
+                    tiene en la mano cuando pulsa esto. */}
+                <Banknote className="size-4" />
                 Pagar
               </Link>
             </DropdownMenuItem>

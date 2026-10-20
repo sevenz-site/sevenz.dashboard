@@ -20,6 +20,8 @@ import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/move
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
 
 const PAGE_SIZE = 10;
 
@@ -50,6 +52,8 @@ export function MovementHistoryList({
   ledger = null,
   titulo = null,
   ventasDeContado = [],
+  estadosDeFiado = {},
+  pendientePorFiado = {},
 }: {
   movements: Movement[];
   // null = plain COP ledger.
@@ -63,6 +67,15 @@ export function MovementHistoryList({
   // convertirlas en filas de esa tabla -- el saldo, el puntaje de crédito y
   // las gráficas siguen leyendo solo `movements` y no se enteran.
   ventasDeContado?: VentaDeContado[];
+  // EL ESTADO DEL PLAZO DE CADA FIADO, indexado por el id de su movimiento.
+  // Lo calcula la página, que es quien tiene lo que cada fiado todavía debe.
+  // Un fiado que falte aquí —o que valga `null`— no dibuja chip: es el caso
+  // de casi todo lo que entró por la libreta, que no trae plazo.
+  estadosDeFiado?: Record<string, EstadoDelPlazo | null>;
+  // LO QUE CADA FIADO TODAVÍA DEBE, por el id de su movimiento. Misma fuente
+  // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
+  // juntos. Un fiado que falte aquí está saldado.
+  pendientePorFiado?: Record<string, number>;
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
@@ -73,8 +86,29 @@ export function MovementHistoryList({
   // se juntan aquí con una marca y se ordenan por fecha. La alternativa
   // --dos listas, una debajo de otra-- rompería lo único que el tendero busca
   // en esta pantalla: qué pasó, en orden.
+  // ── LOS ABONOS NO SALEN AQUÍ. NINGUNO ────────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-20, y la eligió con el coste delante:
+  // *«como el fiado se lleva sobre una misma cuenta, agregar los movimientos
+  // de abonos por separados en el historial sería redundante, esos abonos
+  // deberían aparecer solo sobre el movimiento del detalle del fiado, es
+  // decir viven solo ahí, no se ven en el historial»*.
+  //
+  // LO QUE ESTO SE LLEVA, DICHO EN VOZ ALTA: un abono solo se ve dentro del
+  // fiado al que fue dirigido, y en dev **104 de 108 abonos no van dirigidos
+  // a ninguno** -- son anteriores a la migración `126` y la cola FIFO los
+  // repartió sin dejar constancia de a qué cargo. Esos abonos dejan de tener
+  // sitio donde verse. Está anotado como `CT-115`, con la alternativa que se
+  // descartó.
+  //
+  // SE FILTRA AQUÍ Y NO EN LA CONSULTA a propósito: `movements` sigue
+  // llegando entero porque la fila de un fiado necesita su `running_balance`,
+  // que se calcula contra todos los movimientos. Pedir menos a la base
+  // ahorraría nada y rompería esa columna.
   const filas: Fila[] = [
-    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...movements
+      .filter((m) => m.type !== "payment")
+      .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -85,19 +119,45 @@ export function MovementHistoryList({
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
+  // LA PÁGINA VUELVE A LA 1 AL CAMBIAR DE FILTRO, y esto no es cosmético.
+  // Sin ello, quien esté en la página 3 de «Todas» y toque «De contado» ve una
+  // lista vacía con el paginador diciendo «Página 1 de 1» -- porque `safePage`
+  // la acota al pintar pero `page` sigue valiendo 3, así que al volver a
+  // «Todas» salta a la 3 sin que nadie lo haya pedido. Es el mismo estado
+  // sirviendo a dos preguntas distintas.
+  //
+  // SE HACE EN EL SETTER Y NO EN UN EFECTO. La primera versión fue un
+  // `useEffect(..., [tipo])` y `eslint` lo rechazó con
+  // `react-hooks/set-state-in-effect` -- con razón: pinta la página vieja,
+  // luego la corrige, y son dos renders donde cabe uno.
+  //
+  // Y era además el fallo que `PL-4` describe entrando por la puerta que esa
+  // ficha avisa: el lint lleva en rojo desde el 2026-09-20 por otra cosa, así
+  // que un error nuevo se habría leído como «ya, es PL-4».
+  //
+  // El filtro es lo único que cambia `tipo`, así que las dos cosas se mueven
+  // juntas aquí y no hay estado que sincronizar.
+  function cambiarTipo(t: TipoFiltro) {
+    setTipo(t);
+    setPage(1);
+  }
+
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
   // delante el único control que sirve para deshacerlo.
   const cabecera = titulo ? (
     <div className="flex items-center justify-between gap-3">
       {titulo}
-      {movements.length + ventasDeContado.length > 0 ? (
-        <MovementTypeFilter tipo={tipo} setTipo={setTipo} conContado={ventasDeContado.length > 0} />
+      {filas.length > 0 ? (
+        <MovementTypeFilter tipo={tipo} setTipo={cambiarTipo} conContado={ventasDeContado.length > 0} />
       ) : null}
     </div>
   ) : null;
 
-  if (movements.length + ventasDeContado.length === 0) {
+  // `filas` Y NO `movements.length`: un cliente cuyo único historial son
+  // abonos ya no tiene nada que enseñar aquí, y contar los movimientos en
+  // bruto le pintaría una lista vacía con cabecera en vez del hueco dibujado.
+  if (filas.length === 0) {
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
@@ -128,7 +188,7 @@ export function MovementHistoryList({
         {cabecera}
         <p className="text-sm text-muted-foreground">
           Este cliente no tiene{" "}
-          {tipo === "charge" ? "fiados" : tipo === "payment" ? "abonos" : "ventas de contado"}{" "}
+          {tipo === "charge" ? "fiados" : "ventas de contado"}{" "}
           registrados.
         </p>
       </div>
@@ -160,7 +220,33 @@ export function MovementHistoryList({
           // mira la lista lo segundo pesa mas.
           const bsTecleados =
             m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : null;
-          const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
+          // ── «POR COBRAR» ES LO QUE ESTE FIADO DEBE, NO EL SALDO DEL
+          //    CLIENTE ─────────────────────────────────────────────────
+          //
+          // Llevaba `m.running_balance`: cuánto debía el cliente entero justo
+          // DESPUÉS de este movimiento, como el saldo de un extracto bancario.
+          // Eso se sostenía mientras los abonos se veían — se leían las filas
+          // hacia abajo y la cifra bajaba delante de los ojos.
+          //
+          // AL ESCONDER LOS ABONOS el 2026-10-20 dejó de sostenerse, y se vio
+          // en pantalla con un cliente de dev: la fila de arriba decía «Por
+          // cobrar $89.72» mientras la tarjeta de ese mismo cliente decía
+          // $68.59, y los 21 dólares de diferencia eran los dos abonos que
+          // acababan de desaparecer. Nada en la pantalla explicaba el hueco.
+          //
+          // El peor caso es el que importa: el tendero lee la fila de arriba,
+          // le cobra 89,72 a alguien que debe 68,59, y la app le dio las dos
+          // cifras sin decir cuál valía.
+          //
+          // Ahora dice lo que ESE fiado debe, que es la misma cifra que su
+          // propia ficha pone en «Total por cobrar» desde el 2026-10-19 — y la
+          // cambió ese día por esta misma razón, encontrada del mismo modo.
+          const pendienteDeEsteFiado =
+            m.type === "charge" ? (pendientePorFiado[m.id] ?? 0) : null;
+          const balance = formatLedgerAmount(pendienteDeEsteFiado ?? 0, m.currency, ledger);
+          // Solo los fiados llevan chip. Un abono no llega hasta aquí, y una
+          // venta de contado no tiene plazo que cumplir.
+          const estado = m.type === "charge" ? (estadosDeFiado[m.id] ?? null) : null;
 
           return (
           <li key={m.id}>
@@ -175,9 +261,22 @@ export function MovementHistoryList({
                       34,
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(m.created_at)}
-                    {m.source === "photo_import" ? " · de libreta" : ""}
+                  {/* LA FECHA Y EL ESTADO DEL PLAZO, en la misma línea.
+                      Pedido por el dueño el 2026-10-20: *«un fiado en el
+                      historial debería mostrar el estado del plazo de ese
+                      fiado»*.
+
+                      `flex-wrap` porque la fecha larga de un negocio
+                      colombiano más el chip no caben en 375px, y lo que NO
+                      puede partirse es el chip -- eso lo garantiza él mismo
+                      con su `whitespace-nowrap`, por lo que costó el 2026-10-20
+                      en la tabla de cuotas. */}
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>
+                      {formatDate(m.created_at)}
+                      {m.source === "photo_import" ? " · de libreta" : ""}
+                    </span>
+                    {estado ? <ChipDeEstado estado={estado} /> : null}
                   </p>
                   {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
                       2026-10-16, por instrucción del dueño. Esta lista es
@@ -190,10 +289,15 @@ export function MovementHistoryList({
                       Solo cuando la moneda existe. `null` es un negocio
                       colombiano, donde no hay dos libros que separar y una
                       bandera repetida en cada fila sería ruido. */}
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
-                    Por cobrar {balance.primary}
-                  </p>
+                  {/* Un fiado saldado no dice «Por cobrar $0.00»: ya lo dice
+                      su chip «Pagado», y la cifra en cero al lado se lee como
+                      un dato que falta. */}
+                  {pendienteDeEsteFiado != null && pendienteDeEsteFiado > 0.005 ? (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
+                      Por cobrar {balance.primary}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
@@ -278,14 +382,18 @@ type Fila =
 // ocurre.
 //
 // ===========================================================================
-// NO SE ABRE, TODAVÍA
+// YA SE ABRE. Aquí decía «no se abre, todavía»
 //
-// Las demás filas abren `MovementDetailPopover`, que está escrito sobre un
-// movimiento -- su id, su saldo acumulado, su comprobante, su plazo. Una venta
-// no tiene ninguna de esas cosas, así que esto es una fila de solo lectura
-// hasta que esa ficha exista. Queda dicho aquí y no solo en el chat: una fila
-// que no responde al toque cuando sus vecinas sí lo hacen parece rota, y el
-// siguiente que la vea merece saber que es deliberado.
+// Hasta el 2026-10-19 esta fila era de solo lectura, porque el detalle estaba
+// escrito sobre un movimiento --su id, su saldo acumulado, su comprobante, su
+// plazo-- y una venta pagada no tiene ninguna de esas cosas. Desde el
+// 2026-10-20 tiene su propia pantalla, `/transacciones/venta/<venta>/<moneda>`,
+// y la dirección lleva LA MONEDA porque una venta mixta tiene una pantalla por
+// libro: entrar por la fila de dólares no puede enseñar los euros.
+//
+// `cop` ES EL SEGMENTO DEL LIBRO NULO, no una moneda de verdad. La pantalla lo
+// traduce de vuelta con su propio mapa; aquí se escribe igual para que las dos
+// puntas del enlace no se separen.
 function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: LedgerDisplay | null }) {
   const amount = formatLedgerAmount(venta.amount, venta.currency, ledger);
   // Qué se llevó, en una línea. Es lo que la fila de un fiado pone después de
@@ -294,7 +402,10 @@ function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: Ledge
 
   return (
     <li>
-      <div className="flex w-full items-center justify-between gap-3 p-3 text-left">
+      <Link
+        href={`/transacciones/venta/${venta.saleId}/${(venta.currency ?? "cop").toLowerCase()}`}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+      >
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
             {truncateText(`De contado${que ? ` · ${que}` : ""}`, 34)}
@@ -320,12 +431,14 @@ function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: Ledge
               <span className="font-normal text-muted-foreground">{amount.secondary}</span>
             ) : null}
           </div>
-          {/* El hueco del chevron de las otras filas, para que los importes
-              queden en la misma columna. Sin esto, la fila de contado se
-              desplaza cuatro píxeles a la derecha y la lista se ve torcida. */}
-          <span aria-hidden="true" className="size-4 shrink-0" />
+          {/* EL CHEVRON DE VERDAD, no el hueco que había. Mientras la fila no
+              se abría, aquí iba un `<span>` vacío del mismo tamaño para que
+              los importes quedaran en la misma columna que los de las otras
+              filas. Ahora lleva a su pantalla como las demás, así que lleva
+              la misma flecha. */}
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </div>
-      </div>
+      </Link>
     </li>
   );
 }

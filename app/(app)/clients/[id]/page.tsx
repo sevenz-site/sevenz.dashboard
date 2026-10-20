@@ -8,7 +8,8 @@ import { ClientDetailHeader } from "@/components/dashboard/client-detail-header"
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
-import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
+import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
+import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -495,13 +496,18 @@ async function MovementHistory({
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  // LAS VENTAS QUE YA DEJARON UN CARGO, para dejarlas fuera de las de
-  // contado. Se construía más arriba, junto a las líneas de cada ficha; esas
-  // se fueron a la pantalla del detalle el 2026-10-19 y esto se quedó, porque
-  // es la otra cosa para la que servía.
-  const ventaDelMovimiento = new Map<string, string>();
+  // LOS PARES (VENTA, LIBRO) QUE YA DEJARON UN CARGO, para que ESE libro no
+  // saque además una fila de contado.
+  //
+  // POR MONEDA Y NO POR VENTA, desde el 2026-10-20. Antes era un conjunto de
+  // ids de venta, y una venta mixta perdía su fila de contado en todas las
+  // monedas por tener cargo en una sola: los dólares cobrados al momento no
+  // salían en ninguna parte. Ver la cabecera de `lib/ventas-de-contado.ts`.
+  const clavesConCargo = new Set<string>();
   for (const m of movementRows) {
-    if (m.sale_id) ventaDelMovimiento.set(m.sale_id, m.id);
+    if (m.sale_id && m.type === "charge") {
+      clavesConCargo.add(claveDeFila(m.sale_id, m.currency));
+    }
   }
 
   let ventasDeContado: VentaDeContado[] = [];
@@ -511,15 +517,49 @@ async function MovementHistory({
       supabase.from("sale_payments").select("sale_id, currency, amount").in("sale_id", idsDeVenta),
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
-    // LAS VENTAS QUE DEJARON UN CARGO QUEDAN FUERA: ya tienen su fila, y es
-    // la del fiado. `ventaDelMovimiento` se construyó arriba con exactamente
-    // esas, así que se reutiliza en vez de volver a preguntarlo.
     ventasDeContado = filasDeContado(
       (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
       pagos ?? [],
       lineasDeVenta ?? [],
-      new Set(ventaDelMovimiento.keys()),
+      clavesConCargo,
     );
+  }
+
+  // ── EL ESTADO DEL PLAZO DE CADA FIADO, para su chip en la lista ──────
+  //
+  // Pedido por el dueño el 2026-10-20. Se calcula aquí y no en la lista
+  // porque hace falta lo que cada fiado TODAVÍA DEBE, y eso solo lo sabe
+  // `get_open_charges_for_client` -- el `running_balance` de la fila es el
+  // saldo del cliente en ese libro, que es otra cosa.
+  //
+  // UN FIADO QUE NO ESTÉ EN LA LISTA DE ABIERTOS ESTÁ SALDADO, y ese es el
+  // estado «Pagado» que el dueño pidió como nuevo. No es una ausencia de
+  // dato: es la respuesta. Por eso el bucle recorre los MOVIMIENTOS y busca
+  // en el mapa, y no al revés -- recorrer los abiertos dejaría a los pagados
+  // sin chip, que es justo el caso que se quería enseñar.
+  const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
+  const pendientePorFiadoMapa: Record<string, number> = {};
+  const hayFiados = movementRows.some((m) => m.type === "charge");
+  if (hayFiados) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: clientId,
+    });
+    const pendientePorFiado = new Map<string, number>();
+    for (const c of (abiertos ?? []) as { movement_id: string; pending: number }[]) {
+      pendientePorFiado.set(c.movement_id, Number(c.pending));
+    }
+    for (const m of movementRows) {
+      if (m.type !== "charge") continue;
+      const pendiente = pendientePorFiado.get(m.id) ?? 0;
+      pendientePorFiadoMapa[m.id] = pendiente;
+      estadosDeFiado[m.id] = estadoDelFiado({
+        createdAt: m.created_at,
+        plazoDias: m.plazo_dias,
+        cuotas: m.cuotas,
+        amount: Number(m.amount),
+        pendiente,
+      });
+    }
   }
 
   return (
@@ -532,6 +572,8 @@ async function MovementHistory({
         movements={movementRows}
         ledger={ledger}
         ventasDeContado={ventasDeContado}
+        estadosDeFiado={estadosDeFiado}
+        pendientePorFiado={pendientePorFiadoMapa}
       />
     </div>
   );

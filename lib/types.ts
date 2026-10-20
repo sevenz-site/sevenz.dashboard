@@ -206,6 +206,15 @@ export type ClientSummary = {
   // vencimiento de la PRÓXIMA cuota sin pagar.
   oldest_unpaid_charge_due_at: string | null;
   is_flagged: boolean;
+  // CUÁNDO PASÓ ALGO POR ÚLTIMA VEZ CON ESTE CLIENTE — migración `130`. El
+  // mayor entre su último movimiento vivo y su última venta viva, con el alta
+  // del cliente de respaldo, así que nunca es `null` desde la base. Mira las
+  // DOS tablas porque una venta pagada entera no escribe en `movements`.
+  //
+  // Opcional en el tipo a propósito: entre desplegar este código y correr la
+  // `130` las filas llegan sin ella, y una pantalla rota es peor que un orden
+  // que cae en su respaldo.
+  last_movement_at?: string | null;
 };
 
 // client_summary_all — the same view without the "hide the hidden" filter.

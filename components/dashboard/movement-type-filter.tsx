@@ -22,7 +22,10 @@ import { FilterChip } from "@/components/dashboard/client-filters";
 const TIPOS = [
   { value: "todos", label: "Todas" },
   { value: "charge", label: "Fiado" },
-  { value: "payment", label: "Abono" },
+  // «ABONO» SE FUE EL 2026-10-20. Los abonos dejaron de salir en el historial
+  // --viven solo dentro del fiado al que pagaron, ver `MovementHistoryList`--
+  // así que un filtro para ellos no deja nada nunca. Un filtro que siempre
+  // responde «no hay ninguno» se lee como un fallo, no como una ausencia.
   { value: "cash", label: "De contado" },
 ] as const;
 

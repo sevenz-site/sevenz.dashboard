@@ -12,7 +12,8 @@ import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { formatDocumentId } from "@/lib/format";
-import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
+import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
+import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
 
@@ -434,6 +435,11 @@ export type CuentaDelCliente = {
   // Las ventas pagadas enteras, que no son movimientos. Ver el comentario
   // dentro de la función.
   ventasDeContado: VentaDeContado[];
+  // El estado del plazo de cada fiado, por el id de su movimiento. Ver el
+  // comentario de `estadosDeFiado` al final de `cuentaDelCliente`.
+  estadosDeFiado: Record<string, EstadoDelPlazo | null>;
+  // Lo que cada fiado todavía debe, por el id de su movimiento.
+  pendientePorFiado: Record<string, number>;
 };
 
 export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
@@ -441,7 +447,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { fila: null, movimientos: [], ventasDeContado: [] };
+  if (!user) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
   // `CLAUDE.md` para toda fila leída por un id que llega del navegador, y aquí
@@ -452,7 +458,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .eq("client_id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
-  if (!fila) return { fila: null, movimientos: [], ventasDeContado: [] };
+  if (!fila) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
 
   // LOS ÚLTIMOS CINCUENTA. Es una mirada para decidir, no la ficha: quien
   // necesite el historial entero lo tiene en la pantalla del cliente, y traer
@@ -478,9 +484,17 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   // mismo. Sin límite de 50 aquí: son las ventas de un solo cliente y la
   // consulta ya está acotada por él.
   const movementRows = (movimientos ?? []) as Movement[];
-  const ventasConCargo = new Set(
-    movementRows.map((m) => m.sale_id).filter((id): id is string => Boolean(id)),
-  );
+  // POR (VENTA, LIBRO) Y NO POR VENTA, igual que en la ficha del cliente y
+  // por la misma razón: una venta mixta deja cargo en una moneda y está
+  // cobrada en la otra, y descartarla entera escondía lo cobrado. Las dos
+  // pantallas tienen que construir esta clave igual, por eso `claveDeFila`
+  // se exporta en vez de escribir la cadena aquí.
+  const clavesConCargo = new Set<string>();
+  for (const m of movementRows) {
+    if (m.sale_id && m.type === "charge") {
+      clavesConCargo.add(claveDeFila(m.sale_id, m.currency));
+    }
+  }
 
   const { data: ventasCrudas } = await supabase
     .from("sales")
@@ -503,11 +517,42 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
       (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
       pagos ?? [],
       lineasDeVenta ?? [],
-      ventasConCargo,
+      clavesConCargo,
     );
   }
 
-  return { fila: fila as ClientSummary, movimientos: movementRows, ventasDeContado };
+  // LOS MISMOS CHIPS DE ESTADO QUE LA FICHA DEL CLIENTE. Esta hoja pinta la
+  // misma lista con el mismo componente, y una de las dos sin chips no se lee
+  // como «aquí no caben»: se lee como que a estos fiados no les pasa nada.
+  //
+  // Es el fallo del 2026-10-18 otra vez, dicho arriba en esta misma función:
+  // la ficha enseñaba las ventas de contado y esta hoja no. Misma lista, dos
+  // puertas, y solo se arregló una.
+  const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
+  const pendientePorFiadoMapa: Record<string, number> = {};
+  if (movementRows.some((m) => m.type === "charge")) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: clientId,
+    });
+    const pendientePorFiado = new Map<string, number>();
+    for (const c of (abiertos ?? []) as { movement_id: string; pending: number }[]) {
+      pendientePorFiado.set(c.movement_id, Number(c.pending));
+    }
+    for (const m of movementRows) {
+      if (m.type !== "charge") continue;
+      const pendiente = pendientePorFiado.get(m.id) ?? 0;
+      pendientePorFiadoMapa[m.id] = pendiente;
+      estadosDeFiado[m.id] = estadoDelFiado({
+        createdAt: m.created_at,
+        plazoDias: m.plazo_dias,
+        cuotas: m.cuotas,
+        amount: Number(m.amount),
+        pendiente,
+      });
+    }
+  }
+
+  return { fila: fila as ClientSummary, movimientos: movementRows, ventasDeContado, estadosDeFiado, pendientePorFiado: pendientePorFiadoMapa };
 }
 
 // ===========================================================================
