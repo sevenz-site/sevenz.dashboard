@@ -48,7 +48,7 @@ export default async function OrdenesPage() {
     country,
     { data: owner },
     { data: catalogLink },
-    { data: publicables },
+    { data: publicables, error: errorPublicables },
   ] = await Promise.all([
     supabase
       .from("catalog_orders")
@@ -80,8 +80,32 @@ export default async function OrdenesPage() {
       .from("products")
       .select("published_retail, published_wholesale")
       .eq("owner_id", user!.id)
-      .is("deleted_at", null),
+      // `trashed_at` Y NO `deleted_at`: esa columna NO EXISTE en `products`.
+      //
+      // Con ella, PostgREST devolvía `42703: column products.deleted_at does
+      // not exist`, `publicables` llegaba `null`, y el contador caía a cero —
+      // así que «Compartir» contestaba «Todavía no has publicado ningún
+      // producto» a un negocio que sí tenía. Lo reportó el dueño el
+      // 2026-10-20 con la captura del aviso encima de su lista de pedidos.
+      //
+      // La pantalla de Catálogo filtra bien desde siempre; esta consulta nació
+      // aquí copiando la forma, no el nombre. La papelera de productos es
+      // `trashed_at` porque un producto se tira a la papelera y se recupera,
+      // que es otra cosa que borrarlo.
+      .is("trashed_at", null),
   ]);
+
+  // ── UNA LECTURA FALLIDA NO ES UNA TIENDA VACÍA ──────────────────────
+  //
+  // Es la MISMA lección que esta pantalla ya tenía escrita quince líneas más
+  // abajo para los pedidos, y que esta consulta no aplicó: con el error
+  // descartado, un fallo de lectura se presentaba como «no has publicado
+  // nada», que es una frase sobre el negocio y no sobre la consulta.
+  //
+  // Ahora se registra, y el contador se queda en cero igual --no hay nada
+  // mejor que contar-- pero el log dice qué pasó en vez de dejar al dueño
+  // buscando un producto que ya había publicado.
+  if (errorPublicables) console.error("[orders] publicables:", errorPublicables.message);
 
   // Las tres cifras que el botón distingue: sin NINGUNA publicada avisa en vez
   // de compartir una página que diría «este negocio no tiene productos».
@@ -174,6 +198,12 @@ export default async function OrdenesPage() {
       <div className="flex flex-col gap-4">
         <ScreenHeader
           title="Pedidos"
+          // A CATÁLOGO, NO A INICIO: a Pedidos se entra desde ahí. Lo reportó
+          // el dueño el 2026-10-20 --la flecha lo sacaba al Inicio-- y es la
+          // única de las seis pantallas con cabecera oscura que no cuelga
+          // directamente del Inicio.
+          backHref="/productos"
+          backLabel="Volver a Catálogo"
           // THE SUBTITLE COUNTS EVERYTHING, not what the filter leaves on
           // screen. "2 sin atender" is the state of the business; the list
           // below is a view of it. Making this follow the chip would mean the
