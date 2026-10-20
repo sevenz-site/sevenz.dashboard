@@ -60,8 +60,20 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // El resumen de la venta (`/ventas/<id>`) si entra: sus botones no estan en
   // una barra, y su «Compartir» es la ultima cosa de una pagina que se
   // desplaza.
+  // LA BARRA PEGADA ABAJO TRAE SU PROPIO AIRE DE 40px, asi que estas rutas no
+  // pueden recibir el de aqui: serian 56 y la barra se quedaria flotando a
+  // media altura al final del scroll. Es el descuadre que el comentario de
+  // arriba cuenta medido en pantalla.
+  //
+  // LA BARRA INCLINADA DE `/abonos/nuevo/` IMPORTA: el paso 1/3 —la lista de
+  // fiados, en `/abonos/nuevo` a secas— NO lleva barra de botones; se elige
+  // tocando una tarjeta. La llevan los pasos siguientes, que viven bajo esa
+  // ruta con el id del fiado. Sin la barra inclinada, la lista se comeria 40px
+  // que nadie pone.
   const conBarraDeBotones =
-    pathname.startsWith("/ventas/nueva") || pathname === "/clients/nuevo";
+    pathname.startsWith("/ventas/nueva") ||
+    pathname === "/clients/nuevo" ||
+    pathname.startsWith("/abonos/nuevo/");
   const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
 
   return (

@@ -66,14 +66,36 @@ export function AbonoSeleccionarFiado({
 
   const visibles = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtrados = q
-      ? fiados.filter((f) =>
-          [...f.productos, f.descripcion ?? "", formatDate(f.fecha)]
-            .join(" ")
-            .toLowerCase()
-            .includes(q),
-        )
-      : fiados;
+    // SE BUSCA POR PRODUCTO Y POR MONTO, y el monto SIN MONEDA — pedido del
+    // dueño el 2026-10-19: «solo valor numérico».
+    //
+    // POR QUÉ TRES FORMAS DEL NÚMERO Y NO UNA. El tendero escribe la cifra como
+    // la lee, y la lee de dos maneras según el campo: «5.84» en el precio y
+    // «5,84» en los bolívares. Y a menudo escribe solo el principio — «32»
+    // buscando los 32,40. Así que se compara contra el número con punto, con
+    // coma, y contra sus dígitos pelados.
+    //
+    // LOS DÍGITOS PELADOS SE COMPARAN SOLO CONTRA LOS MONTOS, nunca contra el
+    // texto entero: la fecha también son dígitos, y «19 de oct de 2026» pegado
+    // al resto haría que buscar «20» devolviera media lista.
+    const soloDigitos = (x: string) => x.replace(/\D/g, "");
+    const qDigitos = soloDigitos(q);
+
+    const coincide = (f: FiadoAbierto) => {
+      const texto = [...f.productos, f.descripcion ?? "", formatDate(f.fecha)]
+        .join(" ")
+        .toLowerCase();
+      if (texto.includes(q)) return true;
+
+      // LOS DOS IMPORTES, el original y lo que queda: la tarjeta enseña los dos
+      // y el tendero puede estar buscando por cualquiera de ellos.
+      const montos = [f.amount, f.pending].map((n) => n.toFixed(2));
+      if (montos.some((m) => m.includes(q) || m.replace(".", ",").includes(q))) return true;
+
+      return qDigitos.length > 0 && montos.some((m) => soloDigitos(m).includes(qDigitos));
+    };
+
+    const filtrados = q ? fiados.filter(coincide) : fiados;
     return [...filtrados].sort((a, b) => {
       const d = new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
       return orden === "viejo" ? d : -d;
