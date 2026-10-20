@@ -25,6 +25,7 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
 //
@@ -274,7 +275,22 @@ export function AbonoMonto({
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-3 border-t bg-background px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
+      {/* ── `StickyActions`, NO LA MISMA BARRA COPIADA A MANO ──────────────
+          Esta barra llevaba las clases de `StickyActions` escritas aquí una
+          por una, y por eso NO heredaba lo único que ese componente añade
+          sobre un `sticky`: desaparecer con el teclado abierto.
+
+          Lo reportó el dueño el 2026-10-20 con una captura: tecleando el
+          monto, «Pagar» y el aviso de WhatsApp se quedaban flotando encima
+          del teclado numérico, tapando el campo que estaba rellenando. Es
+          EXACTAMENTE el fallo que él mismo reportó el 2026-10-18 con
+          «Registrar y finalizar» sobre el campo Documento, y que `StickyActions`
+          existe para no repetir — pero esta pantalla no lo montaba.
+
+          Las clases eran idénticas salvo `gap-3` contra el `gap-4` del
+          componente y `pt-4` contra `pt-3`. O sea que la copia ya había
+          empezado a separarse del original, que es cómo acaban las copias. */}
+      <StickyActions>
         {/* EL PERMISO DE WHATSAPP, ENCIMA DEL BOTÓN — donde el frame lo pone.
             Es `WhatsappConsentField`, el mismo de las otras tres puertas, y no
             la frase del frame: lo que la casilla enseña es LITERALMENTE lo que
@@ -301,7 +317,7 @@ export function AbonoMonto({
               ? `Pagar ${formatPriceAmount(enElLibro, moneda)}`
               : "Pagar"}
         </Button>
-      </div>
+      </StickyActions>
     </div>
   );
 }

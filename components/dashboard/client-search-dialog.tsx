@@ -457,6 +457,28 @@ function ClientSearchDialogBody({
 
   function selectExisting(id: string) {
     onDone(true);
+    // ── «ABONO» ENTRA EN SU PROPIO FLUJO, NO EN LA FICHA ────────────────
+    //
+    // Hasta el 2026-10-20 iba a `/clients/<id>?movimiento=abono`, que abre el
+    // diálogo «Agregar transacción» de siempre. O sea que elegir a alguien en
+    // el buscador desembocaba en el flujo ANTERIOR, con su selector de tipo
+    // —Cargo o Abono— ya resuelto pero todo lo demás igual que antes.
+    //
+    // Lo reportó el dueño ese día: *«al seleccionarlo abre el primer paso del
+    // flujo "Registrar abono: 1/3 Seleccionar fiado / crédito", toda la
+    // transacción se asignará al cliente seleccionado»*.
+    //
+    // `/abonos/nuevo?cliente=<id>` ES ESE PASO 1/3, y ya existía: lo usa el
+    // botón «Agregar abono» de la ficha del cliente desde el 2026-10-19. Lo
+    // único que faltaba era que esta puerta llevara allí.
+    //
+    // `fiado` SE QUEDA COMO ESTABA: su flujo propio es `/ventas/nueva`, que no
+    // admite un cliente por la dirección, así que mandarlo a la ficha sigue
+    // siendo lo correcto hasta que eso cambie.
+    if (movimientoAlElegir === "abono") {
+      router.push(`/abonos/nuevo?cliente=${id}`);
+      return;
+    }
     // El proposito viaja con la navegacion: sin el, «Abono» dejaria al tendero
     // en la ficha del cliente teniendo que buscar el boton que acaba de pedir.
     router.push(movimientoAlElegir ? `/clients/${id}?movimiento=${movimientoAlElegir}` : `/clients/${id}`);
@@ -484,9 +506,22 @@ function ClientSearchDialogBody({
 
   return step === "search" ? (
     <>
+      {/* ── LA CABECERA DEL ABONO ES MÁS CORTA, Y SALE DEL FRAME ─────────
+          Frame `1471:21576`: para el abono la modal lleva SOLO el título, la
+          ✕ y el campo. Ni la línea del negocio ni «+ Nuevo cliente».
+          Confirmado con el dueño el 2026-10-20 al enseñarle la diferencia.
+
+          Y «+ Nuevo cliente» no es solo que el frame no lo dibuje: un cliente
+          recién creado no tiene ningún fiado que pagar, así que ese botón
+          lleva a un callejón sin salida en este camino concreto. En el de
+          «Venta o fiado» es justo al revés --dar de alta y venderle en el
+          mismo gesto es lo corriente-- y por eso la diferencia es por camino
+          y no por pantalla. */}
       <DialogHeader>
         <DialogTitle>Buscar cliente</DialogTitle>
-        <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+        {movimientoAlElegir === "abono" ? null : (
+          <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+        )}
       </DialogHeader>
       <div className="flex flex-col gap-3">
         <Input
@@ -505,17 +540,19 @@ function ClientSearchDialogBody({
           <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
         ) : null}
 
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setNameValue(query);
-            setStep("new");
-          }}
-        >
-          <Plus className="size-4" />
-          {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
-        </Button>
+        {movimientoAlElegir === "abono" ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setNameValue(query);
+              setStep("new");
+            }}
+          >
+            <Plus className="size-4" />
+            {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
+          </Button>
+        )}
       </div>
     </>
   ) : (
