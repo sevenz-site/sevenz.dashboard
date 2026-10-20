@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import {
   CircleAlert,
   Eye,
@@ -556,6 +557,26 @@ export function DetalleDelCliente({
   const seleccionables = subido ? [] : filas.map((f) => f.rowId);
   const seleccion = podarSeleccion(seleccionCruda, seleccionables);
   const enSeleccion = seleccion.size > 0;
+
+  // ── CON EL TECLADO ARRIBA, EL PIE NO ─────────────────────────────────
+  //
+  // Esta pantalla tiene cuatro campos de texto --nombre, cédula, monto,
+  // descripción-- y el pie se queda flotando encima del teclado tapando el
+  // que se está rellenando. Es el mismo fallo que el dueño reportó el
+  // 2026-10-18 con «Registrar y finalizar» sobre el campo Documento y el
+  // 2026-10-20 con «Pagar» sobre el monto del abono: el tercer sitio del
+  // mismo defecto, y el que quedaba.
+  //
+  // SE USA EL HOOK, NO `StickyActions`. Ese componente trae además una
+  // geometría que aquí no vale: sus `-mx-4` y sus 40px de aire cancelan el
+  // padding de `AppMain`, y este pie vive dentro de una HOJA con su propio
+  // scroll y su propio padding --por eso lleva `-mb-4 mt-2` y un `pb` con el
+  // área segura en vez de los 2.5rem--. Meterlo aquí arreglaría el teclado y
+  // descuadraría la banda.
+  //
+  // QUITARLO NO MUEVE NADA DE ARRIBA: el pie es el último hijo de una columna
+  // que ya hace scroll, así que desaparecer solo la acorta por abajo.
+  const tecladoAbierto = useKeyboardOpen();
   const idsSeleccionados = [...seleccion];
   // Las que recibiran la moneda: las marcadas, o todas las del cliente.
   const alcanceDeMoneda = enSeleccion ? idsSeleccionados : filas.map((f) => f.rowId);
@@ -1068,7 +1089,7 @@ export function DetalleDelCliente({
           Los márgenes negativos cancelan el padding de la hoja para que la
           banda llegue de borde a borde, y el `pb` suma el área segura del
           iPhone: sin ella, el botón queda debajo de la barra de inicio. */}
-      {subido ? null : (
+      {subido || tecladoAbierto ? null : (
         <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {/* UNA ACCIÓN A LA VEZ, decidido con el usuario el 2026-10-02.
               Mientras hay selección el pie es eliminar; al deseleccionar vuelve
