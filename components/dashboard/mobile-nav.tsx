@@ -393,11 +393,20 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // con la misma línea.
   const enPedidos = pathname.startsWith("/productos/ordenes");
 
-  // Y EL DETALLE DE UNA TRANSACCIÓN, por lo mismo: el botón cae encima de la
-  // foto adjunta, que es lo último de la pantalla y justo el respaldo que se
-  // abre esta ficha para mirar. Los frames `1465:18349` y `1463:18100` no lo
-  // dibujan. La barra de abajo sí se queda, como en Pedidos: esto es una hoja
-  // a la que se llega desde una lista, no un flujo a medias.
+  // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
+  //
+  // Decisión del dueño el 2026-10-20, con una captura y la barra rodeada en
+  // rojo: *«El nav bar no se debe ver en los detalles de las transacciones»*.
+  //
+  // Y DESPLAZA UNA DECISIÓN DEL DÍA ANTERIOR, que queda escrita porque era
+  // razonada y no un descuido: al montar la pantalla se quitó solo el botón
+  // «+» —caía encima de la foto adjunta, que es el respaldo que se abre esta
+  // ficha para mirar— y se dejó la barra «como en Pedidos, porque esto es una
+  // hoja a la que se llega desde una lista, no un flujo a medias». El dueño
+  // vio la pantalla montada y decidió lo contrario.
+  //
+  // La ficha tiene su propia flecha de volver arriba, que además vuelve al
+  // cliente del que salió, así que quitar la barra no deja a nadie encerrado.
   const enTransaccion = pathname.startsWith("/transacciones");
 
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
@@ -488,7 +497,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  if (onClientDetail || enAsistenteDeVenta) return null;
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
 
   return (
     <>
@@ -508,7 +517,10 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
           Y no sale en /import, ni en /profile, ni en Pedidos: ver
           `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !enTransaccion && (
+      {/* `enTransaccion` NO entra aquí: esa pantalla se va entera por el
+          `return null` de arriba, así que nombrarla otra vez sería una
+          condición que no se puede dar. */}
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

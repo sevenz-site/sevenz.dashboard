@@ -109,6 +109,22 @@ export function DetalleDeTransaccion({
   const monto =
     monedaRegistrada === "VES" && entryAmount != null ? formatBs(entryAmount) : ledgerAmount.primary;
 
+  // LA BANDERA QUE ACOMPAÑA A ESA CIFRA, pedida por el dueño el 2026-10-20:
+  // *«El valor del campo "Abonó" le falta la bandera»*. Importa más desde que
+  // se fue la fila «Moneda registrada», que era la otra forma de saberlo.
+  //
+  // SE CALCULA CON LA MISMA CONDICIÓN QUE `monto` Y NO CON `monedaRegistrada`,
+  // que es lo que parece a primera vista y falla en un caso real: un
+  // movimiento tecleado en bolívares ANTES de que existiera `entry_amount`
+  // tiene `monedaRegistrada === "VES"` y `entryAmount === null`, así que la
+  // cifra que se enseña es la del libro —dólares— y una bandera de Venezuela
+  // al lado estaría nombrando una moneda que no es la del número.
+  //
+  // `null` en un negocio colombiano, y entonces no se dibuja ninguna, igual
+  // que en el resto de la app.
+  const monedaDelMonto: MovementCurrencyCode | null =
+    monedaRegistrada === "VES" && entryAmount != null ? "VES" : currency;
+
   // LA OTRA CARA, con la tasa SELLADA en el movimiento — no con la de hoy. Las
   // tres filas de este grupo tienen que multiplicar entre sí; con la tasa del
   // día no cuadrarían y quien rehiciera la cuenta creería que la app se
@@ -155,18 +171,37 @@ export function DetalleDeTransaccion({
             {type === "charge" ? (
               <ArrowUpRight className="size-4 text-destructive" aria-hidden />
             ) : (
-              <Percent className="size-4 text-money-in" aria-hidden />
+              // AZUL Y NO VERDE, por instrucción del dueño el 2026-10-20.
+              //
+              // No es un color suelto: desde el 2026-10-18 el abono ES azul en
+              // toda la app y el verde pasó a ser el de la venta de contado.
+              // Este «%» se quedó en `text-money-in` al montar la pantalla, o
+              // sea en el verde de antes, y era el único sitio donde un abono
+              // seguía saliendo del color de otra cosa.
+              //
+              // `blue-600` y no `blue-500`: es el mismo par que ya usa la fila
+              // del historial. Medido sobre ESTE icono el 2026-10-20 —no
+              // copiado de otro comentario—: resuelve a `#155dfc` y da
+              // **5,25:1** contra blanco, por encima del piso de 4,5:1 que
+              // pide `DESIGN-SYSTEM.md`.
+              <Percent className="size-4 text-blue-600 dark:text-blue-400" aria-hidden />
             )}
           </span>
         </Fila>
-        {monedaRegistrada ? (
-          <Fila nombre="Moneda registrada">
-            <span className="inline-flex items-center gap-1.5">
-              {NOMBRE_DE_MONEDA[monedaRegistrada]}
-              <CurrencyFlagIcon currency={monedaRegistrada} />
-            </span>
-          </Fila>
-        ) : null}
+        {/* AQUÍ ESTUVO «Moneda registrada», retirada el 2026-10-20 a petición
+            del dueño: *«Campo moneda registrada no va, eliminalo»*.
+
+            POR QUÉ ESTABA, para quien se plantee devolverla: decía en qué
+            moneda se tecleó el movimiento, que en un negocio venezolano puede
+            no ser la del libro —se escribe en bolívares y se guarda en
+            dólares—. Esa pregunta la siguen contestando las dos filas que
+            quedan dentro del resumen: «Tasa del día» y «Equivalencia», que
+            solo aparecen cuando hubo conversión, y ahora también la bandera
+            pegada al monto. O sea que no se pierde el dato, se deja de decir
+            dos veces.
+
+            `monedaRegistrada` NO se borra: lo siguen usando `monto` y
+            `equivalente` para decidir si enseñan bolívares o divisa. */}
       </Grupo>
 
       {/* LA TARJETA DEL RESUMEN. El frame la dibuja con su marco y su título:
@@ -208,7 +243,10 @@ export function DetalleDeTransaccion({
         ) : null}
 
         <Fila nombre={type === "payment" ? "Abonó" : "Monto"}>
-          <span className="tabular-nums">{monto}</span>
+          <span className="inline-flex items-center gap-1.5 tabular-nums">
+            {monto}
+            {monedaDelMonto ? <CurrencyFlagIcon currency={monedaDelMonto} /> : null}
+          </span>
         </Fila>
         {tasa ? (
           <Fila nombre="Tasa del día">
