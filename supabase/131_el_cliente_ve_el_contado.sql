@@ -368,16 +368,27 @@ $$;
 -- `create or replace` vuelve a conceder EXECUTE, y esta función la llama
 -- `anon`: es la que sirve la página pública del cliente. Se repite tal cual la
 -- dejó la `044`.
-
--- `create or replace` vuelve a conceder EXECUTE, y esta función la llama
--- `anon`: es la que sirve la página pública del cliente. Se repite tal cual la
--- dejó la `044`.
 grant execute on function public.get_shared_balance(text, int) to anon, authenticated;
 
+-- ===========================================================================
+-- LA DESCRIPCIÓN NO LLEVA NI UNA COMILLA SIMPLE, Y NO ES ESTILO
+--
+-- Esto es una CADENA de SQL, no un comentario. La primera corrección de este
+-- archivo metió dentro `coalesce(sp.currency,'')` y `'COP'` para explicar el
+-- fallo, y la comilla de COP cerró la cadena: `42601: syntax error at or near
+-- "COP"`. El dueño se lo encontró al pegar el archivo en el editor.
+--
+-- La trampa es que el resto del archivo ES comentario, donde una comilla no
+-- hace nada, y esta descripción se escribe seguida de todos ellos y con el
+-- mismo tono. Es la única línea del archivo donde la puntuación es sintaxis.
+--
+-- Escaparlas doblándolas funcionaría; no llevar ninguna es más barato de
+-- revisar: se cuentan las comillas del bloque y tienen que ser CUATRO, dos
+-- por la clave y dos por la descripción.
 insert into public.schema_migrations (key, description)
 values (
   '131_el_cliente_ve_el_contado',
-  'get_shared_balance() devuelve ventas_de_contado y contado_total: las ventas pagadas enteras del cliente, una fila por (venta, libro), con sus lineas, lo que entrego, la tasa sellada del pago y su descripcion. Cierra CT-104, pedido por el dueno el 2026-10-19 y repetido el 2026-10-20. · POR QUE HACIA FALTA UNA MIGRACION: una venta pagada entera no escribe nada en movements (la 124), asi que la pantalla del DUENO la arma leyendo sales + sale_payments + sale_lines con su sesion, y la del CLIENTE no puede porque su unica puerta es esta funcion, que es security definer y arma el JSON campo a campo -- una columna que no nombra no existe para el cliente. El resultado era que el cliente pagaba de contado y no veia su compra, mientras el tendero si: los dos mirando la misma cuenta y leyendo cosas distintas. · LA REGLA ES POR (VENTA, LIBRO) y no por venta, la misma que filasDeContado en el lado del dueno: una venta mixta saca fila de contado en la moneda cobrada y ninguna en la fiada, que ya tiene su cargo. Escribirla dos veces es deliberado -- aquella es TypeScript en un modulo use server y no se puede llamar desde SQL. · coalesce(currency, '') en la clave del cruce: un negocio colombiano guarda NULL y NULL nunca es igual a NULL, asi que un cruce normal no excluiria nada y cada fiado colombiano sacaria ademas una fila de contado fantasma. Habria pasado cualquier prueba venezolana. · LA VENTANA NO ES UNICA: los movimientos y las ventas se acotan por separado con p_limit, asi que en el borde puede salir una venta mas vieja que el movimiento numero 50. Cada fila es cierta; lo que no es exacto es «estas son las N cosas mas recientes». · CORRE DESPUES DE LA 129; el cuerpo va copiado verbatim de ella con un bloque mas y dos claves mas. · CORREGIDA EL 2026-10-20 DESPUES DE CORRERSE EN DEV: la primera version cruzaba coalesce(sp.currency,'') contra coalesce(m.currency,''), y las dos tablas NO escriben Colombia igual -- sale_payments y sale_lines guardan 'COP' y movements guarda NULL. Asi que el cruce nunca casaba, no excluia nada, y CADA FIADO COLOMBIANO habria sacado ademas una fila de contado fantasma por su importe entero en la pantalla del propio cliente: su deuda listada dos veces, una como debida y otra como ya pagada. No lo habria cazado ninguna prueba en dev porque no hay NI UNA fila con 'COP' en sale_payments. Ahora toda comparacion normaliza primero con la misma regla que libro() en lib/ventas-de-contado.ts.'
+  'get_shared_balance() devuelve ventas_de_contado y contado_total: las ventas pagadas enteras del cliente, una fila por (venta, libro), con sus lineas, lo que entrego, la tasa sellada del pago y su descripcion. Cierra CT-104, pedido por el dueno el 2026-10-19 y repetido el 2026-10-20. · POR QUE HACIA FALTA UNA MIGRACION: una venta pagada entera no escribe nada en movements (la 124), asi que la pantalla del DUENO la arma leyendo sales + sale_payments + sale_lines con su sesion, y la del CLIENTE no puede porque su unica puerta es esta funcion, que es security definer y arma el JSON campo a campo -- una columna que no nombra no existe para el cliente. El resultado era que el cliente pagaba de contado y no veia su compra mientras el tendero si: los dos mirando la misma cuenta y leyendo cosas distintas. · LA REGLA ES POR (VENTA, LIBRO) y no por venta, la misma que filasDeContado en el lado del dueno: una venta mixta saca fila de contado en la moneda cobrada y ninguna en la fiada, que ya tiene su cargo. Escribirla dos veces es deliberado -- aquella es TypeScript en un modulo use server y no se puede llamar desde SQL. · LA VENTANA NO ES UNICA: los movimientos y las ventas se acotan por separado con p_limit, asi que en el borde puede salir una venta mas vieja que el movimiento numero 50. Cada fila es cierta; lo que no es exacto es que sean las N cosas mas recientes. · CORRE DESPUES DE LA 129; el cuerpo va copiado verbatim de ella con un bloque mas y dos claves mas. · CORREGIDA EL 2026-10-20, DESPUES DE CORRERSE EN DEV: las dos tablas NO escriben Colombia igual. sale_payments y sale_lines guardan el codigo COP y movements guarda NULL, que es lo que traduce libroDeMoneda() al escribir. La primera version cruzaba las dos columnas en bruto, asi que para Colombia no casaba nunca, no excluia nada, y CADA FIADO CON ABONO INICIAL sacaba ademas una fila de contado por lo abonado, en la pantalla del propio cliente: abono 8000 a cuenta y la pantalla se lo contaba como una compra aparte ya saldada. · NO LO HABRIA CAZADO NINGUNA PRUEBA EN DEV porque no habia ni una venta de un negocio colombiano. Se reprodujo con datos reales antes de arreglarlo y quedo la fixture qa:colombia para que la proxima vez haya contra que chocar. Ahora toda comparacion normaliza primero, con la misma regla que libro() en lib/ventas-de-contado.ts: lo que no es USD ni EUR es el libro nulo.'
 )
 -- `do update` Y NO `do nothing`, solo en esta migración y con motivo: el
 -- archivo se CORRIGIÓ después de correrse en dev --el cruce de monedas estaba
