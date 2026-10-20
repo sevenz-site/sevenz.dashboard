@@ -141,18 +141,20 @@ export default async function ConfirmarFiadoPage({
       <div className="flex flex-col">
         <Fila etiqueta="Fecha" valor={formatDate(mov.created_at as string)} />
         <Fila etiqueta="Tipo" valor="Fiado / Crédito" />
-        {/* «MONEDA DE PAGO» ES EN LA QUE SE ENTREGÓ EL DINERO, no la del libro:
-            un fiado archivado en dólares pudo pagarse en bolívares, y la
-            bandera de esta fila es la que lo dice. Sin ese dato —los fiados de
-            la libreta importada no lo tienen— la fila no se dibuja, en vez de
-            afirmar una moneda que nadie registró. */}
-        {mov.entry_currency ? (
-          <Fila
-            etiqueta="Moneda de pago"
-            valor={mov.entry_currency === "VES" ? "Bolívares" : nombreDeMoneda(mov.entry_currency as string)}
-            bandera={mov.entry_currency === "VES" ? "VES" : (mov.entry_currency as PriceCurrency)}
-          />
-        ) : null}
+        {/* AQUÍ HABÍA UNA FILA «Moneda de pago» Y SE RETIRÓ EL 2026-10-19.
+            Decisión del dueño: *«es redundante, ya abajo especifica la moneda
+            en la que abonó y la equivalencia»*.
+
+            Y ADEMÁS ESTABA MAL, que es la razón de dejar esto escrito y no
+            borrarlo en silencio: leía `movements.entry_currency` del FIADO —la
+            moneda en que se registró la deuda— y la etiquetaba «moneda de
+            pago». En la captura del dueño decía «Dólares» mientras la tarjeta
+            de abajo decía «Abonó Bs. 1.000,00». La moneda en que se pagó vive
+            en `sale_payments.entry_currency`, que es otra fila y otra tabla.
+
+            Así que la fila correcta ya existía debajo desde el principio, con
+            su equivalencia al lado. Quien vuelva a echarla de menos: lo que
+            falta no es esta fila, es mirar la tarjeta. */}
       </div>
 
       {/* ── EL RESUMEN DE LA COMPRA ─────────────────────────────────── */}
