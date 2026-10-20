@@ -67,7 +67,21 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     // ESTO SE ESCAPO AL CONSTRUIR LA PANTALLA, que es literalmente lo que
     // avisa el comentario de `/productos` unas lineas mas arriba. Van tres
     // veces: papelera, catalogo, y ahora la venta.
-    pathname.startsWith("/ventas");
+    pathname.startsWith("/ventas") ||
+    // ── Y VAN CUATRO: `/abonos`, el 2026-10-19 ──────────────────────
+    //
+    // El flujo del abono dirigido son tres pasos con su propia cabecera clara
+    // —flecha, titulo, progreso—, igual que el de venta. Salio con esta barra
+    // encima y el dueno lo reporto con una captura, rodeada en rojo: «agregaste
+    // nuevamente un header que no estaba en el frame, SIEMPRE lo agregas».
+    //
+    // CUATRO VECES EL MISMO FALLO, y el comentario de arriba ya lo contaba. La
+    // razon es la que el de `/productos` explica y que sigue siendo cierta: la
+    // barra de mas la pone ESTE archivo, y quien escribe una pantalla nueva no
+    // tiene ninguna razon para abrirlo. Por eso el 2026-10-19 dejo de ser un
+    // comentario y paso a `CLAUDE.md`: toda pantalla nueva entra aqui ANTES de
+    // escribirse, no despues de que alguien la vea doble.
+    pathname.startsWith("/abonos");
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries

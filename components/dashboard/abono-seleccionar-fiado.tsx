@@ -82,7 +82,15 @@ export function AbonoSeleccionarFiado({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <ScreenBackRow href={`/clients/${clienteId}`} label={clienteNombre} />
+      {/* `soloEnTelefono={false}` PORQUE AQUI NO HAY OTRA CABECERA A NINGUNA
+          ANCHURA: `/abonos` esta en la lista de `app-header.tsx` que la
+          suprime, igual que `/ventas`. Con el valor por defecto, a partir de
+          `sm` esta fila desaparece y la pantalla se queda sin forma de volver. */}
+      <ScreenBackRow
+        href={`/clients/${clienteId}`}
+        label={clienteNombre}
+        soloEnTelefono={false}
+      />
 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-normal">Registrar abono</h1>

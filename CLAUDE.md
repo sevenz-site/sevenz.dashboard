@@ -539,6 +539,40 @@ dialogs mounted, duplicate tour markers).
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
 
+## NUNCA añadas la cabecera de la app a una pantalla nueva
+
+**La barra oscura con el menú y el logo de Sevenz NO se pone nunca en una
+pantalla nueva, salvo que el dueño la pida.** Si el frame no la dibuja, no va.
+
+**Ha pasado CUATRO veces**: papelera, catálogo, el asistente de venta y el
+flujo del abono. La cuarta la reportó el dueño el 2026-10-19 con una captura y
+el círculo en rojo: *«agregaste nuevamente un header que no estaba en el frame,
+por favor elimina ese header, SIEMPRE lo agregas»*.
+
+**Y lo que la hace tan repetible es que no es un olvido de quien escribe la
+pantalla.** La barra no la pone la pantalla: la pone `app-header.tsx`, que
+lleva una lista de rutas donde NO debe dibujarse. Quien construye una pantalla
+nueva no tiene ninguna razón para abrir ese archivo, así que la barra aparece
+sola y solo se ve abriendo la página en un navegador — que es justo lo que
+suele quedar para el final.
+
+**La regla, entonces, es de orden y no de criterio:**
+
+1. **Antes de escribir una pantalla nueva, se añade su ruta a la lista de
+   `components/dashboard/app-header.tsx`.** Antes, no después de que alguien la
+   vea con dos barras.
+2. **Y si la pantalla trae su propia fila de volver** —`ScreenBackRow` o una
+   flecha propia— hay que mirar las dos listas de ese archivo: la que suprime
+   la barra a TODAS las anchuras, y la que solo la suprime en el teléfono. Un
+   flujo de pantalla completa va en la primera; si va en la segunda, a partir
+   de `sm` salen las dos.
+3. **`ScreenBackRow` por defecto solo sale en el teléfono.** En una pantalla
+   sin cabecera de app a ninguna anchura hay que pasarle
+   `soloEnTelefono={false}`, o desde `sm` no habrá forma de volver.
+
+**Dos cabeceras no se leen como un bug de maquetación**: se leen como que la
+app está rota, porque la marca sale dos veces en la misma pantalla.
+
 ## Todo evento de analítica documenta su pregunta de negocio
 
 **Un evento sin una pregunta escrita al lado es una columna que nadie va a
