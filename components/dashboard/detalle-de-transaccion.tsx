@@ -5,6 +5,7 @@ import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-row
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -69,6 +70,20 @@ export type DatosDelDetalle = {
   rates?: BolivarRates | null;
   // Ver `mostrarPendiente` en `TarjetaDeFiado`.
   mostrarPendienteDelFiado?: boolean;
+  // LOS ABONOS DIRIGIDOS A ESTE FIADO, el reflejo de `fiadoAplicado`. Encargo
+  // del dueño el 2026-10-20: *«Detalle de los fiados también deben mostrar la
+  // lista de lo que se ha abonado (mismo patrón como abono muestra los
+  // fiados)»*.
+  //
+  // CADA UNO TRAE SU `href` YA RESUELTO y no se pasa una función que lo
+  // construya: este es un componente de cliente, y una función no cruza desde
+  // un componente de servidor. Es la misma razón por la que `hrefDelFiado` es
+  // una cadena y no un callback.
+  //
+  // Vacío NO es lo mismo que ausente: una lista vacía dibuja «Todavía sin
+  // abonos», que es una respuesta; `undefined` es para una superficie que no
+  // puede contestar la pregunta y entonces no la plantea.
+  abonosRecibidos?: (AbonoDirigido & { href: string })[];
 };
 
 export function DetalleDeTransaccion({
@@ -92,6 +107,7 @@ export function DetalleDeTransaccion({
   hrefDelFiado = null,
   rates = null,
   mostrarPendienteDelFiado = true,
+  abonosRecibidos,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
   const balance = formatLedgerAmount(runningBalance, currency, ledger);
@@ -232,6 +248,31 @@ export function DetalleDeTransaccion({
             // sobre el saldo total y no hubo decisión del tendero que enseñar.
             <Fila nombre="Abonó a">Repartidos al saldo total</Fila>
           )
+        ) : null}
+
+        {/* LO QUE SE HA ABONADO A ESTE FIADO — el reflejo exacto de la tarjeta
+            de arriba, encargado por el dueño el 2026-10-20: *«mismo patrón
+            como abono muestra los fiados»*.
+
+            SOLO SALEN LOS ABONOS DIRIGIDOS, y los cientos de antes de la
+            migración `126` no lo son: la cola FIFO los repartió sobre el saldo
+            y no hay ningún «este pagó a aquel» que enseñar. Por eso un fiado
+            viejo dice «Todavía sin abonos» aunque el cliente haya pagado —y
+            por eso la frase dice «sin abonos» y no «no se ha pagado nada»,
+            que sería otra cosa y podría ser falsa. */}
+        {type === "charge" && abonosRecibidos ? (
+          <div className="flex flex-col gap-1.5">
+            <dt className="text-xs leading-5 text-muted-foreground">Abonos a este fiado</dt>
+            {abonosRecibidos.length > 0 ? (
+              <dd className="flex flex-col gap-1.5">
+                {abonosRecibidos.map((a) => (
+                  <TarjetaDeAbono key={a.movementId} abono={a} rates={rates} href={a.href} />
+                ))}
+              </dd>
+            ) : (
+              <dd className="text-sm">Todavía sin abonos</dd>
+            )}
+          </div>
         ) : null}
 
         {productos.length > 0 ? (

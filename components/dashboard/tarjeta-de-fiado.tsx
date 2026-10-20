@@ -21,6 +21,17 @@ import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } fro
 //   · en 1/3 es un enlace, y elegirla avanza el flujo;
 //   · en el detalle de un abono es un botón, y pulsarla cambia lo que la ficha
 //     enseña por el detalle de ESE fiado, sin salir de donde estabas.
+// LA FORMA DE LA TARJETA, EXPORTADA Y NO COPIADA.
+//
+// Desde el 2026-10-20 hay una segunda: `TarjetaDeAbono`, en
+// `tarjeta-de-abono.tsx`, para la lista de abonos que enseña el detalle de un
+// fiado. El dueño las pidió con el mismo patrón —*«mismo patrón como abono
+// muestra los fiados»*— y dos cadenas de clases iguales escritas en dos
+// archivos es exactamente como dejan de serlo: alguien ajusta el `rounded` de
+// una y nadie se entera de que la otra existe.
+export const CLASE_TARJETA =
+  "flex w-full items-center justify-between gap-3 rounded-[10px] border px-4 py-2 text-left transition-colors active:bg-muted/60";
+
 export type FiadoAbierto = {
   movementId: string;
   saleId: string | null;
@@ -78,8 +89,7 @@ export function TarjetaDeFiado({
       ? priceIn("VES", { amount: fiado.amount, currency: fiado.currency }, rates)?.amount
       : null;
 
-  const clase =
-    "flex w-full items-center justify-between gap-3 rounded-[10px] border px-4 py-2 text-left transition-colors active:bg-muted/60";
+  const clase = CLASE_TARJETA;
 
   const contenido = (
     <>

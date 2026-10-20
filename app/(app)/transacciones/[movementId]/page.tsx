@@ -14,6 +14,7 @@ import type { SaleLineRow } from "@/lib/sale-lines";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { BolivarRates } from "@/lib/products/price";
 import type { Movement } from "@/lib/types";
 
@@ -127,8 +128,12 @@ export default async function TransaccionPage({
     }
   }
 
-  // ── PUEDE PAGARSE ESTE FIADO ─────────────────────────────────────────
+  // ── PUEDE PAGARSE ESTE FIADO, Y QUÉ SE LE HA ABONADO ─────────────────
+  //
+  // Las dos preguntas son del mismo movimiento y solo tienen sentido en un
+  // cargo, así que comparten el `if`.
   let puedePagar = false;
+  let abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
       p_client_id: cliente.id,
@@ -137,6 +142,35 @@ export default async function TransaccionPage({
       (c) => c.movement_id === m.id,
     );
     puedePagar = abierto != null && Number(abierto.pending) > 0.005;
+
+    // LOS ABONOS DIRIGIDOS A ESTE FIADO. Encargo del dueño el 2026-10-20.
+    //
+    // `eq("client_id", cliente.id)` NO SOBRA aunque ya sepamos de quién es el
+    // movimiento: `applies_to_movement_id` es una FK suelta a `movements (id)`
+    // (migración `124`) y nada la obliga a apuntar dentro del mismo cliente,
+    // así que sin este filtro una fila cruzada traería aquí el abono de otra
+    // persona. Es la regla de `CLAUDE.md`: la RLS es el respaldo, no la única
+    // defensa.
+    //
+    // DEL MÁS NUEVO AL MÁS VIEJO: aquí la pregunta es «qué se ha pagado
+    // últimamente», y el último abono es el que se viene a comprobar.
+    const { data: pagos } = await supabase
+      .from("movements")
+      .select("id, created_at, currency, amount, description")
+      .eq("client_id", cliente.id)
+      .eq("applies_to_movement_id", m.id)
+      .eq("type", "payment")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    abonosRecibidos = (pagos ?? []).map((p) => ({
+      movementId: p.id as string,
+      fecha: p.created_at as string,
+      currency: p.currency as AbonoDirigido["currency"],
+      amount: Number(p.amount),
+      descripcion: (p.description as string | null) ?? null,
+      href: `/transacciones/${p.id as string}`,
+    }));
   }
 
   // ── CON QUÉ SE COMPARTE ──────────────────────────────────────────────
@@ -201,6 +235,7 @@ export default async function TransaccionPage({
         ledger={ledger}
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
+        abonosRecibidos={abonosRecibidos}
         rates={rates}
       />
     </div>

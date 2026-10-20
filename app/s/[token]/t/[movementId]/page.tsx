@@ -11,6 +11,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import { getBalanceLabel } from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { BolivarRates } from "@/lib/products/price";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
@@ -32,6 +33,38 @@ type SharedMovement = {
   // Los dos que trae la migración `127`.
   applies_to_movement_id: string | null;
   photo_path: string | null;
+};
+
+// LA TARJETA DE UN FIADO, tal y como la entrega la migración `128`: todo lo
+// que `TarjetaDeFiado` dibuja, más `pending` — lo que ese fiado TODAVÍA debe.
+//
+// `pending` SE CALCULA EN SQL Y NO AQUÍ porque la única implementación de «qué
+// debe este fiado» es `get_open_charges_for_client`, que corre como quien la
+// llama y por tanto es inalcanzable desde una página sin sesión. Rehacerla en
+// TypeScript sería una tercera copia de la cola FIFO, y la cifra de esta
+// tarjeta tiene que ser la misma que ve el dueño o los dos lados de la misma
+// deuda no coinciden.
+type FiadoAbonadoJson = {
+  movement_id: string;
+  sale_id: string | null;
+  fecha: string;
+  currency: LedgerCurrency | null;
+  amount: number;
+  pending: number;
+  plazo_dias: number | null;
+  cuotas: number | null;
+  description: string | null;
+};
+
+// Un abono dirigido a un cargo. Lo mínimo que la tarjeta necesita: no lleva
+// plazo ni cuotas porque un abono no tiene acuerdo propio — lo hereda del
+// fiado, que es lo que se enseña en la ficha del abono.
+type AbonoDirigidoJson = {
+  movement_id: string;
+  fecha: string;
+  currency: LedgerCurrency | null;
+  amount: number;
+  description: string | null;
 };
 
 // EL DETALLE DE UNA TRANSACCIÓN, PARA EL CLIENTE — mismos frames que la del
@@ -75,6 +108,12 @@ export default async function DetalleDelClientePage({
   const shared = data as {
     client_name: string;
     movements: SharedMovement[];
+    // LOS DOS MAPAS DE LA MIGRACIÓN `128`, los dos indexados por el id del
+    // CARGO. Opcionales porque durante un despliegue el código y la base no
+    // coinciden en un sentido o en el otro, y una clave ausente tiene que
+    // degradar a «no se enseña» y no reventar la página.
+    fiados_abonados?: Record<string, FiadoAbonadoJson>;
+    abonos_por_fiado?: Record<string, AbonoDirigidoJson[]>;
     owner_country?: string | null;
     rate_mode?: ExchangeRateMode | null;
     current_bcv_usd?: number | null;
@@ -121,37 +160,56 @@ export default async function DetalleDelClientePage({
 
   // ── EL FIADO AL QUE FUE ESTE ABONO ───────────────────────────────────
   //
-  // Sale de la MISMA lista que ya se trajo, sin una segunda consulta: si ese
-  // fiado es de este cliente, está ahí. Si no está —porque se borró, o porque
-  // cae fuera del límite de movimientos que la función devuelve— la tarjeta no
-  // se dibuja y la ficha dice «Repartidos al saldo total», que para un abono
-  // sin dirección es la verdad.
+  // SALE DEL MAPA QUE ARMA `get_shared_balance`, no de buscar en la lista que
+  // viajó. Esa búsqueda es lo que arreglan la migración `128` y `CT-110`: esta
+  // página solo recibe 50 movimientos y la del dueño los carga todos, así que
+  // un fiado más viejo que la ventana no aparecía y la ficha decía
+  // «Repartidos al saldo total» — cierto para un abono sin dirigir, FALSO para
+  // este. El mapa se resuelve en SQL contra la tabla entera.
+  //
+  // Y TRAE `pending`, que es `CT-109`: lo que ese fiado todavía debe. Hasta la
+  // `128` llegaba a cero y la tarjeta se dibujaba sin esa línea, porque un
+  // «Debe $0.00» de un fiado vivo es peor que no decir nada.
   let fiadoAplicado: FiadoAbierto | null = null;
   if (m.type === "payment" && m.applies_to_movement_id) {
-    const f = movimientos.find((x) => x.id === m.applies_to_movement_id);
+    const f = (shared.fiados_abonados ?? {})[m.applies_to_movement_id];
     if (f) {
       fiadoAplicado = {
-        movementId: f.id,
+        movementId: f.movement_id,
         saleId: null,
-        fecha: f.created_at,
+        fecha: f.fecha,
         currency: f.currency,
         amount: Number(f.amount),
-        // LO QUE ESE FIADO TODAVÍA DEBE NO SE PUEDE SABER AQUÍ, y por eso va a
-        // cero en vez de a una cifra inventada: el reparto lo calcula
-        // `get_open_charges_for_client`, que la página del cliente no puede
-        // llamar — necesita el id del cliente y la clave anon no lo tiene. Con
-        // cero, la tarjeta dice «Debe $0.00», que es falso para un fiado vivo.
-        //
-        // Por eso la tarjeta del cliente se dibuja SIN esa línea: ver
-        // `mostrarPendiente` en `TarjetaDeFiado`.
-        pending: 0,
+        pending: Number(f.pending),
         plazoDias: f.plazo_dias,
         cuotas: f.cuotas,
+        // Sin nombres de producto, que conserva la decisión de la migración
+        // `122`: el inventario del negocio no viaja a esta pantalla. La
+        // tarjeta cae en la descripción del fiado, que es justo lo que el
+        // cliente ya lee en la fila del historial de la que vino.
         productos: [],
         descripcion: f.description,
       };
     }
   }
+
+  // ── LO QUE SE HA ABONADO A ESTE FIADO ────────────────────────────────
+  //
+  // El reflejo del bloque de arriba, encargo del dueño el 2026-10-20. También
+  // del mapa y por la misma razón, que aquí pesa más: una lista de los propios
+  // pagos a la que le falta uno no se lee como un detalle que falta, se lee
+  // como dinero perdido.
+  const abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined =
+    m.type === "charge"
+      ? ((shared.abonos_por_fiado ?? {})[m.id] ?? []).map((a) => ({
+          movementId: a.movement_id,
+          fecha: a.fecha,
+          currency: a.currency,
+          amount: Number(a.amount),
+          descripcion: a.description,
+          href: `/s/${token}/t/${a.movement_id}`,
+        }))
+      : undefined;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
@@ -184,8 +242,8 @@ export default async function DetalleDelClientePage({
         ledger={ledger}
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
+        abonosRecibidos={abonosRecibidos}
         rates={rates}
-        mostrarPendienteDelFiado={false}
       />
     </div>
   );
