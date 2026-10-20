@@ -22,6 +22,8 @@ import type { Movement } from "@/lib/types";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
 import type { DatosParaCompartir } from "@/lib/share-balance";
+import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import type { BolivarRates } from "@/lib/products/price";
 
 const PAGE_SIZE = 10;
 
@@ -44,6 +46,8 @@ export function MovementHistoryList({
   movements,
   photoUrls,
   ledger = null,
+  rates = null,
+  pendientePorFiado,
   compartir = null,
   titulo = null,
   productosPorMovimiento,
@@ -51,6 +55,11 @@ export function MovementHistoryList({
 }: {
   movements: Movement[];
   photoUrls: Record<string, string>;
+  // Para el «Bs. … hoy» de la tarjeta «Abonó a». Ver `TarjetaDeFiado`.
+  rates?: BolivarRates | null;
+  // Lo que cada fiado abierto todavía debe, por id. Un fiado saldado no está
+  // en el mapa y su pendiente es cero.
+  pendientePorFiado?: Map<string, number>;
   // Con que comparte la ficha de cada movimiento — el mismo enlace y el mismo
   // mensaje que "Compartir enlace" del perfil. Ver lib/share-balance.ts.
   compartir?: DatosParaCompartir | null;
@@ -73,6 +82,14 @@ export function MovementHistoryList({
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
+  // QUÉ FICHA ESTÁ ABIERTA, por id y no un booleano por fila.
+  //
+  // Lo pide la tarjeta «Abonó a» del detalle de un abono: pulsarla tiene que
+  // abrir la ficha del fiado que pagó, y ese fiado puede estar en otra página
+  // del historial o escondido por el filtro de tipo. Con el estado en cada fila
+  // no había forma de llegar a él; con el id aquí, `verFiado` mueve la lista
+  // hasta donde está y lo abre.
+  const [abierto, setAbierto] = useState<string | null>(null);
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ─────────────────────
   //
@@ -91,6 +108,49 @@ export function MovementHistoryList({
       : filas.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
+
+  // LOS MOVIMIENTOS POR ID, para resolver a qué fiado fue cada abono dirigido.
+  const porId = new Map(movements.map((m) => [m.id, m]));
+
+  // LA TARJETA «Abonó a», armada desde el fiado al que apunta el abono.
+  //
+  // `null` cuando no apunta a ninguno —un cargo, o un abono de antes de la
+  // migración `126`— y también si el fiado ya no está en la lista, que hoy
+  // significa que se borró: un abono dirigido sobrevive al borrado de su fiado
+  // (la columna es `on delete set null` y el borrado es blando), así que esto
+  // no es un imposible.
+  function tarjetaDelFiado(m: Movement): FiadoAbierto | null {
+    if (m.type !== "payment" || !m.applies_to_movement_id) return null;
+    const f = porId.get(m.applies_to_movement_id);
+    if (!f) return null;
+    return {
+      movementId: f.id,
+      saleId: f.sale_id,
+      fecha: f.created_at,
+      currency: f.currency,
+      amount: f.amount,
+      pending: pendientePorFiado?.get(f.id) ?? 0,
+      plazoDias: f.plazo_dias,
+      cuotas: f.cuotas,
+      productos: (productosPorMovimiento?.get(f.id) ?? []).map((l) => l.name),
+      descripcion: f.description,
+    };
+  }
+
+  // ABRIR LA FICHA DE UN FIADO DESDE LA DE SU ABONO.
+  //
+  // Mueve la lista hasta él antes de abrirlo: quita el filtro de tipo —si
+  // estaba en «Abono», su fiado está escondido— y salta a la página donde cae.
+  // Sin esto, pulsar la tarjeta no haría nada en cuanto el fiado estuviera más
+  // abajo de los diez primeros, que con un cliente con historia es lo normal.
+  function verFiado(movementId: string) {
+    const indice = filas.findIndex((f) => f.clase === "movimiento" && f.m.id === movementId);
+    if (indice >= 0) {
+      setTipo("todos");
+      setPage(Math.floor(indice / PAGE_SIZE) + 1);
+    }
+    setAbierto(movementId);
+  }
 
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
@@ -189,6 +249,11 @@ export function MovementHistoryList({
               exchangeRateUsed={m.exchange_rate_used}
               ledger={ledger}
               compartir={compartir}
+              fiadoAplicado={tarjetaDelFiado(m)}
+              rates={rates}
+              onVerFiado={verFiado}
+              open={abierto === m.id}
+              onOpenChange={(v) => setAbierto(v ? m.id : null)}
             >
               <button
                 type="button"

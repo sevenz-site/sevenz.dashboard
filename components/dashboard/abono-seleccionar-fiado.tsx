@@ -2,32 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip } from "@/components/dashboard/client-filters";
-import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { formatDate } from "@/lib/format";
-import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import type { BolivarRates } from "@/lib/products/price";
 
-export type FiadoAbierto = {
-  movementId: string;
-  saleId: string | null;
-  fecha: string;
-  currency: PriceCurrency | null;
-  // Lo que el fiado fue cuando nació.
-  amount: number;
-  // Y lo que TODAVÍA debe. Las dos, porque no son la misma pregunta: la tarjeta
-  // enseña el importe original a la derecha —como lo hace la fila del
-  // historial— y «Debe $X» con lo que falta, que es por lo que se elige.
-  pending: number;
-  plazoDias: number | null;
-  cuotas: number | null;
-  productos: string[];
-  descripcion: string | null;
-};
 
 // PASO 1/3 DEL ABONO DIRIGIDO — frame `1457:16193`.
 //
@@ -47,6 +30,8 @@ export type FiadoAbierto = {
 // debe. No existía en ninguna parte hasta la migración `126`, porque la cola
 // solo devolvía su cabeza — la única pregunta que se le hacía era «¿está este
 // cliente en mora?», no «¿cuánto queda de este fiado?».
+export type { FiadoAbierto };
+
 export function AbonoSeleccionarFiado({
   clienteId,
   clienteNombre,
@@ -195,7 +180,7 @@ export function AbonoSeleccionarFiado({
             <ul className="flex flex-col gap-2">
               {visibles.map((f) => (
                 <li key={f.movementId}>
-                  <TarjetaDeFiado fiado={f} rates={rates} />
+                  <TarjetaDeFiado fiado={f} rates={rates} href={`/abonos/nuevo/${f.movementId}`} />
                 </li>
               ))}
             </ul>
@@ -203,70 +188,5 @@ export function AbonoSeleccionarFiado({
         </>
       )}
     </div>
-  );
-}
-
-function TarjetaDeFiado({ fiado, rates }: { fiado: FiadoAbierto; rates: BolivarRates | null }) {
-  // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Fiado · lo que se llevó». Si la
-  // venta trae productos van ellos; si no, lo que el tendero escribió; y si no
-  // hay ninguno de los dos se queda en «Fiado» a secas, que sigue siendo
-  // cierto. Los fiados de la libreta importada caen casi siempre en el segundo.
-  const detalle = fiado.productos.length > 0 ? fiado.productos.join(", ") : (fiado.descripcion ?? "");
-  const titulo = detalle ? `Fiado · ${detalle}` : "Fiado";
-
-  // «Bs. … hoy» CONVIERTE A LA TASA DE HOY, y eso es distinto de lo que hace la
-  // fila del historial a propósito: allí se enseñan los bolívares que el
-  // tendero TECLEÓ, porque tecleó 900 y leer 899,09 no se explica. Aquí la
-  // pregunta es otra —«¿cuánto me llevo hoy si me paga esto?»— y el frame lo
-  // dice con esa palabra. Sin tasa, la línea no se dibuja: inventar una
-  // conversión es peor que no darla.
-  const enBs =
-    rates && fiado.currency
-      ? priceIn("VES", { amount: fiado.amount, currency: fiado.currency }, rates)?.amount
-      : null;
-
-  return (
-    <Link
-      href={`/abonos/nuevo/${fiado.movementId}`}
-      className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2 transition-colors active:bg-muted/60"
-    >
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="truncate text-sm font-medium">{titulo}</span>
-        <span className="text-xs text-muted-foreground">{formatDate(fiado.fecha)}</span>
-        {/* LO QUE DE VERDAD DECIDE CUÁL SE ELIGE. Va aquí abajo, en el tamaño
-            pequeño del frame, pero es la cifra nueva: lo que queda de ESTE
-            fiado, no lo que fue. */}
-        {/* LA BANDERA PEGADA A CADA CIFRA, en las dos — pedido del dueno el
-            2026-10-19: «al igual que las transacciones del historial». Y el
-            tamano es el mismo de alli, `size-3.5`, no el de 24 de las
-            cabeceras: aqui acompana a un texto de 12 y una bandera grande lo
-            dominaria.
-
-            NO ES ADORNO EN UNA BODEGA VENEZOLANA: el mismo cliente puede tener
-            un fiado en dolares y otro en euros, y sin bandera lo unico que los
-            separa es un simbolo de un caracter al principio del numero. La
-            captura del dueno tiene justamente dos fiados de 5,84 seguidos. */}
-        <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-          {fiado.currency ? (
-            <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
-          ) : null}
-          Debe {formatPriceAmount(fiado.pending, fiado.currency ?? "COP")}
-        </span>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <div className="flex flex-col items-end">
-          <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-destructive">
-            {fiado.currency ? (
-              <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
-            ) : null}
-            +{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
-          </span>
-          {enBs != null ? (
-            <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
-          ) : null}
-        </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      </div>
-    </Link>
   );
 }

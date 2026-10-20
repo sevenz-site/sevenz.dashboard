@@ -12,6 +12,7 @@ import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
+import { getBolivarRates } from "@/lib/products/catalog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
@@ -484,6 +485,36 @@ async function MovementHistory({
 
   const movementRows = (movements ?? []) as Movement[];
 
+  // ── LO QUE CADA FIADO TODAVÍA DEBE ──────────────────────────────────
+  //
+  // Para la tarjeta «Abonó a» del detalle de un abono dirigido, que enseña
+  // «Debe $X» del fiado que pagó (frame `1465:18349`).
+  //
+  // DE LA MISMA FUNCIÓN QUE EL FLUJO DE ABONAR, no de una cuenta propia: ese
+  // reparto distingue los abonos dirigidos de los que la cola FIFO repartió, y
+  // una segunda implementación aquí acabaría enseñando una cifra distinta de la
+  // que el tope del abono acepta.
+  //
+  // UNA SOLA LLAMADA PARA TODA LA LISTA, por la misma razón que los productos
+  // de abajo: la ficha se abre en un diálogo ya montado.
+  //
+  // Solo devuelve los ABIERTOS. Un fiado saldado no sale, y su pendiente es
+  // cero — que es exactamente lo que hay que enseñar.
+  // La tasa para el «Bs. … hoy» de esa tarjeta, sacada de la que ya alimenta
+  // el resto de la pantalla. `null` en un negocio colombiano, y entonces la
+  // tarjeta sencillamente no dibuja esa línea.
+  const rates = ledger ? await getBolivarRates(ledger.rate) : null;
+
+  const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+    p_client_id: clientId,
+  });
+  const pendientePorFiado = new Map<string, number>(
+    ((abiertos ?? []) as { movement_id: string; pending: number }[]).map((c) => [
+      c.movement_id,
+      Number(c.pending),
+    ]),
+  );
+
   // QUÉ SE LLEVÓ EL CLIENTE EN CADA MOVIMIENTO — paso 8, entregable `E`.
   //
   // UNA SOLA CONSULTA PARA TODA LA LISTA y no una por ficha: el detalle se
@@ -571,6 +602,8 @@ async function MovementHistory({
         movements={movementRows}
         photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
+        rates={rates}
+        pendientePorFiado={pendientePorFiado}
         compartir={compartir}
         productosPorMovimiento={productosPorMovimiento}
         ventasDeContado={ventasDeContado}

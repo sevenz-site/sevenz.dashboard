@@ -27,6 +27,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
+import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import type { BolivarRates } from "@/lib/products/price";
 import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
@@ -59,6 +61,11 @@ export function MovementDetailPopover({
   exchangeRateUsed = null,
   ledger = null,
   compartir = null,
+  fiadoAplicado = null,
+  rates = null,
+  onVerFiado,
+  open: openControlado,
+  onOpenChange: onOpenChangeControlado,
   children,
 }: {
   // Only the owner's dashboard passes this — it's what shows the "Eliminar
@@ -128,10 +135,33 @@ export function MovementDetailPopover({
   // Con que se comparte. null esconde el boton — hoy no pasa, pero una ficha
   // sin forma de conseguir el enlace no puede ofrecer compartirlo.
   compartir?: DatosParaCompartir | null;
+  // EL FIADO AL QUE FUE ESTE ABONO. Pedido del dueño el 2026-10-19, frame
+  // `1465:18349`: *«dentro del resumen del abono se debe mostrar el card del
+  // fiado al que se le abonó»*.
+  //
+  // `null` en un cargo —no abona a nada— y también en los cientos de abonos
+  // anteriores a la migración `126`, que la cola FIFO repartió sobre el saldo
+  // total. Esos NO se dejan en blanco: dicen «Repartidos al saldo total», que
+  // es la verdad y es la frase que el dueño eligió. Una ficha vacía justo en
+  // los clientes con más historia habría parecido un fallo.
+  fiadoAplicado?: FiadoAbierto | null;
+  // Para el «Bs. … hoy» de esa tarjeta. Sin tasa la línea no se dibuja.
+  rates?: BolivarRates | null;
+  // Qué hacer al pulsar la tarjeta: *«al seleccionar el card se debe abrir el
+  // detalle de ese fiado»*. Lo resuelve quien monta la lista, porque es quien
+  // tiene todos los movimientos y sabe en qué página está ese fiado — desde
+  // esta ficha no se puede saber.
+  onVerFiado?: (movementId: string) => void;
+  // Abierta desde fuera. La lista lleva el control para poder abrir la ficha de
+  // un fiado que ni siquiera está en la página visible del historial.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openInterno, setOpenInterno] = useState(false);
+  const open = openControlado ?? openInterno;
+  const setOpen = onOpenChangeControlado ?? setOpenInterno;
   const [deleting, setDeleting] = useState(false);
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
@@ -179,10 +209,35 @@ export function MovementDetailPopover({
   const tasa =
     currency && exchangeRateUsed != null ? formatRateEquivalence(currency, exchangeRateUsed) : null;
 
+  // ── EL ACUERDO: DE QUIÉN SON EL PLAZO Y LAS CUOTAS ──────────────────
+  //
+  // De un fiado, suyos. De un ABONO DIRIGIDO, los del fiado que pagó — pedido
+  // del dueño el 2026-10-19: *«Plazo de pago, cuotas y próximas cuotas se
+  // muestran desde el fiado al que abonó, para que cliente puede ver la info
+  // rápido sin abrir el fiado al que abonó»*.
+  //
+  // UN ABONO NUNCA TUVO PLAZO PROPIO: `plazo_dias` y `cuotas` son columnas del
+  // cargo, y la restricción de la base rechaza cuotas en cualquier otra cosa.
+  // Así que esto no tapa un dato del abono con otro — rellena tres filas que en
+  // un abono salían vacías («—» y ninguna tabla) con el único acuerdo que
+  // existe sobre ese dinero.
+  //
+  // Y LA TABLA DE CUOTAS SE CUENTA DESDE LA FECHA DEL FIADO, no desde la del
+  // abono. Es lo que la hace correcta: los vencimientos se pactaron el día de
+  // la compra, y contarlos desde el pago movería todas las fechas.
+  const acuerdo = fiadoAplicado
+    ? {
+        plazoDias: fiadoAplicado.plazoDias,
+        cuotas: fiadoAplicado.cuotas,
+        desde: fiadoAplicado.fecha,
+        importe: fiadoAplicado.amount,
+      }
+    : { plazoDias, cuotas, desde: createdAt, importe: amount };
+
   // Se enseña siempre, tambien en un abono, igual que hasta ahora. Un abono no
   // lleva plazo y la fila dira "—", pero quitarla cambiaria una ficha que el
   // dueño ya conoce sin que nadie lo haya pedido.
-  const plazo = formatPlazoDias(plazoDias);
+  const plazo = formatPlazoDias(acuerdo.plazoDias);
 
   // El saldo manda el color: rojo lo que queda por cobrar, verde el saldo a
   // favor. Es el mismo par de colores que el formulario y el historial, y por
@@ -289,6 +344,33 @@ export function MovementDetailPopover({
           </Grupo>
 
           <Grupo>
+            {/* A QUÉ FIADO FUE ESTE ABONO, arriba del resumen — frame
+                `1465:18349`. Es la MISMA tarjeta de la pantalla 1/3, no una
+                parecida: `TarjetaDeFiado` salió de allí justo para esto.
+
+                Se dibuja solo en un abono. En un cargo no hay nada que
+                responder, y en un abono de antes de la migración `126` la
+                respuesta es que no fue a uno solo. */}
+            {type === "payment" ? (
+              fiadoAplicado ? (
+                <div className="flex flex-col gap-1.5">
+                  <dt className="text-xs leading-5 text-muted-foreground">Abonó a</dt>
+                  <dd>
+                    <TarjetaDeFiado
+                      fiado={fiadoAplicado}
+                      rates={rates}
+                      onClick={() => onVerFiado?.(fiadoAplicado.movementId)}
+                    />
+                  </dd>
+                </div>
+              ) : (
+                // LOS CIENTOS QUE YA EXISTÍAN. Decisión del dueño el
+                // 2026-10-19: no se deja en blanco, se dice qué pasó. La cola
+                // FIFO los repartió sobre el saldo total y no hubo ninguna
+                // decisión del tendero que enseñar.
+                <Fila nombre="Abonó a">Repartidos al saldo total</Fila>
+              )
+            ) : null}
             <Fila nombre="Monto">
               <span className="tabular-nums">{monto}</span>
             </Fila>
@@ -309,12 +391,12 @@ export function MovementDetailPopover({
 
           <Grupo>
             <Fila nombre="Plazo de pago">{plazo}</Fila>
-            {cuotas != null && plazoDias != null ? (
+            {acuerdo.cuotas != null && acuerdo.plazoDias != null ? (
               <CuotasTable
-                createdAt={createdAt}
-                plazoDias={plazoDias}
-                cuotas={cuotas}
-                amount={amount}
+                createdAt={acuerdo.desde}
+                plazoDias={acuerdo.plazoDias}
+                cuotas={acuerdo.cuotas}
+                amount={acuerdo.importe}
                 formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
               />
             ) : null}

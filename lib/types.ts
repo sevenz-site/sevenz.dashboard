@@ -38,6 +38,11 @@ export type Movement = {
   // normal es que un cargo del formulario SÍ la tenga: es donde viven las
   // líneas de qué se llevó el cliente.
   sale_id: string | null;
+  // A QUÉ FIADO SE DIRIGIÓ ESTE ABONO (migración `126`). null en un cargo
+  // siempre, y en los cientos de abonos anteriores al 2026-10-19, que la cola
+  // FIFO repartió sobre el saldo total y por eso dicen «Repartidos al saldo
+  // total» en vez de nombrar un fiado.
+  applies_to_movement_id: string | null;
   created_at: string;
   // Which ledger this movement belongs to. null for a country='CO' owner,
   // whose single ledger is COP.
