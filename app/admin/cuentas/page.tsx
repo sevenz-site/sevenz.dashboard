@@ -2,6 +2,7 @@ import { requireSuperadmin } from "@/lib/admin/guard";
 import { getCuentas, getIngresosPorMes, repartirPorUrgencia } from "@/lib/admin/subscriptions";
 import { CuentasTabla } from "@/components/admin/cuentas-tabla";
 import { CuentasGraficas } from "@/components/admin/cuentas-graficas";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // El layout ya llama a requireSuperadmin, pero esta página lo llama otra vez y
 // ANTES de leer nada. Sin eso, la consulta que trae los datos de los 24
@@ -21,7 +22,7 @@ export default async function CuentasPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Cuentas</h1>
+        <ScreenTitle>Cuentas</ScreenTitle>
         <p className="text-sm text-muted-foreground">
           {cuentas.length} {cuentas.length === 1 ? "negocio" : "negocios"}. Los cambios quedan en el
           historial con tu correo.

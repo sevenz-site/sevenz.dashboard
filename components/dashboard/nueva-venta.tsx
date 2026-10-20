@@ -86,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
@@ -427,7 +428,7 @@ export function NuevaVenta({
           «Continuar con venta» de la pantalla de cliente nuevo— ya lo trae
           puesto y no ve la pregunta en ningún momento. */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-normal">Nueva venta</h1>
+        <ScreenTitle>Nueva venta</ScreenTitle>
         <p className="text-sm text-muted-foreground">
           {paso}/{pasos} {["Producto", "Carrito", "Pago", "Información del cliente"][paso - 1]}
         </p>

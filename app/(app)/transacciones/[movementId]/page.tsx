@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
@@ -17,6 +17,8 @@ import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { BolivarRates } from "@/lib/products/price";
 import type { LedgerCurrency, Movement } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -282,7 +284,7 @@ export default async function TransaccionPage({
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between border-b bg-background px-4 py-3">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href={`/clients/${cliente.id}`} aria-label={`Volver a ${cliente.name}`}>
-            <ChevronLeft className="size-5" aria-hidden="true" />
+            <IconoVolver className="text-primary" />
           </Link>
         </Button>
         <DetalleAcciones
@@ -293,7 +295,7 @@ export default async function TransaccionPage({
         />
       </div>
 
-      <h1 className="text-2xl leading-8 font-normal">Detalle de transacción</h1>
+      <ScreenTitle>Detalle de transacción</ScreenTitle>
 
       <DetalleDeTransaccion
         type={m.type}

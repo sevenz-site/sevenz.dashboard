@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
-import { ChevronLeft, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -15,6 +15,8 @@ import { formatDate } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -174,13 +176,13 @@ export default async function VentaDeContadoPage({
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between border-b bg-background px-4 py-3">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href={`/clients/${cliente.id}`} aria-label={`Volver a ${cliente.name}`}>
-            <ChevronLeft className="size-5" aria-hidden="true" />
+            <IconoVolver className="text-primary" />
           </Link>
         </Button>
         <VentaAcciones saleId={venta.id as string} clientId={cliente.id} loQueSeLleva={loQueSeLleva} />
       </div>
 
-      <h1 className="text-2xl leading-8 font-normal">Detalle de transacción</h1>
+      <ScreenTitle>Detalle de transacción</ScreenTitle>
 
       <dl className="flex flex-col gap-4">
         <Grupo>

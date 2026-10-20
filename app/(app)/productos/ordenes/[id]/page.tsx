@@ -24,6 +24,7 @@ import {
   OrderProductRowButton,
 } from "@/components/dashboard/order-product-dialog";
 import type { BolivarRates, PriceTier } from "@/lib/products/price";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // ONE ORDER'S PAGE. Deliverable D, reading half.
 //
@@ -162,7 +163,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
       <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
 
-      <h1 className="text-2xl font-semibold">{pedido.customer_name}</h1>
+      <ScreenTitle>{pedido.customer_name}</ScreenTitle>
 
       <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
       <div className="rounded-lg border bg-muted/30 px-3 py-2">

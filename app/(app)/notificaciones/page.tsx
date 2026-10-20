@@ -2,6 +2,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { NotificationList } from "@/components/dashboard/notification-list";
 import { MarkNotificationsSeen } from "@/components/dashboard/mark-notifications-seen";
 import { getNotifications } from "@/app/(app)/actions";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // The phone's own notifications screen, reached from the bottom bar — the
 // desktop header's popover has nowhere sensible to anchor on a 375px screen.
@@ -21,7 +22,7 @@ export default async function NotificacionesPage() {
           un pedido, y el flujo de la venta iba a ser la quinta copia. */}
       <ScreenBackRow href="/dashboard" label="Volver a Inicio" />
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Notificaciones</h1>
+        <ScreenTitle>Notificaciones</ScreenTitle>
         <p className="text-sm text-muted-foreground">
           Lo que pasó en tu cartera mientras no estabas.
         </p>

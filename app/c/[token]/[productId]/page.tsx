@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ChevronLeft, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -9,6 +9,8 @@ import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -186,13 +188,13 @@ export default async function ProductoPublicoPage({
           aria-label="Volver al catálogo"
           className="absolute top-4 left-4 flex size-10 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur transition-colors hover:bg-background"
         >
-          <ChevronLeft className="size-5" />
+          <IconoVolver className="text-primary" />
         </Link>
       </div>
 
       <div className="flex flex-col gap-4 px-4 py-5">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{detalle.name}</h1>
+          <ScreenTitle>{detalle.name}</ScreenTitle>
           {detalle.unit ? (
             <p className="text-xs text-muted-foreground">{detalle.unit}</p>
           ) : null}

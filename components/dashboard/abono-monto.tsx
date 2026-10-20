@@ -24,6 +24,7 @@ import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
 //
@@ -151,7 +152,7 @@ export function AbonoMonto({
       <ScreenBackRow href={`/abonos/nuevo/${fiadoId}`} label={clienteNombre} soloEnTelefono={false} />
 
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-normal">Registrar abono</h1>
+        <ScreenTitle>Registrar abono</ScreenTitle>
         <p className="text-sm text-muted-foreground">3/3 Monto a abonar</p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-full rounded-full bg-foreground transition-all" />

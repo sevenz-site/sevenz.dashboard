@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // LA FILA DE LA FLECHA, pegada arriba y de borde a borde.
 //
@@ -74,12 +75,12 @@ export function ScreenBackRow({
             aria-label={label ?? "Volver"}
             onClick={onClick}
           >
-            <ChevronLeft className="size-5" aria-hidden="true" />
+            <IconoVolver className="text-primary" />
           </Button>
         ) : (
           <Button variant="ghost" size="icon" asChild className="-ml-2">
             <Link href={href ?? "/dashboard"} aria-label={label ?? "Volver"}>
-              <ChevronLeft className="size-5" aria-hidden="true" />
+              <IconoVolver className="text-primary" />
             </Link>
           </Button>
         ))}

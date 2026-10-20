@@ -52,6 +52,7 @@ import {
 } from "@/lib/cart/cart";
 import { productosDelCarrito, crearOrden } from "@/app/c/[token]/actions";
 import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // «TU CARRITO», del frame `1190:5793`.
 //
@@ -221,7 +222,7 @@ export function CartScreen({
       </header>
 
       <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Tu carrito</h1>
+        <ScreenTitle>Tu carrito</ScreenTitle>
 
         {lineas.length === 0 ? (
           <div className="rounded-xl border border-dashed px-6 py-12 text-center">

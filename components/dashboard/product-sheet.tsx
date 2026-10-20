@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronLeft, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ProductDetail } from "@/components/public/product-detail";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // EL DETALLE DE UN PRODUCTO, DENTRO DE UNA VENTA — frame `1389:8949`.
 //
@@ -92,7 +93,7 @@ export function ProductSheet({
             aria-label="Volver a productos"
             className="absolute left-4 top-4 flex size-10 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur transition-colors hover:bg-background"
           >
-            <ChevronLeft className="size-5" aria-hidden="true" />
+            <IconoVolver className="text-primary" />
           </button>
         </div>
 

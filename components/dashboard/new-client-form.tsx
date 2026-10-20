@@ -15,6 +15,7 @@ import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { registrarCliente } from "@/app/(app)/clients/nuevo/actions";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD, textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 import type { OwnerCountry } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // LA PANTALLA DE CLIENTE NUEVO — frame `1389:8313`, 2026-10-18.
 //
@@ -101,7 +102,7 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
       <ScreenBackRow href="/dashboard" soloEnTelefono={false} />
 
       <div className="py-2">
-        <h1 className="text-2xl font-normal">Nuevo cliente</h1>
+        <ScreenTitle>Nuevo cliente</ScreenTitle>
       </div>
 
       {/* SIN `px-4` PROPIO: `AppMain` ya pone los 16px laterales y esto los

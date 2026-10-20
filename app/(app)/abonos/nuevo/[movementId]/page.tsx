@@ -13,6 +13,7 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -130,7 +131,7 @@ export default async function ConfirmarFiadoPage({
       />
 
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-normal">Detalle de transacción</h1>
+        <ScreenTitle>Detalle de transacción</ScreenTitle>
         <p className="text-sm text-muted-foreground">2/3 Confirma transacción a abonar</p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-2/3 rounded-full bg-foreground transition-all" />

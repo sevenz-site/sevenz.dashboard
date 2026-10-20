@@ -5,6 +5,7 @@ import { ChangePasswordDialog } from "@/components/dashboard/change-password-dia
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -32,7 +33,7 @@ export default async function ProfilePage() {
         <CarteraBackButton />
       </ScreenBackRow>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Mi negocio</h1>
+        <ScreenTitle>Mi negocio</ScreenTitle>
         <p className="text-sm text-muted-foreground">
           Estos datos se usan en tu cartera y en lo que ven tus clientes.
         </p>

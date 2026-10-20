@@ -48,6 +48,60 @@ inconsistent with each other.
 Every card on a screen uses this exact combination, so the rate calculator, the
 balance cards and a client's info block read as one family.
 
+## El título de una pantalla y su flecha salen de `screen-chrome.tsx`
+
+**`ScreenTitle` y `IconoVolver`. No se escriben a mano.**
+
+```tsx
+import { IconoVolver, ScreenTitle } from "@/components/dashboard/screen-chrome";
+
+<ScreenTitle>Detalle de transacción</ScreenTitle>   // text-2xl font-semibold tracking-tight
+<IconoVolver className="text-primary" />             // ArrowLeft size-6
+```
+
+**Qué pasó, el 2026-10-20.** El dueño mandó dos capturas: *«el estilo del
+texto "Notificaciones" es el estilo que deben tener todos los títulos de las
+pantallas donde hay títulos [...] los veo distintos»* y *«el ícono back del
+componente Header debe ser la flecha con la raya, no el chevron»*.
+
+Al contarlo había **nueve títulos en `font-normal`** contra cinco en
+`font-semibold tracking-tight`, y **diez sitios** eligiendo entre `ChevronLeft`
+y `ArrowLeft` sin que nadie hubiera decidido nada.
+
+**Y no era descuido de nadie**: no había ningún sitio al que mirar. Es el mismo
+fallo que ya se pagó con la fila de la flecha —cuatro copias del mismo
+`sticky top-0 -mx-4` antes de que `ScreenBackRow` existiera— y con `COP`
+faltando en el mapa de banderas. **Una decisión que se repite a mano no se
+mantiene: se reescribe distinta la quinta vez.**
+
+### El chevron significa otra cosa
+
+Un `ChevronLeft` es el gemelo del `ChevronRight` que lleva **cada fila de lista
+de esta app**, y ahí significa «hay más por aquí». Una flecha con raya significa
+«vuelve». Que la misma pantalla usara una para entrar y la otra para salir es
+lo que hacía que las dos se leyeran igual.
+
+### El color lo pone quien la monta, y `text-primary` no necesita variante
+
+- sobre cabecera oscura → `text-white`
+- sobre fondo claro → **`text-primary`**
+
+`--primary` es `#272727` en claro y se **invierte** a casi blanco en oscuro, así
+que una sola clase vale para los dos temas. Escribir `text-black dark:text-white`
+sería la forma de que un día no coincidan.
+
+### Lo que NO usa `ScreenTitle`
+
+- **Los títulos sobre cabecera oscura** (`ScreenHeader`, `PublicHeader`, la
+  ficha del cliente): van centrados, en blanco, y compiten con los controles de
+  su propia barra. Son otra cosa.
+- **Los rótulos centrados de las pantallas de «listo»** («¡Abono registrado con
+  éxito!», «Tu pedido quedó registrado») y **los de error** («Este enlace ya no
+  sirve»): `text-xl` centrado. Son un mensaje, no el nombre de una pantalla.
+  Quedaron así a propósito el 2026-10-20 y **no están confirmados con el dueño**.
+- **La miga de pan de `/admin`** (`‹ Cuentas`, 12px, gris): es navegación
+  jerárquica con texto, no la flecha de volver de una cabecera.
+
 ## Contextual bar (phone only)
 
 A screen reached *from* somewhere — a client, Malas pagas — replaces the app

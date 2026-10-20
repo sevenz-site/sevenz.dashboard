@@ -5,6 +5,7 @@ import { MetricFilters } from "@/components/admin/metric-filters";
 import { ServiceHealth } from "@/components/admin/service-health";
 import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
 import { requireSuperadmin } from "@/lib/admin/guard";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import {
   getAverageCreditScore,
   getByOwner,
@@ -189,7 +190,7 @@ export default async function AdminMetricsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Métricas de producto</h1>
+        <ScreenTitle>Métricas de producto</ScreenTitle>
         {/* Dice lo que hay en pantalla, no lo que suele haber.
             Ponía "Todos los negocios" siempre, también con tres seleccionados,
             así que el encabezado afirmaba una cosa y las cifras eran otra — y

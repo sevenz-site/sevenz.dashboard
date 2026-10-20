@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -13,6 +13,8 @@ import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { BolivarRates } from "@/lib/products/price";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -222,12 +224,12 @@ export default async function DetalleDelClientePage({
       <div className="sticky top-0 z-20 -mx-4 flex items-center border-b bg-background px-4 py-3">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href={`/s/${token}`} aria-label="Volver a mi saldo">
-            <ChevronLeft className="size-5" aria-hidden="true" />
+            <IconoVolver className="text-primary" />
           </Link>
         </Button>
       </div>
 
-      <h1 className="text-2xl leading-8 font-normal">Detalle de transacción</h1>
+      <ScreenTitle>Detalle de transacción</ScreenTitle>
 
       {/* «Total por cobrar» TAMBIÉN EN LA PANTALLA DEL CLIENTE, igual que en
           la del dueño. Decisión del dueño el 2026-10-20, preguntada: los

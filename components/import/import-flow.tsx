@@ -100,6 +100,7 @@ import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import type { OwnerCountry } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 type ExistingClient = ReconcileClient;
 
@@ -1720,7 +1721,7 @@ export function ImportFlow({
             alineado a su derecha y los dos tienen que estar en el mismo
             componente para poder compartir el estado. */}
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+          <ScreenTitle>Subir libreta</ScreenTitle>
           <BotonDeshacer pasos={pasado.length} onDeshacer={deshacer} />
         </div>
 
@@ -2252,7 +2253,7 @@ export function ImportFlow({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+      <ScreenTitle>Subir libreta</ScreenTitle>
       {/* Los tres pasos viven aquí y no en la página porque solo valen para
           este momento: explican cómo se importa, y una vez la libreta está
           leída y el dueño está corrigiendo montos, describen algo que ya

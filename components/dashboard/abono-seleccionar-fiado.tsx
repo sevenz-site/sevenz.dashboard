@@ -10,6 +10,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { formatDate } from "@/lib/format";
 import type { BolivarRates } from "@/lib/products/price";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 
 // PASO 1/3 DEL ABONO DIRIGIDO — frame `1457:16193`.
@@ -101,7 +102,7 @@ export function AbonoSeleccionarFiado({
       />
 
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-normal">Registrar abono</h1>
+        <ScreenTitle>Registrar abono</ScreenTitle>
         <p className="text-sm text-muted-foreground">1/3 Seleccionar fiado / crédito</p>
         {/* `aria-hidden` porque la línea de arriba ya lo dice con palabras,
             igual que en el asistente de venta. */}
