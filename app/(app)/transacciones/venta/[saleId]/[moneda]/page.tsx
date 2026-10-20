@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
+import { VentaAcciones } from "@/components/dashboard/venta-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate } from "@/lib/format";
@@ -133,19 +134,50 @@ export default async function VentaDeContadoPage({
 
   const descripcion = pagos.map((p) => p.description).find((d) => d != null && d !== "") ?? null;
 
+  // ── LO QUE SE LLEVA POR DELANTE «ELIMINAR VENTA» ─────────────────────
+  //
+  // El menú vive aquí, en UNA moneda, pero el borrado es de la venta entera
+  // (ver `eliminarVenta`). Así que la confirmación tiene que nombrar todo lo
+  // que desaparece, y eso se arma aquí porque aquí es donde se sabe de
+  // monedas: cobros de contado de cada moneda y fiados que nacieron de ella.
+  //
+  // LOS FIADOS SON LO QUE DE VERDAD IMPORTA DE ESTA LISTA. Un tendero que
+  // entra a quitar un cobro de contado y se lleva por delante una deuda viva
+  // sin que nadie se lo dijera es el peor resultado de esta pantalla.
+  const { data: fiados } = await supabase
+    .from("movements")
+    .select("amount, currency")
+    .eq("sale_id", saleId)
+    .eq("type", "charge")
+    .is("deleted_at", null);
+
+  const porMoneda = new Map<string, number>();
+  for (const p of pagosCrudos ?? []) {
+    const clave = (p.currency ?? "") as string;
+    porMoneda.set(clave, (porMoneda.get(clave) ?? 0) + Number(p.amount));
+  }
+
+  const loQueSeLleva = [
+    ...[...porMoneda].map(
+      ([c, total]) =>
+        `Cobro de contado de ${formatLedgerAmount(total, (c || null) as LedgerCurrency | null, ledger).primary}`,
+    ),
+    ...(fiados ?? []).map(
+      (f) =>
+        `Fiado de ${formatLedgerAmount(Number(f.amount), (f.currency ?? null) as LedgerCurrency | null, ledger).primary}`,
+    ),
+  ];
+
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* LA BARRA DEL FRAME. Sin el «⋮» todavía: su única opción sería
-          «Eliminar venta», y ese borrado no existe --no hay ningún camino en
-          la app que borre una venta, solo el rollback interno de cuando falla
-          el registro--. Es trabajo aparte y encargado; un menú con una opción
-          que no funciona es peor que no tener menú. */}
+      {/* LA BARRA DEL FRAME: flecha a la izquierda, «⋮» a la derecha. */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between border-b bg-background px-4 py-3">
         <Button variant="ghost" size="icon" asChild className="-ml-2">
           <Link href={`/clients/${cliente.id}`} aria-label={`Volver a ${cliente.name}`}>
             <ChevronLeft className="size-5" aria-hidden="true" />
           </Link>
         </Button>
+        <VentaAcciones saleId={venta.id as string} clientId={cliente.id} loQueSeLleva={loQueSeLleva} />
       </div>
 
       <h1 className="text-2xl leading-8 font-normal">Detalle de transacción</h1>
@@ -182,7 +214,7 @@ export default async function VentaDeContadoPage({
               <span className="inline-flex items-center gap-1.5 tabular-nums">
                 {monedaTecleada === "VES" ? formatBs(entregado) : formatear(entregado)}
                 {monedaTecleada ? (
-                  <CurrencyFlagIcon currency={monedaTecleada} className="size-6" />
+                  <CurrencyFlagIcon currency={monedaTecleada} className="size-4" />
                 ) : null}
               </span>
             </Fila>
@@ -197,9 +229,16 @@ export default async function VentaDeContadoPage({
               <span className="inline-flex flex-col items-end">
                 <span className="inline-flex items-center gap-1.5 tabular-nums">
                   {formatear(total)}
-                  <CurrencyFlagIcon currency={moneda} className="size-6" />
+                  <CurrencyFlagIcon currency={moneda} className="size-4" />
                 </span>
-                <span className="text-xs text-muted-foreground">Al día de la transacción</span>
+                {/* «Al día de pago» AQUÍ TAMBIÉN, no «Al día de la
+                    transacción» como en el fiado. En una venta de contado las
+                    dos fechas son el mismo instante, así que ninguna de las
+                    dos sería falsa -- pero tener los dos rótulos en la misma
+                    tarjeta se lee como si fueran dos fechas distintas, y el
+                    «Total» de abajo ya dice «al día de pago» por decisión del
+                    dueño del 2026-10-20. */}
+                <span className="text-xs text-muted-foreground">Al día de pago</span>
               </span>
             </Fila>
           ) : null}
@@ -218,7 +257,7 @@ export default async function VentaDeContadoPage({
                   </span>
                 ) : null}
               </span>
-              {moneda ? <CurrencyFlagIcon currency={moneda} className="size-6 shrink-0" /> : null}
+              {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" /> : null}
             </span>
           </div>
         </div>

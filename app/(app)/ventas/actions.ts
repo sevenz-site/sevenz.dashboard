@@ -1184,3 +1184,112 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     rates: contexto.ok ? contexto.rates : null,
   };
 }
+
+// ===========================================================================
+// ELIMINAR UNA VENTA
+// ===========================================================================
+//
+// Encargo del dueño el 2026-10-20, al pedir el «⋮» del detalle de una venta de
+// contado: *«Agreguemos de una vez "⋮" en el detalle de la venta para
+// eliminarla»*.
+//
+// NO EXISTÍA NINGÚN CAMINO QUE BORRARA UNA VENTA. El único `delete` sobre
+// `sales` en todo el repo era el rollback interno de cuando falla el registro.
+// El dinero cobrado de contado no tenía ficha ni forma de deshacerse.
+//
+// ===========================================================================
+// BORRA LA VENTA ENTERA, NO LA PARTE DE UNA MONEDA, Y ESO ES DELIBERADO
+//
+// El menú vive en la pantalla de UNA moneda, así que la tentación es borrar
+// solo esa parte. No se puede, y la razón es de datos:
+//
+//   · Quitar los pagos de una moneda y dejar sus líneas deja una venta que
+//     `registrarVenta` nunca habría guardado: productos vendidos, nada
+//     cobrado y ningún cargo que lo represente.
+//   · Quitar las dos cosas sería un borrado DURO: `sale_lines` y
+//     `sale_payments` no tienen `deleted_at`, así que no habría vuelta atrás.
+//     Todo lo demás de esta app se borra en blando y se puede restaurar.
+//
+// Así que «Eliminar venta» borra la venta y los fiados que nacieron de ella.
+// La confirmación lo dice con sus cifras: lo que no se puede evitar es que el
+// tendero no sepa lo que se lleva por delante.
+//
+// POR ESO SE LLAMA DISTINTO QUE EL DEL FIADO. «Eliminar transacción», en la
+// ficha de un fiado, sigue borrando SOLO ese movimiento. Dos alcances, dos
+// nombres; no es una inconsistencia, es la distinción dicha en voz alta.
+export async function eliminarVenta(
+  saleId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+
+  // LA PROPIEDAD, EN CÓDIGO. `sales` lleva `owner_id` directo y aun así se
+  // compara aquí: es la regla de `CLAUDE.md` para toda fila que se toca por un
+  // id que llega del navegador.
+  const { data: venta } = await supabase
+    .from("sales")
+    .select("id, owner_id, client_id")
+    .eq("id", saleId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!venta || venta.owner_id !== user.id) {
+    return { ok: false, error: "No encontramos esa venta." };
+  }
+
+  // Los movimientos que nacieron de ella, para borrarlos con ella y para
+  // dejar su rastro restaurable.
+  const { data: movimientos } = await supabase
+    .from("movements")
+    .select("id, client_id")
+    .eq("sale_id", saleId)
+    .is("deleted_at", null);
+
+  const ahora = new Date().toISOString();
+
+  const { error: errorVenta } = await supabase
+    .from("sales")
+    .update({ deleted_at: ahora })
+    .eq("id", saleId)
+    .eq("owner_id", user.id);
+
+  if (errorVenta) {
+    console.error("[venta] eliminar:", errorVenta.message);
+    return { ok: false, error: "No pudimos eliminar la venta. Vuelve a intentarlo." };
+  }
+
+  for (const m of movimientos ?? []) {
+    const { error } = await supabase
+      .from("movements")
+      .update({ deleted_at: ahora })
+      .eq("id", m.id);
+    if (error) {
+      console.error("[venta] eliminar movimiento:", error.message);
+      continue;
+    }
+    // EL RASTRO QUE HACE QUE SE PUEDA RESTAURAR. Es la misma tabla que usa
+    // `deleteMovement`, así que el fiado sale en la misma notificación de
+    // siempre y `restoreMovement` lo devuelve — y con él la venta, porque esa
+    // función revive también la venta de la que nació.
+    const { error: errorAviso } = await supabase.from("movement_deletions").insert({
+      movement_id: m.id,
+      owner_id: user.id,
+      client_id: m.client_id,
+    });
+    if (errorAviso) console.error("[venta] aviso de borrado:", errorAviso.message);
+  }
+
+  const { error: errorRecalc } = await supabase.rpc("recalc_client_running_balance", {
+    p_client_id: venta.client_id,
+  });
+  if (errorRecalc) console.error("[venta] recalc:", errorRecalc.message);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${venta.client_id}`);
+  return { ok: true };
+}

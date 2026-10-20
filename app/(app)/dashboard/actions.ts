@@ -895,7 +895,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, clients!inner(owner_id)")
+    .select("id, client_id, sale_id, clients!inner(owner_id)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
@@ -903,6 +903,24 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
 
   if (fetchError || !movement) {
     return { error: "No encontramos esa transacción eliminada." };
+  }
+
+  // LA VENTA DE LA QUE NACIÓ VUELVE CON ÉL, si también estaba borrada.
+  //
+  // Desde el 2026-10-20 hay una forma de borrar una venta entera
+  // (`eliminarVenta`), y borra la venta Y sus fiados. Sin esta línea, restaurar
+  // el fiado desde su notificación lo devolvería al saldo mientras su venta
+  // sigue borrada: el movimiento existiría sin los productos que lo explican, y
+  // su parte de contado seguiría sin aparecer. Un restaurado a medias es peor
+  // que no poder restaurar, porque nadie se entera de que falta la mitad.
+  if (movement.sale_id) {
+    const { error: errorVenta } = await supabase
+      .from("sales")
+      .update({ deleted_at: null })
+      .eq("id", movement.sale_id)
+      .eq("owner_id", user.id)
+      .not("deleted_at", "is", null);
+    if (errorVenta) console.error("restoreMovement: no se pudo revivir la venta", errorVenta.message);
   }
 
   const { error: restoreError } = await supabase

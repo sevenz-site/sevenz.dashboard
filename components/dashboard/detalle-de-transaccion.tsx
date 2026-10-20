@@ -350,7 +350,7 @@ export function DetalleDeTransaccion({
                 ? monto
                 : formatLedgerAmount(abonoInicial ?? 0, currency, ledger).primary}
               {monedaDelMonto ? (
-                <CurrencyFlagIcon currency={monedaDelMonto} className="size-6" />
+                <CurrencyFlagIcon currency={monedaDelMonto} className="size-4" />
               ) : null}
             </span>
           </Fila>
@@ -361,7 +361,7 @@ export function DetalleDeTransaccion({
             <span className="inline-flex flex-col items-end">
               <span className="inline-flex items-center gap-1.5 tabular-nums">
                 {equivalente.texto}
-                <CurrencyFlagIcon currency={equivalente.moneda} className="size-6" />
+                <CurrencyFlagIcon currency={equivalente.moneda} className="size-4" />
               </span>
               <span className="text-xs text-muted-foreground">Al día de la transacción</span>
             </span>
@@ -385,7 +385,7 @@ export function DetalleDeTransaccion({
                 </span>
               ) : null}
             </span>
-            {currency ? <CurrencyFlagIcon currency={currency} className="size-6 shrink-0" /> : null}
+            {currency ? <CurrencyFlagIcon currency={currency} className="size-4 shrink-0" /> : null}
           </span>
         </div>
       </div>

@@ -100,14 +100,20 @@ export function CuotasTable({
                 Monto
               </th>
               {/* LA CUARTA COLUMNA, del frame `1488:10146`.
-                  
-                  `w-24` Y NO EL `w-[106px]` DEL FRAME, medido a 375px el
-                  2026-10-20: con 112px la columna «Vence» se quedaba sin sitio
-                  y «07 de oct de 2026» caía en dos líneas. 96px siguen
-                  bastando para «Plazo vencido», que es la etiqueta más larga
-                  que cabe ahí -- «Dentro del plazo» se encoge sola porque el
-                  chip no fuerza su ancho. */}
-              <th scope="col" className="w-24 text-right font-normal">
+
+                  `w-32` Y LA FECHA PUEDE PARTIRSE, por instrucción del dueño
+                  el 2026-10-20 con una captura: *«los chips del estado de la
+                  cuota se rompen, dale más ancho, no deben romperse, de ser
+                  necesario la fecha puede ir en dos líneas»*.
+
+                  Estuvo en `w-24` unas horas, y fue mi error de prioridades:
+                  ensanché «Vence» para que la fecha no se partiera y el chip
+                  se partió en su lugar. Una fecha en dos líneas se sigue
+                  leyendo; una pastilla partida parece la pantalla rota.
+
+                  128px es lo que pide «Dentro del plazo» --la etiqueta más
+                  larga-- a 12px con sus 6 de relleno a cada lado. */}
+              <th scope="col" className="w-32 text-right font-normal">
                 Estado
               </th>
             </tr>
@@ -116,7 +122,7 @@ export function CuotasTable({
             {filas.map((c) => (
               <tr key={c.numero} className="text-xs leading-4">
                 <td className="py-1 tabular-nums">{c.numero}</td>
-                <td className="py-1 whitespace-nowrap">{formatDate(c.fecha.toISOString())}</td>
+                <td className="py-1">{formatDate(c.fecha.toISOString())}</td>
                 <td className="py-1 text-right tabular-nums">{formatearMonto(c.monto)}</td>
                 <td className="py-1 text-right">
                   <ChipDeEstado estado={c.estado} />

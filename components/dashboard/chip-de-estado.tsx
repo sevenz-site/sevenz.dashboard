@@ -41,10 +41,19 @@ const ESTILO: Record<EstadoDelPlazo, string> = {
   pagado: "bg-[#ecfdf5] border-[#ecfdf5] text-[#007956]",
 };
 
+// `whitespace-nowrap` NO ES OPCIONAL AQUÍ. Lo reportó el dueño el 2026-10-20
+// con una captura: en la columna «Estado» de las cuotas, «Dentro del plazo»
+// caía en dos líneas dentro de la pastilla y se leía como dos chips rotos.
+// Una pastilla partida deja de parecer una etiqueta; quien la ve piensa que
+// la pantalla se rompió, no que el texto es largo.
+//
+// Quien lo monte tiene que darle sitio. Es la regla al revés de lo normal --
+// aquí NO cede el chip, cede la columna de al lado-- y es deliberada: el
+// estado es la respuesta de esa fila.
 export function ChipDeEstado({ estado }: { estado: EstadoDelPlazo }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-xs leading-4 ${ESTILO[estado]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${ESTILO[estado]}`}
     >
       {ETIQUETA_DEL_ESTADO[estado]}
     </span>
