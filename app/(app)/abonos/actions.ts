@@ -243,3 +243,155 @@ export async function registrarAbonoDirigido(
 
   return { ok: true, movementId: idDelAbono, clientId: cliente.id };
 }
+
+// ===========================================================================
+// EDITAR EL MONTO DE UN ABONO
+// ===========================================================================
+//
+// Encargo del dueño el 2026-10-20, al pedir el «⋮» de cada abono dentro de su
+// fiado (frame `1489:10209`): *«solo saldo, no toca fecha, se debe mandar
+// notificación vía whatsapp que se editó un abono»*.
+//
+// ES LA PRIMERA EDICIÓN DE UN MOVIMIENTO QUE EXISTE EN ESTA APP. Hasta hoy un
+// movimiento se creaba o se borraba, nunca se cambiaba, y eso no era un
+// descuido: cada fila de `movements` lleva una tasa sellada, un saldo
+// acumulado y un reparto de abonos que dependen de ella.
+//
+// ===========================================================================
+// LA FECHA NO SE TOCA, Y POR ESO LA TASA TAMPOCO
+//
+// Son la misma decisión vista dos veces. La tasa que este abono selló es la
+// del día en que se hizo; si la fecha no se mueve, resellarla sería cambiar el
+// pasado. Así que `exchange_rate_used`, `rate_usd_at_time`, `rate_eur_at_time`
+// y `created_at` se quedan exactamente como estaban.
+//
+// ===========================================================================
+// SE EDITA EN LA MONEDA EN QUE SE TECLEÓ, no en la del libro
+//
+// Un abono escrito como «Bs. 900» guardó 900 en `entry_amount` y $1,08 en
+// `amount`. Dejar editar solo el dólar convertiría ese respaldo en mentira: el
+// tendero vería «Bs. 900» junto a una cifra que ya no sale de ahí. Así que el
+// diálogo pide la misma moneda que se usó y la conversión la hace la tasa que
+// el abono ya tiene sellada — la misma aritmética de `convertirDesdeBolivares`
+// (`Math.round((bs / porUnidad) * 100) / 100`), escrita aquí porque aquí la
+// tasa no se resuelve: se lee de la fila.
+//
+// ===========================================================================
+// EL AVISO AL CLIENTE NO SALE TODAVÍA, Y SE DICE EN VOZ ALTA
+//
+// El dueño lo pidió, y hace falta una plantilla de Meta que no existe: es
+// `CT-114`. Hasta que exista, esto edita y NO avisa, y la pantalla lo dice.
+// Prometer un aviso que no sale es peor que no ofrecerlo.
+export type EdicionDeAbono = {
+  movementId: string;
+  // En la moneda en que se tecleó el abono: bolívares si se escribió así, la
+  // del libro si no. Lo que el diálogo enseña y lo que aquí se espera son la
+  // misma cifra.
+  monto: number;
+};
+
+export async function editarAbonoDirigido(
+  entrada: EdicionDeAbono,
+): Promise<{ ok: true; movementId: string } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+
+  // ── EL ABONO, Y LA PROPIEDAD COMPROBADA A TRAVÉS DEL CLIENTE ────────
+  const { data: abono } = await supabase
+    .from("movements")
+    .select(
+      "id, client_id, type, amount, currency, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id, clients!inner(id, owner_id)",
+    )
+    .eq("id", entrada.movementId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const cliente = abono?.clients as unknown as { id: string; owner_id: string } | null;
+  if (!abono || !cliente || cliente.owner_id !== user.id) {
+    return { ok: false, error: "No encontramos ese abono." };
+  }
+  if (abono.type !== "payment") return { ok: false, error: "No encontramos ese abono." };
+
+  if (!(entrada.monto > 0)) return { ok: false, error: "Escribe cuánto te pagó." };
+
+  // ── LO QUE VA A QUEDAR GUARDADO EN EL LIBRO ─────────────────────────
+  let monto = entrada.monto;
+  let entryAmount: number | null = abono.entry_amount == null ? null : Number(abono.entry_amount);
+  if (abono.entry_currency === "VES") {
+    const porUnidad = abono.exchange_rate_used == null ? null : Number(abono.exchange_rate_used);
+    if (!porUnidad || porUnidad <= 0) {
+      // Un abono en bolívares sin tasa sellada no se puede reconvertir, y
+      // adivinar una tasa para una fila vieja sería inventar dinero.
+      return {
+        ok: false,
+        error: "Este abono no guardó la tasa del día, así que no se puede editar. Bórralo y regístralo de nuevo.",
+      };
+    }
+    monto = Math.round((entrada.monto / porUnidad) * 100) / 100;
+    entryAmount = entrada.monto;
+    if (monto <= 0) {
+      return { ok: false, error: "El monto es demasiado pequeño para registrarlo. Revisa la cifra." };
+    }
+  } else if (abono.entry_currency != null) {
+    // Se tecleó en la moneda del libro: lo escrito ES lo que se guarda, y el
+    // respaldo tiene que seguirlo.
+    entryAmount = entrada.monto;
+  }
+
+  // ── EL TOPE: LO QUE ESE FIADO DEBE, CONTANDO ESTE ABONO ─────────────
+  //
+  // `pending` YA DESCUENTA el abono tal como está guardado hoy, así que el
+  // techo de la cifra nueva es `pending + lo que este abono vale ahora`. Sin
+  // ese `+`, subir un abono de 10 a 11 en un fiado saldado se rechazaría
+  // aunque sobre sitio.
+  //
+  // Un abono SIN dirigir no tiene fiado contra el que topar: lo reparte la
+  // cola FIFO sobre el saldo total. Se topa entonces contra lo que el cliente
+  // debe en esa moneda, que es la regla de `addMovement`.
+  if (abono.applies_to_movement_id) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: cliente.id,
+    });
+    const abierto = ((abiertos ?? []) as { movement_id: string; pending: number }[]).find(
+      (c) => c.movement_id === abono.applies_to_movement_id,
+    );
+    const techo = Number(abierto?.pending ?? 0) + Number(abono.amount);
+    if (monto - techo > HOLGURA) {
+      return {
+        ok: false,
+        error: `Ese fiado solo admite ${formatPriceAmount(techo, (abono.currency ?? "COP") as PriceCurrency)}. Escribe esa cantidad o menos.`,
+      };
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("movements")
+    .update({ amount: monto, entry_amount: entryAmount })
+    .eq("id", abono.id)
+    .eq("client_id", cliente.id);
+
+  if (errorUpdate) {
+    console.error("[abono] editar:", errorUpdate.message);
+    return { ok: false, error: "No pudimos guardar el cambio. Vuelve a intentarlo." };
+  }
+
+  // EL SALDO ACUMULADO SE REHACE, que es lo que de verdad cuesta de editar un
+  // movimiento: `running_balance` de ESTE y de todos los posteriores depende
+  // de su importe. Es la misma función que usa el borrado.
+  const { error: errorRecalc } = await supabase.rpc("recalc_client_running_balance", {
+    p_client_id: cliente.id,
+  });
+  if (errorRecalc) console.error("[abono] recalc:", errorRecalc.message);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${cliente.id}`);
+  revalidatePath(`/transacciones/${abono.id}`);
+  if (abono.applies_to_movement_id) revalidatePath(`/transacciones/${abono.applies_to_movement_id}`);
+
+  return { ok: true, movementId: abono.id as string };
+}

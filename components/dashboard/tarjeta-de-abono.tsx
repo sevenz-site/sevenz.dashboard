@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { AbonoAcciones } from "@/components/dashboard/abono-acciones";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { CLASE_TARJETA } from "@/components/dashboard/tarjeta-de-fiado";
@@ -34,6 +34,15 @@ export type AbonoDirigido = {
   // LA TASA QUE ESTE ABONO SELLÓ, para los bolívares «al día del abono».
   // `null` en un negocio colombiano y en todo lo anterior al sellado.
   tasaSellada?: number | null;
+  // EN QUÉ MONEDA SE TECLEÓ Y CUÁNTO, para el diálogo de editar: se edita en
+  // la misma moneda que se usó, no en la del libro. Un abono escrito como
+  // «Bs. 900» guardó 900 aquí y $1,08 en `amount`; dejar editar solo el dólar
+  // convertiría ese respaldo en mentira.
+  entryCurrency?: "VES" | PriceCurrency | null;
+  entryAmount?: number | null;
+  // Lo máximo que admite su fiado contando este abono, para el tope del
+  // diálogo. `null` en un abono sin dirigir.
+  techo?: number | null;
 };
 
 export function TarjetaDeAbono({
@@ -65,7 +74,13 @@ export function TarjetaDeAbono({
     abono.tasaSellada != null ? abono.amount * abono.tasaSellada : null;
 
   return (
-    <Link href={href} className={CLASE_TARJETA}>
+    // EL «⋮» VA FUERA DEL ENLACE, no dentro. Un `<button>` dentro de un `<a>`
+    // es HTML inválido y el navegador decide solo qué pasa al tocarlo; la
+    // tarjeta pasa a ser un contenedor con el enlace y el botón como hermanos.
+    // El borde y el fondo se quedan en el contenedor para que la pastilla siga
+    // siendo una sola cosa a la vista.
+    <div className={`${CLASE_TARJETA} gap-2`}>
+      <Link href={href} className="flex min-w-0 flex-1 items-center justify-between gap-3">
       {/* LA FECHA ARRIBA Y EL CHIP DEBAJO, sin título — frame `1489:10209`,
           nodos `1489:10233` y el `chip_info` de al lado.
 
@@ -105,8 +120,19 @@ export function TarjetaDeAbono({
             </span>
           ) : null}
         </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </div>
-    </Link>
+      </Link>
+      {/* EL «⋮» SUSTITUYE AL CHEVRON del frame viejo. Los dos vivían en el
+          mismo sitio y los dos dicen «aquí hay más»; el chevron lo decía de la
+          navegación, que ya la tiene el enlace de al lado, y el menú lo dice
+          de las dos acciones que el dueño pidió el 2026-10-20. */}
+      <AbonoAcciones
+        movementId={abono.movementId}
+        montoTecleado={abono.entryAmount ?? abono.amount}
+        monedaTecleada={abono.entryCurrency ?? abono.currency}
+        techo={abono.techo ?? null}
+        monedaDelLibro={abono.currency}
+      />
+    </div>
   );
 }
