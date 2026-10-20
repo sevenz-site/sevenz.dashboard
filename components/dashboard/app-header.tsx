@@ -81,7 +81,16 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     // tiene ninguna razon para abrirlo. Por eso el 2026-10-19 dejo de ser un
     // comentario y paso a `CLAUDE.md`: toda pantalla nueva entra aqui ANTES de
     // escribirse, no despues de que alguien la vea doble.
-    pathname.startsWith("/abonos");
+    pathname.startsWith("/abonos") ||
+    // ── `/transacciones`, el 2026-10-19 ─────────────────────────────
+    //
+    // El detalle de una transacción dejó de ser un diálogo y pasó a ser una
+    // pantalla, con la cabecera que dibujan los frames `1465:18349` y
+    // `1463:18100`: flecha de volver a la izquierda y «⋮» a la derecha.
+    //
+    // ESTA LÍNEA SE ESCRIBIÓ ANTES QUE LA PANTALLA, que es lo que `CLAUDE.md`
+    // pide desde la cuarta vez que esto pasó. No es criterio: es orden.
+    pathname.startsWith("/transacciones");
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries

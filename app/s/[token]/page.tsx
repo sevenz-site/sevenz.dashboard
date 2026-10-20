@@ -21,10 +21,8 @@ import type {
   MovementCurrencyCode,
 } from "@/lib/types";
 import {
-  formatBalanceSummary,
   type LedgerDisplay,
 } from "@/lib/exchange-rate/movement-display";
-import type { DatosParaCompartir } from "@/lib/share-balance";
 import { FeedbackBanner } from "@/components/public/feedback-banner";
 import { ShareDialogs } from "@/components/public/share-dialogs";
 import { ShareSettings } from "@/components/public/share-settings";
@@ -320,17 +318,6 @@ export default async function SharedBalancePage({
     }
   })();
 
-  const compartir: DatosParaCompartir = {
-    clientName: shared.client_name,
-    balanceText: formatBalanceSummary(
-      shared.balance,
-      shared.balance_usd,
-      shared.balance_eur,
-      ledger,
-    ),
-    enlace: { de: "cliente", token },
-  };
-
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
       {/* ONE QUESTION PER VISIT. The two dialogs are mounted together, by a
@@ -529,8 +516,8 @@ export default async function SharedBalancePage({
               <h2 className="mt-1 text-xl font-semibold">Historial</h2>
             }
             movements={movements}
+            token={token}
             ledger={ledger}
-            compartir={compartir}
           />
           {!showAll && shared.movement_total > movements.length ? (
             <div className="flex flex-col items-center gap-2 pt-1">

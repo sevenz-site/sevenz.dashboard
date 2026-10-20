@@ -43,9 +43,18 @@ export function TarjetaDeFiado({
   rates,
   href,
   onClick,
+  mostrarPendiente = true,
 }: {
   fiado: FiadoAbierto;
   rates: BolivarRates | null;
+  // «Debe $X» SE CALLA CUANDO NO SE PUEDE CALCULAR.
+  //
+  // Esa cifra sale de `get_open_charges_for_client`, que reparte los abonos
+  // distinguiendo los dirigidos de los que la cola FIFO aplicó. La pantalla del
+  // cliente no puede llamarla —hace falta el id del cliente y la clave anon no
+  // lo tiene—, así que allí llega `pending: 0`. Dibujarlo sería decirle a
+  // alguien que un fiado vivo está saldado, que es peor que no decir nada.
+  mostrarPendiente?: boolean;
   // Uno de los dos, nunca los dos. `href` navega; `onClick` cambia lo que se
   // está mirando sin moverse de sitio.
   href?: string;
@@ -90,12 +99,14 @@ export function TarjetaDeFiado({
             un fiado en dolares y otro en euros, y sin bandera lo unico que los
             separa es un simbolo de un caracter al principio del numero. La
             captura del dueno tiene justamente dos fiados de 5,84 seguidos. */}
-        <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-          {fiado.currency ? (
-            <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
-          ) : null}
-          Debe {formatPriceAmount(fiado.pending, fiado.currency ?? "COP")}
-        </span>
+        {mostrarPendiente ? (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            {fiado.currency ? (
+              <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
+            ) : null}
+            Debe {formatPriceAmount(fiado.pending, fiado.currency ?? "COP")}
+          </span>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex flex-col items-end">

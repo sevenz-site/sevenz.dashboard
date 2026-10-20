@@ -12,7 +12,6 @@ import { filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
-import { getBolivarRates } from "@/lib/products/catalog";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
@@ -22,7 +21,6 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -36,9 +34,7 @@ import {
   type Movement,
   type OwnerCountry,
 } from "@/lib/types";
-import type { SaleLineRow } from "@/lib/sale-lines";
 
-const SIGNED_URL_TTL_SECONDS = 300;
 
 export default async function ClientDetailPage({
   params,
@@ -158,15 +154,10 @@ export default async function ClientDetailPage({
   // Status/mora/score are one combined judgement per client even when a VE
   // owner tracks two independent balances — converted to USD so they're
   // comparable, per the "uno solo, combinado" decision.
-  // Un solo mensaje para los dos botones que lo mandan: "Compartir enlace" en
-  // el perfil y "Compartir" dentro de la ficha de cada movimiento. Lo calculaban
-  // dos sitios por su cuenta con la misma llamada repetida; ahora es uno.
+  // El mensaje de «Compartir enlace» del perfil. Lo mandaba también el
+  // «Compartir» de la ficha de cada movimiento, que desde el 2026-10-19 vive en
+  // la pantalla del detalle y lo arma allí con los mismos datos.
   const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
-  const compartir: DatosParaCompartir = {
-    clientName: client.name,
-    balanceText,
-    enlace: { de: "dueño", clientId: client.id },
-  };
 
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
   const status = getClientStatus(
@@ -311,7 +302,7 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} ledger={ledger} compartir={compartir} />
+        <MovementHistory clientId={id} ledger={ledger} />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -462,17 +453,20 @@ async function CreditScoreSection({
   );
 }
 
+// EL HISTORIAL YA NO CARGA LO QUE ERA DE LA FICHA.
+//
+// Hasta el 2026-10-19 cada fila montaba un diálogo, así que esta función tenía
+// que traer de antemano todo lo que ese diálogo podía necesitar: una URL
+// firmada por cada foto, el reparto de abonos por fiado, las líneas de venta de
+// cada movimiento y con qué compartir. El detalle pasó a ser una pantalla con
+// dirección propia, y ahora eso lo carga la página de destino — una vez, para
+// el movimiento que se abrió, en vez de para los cincuenta de la lista.
 async function MovementHistory({
   clientId,
   ledger,
-  compartir,
 }: {
   clientId: string;
   ledger: LedgerDisplay | null;
-  // El mismo mensaje y el mismo enlace que "Compartir enlace" del perfil. Se
-  // calcula arriba, donde ya estan el nombre y el saldo, y baja hasta aqui:
-  // este componente solo lee movimientos y no sabria construirlo.
-  compartir: DatosParaCompartir;
 }) {
   const supabase = await createClient();
 
@@ -485,67 +479,6 @@ async function MovementHistory({
 
   const movementRows = (movements ?? []) as Movement[];
 
-  // ── LO QUE CADA FIADO TODAVÍA DEBE ──────────────────────────────────
-  //
-  // Para la tarjeta «Abonó a» del detalle de un abono dirigido, que enseña
-  // «Debe $X» del fiado que pagó (frame `1465:18349`).
-  //
-  // DE LA MISMA FUNCIÓN QUE EL FLUJO DE ABONAR, no de una cuenta propia: ese
-  // reparto distingue los abonos dirigidos de los que la cola FIFO repartió, y
-  // una segunda implementación aquí acabaría enseñando una cifra distinta de la
-  // que el tope del abono acepta.
-  //
-  // UNA SOLA LLAMADA PARA TODA LA LISTA, por la misma razón que los productos
-  // de abajo: la ficha se abre en un diálogo ya montado.
-  //
-  // Solo devuelve los ABIERTOS. Un fiado saldado no sale, y su pendiente es
-  // cero — que es exactamente lo que hay que enseñar.
-  // La tasa para el «Bs. … hoy» de esa tarjeta, sacada de la que ya alimenta
-  // el resto de la pantalla. `null` en un negocio colombiano, y entonces la
-  // tarjeta sencillamente no dibuja esa línea.
-  const rates = ledger ? await getBolivarRates(ledger.rate) : null;
-
-  const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
-    p_client_id: clientId,
-  });
-  const pendientePorFiado = new Map<string, number>(
-    ((abiertos ?? []) as { movement_id: string; pending: number }[]).map((c) => [
-      c.movement_id,
-      Number(c.pending),
-    ]),
-  );
-
-  // QUÉ SE LLEVÓ EL CLIENTE EN CADA MOVIMIENTO — paso 8, entregable `E`.
-  //
-  // UNA SOLA CONSULTA PARA TODA LA LISTA y no una por ficha: el detalle se
-  // abre en un diálogo que ya está montado, así que pedirlo al abrirlo
-  // significaría una espera justo donde el dueño espera un dato inmediato.
-  // Son pocas filas --la mayoría de los movimientos no llevan productos-- y
-  // van indexadas por `movement_id`.
-  //
-  // SE BUSCAN POR LA VENTA Y NO POR EL MOVIMIENTO desde el 2026-10-17: las
-  // líneas se mudaron a `sale_lines` (migración `124`) porque una venta
-  // pagada al contado no tiene movimiento del que colgar. El movimiento
-  // apunta a su venta con `sale_id`, así que el índice sigue siendo por
-  // movimiento y la pantalla no se entera del cambio.
-  const productosPorMovimiento = new Map<string, SaleLineRow[]>();
-  const ventaDelMovimiento = new Map<string, string>();
-  for (const m of movementRows) {
-    if (m.sale_id) ventaDelMovimiento.set(m.sale_id, m.id);
-  }
-  if (ventaDelMovimiento.size > 0) {
-    const { data: lineas } = await supabase
-      .from("sale_lines")
-      .select("sale_id, name, quantity, unit_price")
-      .in("sale_id", [...ventaDelMovimiento.keys()]);
-    for (const l of lineas ?? []) {
-      const movementId = ventaDelMovimiento.get(l.sale_id);
-      if (!movementId) continue;
-      const lista = productosPorMovimiento.get(movementId) ?? [];
-      lista.push({ name: l.name, quantity: Number(l.quantity), unitPrice: Number(l.unit_price) });
-      productosPorMovimiento.set(movementId, lista);
-    }
-  }
   // ── LAS VENTAS PAGADAS ENTERAS ──────────────────────────────────
   //
   // No son movimientos y por eso no vienen en la consulta de arriba: una
@@ -561,6 +494,15 @@ async function MovementHistory({
     .eq("client_id", clientId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
+
+  // LAS VENTAS QUE YA DEJARON UN CARGO, para dejarlas fuera de las de
+  // contado. Se construía más arriba, junto a las líneas de cada ficha; esas
+  // se fueron a la pantalla del detalle el 2026-10-19 y esto se quedó, porque
+  // es la otra cosa para la que servía.
+  const ventaDelMovimiento = new Map<string, string>();
+  for (const m of movementRows) {
+    if (m.sale_id) ventaDelMovimiento.set(m.sale_id, m.id);
+  }
 
   let ventasDeContado: VentaDeContado[] = [];
   const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
@@ -580,18 +522,6 @@ async function MovementHistory({
     );
   }
 
-  const photoPaths = movementRows.map((m) => m.photo_path).filter((p): p is string => Boolean(p));
-
-  const photoUrls = new Map<string, string>();
-  if (photoPaths.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from("attachments")
-      .createSignedUrls(photoPaths, SIGNED_URL_TTL_SECONDS);
-    for (const entry of signed ?? []) {
-      if (entry.path && entry.signedUrl) photoUrls.set(entry.path, entry.signedUrl);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-2">
       {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo pueda
@@ -600,12 +530,7 @@ async function MovementHistory({
       <MovementHistoryList
         titulo={<h2 className="mt-1 text-xl font-semibold">Historial de transacciones</h2>}
         movements={movementRows}
-        photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
-        rates={rates}
-        pendientePorFiado={pendientePorFiado}
-        compartir={compartir}
-        productosPorMovimiento={productosPorMovimiento}
         ventasDeContado={ventasDeContado}
       />
     </div>

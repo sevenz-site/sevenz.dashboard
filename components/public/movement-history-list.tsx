@@ -9,7 +9,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { MovementDetailPopover } from "@/components/dashboard/movement-detail-popover";
+import Link from "next/link";
 import {
   MovementTypeFilter,
   type TipoFiltro,
@@ -19,7 +19,6 @@ import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { getBalanceLabel } from "@/lib/types";
-import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 type SharedMovement = {
@@ -55,15 +54,17 @@ const PAGE_SIZE = 10;
 
 export function MovementHistoryList({
   movements,
+  token,
   ledger = null,
-  compartir = null,
   titulo = null,
 }: {
   movements: SharedMovement[];
+  // EL TOKEN DE LA DIRECCIÓN QUE EL CLIENTE YA TIENE ABIERTA. Cada fila lleva
+  // a `/s/<token>/t/<id>` desde el 2026-10-19, cuando el detalle dejó de ser un
+  // diálogo. Es lo único que hace falta para construir ese enlace, y el cliente
+  // ya lo trae en la barra del navegador.
+  token: string;
   ledger?: LedgerDisplay | null;
-  // Aqui el enlace sale de la direccion que el cliente ya tiene abierta: pedir
-  // uno al servidor solo responde a un dueño con sesion.
-  compartir?: DatosParaCompartir | null;
   // El rótulo de la sección, para poder poner el filtro a su derecha.
   titulo?: React.ReactNode;
 }) {
@@ -127,26 +128,10 @@ export function MovementHistoryList({
 
           return (
           <li key={m.id}>
-            <MovementDetailPopover
-              type={m.type}
-              amount={m.amount}
-              currency={m.currency}
-              description={m.description}
-              plazoDias={m.plazo_dias}
-              cuotas={m.cuotas}
-              createdAt={m.created_at}
-              runningBalance={m.running_balance}
-              balanceLabel={getBalanceLabel(m.running_balance)}
-              entryCurrency={m.entry_currency}
-              entryAmount={m.entry_amount}
-              exchangeRateUsed={m.exchange_rate_used}
-              ledger={ledger}
-              compartir={compartir}
+            <Link
+              href={`/s/${token}/t/${m.id}`}
+              className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-              >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {truncateText(
@@ -190,8 +175,8 @@ export function MovementHistoryList({
                   </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>
-              </button>
-            </MovementDetailPopover>
+            </Link>
+
           </li>
           );
         })}

@@ -393,6 +393,13 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // con la misma línea.
   const enPedidos = pathname.startsWith("/productos/ordenes");
 
+  // Y EL DETALLE DE UNA TRANSACCIÓN, por lo mismo: el botón cae encima de la
+  // foto adjunta, que es lo último de la pantalla y justo el respaldo que se
+  // abre esta ficha para mirar. Los frames `1465:18349` y `1463:18100` no lo
+  // dibujan. La barra de abajo sí se queda, como en Pedidos: esto es una hoja
+  // a la que se llega desde una lista, no un flujo a medias.
+  const enTransaccion = pathname.startsWith("/transacciones");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
@@ -501,7 +508,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
 
           Y no sale en /import, ni en /profile, ni en Pedidos: ver
           `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !enTransaccion && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
