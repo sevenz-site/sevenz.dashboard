@@ -102,6 +102,60 @@ sería la forma de que un día no coincidan.
 - **La miga de pan de `/admin`** (`‹ Cuentas`, 12px, gris): es navegación
   jerárquica con texto, no la flecha de volver de una cabecera.
 
+## El estado vacío de una lista sale de `empty-state.tsx`
+
+**`EmptyState`, con `title`, `subtitle` opcional y botones como hijos.**
+
+```tsx
+import { EmptyState } from "@/components/dashboard/empty-state";
+
+<EmptyState title="Todavía no tienes productos" subtitle="Se van agregando solos cuando vendes." />
+```
+
+Frame `1499:9618`, encargo del dueño el 2026-10-20: *«ese estilo de empty
+state debe ser el estilo para todos los empty states»*.
+
+**Qué había.** Dieciséis escritos a mano, con bordes punteados y sólidos,
+`rounded-lg` y `rounded-xl`, títulos en `text-sm`, `text-base` y
+`font-medium`, y rellenos de `py-8`, `py-10`, `py-12` y `py-16`. Cada uno
+defendible por separado; juntos, cuatro maneras de decir lo mismo. Es la misma
+deriva que el título de pantalla y la flecha de volver, el mismo día, y por la
+misma vía: no había dónde mirar.
+
+### El borde es SÓLIDO, y eso cambió la mitad
+
+Un borde punteado se lee como «aquí falta algo por cargar» — es la convención
+de un hueco o de una zona para soltar archivos. Un estado vacío no es eso: es
+una respuesta completa, y a menudo buena («no tienes pedidos sin atender»).
+
+**La zona de soltar fotos de «Subir libreta» SÍ sigue punteada**, por lo mismo
+al revés: ahí el punteado dice «esto está esperando algo», que es verdad.
+
+### Una frase suelta se parte en título y subtítulo
+
+No es reescribir copy: es repartir la que ya hay entre las dos ranuras que el
+frame define. «Ningún pedido coincide con lo que buscas. Prueba con otro
+nombre o quita el filtro» ya se leía como titular más instrucción; ahora se
+dibuja así — 16 semibold arriba, 12 gris debajo.
+
+**Con los dos en 14 el bloque se lee como un párrafo**, y un párrafo se lee
+entero o no se lee. El salto de tamaño es lo que lo convierte en algo que se
+entiende de un vistazo.
+
+### El único con icono, y por qué
+
+El de Reportes conserva su `ChartColumn`: esa caja sustituye a un **gráfico**,
+no a una lista, y sin icono el hueco que deja una gráfica se lee como un error
+de carga. Va dentro del `title`; no se le añadió una ranura de icono a
+`EmptyState` para un solo caso.
+
+### Lo que NO es un estado vacío
+
+No lo son, y por eso siguen escritos a mano: los marcos de «sin foto adjunta»
+(son el hueco de una imagen), las zonas de soltar archivos de «Subir libreta»,
+y los avisos de error de carga («No pudimos cargar tus pedidos»), que dicen que
+algo falló y no que no hay nada.
+
 ## Contextual bar (phone only)
 
 A screen reached *from* somewhere — a client, Malas pagas — replaces the app
