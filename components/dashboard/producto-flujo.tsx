@@ -205,11 +205,11 @@ export function ProductoFlujo({
     }
     if (paso === 2) {
       if (ventaRetail && !tienePrecio("retail")) {
-        setError("Pon el precio al detal, o apaga «Venta al detal».");
+        setError("Debes fijar al menos un precio al detal");
         return;
       }
       if (ventaWholesale && !tienePrecio("wholesale")) {
-        setError("Pon el precio al mayor, o apaga «Venta al mayor».");
+        setError("Debes fijar al menos un precio al mayor");
         return;
       }
     }
@@ -639,8 +639,23 @@ export function ProductoFlujo({
         </div>
       </div>
 
+      {/* ── 24px ENTRE CAMPOS, EN LOS TRES PASOS DE FORMULARIO ───────────
+          Decidido por el dueño el 2026-10-20 — *«incrementa el gap entonces a
+          24px»*— después de medirlo: ya eran los 16 que había pedido y los
+          seguía viendo apretados.
+
+          POR QUÉ 16 SE VEÍA CORTO AQUÍ Y NO EN OTRAS PANTALLAS: un campo de
+          esta app mide 32px de alto y su rótulo va pegado a 8. Así que cada
+          bloque rótulo+campo ocupa 60px y los separan 16 — una proporción que
+          en una lista de cuatro campos seguidos deja menos aire ENTRE dos
+          campos que DENTRO de uno más su rótulo. Con 24 la separación entre
+          bloques vuelve a ser mayor que la de dentro, que es lo que hace que
+          se lean como cuatro cosas y no como una parrilla.
+
+          EL 4/4 NO ENTRA: no es un formulario, son filas de lectura con el
+          ritmo de 8px que dibuja el frame `1465:19856`. */}
       {paso === 1 ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
               <Label htmlFor="producto_nombre">Nombre del producto</Label>
               <Input
@@ -698,7 +713,40 @@ export function ProductoFlujo({
               disabled={saving}
             />
 
-            <div className="flex flex-col gap-2">
+            {/* EL PROVEEDOR CIERRA EL PASO 1, y ya no va detrás del costo:
+                el costo se mudó al 2/4 el 2026-10-20 (ver su comentario allí).
+                Lo que queda aquí es qué es el producto y cuánto hay. */}
+            <SupplierField
+              value={supplier}
+              onChange={setSupplier}
+              suggestions={supplierSuggestions}
+              disabled={saving}
+            />
+        </div>
+      ) : null}
+
+      {paso === 2 ? (
+        <div className="flex flex-col gap-6">
+            {/* ── EL COSTO ABRE ESTA PANTALLA ──────────────────────────────
+                Instrucción del dueño el 2026-10-20: *«cambiar el campo de
+                "Costo unitario" a la pantalla de "Precio", ponlo de primero,
+                ya que el margen depende de que ese campo está seteado,
+                entonces para no hacer regresar al usuario a pantallas
+                anteriores»*.
+
+                Vivía en el 1/4, junto al nombre y el inventario, porque las
+                dos preguntas de la compra —cuánto te costó y dónde lo
+                compraste— iban juntas. Esa agrupación es defendible y pierde
+                contra lo que el flujo hace de verdad: el margen NO SE PUEDE
+                ELEGIR sin costo, y el desplegable del margen está aquí. Un
+                tendero que llega al 2/4 y toca «Margen al detal» se topaba con
+                «Primero pon el costo» y un campo que está dos pantallas atrás
+                — un error que no se puede arreglar donde sale, que es lo mismo
+                que ya costó mover la validación del nombre ese mismo día.
+
+                DE PRIMERO Y NO AL FINAL, porque es de lo que dependen los dos
+                bloques siguientes: se lee en el orden en que se usa. */}
+                        <div className="flex flex-col gap-2">
               {/* «Costo unitario» y no «Costo», a petición del dueño el
                   2026-10-10: el campo de arriba pregunta cuántas unidades hay,
                   así que «Costo» a secas se lee como el costo de todas ellas.
@@ -784,21 +832,7 @@ export function ProductoFlujo({
               )}
             </div>
 
-            {/* EL PROVEEDOR VA DESPUÉS DEL COSTO, que es el orden del frame y
-                también el de la cabeza: las dos preguntas son sobre la compra
-                —cuánto te costó y dónde lo compraste— y van juntas, antes de
-                pasar a las dos de la venta. */}
-            <SupplierField
-              value={supplier}
-              onChange={setSupplier}
-              suggestions={supplierSuggestions}
-              disabled={saving}
-            />
-        </div>
-      ) : null}
 
-      {paso === 2 ? (
-        <div className="flex flex-col gap-4">
             {/* AL DETAL PRIMERO, que es el orden del frame y el del día a día. */}
             <TierSection
               {...tierProps}
@@ -860,7 +894,7 @@ export function ProductoFlujo({
       ) : null}
 
       {paso === 3 ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-3 rounded-lg border p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 flex-col gap-1">
