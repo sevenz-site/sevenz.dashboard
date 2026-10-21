@@ -315,7 +315,7 @@ drop table if exists public.movement_products;
 drop function if exists public.movement_products_solo_cargos();
 
 comment on table public.sales is
-  'Una venta del tendero: qué se llevó el cliente y qué pagó en el momento. Una venta PAGADA no escribe nada en movements -- recalc_client_running_balance no tiene fila neutra y un type nuevo restaría del saldo--, y por eso el puntaje de credito y las graficas de fiado no la ven sin necesidad de filtrarla. Una venta a credito escribe en movements un cargo por LO QUE QUEDA, nunca por el total, con su plazo y sus cuotas. Un fiado manual es una venta sin pago: desde 2026-10-17 todas las lineas de producto viven en sale_lines, que sustituye a movement_products (122, que nunca llego a produccion).';
+  'Una venta del tendero: qué se llevó el cliente y qué pagó en el momento. Una venta PAGADA no escribe nada en movements -- recalc_client_running_balance no tiene fila neutra y un type nuevo restaría del saldo--, y por eso el puntaje de credito y las graficas de fiado no la ven sin necesidad de filtrarla. Una venta a credito escribe en movements un cargo por LO QUE QUEDA, nunca por el total, con su plazo y sus cuotas. Un fiado manual es una venta sin pago: desde 2026-10-17 todas las lineas de producto viven en sale_lines, que sustituye a movement_products (la tabla de la 122, que esta migracion borra).';
 
 insert into public.schema_migrations (key, description)
 values (
