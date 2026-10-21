@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { AbonoAcciones } from "@/components/dashboard/abono-acciones";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
@@ -47,13 +46,11 @@ export type AbonoDirigido = {
 
 export function TarjetaDeAbono({
   abono,
-  href,
   estado,
 }: {
   abono: AbonoDirigido;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
   // de «elegir uno» dentro de un flujo, así que no necesita `onClick`.
-  href: string;
   // EL ESTADO DE LA CUOTA QUE ESTE ABONO CUBRIÓ — frame `1489:10209`, y es la
   // respuesta del dueño del 2026-10-20 a qué mide el chip. `undefined` cuando
   // el fiado no tiene plazo: no hay fecha contra la que juzgar y no se dibuja.
@@ -74,13 +71,25 @@ export function TarjetaDeAbono({
     abono.tasaSellada != null ? abono.amount * abono.tasaSellada : null;
 
   return (
-    // EL «⋮» VA FUERA DEL ENLACE, no dentro. Un `<button>` dentro de un `<a>`
-    // es HTML inválido y el navegador decide solo qué pasa al tocarlo; la
-    // tarjeta pasa a ser un contenedor con el enlace y el botón como hermanos.
-    // El borde y el fondo se quedan en el contenedor para que la pastilla siga
-    // siendo una sola cosa a la vista.
+    // ── ESTA TARJETA NO SE TOCA: NO LLEVA ENLACE ───────────────────────
+    //
+    // Reportado por el dueño el 2026-10-21: *«al seleccionar un abono me abre
+    // el detalle del abono, eso está mal, quedamos que el abono no tendrá
+    // detalle, la card no es clickeable, solo los botones "more"»*.
+    //
+    // Envolvía todo su contenido en un `<Link>` al detalle del abono, que es
+    // una pantalla que esta decisión deja sin puerta de entrada desde aquí.
+    // Y tenía sentido cuando se escribió —el frame viejo dibujaba un chevron—
+    // pero el chevron ya se había sustituido por el «⋮» el 2026-10-20, y el
+    // enlace se quedó debajo: invisible, y disparándose en todo el ancho de la
+    // tarjeta salvo en el propio menú.
+    //
+    // POR QUÉ IMPORTA MÁS QUE UNA NAVEGACIÓN DE MÁS: lo único que el dueño
+    // puede hacer con un abono es editarlo o borrarlo, y las dos están en el
+    // «⋮». Un toque en cualquier otro punto se lo llevaba de la ficha del
+    // fiado que estaba leyendo, sin haber pedido nada.
     <div className={`${CLASE_TARJETA} gap-2`}>
-      <Link href={href} className="flex min-w-0 flex-1 items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
       {/* LA FECHA ARRIBA Y EL CHIP DEBAJO, sin título — frame `1489:10209`,
           nodos `1489:10233` y el `chip_info` de al lado.
 
@@ -115,13 +124,22 @@ export function TarjetaDeAbono({
             +{formatPriceAmount(abono.amount, abono.currency ?? "COP")}
           </span>
           {enBs != null ? (
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            // `text-right` Y NO SOLO `items-end`. Reportado por el dueño el
+            // 2026-10-21 con la segunda tarjeta de su captura: `items-end`
+            // alinea la CAJA, no el texto de dentro. Mientras la línea cabe
+            // entera —«Bs. 996,52 al día del abono»— la caja mide lo que el
+            // texto y las dos cosas coinciden; en cuanto se parte en dos
+            // —«Bs. 17.621,33 al día del abono»— la caja ocupa todo el ancho
+            // disponible y el texto se queda a la izquierda, su valor por
+            // defecto. Dos tarjetas iguales alineadas distinto según lo largo
+            // que fuera el número.
+            <span className="text-right text-[10px] text-muted-foreground tabular-nums">
               {formatBs(enBs)} al día del abono
             </span>
           ) : null}
         </div>
       </div>
-      </Link>
+      </div>
       {/* EL «⋮» SUSTITUYE AL CHEVRON del frame viejo. Los dos vivían en el
           mismo sitio y los dos dicen «aquí hay más»; el chevron lo decía de la
           navegación, que ya la tiene el enlace de al lado, y el menú lo dice

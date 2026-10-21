@@ -164,7 +164,7 @@ export default async function TransaccionPage({
   let puedePagar = false;
   let abonoInicial = 0;
   let pendienteDelFiado: number | null = null;
-  let abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined;
+  let abonosRecibidos: AbonoDirigido[] | undefined;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
       p_client_id: cliente.id,
@@ -249,7 +249,6 @@ export default async function TransaccionPage({
       techo: pendienteDelFiado == null ? null : pendienteDelFiado + Number(p.amount),
       amount: Number(p.amount),
       descripcion: (p.description as string | null) ?? null,
-      href: `/transacciones/${p.id as string}`,
     }));
   }
 

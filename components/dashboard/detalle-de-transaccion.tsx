@@ -98,7 +98,7 @@ export type DatosDelDetalle = {
   // Vacío NO es lo mismo que ausente: una lista vacía dibuja «Todavía sin
   // abonos», que es una respuesta; `undefined` es para una superficie que no
   // puede contestar la pregunta y entonces no la plantea.
-  abonosRecibidos?: (AbonoDirigido & { href: string })[];
+  abonosRecibidos?: AbonoDirigido[];
 };
 
 export function DetalleDeTransaccion({
@@ -369,7 +369,6 @@ export function DetalleDeTransaccion({
                 <TarjetaDeAbono
                   key={a.movementId}
                   abono={a}
-                  href={a.href}
                   estado={estadoDeCadaAbono[i]}
                 />
               ))}

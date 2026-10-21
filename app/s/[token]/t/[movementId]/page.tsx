@@ -205,7 +205,7 @@ export default async function DetalleDelClientePage({
   // del mapa y por la misma razón, que aquí pesa más: una lista de los propios
   // pagos a la que le falta uno no se lee como un detalle que falta, se lee
   // como dinero perdido.
-  const abonosRecibidos: (AbonoDirigido & { href: string })[] | undefined =
+  const abonosRecibidos: AbonoDirigido[] | undefined =
     m.type === "charge"
       ? ((shared.abonos_por_fiado ?? {})[m.id] ?? []).map((a) => ({
           movementId: a.movement_id,
@@ -213,7 +213,6 @@ export default async function DetalleDelClientePage({
           currency: a.currency,
           amount: Number(a.amount),
           descripcion: a.description,
-          href: `/s/${token}/t/${a.movement_id}`,
         }))
       : undefined;
 
