@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Banknote, MoreVertical, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -224,7 +225,27 @@ export function DetalleBotones({
   puedePagar: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-10">
+    // ── PEGADOS AL BORDE DE ABAJO, SIEMPRE A LA VISTA ──────────────────
+    //
+    // Instrucción del dueño el 2026-10-21: *«botón "Compartir" y "Pagar"
+    // siempre visibles en la parte inferior de la pantalla, actualmente se
+    // ocultan al abrir el detalle»*.
+    //
+    // Estaban al FINAL del contenido, así que en un fiado con tres abonos, su
+    // tabla de cuotas y su foto había que recorrer la pantalla entera para
+    // cobrar. Es el mismo arreglo que el flujo de registrar recibió el
+    // 2026-10-18 y por la misma razón: la acción que cierra la gestión no se
+    // busca, se tiene.
+    //
+    // `StickyActions` Y NO UN `sticky` ESCRITO AQUÍ. Es la regla que acaba de
+    // costar tres reportes: una copia de sus clases no hereda lo único que
+    // añade sobre un `sticky`, que es esconderse con el teclado. Esta pantalla
+    // no tiene campos hoy y da igual — el día que los tenga, ya está resuelto.
+    //
+    // Y LA RUTA ENTRA EN `conBarraDeBotones` de `app-main.tsx` en el mismo
+    // cambio: esa barra trae su propio aire de 40px, y sin la ruta en esa
+    // lista `main` le suma otros 16 y la deja flotando al final del scroll.
+    <StickyActions>
       {compartir ? (
         <Button
           type="button"
@@ -241,6 +262,6 @@ export function DetalleBotones({
           <Link href={`/abonos/nuevo/${movementId}/monto?desde=detalle`}>Pagar</Link>
         </Button>
       ) : null}
-    </div>
+    </StickyActions>
   );
 }

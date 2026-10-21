@@ -200,6 +200,26 @@ export function DetalleDeTransaccion({
   // Sin cuotas pactadas no hay ninguna fecha intermedia contra la que juzgar,
   // así que cada abono se mide contra el plazo entero: eso es un fiado de una
   // sola cuota, que es lo que se le pasa.
+  // ── LOS ABONOS, DE MÁS ANTIGUO A MÁS NUEVO ──────────────────────────
+  //
+  // Instrucción del dueño el 2026-10-21: *«organiza las cards de abonos en el
+  // detalle de los fiados en lectura descendente, es decir, la más antigua
+  // arriba y la más nueva abajo. Incluyendo la del abono al día de la
+  // compra»*. La del día de la compra es la primera por definición: se pagó
+  // en el mismo acto de comprar, así que nada la precede.
+  //
+  // Y ESE ORDEN ARREGLA ADEMÁS UN CRUCE QUE NO SE VEÍA. `estadosDelFiado`
+  // ordena los abonos ascendente por dentro para recorrerlos, y devuelve sus
+  // estados EN ESE ORDEN. La consulta los traía descendente, así que
+  // `estadoDeCadaAbono[i]` emparejaba el chip del abono más viejo con la
+  // tarjeta del más nuevo. Con dos abonos «Dentro del plazo» —el caso de la
+  // captura del dueño— no se distingue; el día que uno venza y otro no, los
+  // dos chips salen cambiados. Ordenar aquí hace que el índice signifique lo
+  // mismo en los dos sitios.
+  const abonosEnOrden = [...(abonosRecibidos ?? [])].sort((a, b) =>
+    a.fecha.localeCompare(b.fecha),
+  );
+
   const estadoDeCadaAbono =
     type === "charge" && plazoDias != null && abonosRecibidos
       ? estadosDelFiado({
@@ -208,7 +228,7 @@ export function DetalleDeTransaccion({
           cuotas: cuotas ?? 1,
           amount,
           abonoInicial: abonoInicial ?? 0,
-          abonos: abonosRecibidos.map((a) => ({ fecha: a.fecha, amount: a.amount })),
+          abonos: abonosEnOrden.map((a) => ({ fecha: a.fecha, amount: a.amount })),
         }).abonos.slice(abonoInicial && abonoInicial > 0.005 ? 1 : 0)
       : [];
 
@@ -389,14 +409,17 @@ export function DetalleDeTransaccion({
                 // cobrar», que es la comprobación que esta cifra trae de
                 // serie: en el fiado del Casco salía «Debe $22.09» sobre un
                 // total de $23.23 — exactamente el $1.14 de la compra, restado
-                // de más. Dos cifras de la misma pantalla que no cerraban, que
-                // es justo el fallo que el dueño reportó hoy en otro sitio.
+                // de más.
+                //
+                // YA NO HACE FALTA DARLE LA VUELTA A LA LISTA: desde el
+                // 2026-10-21 llega del más antiguo al más nuevo, que es el
+                // orden en que hay que ir restando.
                 let queda = amount ?? 0;
-                for (const a of [...(abonosRecibidos ?? [])].reverse()) {
+                for (const a of abonosEnOrden) {
                   queda = Math.round((queda - a.amount) * 100) / 100;
                   porAbono.set(a.movementId, queda);
                 }
-                return (abonosRecibidos ?? []).map((a, i) => (
+                return abonosEnOrden.map((a, i) => (
                   <TarjetaDeAbono
                     key={a.movementId}
                     abono={a}

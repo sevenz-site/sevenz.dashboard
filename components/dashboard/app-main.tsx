@@ -103,7 +103,17 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     pathname === "/clients/nuevo" ||
     pathname.startsWith("/abonos/nuevo/") ||
     pathname === "/productos/nuevo" ||
-    /^\/productos\/[^/]+\/editar$/.test(pathname);
+    /^\/productos\/[^/]+\/editar$/.test(pathname) ||
+    // EL DETALLE DE UNA TRANSACCIÓN, desde el 2026-10-21: sus botones
+    // «Compartir» y «Pagar» pasaron a `StickyActions` por instrucción del
+    // dueño —*«siempre visibles en la parte inferior»*— y esa barra trae sus
+    // propios 40px. Sin esta línea `main` le suma los 16 de toda pantalla
+    // normal y la barra se queda flotando al final del scroll.
+    //
+    // NO ES `startsWith("/transacciones/")`: la ruta de una venta de contado
+    // (`/transacciones/venta/<id>/<moneda>`) no monta esos botones, así que
+    // quitarle el aire la dejaría pegada al filo sin nada que lo ocupe.
+    /^\/transacciones\/[^/]+$/.test(pathname);
   const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
 
   return (
