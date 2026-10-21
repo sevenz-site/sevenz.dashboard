@@ -108,7 +108,7 @@ export function TarjetaDeAbono({
               rojo). El signo aquí no es el del saldo: es el de la cifra que se
               suma a lo abonado. Lo que distingue a las dos tarjetas es el
               color, no el signo. */}
-          <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-blue-600 dark:text-blue-400">
+          <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-emerald-700 dark:text-emerald-400">
             {abono.currency ? (
               <CurrencyFlagIcon currency={abono.currency} className="size-3.5 shrink-0" />
             ) : null}

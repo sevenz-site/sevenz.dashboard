@@ -73,6 +73,10 @@ type SharedMovement = {
   // Arrives through migration `121`. It is null for everything stored before
   // 2026-10-16, and the card only draws the table when it is not.
   cuotas: number | null;
+  // A QUÉ FIADO SE DIRIGIÓ ESTE ABONO, `null` si no se dirigió a ninguno.
+  // Lo manda `get_shared_balance` desde la `126`. Decide si la fila sale en
+  // el historial: un abono dirigido vive dentro de su fiado.
+  applies_to_movement_id?: string | null;
   // Arrives through migration `132`: what this fiado still owes, null on a
   // payment. Optional because a database where `132` has not run does not
   // send the key at all, and the history falls back to drawing no figure

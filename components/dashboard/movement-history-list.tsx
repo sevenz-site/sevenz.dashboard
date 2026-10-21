@@ -95,20 +95,40 @@ export function MovementHistoryList({
   // deberían aparecer solo sobre el movimiento del detalle del fiado, es
   // decir viven solo ahí, no se ven en el historial»*.
   //
-  // LO QUE ESTO SE LLEVA, DICHO EN VOZ ALTA: un abono solo se ve dentro del
-  // fiado al que fue dirigido, y en dev **104 de 108 abonos no van dirigidos
-  // a ninguno** -- son anteriores a la migración `126` y la cola FIFO los
-  // repartió sin dejar constancia de a qué cargo. Esos abonos dejan de tener
-  // sitio donde verse. Está anotado como `CT-115`, con la alternativa que se
-  // descartó.
+  // ── QUÉ ABONOS SALEN AQUÍ: SOLO LOS QUE NO TIENEN OTRO SITIO ──────
+  //
+  // Regla del dueño, 2026-10-21, después de que las dos pantallas los
+  // escondieran todos durante un día:
+  //
+  //   abono DIRIGIDO a un fiado  → NO sale aquí. Vive dentro de ese fiado,
+  //                                que es donde él decidió que viven.
+  //   abono SIN DIRIGIR          → SÍ sale aquí, porque no hay ningún fiado
+  //                                donde pueda verse.
+  //
+  // POR QUÉ ESTA REGLA Y NO «NINGUNO», que fue lo que se hizo el 2026-10-20 y
+  // duró un día: esconderlos todos daba por hecho que «ya se ven dentro del
+  // fiado», y eso solo es cierto para los dirigidos. Un abono sin dirigir no
+  // pertenece a ningún cargo — la cola FIFO lo repartió entre los más viejos
+  // sin dejar constancia de a cuál— así que al ocultarlo desaparecía de la
+  // app entera: ni aquí, ni dentro de ningún fiado, ni para el tendero ni
+  // para el cliente. Medido ese día: 104 de 115.
+  //
+  // SE APAGA SOLA, y esa es la mejor parte. Desde el 2026-10-14 el flujo de
+  // abono obliga a elegir el fiado antes de pedir el monto, así que todo lo
+  // que entra nuevo va dirigido — comprobado contra la base: el último abono
+  // sin dirigir es de ese día. Esta rama solo alcanza a lo histórico, y se
+  // vaciará sola a medida que esos abonos dejen de estar a la vista. No hay
+  // nada que quitar luego.
   //
   // SE FILTRA AQUÍ Y NO EN LA CONSULTA a propósito: `movements` sigue
   // llegando entero porque la fila de un fiado necesita su `running_balance`,
   // que se calcula contra todos los movimientos. Pedir menos a la base
   // ahorraría nada y rompería esa columna.
+  const esAbonoDirigido = (m: { type: string; applies_to_movement_id: string | null }) =>
+    m.type === "payment" && m.applies_to_movement_id != null;
   const filas: Fila[] = [
     ...movements
-      .filter((m) => m.type !== "payment")
+      .filter((m) => !esAbonoDirigido(m))
       .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -150,7 +170,17 @@ export function MovementHistoryList({
     <div className="flex items-center justify-between gap-3">
       {titulo}
       {filas.length > 0 ? (
-        <MovementTypeFilter tipo={tipo} setTipo={cambiarTipo} conAbono={false} conContado={ventasDeContado.length > 0} />
+        <MovementTypeFilter
+          tipo={tipo}
+          setTipo={cambiarTipo}
+          // «Abono» VUELVE AL FILTRO, PERO SOLO SI HAY ALGUNO QUE FILTRAR.
+          // Desde el 2026-10-21 la lista enseña los abonos sin dirigir, y un
+          // filtro tiene que poder nombrar lo que se ve. Al revés también: en
+          // un cliente cuyos abonos estén todos dirigidos, ofrecer «Abono»
+          // daría una lista vacía por un filtro que no podía dar otra cosa.
+          conAbono={filas.some((f) => f.clase === "movimiento" && f.m.type === "payment")}
+          conContado={ventasDeContado.length > 0}
+        />
       ) : null}
     </div>
   ) : null;
@@ -298,7 +328,7 @@ export function MovementHistoryList({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-blue-600 dark:text-blue-400"}`}
+                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
                     <span className="flex items-center gap-1">
                       {m.currency ? (
@@ -410,13 +440,20 @@ function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: Ledge
           <p className="text-xs text-muted-foreground">{formatDate(venta.createdAt)}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {/* `emerald-700` Y NO `emerald-600`, que es el verde que usaba el
-              abono hasta hoy: medido contra blanco da 3,67:1 y el piso de
-              `DESIGN-SYSTEM.md` son 4,5:1. El 700 da 5,37:1.
+          {/* `emerald-700` AND NOT `emerald-600`: measured against white the
+              600 gives 3,65:1 and the floor in `DESIGN-SYSTEM.md` is 4,5:1.
+              The 700 gives 5,36:1.
 
-              O sea que el verde del abono llevaba fallando el contraste desde
-              siempre, y el cambio a azul lo arregla de rebote -- `blue-600`
-              da 5,26:1. No se heredó aquí el fallo por parecerse al de antes. */}
+              THAT NUMBER IS WHY THIS ROW AND THE ABONO SHARE A GREEN TODAY.
+              `emerald-600` was the abono's green until 2026-10-18 and had been
+              failing contrast the whole time without anyone noticing. When the
+              owner asked for the abono's green back on 2026-10-21, restoring
+              it literally would have brought the defect back; it went to this
+              700 instead, which is why the two rows now match.
+
+              AND THEY ARE MEANT TO MATCH, which the owner decided when asked:
+              a cash sale and an abono are both money coming IN, against the
+              fiado's red. What tells them apart is the label, not the hue. */}
           <div className="flex flex-col items-end tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
             <span className="flex items-center gap-1">
               {venta.currency ? (

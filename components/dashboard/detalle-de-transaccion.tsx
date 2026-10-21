@@ -271,18 +271,17 @@ export function DetalleDeTransaccion({
             ) : (
               // AZUL Y NO VERDE, por instrucción del dueño el 2026-10-20.
               //
-              // No es un color suelto: desde el 2026-10-18 el abono ES azul en
-              // toda la app y el verde pasó a ser el de la venta de contado.
-              // Este «%» se quedó en `text-money-in` al montar la pantalla, o
-              // sea en el verde de antes, y era el único sitio donde un abono
-              // seguía saliendo del color de otra cosa.
+              // THE ABONO IS GREEN AGAIN since 2026-10-21, by the owner's
+              // decision, and this icon follows the rest of the app. It was
+              // blue for three days, between his 2026-10-18 decision and this
+              // one; before that it was the old `text-money-in` green.
               //
-              // `blue-600` y no `blue-500`: es el mismo par que ya usa la fila
-              // del historial. Medido sobre ESTE icono el 2026-10-20 —no
-              // copiado de otro comentario—: resuelve a `#155dfc` y da
-              // **5,25:1** contra blanco, por encima del piso de 4,5:1 que
-              // pide `DESIGN-SYSTEM.md`.
-              <Percent className="size-4 text-blue-600 dark:text-blue-400" aria-hidden />
+              // `emerald-700` AND NOT THE `emerald-600` IT USED TO BE: that
+              // one measured 3,65:1 against white, under the 4,5:1 floor in
+              // `DESIGN-SYSTEM.md`. Restoring the previous green literally
+              // would bring back a contrast defect that had always been
+              // there. The 700 gives 5,36:1.
+              <Percent className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
             )}
           </span>
         </Fila>

@@ -31,6 +31,10 @@ type SharedMovement = {
   needs_review: boolean;
   plazo_dias: number | null;
   cuotas: number | null;
+  // A QUÉ FIADO SE DIRIGIÓ ESTE ABONO, `null` si no se dirigió a ninguno.
+  // Lo manda `get_shared_balance` desde la `126`. Decide si la fila sale en
+  // el historial: un abono dirigido vive dentro de su fiado.
+  applies_to_movement_id?: string | null;
   // WHAT THIS FIADO STILL OWES — migration `132`, null on a payment. Optional
   // because a `get_shared_balance` where `132` has not run does not send the
   // key at all, and the row then draws no figure instead of a zero that would
@@ -121,9 +125,17 @@ export function MovementHistoryList({
   // further in, inside the fiado. What the two screens gain is being the same
   // screen, which is the thing Sevenz is for: the shopkeeper and the customer
   // reading the same account and seeing the same rows.
+  // MISMA REGLA QUE LA DEL TENDERO, y su comentario largo está allí
+  // (`components/dashboard/movement-history-list.tsx`): un abono dirigido vive
+  // dentro de su fiado y no sale aquí; uno sin dirigir sí, porque no tiene
+  // ningún fiado donde verse. El cliente los alcanza igual que el tendero:
+  // desde la `128`, la ficha de un fiado lista sus abonos dirigidos.
+  const esAbonoDirigido = (m: SharedMovement) =>
+    m.type === "payment" && m.applies_to_movement_id != null;
+
   const filas: Fila[] = [
     ...movements
-      .filter((m) => m.type !== "payment")
+      .filter((m) => !esAbonoDirigido(m))
       .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -140,7 +152,12 @@ export function MovementHistoryList({
   const cabecera = titulo ? (
     <div className="flex items-center justify-between gap-3">
       {titulo}
-      {filas.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} conAbono={false} conContado={ventasDeContado.length > 0} /> : null}
+      {filas.length > 0 ? <MovementTypeFilter
+          tipo={tipo}
+          setTipo={setTipo}
+          conAbono={filas.some((f) => f.clase === "movimiento" && f.m.type === "payment")}
+          conContado={ventasDeContado.length > 0}
+        /> : null}
     </div>
   ) : null;
 
@@ -258,7 +275,7 @@ export function MovementHistoryList({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-blue-600 dark:text-blue-400"}`}
+                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
                     <span className="flex items-center gap-1">
                       {m.currency ? (
