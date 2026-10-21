@@ -116,6 +116,23 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     /^\/transacciones\/[^/]+$/.test(pathname);
   const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
 
+  // EL CATÁLOGO NECESITA EL MISMO AIRE QUE EL RESUMEN, y este comentario es la
+  // continuación del de abajo, que dejó escrito «si algún día estorba allí
+  // también, la cuenta está aquí». Llegó ese día: un dueño lo reportó desde
+  // producción el 2026-10-21, con la captura y el círculo en rojo.
+  //
+  // LO QUE CAMBIA NO ES EL SOLAPE SINO LO QUE HAY DEBAJO. En una lista normal
+  // el flotante muerde la última fila, que es texto, y se leía igual. En el
+  // catálogo la última tarjeta lleva el interruptor «Publicar», o sea un
+  // control que se toca — y uno que decide si ese producto lo ven los clientes
+  // del negocio. Tapar texto molesta; tapar ese interruptor impide usarlo, y
+  // además con el dedo encima no se ve si quedó encendido o apagado.
+  //
+  // `/productos` A SECAS, sin sus hijos: `/productos/nuevo` y `/productos/
+  // <id>/editar` ya entran por `enAsistenteDeVenta` y llevan su propia barra
+  // pegada abajo, así que sumarles esto les daría 5,5rem de aire muerto.
+  const conFilaQueSeToca = pathname === "/productos";
+
   return (
     <main
       className={cn(
@@ -143,8 +160,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
         // observador y su reflow, para 2,75px que no tapan ni el texto ni el
         // area tocable del boton. Si alguna vez un tendero reporta que no
         // puede darle a «Compartir», el numero a subir es este 5.5rem.
-        hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
-        hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
+        hasBar && (enFlujoDeRegistrar || conFilaQueSeToca) &&
+          "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
+        hasBar && !enFlujoDeRegistrar && !conFilaQueSeToca &&
+          "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
         // CON BARRA DE BOTONES, NI UN PIXEL DE MAS. Solo el area segura del
         // iPhone, porque la barra se pega al borde y su propio `pb` ya pone
