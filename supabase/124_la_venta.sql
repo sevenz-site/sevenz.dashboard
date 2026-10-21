@@ -295,8 +295,21 @@ revoke all on public.sale_payments from anon;
 
 -- ── 8. Fuera `movement_products` ───────────────────────────────────────
 --
--- Superseded by `sale_lines`. `if exists` porque en producción nunca llegó a
--- existir: allí la `122` se registra como no-op (ver el ledger abajo).
+-- Superseded by `sale_lines`.
+--
+-- `if exists` PORQUE PUEDE HABER O NO HABER TABLA QUE BORRAR, y las dos cosas
+-- son correctas. Esta línea decía que en producción «nunca llegó a existir»,
+-- porque el plan era registrar allí la `122` como no-op. El 2026-10-21 se
+-- desplegó el lote entero en orden y la `122` se ejecutó de verdad también en
+-- producción: la tabla existió unos minutos y esta migración la borró, que es
+-- exactamente el camino que dev había recorrido. El estado final es el mismo
+-- por los dos caminos, y por eso no se corrigió sobre la marcha.
+--
+-- Lo que queda en los dos ledgers es la clave `122` con la descripción de una
+-- tabla que ya no existe. Eso es deliberado y no se toca: la comparación de
+-- ledgers del `qa-regression-checklist` compara CLAVES, la clave tiene que
+-- estar en ambos lados para que coincidan, y reescribir la descripción a
+-- posteriori haría que el apunte dejara de decir lo que de verdad se ejecutó.
 drop trigger if exists movement_products_solo_cargos on public.movement_products;
 drop table if exists public.movement_products;
 drop function if exists public.movement_products_solo_cargos();
