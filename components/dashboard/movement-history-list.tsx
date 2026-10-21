@@ -20,8 +20,6 @@ import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/move
 import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
-import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
-import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
 const PAGE_SIZE = 10;
@@ -53,7 +51,6 @@ export function MovementHistoryList({
   ledger = null,
   titulo = null,
   ventasDeContado = [],
-  estadosDeFiado = {},
   pendientePorFiado = {},
   navegable = true,
 }: {
@@ -69,11 +66,11 @@ export function MovementHistoryList({
   // convertirlas en filas de esa tabla -- el saldo, el puntaje de crédito y
   // las gráficas siguen leyendo solo `movements` y no se enteran.
   ventasDeContado?: VentaDeContado[];
-  // EL ESTADO DEL PLAZO DE CADA FIADO, indexado por el id de su movimiento.
-  // Lo calcula la página, que es quien tiene lo que cada fiado todavía debe.
-  // Un fiado que falte aquí —o que valga `null`— no dibuja chip: es el caso
-  // de casi todo lo que entró por la libreta, que no trae plazo.
-  estadosDeFiado?: Record<string, EstadoDelPlazo | null>;
+  // AQUÍ ESTUVO `estadosDeFiado`, el chip «Dentro del plazo» / «Plazo
+  // vencido» de cada fiado. Lo pidió el dueño el 2026-10-20 y lo quitó el
+  // 2026-10-21, al reescribir esta fila contra el frame `1512:10061`, que no
+  // lo dibuja. El chip sigue vivo donde el frame sí lo pone: en la tabla de
+  // cuotas y en las tarjetas de abono dentro de un fiado.
   // LO QUE CADA FIADO TODAVÍA DEBE, por el id de su movimiento. Misma fuente
   // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
   // juntos. Un fiado que falte aquí está saldado.
@@ -141,6 +138,29 @@ export function MovementHistoryList({
   // ahorraría nada y rompería esa columna.
   const esAbonoDirigido = (m: { type: string; applies_to_movement_id: string | null }) =>
     m.type === "payment" && m.applies_to_movement_id != null;
+
+  // ── LA FECHA QUE ENSEÑA UN FIADO: LA DE SU ÚLTIMO ABONO ──────────────
+  //
+  // Frame `1512:10061` y las palabras del dueño el 2026-10-21: *«fecha de
+  // registro de la transacción (en caso de venta de contado) y fecha de
+  // último abono (en caso de fiado)»*.
+  //
+  // SIN ABONOS DIRIGIDOS SE QUEDA LA SUYA. No es una elección de estilo: es la
+  // única fecha que ese fiado tiene. Dejar la fila sin fecha sería peor que
+  // dar la de su registro, que además es literalmente «la última vez que pasó
+  // algo con este fiado».
+  //
+  // SE CALCULA CON LOS MOVIMIENTOS QUE YA LLEGAN, sin pedir nada más: los
+  // abonos dirigidos están en esta misma lista con su `applies_to_movement_id`
+  // —aunque no se dibujen— así que el dato ya estaba aquí.
+  const ultimoAbonoPorFiado = new Map<string, string>();
+  for (const m of movements) {
+    if (!esAbonoDirigido(m) || !m.applies_to_movement_id) continue;
+    const previo = ultimoAbonoPorFiado.get(m.applies_to_movement_id);
+    if (!previo || m.created_at > previo) {
+      ultimoAbonoPorFiado.set(m.applies_to_movement_id, m.created_at);
+    }
+  }
   const filas: Fila[] = [
     ...movements
       .filter((m) => !esAbonoDirigido(m))
@@ -307,80 +327,87 @@ export function MovementHistoryList({
           const cifraDeLaLinea =
             m.type === "charge" ? pendienteDeEsteFiado : m.running_balance;
           const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
-          // Solo los fiados llevan chip: una venta de contado no tiene plazo
-          // que cumplir, y un abono tampoco — lo que vence es la deuda, no el
-          // pago que la salda.
-          const estado = m.type === "charge" ? (estadosDeFiado[m.id] ?? null) : null;
-
           // El mismo reparto para las dos clases de fila: con `navegable` es
           // un enlace; sin él, un `div` con las mismas clases menos el
           // `hover`, que prometería algo que no pasa.
           return (
           <li key={m.id}>
             <FilaEnvuelta href={navegable ? `/transacciones/${m.id}` : null}>
-                <div className="min-w-0">
+                {/* ── LA IZQUIERDA: QUÉ FUE Y CUÁNDO, Y NADA MÁS ──────
+                    Frame `1512:10061`, reescrita el 2026-10-21 con la
+                    instrucción del dueño delante: *«del lado izquierdo de la
+                    card estará solo el tipo de transacción + producto +
+                    fecha»*.
+
+                    SE VAN DE AQUÍ TRES COSAS que el frame no dibuja: el chip
+                    del estado del plazo, la línea «Por cobrar» —que pasa a la
+                    derecha, donde el frame la pone— y el sufijo «· de
+                    libreta». */}
+                {/* `shrink-0 whitespace-nowrap`, COMO EL FRAME `1512:10061`: su
+                    columna izquierda no se encoge y la derecha es la que cede.
+                    Era al revés —`min-w-0` aquí— y con la línea «Bs. … Al día
+                    de compra», que es mucho más larga que los bolívares
+                    sueltos de antes, el nombre salía «De conta…» y la fecha
+                    caía en tres renglones. Lo que puede partirse sin perder
+                    nada es la cifra de la derecha; el qué y el cuándo, no. */}
+                <div className="shrink-0 whitespace-nowrap">
                   <p className="truncate text-sm font-medium">
                     {truncateText(
                       `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
                       34,
                     )}
                   </p>
-                  {/* LA FECHA Y EL ESTADO DEL PLAZO, en la misma línea.
-                      Pedido por el dueño el 2026-10-20: *«un fiado en el
-                      historial debería mostrar el estado del plazo de ese
-                      fiado»*.
-
-                      `flex-wrap` porque la fecha larga de un negocio
-                      colombiano más el chip no caben en 375px, y lo que NO
-                      puede partirse es el chip -- eso lo garantiza él mismo
-                      con su `whitespace-nowrap`, por lo que costó el 2026-10-20
-                      en la tabla de cuotas. */}
-                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>
-                      {formatDate(m.created_at)}
-                      {m.source === "photo_import" ? " · de libreta" : ""}
-                    </span>
-                    {estado ? <ChipDeEstado estado={estado} /> : null}
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(
+                      m.type === "charge"
+                        ? (ultimoAbonoPorFiado.get(m.id) ?? m.created_at)
+                        : m.created_at,
+                    )}
                   </p>
-                  {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
-                      2026-10-16, por instrucción del dueño. Esta lista es
-                      donde más falta hacía: en una cartera venezolana las
-                      filas en dólares y en euros se alternan, y lo único que
-                      las distinguía era el símbolo — "$" y "€" pegados a un
-                      número, que es justo el par que se confunde de un
-                      vistazo.
-
-                      Solo cuando la moneda existe. `null` es un negocio
-                      colombiano, donde no hay dos libros que separar y una
-                      bandera repetida en cada fila sería ruido. */}
-                  {/* Un fiado saldado no dice «Por cobrar $0.00»: ya lo dice
-                      su chip «Pagado», y la cifra en cero al lado se lee como
-                      un dato que falta. */}
-                  {/* EN UN ABONO LA LÍNEA VA SIEMPRE, como en producción. En
-                      un FIADO solo si queda algo por cobrar: ahí el cero ya lo
-                      dice su chip «Pagado», y «Por cobrar $0.00» al lado se
-                      lee como un dato que falta. */}
-                  {m.type !== "charge" || (pendienteDeEsteFiado ?? 0) > 0.005 ? (
+                  {/* LA LÍNEA DEL ABONO SE QUEDA AQUÍ, y es la única que
+                      sobrevive en esta columna. El frame dibuja dos filas —la
+                      de contado y la del fiado— y no contempla el abono, que
+                      en esta lista solo aparece cuando no está dirigido a
+                      ningún fiado. Su «Por cobrar» lo decidió el dueño el
+                      2026-10-21, un día antes que este frame, y nada de lo que
+                      el frame dice lo contradice. */}
+                  {m.type === "payment" ? (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
                       Por cobrar {balance.primary}
                     </p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                {/* ── LA DERECHA: CUÁNTO ──────────────────────────────
+                    Frame `1512:10061`. En un FIADO son tres renglones: el
+                    rótulo «Por cobrar», el saldo que queda de ESE fiado con su
+                    bandera, y sus bolívares de HOY — porque esa deuda sigue
+                    viva y la pregunta es cuánto vale ahora. En lo demás, el
+                    importe y sus bolívares, sin rótulo.
+
+                    EL IMPORTE DEL FIADO DEJA DE SER LO QUE SE FIÓ y pasa a ser
+                    lo que queda: *«saldo total por cobrar de ese fiado»*, sus
+                    palabras del 2026-10-21. Es el mismo número que el detalle
+                    llama «Total por cobrar», que es de donde salió el encargo:
+                    la fila decía lo que se fió y daba a entender que no se
+                    había abonado nada. */}
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
+                    className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
+                    {m.type === "charge" ? (
+                      <span className="text-xs font-normal text-muted-foreground">Por cobrar</span>
+                    ) : null}
                     <span className="flex items-center gap-1">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
                       {m.type === "charge" ? "+" : "-"}
-                      {amount.primary}
+                      {m.type === "charge" ? balance.primary : amount.primary}
                     </span>
-                    {bsTecleados ?? amount.secondary ? (
+                    {(m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)) ? (
                       <span className="font-normal text-muted-foreground">
-                        {bsTecleados ?? amount.secondary}
+                        {m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)}
                       </span>
                     ) : null}
                   </div>
@@ -506,6 +533,19 @@ function FilaDeContado({
   // «Fiado · », y aquí es lo único que identifica la compra.
   const que = venta.lineas.map((l) => l.name).join(", ");
 
+  // LOS BOLÍVARES SELLADOS, NO LOS DE HOY — frame `1512:10061`, que escribe
+  // «Bs. … Al día de compra». Esa venta se pagó entera en su día, así que su
+  // equivalencia es la de aquel día: decir lo que «son» hoy describe una
+  // conversión que nadie hizo. Es la misma regla que ya rige la tarjeta de un
+  // abono dentro de su fiado.
+  //
+  // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
+  // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
+  // callar.
+  const enBsSellados =
+    venta.tasaSellada == null ? null : formatBs(venta.amount * Number(venta.tasaSellada));
+
+
   return (
     <li>
       <FilaEnvuelta
@@ -515,13 +555,13 @@ function FilaDeContado({
             : null
         }
       >
-        <div className="min-w-0">
+        <div className="shrink-0 whitespace-nowrap">
           <p className="truncate text-sm font-medium">
             {truncateText(`De contado${que ? ` · ${que}` : ""}`, 34)}
           </p>
           <p className="text-xs text-muted-foreground">{formatDate(venta.createdAt)}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
           {/* `emerald-700` AND NOT `emerald-600`: measured against white the
               600 gives 3,65:1 and the floor in `DESIGN-SYSTEM.md` is 4,5:1.
               The 700 gives 5,36:1.
@@ -536,15 +576,17 @@ function FilaDeContado({
               AND THEY ARE MEANT TO MATCH, which the owner decided when asked:
               a cash sale and an abono are both money coming IN, against the
               fiado's red. What tells them apart is the label, not the hue. */}
-          <div className="flex flex-col items-end tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
+          <div className="flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
             <span className="flex items-center gap-1">
               {venta.currency ? (
                 <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
               ) : null}
               {amount.primary}
             </span>
-            {amount.secondary ? (
-              <span className="font-normal text-muted-foreground">{amount.secondary}</span>
+            {enBsSellados ? (
+              <span className="font-normal text-muted-foreground">
+                {enBsSellados} Al día de compra
+              </span>
             ) : null}
           </div>
           {/* EL CHEVRON DE VERDAD, no el hueco que había. Mientras la fila no

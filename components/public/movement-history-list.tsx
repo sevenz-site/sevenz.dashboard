@@ -134,6 +134,19 @@ export function MovementHistoryList({
   const esAbonoDirigido = (m: SharedMovement) =>
     m.type === "payment" && m.applies_to_movement_id != null;
 
+  // LA FECHA DE UN FIADO ES LA DE SU ÚLTIMO ABONO — frame `1512:10061`, misma
+  // regla y mismo comentario que en la lista del tendero. Se calcula con los
+  // movimientos que ya llegan; sin abonos dirigidos se queda la del fiado,
+  // que es la única fecha que tiene.
+  const ultimoAbonoPorFiado = new Map<string, string>();
+  for (const m of movements) {
+    if (!esAbonoDirigido(m) || !m.applies_to_movement_id) continue;
+    const previo = ultimoAbonoPorFiado.get(m.applies_to_movement_id);
+    if (!previo || m.created_at > previo) {
+      ultimoAbonoPorFiado.set(m.applies_to_movement_id, m.created_at);
+    }
+  }
+
   const filas: Fila[] = [
     ...movements
       .filter((m) => !esAbonoDirigido(m))
@@ -251,70 +264,72 @@ export function MovementHistoryList({
               href={`/s/${token}/t/${m.id}`}
               className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
-                <div className="min-w-0">
+                {/* `shrink-0 whitespace-nowrap`, COMO EL FRAME `1512:10061`: su
+                    columna izquierda no se encoge y la derecha es la que cede.
+                    Era al revés —`min-w-0` aquí— y con la línea «Bs. … Al día
+                    de compra», que es mucho más larga que los bolívares
+                    sueltos de antes, el nombre salía «De conta…» y la fecha
+                    caía en tres renglones. Lo que puede partirse sin perder
+                    nada es la cifra de la derecha; el qué y el cuándo, no. */}
+                <div className="shrink-0 whitespace-nowrap">
                   <p className="truncate text-sm font-medium">
                     {truncateText(
                       `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
                       34,
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                  {/* LA BANDERA EN LAS DOS CIFRAS DE LA FILA, desde el
-                      2026-10-16, por instrucción del dueño, y en esta
-                      pantalla pesa más que en la del tendero: quien la lee es
-                      el cliente, que no lleva dos libros en la cabeza y ve
-                      "$" y "€" alternándose en su propio historial sin más
-                      pista que el símbolo.
+                  {/* LA FECHA DE UN FIADO ES LA DE SU ÚLTIMO ABONO, frame
+                      `1512:10061`. Ver el comentario del mapa, arriba. */}
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(
+                      m.type === "charge"
+                        ? (ultimoAbonoPorFiado.get(m.id) ?? m.created_at)
+                        : m.created_at,
+                    )}
+                  </p>
+                  {/* LA LÍNEA SE QUEDA SOLO EN EL ABONO. El frame dibuja la
+                      del fiado a la DERECHA, con su rótulo encima, y no
+                      contempla el abono — que aquí solo sale cuando no está
+                      dirigido a ningún fiado.
 
-                      Solo cuando la moneda existe. `null` es un negocio
-                      colombiano, donde no hay dos libros que separar. */}
-                  {/* «Te queda por pagar» AND NOT «Por cobrar», which is the
-                      wording on the owner's identical row. Same number, two
-                      sides of the counter: he is owed it, the customer owes
-                      it. This screen is the customer's.
-
-                      A SETTLED FIADO SAYS NOTHING HERE. Zero beside «te queda
-                      por pagar» reads as a missing figure, and the paid state
-                      is better told by the fiado's own card than by a zero in
-                      a list. */}
-                  {/* EL RÓTULO DEL ABONO NO ES EL DEL FIADO, y no es un
-                      descuido. En un fiado el cliente lee «Te queda por pagar»,
-                      que habla de ESA deuda. En un abono la cifra es su saldo
-                      de aquel momento, y puede estar A FAVOR —ha pagado de
-                      más—, donde «te queda por pagar» sería falso. Por eso el
-                      abono usa `getBalanceLabel`, que dice «Debe», «A favor» o
-                      «Sin deuda» según el signo. Es lo que esta pantalla ya
-                      hacía en producción. */}
-                  {m.type !== "charge" ? (
+                      `getBalanceLabel` en vez de «Te queda por pagar»: el
+                      saldo de un abono puede estar A FAVOR, y ahí esa frase
+                      sería falsa. Decidido el 2026-10-21. */}
+                  {m.type === "payment" ? (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
                       {getBalanceLabel(m.running_balance)} {balance.primary}
                     </p>
-                  ) : (pendienteDeEsteFiado ?? 0) > 0.005 ? (
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {m.currency ? (
-                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
-                      ) : null}
-                      Te queda por pagar {balance.primary}
-                    </p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                {/* LA DERECHA, frame `1512:10061`: en un FIADO el rótulo
+                    «Por cobrar», lo que queda de ESE fiado y sus bolívares de
+                    HOY —la deuda sigue viva—. En lo demás, el importe y sus
+                    bolívares. Mismo reparto que la lista del tendero.
+
+                    «Por cobrar» Y NO «Te queda por pagar» aquí arriba: el
+                    frame escribe ese rótulo, y es el mismo en las dos
+                    pantallas. La frase propia del cliente queda en el detalle,
+                    donde hay sitio para una oración entera. */}
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
-                    className={`flex flex-col items-end tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
+                    className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
+                    {m.type === "charge" ? (
+                      <span className="text-xs font-normal text-muted-foreground">Por cobrar</span>
+                    ) : null}
                     <span className="flex items-center gap-1">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
                       {m.type === "charge" ? "+" : "-"}
-                      {amount.primary}
+                      {m.type === "charge" ? balance.primary : amount.primary}
                     </span>
-                    {bsTecleados ?? amount.secondary ? (
+                    {(m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)) ? (
                       <span className="font-normal text-muted-foreground">
-                        {bsTecleados ?? amount.secondary}
+                        {m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)}
                       </span>
                     ) : null}
                   </div>
@@ -402,28 +417,43 @@ function FilaDeContado({
   // «Fiado · », y aquí es lo único que identifica la compra.
   const que = venta.lineas.map((l) => l.name).join(", ");
 
+  // LOS BOLÍVARES SELLADOS, NO LOS DE HOY — frame `1512:10061`, que escribe
+  // «Bs. … Al día de compra». Esa venta se pagó entera en su día, así que su
+  // equivalencia es la de aquel día: decir lo que «son» hoy describe una
+  // conversión que nadie hizo. Es la misma regla que ya rige la tarjeta de un
+  // abono dentro de su fiado.
+  //
+  // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
+  // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
+  // callar.
+  const enBsSellados =
+    venta.rate_used == null ? null : formatBs(venta.amount * Number(venta.rate_used));
+
+
   return (
     <li>
       <Link
         href={`/s/${token}/v/${venta.sale_id}/${(venta.currency ?? "cop").toLowerCase()}`}
         className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       >
-        <div className="min-w-0">
+        <div className="shrink-0 whitespace-nowrap">
           <p className="truncate text-sm font-medium">
             {truncateText(`De contado${que ? ` · ${que}` : ""}`, 34)}
           </p>
           <p className="text-xs text-muted-foreground">{formatDate(venta.created_at)}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="flex flex-col items-end tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+          <div className="flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
             <span className="flex items-center gap-1">
               {venta.currency ? (
                 <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
               ) : null}
               {amount.primary}
             </span>
-            {amount.secondary ? (
-              <span className="font-normal text-muted-foreground">{amount.secondary}</span>
+            {enBsSellados ? (
+              <span className="font-normal text-muted-foreground">
+                {enBsSellados} Al día de compra
+              </span>
             ) : null}
           </div>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

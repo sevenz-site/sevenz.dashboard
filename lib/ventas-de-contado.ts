@@ -58,6 +58,10 @@ export type VentaDeContado = {
   currency: LedgerCurrency | null;
   // Lo cobrado en ESE libro, que en una venta pagada entera es su total.
   amount: number;
+  // La tasa sellada de ese cobro, para los bolívares «al día de compra».
+  // `null` en un negocio colombiano y en lo anterior al sellado; entonces la
+  // fila no dibuja esa línea en vez de inventarse una conversión.
+  tasaSellada: number | null;
   lineas: SaleLineRow[];
 };
 
@@ -68,7 +72,17 @@ export type VentaCruda = {
   id: string;
   created_at: string;
 };
-export type PagoCrudo = { sale_id: string; currency: string; amount: number | string };
+export type PagoCrudo = {
+  sale_id: string;
+  currency: string;
+  amount: number | string;
+  // LA TASA QUE EL PAGO SELLÓ. El frame `1512:10061` pide que la fila de una
+  // venta de contado diga «Bs. … Al día de compra», no los bolívares de hoy:
+  // ese dinero ya cambió de manos, así que convertirlo a la tasa de hoy
+  // describe una operación que nadie hizo. Es la misma regla que ya rige la
+  // tarjeta de un abono.
+  rate_used?: number | string | null;
+};
 export type LineaCruda = {
   sale_id: string;
   name: string;
@@ -132,10 +146,16 @@ export function filasDeContado(
   // en efectivo y otro por transferencia, que es corriente— son UNA fila de
   // «De contado» por sus dos importes sumados, no dos filas iguales.
   const sumas = new Map<string, number>();
+  const tasas = new Map<string, number>();
   for (const p of pagos) {
     if (!porVenta.has(p.sale_id)) continue;
     const clave = `${p.sale_id}|${libro(p.currency) ?? ""}`;
     sumas.set(clave, (sumas.get(clave) ?? 0) + Number(p.amount));
+    // LA TASA DEL PRIMER PAGO DE ESE LIBRO, y no una media de todos. Los
+    // pagos de una misma venta se sellan en el mismo instante, así que son la
+    // misma tasa; si alguna vez no lo fueran, promediarlas daría un número
+    // que no selló ningún pago. Se queda la primera, que es un dato real.
+    if (!tasas.has(clave) && p.rate_used != null) tasas.set(clave, Number(p.rate_used));
   }
 
   const filas: VentaDeContado[] = [];
@@ -159,6 +179,7 @@ export function filasDeContado(
       currency: (moneda || null) as LedgerCurrency | null,
       // Dos decimales, el mismo redondeo que el resto del código de dinero.
       amount: Math.round(amount * 100) / 100,
+      tasaSellada: tasas.get(clave) ?? null,
       lineas: lineasPorVentaYLibro.get(clave) ?? [],
     });
   }
