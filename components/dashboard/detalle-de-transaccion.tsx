@@ -6,7 +6,7 @@ import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import { formatBs, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { BolivarRates } from "@/lib/products/price";
@@ -157,49 +157,10 @@ export function DetalleDeTransaccion({
   const monedaDelMonto: MovementCurrencyCode | null =
     monedaRegistrada === "VES" && entryAmount != null ? "VES" : currency;
 
-  // LA OTRA CARA, con la tasa SELLADA en el movimiento — no con la de hoy. Las
-  // tres filas de este grupo tienen que multiplicar entre sí; con la tasa del
-  // día no cuadrarían y quien rehiciera la cuenta creería que la app se
-  // equivocó. El valor de HOY vive abajo, en la tarjeta del saldo.
-  // ── SIN ABONO NO HAY «EQUIVALENCIA» ──────────────────────────────────
-  //
-  // Instrucción del dueño el 2026-10-20, con una captura: *«si no abonó el
-  // campo "Equivalencia" no se debe mostrar»*.
-  //
-  // POR QUÉ TENÍA RAZÓN, Y NO ES UNA PREFERENCIA. Esta fila va pegada debajo
-  // de «Abonó», así que se lee como la otra cara de ESA cifra. En un fiado sin
-  // abonos la pantalla decía:
-  //
-  //     Abonó          €0.00
-  //     Equivalencia   Bs. 29.669,16
-  //
-  // ...y esos bolívares no son del abono: son los del fiado entero. O sea que
-  // debajo de un «no ha pagado nada» salía una cifra de cinco dígitos. La
-  // lectura natural es que abonó 29 mil bolívares, que es lo contrario de lo
-  // que dice la línea de arriba.
-  //
-  // Y ADEMÁS SOBRABA: con cero abonado, esa cifra es exactamente la misma que
-  // «Total por cobrar» ya enseña dos filas más abajo en su línea de bolívares.
-  // La única diferencia entre las dos es la tasa --sellada aquí, de hoy allí--
-  // y el día del fiado las dos tasas son la misma, así que salía el mismo
-  // número dos veces sin nada que lo explicara.
-  //
-  // UN ABONO (`type === "payment"`) SIEMPRE LA ENSEÑA: ahí la cifra de arriba
-  // es el propio abono y ésta es su otra cara, que es justo lo que la fila
-  // promete. Por eso la condición mira lo pagado y no el tipo.
-  //
-  // Y UN FIADO QUE YA LISTA SUS ABONOS EN TARJETAS TAMBIÉN LA ENSEÑA, aunque
-  // su `abonoInicial` sea cero: ahí la fila «Abonó €0.00» no existe --en su
-  // sitio van las tarjetas, cada una con sus propios bolívares-- así que no
-  // hay ningún cero debajo del cual esta cifra se lea mal.
-  const seEnseñaAbonoEnCero =
-    type === "charge" && !(abonosRecibidos && abonosRecibidos.length > 0) && (abonoInicial ?? 0) <= 0.005;
-  const equivalente =
-    currency && exchangeRateUsed != null && !seEnseñaAbonoEnCero
-      ? monedaRegistrada === "VES"
-        ? { texto: formatDisplayCurrency(amount, currency), moneda: currency as MovementCurrencyCode }
-        : { texto: formatBs(amount * exchangeRateUsed), moneda: "VES" as MovementCurrencyCode }
-      : null;
+  // AQUÍ VIVÍA `seEnseñaAbonoEnCero`, con el comentario largo que explicaba
+  // cuándo se enseñaba «Equivalencia» y por qué un fiado sin abonos no la
+  // llevaba. Las dos cosas se fueron el 2026-10-21 con esa fila: ver el
+  // comentario del hueco que dejó, más abajo, junto a «Abonos».
 
   // EL ACUERDO: de un fiado, el suyo; de un abono dirigido, el del fiado que
   // pagó. Un abono nunca tuvo plazo propio —son columnas del cargo y la
@@ -356,7 +317,20 @@ export function DetalleDeTransaccion({
 
             NO HAY FILA «Monto» EN NINGÚN FRAME: el importe del fiado no se
             repite, porque lo que queda vivo es «Total por cobrar». */}
-        {type === "charge" && abonosRecibidos && abonosRecibidos.length > 0 ? (
+        {/* «Abonos» EN TODO FIADO, tenga abonos dirigidos o no. Hasta el
+            2026-10-21 esta sección solo salía si había alguno y, si no, caía
+            en la fila «Abonó» de abajo. Ahora el frame `1510:9784` pone
+            SIEMPRE una primera tarjeta —la de lo que se entregó al comprar— y
+            esa tarjeta existe aunque valga cero: instrucción del dueño, *«si
+            el abono fue 0 entonces tanto el valor de la moneda como la tasa
+            serán 0»*.
+
+            Un cero DIBUJADO y una sección ausente no dicen lo mismo: la
+            primera contesta «no entregó nada al comprar» y la segunda deja al
+            tendero sin saber si se abonó algo que no se guardó. Es la misma
+            razón por la que la fila «Abonó» dibujaba su cero, y por eso esa
+            fila se queda sin trabajo y desaparece. */}
+        {type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
             {/* «Abonos», EN PLURAL Y EN 14 REGULAR — frame `1489:10209`, nodo
                 `1489:10230`. Decía «Abonó» hasta el 2026-10-20, que es el
@@ -365,7 +339,29 @@ export function DetalleDeTransaccion({
                 las llama distinto. */}
             <dt className="py-1 text-sm leading-5">Abonos</dt>
             <dd className="flex flex-col gap-2">
-              {abonosRecibidos.map((a, i) => (
+              {/* LA PRIMERA ES LA DE LA COMPRA, y va siempre. Su «movimiento»
+                  no existe —ese pago vive en `sale_payments`, por la `124`—
+                  así que lleva el id del propio fiado como clave y no ofrece
+                  menú: no hay nada suyo que editar ni borrar.
+
+                  SU TASA ES LA DEL FIADO (`exchangeRateUsed`), que es la que
+                  se selló ese día. Con cero abonado los bolívares salen cero,
+                  que es lo que el dueño pidió literalmente. */}
+              <TarjetaDeAbono
+                inicial
+                abono={{
+                  // CLAVE SINTÉTICA: este pago no tiene fila en `movements`,
+                  // así que no tiene id. Solo la usa `AbonoAcciones`, que
+                  // aquí no se dibuja.
+                  movementId: "abono-inicial",
+                  fecha: createdAt,
+                  currency,
+                  amount: abonoInicial ?? 0,
+                  descripcion: null,
+                  tasaSellada: (abonoInicial ?? 0) > 0.005 ? exchangeRateUsed : 0,
+                }}
+              />
+              {(abonosRecibidos ?? []).map((a, i) => (
                 <TarjetaDeAbono
                   key={a.movementId}
                   abono={a}
@@ -375,11 +371,12 @@ export function DetalleDeTransaccion({
             </dd>
           </div>
         ) : (
+          /* EN UN ABONO la fila sigue siendo una cifra suelta: lo que se
+             entregó. Las tarjetas son cosa de un fiado, que es el que tiene
+             pagos que listar. */
           <Fila nombre="Abonó">
             <span className="inline-flex items-center gap-1.5 tabular-nums">
-              {type === "payment"
-                ? monto
-                : formatLedgerAmount(abonoInicial ?? 0, currency, ledger).primary}
+              {monto}
               {monedaDelMonto ? (
                 <CurrencyFlagIcon currency={monedaDelMonto} className="size-4" />
               ) : null}
@@ -387,17 +384,22 @@ export function DetalleDeTransaccion({
           </Fila>
         )}
 
-        {equivalente ? (
-          <Fila nombre="Equivalencia">
-            <span className="inline-flex flex-col items-end">
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {equivalente.texto}
-                <CurrencyFlagIcon currency={equivalente.moneda} className="size-4" />
-              </span>
-              <span className="text-xs text-muted-foreground">Al día de la transacción</span>
-            </span>
-          </Fila>
-        ) : null}
+        {/* AQUÍ ESTUVO «Equivalencia», retirada el 2026-10-21 por instrucción
+            del dueño: *«el campo equivalencia se elimina»*, en el mismo encargo
+            que añade la tarjeta del abono inicial (frame `1510:9784`).
+
+            LAS DOS COSAS VAN JUNTAS Y POR ESO SE HACEN A LA VEZ. Esa fila
+            decía los bolívares del fiado entero a la tasa sellada, pegada
+            debajo de «Abonó» — y ya se había reducido el 2026-10-20 por leerse
+            como la otra cara de ESA cifra. Lo que el dueño quería saber de
+            verdad —cuántos bolívares entregó al comprar— no estaba en ninguna
+            parte: ahora lo dice la primera tarjeta de «Abonos», con su propia
+            tasa y su propio rótulo.
+
+            SE VA TAMBIÉN SU CÁLCULO, que no lo usaba nadie más. Lo escribí
+            primero diciendo que lo seguía usando la tarjeta del fiado; el lint
+            lo desmintió en el acto. Queda anotado porque es la clase de frase
+            que nadie vuelve a comprobar. */}
 
         {/* «TOTAL POR COBRAR», DENTRO DE LA TARJETA Y EN GRANDE — el frame lo
             pone ahí, separado por una línea. No es un dato más del movimiento:
@@ -423,11 +425,27 @@ export function DetalleDeTransaccion({
 
       <Grupo>
         <Fila nombre="Plazo de pago">{formatPlazoDias(acuerdo.plazoDias)}</Fila>
-        {acuerdo.cuotas != null && acuerdo.plazoDias != null ? (
+        {/* UN PAGO ÚNICO TAMBIÉN ES UNA CUOTA, Y TIENE FECHA. Reportado por
+            el dueño el 2026-10-21: *«cuando la cuota es "Pago único" no se
+            está mostrando en el detalle del fiado la fecha de la cuota, esta
+            debe mostrarse en función del plazo del pago»*.
+
+            La puerta pedía `cuotas != null`, y «Pago único» guarda NULL: la
+            acción solo admite de 2 a 36, así que el 1 no llega nunca a la
+            base. O sea que el caso más corriente —un fiado a 7 días sin
+            repartir— era justo el que se quedaba sin decir qué día vence.
+
+            `?? 1` Y NO UNA RAMA APARTE: la fórmula de `calcularCuotas` ya da
+            la respuesta correcta para una sola —`plazoDias * 1 / 1` es el
+            final del plazo— y es la MISMA expresión que usan la migración
+            `118` para pintar «Plazo vencido» y la `120` para decidir el día
+            del aviso por WhatsApp. Calcular esta fecha aparte sería la cuarta
+            copia de algo que ya está escrito tres veces de acuerdo. */}
+        {acuerdo.plazoDias != null ? (
           <CuotasTable
             createdAt={acuerdo.desde}
             plazoDias={acuerdo.plazoDias}
-            cuotas={acuerdo.cuotas}
+            cuotas={acuerdo.cuotas ?? 1}
             amount={acuerdo.importe}
             formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
             // LO ABONADO A ESTE FIADO, para la columna «Estado». Son las dos

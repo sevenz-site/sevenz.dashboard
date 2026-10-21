@@ -132,6 +132,12 @@ export function ClientAccountSheet({
                 pendientePorFiado={cuenta?.pendientePorFiado ?? {}}
                 ledger={ledger}
                 titulo={<span className="text-sm font-medium">Últimas transacciones</span>}
+                // SIN NAVEGAR, por instrucción del dueño el 2026-10-21. Esta
+                // hoja sale en mitad de una venta que vive EN MEMORIA: tocar
+                // una fila se iba a `/transacciones/<id>` y tiraba el carrito,
+                // el cliente a medio escribir y el pago. Aquí se mira para
+                // decidir, no para irse.
+                navegable={false}
               />
             </>
           ) : (

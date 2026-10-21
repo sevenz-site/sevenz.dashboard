@@ -47,6 +47,7 @@ export type AbonoDirigido = {
 export function TarjetaDeAbono({
   abono,
   estado,
+  inicial = false,
 }: {
   abono: AbonoDirigido;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
@@ -55,6 +56,22 @@ export function TarjetaDeAbono({
   // respuesta del dueño del 2026-10-20 a qué mide el chip. `undefined` cuando
   // el fiado no tiene plazo: no hay fecha contra la que juzgar y no se dibuja.
   estado?: EstadoDelPlazo;
+  // ── LA PRIMERA TARJETA: LO QUE ENTREGÓ AL COMPRAR ────────────────────
+  //
+  // Frame `1510:9784`, encargo del dueño el 2026-10-21. Va al principio de la
+  // lista y se diferencia en tres cosas: su chip es gris y dice «Al día de la
+  // compra», su línea de bolívares también, y NO lleva «⋮».
+  //
+  // SIN MENÚ, Y ESO NO ES UN OLVIDO DEL FRAME: ese pago no es un movimiento
+  // suyo —vive en `sale_payments`, por la migración `124`— así que no se puede
+  // editar ni borrar por separado. Lo que se edita es la venta. Ofrecer un
+  // menú que no puede hacer nada sería peor que no tenerlo.
+  //
+  // EL CHIP ES GRIS Y NO AZUL porque no juzga nada. Los otros dicen si el
+  // abono llegó dentro del plazo; este se pagó en el mismo acto de comprar, y
+  // «Dentro del plazo» sobre un pago simultáneo es una obviedad disfrazada de
+  // veredicto.
+  inicial?: boolean;
 }) {
   // «Bs. … AL DÍA DEL ABONO», con la tasa SELLADA en el movimiento y no la de
   // hoy — frame `1489:10209`, nodo `1489:10240`.
@@ -104,7 +121,13 @@ export function TarjetaDeAbono({
           es la línea de bolívares de la derecha, que es la que sobra. */}
       <div className="flex shrink-0 flex-col gap-1">
         <span className="whitespace-nowrap text-sm leading-5">{formatDate(abono.fecha)}</span>
-        {estado ? <ChipDeEstado estado={estado} /> : null}
+        {inicial ? (
+          <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-transparent bg-accent px-1.5 py-px text-xs leading-4">
+            Al día de la compra
+          </span>
+        ) : estado ? (
+          <ChipDeEstado estado={estado} />
+        ) : null}
       </div>
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex min-w-0 flex-col items-end">
@@ -134,7 +157,7 @@ export function TarjetaDeAbono({
             // defecto. Dos tarjetas iguales alineadas distinto según lo largo
             // que fuera el número.
             <span className="text-right text-[10px] text-muted-foreground tabular-nums">
-              {formatBs(enBs)} al día del abono
+              {formatBs(enBs)} al día {inicial ? "de la compra" : "del abono"}
             </span>
           ) : null}
         </div>
@@ -144,6 +167,7 @@ export function TarjetaDeAbono({
           mismo sitio y los dos dicen «aquí hay más»; el chevron lo decía de la
           navegación, que ya la tiene el enlace de al lado, y el menú lo dice
           de las dos acciones que el dueño pidió el 2026-10-20. */}
+      {inicial ? null : (
       <AbonoAcciones
         movementId={abono.movementId}
         montoTecleado={abono.entryAmount ?? abono.amount}
@@ -151,6 +175,7 @@ export function TarjetaDeAbono({
         techo={abono.techo ?? null}
         monedaDelLibro={abono.currency}
       />
+      )}
     </div>
   );
 }

@@ -72,7 +72,13 @@ export function CuotasTable({
           fila justo encima, así que la frase lo repetía. */}
       <div className="flex items-baseline justify-between gap-4 py-1">
         <span className="text-xs leading-4 text-muted-foreground">Cuotas</span>
-        <span className="text-sm leading-5 tabular-nums">{cuotas} cuotas</span>
+        {/* «Pago único» CUANDO ES UNA, que es como lo llama el formulario
+            donde se eligió (`cuotas-select.tsx`) y lo que el dueño leyó al
+            registrarlo. «1 cuotas» no lo dice nadie, y «1 cuota» sería una
+            palabra distinta de la que él escogió. */}
+        <span className="text-sm leading-5 tabular-nums">
+          {cuotas === 1 ? "Pago único" : `${cuotas} cuotas`}
+        </span>
       </div>
 
       {/* «Próximas cuotas» SIN RECUADRO Y EN 16 SEMIBOLD, que es como lo

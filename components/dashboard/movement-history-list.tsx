@@ -55,6 +55,7 @@ export function MovementHistoryList({
   ventasDeContado = [],
   estadosDeFiado = {},
   pendientePorFiado = {},
+  navegable = true,
 }: {
   movements: Movement[];
   // null = plain COP ledger.
@@ -77,6 +78,20 @@ export function MovementHistoryList({
   // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
   // juntos. Un fiado que falte aquí está saldado.
   pendientePorFiado?: Record<string, number>;
+  // ── ¿SE PUEDE TOCAR UNA FILA? ────────────────────────────────────────
+  //
+  // `false` en la hoja «Cuenta de <cliente>» que sale cuando una cédula ya
+  // existe, por instrucción del dueño el 2026-10-21: *«el botón ">" no debe
+  // aparecer y la card no debe ser clickeable»*.
+  //
+  // Y tiene razón de fondo, no solo de aspecto: esa hoja aparece en mitad de
+  // una venta que vive EN MEMORIA. Tocar una fila navegaba a
+  // `/transacciones/<id>` y tiraba la venta entera — el carrito, el cliente a
+  // medio escribir y el pago. La hoja está ahí para mirar y decidir, no para
+  // irse a otro sitio.
+  //
+  // El chevron se va con el enlace: decía «aquí se puede entrar», y ya no.
+  navegable?: boolean;
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
@@ -232,7 +247,7 @@ export function MovementHistoryList({
       <ul className="flex flex-col divide-y rounded-lg border">
         {pagina.map((fila) => {
           if (fila.clase === "contado") {
-            return <FilaDeContado key={`venta-${fila.v.saleId}-${fila.v.currency ?? "cop"}`} venta={fila.v} ledger={ledger} />;
+            return <FilaDeContado key={`venta-${fila.v.saleId}-${fila.v.currency ?? "cop"}`} venta={fila.v} ledger={ledger} navegable={navegable} />;
           }
           const m = fila.m;
           const amount = formatLedgerAmount(m.amount, m.currency, ledger);
@@ -297,12 +312,12 @@ export function MovementHistoryList({
           // pago que la salda.
           const estado = m.type === "charge" ? (estadosDeFiado[m.id] ?? null) : null;
 
+          // El mismo reparto para las dos clases de fila: con `navegable` es
+          // un enlace; sin él, un `div` con las mismas clases menos el
+          // `hover`, que prometería algo que no pasa.
           return (
           <li key={m.id}>
-            <Link
-              href={`/transacciones/${m.id}`}
-              className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-            >
+            <FilaEnvuelta href={navegable ? `/transacciones/${m.id}` : null}>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {truncateText(
@@ -369,9 +384,11 @@ export function MovementHistoryList({
                       </span>
                     ) : null}
                   </div>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  {navegable ? (
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  ) : null}
                 </div>
-            </Link>
+            </FilaEnvuelta>
 
           </li>
           );
@@ -447,7 +464,43 @@ type Fila =
 // `cop` ES EL SEGMENTO DEL LIBRO NULO, no una moneda de verdad. La pantalla lo
 // traduce de vuelta con su propio mapa; aquí se escribe igual para que las dos
 // puntas del enlace no se separen.
-function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: LedgerDisplay | null }) {
+// LA FILA ES UN ENLACE O NO LO ES, y esto lo decide en un sitio.
+//
+// Un `const Fila = navegable ? Link : "div"` parecía más corto y TypeScript lo
+// rechaza con razón: `Link` exige `href` y un `div` no lo admite, así que la
+// unión de las dos props no es asignable a ninguno de los dos. Esto lo
+// resuelve donde se sabe la respuesta.
+//
+// EL `hover` VIAJA CON EL ENLACE. Un fondo que cambia al pasar por encima es
+// una promesa de que algo va a pasar al tocar; sin enlace, es mentira.
+function FilaEnvuelta({
+  href,
+  children,
+}: {
+  href: string | null;
+  children: React.ReactNode;
+}) {
+  const base = "flex w-full items-center justify-between gap-3 p-3 text-left";
+  if (!href) return <div className={base}>{children}</div>;
+  return (
+    <Link
+      href={href}
+      className={`${base} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function FilaDeContado({
+  venta,
+  ledger,
+  navegable,
+}: {
+  venta: VentaDeContado;
+  ledger: LedgerDisplay | null;
+  navegable: boolean;
+}) {
   const amount = formatLedgerAmount(venta.amount, venta.currency, ledger);
   // Qué se llevó, en una línea. Es lo que la fila de un fiado pone después de
   // «Fiado · », y aquí es lo único que identifica la compra.
@@ -455,9 +508,12 @@ function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: Ledge
 
   return (
     <li>
-      <Link
-        href={`/transacciones/venta/${venta.saleId}/${(venta.currency ?? "cop").toLowerCase()}`}
-        className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+      <FilaEnvuelta
+        href={
+          navegable
+            ? `/transacciones/venta/${venta.saleId}/${(venta.currency ?? "cop").toLowerCase()}`
+            : null
+        }
       >
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
@@ -496,9 +552,11 @@ function FilaDeContado({ venta, ledger }: { venta: VentaDeContado; ledger: Ledge
               los importes quedaran en la misma columna que los de las otras
               filas. Ahora lleva a su pantalla como las demás, así que lleva
               la misma flecha. */}
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          {navegable ? (
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          ) : null}
         </div>
-      </Link>
+      </FilaEnvuelta>
     </li>
   );
 }

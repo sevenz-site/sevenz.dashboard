@@ -514,6 +514,28 @@ export function NuevaVenta({
           duplicado={duplicado}
           guardando={guardando}
           error={error}
+          // ── TOCAR EL FORMULARIO VUELVE A DEJARLO SIN VEREDICTO ──────
+          //
+          // Reportado por el dueño el 2026-10-21: *«al corregir la cédula e
+          // intentar registrar, el sistema no hace la validación nuevamente
+          // del documento sino que registra como cuenta separada o cuenta
+          // existente según lo que seleccione»*.
+          //
+          // `duplicado` guarda el cliente que el SERVIDOR encontró para la
+          // cédula que se envió. En cuanto esa cédula cambia, ese veredicto
+          // habla de otro documento — pero los dos botones seguían ahí, y
+          // «Registrar a cuenta existente» mandaba la venta al cliente de la
+          // cédula ANTERIOR. Corregir el dato y pulsar el botón que la
+          // pantalla ofrecía bastaba para cargarle una compra a quien no la
+          // hizo.
+          //
+          // Limpiarlo devuelve el botón a «Finalizar», que vuelve a mandar el
+          // formulario y a comprobar la cédula nueva. Es el mismo gesto que ya
+          // hacía elegir a un cliente de la lista, dos props más arriba.
+          onEditarFormulario={() => {
+            setError(null);
+            setDuplicado(null);
+          }}
           onFinalizar={(form, permiso) => void finalizar(form, permiso)}
           // LA VENTA SE VA AL CLIENTE QUE YA ESTABA. `guardar` acepta un
           // destino forzado desde que existe el paso 4 —se añadió para el
@@ -1407,6 +1429,7 @@ function PasoCliente({
   error,
   onFinalizar,
   onUsarExistente,
+  onEditarFormulario,
 }: {
   clientes: Cliente[];
   cliente: Elegido | null;
@@ -1428,6 +1451,7 @@ function PasoCliente({
   // GUARDA LA VENTA EN EL CLIENTE QUE YA EXISTE, sin crear nada y sin tocar su
   // ficha. Ver el comentario de los dos botones.
   onUsarExistente: (c: { id: string; name: string }) => void;
+  onEditarFormulario: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [query, setQuery] = useState("");
@@ -1647,7 +1671,12 @@ function PasoCliente({
           cliente al guardar y aquí lo que sigue es cobrar la venta. Lo que sí
           se comparte es lo que importa: los campos mandan los mismos nombres y
           los recibe `registrarCliente`, la misma acción. */}
-      <form ref={formRef} className="flex flex-col gap-4">
+      {/* `onChange` EN EL FORM Y NO EN CADA CAMPO: el evento burbujea, así
+          que un solo manejador cubre el nombre, el tipo de documento, el
+          número, el teléfono y la dirección — y cubrirá lo que se añada
+          mañana sin que nadie se acuerde de engancharlo. Ese olvido es
+          exactamente la clase de fallo que esto viene a cerrar. */}
+      <form ref={formRef} className="flex flex-col gap-4" onChange={onEditarFormulario}>
         <input type="hidden" name={CONSENT_SHOWN_FIELD} value="1" />
         {acepta ? <input type="hidden" name={CONSENT_FIELD} value="1" /> : null}
 
