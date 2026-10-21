@@ -31,8 +31,30 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // El resumen (`/ventas/<id>`) SÍ la lleva: ver `mobile-nav.tsx`.
   // El flujo del abono se comporta igual que el de venta: sin barra, y su
   // propio aire abajo. Anadido el 2026-10-19 con `/abonos/nuevo`.
+  //
+  // Y EL FLUJO DEL PRODUCTO, desde el 2026-10-20: sus cuatro pasos tampoco
+  // llevan barra de navegación. Sin esta línea, `hasBar` seguía en `true` y
+  // `main` reservaba los 104px de la barra que ya no se dibuja, así que los
+  // botones quedaban con un hueco blanco debajo. Lo reportó el dueño con la
+  // captura del 1/4 y la del 4/4.
+  //
+  // BOTH LISTS IN THIS FILE ARE NEEDED, AND THAT IS WHAT COST ME TWO TRIES.
+  // First I put the routes only in `conBarraDeBotones`, and the gap stayed
+  // exactly as it was: that list never touches `hasBar`, so `main` kept
+  // reserving the 104px of a bar that is not drawn. Then only here, and it
+  // dropped to 16px: `hasBar` was `false` by then, but a route missing from
+  // `conBarraDeBotones` falls through to the last branch of the `cn`, the
+  // `+1rem` one.
+  //
+  // SO: this list removes the nav bar's height; the other removes the 16px of
+  // air every ordinary screen carries underneath. A screen with
+  // `StickyActions` needs both, because that bar brings its own 40px and sits
+  // flush against the edge.
   const enAsistenteDeVenta =
-    pathname.startsWith("/ventas/nueva") || pathname.startsWith("/abonos/nuevo");
+    pathname.startsWith("/ventas/nueva") ||
+    pathname.startsWith("/abonos/nuevo") ||
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
   const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
 
   // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────
@@ -70,10 +92,18 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // tocando una tarjeta. La llevan los pasos siguientes, que viven bajo esa
   // ruta con el id del fiado. Sin la barra inclinada, la lista se comeria 40px
   // que nadie pone.
+  //
+  // AND THE PRODUCT FLOW'S FOUR STEPS, since 2026-10-20: the owner asked for
+  // the buttons «pegados a la parte inferior de la pantalla», and without this
+  // line they sat 16px off the edge. All four screens mount the SAME
+  // `StickyActions` — one instance, only the body changes — so no single step
+  // behaves differently.
   const conBarraDeBotones =
     pathname.startsWith("/ventas/nueva") ||
     pathname === "/clients/nuevo" ||
-    pathname.startsWith("/abonos/nuevo/");
+    pathname.startsWith("/abonos/nuevo/") ||
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
   const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
 
   return (

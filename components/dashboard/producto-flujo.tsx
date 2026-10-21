@@ -164,12 +164,58 @@ export function ProductoFlujo({
   // puertas --el botón flotante y el del estado vacío--.
   const salir = () => router.push("/productos");
 
-  // «CONTINUAR» NO VALIDA TODAVÍA, y es deliberado: el formulario ya avisa de
-  // lo que falta al guardar, con el mensaje exacto, y bloquear el paso 2
-  // porque el nombre está vacío obligaría a repetir esas reglas aquí. El
-  // guardado sigue siendo la única puerta que decide si un producto es
-  // válido, que es donde esa decisión ya vivía.
-  const continuar = () => setPaso((p) => Math.min(4, p + 1) as 1 | 2 | 3 | 4);
+  // ── «CONTINUAR» VALIDATES ITS OWN SCREEN ─────────────────────────────
+  //
+  // Owner's instruction on 2026-10-20: *«la validación del nombre debe
+  // ocurrir al seleccionar "Continuar" en esa misma pantalla»*, and the same
+  // for prices.
+  //
+  // I HAD LEFT IT TO THE SAVE, reasoning that the server already holds the
+  // rules and repeating them here duplicated them. That was bad reasoning and
+  // the screenshot shows why: «Escribe el nombre del producto» surfaced on
+  // step 2/4, at the foot, below the wholesale price — two screens away from
+  // the empty field and saying nothing about where it was. An error has to
+  // appear where it can be fixed; otherwise it is just a refusal.
+  //
+  // ===========================================================================
+  // THE PRICE RULE IS STRICTER THAN THE SERVER'S, ON PURPOSE
+  //
+  // The server asks for ONE price across the whole product (`Pon al menos un
+  // precio, al detal o al mayor`). The owner asked for one per ENABLED tier,
+  // and the extra strictness earns its keep: a product with «Venta al mayor»
+  // on and no wholesale price passes the server's rule on the strength of the
+  // retail one, and reaches the catalogue offering a wholesale tier with no
+  // figure behind it. An enabled switch is a promise.
+  //
+  // A TIER «HAS A PRICE» if its base has one OR any of its loose currencies
+  // does: breaking the dollar's link and typing only the euro is a valid way
+  // to price it, and looking at the base alone would read that as empty.
+  function tienePrecio(tier: PriceTier): boolean {
+    const base = tier === "retail" ? priceRetail : priceWholesale;
+    if (base.trim() !== "") return true;
+    return Object.values(fixed[tier]).some((v) => (v ?? "").trim() !== "");
+  }
+
+  function continuar() {
+    if (paso === 1 && name.trim() === "") {
+      setError("Escribe el nombre del producto.");
+      return;
+    }
+    if (paso === 2) {
+      if (ventaRetail && !tienePrecio("retail")) {
+        setError("Pon el precio al detal, o apaga «Venta al detal».");
+        return;
+      }
+      if (ventaWholesale && !tienePrecio("wholesale")) {
+        setError("Pon el precio al mayor, o apaga «Venta al mayor».");
+        return;
+      }
+    }
+    // THE NOTICE CLEARS ON THE WAY FORWARD. Without this, one screen's notice
+    // hangs at the foot of the next one — half of what the owner reported.
+    setError(null);
+    setPaso((p) => Math.min(4, p + 1) as 1 | 2 | 3 | 4);
+  }
 
   const editing = product != null;
 
