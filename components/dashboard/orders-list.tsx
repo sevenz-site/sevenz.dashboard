@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +22,7 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
 
 // THE CATALOGUE'S ORDERS. Deliverable D, reading half.
 //
@@ -128,6 +131,22 @@ export function OrdersList({
   // una pantalla sin estado vacío se lee como una que no cargó.
   vacio?: ReactNode;
 }) {
+  // ── PAGINADO, LA MISMA REGLA QUE CLIENTES ────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-20. Hasta hoy esta lista pintaba TODOS los
+  // pedidos de un negocio de una vez.
+  //
+  // AQUÍ Y NO EN `OrdersResults`, que es quien filtra: la paginación corta lo
+  // que ya pasó el filtro, así que tiene que vivir donde están las filas que
+  // de verdad se dibujan. Y por eso NO hace falta volver a la página 1 al
+  // filtrar: `OrdersResults` saca esta lista de la pantalla entera cuando el
+  // filtro no deja nada, así que este componente se vuelve a montar con su
+  // estado en 1.
+  const [page, setPage] = useState(1);
+  const paginas = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
+  const paginaSegura = Math.min(page, paginas);
+  const pagina = orders.slice((paginaSegura - 1) * PAGE_SIZE, paginaSegura * PAGE_SIZE);
+
   if (orders.length === 0) {
     return (
       vacio ?? (
@@ -143,7 +162,7 @@ export function OrdersList({
     <>
       {/* TELÉFONO */}
       <div className="flex flex-col gap-3 md:hidden">
-        {orders.map((order) => (
+        {pagina.map((order) => (
           <Link
             key={order.id}
             href={`/productos/ordenes/${order.id}`}
@@ -193,7 +212,7 @@ export function OrdersList({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((order) => (
+            {pagina.map((order) => (
               <TableRow key={order.id} className="cursor-pointer">
                 <TableCell className="font-medium">
                   <Link href={`/productos/ordenes/${order.id}`} className="block">
@@ -230,6 +249,8 @@ export function OrdersList({
           </TableBody>
         </Table>
       </div>
+
+      <ListPagination page={paginaSegura} pageCount={paginas} onPage={setPage} />
     </>
   );
 }

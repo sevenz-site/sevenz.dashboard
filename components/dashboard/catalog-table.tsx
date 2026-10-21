@@ -18,6 +18,8 @@ import {
 } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
+import { marcarCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
 import {
   currenciesOf,
   isPublished,
@@ -91,9 +93,52 @@ export function CatalogTable({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { visible, total, query } = useCatalogFilters();
+  const { visible, total, query, sortBy, status, minAmount, maxAmount } = useCatalogFilters();
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [creating, setCreating] = useState(false);
+  // ── PAGINADO, LA MISMA REGLA QUE CLIENTES ────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-20. Hasta hoy esta rejilla pintaba TODOS
+  // los productos de un negocio: con ciento y pico, el teléfono renderiza
+  // ciento y pico de tarjetas con su foto para enseñar seis.
+  //
+  // VUELVE A LA 1 AL FILTRAR O BUSCAR, por lo mismo que el historial: sin
+  // ello, quien esté en la página 3 y escriba en el buscador ve una rejilla
+  // vacía con el paginador diciendo «Página 1 de 1». Se hace con un efecto y
+  // no en el setter porque el filtro vive en un contexto, no aquí.
+  const [page, setPage] = useState(1);
+  const paginas = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const paginaSegura = Math.min(page, paginas);
+  const pagina = visible.slice((paginaSegura - 1) * PAGE_SIZE, paginaSegura * PAGE_SIZE);
+
+  // SE AJUSTA DURANTE EL RENDER, NO EN UN EFECTO. Un `useEffect` aquí pinta
+  // la página vieja y la corrige después --dos renders donde cabe uno-- y
+  // `eslint` lo rechaza con `react-hooks/set-state-in-effect`. Es el patrón
+  // que React documenta para «ajustar estado cuando cambia una prop».
+  //
+  // LA CLAVE SON LOS FILTROS, NO `visible.length`. Parece lo mismo y no lo
+  // es: borrar un producto también cambia esa longitud, y con ella en la
+  // clave el tendero que borra algo desde la página 3 aterriza en la 1 sin
+  // haber tocado ningún filtro.
+  // LA BANDERA PARA LA BARRA DE ABAJO. Ver `catalogo-vacio.ts`: con el estado
+  // vacío a la vista, su botón flotante de «Crear producto» sobra, porque esa
+  // caja ya trae el suyo.
+  //
+  // `marcarCatalogoVacio` NO es `setState`, así que este efecto no choca con
+  // `react-hooks/set-state-in-effect`. Y la limpieza del `return` es lo que
+  // evita que el flotante desaparezca del resto de la app al salir de aquí.
+  const estadoVacioALaVista = total === 0 && !loadFailed;
+  useEffect(() => {
+    marcarCatalogoVacio(estadoVacioALaVista);
+    return () => marcarCatalogoVacio(false);
+  }, [estadoVacioALaVista]);
+
+  const claveDeFiltros = `${query}|${sortBy}|${status}|${minAmount}|${maxAmount}`;
+  const [claveprevia, setClavePrevia] = useState(claveDeFiltros);
+  if (claveDeFiltros !== claveprevia) {
+    setClavePrevia(claveDeFiltros);
+    setPage(1);
+  }
   // Cuántos productos se han creado en esta visita. Solo sirve de clave del
   // diálogo de alta: cambiarla lo desmonta y lo vuelve a montar vacío. Ver
   // dónde se usa, abajo.
@@ -200,23 +245,23 @@ export function CatalogTable({
             desliz, y se le añade la frase de que se llena solo — que es el
             hallazgo de campo y es lo que quita la sensacion de deberle dos
             horas de trabajo a la pantalla. */}
+        {/* FRAME `1500:9705`. El subtítulo es MÁS CORTO que el que había: el
+            frame se queda en «Los productos que agregues acá podrán verse
+            reflejados en el catálogo» y suelta las dos frases que seguían
+            --que los ven tus clientes, y que se agregan solos al fiar--. Se
+            respeta: en una pantalla cuyo único trabajo es que pulses un
+            botón, cuatro líneas de explicación compiten con él.
+
+            Y EL BOTÓN SALE A TODAS LAS ANCHURAS, relleno y de ancho completo.
+            Antes era `hidden md:inline-flex` porque en el teléfono lo hacía
+            el flotante de la barra; ahora el flotante es el que se aparta
+            --ver `catalogo-vacio.ts`--, que es lo que el dueño pidió. */}
         <EmptyState
           title="Todavía no tienes productos"
-          subtitle="Los productos que agregues acá podrán verse reflejados en el catálogo de producto que ven tus clientes. No hace falta cargarlos ahora: se van agregando solos cuando fías o vendes algo que no esté en la lista."
+          subtitle="Los productos que agregues acá podrán verse reflejados en el catálogo."
         >
-          {/* SOLO DESDE `md`, encontrado rindiendo la pantalla el 2026-10-10:
-              por debajo de ahi el boton flotante de la barra ya dice «Crear
-              producto» y hace lo mismo, asi que a 375px habia dos controles
-              con la misma etiqueta en la misma pantalla. Es lo que el frame
-              dibuja —su estado vacio no lleva boton— y lo que el
-              DESIGN-SYSTEM pide. En escritorio no hay flotante, asi que aqui
-              si hace falta. */}
-          <Button
-            type="button"
-            className="hidden md:inline-flex"
-            onClick={() => setCreating(true)}
-          >
-            <Plus className="size-4" /> Crear producto
+          <Button type="button" className="h-10 w-full text-base font-semibold" onClick={() => setCreating(true)}>
+            <Plus className="size-5" /> Crear producto
           </Button>
         </EmptyState>
         {nuevo}
@@ -242,15 +287,18 @@ export function CatalogTable({
             : "Ningún producto se llama así."}
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {visible.map((p) => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              onEdit={() => setEditing(p)}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {pagina.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                onEdit={() => setEditing(p)}
+              />
+            ))}
+          </ul>
+          <ListPagination page={paginaSegura} pageCount={paginas} onPage={setPage} />
+        </>
       )}
 
       {nuevo}
