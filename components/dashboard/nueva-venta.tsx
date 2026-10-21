@@ -998,6 +998,32 @@ function TarjetaDeLinea({
   const bloque = escalon === "wholesale" ? linea.producto.wholesale : linea.producto.retail;
   const minimo = cantidadMinima(linea.producto);
   const foto = linea.photoPath ? getPublicProductPhotoUrl(linea.photoPath) : null;
+
+  // ── LA CANTIDAD SE PUEDE ESCRIBIR, NO SOLO PULSAR ────────────────────
+  //
+  // Encargo del dueño el 2026-10-21: *«el input del carrito debe permitir
+  // escribir con el teclado, no solo incrementar o decrementar por botones»*.
+  // Era un `<span>`, así que llevar una línea a 100 unidades costaba noventa y
+  // nueve toques — y la captura que lo reporta tiene un 100 escrito.
+  //
+  // UN ESTADO DE TEXTO APARTE, y no `String(linea.quantity)` directo, porque
+  // mientras se teclea hay estados que no son un número: el campo vacío al
+  // borrar para reescribir, y el «12,» de quien va a poner 12,5 —esta columna
+  // es `numeric(14,3)` para los negocios que venden a peso—. Con el valor
+  // atado al número, borrar el último dígito lo devolvía a 1 y el campo se
+  // peleaba con los dedos. Es el mismo fallo que el precio fijado del producto
+  // tuvo el 2026-10-14 y por el que su estado vive en la CLAVE y no en el
+  // contenido.
+  //
+  // SE RESINCRONIZA AL PINTAR cuando el número cambia por fuera —los botones
+  // «−» y «+», o quitar una línea de arriba—. Ajustar estado durante el render
+  // es el patrón que este repo usa en vez de un efecto, que `eslint` rechaza.
+  const [textoCantidad, setTextoCantidad] = useState(() => formatCantidad(linea.quantity));
+  const [ultimaCantidad, setUltimaCantidad] = useState(linea.quantity);
+  if (linea.quantity !== ultimaCantidad) {
+    setUltimaCantidad(linea.quantity);
+    setTextoCantidad(formatCantidad(linea.quantity));
+  }
   const unitario = precioEnMoneda(bloque, linea.currency, rates);
 
   // LAS MONEDAS CON SU SUBTOTAL, que es lo que la hoja enseña. Cada cifra sale
@@ -1057,9 +1083,40 @@ function TarjetaDeLinea({
               <Minus className="size-4" aria-hidden="true" />
             )}
           </Button>
-          <span className="flex size-10 items-center justify-center rounded-xl border text-base font-semibold tabular-nums">
-            {formatCantidad(linea.quantity)}
-          </span>
+          {/* `inputMode="decimal"` ABRE EL TECLADO NUMÉRICO en el teléfono,
+              que es donde esto se usa. Sin él sale el alfabético y escribir un
+              100 pide tres toques más de los necesarios. */}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={textoCantidad}
+            aria-label={`Cantidad de ${linea.name}`}
+            onChange={(e) => {
+              // SOLO DÍGITOS Y UN SEPARADOR. Una letra en este campo no es un
+              // error que corregir después: es una cantidad que no existe.
+              const limpio = e.target.value.replace(/[^\d.,]/g, "");
+              setTextoCantidad(limpio);
+              const n = parseAmount(limpio);
+              // SE AVISA AL CARRITO EN CUANTO HAY UN NÚMERO USABLE, para que
+              // el subtotal y el escalón de precio sigan a los dedos. Un campo
+              // a medio escribir —vacío, o «12,»— no manda nada todavía.
+              if (n != null && n >= minimo) onCantidad(n);
+            }}
+            onBlur={() => {
+              // AL SALIR, EL CAMPO VUELVE A DECIR LA VERDAD. Si se quedó
+              // vacío o por debajo del mínimo, lo que vale es lo que el
+              // carrito tiene — no se quita la línea, que para eso está el
+              // botón de la papelera y es una decisión distinta de «me
+              // equivoqué escribiendo».
+              const n = parseAmount(textoCantidad);
+              if (n == null || n < minimo) {
+                setTextoCantidad(formatCantidad(linea.quantity));
+              } else {
+                setTextoCantidad(formatCantidad(n));
+              }
+            }}
+            className="size-10 rounded-xl border bg-transparent text-center text-base font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
           <Button
             type="button"
             variant="outline"

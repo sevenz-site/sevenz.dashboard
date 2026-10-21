@@ -156,6 +156,31 @@ export function TarjetaDeAbono({
         ) : estado ? (
           <ChipDeEstado estado={estado} />
         ) : null}
+
+        {/* ── EL RÓTULO VA AQUÍ, DEBAJO DEL CHIP ──────────────────────
+            Corregido por el dueño el 2026-10-21: lo había puesto en la
+            columna derecha, bajo la línea de bolívares. *«Debe ir alineado a
+            la izquierda del card debajo del chip como te lo pasé en el
+            frame»*.
+
+            Y ASÍ LA TARJETA SE LEE EN DOS COLUMNAS LIMPIAS: a la izquierda
+            cuándo y en qué estado quedó; a la derecha cuánto, en su moneda y
+            en bolívares. A la derecha eran tres renglones apretados que
+            partían la línea de bolívares en dos a 375px.
+
+            `getBalanceLabel` elige entre «Debe», «A favor» y «Sin deuda»
+            según el signo: un fiado saldado dirá «Sin deuda», que es la
+            respuesta y no un cero suelto. Sin signo en la cifra, porque el
+            rótulo ya lo lleva. */}
+        {pendienteTras != null ? (
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
+            {abono.currency ? (
+              <CurrencyFlagIcon currency={abono.currency} className="size-3 shrink-0" />
+            ) : null}
+            {getBalanceLabel(pendienteTras)}{" "}
+            {formatPriceAmount(Math.abs(pendienteTras), abono.currency ?? "COP")}
+          </span>
+        ) : null}
       </div>
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex min-w-0 flex-col items-end">
@@ -186,22 +211,6 @@ export function TarjetaDeAbono({
             // que fuera el número.
             <span className="text-right text-[10px] text-muted-foreground tabular-nums">
               {formatBs(enBs)} al día {inicial ? "de la compra" : "del abono"}
-            </span>
-          ) : null}
-          {/* EL RÓTULO CON SU BANDERA, como en las filas del historial.
-              `getBalanceLabel` elige entre «Debe», «A favor» y «Sin deuda»
-              según el signo — un fiado saldado dirá «Sin deuda», que es la
-              respuesta correcta y no un cero suelto.
-
-              SIN SIGNO: el rótulo ya lo lleva, como se decidió el 2026-10-21
-              para los saldos a favor de la pantalla del cliente. */}
-          {pendienteTras != null ? (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
-              {abono.currency ? (
-                <CurrencyFlagIcon currency={abono.currency} className="size-3 shrink-0" />
-              ) : null}
-              {getBalanceLabel(pendienteTras)}{" "}
-              {formatPriceAmount(Math.abs(pendienteTras), abono.currency ?? "COP")}
             </span>
           ) : null}
         </div>

@@ -360,6 +360,15 @@ export function DetalleDeTransaccion({
                   descripcion: null,
                   tasaSellada: (abonoInicial ?? 0) > 0.005 ? exchangeRateUsed : 0,
                 }}
+                // LO QUE QUEDÓ TRAS EL PAGO DE LA COMPRA, que es `amount` tal
+                // cual: la migración `124` escribe el movimiento por lo que
+                // queda, así que ese importe YA es «el fiado menos lo que
+                // entregó». Añadido el 2026-10-21 a petición del dueño, para
+                // que la primera tarjeta lleve el mismo rótulo que las otras.
+                //
+                // Con cero abonado dice lo mismo que el fiado entero, y es
+                // correcto: no entregó nada, así que quedó debiendo todo.
+                pendienteTras={amount ?? 0}
               />
               {/* ── LO QUE QUEDABA TRAS CADA ABONO, EN ORDEN ────────────
                   La lista llega del más NUEVO al más viejo, así que se recorre
