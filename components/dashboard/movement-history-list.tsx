@@ -270,9 +270,31 @@ export function MovementHistoryList({
           // cambió ese día por esta misma razón, encontrada del mismo modo.
           const pendienteDeEsteFiado =
             m.type === "charge" ? (pendientePorFiado[m.id] ?? 0) : null;
-          const balance = formatLedgerAmount(pendienteDeEsteFiado ?? 0, m.currency, ledger);
-          // Solo los fiados llevan chip. Un abono no llega hasta aquí, y una
-          // venta de contado no tiene plazo que cumplir.
+
+          // ── QUÉ CIFRA LLEVA LA LÍNEA GRIS, Y SON DOS DISTINTAS ────────
+          //
+          // FIADO  → lo que ESE fiado todavía debe (`pendientePorFiado`).
+          // ABONO  → el saldo del cliente justo DESPUÉS de ese pago
+          //          (`running_balance`), que es lo que hay en producción.
+          //
+          // Decisión del dueño el 2026-10-21, elegida entre tres y con el
+          // coste delante: lo vio al comparar la app con producción, donde la
+          // fila del abono dice «Por cobrar $108.95» y aquí no decía nada —
+          // la línea se perdió el 2026-10-20 al pasar el fiado a su propio
+          // pendiente, porque la condición dejó fuera todo lo que no fuera un
+          // cargo.
+          //
+          // EL COSTE QUE ACEPTÓ: «Por cobrar» mide dos cosas según la fila.
+          // En un fiado se comprueba abriéndolo; en un abono es el saldo de
+          // aquel momento. Se le ofreció un rótulo propio para el abono y
+          // prefirió que fuera idéntico a producción, para no cambiarle la
+          // lectura a quien ya la conoce.
+          const cifraDeLaLinea =
+            m.type === "charge" ? pendienteDeEsteFiado : m.running_balance;
+          const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
+          // Solo los fiados llevan chip: una venta de contado no tiene plazo
+          // que cumplir, y un abono tampoco — lo que vence es la deuda, no el
+          // pago que la salda.
           const estado = m.type === "charge" ? (estadosDeFiado[m.id] ?? null) : null;
 
           return (
@@ -319,7 +341,11 @@ export function MovementHistoryList({
                   {/* Un fiado saldado no dice «Por cobrar $0.00»: ya lo dice
                       su chip «Pagado», y la cifra en cero al lado se lee como
                       un dato que falta. */}
-                  {pendienteDeEsteFiado != null && pendienteDeEsteFiado > 0.005 ? (
+                  {/* EN UN ABONO LA LÍNEA VA SIEMPRE, como en producción. En
+                      un FIADO solo si queda algo por cobrar: ahí el cero ya lo
+                      dice su chip «Pagado», y «Por cobrar $0.00» al lado se
+                      lee como un dato que falta. */}
+                  {m.type !== "charge" || (pendienteDeEsteFiado ?? 0) > 0.005 ? (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
                       Por cobrar {balance.primary}

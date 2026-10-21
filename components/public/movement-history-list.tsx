@@ -18,6 +18,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
+import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
@@ -230,7 +231,12 @@ export function MovementHistoryList({
           // is missing, and `?? null` keeps the line off rather than printing
           // a zero that would read as «paid».
           const pendienteDeEsteFiado = m.type === "charge" ? (m.pending ?? null) : null;
-          const balance = formatLedgerAmount(pendienteDeEsteFiado ?? 0, m.currency, ledger);
+          // MISMA REGLA QUE EN LA DEL TENDERO (ver su comentario largo): el
+          // fiado enseña lo que ESE fiado debe, el abono el saldo que quedaba
+          // tras él. Decisión del dueño el 2026-10-21.
+          const cifraDeLaLinea =
+            m.type === "charge" ? pendienteDeEsteFiado : m.running_balance;
+          const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
 
           return (
           <li key={m.id}>
@@ -264,7 +270,22 @@ export function MovementHistoryList({
                       por pagar» reads as a missing figure, and the paid state
                       is better told by the fiado's own card than by a zero in
                       a list. */}
-                  {pendienteDeEsteFiado != null && pendienteDeEsteFiado > 0.005 ? (
+                  {/* EL RÓTULO DEL ABONO NO ES EL DEL FIADO, y no es un
+                      descuido. En un fiado el cliente lee «Te queda por pagar»,
+                      que habla de ESA deuda. En un abono la cifra es su saldo
+                      de aquel momento, y puede estar A FAVOR —ha pagado de
+                      más—, donde «te queda por pagar» sería falso. Por eso el
+                      abono usa `getBalanceLabel`, que dice «Debe», «A favor» o
+                      «Sin deuda» según el signo. Es lo que esta pantalla ya
+                      hacía en producción. */}
+                  {m.type !== "charge" ? (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                      ) : null}
+                      {getBalanceLabel(m.running_balance)} {balance.primary}
+                    </p>
+                  ) : (pendienteDeEsteFiado ?? 0) > 0.005 ? (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
