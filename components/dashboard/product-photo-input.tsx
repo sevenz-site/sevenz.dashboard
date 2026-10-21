@@ -157,9 +157,18 @@ export function ProductPhotoInput({
         </>
       ) : null}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Si publicas el producto, esta foto la ve cualquiera que abra el enlace de tu catálogo.
-      </p>
+      {/* NO STANDING HINT UNDER THE PHOTO. «Si publicas el producto, esta foto
+          la ve cualquiera que abra el enlace de tu catálogo» was removed at
+          the owner's request on 2026-10-20, circled in red on step 3/4.
+
+          IT GOES FROM BOTH SCREENS AT ONCE, and that is worth knowing before
+          anyone puts it back: this component is mounted by the product flow's
+          step 3/4 AND by the quick-add sheet in the sale assistant. In both,
+          the «Publicar producto en catálogo» switch sits immediately above the
+          photo, so the sentence restated the switch the owner had just set. In
+          the flow the switch even carries its own subtitle saying the same
+          thing about the photo; in the quick sheet it does not, which is the
+          one place this removal takes a sentence away rather than a repeat. */}
     </div>
   );
 }

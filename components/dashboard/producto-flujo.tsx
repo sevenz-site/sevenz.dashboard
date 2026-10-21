@@ -677,12 +677,21 @@ export function ProductoFlujo({
               maxDigitos={11}
               onTope={() => setStockTopado(true)}
               hintError={stockTopado || excedeTecho(stock, 1e11)}
+              /* ONLY THE CEILING WARNING LEFT HERE. The standing note —«Por
+                 ahora esta cantidad no baja sola: cuando fíes o vendas,
+                 tendrás que ajustarla tú»— was removed at the owner's request
+                 on 2026-10-20, reviewing step 1/4 with the three hints
+                 circled in red.
+
+                 It is the same reasoning the ceiling warning's own comment
+                 states right above: a permanent grey line under a field that
+                 almost always holds a 1 or a 12 is noise, and noise is read
+                 once and then never again. The ceiling warning stays because
+                 it only appears once the number is already past the limit. */
               hint={
                 stockTopado || excedeTecho(stock, 1e11)
                   ? "Esa cantidad es demasiado grande: como mucho 11 dígitos (99.999.999.999)."
-                  : stock.trim() === ""
-                    ? null
-                    : "Por ahora esta cantidad no baja sola: cuando fíes o vendas, tendrás que ajustarla tú."
+                  : null
               }
               disabled={saving}
             />
@@ -759,10 +768,17 @@ export function ProductoFlujo({
                   el margen. Escríbelos tú abajo.
                 </p>
               ) : (
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Lo que te costó a ti. Con esto calculamos los precios desde el margen y te
-                  decimos tu ganancia.
-                </p>
+                /* FOUR WORDS, down from a sentence and a half. The owner cut
+                   «Con esto calculamos los precios desde el margen y te
+                   decimos tu ganancia» on 2026-10-20: the margin selector sits
+                   right below and explains itself, so the line was describing
+                   the next control rather than this field.
+
+                   The other two branches keep their full text, and that is the
+                   distinction: they fire only when the chosen currency has no
+                   rate, where the line is not a description but the reason a
+                   calculation the owner expected is not going to happen. */
+                <p className="text-xs leading-relaxed text-muted-foreground">Lo que te costó a ti.</p>
               )}
             </div>
 
@@ -1659,9 +1675,25 @@ function PriceRows({
         </div>
       ))}
 
+      {/* WHERE THE RATE COMES FROM, AND HOW TO OPT OUT OF IT.
+          Text written by the owner on 2026-10-20, replacing «"Hoy" es lo que
+          vale ese precio en bolívares con la tasa de hoy, y se mueve con ella.
+          Puedes romper la cadena de una moneda para escribir tú su precio».
+
+          The old line explained the mechanism — what «Hoy» means and that it
+          moves. The new one answers the question a shopkeeper actually brings
+          to a rate he did not type: where does this number come from. The
+          mechanism was never the doubt; the provenance was.
+
+          THE ICON IS DRAWN, NOT NAMED, because the owner wrote it as an icon
+          in the sentence. `Link2` and not `Unlink`: it is what the button
+          shows while the price IS linked, which is the only state in which
+          someone would go looking for this instruction. Showing the other one
+          would send them hunting for a control that is not on screen yet. */}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        «Hoy» es lo que vale ese precio en bolívares con la tasa de hoy, y se mueve con ella.
-        Puedes romper la cadena de una moneda para escribir tú su precio.
+        Las tasas de Sevenz provienen de fuentes públicas. Selecciona{" "}
+        <Link2 className="inline-block size-3.5 align-text-bottom" aria-hidden="true" /> para
+        desvincular el precio de la tasa oficial.
       </p>
     </div>
   );

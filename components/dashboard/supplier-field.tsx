@@ -107,9 +107,15 @@ export function SupplierField({
         </ul>
       ) : null}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Para acordarte de dónde reponerlo. Si ya lo compraste ahí antes, te lo sugerimos.
-      </p>
+      {/* NO STANDING HINT UNDER THIS FIELD. «Para acordarte de dónde
+          reponerlo. Si ya lo compraste ahí antes, te lo sugerimos» was removed
+          at the owner's request on 2026-10-20, reviewing step 1/4 with it
+          circled in red along with the other two.
+
+          The suggestion list it described is self-evident the moment it drops
+          down, and until then the line explains a behaviour that has not
+          happened yet — two sentences of grey under a field whose own label
+          already asks «¿Dónde compraste el producto?». */}
     </div>
   );
 }
