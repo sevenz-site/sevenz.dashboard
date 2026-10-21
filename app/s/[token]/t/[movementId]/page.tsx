@@ -27,6 +27,11 @@ type SharedMovement = {
   running_balance: number;
   plazo_dias: number | null;
   cuotas: number | null;
+  // Y el de la `132`: lo que ESTE fiado todavía debe. Opcional por lo mismo
+  // que `abono_inicial` más abajo — durante un despliegue el código y la base
+  // no coinciden— y ausente cae al `running_balance`, que es lo que esta
+  // pantalla enseñaba antes.
+  pending?: number | null;
   exchange_rate_used: number | null;
   entry_currency: MovementCurrencyCode | null;
   entry_amount: number | null;
@@ -71,6 +76,10 @@ type AbonoDirigidoJson = {
   currency: LedgerCurrency | null;
   amount: number;
   description: string | null;
+  // Llega con la migración `133`. Opcional porque durante un despliegue el
+  // código y la base no coinciden; sin ella la tarjeta no dibuja su línea de
+  // bolívares, que es exactamente como estaba antes.
+  exchange_rate_used?: number | null;
 };
 
 // EL DETALLE DE UNA TRANSACCIÓN, PARA EL CLIENTE — mismos frames que la del
@@ -213,6 +222,12 @@ export default async function DetalleDelClientePage({
           currency: a.currency,
           amount: Number(a.amount),
           descripcion: a.description,
+          // LA TASA QUE ESE ABONO SELLÓ — migración `133`. Sin ella la
+          // tarjeta no dibujaba su línea de bolívares, que es lo que el dueño
+          // reportó el 2026-10-21 como si se hubieran borrado: nunca habían
+          // estado en ESTA pantalla, porque esta clave no viajaba.
+          tasaSellada:
+            a.exchange_rate_used == null ? null : Number(a.exchange_rate_used),
         }))
       : undefined;
 
@@ -255,7 +270,23 @@ export default async function DetalleDelClientePage({
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}
         createdAt={m.created_at}
-        runningBalance={Number(m.running_balance)}
+        // EL PENDIENTE DEL FIADO, NO EL SALDO CON EL QUE SE REGISTRÓ.
+        // Reportado por el dueño el 2026-10-21: *«da la impresión de que no se
+        // hizo abono o que Sevenz hace mal los cálculos»*.
+        //
+        // Medido en dev con el fiado del Casco: se registró por $44.36 —la
+        // `124` escribe lo que queda tras el pago del momento—, lleva $21.13
+        // en abonos dirigidos y debe $23.23. El tendero leía 23,23 y el
+        // CLIENTE 44,36, en la misma pantalla y sobre el mismo fiado. Las dos
+        // personas que esta app existe para poner de acuerdo, mirando cifras
+        // distintas.
+        //
+        // La del tendero ya usaba su pendiente; aquí faltaba porque hasta la
+        // migración `132` el cliente no recibía `pending`. Ya lo recibe.
+        //
+        // `?? running_balance` por si la `132` no ha corrido en el entorno:
+        // degrada a lo de antes en vez de enseñar un cero.
+        runningBalance={m.pending ?? Number(m.running_balance)}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount}

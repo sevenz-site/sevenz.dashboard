@@ -8,6 +8,7 @@ import { CLASE_TARJETA } from "@/components/dashboard/tarjeta-de-fiado";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate } from "@/lib/format";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { getBalanceLabel } from "@/lib/types";
 
 // UN ABONO, COMO TARJETA. El reflejo de `TarjetaDeFiado`.
 //
@@ -48,6 +49,7 @@ export function TarjetaDeAbono({
   abono,
   estado,
   inicial = false,
+  pendienteTras = null,
 }: {
   abono: AbonoDirigido;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
@@ -72,6 +74,19 @@ export function TarjetaDeAbono({
   // «Dentro del plazo» sobre un pago simultáneo es una obviedad disfrazada de
   // veredicto.
   inicial?: boolean;
+  // ── LO QUE QUEDABA DE ESTE FIADO DESPUÉS DE ESTE ABONO ───────────────
+  //
+  // Encargo del dueño el 2026-10-21: *«les falta el label con la bandera
+  // "Debe" al igual que las filas del historial»*.
+  //
+  // DEL FIADO Y NO DEL CLIENTE, preguntado y decidido por él entre las dos:
+  // toda esta pantalla habla de un fiado, así que la cifra se comprueba
+  // restando dentro de la misma tarjeta. El saldo del cliente mezclaría aquí
+  // deudas de otras compras y la resta no cuadraría con lo que se ve.
+  //
+  // `null` donde no se puede saber —la tarjeta de la compra, o un entorno sin
+  // la migración `132`— y entonces la línea no se dibuja.
+  pendienteTras?: number | null;
 }) {
   // «Bs. … AL DÍA DEL ABONO», con la tasa SELLADA en el movimiento y no la de
   // hoy — frame `1489:10209`, nodo `1489:10240`.
@@ -119,7 +134,20 @@ export function TarjetaDeAbono({
           `min-w-0` la columna cedía y «20 de oct de 2026» caía en dos líneas,
           que es lo que identifica cada tarjeta de la lista. Lo que cede ahora
           es la línea de bolívares de la derecha, que es la que sobra. */}
-      <div className="flex shrink-0 flex-col gap-1">
+      {/* `items-start` Y NO SOLO `flex-col`. Reportado por el dueño el
+          2026-10-21: *«los chips de los cards de los abonos están torcidos,
+          deben apretar el contenido, pero se ven con más espacio de un lado
+          que del otro»*.
+
+          La causa: en una columna flex los hijos se estiran a lo ancho por
+          defecto (`align-items: stretch`), así que el chip tomaba el ancho de
+          la FECHA, que es más larga. Su `px-1.5` quedaba a la izquierda y el
+          resto era aire a la derecha — el chip no estaba torcido, estaba
+          estirado, y su texto pegado a un lado.
+
+          Es el mismo mecanismo que el `text-right` de la línea de bolívares,
+          dos días antes: alinear la caja no es alinear lo que lleva dentro. */}
+      <div className="flex shrink-0 flex-col items-start gap-1">
         <span className="whitespace-nowrap text-sm leading-5">{formatDate(abono.fecha)}</span>
         {inicial ? (
           <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-transparent bg-accent px-1.5 py-px text-xs leading-4">
@@ -158,6 +186,22 @@ export function TarjetaDeAbono({
             // que fuera el número.
             <span className="text-right text-[10px] text-muted-foreground tabular-nums">
               {formatBs(enBs)} al día {inicial ? "de la compra" : "del abono"}
+            </span>
+          ) : null}
+          {/* EL RÓTULO CON SU BANDERA, como en las filas del historial.
+              `getBalanceLabel` elige entre «Debe», «A favor» y «Sin deuda»
+              según el signo — un fiado saldado dirá «Sin deuda», que es la
+              respuesta correcta y no un cero suelto.
+
+              SIN SIGNO: el rótulo ya lo lleva, como se decidió el 2026-10-21
+              para los saldos a favor de la pantalla del cliente. */}
+          {pendienteTras != null ? (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
+              {abono.currency ? (
+                <CurrencyFlagIcon currency={abono.currency} className="size-3 shrink-0" />
+              ) : null}
+              {getBalanceLabel(pendienteTras)}{" "}
+              {formatPriceAmount(Math.abs(pendienteTras), abono.currency ?? "COP")}
             </span>
           ) : null}
         </div>

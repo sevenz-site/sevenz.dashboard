@@ -361,13 +361,41 @@ export function DetalleDeTransaccion({
                   tasaSellada: (abonoInicial ?? 0) > 0.005 ? exchangeRateUsed : 0,
                 }}
               />
-              {(abonosRecibidos ?? []).map((a, i) => (
-                <TarjetaDeAbono
-                  key={a.movementId}
-                  abono={a}
-                  estado={estadoDeCadaAbono[i]}
-                />
-              ))}
+              {/* ── LO QUE QUEDABA TRAS CADA ABONO, EN ORDEN ────────────
+                  La lista llega del más NUEVO al más viejo, así que se recorre
+                  al revés para ir restando: se parte del importe del fiado
+                  menos lo que se entregó al comprar, y cada abono —de los
+                  antiguos hacia los recientes— descuenta lo suyo.
+
+                  SE CALCULA AQUÍ Y NO EN LA TARJETA porque cada tarjeta sola
+                  no puede saberlo: necesita los abonos ANTERIORES a ella. */}
+              {(() => {
+                const porAbono = new Map<string, number>();
+                // SE PARTE DE `amount` TAL CUAL, sin restarle el abono de la
+                // compra. Ese pago YA está descontado: la migración `124`
+                // escribe el movimiento por LO QUE QUEDA de la venta, no por
+                // su total. Restarlo otra vez lo contaba dos veces.
+                //
+                // SE VIO PORQUE LA ÚLTIMA TARJETA NO CUADRABA CON «Total por
+                // cobrar», que es la comprobación que esta cifra trae de
+                // serie: en el fiado del Casco salía «Debe $22.09» sobre un
+                // total de $23.23 — exactamente el $1.14 de la compra, restado
+                // de más. Dos cifras de la misma pantalla que no cerraban, que
+                // es justo el fallo que el dueño reportó hoy en otro sitio.
+                let queda = amount ?? 0;
+                for (const a of [...(abonosRecibidos ?? [])].reverse()) {
+                  queda = Math.round((queda - a.amount) * 100) / 100;
+                  porAbono.set(a.movementId, queda);
+                }
+                return (abonosRecibidos ?? []).map((a, i) => (
+                  <TarjetaDeAbono
+                    key={a.movementId}
+                    abono={a}
+                    estado={estadoDeCadaAbono[i]}
+                    pendienteTras={porAbono.get(a.movementId) ?? null}
+                  />
+                ));
+              })()}
             </dd>
           </div>
         ) : (
