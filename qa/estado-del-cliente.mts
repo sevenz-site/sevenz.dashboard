@@ -53,14 +53,18 @@ const dias = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
 // El dueño VE con el que se montan los casos. Se elige por país y no por un
 // id escrito a mano: la regla de `DM-7`, que existe porque cinco suites
 // elegían el negocio a ciegas y una mintió un día entero.
-const { data: dueno } = await db
+const { data: duenoFila } = await db
   .from("owners")
   .select("id")
   .eq("country", "VE")
   .order("id")
   .limit(1)
   .single();
-if (!dueno) throw new Error("no hay ningún dueño VE en dev con el que montar los casos");
+if (!duenoFila) throw new Error("no hay ningún dueño VE en dev con el que montar los casos");
+// A UNA CONSTANTE NO NULA, y no es ceremonia: `conCliente` la usa dentro de
+// un closure, y ahí TypeScript no se queda con el estrechamiento del `throw`
+// de arriba. Sin esto el script corre igual y el typecheck del repo falla.
+const ownerId: string = duenoFila.id;
 
 type Fiado = { hace: number; plazo: number | null; monto: number; moneda?: string };
 
@@ -74,7 +78,7 @@ async function conCliente<T>(
   const { data: cliente, error } = await db
     .from("clients")
     .insert({
-      owner_id: dueno.id,
+      owner_id: ownerId,
       name: nombre,
       document_id: doc,
       document_country: "VE",
@@ -91,7 +95,7 @@ async function conCliente<T>(
         type: "charge",
         amount: f.monto,
         currency: f.moneda ?? "USD",
-        created_by: dueno.id,
+        created_by: ownerId,
         source: "manual",
         plazo_dias: f.plazo,
         created_at: dias(f.hace),
