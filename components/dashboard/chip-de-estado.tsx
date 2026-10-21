@@ -1,4 +1,5 @@
 import { ETIQUETA_DEL_ESTADO, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 
 // EL CHIP DE «Dentro del plazo» / «Plazo vencido» / «Pagado».
 //
@@ -7,38 +8,36 @@ import { ETIQUETA_DEL_ESTADO, type EstadoDelPlazo } from "@/lib/estado-del-plazo
 // abono dentro de la ficha de su fiado.
 //
 // ===========================================================================
-// LOS COLORES SON LITERALES Y VIENEN DEL FRAME, no del tema
+// LA PALETA ES LA DE `CLIENT_STATUS_BADGE_CLASS`, NO LA DEL FRAME
 //
-// Azul `#eff9ff` / `#b2e7fe` / `#006aa8`, rojo `#fff2f2` / `#ffcac9` /
-// `#c40003`, verde `#ecfdf5` / `#007956`. Se escriben tal cual porque el frame
-// los da tal cual y porque no hay token semántico para «dentro del plazo»:
-// `--money-in` es dinero que entra, que es otra cosa.
+// Reportado por el dueño el 2026-10-21 con la leyenda «Qué significa cada
+// estado» delante: *«los colores de los estados de los fiados en el historial
+// discrepan de los colores de las chips definidas originalmente»*.
 //
-// MEDIDOS CONTRA SU PROPIO FONDO, no contra el blanco de la página, que es lo
-// que importa en un chip: el texto se lee sobre el relleno del chip.
+// LA DIFERENCIA ERA UNA Y GRAVE: «Plazo vencido» salía en ROJO aquí y es
+// ÁMBAR en esa leyenda, donde el rojo está reservado a «Crítico» —«debe hace
+// más de 30 días sin abonar»—. Dos severidades distintas pintadas igual, y en
+// la pantalla donde el tendero decide a quién cobrar primero: un fiado que se
+// pasó un día del plazo se leía con la misma alarma que uno de mes y medio.
 //
-//   dentro   `#006aa8` sobre `#eff9ff`   5,42:1
-//   vencido  `#c40003` sobre `#fff2f2`   5,74:1
-//   pagado   `#007956` sobre `#ecfdf5`   5,15:1
+// EL FRAME DECÍA ROJO (`1488:10206`) y aquí se le lleva la contraria a
+// propósito. Un frame dibuja UNA pantalla; esa leyenda define un SISTEMA que
+// ya está en uso en la lista de clientes, en los filtros y en la cartera. Un
+// color que significa dos cosas según la pantalla deja de significar nada.
 //
-// Los tres pasan el piso de 4,5:1 de `DESIGN-SYSTEM.md`. Son cifras MEDIDAS,
-// no estimadas: la primera versión de este comentario llevaba 6,47 / 6,58 /
-// 5,27, que me los inventé, y los tres estaban mal.
+// SE IMPORTAN LAS CLASES, NO SE COPIAN LOS VALORES: el día que esa paleta
+// cambie, este chip cambia con ella. Copiarlos es exactamente cómo nació la
+// discrepancia que esta nota viene a cerrar — aquí había tres hexadecimales
+// escritos a mano con sus contrastes medidos al lado, todo correcto por
+// separado y desalineado del resto de la app.
 //
-// LO QUE NO PASA ES EL RELLENO CONTRA EL BLANCO DE LA PÁGINA: 1,07:1 el azul y
-// 1,05:1 el verde. O sea que la PASTILLA casi no se ve; lo que se ve es su
-// texto. Es aceptable aquí y conviene saber por qué: el chip no codifica nada
-// por color que no diga también con palabras, así que quien no distinga el
-// relleno no pierde información. No vale como precedente para un chip que
-// dependa del color para significar algo.
-//
-// EL VERDE NO LLEVA BORDE VISIBLE en el frame --su borde es del mismo color
-// que su relleno-- y los otros dos sí. Se respeta: es lo que distingue el
-// estado final de los dos que todavía pueden cambiar.
+// «Pagado» NO EXISTE en `ClientStatus` —es un estado del fiado, no del
+// cliente— así que toma el de `a_favor`, que en esa misma paleta es el verde
+// de «ya no hay nada que cobrar».
 const ESTILO: Record<EstadoDelPlazo, string> = {
-  dentro: "bg-[#eff9ff] border-[#b2e7fe] text-[#006aa8]",
-  vencido: "bg-[#fff2f2] border-[#ffcac9] text-[#c40003]",
-  pagado: "bg-[#ecfdf5] border-[#ecfdf5] text-[#007956]",
+  dentro: CLIENT_STATUS_BADGE_CLASS.dentro_del_plazo,
+  vencido: CLIENT_STATUS_BADGE_CLASS.plazo_vencido,
+  pagado: CLIENT_STATUS_BADGE_CLASS.a_favor,
 };
 
 // `whitespace-nowrap` NO ES OPCIONAL AQUÍ. Lo reportó el dueño el 2026-10-20
