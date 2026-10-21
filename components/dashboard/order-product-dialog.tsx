@@ -22,6 +22,7 @@ import {
   type PriceTier,
 } from "@/lib/products/price";
 import type { OrderProductRow } from "@/lib/orders/catalog-orders";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // WHAT THEY ASKED FOR, IN DETAIL — frame 1371:7229, the owner's request of
 // 2026-10-17. A line of an order opens and shows the product.
@@ -247,9 +248,10 @@ export function OrderProductDialog({
         ) : null}
 
         {producto == null ? (
-          <p className="rounded-[10px] border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            Este producto ya no está en tu catálogo. El pedido conserva lo que se acordó.
-          </p>
+          <EmptyState
+            title="Este producto ya no está en tu catálogo"
+            subtitle="El pedido conserva lo que se acordó."
+          />
         ) : (
           <>
             <div className="flex flex-col">

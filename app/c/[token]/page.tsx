@@ -14,6 +14,7 @@ import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   formatPriceAmount,
   priceIn,
@@ -343,12 +344,10 @@ export default async function CatalogoPublicoPage({
 
       <div className="flex flex-col gap-6 px-4 py-6">
         {shared.products.length === 0 ? (
-          <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Todavía no hay productos publicados. Escríbele al negocio y
-              pregúntale qué tiene.
-            </p>
-          </div>
+          <EmptyState
+            title="Todavía no hay productos publicados"
+            subtitle="Escríbele al negocio y pregúntale qué tiene."
+          />
         ) : (
           /* EL BUSCADOR RECIBE LAS TARJETAS YA PINTADAS, y la rejilla vive
              ahora dentro de él. Añadido el 2026-10-17 a petición del dueño.

@@ -11,6 +11,7 @@ import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjet
 import { formatDate } from "@/lib/format";
 import type { BolivarRates } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 
 // PASO 1/3 DEL ABONO DIRIGIDO — frame `1457:16193`.
@@ -174,9 +175,7 @@ export function AbonoSeleccionarFiado({
           </div>
 
           {visibles.length === 0 ? (
-            <p className="rounded-[10px] border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-              Ningún fiado coincide con «{query.trim()}».
-            </p>
+            <EmptyState title={`Ningún fiado coincide con «${query.trim()}»`} />
           ) : (
             <ul className="flex flex-col gap-2">
               {visibles.map((f) => (

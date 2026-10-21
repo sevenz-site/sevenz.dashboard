@@ -20,6 +20,7 @@ import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/move
 import { formatBs } from "@/lib/exchange-rate/format";
 import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 type SharedMovement = {
   id: string;
@@ -139,9 +140,7 @@ export function MovementHistoryList({
             botón tocar; aquí esos botones no existen —el cliente no registra
             nada, solo mira— y una instrucción que no se puede seguir es peor
             que ninguna. */}
-        <div className="rounded-lg border px-6 py-8 text-center">
-          <p className="text-base">Todavía no hay transacciones registradas.</p>
-        </div>
+        <EmptyState title="Todavía no hay transacciones registradas" />
       </div>
     );
   }
@@ -150,11 +149,9 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <p className="text-sm text-muted-foreground">
-          No tienes{" "}
-          {tipo === "charge" ? "fiados" : tipo === "payment" ? "abonos" : "compras de contado"} en
-          este historial.
-        </p>
+        <EmptyState
+          title={`No tienes ${tipo === "charge" ? "fiados" : tipo === "payment" ? "abonos" : "compras de contado"} en este historial`}
+        />
       </div>
     );
   }

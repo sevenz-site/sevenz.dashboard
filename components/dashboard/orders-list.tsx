@@ -19,6 +19,7 @@ import {
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
 import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // THE CATALOGUE'S ORDERS. Deliverable D, reading half.
 //
@@ -101,7 +102,15 @@ function Estado({ order }: { order: CatalogOrderRow }) {
   // The other three statuses read the same from here: none of them is
   // asking for anything any more. The detail page does tell them apart,
   // because that is where the difference means something.
-  return <Badge variant="secondary">Atendido</Badge>;
+  // MISMO CHIP QUE UN CLIENTE «Dentro del plazo», por instrucción del dueño
+  // el 2026-10-20. Era `variant="secondary"` --gris liso-- y el de al lado ya
+  // es el de «Crítico»: dos chips de la misma columna sacados de dos paletas
+  // distintas se leen como si midieran cosas distintas.
+  return (
+    <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.dentro_del_plazo}>
+      Atendido
+    </Badge>
+  );
 }
 
 export function OrdersList({
@@ -122,10 +131,10 @@ export function OrdersList({
   if (orders.length === 0) {
     return (
       vacio ?? (
-        <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-          Todavía no te ha llegado ningún pedido por el catálogo. Cuando alguien pida desde tu
-          enlace, aparece aquí.
-        </p>
+        <EmptyState
+          title="Todavía no te ha llegado ningún pedido por el catálogo"
+          subtitle="Cuando alguien pida desde tu enlace, aparece aquí."
+        />
       )
     );
   }

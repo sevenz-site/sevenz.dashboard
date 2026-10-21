@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CatalogShareButton, type PublishedCount } from "@/components/dashboard/catalog-share";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // LA SECCIÓN DE PEDIDOS CUANDO NO HAY NINGUNO — frame `1467:9437`, pedido del
 // dueño el 2026-10-19.
@@ -40,16 +41,11 @@ export function OrdersEmpty({
   initialToken: string | null;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-[10px] border px-4 py-6">
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-sm leading-5">Aún no tienes pedidos realizados</p>
-        <p className="text-xs leading-4 text-muted-foreground">
-          Crea un nuevo producto en tu catálogo y/o comparte tu catálogo con tus clientes para que
-          realicen sus pedidos vía WhatsApp.
-        </p>
-      </div>
-
-      <div className="flex w-full flex-col gap-4">
+    <EmptyState
+      title="Aún no tienes pedidos realizados"
+      subtitle="Crea un nuevo producto en tu catálogo y/o comparte tu catálogo con tus clientes para que realicen sus pedidos vía WhatsApp."
+    >
+      <>
         <CatalogShareButton
           publishedCount={publishedCount}
           businessName={businessName}
@@ -67,7 +63,7 @@ export function OrdersEmpty({
             Crear producto
           </Link>
         </Button>
-      </div>
-    </div>
+      </>
+    </EmptyState>
   );
 }

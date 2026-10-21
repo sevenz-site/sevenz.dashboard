@@ -6,6 +6,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
 import { isUnattended } from "@/lib/orders/catalog-orders";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL BUSCADOR Y EL CHIP DE ESTADO DE PEDIDOS.
 //
@@ -168,9 +169,10 @@ export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
   // perfectly good explanation sitting one tap away in the chip.
   if (total > 0 && visible.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-        Ningún pedido coincide con lo que buscas. Prueba con otro nombre o quita el filtro.
-      </p>
+      <EmptyState
+        title="Ningún pedido coincide con lo que buscas"
+        subtitle="Prueba con otro nombre o quita el filtro."
+      />
     );
   }
 

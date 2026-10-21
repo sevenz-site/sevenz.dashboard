@@ -53,6 +53,7 @@ import {
 import { productosDelCarrito, crearOrden } from "@/app/c/[token]/actions";
 import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // «TU CARRITO», del frame `1190:5793`.
 //
@@ -225,12 +226,10 @@ export function CartScreen({
         <ScreenTitle>Tu carrito</ScreenTitle>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Todavía no has agregado nada. Vuelve al catálogo y elige lo que
-              quieras pedir.
-            </p>
-          </div>
+          <EmptyState
+            title="Todavía no has agregado nada"
+            subtitle="Vuelve al catálogo y elige lo que quieras pedir."
+          />
         ) : primeraCarga ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Preparando tu carrito...

@@ -17,6 +17,7 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   currenciesOf,
   isPublished,
@@ -199,13 +200,10 @@ export function CatalogTable({
             desliz, y se le añade la frase de que se llena solo — que es el
             hallazgo de campo y es lo que quita la sensacion de deberle dos
             horas de trabajo a la pantalla. */}
-        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="text-base font-medium">Todavía no tienes productos</p>
-          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Los productos que agregues acá podrán verse reflejados en el catálogo de producto que
-            ven tus clientes. No hace falta cargarlos ahora: se van agregando solos cuando fías o
-            vendes algo que no esté en la lista.
-          </p>
+        <EmptyState
+          title="Todavía no tienes productos"
+          subtitle="Los productos que agregues acá podrán verse reflejados en el catálogo de producto que ven tus clientes. No hace falta cargarlos ahora: se van agregando solos cuando fías o vendes algo que no esté en la lista."
+        >
           {/* SOLO DESDE `md`, encontrado rindiendo la pantalla el 2026-10-10:
               por debajo de ahi el boton flotante de la barra ya dice «Crear
               producto» y hace lo mismo, asi que a 375px habia dos controles
@@ -220,7 +218,7 @@ export function CatalogTable({
           >
             <Plus className="size-4" /> Crear producto
           </Button>
-        </div>
+        </EmptyState>
         {nuevo}
       </>
     );

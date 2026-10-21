@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL BUSCADOR DEL CATÁLOGO QUE VE EL CLIENTE.
 //
@@ -65,11 +66,10 @@ export function CatalogSearchGrid({
       {visibles.length === 0 ? (
         // DICE QUÉ SE BUSCÓ, no solo que no hay nada. En un teléfono es fácil
         // dejarse una letra de más y no verla dentro del campo.
-        <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            No encontramos nada con «{query.trim()}». Prueba con otra palabra.
-          </p>
-        </div>
+        <EmptyState
+          title={`No encontramos nada con «${query.trim()}»`}
+          subtitle="Prueba con otra palabra."
+        />
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {visibles.map((i) => i.card)}

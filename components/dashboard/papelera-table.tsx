@@ -36,6 +36,7 @@ import { track } from "@/lib/mixpanel";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useSharedClientFilters } from "@/components/dashboard/client-filter-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 export function PapeleraTable({
   rows,
@@ -111,9 +112,7 @@ export function PapeleraTable({
   return (
     <div className="flex flex-col gap-3">
       {sortedRows.length === 0 ? (
-        <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-          Ningún cliente coincide con estos filtros.
-        </p>
+        <EmptyState className="order-2" title="Ningún cliente coincide con estos filtros" />
       ) : null}
 
       {/* Same card as Cartera, Clientes and Malas pagas — ClientCardBody is

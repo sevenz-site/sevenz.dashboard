@@ -22,6 +22,7 @@ import type { Movement } from "@/lib/types";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 const PAGE_SIZE = 10;
 
@@ -170,12 +171,10 @@ export function MovementHistoryList({
             se nombran con sus palabras exactas. El día que uno se renombre
             —«Agregar fiado» pasó a «Venta o fiado» ese mismo día— esta frase
             hay que cambiarla con él, o manda a buscar algo que no existe. */}
-        <div className="rounded-lg border px-6 py-8 text-center">
-          <p className="text-base">Todavía no hay transacciones registradas.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Para registrar una transacción selecciona “Agregar abono” o “Venta o fiado”
-          </p>
-        </div>
+        <EmptyState
+          title="Todavía no hay transacciones registradas"
+          subtitle="Para registrar una transacción selecciona “Agregar abono” o “Venta o fiado”"
+        />
       </div>
     );
   }
@@ -186,11 +185,9 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <p className="text-sm text-muted-foreground">
-          Este cliente no tiene{" "}
-          {tipo === "charge" ? "fiados" : "ventas de contado"}{" "}
-          registrados.
-        </p>
+        <EmptyState
+          title={`Este cliente no tiene ${tipo === "charge" ? "fiados" : "ventas de contado"} registrados`}
+        />
       </div>
     );
   }

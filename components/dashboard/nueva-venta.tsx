@@ -87,6 +87,7 @@ import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet"
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
@@ -652,13 +653,13 @@ function PasoProducto({
       </div>
 
       {catalogo && catalogo.productos.length === 0 && buscado && !cargando ? (
-        <div className="rounded-xl border border-dashed px-6 py-10 text-center">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {query.trim() === ""
-              ? "Todavía no tienes productos en tu catálogo."
-              : `No encontramos nada con «${query.trim()}».`}
-          </p>
-        </div>
+        <EmptyState
+          title={
+            query.trim() === ""
+              ? "Todavía no tienes productos en tu catálogo"
+              : `No encontramos nada con «${query.trim()}»`
+          }
+        />
       ) : null}
 
       {/* DOS COLUMNAS FIJAS, como el frame. `grid` y no `flex-wrap`: con
@@ -912,11 +913,7 @@ function PasoCarrito({
   if (lineas.length === 0) {
     return (
       <div className="flex flex-1 flex-col gap-4">
-        <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Todavía no has agregado nada.
-          </p>
-        </div>
+        <EmptyState title="Todavía no has agregado nada" />
         <div className="flex-1" />
         <Button type="button" variant="outline" className="h-10 w-full" onClick={onSeguirComprando}>
           Elegir productos

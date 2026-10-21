@@ -41,6 +41,7 @@ import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate, formatDocumentId } from "@/lib/format";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
@@ -123,9 +124,7 @@ export function ClientTable({
 
   if (rows.length === 0 && !tourDemoActive) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-      </div>
+      <EmptyState className="flex-1" title={emptyMessage} />
     );
   }
 
