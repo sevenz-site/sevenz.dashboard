@@ -436,7 +436,20 @@ export default async function SharedBalancePage({
         {/* One card per currency, label left and figure right. The label is
           getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
           reads "A favor en Dólares" rather than being told they owe a
-          negative amount. */}
+          negative amount.
+
+          AND THE FIGURE GOES WITHOUT ITS SIGN, because that label already
+          carries it. Owner's instruction on 2026-10-21: *«quitemos el signo
+          negativo a los saldos a favor porque el rótulo ya lo menciona»*. It
+          read «A favor en Dólares · −$158.50» — «in your favour minus 158»,
+          which states the direction twice and contradicts itself once.
+
+          `Math.abs` HERE AND NOT INSIDE `ExchangeRateBalanceDisplay`: that
+          component is mounted by the client table, the balance card and the
+          owner's own screens, where the figure sits under a neutral label
+          like «Por cobrar» and the minus sign is the only thing saying which
+          way the money goes. Stripping it there would turn a credit into a
+          debt. The rule is not «no negatives»; it is «not twice». */}
         {rateContext ? (
           <>
             <BalanceRowCard
@@ -444,7 +457,7 @@ export default async function SharedBalancePage({
               currency="USD"
             >
               <ExchangeRateBalanceDisplay
-                balance={shared.balance_usd}
+                balance={Math.abs(shared.balance_usd)}
                 currency="USD"
                 ledger={ledger}
                 align="end"
@@ -456,7 +469,7 @@ export default async function SharedBalancePage({
               currency="EUR"
             >
               <ExchangeRateBalanceDisplay
-                balance={shared.balance_eur}
+                balance={Math.abs(shared.balance_eur)}
                 currency="EUR"
                 ledger={ledger}
                 align="end"
@@ -467,7 +480,7 @@ export default async function SharedBalancePage({
         ) : (
           <BalanceRowCard label={getBalanceLabel(shared.balance)}>
             <ExchangeRateBalanceDisplay
-              balance={shared.balance}
+              balance={Math.abs(shared.balance)}
               currency={null}
               ledger={null}
               align="end"

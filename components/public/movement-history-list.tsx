@@ -234,8 +234,15 @@ export function MovementHistoryList({
           // MISMA REGLA QUE EN LA DEL TENDERO (ver su comentario largo): el
           // fiado enseña lo que ESE fiado debe, el abono el saldo que quedaba
           // tras él. Decisión del dueño el 2026-10-21.
+          // SIN SIGNO, porque el rótulo de al lado ya lo lleva: la fila de un
+          // abono dice «A favor $178.00» y no «A favor −$178.00». Instrucción
+          // del dueño el 2026-10-21, con la misma razón que en la tarjeta de
+          // saldo de esta pantalla — el rótulo sale de `getBalanceLabel`, que
+          // es quien decide entre «Debe», «A favor» y «Sin deuda».
+          //
+          // Un fiado no necesita el `abs`: su pendiente nunca es negativo.
           const cifraDeLaLinea =
-            m.type === "charge" ? pendienteDeEsteFiado : m.running_balance;
+            m.type === "charge" ? pendienteDeEsteFiado : Math.abs(m.running_balance);
           const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
 
           return (
