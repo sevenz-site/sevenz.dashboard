@@ -153,3 +153,56 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
 
   return { ok: true, clientId: nuevo.id };
 }
+
+// ===========================================================================
+// ¿SEVENZ YA PUEDE ESCRIBIRLE A ESTE NÚMERO?
+// ===========================================================================
+//
+// La pregunta que los formularios de alta tienen que hacer MIENTRAS el tendero
+// teclea el teléfono, y que hasta el 2026-10-21 no hacía ninguno salvo el
+// asistente de venta.
+//
+// POR QUÉ HACE FALTA: el permiso es del NÚMERO y no de la ficha, así que un
+// teléfono que aceptó alguna vez acepta para toda ficha que lo lleve. Un
+// tendero que deja la casilla sin marcar cree que no ha activado nada, y su
+// cliente recibe el recibo igual. Lo reportó un dueño desde producción.
+//
+// VIVE AQUÍ, en las acciones del alta, porque los tres formularios que la
+// necesitan ya importan `registrarCliente` de este mismo módulo: la pregunta
+// y la escritura del alta son la misma conversación.
+//
+// SIN `clientId`, y ese es el punto: la ficha todavía no existe cuando el
+// tendero está tecleando. `client_accepts_whatsapp` pide un id y por eso no
+// sirve aquí.
+export async function permisoDelNumero(
+  whatsapp: string,
+): Promise<{ granted: boolean; clientName: string | null }> {
+  const vacio = { granted: false, clientName: null };
+  // Un número a medio teclear no se pregunta: la función lo rechazaría igual
+  // —normaliza a null por debajo de 10 dígitos— y esto ahorra una ida y
+  // vuelta por cada tecla.
+  if (whatsapp.replace(/\D/g, "").length < 10) return vacio;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return vacio;
+
+  const { data, error } = await supabase.rpc("whatsapp_consent_for_phone", {
+    p_phone: whatsapp,
+  });
+
+  // FALLA HACIA ENSEÑAR LA CASILLA. Si esta lectura no está disponible —a
+  // mitad de un despliegue, o con la migración sin correr en este entorno— lo
+  // peor que pasa es que se pregunte a alguien que ya aceptó, y eso se
+  // deshace. Esconder la casilla por un error sería lo contrario: el tendero
+  // creería que el permiso está dado cuando no se sabe.
+  if (error) {
+    console.error("[permisoDelNumero]", error.message);
+    return vacio;
+  }
+
+  const r = data as { granted?: boolean; client_name?: string | null } | null;
+  return { granted: r?.granted === true, clientName: r?.client_name ?? null };
+}

@@ -31,6 +31,8 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
+import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import {
   CONSENT_FIELD,
@@ -1515,6 +1517,12 @@ function PasoCliente({
   const [nombre, setNombre] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [acepta, setAcepta] = useState(false);
+  // EL NÚMERO QUE YA TIENE PERMISO. La misma comprobación que la tarjeta del
+  // cliente ya elegido hace más arriba con `aceptaAvisos` — aquí no se puede
+  // preguntar por ficha porque todavía no existe, así que se pregunta por el
+  // teléfono que se está tecleando.
+  const [whatsappAlta, setWhatsappAlta] = useState("");
+  const permisoAlta = usePermisoDelNumero(whatsappAlta);
   // EL CLIENTE QUE YA LLEVA ESA CÉDULA, cuando el servidor lo rechaza. Lo
   // devuelve `registrarCliente` con el error, así que no hace falta una
   // consulta propia: la misma comprobación que para el alta es la que avisa.
@@ -1770,6 +1778,7 @@ function PasoCliente({
             id="venta-whatsapp"
             name="whatsapp"
             preferredDialCode={ownerCountry ? OWNER_COUNTRY_DIAL_CODE[ownerCountry] : undefined}
+            onValueChange={setWhatsappAlta}
           />
         </div>
 
@@ -1788,14 +1797,18 @@ function PasoCliente({
             guarda: esa cadena es la evidencia ante Meta, y dos textos distintos
             —uno en pantalla y otro en la base— la convertirían en una
             reconstrucción en vez de una prueba. */}
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-          <Checkbox
-            checked={acepta}
-            onCheckedChange={(v) => setAcepta(v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
-        </label>
+        {permisoAlta?.granted ? (
+          <AvisoNumeroYaAcepta clientName={permisoAlta.clientName} />
+        ) : (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
+            <Checkbox
+              checked={acepta}
+              onCheckedChange={(v) => setAcepta(v === true)}
+              className="mt-0.5"
+            />
+            <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
+          </label>
+        )}
       </form>
 
       {/* EL ERROR Y SU ENLACE, en una línea, del mockup del dueño del

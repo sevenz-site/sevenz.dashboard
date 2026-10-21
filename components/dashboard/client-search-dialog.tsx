@@ -51,6 +51,7 @@ import {
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
 import { useTour } from "@/components/dashboard/tour-context";
 import {
   DEFAULT_PLAZO_PAGO,
@@ -344,10 +345,16 @@ function ClientSearchDialogBody({
   // sido preguntado antes, asi que no hay equivalente del `consentAsked` del
   // alta de movimiento.
   const [consent, setConsent] = useState(false);
+  // SI EL NÚMERO QUE SE ESTÁ TECLEANDO YA ACEPTÓ. `WhatsappConsentField` sabe
+  // esconder la casilla desde el 2026-10-10 con `yaTienePermiso`, pero esta
+  // puerta nunca se lo pasaba: de sus cuatro usuarios solo dos lo hacían, y
+  // las dos que faltaban son altas, que es justo donde el tendero cree estar
+  // decidiendo algo. Reportado desde producción el 2026-10-21.
   const [consentDialog, setConsentDialog] = useState(false);
   // El numero, solo para poder decir "falta registrar el WhatsApp". WhatsappInput
   // no es controlado desde aqui, asi que se escucha su onValueChange.
   const [whatsappValue, setWhatsappValue] = useState("");
+  const permisoDelNuevo = usePermisoDelNumero(whatsappValue);
 
   // UNA REF Y NO ESTADO, y la diferencia importa. El envio del camino de
   // duplicados no pasa por <form onSubmit>: `confirmDuplicateAndSubmit` llama
@@ -840,6 +847,8 @@ function ClientSearchDialogBody({
         <WhatsappConsentField
           clientName={nameValue}
           hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
+          yaTienePermiso={permisoDelNuevo?.granted === true}
+          nombreFichaExistente={permisoDelNuevo?.clientName ?? null}
           checked={consent}
           onCheckedChange={setConsent}
           disabled={pending}

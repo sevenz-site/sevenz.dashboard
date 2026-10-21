@@ -34,6 +34,7 @@ export function WhatsappConsentField({
   clientName,
   hasWhatsapp,
   yaTienePermiso,
+  nombreFichaExistente = null,
   checked,
   onCheckedChange,
   disabled,
@@ -50,6 +51,14 @@ export function WhatsappConsentField({
   // discrepando, y la discrepancia seria mensajes a quien no acepto, o
   // silencio hacia quien si.
   yaTienePermiso?: boolean;
+  // EN UN ALTA, EL NOMBRE DE LA FICHA QUE YA LLEVA ESE NÚMERO — y solo si es
+  // del propio tendero, que es lo único que `whatsapp_consent_for_phone`
+  // devuelve. Cambia la frase porque cambia la situación: con un cliente que
+  // ya existe basta decir que él ya las tiene activadas, pero cuando se está
+  // dando de alta a alguien, lo que el tendero necesita saber es que ese
+  // NÚMERO ya es de una cuenta suya. Null cuando la ficha es de otra bodega:
+  // decir cuál sería contarle que ese teléfono compra en otro negocio.
+  nombreFichaExistente?: string | null;
   // Si el cliente no tiene número guardado. NO esconde la casilla: la deja
   // marcable y explica qué falta. Esconderla perdería el único momento en que
   // el tendero está pensando en esto -- propuesta del dueño el 2026-10-10,
@@ -70,7 +79,15 @@ export function WhatsappConsentField({
   if (yaTienePermiso) {
     return (
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {clientName.trim() || "Este cliente"} ya tiene activada las notificaciones vía WhatsApp
+        {nombreFichaExistente ? (
+          <>
+            Ya tienes este número registrado como{" "}
+            <span className="font-medium text-foreground">{nombreFichaExistente}</span>, y ya
+            recibe notificaciones vía WhatsApp
+          </>
+        ) : (
+          <>{clientName.trim() || "Este cliente"} ya tiene activada las notificaciones vía WhatsApp</>
+        )}
       </p>
     );
   }

@@ -14,6 +14,8 @@ import { WhatsappInput } from "@/components/whatsapp-input";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { registrarCliente } from "@/app/(app)/clients/nuevo/actions";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD, textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
+import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
+import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import type { OwnerCountry } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
@@ -47,6 +49,12 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
   const [nombre, setNombre] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [acepta, setAcepta] = useState(false);
+  // EL NÚMERO QUE YA TIENE PERMISO. Ver `usePermisoDelNumero`: si ese teléfono
+  // ya aceptó —aunque sea en otra ficha, porque el permiso es del número— la
+  // casilla se esconde y en su sitio va el aviso. Dejarla a la vista hacía que
+  // el tendero creyera que no activaba nada mientras su cliente sí recibía.
+  const [whatsapp, setWhatsapp] = useState("");
+  const permiso = usePermisoDelNumero(whatsapp);
   const [error, setError] = useState<string | null>(null);
   const [enviando, startTransition] = useTransition();
   // ── LA CÉDULA QUE YA ES DE ALGUIEN ───────────────────────────────
@@ -165,6 +173,7 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
             id="whatsapp"
             name="whatsapp"
             preferredDialCode={ownerCountry ? OWNER_COUNTRY_DIAL_CODE[ownerCountry] : undefined}
+            onValueChange={setWhatsapp}
           />
         </div>
 
@@ -178,14 +187,18 @@ export function NewClientForm({ ownerCountry }: { ownerCountry: OwnerCountry | n
             guarda: esa cadena es la evidencia ante Meta, y dos textos distintos
             —uno en pantalla y otro en la base— la convertirían en una
             reconstrucción en vez de una prueba. */}
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-          <Checkbox
-            checked={acepta}
-            onCheckedChange={(v) => setAcepta(v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
-        </label>
+        {permiso?.granted ? (
+          <AvisoNumeroYaAcepta clientName={permiso.clientName} />
+        ) : (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
+            <Checkbox
+              checked={acepta}
+              onCheckedChange={(v) => setAcepta(v === true)}
+              className="mt-0.5"
+            />
+            <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
+          </label>
+        )}
 
         {/* EL ERROR, SOLO. El enlace subrayado que llevaba al lado duró un
             día: el dueño lo pidió como botón el 2026-10-18, y abajo está.
