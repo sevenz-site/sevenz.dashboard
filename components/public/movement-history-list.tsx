@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import {
   Pagination,
   PaginationContent,
@@ -287,6 +288,15 @@ export function MovementHistoryList({
                         : m.created_at,
                     )}
                   </p>
+                  {/* EL CHIP «Pagado» DE UN FIADO SALDADO, igual que en la
+                      lista del tendero y por la misma razón — ver su
+                      comentario. Aquí el estado sale de `pending`, que llega
+                      con la migración `132`: sin ella la clave no viene, el
+                      pendiente es `null` y no se dibuja nada, que es como
+                      estaba antes. */}
+                  {m.type === "charge" && m.pending != null && m.pending <= 0.005 ? (
+                    <ChipDeEstado estado="pagado" />
+                  ) : null}
                   {/* LA LÍNEA SE QUEDA SOLO EN EL ABONO. El frame dibuja la
                       del fiado a la DERECHA, con su rótulo encima, y no
                       contempla el abono — que aquí solo sale cuando no está

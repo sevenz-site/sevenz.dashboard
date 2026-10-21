@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import {
   Pagination,
   PaginationContent,
@@ -364,6 +365,22 @@ export function MovementHistoryList({
                         : m.created_at,
                     )}
                   </p>
+                  {/* UN FIADO PAGADO LLEVA SU CHIP «Pagado». Instrucción del
+                      dueño el 2026-10-21, contestando a la regresión que dejó
+                      a un fiado saldado anunciando «Por cobrar +$0.00»:
+                      *«debe tener estado "Pagado" como se definió en el chip y
+                      saldo por cobrar = 0»*.
+
+                      SOLO ESE ESTADO, y es deliberado: el frame `1512:10061`
+                      no dibuja chip ninguno, y los de «Dentro del plazo» y
+                      «Plazo vencido» se retiraron de esta fila ese mismo día
+                      por eso. Pero el frame tampoco dibuja un fiado saldado —
+                      su ejemplo tiene deuda— así que no dice nada sobre este
+                      caso. El cero solo, sin nada que lo explique, se lee como
+                      un dato que falta; con el chip al lado se lee como la
+                      respuesta que es. */}
+                  {m.type === "charge" && (pendienteDeEsteFiado ?? 0) <= 0.005 ? <ChipDeEstado estado="pagado" /> : null}
+
                   {/* LA LÍNEA DEL ABONO SE QUEDA AQUÍ, y es la única que
                       sobrevive en esta columna. El frame dibuja dos filas —la
                       de contado y la del fiado— y no contempla el abono, que
