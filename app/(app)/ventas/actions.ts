@@ -15,6 +15,7 @@ import { formatDocumentId } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
+import { mensajeDeError } from "@/lib/errores-legibles";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
 
 // LOS PRODUCTOS QUE EL TENDERO PUEDE VENDER, con sus precios ya resueltos.
@@ -1297,30 +1298,51 @@ export async function eliminarVenta(
 
   const ahora = new Date().toISOString();
 
-  const { error: errorVenta } = await supabase
-    .from("sales")
-    .update({ deleted_at: ahora })
-    .eq("id", saleId)
-    .eq("owner_id", user.id);
-
-  if (errorVenta) {
-    console.error("[venta] eliminar:", errorVenta.message);
-    return { ok: false, error: "No pudimos eliminar la venta. Vuelve a intentarlo." };
-  }
-
+  // ═══════════════════════════════════════════════════════════════════════
+  // THE MOVEMENTS GO FIRST AND THE SALE LAST, AND EVERY FAILURE RETURNS.
+  //
+  // Both halves of that sentence are the fix for `CT-122`, found reading this
+  // function during the launch-A regression on 2026-10-21. It had the sale
+  // deleted first, a `continue` when a movement failed, and `ok: true` at the
+  // end whatever happened -- so a single failed update left the customer owing
+  // money for a sale that no longer appeared anywhere, and the screen said it
+  // had worked.
+  //
+  // WHY THE ORDER MATTERS AND NOT JUST THE RETURN. Any failure here leaves a
+  // half-done state; what the order decides is WHICH half, and whether the
+  // owner can try again:
+  //
+  //   · Sale first (the old way): a failed movement leaves the sale gone from
+  //     the list and the debt alive. There is nothing left to tap, so the
+  //     retry is impossible and the money stays wrong.
+  //   · Movements first (this way): a failure leaves the sale still listed,
+  //     so «Eliminar venta» is right there to press again -- and the second
+  //     run skips what it already deleted, because the query above filters on
+  //     `deleted_at is null`. It converges.
+  //
+  // The control that made this a finding rather than an opinion is
+  // `deleteMovement` in `dashboard/actions.ts`: it has been in production for
+  // months doing this for a single transaction, and it returns an error both
+  // when the delete fails and when the recalc does. This now matches it.
+  // ═══════════════════════════════════════════════════════════════════════
   for (const m of movimientos ?? []) {
     const { error } = await supabase
       .from("movements")
       .update({ deleted_at: ahora })
       .eq("id", m.id);
     if (error) {
-      console.error("[venta] eliminar movimiento:", error.message);
-      continue;
+      return { ok: false, error: mensajeDeError("eliminar la venta", error, "eliminarVenta") };
     }
     // EL RASTRO QUE HACE QUE SE PUEDA RESTAURAR. Es la misma tabla que usa
     // `deleteMovement`, así que el fiado sale en la misma notificación de
     // siempre y `restoreMovement` lo devuelve — y con él la venta, porque esa
     // función revive también la venta de la que nació.
+    //
+    // THIS ONE DOES NOT RETURN, and that is the one deliberate exception. The
+    // movement is already deleted and the ledger is already right; what is
+    // missing is only the notification offering to undo it. Failing the whole
+    // action here would tell the owner the sale was not deleted when it was,
+    // which is the very lie this fix exists to remove.
     const { error: errorAviso } = await supabase.from("movement_deletions").insert({
       movement_id: m.id,
       owner_id: user.id,
@@ -1329,10 +1351,26 @@ export async function eliminarVenta(
     if (errorAviso) console.error("[venta] aviso de borrado:", errorAviso.message);
   }
 
+  const { error: errorVenta } = await supabase
+    .from("sales")
+    .update({ deleted_at: ahora })
+    .eq("id", saleId)
+    .eq("owner_id", user.id);
+
+  if (errorVenta) {
+    return { ok: false, error: mensajeDeError("eliminar la venta", errorVenta, "eliminarVenta") };
+  }
+
+  // UN RECÁLCULO FALLIDO TAMBIÉN DEVUELVE ERROR. Si esto no corre, el saldo
+  // del cliente sigue contando lo que acaba de borrarse: la pantalla diría
+  // que la venta se eliminó y el cliente seguiría debiendo por ella. Es el
+  // mismo descuadre silencioso de más arriba, entrando por otra puerta.
   const { error: errorRecalc } = await supabase.rpc("recalc_client_running_balance", {
     p_client_id: venta.client_id,
   });
-  if (errorRecalc) console.error("[venta] recalc:", errorRecalc.message);
+  if (errorRecalc) {
+    return { ok: false, error: mensajeDeError("recalcular el saldo", errorRecalc, "recalc") };
+  }
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${venta.client_id}`);
