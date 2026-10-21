@@ -145,13 +145,13 @@ export function useClientFilters<T extends ClientSummary>(
       }
       const balance = judgementBalance(row);
       if (statusFilter !== "todos") {
-        const status = getClientStatus(
+        const status = getClientStatus({
           balance,
-          row.days_since_payment,
-          row.oldest_unpaid_charge_at,
-          row.oldest_unpaid_charge_plazo_dias,
-          row.oldest_unpaid_charge_due_at,
-        );
+          daysSincePayment: row.days_since_payment,
+          worstChargeAt: row.worst_unpaid_charge_at ?? null,
+          worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+          worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+        });
         if (status !== statusFilter) return false;
       }
       if (min !== null && !Number.isNaN(min) && balance < min) return false;

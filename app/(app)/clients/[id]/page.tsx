@@ -25,7 +25,7 @@ import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/mo
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
+  clientStatusLabel,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
   getClientStatus,
@@ -161,13 +161,13 @@ export default async function ClientDetailPage({
   const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
 
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
-  const status = getClientStatus(
-    judgementBalance,
-    clientSummary?.days_since_payment ?? 0,
-    clientSummary?.oldest_unpaid_charge_at ?? null,
-    clientSummary?.oldest_unpaid_charge_plazo_dias ?? null,
-    clientSummary?.oldest_unpaid_charge_due_at ?? null,
-  );
+  const status = getClientStatus({
+    balance: judgementBalance,
+    daysSincePayment: clientSummary?.days_since_payment ?? 0,
+    worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
+    worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
+    worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
+  });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -254,7 +254,7 @@ export default async function ClientDetailPage({
         <h2 className="text-xl font-semibold">Por cobrar</h2>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {CLIENT_STATUS_LABEL[status]}
+            {clientStatusLabel(status, clientSummary?.overdue_charge_count ?? null)}
           </Badge>
           {clientSummary?.has_pending_review ? <Badge variant="outline">transacciones por revisar</Badge> : null}
           {client.is_flagged ? (
@@ -295,9 +295,9 @@ export default async function ClientDetailPage({
           balance={judgementBalance}
           effectiveRate={ownerRate?.effectiveRate ?? null}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
-          oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
-          oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
-          oldestUnpaidChargeDueAt={clientSummary?.oldest_unpaid_charge_due_at ?? null}
+          worstChargeAt={clientSummary?.worst_unpaid_charge_at ?? null}
+          worstChargePlazoDias={clientSummary?.worst_unpaid_charge_plazo_dias ?? null}
+          worstChargeDueAt={clientSummary?.worst_unpaid_charge_due_at ?? null}
           isFlagged={client.is_flagged}
         />
       </Suspense>
@@ -375,9 +375,9 @@ async function CreditScoreSection({
   balance,
   effectiveRate,
   daysSincePayment,
-  oldestUnpaidChargeAt,
-  oldestUnpaidChargePlazoDias,
-  oldestUnpaidChargeDueAt,
+  worstChargeAt,
+  worstChargePlazoDias,
+  worstChargeDueAt,
   isFlagged,
 }: {
   clientId: string;
@@ -388,10 +388,11 @@ async function CreditScoreSection({
   // because it's the oldest unpaid one, which is wrong.
   effectiveRate: EffectiveRate | null;
   daysSincePayment: number;
-  oldestUnpaidChargeAt: string | null;
-  oldestUnpaidChargePlazoDias: number | null;
+  // Migración `134`: el fiado MÁS VENCIDO, no el más antiguo.
+  worstChargeAt: string | null;
+  worstChargePlazoDias: number | null;
   // Migración `118`: el vencimiento de la próxima cuota sin pagar.
-  oldestUnpaidChargeDueAt: string | null;
+  worstChargeDueAt: string | null;
   isFlagged: boolean;
 }) {
   const supabase = await createClient();
@@ -424,9 +425,9 @@ async function CreditScoreSection({
     movements: scoreMovements,
     balance,
     daysSincePayment,
-    oldestUnpaidChargeAt,
-    oldestUnpaidChargePlazoDias,
-    oldestUnpaidChargeDueAt,
+    worstChargeAt,
+    worstChargePlazoDias,
+    worstChargeDueAt,
     isFlagged,
     mostRecentUnflaggedAt: lastUnflag?.unflagged_at ?? null,
   });

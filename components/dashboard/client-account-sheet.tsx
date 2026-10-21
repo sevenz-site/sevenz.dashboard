@@ -73,13 +73,13 @@ export function ClientAccountSheet({
 
   const fila = cuenta?.fila ?? null;
   const status = fila
-    ? getClientStatus(
-        fila.balance,
-        fila.days_since_payment,
-        fila.oldest_unpaid_charge_at,
-        fila.oldest_unpaid_charge_plazo_dias,
-        fila.oldest_unpaid_charge_due_at,
-      )
+    ? getClientStatus({
+        balance: fila.balance,
+        daysSincePayment: fila.days_since_payment,
+        worstChargeAt: fila.worst_unpaid_charge_at ?? null,
+        worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
+        worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+      })
     : "sin_deuda";
 
   return (
@@ -100,6 +100,7 @@ export function ClientAccountSheet({
                     name={fila.name}
                     documentId={fila.document_id}
                     status={status}
+                    overdueCount={fila?.overdue_charge_count ?? null}
                     isFlagged={fila.is_flagged}
                     balance={fila.balance}
                     balanceUsd={fila.balance_usd}

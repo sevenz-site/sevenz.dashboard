@@ -131,13 +131,13 @@ export function PapeleraTable({
           const judgementBalance = rateContext
             ? combinedBalanceUsd(balanceUsd, balanceEur, rateContext.effectiveRate)
             : balance;
-          const status = getClientStatus(
-            judgementBalance,
-            row.days_since_payment,
-            row.oldest_unpaid_charge_at,
-            row.oldest_unpaid_charge_plazo_dias,
-            row.oldest_unpaid_charge_due_at,
-          );
+          const status = getClientStatus({
+            balance: judgementBalance,
+            daysSincePayment: row.days_since_payment,
+            worstChargeAt: row.worst_unpaid_charge_at ?? null,
+            worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+            worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+          });
           const busy = busyId === row.client_id;
           return (
             <div
@@ -172,6 +172,7 @@ export function PapeleraTable({
                   name={row.name}
                   documentId={row.document_id}
                   status={status}
+                  overdueCount={row.overdue_charge_count ?? null}
                   hasPendingReview={row.has_pending_review}
                   isFlagged={row.is_flagged}
                   balance={balance}

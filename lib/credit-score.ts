@@ -56,9 +56,24 @@ type ChargeLedgerEntry = {
   closedAt: string | null;
 };
 
-// FIFO walk, same rule get_oldest_unpaid_charge already applies in SQL
-// (oldest charge paid off first), just recording every charge's close date
-// instead of only the oldest still-unpaid one.
+// FIFO walk: oldest charge paid off first, recording every charge's close
+// date instead of only the oldest still-unpaid one.
+//
+// THIS NO LONGER MATCHES WHAT THE DATABASE DOES, and the comment that used to
+// claim it did was wrong from migration `126` onwards. Since then the ledger
+// honours a payment's DIRECTION -- the fiado the shopkeeper picked -- and this
+// walk does not; it cannot, because `MovementInput` does not even carry
+// `applies_to_movement_id`.
+//
+// What that costs is written up as `CT-124`: with two fiados on different
+// terms, the ledger can say the older one is still owed in full while this
+// walk counts it as «paid on time». The badge, the balance and the charge the
+// screen points at all come from the database and are right; only the
+// historical-punctuality factor below drifts.
+//
+// Left as it is deliberately for launch A rather than fixed in passing:
+// teaching it the direction changes the score of every client who pays, which
+// is its own piece of work with its own measurements.
 function buildChargeLedger(sortedMovements: MovementInput[]): ChargeLedgerEntry[] {
   const charges: ChargeLedgerEntry[] = [];
 
@@ -126,16 +141,20 @@ export function computeCreditScore(params: {
   movements: MovementInput[];
   balance: number;
   daysSincePayment: number;
-  oldestUnpaidChargeAt: string | null;
-  oldestUnpaidChargePlazoDias: number | null;
-  // Desde la migración `118`. El puntaje usa la MISMA etiqueta que la
-  // pantalla: si la de arriba dice «dentro del plazo» porque la próxima
-  // cuota no ha vencido, el puntaje no puede decir lo contrario del mismo
-  // cliente. Lo que NO cambia es la puntualidad histórica de más abajo, que
-  // sigue juzgando cada fiado contra su plazo entero: convertir cada cuota
-  // en un vencimiento multiplicaría los juicios de todo el mundo sin que
-  // nadie lo haya pedido.
-  oldestUnpaidChargeDueAt: string | null;
+  // RENOMBRADOS EN LA `134`, y no es cosmético: ahora llega el fiado MÁS
+  // VENCIDO, no el más antiguo. El puntaje usa la MISMA etiqueta que la
+  // pantalla —si la de arriba dice «Crítico», el puntaje no puede decir
+  // «dentro del plazo» del mismo cliente en la misma ficha—, así que tenía
+  // que moverse con ella. Los nombres viejos describían el dato anterior y
+  // habrían hecho pasar por antigüedad lo que ahora es gravedad.
+  worstChargeAt: string | null;
+  worstChargePlazoDias: number | null;
+  // Desde la migración `118`. Lo que NO cambia es la puntualidad histórica de
+  // más abajo, que sigue juzgando cada fiado contra su plazo entero:
+  // convertir cada cuota en un vencimiento multiplicaría los juicios de todo
+  // el mundo sin que nadie lo haya pedido. Esa parte además sigue repartiendo
+  // los abonos por orden de antigüedad y no por su dirección — ver `CT-124`.
+  worstChargeDueAt: string | null;
   isFlagged: boolean;
   mostRecentUnflaggedAt: string | null;
 }): CreditScoreResult {
@@ -173,13 +192,13 @@ export function computeCreditScore(params: {
   const recentEvals = lifetimeEvals.filter((e) => e.ageDays <= RECENT_WINDOW_DAYS);
   const recent = shrunkRate(recentEvals);
 
-  const status = getClientStatus(
-    params.balance,
-    params.daysSincePayment,
-    params.oldestUnpaidChargeAt,
-    params.oldestUnpaidChargePlazoDias,
-    params.oldestUnpaidChargeDueAt,
-  );
+  const status = getClientStatus({
+    balance: params.balance,
+    daysSincePayment: params.daysSincePayment,
+    worstChargeAt: params.worstChargeAt,
+    worstChargePlazoDias: params.worstChargePlazoDias,
+    worstChargeDueAt: params.worstChargeDueAt,
+  });
   const standingScore = STANDING_SCORE[status];
 
   const cyclesCompleted = charges.filter((c) => c.closedAt !== null).length;

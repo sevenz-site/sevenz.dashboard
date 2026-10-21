@@ -7,7 +7,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
+  clientStatusLabel,
   MALA_PAGA_BADGE_CLASS,
   type ClientStatus,
 } from "@/lib/types";
@@ -81,6 +81,7 @@ export function ClientCardBody({
   name,
   documentId,
   status,
+  overdueCount,
   hasPendingReview = false,
   isFlagged,
   balance,
@@ -93,6 +94,14 @@ export function ClientCardBody({
   name: string;
   documentId: string | null;
   status: ClientStatus;
+  // CUÁNTOS FIADOS VENCIDOS, para el contador del chip — migración `134`.
+  //
+  // OBLIGATORIO Y SIN VALOR POR DEFECTO, igual que `conAbono` y `conAcciones`
+  // en las tarjetas de abono: un `= null` dejaría que una pantalla nueva se
+  // olvidara de pasarlo y dibujara «Plazo vencido» a secas junto a otra que
+  // dice «Plazo vencido (3)» del mismo cliente. Así el compilador enumera
+  // cada sitio que monta esta tarjeta.
+  overdueCount: number | null;
   hasPendingReview?: boolean;
   isFlagged: boolean;
   // A CO owner's debt is `balance` (COP); a VE owner's is the two independent
@@ -141,7 +150,7 @@ export function ClientCardBody({
         </span>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {CLIENT_STATUS_LABEL[status]}
+            {clientStatusLabel(status, overdueCount)}
           </Badge>
           {isFlagged ? (
             <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
