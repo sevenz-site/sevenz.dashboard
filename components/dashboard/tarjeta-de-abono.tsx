@@ -50,6 +50,7 @@ export function TarjetaDeAbono({
   estado,
   inicial = false,
   pendienteTras = null,
+  conAcciones,
 }: {
   abono: AbonoDirigido;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
@@ -87,6 +88,23 @@ export function TarjetaDeAbono({
   // `null` donde no se puede saber —la tarjeta de la compra, o un entorno sin
   // la migración `132`— y entonces la línea no se dibuja.
   pendienteTras?: number | null;
+  // ── ¿HAY «⋮»? SOLO EN LA PANTALLA DEL DUEÑO ─────────────────────────
+  //
+  // Reportado por el dueño el 2026-10-21 con una captura de `dev.sevenz.site`
+  // abierta como CLIENTE: *«vista de cliente muestra botón "more" y opciones
+  // de editar y eliminar el abono, está mal»*. Tiene razón, y además son
+  // acciones que no son suyas.
+  //
+  // QUÉ PASABA DE VERDAD SI LAS TOCABA: nada. `deleteMovement` y
+  // `editarAbonoDirigido` piden sesión y comprueban que el cliente sea del
+  // dueño que llama, así que le habrían contestado «Sesión expirada, vuelve a
+  // entrar». No era una fuga; era ofrecerle una puerta que no abre.
+  //
+  // OBLIGATORIA Y SIN VALOR POR DEFECTO, igual que `conAbono` en
+  // `movement-type-filter.tsx` y por lo que allí costó: un `= true` devolvería
+  // el menú a la pantalla del cliente en silencio el día que alguien monte
+  // esta tarjeta en un sitio nuevo y no se acuerde de pasarla. Así no compila.
+  conAcciones: boolean;
 }) {
   // «Bs. … AL DÍA DEL ABONO», con la tasa SELLADA en el movimiento y no la de
   // hoy — frame `1489:10209`, nodo `1489:10240`.
@@ -220,7 +238,7 @@ export function TarjetaDeAbono({
           mismo sitio y los dos dicen «aquí hay más»; el chevron lo decía de la
           navegación, que ya la tiene el enlace de al lado, y el menú lo dice
           de las dos acciones que el dueño pidió el 2026-10-20. */}
-      {inicial ? null : (
+      {inicial || !conAcciones ? null : (
       <AbonoAcciones
         movementId={abono.movementId}
         montoTecleado={abono.entryAmount ?? abono.amount}

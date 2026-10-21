@@ -317,6 +317,9 @@ export default async function TransaccionPage({
         abonosRecibidos={abonosRecibidos}
         abonoInicial={abonoInicial}
         rates={rates}
+        // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con
+        // «Editar abono» y «Eliminar abono». La del cliente pasa `false`.
+        conAcciones
       />
 
       {/* LOS BOTONES DEL FRAME, FUERA DEL «⋮» Y REPETIDOS A PROPÓSITO.

@@ -297,6 +297,12 @@ export default async function DetalleDelClientePage({
         abonosRecibidos={abonosRecibidos}
         abonoInicial={Number(m.abono_inicial ?? 0)}
         rates={rates}
+        // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el
+        // 2026-10-21 con una captura de esta pantalla enseñando «Editar abono» y
+        // «Eliminar abono». Las acciones le habrían contestado «Sesión expirada»
+        // —piden sesión y comprueban el dueño— así que no era una fuga; era
+        // ofrecerle una puerta que no abre.
+        conAcciones={false}
       />
     </div>
   );

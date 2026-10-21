@@ -99,6 +99,13 @@ export type DatosDelDetalle = {
   // abonos», que es una respuesta; `undefined` es para una superficie que no
   // puede contestar la pregunta y entonces no la plantea.
   abonosRecibidos?: AbonoDirigido[];
+  // ── ¿ESTA PANTALLA PUEDE EDITAR? ────────────────────────────────────
+  //
+  // `false` en la del CLIENTE. Lo reportó el dueño el 2026-10-21: sus
+  // tarjetas de abono enseñaban el «⋮» con «Editar abono» y «Eliminar
+  // abono». El detalle entero está en `tarjeta-de-abono.tsx`, incluido por
+  // qué es obligatoria y no tiene valor por defecto.
+  conAcciones: boolean;
 };
 
 export function DetalleDeTransaccion({
@@ -124,6 +131,7 @@ export function DetalleDeTransaccion({
   mostrarPendienteDelFiado = true,
   abonoInicial = null,
   abonosRecibidos,
+  conAcciones,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
   const balance = formatLedgerAmount(runningBalance, currency, ledger);
@@ -389,6 +397,7 @@ export function DetalleDeTransaccion({
                 // Con cero abonado dice lo mismo que el fiado entero, y es
                 // correcto: no entregó nada, así que quedó debiendo todo.
                 pendienteTras={amount ?? 0}
+                conAcciones={conAcciones}
               />
               {/* ── LO QUE QUEDABA TRAS CADA ABONO, EN ORDEN ────────────
                   La lista llega del más NUEVO al más viejo, así que se recorre
@@ -425,6 +434,7 @@ export function DetalleDeTransaccion({
                     abono={a}
                     estado={estadoDeCadaAbono[i]}
                     pendienteTras={porAbono.get(a.movementId) ?? null}
+                    conAcciones={conAcciones}
                   />
                 ));
               })()}
