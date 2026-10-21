@@ -585,6 +585,49 @@ que hay que auditar entero.
 4. **Lo que se entregue y no esté en el frame se dice en voz alta** en el
    reporte, marcado como tal.
 
+## CON EL TECLADO ARRIBA NO QUEDA NADA PEGADO AL BORDE DE ABAJO
+
+**Botón, aviso, casilla, barra: si el teclado está arriba, se esconde.** El
+dueño lo ha pedido TRES veces —2026-10-18, 2026-10-20 y 2026-10-21— y la
+tercera fue así: *«te dije que ese comportamiento es invasivo... cómo debo
+decírtelo... te lo he dicho mil veces»*. Tenía razón.
+
+**Y lo que lo hace repetible es que cada vez falló por un motivo distinto**,
+así que arreglar el caso no bastó ninguna de las dos primeras:
+
+1. **No había componente.** Nació `StickyActions`.
+2. **Una pantalla tenía sus clases COPIADAS a mano** en vez de montarlo. Eran
+   casi idénticas —`gap-3` contra `gap-4`— así que a la vista no se
+   distinguían, pero la copia no heredaba lo único que el original añade.
+3. **El componente estaba bien montado y el DETECTOR se quedó ciego.**
+   `useKeyboardOpen` calibraba una referencia al montar y solo la subía: una
+   pantalla que nace con el teclado arriba, o con el viewport sin estabilizar
+   tras una navegación, graba esa referencia mal y ya no detecta nada el resto
+   de su vida.
+
+**Las tres cosas que hay que hacer, y las tres hacen falta:**
+
+1. **Montar `StickyActions`.** Nunca copiar sus clases; si le falta algo, se le
+   añade a él.
+2. **Meter dentro TODO lo que va pegado abajo** — el botón, el aviso de
+   WhatsApp, la casilla del permiso, el error que los acompaña. La captura del
+   2026-10-21 tenía el aviso tapando tanto como el botón.
+3. **Probarlo entrando por CADA puerta con el teclado abierto.** La del
+   2026-10-21 entró por una navegación (`Pagar` desde el detalle de un fiado),
+   no por un cambio de paso, y esa diferencia fue justo la que rompió el
+   detector.
+
+**El detector mira dos señales y no es redundancia**: la referencia histórica
+—que funciona en los Android que redimensionan la ventana— y la superposición
+`documentElement.clientHeight − visualViewport.height`, que es la de iOS y **no
+tiene memoria**, así que salva el caso de nacer mal calibrado. Basta con que
+una diga que hay teclado.
+
+**No se comprueba en el panel del navegador**: su emulador desenfoca el campo
+al cambiar de tamaño, o sea que apaga justo la condición que se quiere medir.
+La única prueba válida es un teléfono real, y hasta entonces la fila de QA dice
+«no probado», no «pasa». El detalle entero está en `DESIGN-SYSTEM.md`.
+
 ## NUNCA añadas la cabecera de la app a una pantalla nueva
 
 **La barra oscura con el menú y el logo de Sevenz NO se pone nunca en una

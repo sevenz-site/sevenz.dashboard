@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
@@ -166,6 +167,12 @@ export function ImportFlow({
   ownerCountry: string;
 }) {
   const router = useRouter();
+  // CON EL TECLADO ARRIBA, LA BARRA DE ABAJO NO. Esta pantalla tiene un campo
+  // de texto —el nombre del cliente de la libreta— y esa barra encima del
+  // teclado lo tapa. Es la regla de `CLAUDE.md` que el dueño ha pedido tres
+  // veces; se aplicó aquí al buscar si quedaba otra pantalla con el mismo
+  // agujero, no porque nadie lo reportara.
+  const tecladoAbierto = useKeyboardOpen();
   // Only a VE owner has a currency to choose. A CO owner's ledger has no
   // currency dimension at all — null means COP — so showing them a selector
   // would invent a decision they don't have.
@@ -2217,7 +2224,19 @@ export function ImportFlow({
             reservarle hueco con un padding que luego se queda desajustado.
             `pb-[env(safe-area-inset-bottom)]` porque en un iPhone con notch la
             franja de abajo se come el borde del botón. La barra de navegación
-            del teléfono no estorba: durante la revisión está escondida. */}
+            del teléfono no estorba: durante la revisión está escondida.
+
+            Y SE ESCONDE CON EL TECLADO, desde el 2026-10-21. Esta pantalla
+            tiene un campo de texto —el nombre del cliente de la libreta— y
+            esta barra encima del teclado lo tapa. Es la regla de
+            `CLAUDE.md`, que el dueño ha tenido que pedir tres veces; se
+            aplicó aquí al buscar si quedaba alguna otra pantalla con el mismo
+            agujero, no porque nadie lo reportara.
+
+            EL HOOK Y NO `StickyActions`: ese componente trae además su propio
+            aire de 40px abajo, y aquí el relleno es otro. Lo que hace falta
+            es la condición, no el envoltorio. */}
+        {tecladoAbierto ? null : (
         <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {motivoQueBloquea ? (
             <p className="flex items-start gap-1.5 text-sm text-destructive">
@@ -2247,6 +2266,7 @@ export function ImportFlow({
             />
           </div>
         </div>
+        )}
       </div>
     );
   }

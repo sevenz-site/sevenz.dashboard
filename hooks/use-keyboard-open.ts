@@ -104,7 +104,35 @@ export function useKeyboardOpen() {
       // eso lo que cambia es la barra del navegador al desplazarse, no un
       // teclado, que ocupa 250 o más.
       if (alto > referencia) referencia = alto;
-      setOpen(referencia - alto > 150);
+
+      // ── LA SEGUNDA SEÑAL, Y NO SOBRA ─────────────────────────────────
+      //
+      // `referencia` es memoria: vale lo que valiera la ventana la última vez
+      // que no había nada enfocado. Si la pantalla NACE con el teclado ya
+      // arriba —o con el viewport todavía sin estabilizar tras navegar— esa
+      // memoria se graba mal, y como solo crece, el hook se queda ciego para
+      // el resto de la vida de esa pantalla.
+      //
+      // Es lo que el dueño reportó el 2026-10-21 llegando al formulario desde
+      // el botón «Pagar» del detalle de un fiado: una NAVEGACIÓN, no un
+      // cambio de paso. Ya lo había reportado el 2026-10-18 y el 2026-10-20,
+      // y las dos veces se arregló la pantalla sin tocar esto.
+      //
+      // ESTA NO TIENE MEMORIA. En iOS el teclado se superpone: el viewport
+      // VISUAL (`vv.height`) encoge y el de MAQUETACIÓN
+      // (`documentElement.clientHeight`) no. Esa diferencia es el teclado,
+      // medida en el instante, sin depender de nada anterior.
+      //
+      // En los Android que redimensionan los dos, esta señal da 0 y manda la
+      // de la referencia — que allí sí funciona, porque la ventana entera
+      // cambia de tamaño y `window.resize` llega.
+      //
+      // SE PREGUNTA POR CUALQUIERA DE LAS DOS, no por las dos a la vez: cada
+      // una cubre el sistema donde la otra no ve nada.
+      const layout = document.documentElement.clientHeight;
+      const tapadoPorSuperposicion = layout - alto > 150;
+
+      setOpen(referencia - alto > 150 || tapadoPorSuperposicion);
     };
 
     // EN `focusout` EL `activeElement` TODAVÍA NO SE HA ACTUALIZADO: durante

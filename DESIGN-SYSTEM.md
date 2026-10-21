@@ -1189,6 +1189,72 @@ cliente— le aplican exactamente igual. Un componente aparte tendría que copia
 las cuatro, y el día que una cambiara, el botón sobreviviría a un teclado del
 que la barra sí se apartó.
 
+## NADA PEGADO AL BORDE INFERIOR SOBREVIVE AL TECLADO. NUNCA.
+
+**Si una pantalla tiene un campo que se escribe y algo pegado abajo —un botón,
+un aviso, una barra, una casilla—, eso se esconde mientras el teclado está
+arriba.** No es una mejora: es un requisito, y el dueño lo ha tenido que pedir
+**tres veces**.
+
+| Cuándo | Qué tapaba | Qué se hizo |
+|---|---|---|
+| 2026-10-18 | «Registrar y finalizar» sobre el campo Documento | Nació `StickyActions` |
+| 2026-10-20 | «Pagar» y el aviso de WhatsApp sobre el teclado numérico | `abono-monto.tsx` llevaba las clases COPIADAS a mano en vez de montar `StickyActions` |
+| 2026-10-21 | Lo mismo, llegando desde «Pagar» del detalle de un fiado | El componente sí montaba `StickyActions`; lo que falló fue el hook |
+
+Sus palabras la tercera vez: *«te lo he dicho mil veces»*. Tenía razón.
+
+### Por qué se repite, que es lo que hay que entender
+
+**Cada vez ha fallado por un motivo distinto, y ninguno se parecía al
+anterior.** Por eso arreglar el caso no bastó ninguna de las dos primeras
+veces:
+
+1. La primera no había componente.
+2. La segunda había componente y una pantalla tenía su copia a mano. Las clases
+   eran casi iguales —`gap-3` contra `gap-4`— así que a la vista no se
+   distinguía del original, pero no heredaba lo único que el original añade.
+3. La tercera el componente estaba bien montado y **el detector de teclado se
+   quedó ciego**: calibra una referencia al montar y solo la sube, así que una
+   pantalla que nace con el teclado arriba —o con el viewport sin estabilizar
+   tras una navegación— graba la referencia mal y ya no detecta nada.
+
+### Las tres cosas que hay que hacer, y las tres hacen falta
+
+1. **Montar `StickyActions`**, nunca copiar sus clases. Si hace falta algo que
+   no tiene, se le añade a él.
+2. **Meter DENTRO todo lo que va pegado abajo**: el botón, el aviso de
+   WhatsApp, la casilla del permiso, los mensajes de error que acompañan. En la
+   captura del 2026-10-21 lo que tapaba el campo no era solo el botón.
+3. **Probarlo con el teclado abierto llegando por cada puerta.** La del
+   2026-10-21 entró por una NAVEGACIÓN (`/abonos/nuevo/<id>/monto` desde el
+   detalle), no por un cambio de paso, y esa diferencia fue justo la que
+   rompió el detector.
+
+### El detector mira DOS señales, y no es redundancia
+
+`useKeyboardOpen` combina:
+
+- **La referencia histórica** — el alto de la ventana la última vez que no
+  había nada enfocado. Es lo que funciona en los Android que redimensionan la
+  ventana entera.
+- **La superposición** — `documentElement.clientHeight − visualViewport.height`.
+  En iOS el teclado se superpone: el viewport visual encoge y el de maquetación
+  no. **No tiene memoria**, así que es la que salva el caso de nacer con el
+  teclado ya arriba.
+
+Basta con que **una** diga que hay teclado. Cada una cubre el sistema donde la
+otra no ve nada, y la segunda existe porque la primera puede nacer mal
+calibrada — que es exactamente lo que pasó el 2026-10-21.
+
+### Y no se puede comprobar en el panel del navegador
+
+El emulador de viewport **desenfoca el campo al cambiar de tamaño**, así que
+simular un teclado ahí apaga la condición que se quiere medir. Está comprobado
+con un control en `/clients/nuevo`. **La única prueba válida es un teléfono
+real**, y hasta entonces la fila de QA dice «no probado», no «pasa».
+
+
 **Y una consecuencia que hay que respetar al añadir un hueco:** desde que la
 barra lleva «Menú», la cabecera del Inicio ya no lleva hamburguesa en teléfono
 —solo de `md` hacia arriba, donde no hay barra— y `/reportes` se salió de la
