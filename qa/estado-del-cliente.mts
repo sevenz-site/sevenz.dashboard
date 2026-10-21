@@ -201,6 +201,41 @@ await conCliente("QA estado · sin plazo", "96000008", 5, [
   check("7. un fiado SIN plazo manda sobre el que está al día", chip.startsWith("Sin plazo"), chip);
 });
 
+// ── 7b. ENTRE VENCIDOS, MANDA EL QUE TIENE PLAZO ─────────────────────────
+//
+// El caso real que lo pidió: Juan Pablo II, dos fiados del mismo día, uno a 7
+// días vencido hace 5 y otro sin plazo esperando desde hace 12. Por «más
+// vencido» a secas ganaba el sin plazo. Las dos etiquetas son ámbar y pesan
+// igual, pero «Plazo vencido» dice que había una fecha y se pasó —algo que ir
+// a cobrar— y «Sin plazo» dice que nunca se puso —algo que ir a arreglar—.
+// Delante de un cliente al que se le va a fiar otra vez, decide la primera.
+// Decisión del dueño el 2026-10-21.
+await conCliente("QA estado · empate", "96000010", 5, [
+  { hace: 12, plazo: null, monto: 10 },
+  { hace: 12, plazo: 7, monto: 50 },
+], (chip) => {
+  check("7b. con los dos vencidos, gana «Plazo vencido» sobre «Sin plazo»", chip.startsWith("Plazo vencido"), chip);
+});
+
+// Y el control que impide que el arreglo se pase de largo: si NINGÚN fiado
+// vencido tiene plazo, la etiqueta sigue siendo «Sin plazo». Sin esta fila,
+// preferir siempre el plazo escondería que no hay ninguno.
+await conCliente("QA estado · todos sin plazo", "96000011", 5, [
+  { hace: 12, plazo: null, monto: 10 },
+  { hace: 10, plazo: null, monto: 20 },
+], (chip) => {
+  check("7c. CONTROL: si ninguno tiene plazo, sigue siendo «Sin plazo»", chip.startsWith("Sin plazo"), chip);
+});
+
+// Y que un vencido CON plazo no se cuele por delante de nada por tener plazo:
+// un fiado al día nunca gana a uno vencido, tenga plazo o no.
+await conCliente("QA estado · al dia no gana", "96000012", 5, [
+  { hace: 12, plazo: null, monto: 10 },
+  { hace: 1, plazo: 60, monto: 50 },
+], (chip) => {
+  check("7d. CONTROL: un fiado al día no se cuela por tener plazo", chip.startsWith("Sin plazo"), chip);
+});
+
 // ── 8. SIN DEUDA NO HAY NI ESTADO NI CONTADOR ────────────────────────────
 await conCliente("QA estado · sin deuda", "96000009", 5, [], (chip, n) => {
   check("8. sin fiados: «Sin deuda» y sin contador", chip === "Sin deuda" && !n, `${chip} · count=${n}`);

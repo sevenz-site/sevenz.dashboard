@@ -42,6 +42,26 @@
 -- order to tell «plazo_vencido» from «sin_plazo».
 --
 -- ===========================================================================
+-- AND AMONG OVERDUE ONES, A FIADO *WITH* A TERM WINS THE TIE
+--
+-- The owner's call on 2026-10-21, after seeing what this did to the one real
+-- client it moved: Juan Pablo II has two fiados taken the same day, one on a
+-- 7-day term overdue by 5, and one with no term at all, waiting for 12. By
+-- "most overdue" alone the termless one won and the badge read «Sin plazo».
+--
+-- Both labels are amber and carry the same severity, so nothing was hidden --
+-- but they are not equally useful. «Plazo vencido» says a date was agreed and
+-- has passed, which is a thing to go and collect. «Sin plazo» says nobody
+-- ever set a date, which is a thing to go and fix. Facing a client the
+-- shopkeeper is about to lend to again, the first is the one that decides.
+--
+-- So the ordering is three keys deep: overdue before current, then WITH a
+-- term before without, then most overdue first. The second key only applies
+-- among overdue fiados -- a current one is never pulled ahead of an overdue
+-- one by having a term, because that would hide exactly what this migration
+-- exists to stop hiding.
+--
+-- ===========================================================================
 -- IT BUILDS ON `get_open_charges_for_client`, AND THAT IS THE WHOLE POINT
 --
 -- That function already walks the payments applying BOTH rules -- directed
@@ -80,7 +100,12 @@ declare
   cubiertas int;
   vence timestamptz;
   efectivo timestamptz;
+  vencido boolean;
+  rank1 int;
+  rank2 int;
   peor timestamptz;
+  peor_rank1 int;
+  peor_rank2 int;
   cuenta int := 0;
 begin
   charge_at := null;
@@ -117,12 +142,23 @@ begin
       cuenta := cuenta + 1;
     end if;
 
-    -- STRICTLY `<`, so a tie keeps the first one the walk returned, which is
-    -- oldest-first. Without it the winner among equally overdue fiados would
-    -- depend on row order, and the badge could flip between two charges that
-    -- say exactly the same thing.
-    if peor is null or efectivo < peor then
+    -- LAS TRES CLAVES, en orden. `rank1` pone los vencidos delante; `rank2`,
+    -- SOLO entre los vencidos, pone los que tienen plazo delante de los que
+    -- no; y a igualdad de las dos manda la fecha, con `<` estricto para que
+    -- un empate se quede con el primero que devolvió el recorrido —el más
+    -- antiguo— en vez de depender del orden de las filas.
+    vencido := efectivo < now();
+    rank1 := case when vencido then 0 else 1 end;
+    rank2 := case when vencido and f.plazo_dias is null then 1 else 0 end;
+
+    if peor is null
+       or rank1 < peor_rank1
+       or (rank1 = peor_rank1 and rank2 < peor_rank2)
+       or (rank1 = peor_rank1 and rank2 = peor_rank2 and efectivo < peor)
+    then
       peor := efectivo;
+      peor_rank1 := rank1;
+      peor_rank2 := rank2;
       charge_at := f.charge_at;
       plazo_dias := f.plazo_dias;
       due_at := vence;
@@ -236,7 +272,7 @@ grant select on public.client_summary to authenticated;
 insert into public.schema_migrations (key, description)
 values (
   '134_el_chip_mira_el_fiado_mas_vencido',
-  'client_summary.worst_unpaid_charge_at / _plazo_dias / _due_at y overdue_charge_count: el chip de estado pasa a salir del fiado MAS VENCIDO y no del mas antiguo, y trae cuantos fiados vencidos hay para el contador del chip. Pedido por el dueno el 2026-10-21 porque el chip es el unico aviso que mira antes de volver a fiar. Medido en dev con control: un cliente de 100 dias que nunca abono, con 50 al dia y 400 vencidos hace 73, salia «Dentro del plazo»; quitandole el fiado de 50 salia «Critico». Elige ordenando cada fiado abierto por SU propio vencimiento y tomando el primero: en el pasado es el mas vencido, en el futuro el que vence antes. Un fiado sin plazo cuenta como vencido el dia que se tomo. Se apoya en get_open_charges_for_client para no escribir una tercera copia del reparto de abonos. Las columnas oldest_* se quedan: el codigo que hay en produccion las lee mientras corre esta migracion.'
+  'client_summary.worst_unpaid_charge_at / _plazo_dias / _due_at y overdue_charge_count: el chip de estado pasa a salir del fiado MAS VENCIDO y no del mas antiguo, y trae cuantos fiados vencidos hay para el contador del chip. Pedido por el dueno el 2026-10-21 porque el chip es el unico aviso que mira antes de volver a fiar. Medido en dev con control: un cliente de 100 dias que nunca abono, con 50 al dia y 400 vencidos hace 73, salia «Dentro del plazo»; quitandole el fiado de 50 salia «Critico». Elige ordenando cada fiado abierto por SU propio vencimiento y tomando el primero: en el pasado es el mas vencido, en el futuro el que vence antes. Un fiado sin plazo cuenta como vencido el dia que se tomo, pero entre vencidos manda uno CON plazo si lo hay: «Plazo vencido» y «Sin plazo» son igual de graves y del mismo color, pero el primero dice que habia una fecha acordada y se paso, que es lo que decide delante de un cliente al que se le va a fiar otra vez (decision del dueno el 2026-10-21). Se apoya en get_open_charges_for_client para no escribir una tercera copia del reparto de abonos. Las columnas oldest_* se quedan: el codigo que hay en produccion las lee mientras corre esta migracion.'
 )
 on conflict (key) do nothing;
 
