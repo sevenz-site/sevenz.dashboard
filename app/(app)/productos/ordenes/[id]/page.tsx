@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
-import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -331,28 +330,24 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </>
       ) : null}
 
-      {/* «REGISTRAR PEDIDO», DEL FRAME `1371:7229`, Y DESHABILITADO A
-          PROPÓSITO. Decisión del dueño el 2026-10-17: la pantalla se lanza
-          cuando el paso 10 esté listo, así que el botón entra ya con su
-          texto definitivo -- pero lo que registra una orden como fiado o de
-          contado es `CT-70`, que está bloqueado por tres decisiones suyas y
-          todavía no existe.
+      {/* «REGISTRAR PEDIDO» IS NOT HERE, AND THAT IS THE DECISION, NOT AN
+          OVERSIGHT.
 
-          HABILITARLO CON LA ACCIÓN DE HOY DETRÁS HABRÍA SIDO MENTIR: diría
-          «registrar pedido» y marcaría como atendido, que es otra cosa. Y
-          quitar «Marcar como atendido» mientras tanto le habría quitado a
-          esta pantalla lo único que hoy sabe hacer. Anotado en `CT-92` por
-          si se lanza antes de tiempo. */}
-      <div className="pt-1">
-        <Button type="button" className="w-full" disabled>
-          Registrar pedido
-        </Button>
-        <p className="pt-1.5 text-center text-xs text-muted-foreground">
-          Registrar el pedido como fiado o de contado llega en la próxima
-          entrega.
-        </p>
-      </div>
+          The frame `1371:7229` draws it, and it shipped disabled on
+          2026-10-17 with the sentence «llega en la próxima entrega»
+          underneath. The owner removed both on 2026-10-21, for launch A:
+          what the button would do is `CT-70`, which is blocked on three of
+          his own decisions and is not built. A disabled control that
+          promises a date is a promise this release cannot keep, and it sits
+          directly above the one action the screen can actually perform.
 
+          SO THE SCREEN NOW ENDS AT «MARCAR COMO ATENDIDO», which is all it
+          has ever been able to do. When `CT-70` lands, the button comes back
+          here with a real action behind it -- never enabled against
+          `OrderAttendButton`, because marking an order attended is a
+          different thing from registering it as a sale, and wiring one to
+          the other would be lying in the owner's own words. `CT-92` tracked
+          this and closes with its removal. */}
       <div className="pt-1">
         <OrderAttendButton
           orderId={pedido.id}
