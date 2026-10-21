@@ -73,6 +73,11 @@ type SharedMovement = {
   // Arrives through migration `121`. It is null for everything stored before
   // 2026-10-16, and the card only draws the table when it is not.
   cuotas: number | null;
+  // Arrives through migration `132`: what this fiado still owes, null on a
+  // payment. Optional because a database where `132` has not run does not
+  // send the key at all, and the history falls back to drawing no figure
+  // rather than a zero that would read as «paid».
+  pending?: number | null;
   created_at: string;
 };
 

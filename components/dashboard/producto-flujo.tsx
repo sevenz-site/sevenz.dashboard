@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import {
 import { MARGIN_PRESETS } from "@/lib/products/options";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   createProduct,
   updateProduct,
@@ -938,6 +940,13 @@ export function ProductoFlujo({
           fixed={fixed}
           priceRetail={priceRetail}
           priceWholesale={priceWholesale}
+          // THE MARGIN COMES DOWN COMPUTED, not as the select's own value.
+          // They are not the same thing: the dropdown can say «Otro» while the
+          // typed price still implies a real margin against the cost, and it
+          // is that one the review has to show — it is what the owner will be
+          // earning, not what he picked from a list.
+          margenRetail={ventaRetail ? marginOf(priceRetail) : null}
+          margenWholesale={ventaWholesale ? marginOf(priceWholesale) : null}
           minQty={minQty}
           rates={rates}
         />
@@ -1263,12 +1272,28 @@ function Stepper({
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
+      {/* 32px AND NOT 40, so the row is exactly as tall as its own field.
+          The owner reported on 2026-10-20 that the fields of step 1/4 looked
+          «muy cercanos unos de otros». Measured: the column's gap is already
+          the 16px he asked for, and the two rows that read as tighter were
+          this one — its buttons were `size-10`, 8px taller than the 32px
+          `Input` between them, so the row grew 4px above and 4px below and
+          ate the air on both sides. Label-to-field came out 12 instead of 8,
+          and field-to-next-label 20 instead of 16.
+
+          This is the rule `DESIGN-SYSTEM.md` already settled after the same
+          mismatch on `CountryCodeSelect`: the 40px rule is about LABELLED
+          buttons, which line up with each other; a control that is half of a
+          field lines up with its field. A `−`/`+` beside a number is half of
+          a field. And the fix goes on the control, never on the `Input` —
+          raising the base input would move signup, client creation and
+          movements all at once, which is its own pass with its own tests. */}
       <div className="flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="icon"
-          className="size-10 shrink-0"
+          className="size-8 shrink-0"
           aria-label={`Restar uno en ${label}`}
           disabled={disabled}
           onClick={() => step(-1)}
@@ -1302,7 +1327,7 @@ function Stepper({
           type="button"
           variant="outline"
           size="icon"
-          className="size-10 shrink-0"
+          className="size-8 shrink-0"
           aria-label={`Sumar uno en ${label}`}
           disabled={disabled}
           onClick={() => step(1)}
@@ -1512,6 +1537,39 @@ function TierSection({
   );
 }
 
+// ── WHAT A CURRENCY IS WORTH, IN ONE PLACE ─────────────────────────────────
+//
+// Two screens need this answer and they must not disagree: the price rows of
+// step 2/4, where it is typed, and the review of 4/4, where it is read back. A
+// review that computes the figure its own way is worse than no review — it
+// confirms a number the save will not write.
+//
+// `calculadoDe` is the LINKED value: the base is itself, everything else
+// follows the rate. `mostradoDe` adds the override on top, because a currency
+// whose chain is broken is worth what the owner typed and nothing else.
+function calculadoDe(
+  currency: PriceCurrency,
+  base: PriceCurrency,
+  precioBase: number | null,
+  rates: BolivarRates | null,
+): number | null {
+  if (currency === base) return precioBase;
+  if (precioBase == null || !rates) return null;
+  return priceIn(currency, { amount: precioBase, currency: base }, rates).amount;
+}
+
+function mostradoDe(
+  currency: PriceCurrency,
+  base: PriceCurrency,
+  precioBase: number | null,
+  fijos: Partial<Record<PriceCurrency, string>>,
+  rates: BolivarRates | null,
+): number | null {
+  return estaDesvinculada(fijos, currency)
+    ? parseAmount(fijos[currency] ?? "")
+    : calculadoDe(currency, base, precioBase, rates);
+}
+
 function PriceRows({
   tier,
   price,
@@ -1581,11 +1639,7 @@ function PriceRows({
         // descarta los importes nulos o no positivos, así que una clave con el
         // texto vacío no guarda ninguna fila. No hacía falta tocarlo.
         const manual = estaDesvinculada(fixed, currency);
-        const calculado = esBase
-          ? basePrice
-          : basePrice == null
-            ? null
-            : priceIn(currency, { amount: basePrice, currency: base }, rates).amount;
+        const calculado = calculadoDe(currency, base, basePrice, rates);
         const mostrado = manual ? parseAmount(fixed[currency] ?? "") : calculado;
         const bs = enBolivares(mostrado, currency);
 
@@ -1622,21 +1676,40 @@ function PriceRows({
             bolivares={bs == null ? null : `Hoy: ${formatPriceAmount(bs, "VES")}`}
             // LA FILA DE LA MONEDA BASE NO LLEVA VINCULO: es el precio, no una
             // equivalencia de nada, y su vínculo con el costo es el margen.
+            // THE CHAIN OPENS EVEN WITH NOTHING TO COPY. Reported by the owner
+            // on 2026-10-20: *«cuando hay dos precios y ninguno tiene valor, no
+            // puedo desvincular el segundo para customizarlo, debería»*.
+            //
+            // It read `disabled: disabled || (!manual && calculado == null)`,
+            // and with no base price `calculado` is null for every non-base
+            // currency — so the one state where breaking the link is the
+            // ONLY way forward was the state that forbade it. Someone who
+            // wants to price the euro by hand and leave the dollar alone had
+            // to first type a dollar price they did not want, break the chain,
+            // and then go back and erase it.
+            //
+            // The unlinked state lives in whether the KEY exists in `fixed`,
+            // not in what it holds — that is the 2026-10-14 fix explained
+            // above. So an empty string is a perfectly good unlinked price:
+            // the field opens blank and waits. The server already drops
+            // non-positive amounts when it builds `product_price_overrides`,
+            // so nothing is written until a number is typed.
             link={
               esBase
                 ? null
                 : {
                     linked: !manual,
-                    disabled: disabled || (!manual && calculado == null),
+                    disabled,
                     onToggle: () => {
                       if (manual) {
                         const next = { ...fixed };
                         delete next[currency];
                         onFixedChange(next);
-                      } else if (calculado != null) {
+                      } else {
                         onFixedChange({
                           ...fixed,
-                          [currency]: formatAmountForInput(calculado),
+                          [currency]:
+                            calculado == null ? "" : formatAmountForInput(calculado),
                         });
                       }
                     },
@@ -1805,68 +1878,175 @@ function PriceRow({
 }
 
 // ============================================================================
-// 4/4 VERIFICA — frame `1465:19856`
+// THE PIECES OF THE REVIEW SCREEN — frame `1465:19856`
 //
-// Lo que se tecleó, en modo lectura, antes de guardar. Es el único paso que no
-// existía en el diálogo, y no añade ningún campo: enseña los mismos que los
-// tres anteriores.
+// The frame draws two shapes and only two, so there are two row components
+// here and no third one invented to tidy something up.
+
+// ── ONE FIELD, READ BACK ───────────────────────────────────────────────────
 //
-// POR QUÉ UNA PANTALLA ENTERA PARA RELEER. En el diálogo, el tendero llegaba a
-// «Crear producto» con el formulario delante: podía repasarlo de un vistazo
-// antes de pulsar. Partido en cuatro, el botón de guardar queda en una
-// pantalla que solo enseña una parte, así que lo último que vio al decidir
-// fueron tres campos de nueve. Esta pantalla devuelve ese vistazo.
+// Label on the left in 12px muted, value on the right in 14px primary, 8px of
+// air above and below. The optional flag sits OUTSIDE the value, which is how
+// the frame nests it (`1465:19912`): the currency belongs to the row, not to
+// the number, so it stays put while the figure grows.
 //
-// UNA FILA QUE NO SE RELLENÓ NO SE DIBUJA. Un «Costo: —» en una lista de
-// repaso es una línea que el ojo tiene que descartar; y en la decisión que
-// esta pantalla sirve, lo que importa es lo que SÍ pusiste.
-function FilaDeRepaso({ nombre, valor }: { nombre: string; valor: React.ReactNode }) {
+// NO SEPARATOR LINE. The earlier version drew a `border-b` under every row;
+// the frame has none, and with rows this short the rules were doing the work
+// the 8px of padding already does, turning a list of six facts into six boxes.
+function FilaDeRepaso({
+  nombre,
+  valor,
+  moneda,
+}: {
+  nombre: string;
+  valor: React.ReactNode;
+  moneda?: PriceCurrency | string | null;
+}) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b py-2 last:border-b-0">
-      <span className="shrink-0 text-xs text-muted-foreground">{nombre}</span>
-      <span className="min-w-0 text-right text-sm break-words">{valor}</span>
+    <div className="flex items-center gap-1 py-2">
+      <span className="min-w-0 flex-1 text-xs leading-4 text-muted-foreground">{nombre}</span>
+      <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right text-sm leading-5 tabular-nums">
+        {valor}
+      </span>
+      {moneda ? (
+        <CurrencyFlagIcon currency={moneda as PriceCurrency} className="size-4 shrink-0" />
+      ) : null}
     </div>
   );
 }
 
-// UN BLOQUE POR FORMA DE VENTA, como el frame: «Venta al detal» y «Venta al
-// mayor», cada uno con sus precios y su bandera. Solo sale el que está
-// encendido — un bloque vacío titulado «Venta al mayor» diría que ese
-// producto se vende al mayor sin precio, que es lo contrario de lo que pasa.
+// ── A FIELD WHOSE VALUE NEEDS THE WHOLE WIDTH ──────────────────────────────
+//
+// The frame gives Description its own shape (`1465:19916`): label on its own
+// line, text underneath at full width, still inside the same 8px rhythm. A
+// paragraph squeezed into the right-hand half of a two-column row wraps after
+// four words, which is why this is drawn differently rather than reusing the
+// row above.
+function FilaAncha({ nombre, children }: { nombre: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col justify-center gap-1 py-2">
+      <span className="text-xs leading-4 text-muted-foreground">{nombre}</span>
+      <div className="flex items-center text-sm leading-5">{children}</div>
+    </div>
+  );
+}
+
+// WHAT A FIELD LEFT EMPTY SAYS. The frame spells this out once, on Proveedor:
+// «No registrado». It is the only empty state the design draws, so it is the
+// one every optional field uses here instead of a dash invented on the spot.
+//
+// AND EVERY ROW IS DRAWN, filled or not — which reverses what this screen did
+// until 2026-10-20. Hiding the empty ones seemed kinder («what matters is what
+// you DID fill in») and it is wrong for the job this screen has: the owner is
+// checking a product before creating it, and the most expensive mistake is the
+// field he believes he filled and did not. A row that is simply absent cannot
+// be noticed; one that says «No registrado» can.
+const SIN_DATO = "No registrado";
+
+// UN BLOQUE POR FORMA DE VENTA, as the frame draws them: «Venta al detal» and
+// «Venta al mayor», each with its margin and its prices. Only the tier that is
+// switched on appears — a block titled «Venta al mayor» with nothing under it
+// would claim the product sells wholesale without a price, the opposite of
+// what is true.
 function BloqueDeVenta({
   titulo,
+  etiquetaDelMargen,
+  margen,
   monedas,
-  precios,
+  base,
+  precioBase,
+  fijos,
+  rates,
   minimo,
 }: {
   titulo: string;
+  etiquetaDelMargen: string;
+  margen: number | null;
   monedas: PriceCurrency[];
-  precios: Partial<Record<PriceCurrency, string>>;
+  base: PriceCurrency;
+  precioBase: number | null;
+  fijos: Partial<Record<PriceCurrency, string>>;
+  rates: BolivarRates | null;
   minimo?: string;
 }) {
-  const conPrecio = monedas.filter((c) => (precios[c] ?? "").trim() !== "");
   return (
-    <div className="flex flex-col rounded-[10px] border p-4">
-      <p className="pb-1 text-sm font-medium">{titulo}</p>
-      {conPrecio.length === 0 ? (
-        <p className="py-2 text-xs text-muted-foreground">Sin precio todavía.</p>
-      ) : (
-        conPrecio.map((c) => (
-          <FilaDeRepaso
-            key={c}
-            nombre={`Precio ${CURRENCY_LABEL[c] ?? c}`}
-            valor={
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {precios[c]}
-                <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
-              </span>
-            }
-          />
-        ))
-      )}
-      {minimo ? <FilaDeRepaso nombre="A partir de" valor={`${minimo} unidades`} /> : null}
+    <div className="flex flex-col gap-2">
+      <p className="text-sm leading-5">{titulo}</p>
+      <div className="flex flex-col">
+        {/* THE MARGIN IS THE ONE ROW THAT DISAPPEARS WHEN EMPTY, and it is not
+            an exception to the rule above — it is outside it. Every other row
+            here holds something the owner TYPED, so an absent one could be a
+            field he believes he filled, and «No registrado» is what lets him
+            catch that. The margin is not typed: it is derived from the cost.
+            With no cost there is no margin to report, and «Margen: No
+            registrado» would accuse him of skipping a field that does not
+            exist. Cost itself is already on this screen saying so. */}
+        {margen == null ? null : (
+          <FilaDeRepaso nombre={etiquetaDelMargen} valor={formatPercent(margen)} />
+        )}
+        {/* EVERY CURRENCY THE TIER CARRIES, with the price actually in force —
+            which is the bug the owner reported on 2026-10-20: *«el frame para
+            verificar el producto antes de crearlo no está mostrando los
+            precios seteados»*.
+
+            It was reading `fixed`, the hand-pinned overrides, and nothing
+            else. Those are the EXCEPTION: the ordinary way to price a product
+            is to type the base and let the rest follow the rate, and that
+            leaves `fixed` empty. So the screen said «Sin precio todavía» to
+            someone who had typed a price two screens earlier — and said it
+            directly above the button that creates the product. */}
+        {monedas.map((c) => {
+          const importe = mostradoDe(c, base, precioBase, fijos, rates);
+          return (
+            <FilaDeRepaso
+              key={c}
+              nombre={`Precio ${CURRENCY_LABEL[c] ?? c}`}
+              valor={importe == null ? SIN_DATO : formatPriceAmount(importe, c)}
+              moneda={c}
+            />
+          );
+        })}
+        {minimo ? <FilaDeRepaso nombre="A partir de" valor={`${minimo} unidades`} /> : null}
+      </div>
     </div>
   );
+}
+
+// A CHECKED BOX, READ-ONLY. `PublishCheck` is the editable one from step 3/4
+// and takes an `onChange`; this is the same shape with nothing behind it.
+function FilaDeControl({ marcado, etiqueta }: { marcado: boolean; etiqueta: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {/* Same reason as the switch above: not `disabled`, or a ticked box
+          turns grey and stops reading as ticked. */}
+      <Checkbox
+        checked={marcado}
+        aria-readonly="true"
+        tabIndex={-1}
+        className="pointer-events-none size-4 shrink-0"
+      />
+      <span className="min-w-0 flex-1 text-xs leading-4">{etiqueta}</span>
+    </div>
+  );
+}
+
+// ============================================================================
+// 4/4 VERIFICA — frame `1465:19856`
+//
+// Everything typed, read back, before saving. The step did not exist in the
+// old dialog and adds no field: it shows the same ones as the three before it.
+//
+// WHY A WHOLE SCREEN TO RE-READ. In the dialog the owner reached «Crear
+// producto» with the form in front of him and could check it at a glance.
+// Split into four, the save button lands on a screen showing three fields out
+// of nine, so the last thing he saw before deciding was a third of what he was
+// deciding about. This screen gives that glance back.
+function valorDelCosto(cost: string, costCurrency: string): string {
+  const n = parseAmount(cost);
+  if (n == null) return SIN_DATO;
+  return costCurrency === "OTHER"
+    ? cost.trim()
+    : formatPriceAmount(n, costCurrency as PriceCurrency);
 }
 
 function Verifica({
@@ -1883,7 +2063,12 @@ function Verifica({
   ventaWholesale,
   currencies,
   fixed,
+  priceRetail,
+  priceWholesale,
+  margenRetail,
+  margenWholesale,
   minQty,
+  rates,
 }: {
   nombre: string;
   stock: string;
@@ -1900,52 +2085,123 @@ function Verifica({
   fixed: Record<PriceTier, Partial<Record<PriceCurrency, string>>>;
   priceRetail: string;
   priceWholesale: string;
+  margenRetail: number | null;
+  margenWholesale: number | null;
   minQty: string;
   rates: BolivarRates | null;
 }) {
+  const publicando = pubRetail || pubWholesale;
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col rounded-[10px] border p-4">
-        <FilaDeRepaso nombre="Nombre" valor={nombre.trim() || "—"} />
-        {stock.trim() ? <FilaDeRepaso nombre="Disponible en inventario" valor={stock} /> : null}
-        {cost.trim() ? (
-          <FilaDeRepaso
-            nombre="Costo unitario"
-            valor={
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {cost}
-                <span className="text-xs text-muted-foreground">
-                  {CURRENCY_LABEL[costCurrency] ?? costCurrency}
-                </span>
-              </span>
-            }
-          />
-        ) : null}
-        {supplier.trim() ? <FilaDeRepaso nombre="Proveedor" valor={supplier} /> : null}
-        {description.trim() ? (
-          <FilaDeRepaso nombre="Descripción" valor={description} />
-        ) : null}
-        <FilaDeRepaso nombre="Foto" valor={photoPath ? "Adjunta" : "Sin foto"} />
+      <div className="flex flex-col">
+        <FilaDeRepaso nombre="Nombre del producto" valor={nombre.trim() || SIN_DATO} />
+        <FilaDeRepaso nombre="Disponible en inventario" valor={stock.trim() || SIN_DATO} />
         <FilaDeRepaso
-          nombre="En el catálogo"
-          valor={
-            pubRetail || pubWholesale
-              ? [pubRetail ? "al detal" : null, pubWholesale ? "al mayor" : null]
-                  .filter(Boolean)
-                  .join(" y ")
-              : "No se publica"
-          }
+          nombre="Costo"
+          // FORMATTED AS MONEY, as the frame writes it (`$000.00`) and as
+          // every other amount on this screen already is. Echoing the raw
+          // «1.20» back puts the one figure the owner is checking in a
+          // different shape from the prices right below it.
+          //
+          // «Otro» has no format to apply — that is the point of that option
+          // — so its text is shown exactly as typed.
+          valor={valorDelCosto(cost, costCurrency)}
+          // THE FLAG ONLY WHERE THERE IS A FIGURE TO QUALIFY. A currency icon
+          // beside «No registrado» states the currency of an amount that does
+          // not exist.
+          moneda={cost.trim() ? costCurrency : null}
         />
+        <FilaDeRepaso nombre="Proveedor" valor={supplier.trim() || SIN_DATO} />
+        <FilaAncha nombre="Descripción">
+          <p className="min-w-0 flex-1 break-words">{description.trim() || SIN_DATO}</p>
+        </FilaAncha>
+
+        {/* FOTO: the frame draws the label and then the image across the full
+            width underneath (`1465:20094`), not a 64px thumbnail inside the
+            row. This screen is for looking at what is about to be published,
+            and the photo is the one field whose mistake — the wrong shot, a
+            blurry one — is invisible at thumbnail size. */}
+        {photoPath ? (
+          <div className="flex flex-col pb-4">
+            <FilaDeRepaso nombre="Foto" valor="" />
+            {/* `unoptimized` for the same reason as in `ProductPhotoInput`:
+                the source is a Supabase public URL and the photo was already
+                resized on the device. */}
+            <Image
+              src={getPublicProductPhotoUrl(photoPath)}
+              alt="Foto del producto"
+              width={640}
+              height={480}
+              unoptimized
+              className="h-[120px] w-full rounded-[10px] border object-cover"
+            />
+          </div>
+        ) : (
+          <FilaDeRepaso nombre="Foto" valor={SIN_DATO} />
+        )}
+      </div>
+
+      {/* ── THE PUBLISHING CARD ────────────────────────────────────────────
+          The only bordered box the frame draws on this screen (`1465:20077`),
+          and it earns the border: it is the one block whose state is not a
+          number but a decision, and the only one with consequences outside the
+          shop — what a stranger opening the catalogue link will see.
+
+          READ-ONLY, not interactive. Editing it here would make this a fifth
+          editing screen instead of the re-read it exists to be; «Editar» goes
+          back to the step that owns it. */}
+      <div className="flex flex-col gap-5 rounded-[14px] border px-3 py-3.5">
+        <div className="flex items-start gap-2">
+          <span className="min-w-0 flex-1 text-sm leading-5">Publicar producto en catálogo</span>
+          {/* READ-ONLY WITHOUT `disabled`, and the difference is visible.
+              `disabled` greys the switch out, and a greyed switch reads as
+              «this setting is unavailable» — the opposite of what this screen
+              reports, which is that the owner DID turn publishing on. The
+              frame draws it in its normal on state. So the control keeps its
+              colours and loses only the ability to be touched or focused. */}
+          <Switch
+            checked={publicando}
+            aria-readonly="true"
+            tabIndex={-1}
+            className="pointer-events-none"
+          />
+        </div>
+        {publicando ? (
+          <div className="flex flex-col gap-4">
+            <FilaDeControl marcado={pubWholesale} etiqueta="Incluir precio al mayor" />
+            <FilaDeControl marcado={pubRetail} etiqueta="Incluir precio al detal" />
+          </div>
+        ) : null}
       </div>
 
       {ventaRetail ? (
-        <BloqueDeVenta titulo="Venta al detal" monedas={currencies.retail} precios={fixed.retail} />
+        <BloqueDeVenta
+          titulo="Venta al detal"
+          etiquetaDelMargen="Margen al detal"
+          margen={margenRetail}
+          monedas={currencies.retail}
+          base={currencies.retail[0]}
+          precioBase={parseAmount(priceRetail)}
+          fijos={fixed.retail}
+          rates={rates}
+        />
       ) : null}
       {ventaWholesale ? (
         <BloqueDeVenta
           titulo="Venta al mayor"
+          // THE FRAME SAYS «Margen al detal» HERE TOO, and that is a slip in
+          // the design, not a decision: this is the wholesale block. Copying it
+          // literally would put a label in front of the owner naming the wrong
+          // tier, on the screen he opens to catch exactly that kind of mistake.
+          // Flagged to the owner on delivery.
+          etiquetaDelMargen="Margen al mayor"
+          margen={margenWholesale}
           monedas={currencies.wholesale}
-          precios={fixed.wholesale}
+          base={currencies.wholesale[0]}
+          precioBase={parseAmount(priceWholesale)}
+          fijos={fixed.wholesale}
+          rates={rates}
           minimo={minQty.trim() || undefined}
         />
       ) : null}

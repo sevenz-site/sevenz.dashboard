@@ -18,7 +18,6 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { getBalanceLabel } from "@/lib/types";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
@@ -32,6 +31,11 @@ type SharedMovement = {
   needs_review: boolean;
   plazo_dias: number | null;
   cuotas: number | null;
+  // WHAT THIS FIADO STILL OWES — migration `132`, null on a payment. Optional
+  // because a `get_shared_balance` where `132` has not run does not send the
+  // key at all, and the row then draws no figure instead of a zero that would
+  // read as «paid».
+  pending?: number | null;
   created_at: string;
   rate_mode_used: ExchangeRateMode | null;
   exchange_rate_used: number | null;
@@ -105,14 +109,22 @@ export function MovementHistoryList({
   // con una marca y se ordenan por fecha. Dos listas separadas romperían lo
   // único que el cliente busca al abrir su enlace: qué pasó, en orden.
   //
-  // LOS ABONOS SIGUEN SALIENDO AQUÍ, y eso es deliberado, no un olvido. En la
-  // pantalla del TENDERO se fueron el 2026-10-20: un abono ya se ve dentro del
-  // fiado que pagó. Para el cliente un abono es otra cosa --es la prueba de
-  // que pagó, y es lo que abre el enlace para comprobar--, así que esconderlo
-  // le dejaría una pantalla con solo deudas. La decisión está abierta en
-  // `CT-118` y es del dueño; hasta entonces, se quedan.
+  // NO ABONOS HERE EITHER, which closes `CT-118`. The owner decided it on
+  // 2026-10-20: *«el eliminar del historial los abonos y mostrar solo los
+  // fiados y de contados tal cual como en la vista del dueño»*.
+  //
+  // THIS FILE ARGUED THE OTHER WAY UNTIL THAT DAY, and the argument is kept
+  // because it is the cost of the decision, not a mistake that was corrected:
+  // for the OWNER an abono is a duplicate — it is already visible inside the
+  // fiado it paid — while for a CLIENT it is the receipt that he paid, and
+  // often the whole reason he opens the link. He now reaches it one tap
+  // further in, inside the fiado. What the two screens gain is being the same
+  // screen, which is the thing Sevenz is for: the shopkeeper and the customer
+  // reading the same account and seeing the same rows.
   const filas: Fila[] = [
-    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...movements
+      .filter((m) => m.type !== "payment")
+      .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -128,7 +140,7 @@ export function MovementHistoryList({
   const cabecera = titulo ? (
     <div className="flex items-center justify-between gap-3">
       {titulo}
-      {filas.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} conAbono conContado={ventasDeContado.length > 0} /> : null}
+      {filas.length > 0 ? <MovementTypeFilter tipo={tipo} setTipo={setTipo} conAbono={false} conContado={ventasDeContado.length > 0} /> : null}
     </div>
   ) : null;
 
@@ -150,7 +162,9 @@ export function MovementHistoryList({
       <div className="flex flex-col gap-2">
         {cabecera}
         <EmptyState
-          title={`No tienes ${tipo === "charge" ? "fiados" : tipo === "payment" ? "abonos" : "compras de contado"} en este historial`}
+          // «abonos» ya no es una opción del filtro, así que tampoco puede
+          // salir aquí: el texto solo puede nombrar algo que se pueda elegir.
+          title={`No tienes ${tipo === "charge" ? "fiados" : "compras de contado"} en este historial`}
         />
       </div>
     );
@@ -183,7 +197,23 @@ export function MovementHistoryList({
           // es justo la discusion que esta app existe para evitar.
           const bsTecleados =
             m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : null;
-          const balance = formatLedgerAmount(m.running_balance, m.currency, ledger);
+          // WHAT THIS FIADO STILL OWES, not the client's running balance.
+          //
+          // With the abonos gone from the list, `running_balance` stops being
+          // readable: it is the balance in that book AFTER each movement, so
+          // the client would see a $50 fiado at «Saldo: $120» and below it a
+          // $30 fiado at «Saldo: $80» — a balance going DOWN after a new debt,
+          // with the rows that explain it no longer on screen.
+          //
+          // The same swap was made on the owner's list the same day, and it
+          // was found there the hard way: one row said $89.72 while the card
+          // above it said $68.59, and nothing said which figure to charge.
+          //
+          // `pending` arrives with migration `132`. Until it has run the key
+          // is missing, and `?? null` keeps the line off rather than printing
+          // a zero that would read as «paid».
+          const pendienteDeEsteFiado = m.type === "charge" ? (m.pending ?? null) : null;
+          const balance = formatLedgerAmount(pendienteDeEsteFiado ?? 0, m.currency, ledger);
 
           return (
           <li key={m.id}>
@@ -208,12 +238,23 @@ export function MovementHistoryList({
 
                       Solo cuando la moneda existe. `null` es un negocio
                       colombiano, donde no hay dos libros que separar. */}
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {m.currency ? (
-                      <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
-                    ) : null}
-                    {getBalanceLabel(m.running_balance)} {balance.primary}
-                  </p>
+                  {/* «Te queda por pagar» AND NOT «Por cobrar», which is the
+                      wording on the owner's identical row. Same number, two
+                      sides of the counter: he is owed it, the customer owes
+                      it. This screen is the customer's.
+
+                      A SETTLED FIADO SAYS NOTHING HERE. Zero beside «te queda
+                      por pagar» reads as a missing figure, and the paid state
+                      is better told by the fiado's own card than by a zero in
+                      a list. */}
+                  {pendienteDeEsteFiado != null && pendienteDeEsteFiado > 0.005 ? (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
+                      ) : null}
+                      Te queda por pagar {balance.primary}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div
