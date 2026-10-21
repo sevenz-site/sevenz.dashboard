@@ -18,7 +18,7 @@ import { currencyName, formatPriceAmount, parseAmount, type PriceCurrency } from
 // ===========================================================================
 // ES UN FORMULARIO SINTETIZADO, Y ESO ES LA DECISIÓN, NO UN ATAJO
 //
-// La ficha completa del catálogo (`CatalogProductDialog`) pide escalón al
+// La ficha completa del catálogo (`ProductoFlujo`) pide escalón al
 // detal y al mayor, monedas activas por escalón, precios fijados a mano, costo
 // con su moneda, margen, proveedor, stock inicial y mínimo de mayoreo. Todo
 // eso existe porque el catálogo lo necesita.

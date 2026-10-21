@@ -278,8 +278,17 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // pantalla tampoco lleva cabecera.
   // EL FLUJO DEL ABONO TAMPOCO LLEVA BARRA, desde el 2026-10-19: son tres
   // pasos con su propia barra de progreso, igual que el asistente de venta.
+  // Y EL DEL PRODUCTO, desde el 2026-10-20: cuatro pasos con su barra de
+  // progreso, igual que los otros dos. Sin esto, la barra y el flotante se
+  // montan encima del «Continuar» --visto en la pantalla antes de arreglarlo--.
+  //
+  // `=== "/productos/nuevo"` y no `startsWith("/productos")`: el catálogo SÍ
+  // lleva barra, y es la pantalla de la que se entra.
   const enAsistenteDeVenta =
-    pathname.startsWith("/ventas/nueva") || pathname.startsWith("/abonos/nuevo");
+    pathname.startsWith("/ventas/nueva") ||
+    pathname.startsWith("/abonos/nuevo") ||
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
 
   // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
   // dueño: «en la pantalla final de transacción exitosa se debe ver el botón
@@ -331,10 +340,15 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // Y por eso el rótulo también cambió: «Agregar» nombra lo que hace el botón,
   // «Registrar» nombra lo que el tendero viene a hacer.
   //
-  // EL CATÁLOGO SIGUE SIENDO OTRA COSA: ahí este mismo botón crea un producto
-  // y navega a `?nuevo=1`, con `replace` porque es un marcador en la misma
-  // página —con `push` quedaría en el historial y reabriría el diálogo al
-  // volver atrás—. Es el único camino que todavía navega desde aquí.
+  // EL CATÁLOGO SIGUE SIENDO OTRA COSA: ahí este mismo botón crea un producto,
+  // y desde el 2026-10-20 navega a `/productos/nuevo`, que es una RUTA de
+  // verdad y no un marcador.
+  //
+  // IBA CON `replace` A `?nuevo=1`, y tenía que ir así: el marcador vivía en
+  // la misma página, y con `push` quedaba en el historial y reabría el
+  // diálogo al volver atrás. Con una ruta propia es al revés — `push` es lo
+  // correcto, porque la flecha del paso 1/4 tiene que poder volver al
+  // catálogo.
   const enCatalogo = pathname === "/productos";
   // EL FLOTANTE SE APARTA CUANDO EL CATÁLOGO ESTÁ VACÍO. Instrucción del
   // dueño el 2026-10-20: ese estado vacío estrena su propio botón «Crear
@@ -342,7 +356,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // dos controles con la misma etiqueta a cinco centímetros en una pantalla
   // que solo pide que uses uno. Ver `catalogo-vacio.ts`.
   const catalogoVacio = useCatalogoVacio();
-  const agregarHref = "/productos?nuevo=1";
+  const agregarHref = "/productos/nuevo";
   const agregarLabel = enCatalogo ? "Crear producto" : "Registrar";
 
   // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
@@ -559,9 +573,10 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
               return;
             }
             setGoingTo(agregarHref);
-            // `replace` y no `push`: es un marcador en la misma página; ver el
-            // comentario de `agregarHref`.
-            startTransition(() => router.replace(agregarHref));
+            // `push` y no `replace`: desde el 2026-10-20 es una RUTA, no un
+            // marcador, y la flecha del paso 1/4 tiene que poder volver aquí.
+            // Ver el comentario de `agregarHref`.
+            startTransition(() => router.push(agregarHref));
           });
         }}
         // Sits one gap above the bar, inside the strip `AppMain` already

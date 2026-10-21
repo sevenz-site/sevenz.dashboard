@@ -53,12 +53,12 @@ export function OrdersEmpty({
           variante="relleno"
           etiqueta="Compartir catálogo"
         />
-        {/* «CREAR PRODUCTO» ABRE EL DIÁLOGO DE SIEMPRE, con `?nuevo=1` — el
-            mismo marcador que usa el botón de la pantalla de Catálogo. No hay
-            una segunda forma de crear un producto y no la va a haber por esta
-            puerta. */}
+        {/* «CREAR PRODUCTO» VA AL MISMO FLUJO QUE TODO LO DEMÁS: desde el
+            2026-10-20 el alta es una pantalla de cuatro pasos y no un
+            diálogo, así que esto es un enlace a su ruta. No hay una segunda
+            forma de crear un producto y no la va a haber por esta puerta. */}
         <Button asChild variant="outline" className="h-10 w-full text-base font-semibold">
-          <Link href="/productos?nuevo=1">
+          <Link href="/productos/nuevo">
             <Plus className="size-5" aria-hidden="true" />
             Crear producto
           </Link>

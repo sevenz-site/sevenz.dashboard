@@ -55,7 +55,7 @@ import {
 // en euros que el tendero nunca escribió», and the owner chose to offer only
 // the hand-pinned ones on the strength of that sentence.
 //
-// It is untrue: the shopkeeper's own form -- `catalog-product-dialog.tsx`,
+// It is untrue: the shopkeeper's own form -- `producto-flujo.tsx`,
 // where it paints every enabled currency -- already shows them exactly that
 // conversion, computed with `priceIn` and marked with a chain icon. The euro
 // amount is not a number behind anyone's back; it is the same number, under

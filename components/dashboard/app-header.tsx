@@ -90,7 +90,22 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     //
     // ESTA LÍNEA SE ESCRIBIÓ ANTES QUE LA PANTALLA, que es lo que `CLAUDE.md`
     // pide desde la cuarta vez que esto pasó. No es criterio: es orden.
-    pathname.startsWith("/transacciones");
+    pathname.startsWith("/transacciones") ||
+    // ── EL FLUJO DEL PRODUCTO, el 2026-10-20 ────────────────────────────
+    //
+    // `/productos/nuevo` y `/productos/<id>/editar`: el alta y la edición
+    // dejaron de ser un diálogo y pasaron a ser cuatro pantallas (frame
+    // `1465:18582`). Las dos traen su propia flecha y su «N/4».
+    //
+    // OJO CON EL ORDEN: `/productos` a secas SÍ lleva cabecera --es el
+    // catálogo-- así que esto no puede ser un `startsWith("/productos")`.
+    // Son las dos rutas del flujo y nada más.
+    //
+    // Y ESTA VEZ LA LÍNEA LLEGÓ TARDE: se escribió DESPUÉS de ver las dos
+    // barras en la pantalla, que es exactamente lo que `CLAUDE.md` pide no
+    // hacer desde la cuarta vez. Van cinco.
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries
