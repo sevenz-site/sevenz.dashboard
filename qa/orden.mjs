@@ -41,7 +41,11 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { escalonParaCantidad, precioEnMoneda } from "../lib/products/public-pricing.ts";
+import {
+  escalonParaCantidad,
+  monedasDelBloque,
+  precioEnMoneda,
+} from "../lib/products/public-pricing.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -79,7 +83,10 @@ function check(nombre, pasa, detalle) {
 const MARCA = "QA 109";
 const TEL = "584121990109";
 const productos = [];
-let enlaceCreado = null;
+const enlacesCreados = [];
+// Every business this suite wrote an order for, so the cleanup reaches all of
+// them. It is filled as they are chosen, never hardcoded.
+const duenosTocados = [];
 let ownerId = null;
 
 const CLIENTE = {
@@ -101,26 +108,81 @@ async function pedir(token, items, extra = {}) {
   return data;
 }
 
-try {
-  const { data: owners } = await admin.from("owners").select("id").limit(2);
-  ownerId = owners[0].id;
-  const otroOwnerId = owners[1]?.id ?? null;
-
-  // El enlace del catálogo de ese negocio. Se reutiliza si existe.
-  let { data: link } = await admin
+// The catalogue link of a business, reused when it already has one. Returns
+// the token and records any link this suite created so the cleanup can remove
+// it -- a link it merely reused belongs to the business and is left alone.
+async function enlaceDe(owner) {
+  const { data: existente } = await admin
     .from("catalog_share_links")
     .select("id, token")
-    .eq("owner_id", ownerId)
+    .eq("owner_id", owner)
     .maybeSingle();
-  if (!link) {
-    const r = await admin
-      .from("catalog_share_links")
-      .insert({ owner_id: ownerId })
-      .select("id, token")
-      .single();
-    link = r.data;
-    enlaceCreado = link.id;
+  if (existente) return existente;
+  const { data: nuevo } = await admin
+    .from("catalog_share_links")
+    .insert({ owner_id: owner })
+    .select("id, token")
+    .single();
+  enlacesCreados.push(nuevo.id);
+  return nuevo;
+}
+
+try {
+  // ── WHICH BUSINESS THIS SUITE RUNS AGAINST, AND WHY IT IS PINNED ───────
+  //
+  // THIS USED TO BE `.select("id").limit(2)` WITH NO `order by`, AND THAT COST
+  // A REAL DIAGNOSIS. Postgres is free to return those rows in any order, so
+  // `owners[0]` was a different business from one run to the next. On
+  // 2026-10-16 the suite reported 32/35 and on 2026-10-17 it reported 35/35
+  // with NOTHING CHANGED in between -- not this file, not the function. The
+  // first run had landed on a Colombian business and the second on a
+  // Venezuelan one.
+  //
+  // A suite whose score moves on its own is worse than one that fails: the
+  // three red rows were written off as "fixture instability" and the real
+  // question -- is the product broken for Colombia? -- went unanswered for a
+  // day. Checked properly on 2026-10-17: it is NOT broken. A Colombian shop
+  // converts nothing, deliberately, in BOTH halves (`create_catalog_order`
+  // guards the rate with `country = 'VE'`, and `app/c/[token]/page.tsx` builds
+  // `rates` under the same condition). The three checks were asserting
+  // Venezuelan behaviour against whichever business turned up.
+  //
+  // So the business is pinned, by country and by id:
+  //
+  //   - VE for the main run, because conversion between currencies only
+  //     exists there and checks 14a/14b/14d measure exactly that.
+  //   - CO as well, in block 15, so Colombia is ASSERTED rather than avoided.
+  //     Pinning alone would have made the suite green and left the same
+  //     question open the next time somebody asks it.
+  const { data: ve } = await admin
+    .from("owners")
+    .select("id")
+    .eq("country", "VE")
+    .order("id")
+    .limit(1)
+    .maybeSingle();
+  if (!ve) {
+    console.error("ME NIEGO A CORRER: no hay ningún negocio VE en dev.");
+    console.error("Las comprobaciones 14a/14b/14d miden la conversión de moneda,");
+    console.error("que por diseño solo existe en Venezuela. Sin un negocio VE");
+    console.error("esta suite no mide lo que dice medir.");
+    process.exit(1);
   }
+  ownerId = ve.id;
+  duenosTocados.push(ownerId);
+
+  // Any business that is NOT this one: check 4b only needs a product that
+  // belongs to somebody else, and its country is irrelevant.
+  const { data: otro } = await admin
+    .from("owners")
+    .select("id")
+    .neq("id", ownerId)
+    .order("id")
+    .limit(1)
+    .maybeSingle();
+  const otroOwnerId = otro?.id ?? null;
+
+  const link = await enlaceDe(ownerId);
   const token = link.token;
 
   // ── El producto de la prueba ────────────────────────────────────────────
@@ -629,16 +691,170 @@ try {
     lineaFijada == null ? `rechazada: ${r14e.reason}` : String(lineaFijada.unit_price),
   );
 
+  // ── 15. UNA BODEGA COLOMBIANA, que no convierte nada ──────────────────
+  //
+  // WHY THIS BLOCK EXISTS, and it is the point of the whole 2026-10-17 fix.
+  //
+  // A Colombian shop has no rate: `create_catalog_order` loads one only when
+  // `country = 'VE'`, and `app/c/[token]/page.tsx` builds `rates` under the
+  // same condition. So conversion is simply not a thing there, by design.
+  //
+  // That design is fine. What was NOT fine is that the suite never said so.
+  // It asserted Venezuelan behaviour against whichever business the database
+  // handed back first, so landing on Colombia produced three red rows that
+  // looked like a product defect and were not -- and the only way to tell the
+  // two apart was to go and read two files. A suite that cannot distinguish
+  // "the product is broken for Colombia" from "the test grabbed the wrong
+  // business" is not answering the question it was written to answer.
+  //
+  // THE REAL INVARIANT, and the only one worth guarding here: WHAT THE SCREEN
+  // OFFERS AND WHAT THE SERVER ACCEPTS ARE THE SAME SET. Both halves carry the
+  // `VE` condition, in two languages, in two files, and nothing ties them
+  // together. The day somebody removes one and not the other, the customer of
+  // a Colombian shop picks euros on screen and the order dies with `sin_tasa`
+  // after the whole form is filled -- with no error anywhere a shopkeeper
+  // would see. 15a and 15b are that check, one per half.
+  const { data: co } = await admin
+    .from("owners")
+    .select("id")
+    .eq("country", "CO")
+    .order("id")
+    .limit(1)
+    .maybeSingle();
+
+  if (!co) {
+    check(
+      "15. la bodega colombiana se comprueba de verdad",
+      false,
+      "NO HAY NINGÚN NEGOCIO CO EN DEV — este bloque no midió nada",
+    );
+  } else {
+    duenosTocados.push(co.id);
+    const tokenCo = (await enlaceDe(co.id)).token;
+
+    // Mismo montaje que el producto «convertible» del bloque 14: base en
+    // dólares, euro ofrecido en el escalón, y ningún precio fijado a mano. En
+    // Venezuela esto se convierte; aquí tiene que rebotar.
+    const { data: prodCo } = await admin
+      .from("products")
+      .insert({
+        owner_id: co.id,
+        name: `${MARCA} colombiano`,
+        base_currency: "USD",
+        price_retail: 10,
+        published_retail: true,
+      })
+      .select("id")
+      .single();
+    productos.push(prodCo.id);
+    await admin.from("product_currencies").upsert(
+      [
+        { product_id: prodCo.id, tier: "retail", currency: "USD" },
+        { product_id: prodCo.id, tier: "retail", currency: "EUR" },
+      ],
+      { onConflict: "product_id,tier,currency" },
+    );
+
+    const r15a = await pedir(tokenCo, [
+      { product_id: prodCo.id, quantity: 1, currency: "EUR" },
+    ]);
+    check(
+      "15a. bodega CO: el servidor NO convierte, y lo dice con `sin_tasa`",
+      !r15a.ok && r15a.reason === "sin_tasa",
+      r15a.ok ? "ACEPTÓ una conversión imposible" : r15a.reason,
+    );
+
+    // LA OTRA MITAD, y es la que de verdad cierra el agujero: con `rates` en
+    // null —que es lo que la página le pasa a una bodega colombiana— la lista
+    // de monedas del cliente no puede incluir el euro. Si lo incluyera, el
+    // cliente elegiría algo que 15a acaba de demostrar que el servidor
+    // rechaza.
+    const bloqueCo = {
+      price: 10,
+      pinned: {},
+      base: "USD",
+      currencies: ["USD", "EUR"],
+    };
+    const ofrecidas = monedasDelBloque(bloqueCo, null);
+    check(
+      "15b. y la PANTALLA tampoco se lo ofrece — las dos mitades dicen lo mismo",
+      !ofrecidas.includes("EUR") && ofrecidas.includes("USD"),
+      `ofrece: ${ofrecidas.join(", ") || "nada"}`,
+    );
+
+    // Y QUE COLOMBIA NO ESTÉ SIMPLEMENTE ROTA. Sin esta fila, las dos de
+    // arriba pasarían igual de bien con el catálogo colombiano entero caído:
+    // «rechaza el euro» y «no ofrece el euro» son ciertas también cuando no se
+    // puede pedir nada en absoluto.
+    const r15c = await pedir(tokenCo, [
+      { product_id: prodCo.id, quantity: 1, currency: "USD" },
+    ]);
+    const { data: lineaCo } = r15c.ok
+      ? await admin
+          .from("catalog_order_items")
+          .select("unit_price, currency")
+          .eq("order_id", r15c.order_id)
+          .single()
+      : { data: null };
+    check(
+      "15c. pero SÍ vende en su moneda base — Colombia no está rota, solo no convierte",
+      lineaCo != null && lineaCo.currency === "USD" && Number(lineaCo.unit_price) === 10,
+      lineaCo == null ? `rechazada: ${r15c.reason}` : `${lineaCo.unit_price} ${lineaCo.currency}`,
+    );
+
+    // La misma reserva que 14e, en el otro país: un precio escrito a mano se
+    // vende sin tasa ninguna, porque no hay nada que convertir.
+    await admin.from("product_price_overrides").upsert(
+      { product_id: prodCo.id, tier: "retail", currency: "EUR", amount: 9.2 },
+      { onConflict: "product_id,tier,currency" },
+    );
+    const r15d = await pedir(tokenCo, [
+      { product_id: prodCo.id, quantity: 1, currency: "EUR" },
+    ]);
+    const { data: lineaFijadaCo } = r15d.ok
+      ? await admin
+          .from("catalog_order_items")
+          .select("unit_price, currency")
+          .eq("order_id", r15d.order_id)
+          .single()
+      : { data: null };
+    check(
+      "15d. y con el precio en euros escrito a mano, la bodega CO sí lo vende",
+      lineaFijadaCo != null &&
+        lineaFijadaCo.currency === "EUR" &&
+        Number(lineaFijadaCo.unit_price) === 9.2,
+      lineaFijadaCo == null ? `rechazada: ${r15d.reason}` : String(lineaFijadaCo.unit_price),
+    );
+
+    // Y la pantalla, otra vez, de acuerdo: el precio fijado hace que el euro
+    // SÍ se ofrezca, sin tasa y en Colombia.
+    const ofrecidasFijada = monedasDelBloque({ ...bloqueCo, pinned: { EUR: 9.2 } }, null);
+    check(
+      "15e. y entonces la pantalla sí lo ofrece — siguen diciendo lo mismo",
+      ofrecidasFijada.includes("EUR"),
+      `ofrece: ${ofrecidasFijada.join(", ")}`,
+    );
+  }
+
 } finally {
   // Las órdenes se van por cascada al borrar nada: no cuelgan del producto
   // sino del enlace, así que se borran por el enlace del negocio.
-  const { data: link } = await admin
-    .from("catalog_share_links")
-    .select("id")
-    .eq("owner_id", ownerId)
-    .maybeSingle();
-  if (link) await admin.from("catalog_orders").delete().eq("catalog_link_id", link.id);
-  if (enlaceCreado) await admin.from("catalog_share_links").delete().eq("id", enlaceCreado);
+  //
+  // DE TODOS LOS NEGOCIOS QUE LA PRUEBA TOCÓ, no solo del principal: desde el
+  // bloque 15 son dos, el venezolano y el colombiano. Limpiar solo el primero
+  // dejaría órdenes de prueba en el panel de Pedidos de un negocio de dev, que
+  // es precisamente la pantalla que se mira para comprobar otras cosas.
+  for (const duenoTocado of duenosTocados) {
+    const { data: link } = await admin
+      .from("catalog_share_links")
+      .select("id")
+      .eq("owner_id", duenoTocado)
+      .maybeSingle();
+    if (link) await admin.from("catalog_orders").delete().eq("catalog_link_id", link.id);
+  }
+  if (enlacesCreados.length) {
+    await admin.from("catalog_share_links").delete().in("id", enlacesCreados);
+  }
   if (productos.length) await admin.from("products").delete().in("id", productos);
   // LA TASA DEL USDT SE BORRA, no se restaura a lo que hubiera: la 112 la
   // vuelve a escribir sola en cuanto alguien abra el catálogo, y dejar aquí un
@@ -692,12 +908,24 @@ try {
   // watched is what the repo says, because that is what will be deployed. A
   // live function that does not match the file is a different problem, and the
   // twelve tests above catch it by actually calling it.
-  // THE FILE READ IS THE LATEST ONE THAT DEFINES THE FUNCTION, which is 113
+  // THE FILE READ IS THE LATEST ONE THAT DEFINES THE FUNCTION, which is 114
   // since 2026-10-15. Pointing at a superseded migration would compare the
   // dictionary against codes nobody deploys any more -- and it would go on
   // passing while doing nothing, which is the failure mode this whole check
   // exists to avoid.
-  const sqlOrden = readFileSync("supabase/113_la_orden_convierte_usdt.sql", "utf8");
+  //
+  // AND IT HAD ALREADY HAPPENED. This line said `113` until 2026-10-17, while
+  // `114_cada_escalon_con_sus_monedas.sql` had been the live definition since
+  // the day it shipped. The two files turn out to raise the SAME thirteen
+  // reasons, so the check was right by luck and nothing was ever wrong on
+  // screen -- which is exactly why nobody noticed. It is written down because
+  // the next rewrite is the one that would have made it lie.
+  //
+  // IF THIS NEEDS UPDATING AGAIN, the way to find the right file is
+  // `grep -rln "function public.create_catalog_order" supabase/*.sql` and take
+  // the HIGHEST number. CLAUDE.md's rule about reading the last definition of
+  // a Postgres function is this same trap in its other form.
+  const sqlOrden = readFileSync("supabase/114_cada_escalon_con_sus_monedas.sql", "utf8");
   const cuerpo = sqlOrden.slice(sqlOrden.indexOf("create function public.create_catalog_order"));
   const razonesDelSql = new Set([
     ...[...cuerpo.matchAll(/raise exception '([a-z_]+)' using errcode = 'P0001'/g)].map((m) => m[1]),

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useActionState, useEffect, useState } from "react";
 import {
   WhatsappConsentDialog,
@@ -36,6 +38,8 @@ import { addMovement, type MovementFormState } from "@/app/(app)/dashboard/actio
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
+import { MovementProductsField } from "@/components/dashboard/movement-products-field";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 import {
   MontoCard,
   TipoButtons,
@@ -73,6 +77,8 @@ import {
 const initialState: MovementFormState = { error: null, clientId: null };
 
 export function AddMovementDialog({
+  hrefVentaOFiado = null,
+  hrefAbono = null,
   clientId,
   clientName,
   clientWhatsapp,
@@ -128,6 +134,13 @@ export function AddMovementDialog({
   // Lets the client detail page's mobile layout make this button full-width
   // without affecting the default (desktop) trigger.
   triggerClassName?: string;
+  // A DÓNDE LLEVA EL SEGUNDO BOTÓN. `null` lo deja como estaba -- abriendo
+  // este diálogo en modo cargo-- y es lo que usan los montajes que no son la
+  // ficha de un cliente.
+  hrefVentaOFiado?: string | null;
+  // EL ABONO TAMBIEN SE VA A SU PROPIA PANTALLA, desde el 2026-10-19. Ver el
+  // comentario del boton.
+  hrefAbono?: string | null;
   // Which movement the mobile bar asked for while the owner is looking at
   // this client. Only ever passed to the mobile instance of this dialog —
   // the page renders a second one for the sm+ layout, and both receiving it
@@ -155,6 +168,9 @@ export function AddMovementDialog({
   const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
+  // QUÉ SE LLEVÓ EL CLIENTE. Paso 8, entregable `E` / `CT-51`. Lista vacía es
+  // el caso normal: la mayoría de los movimientos son dinero a secas.
+  const [productos, setProductos] = useState<LineaDeProducto[]>([]);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [usarPrevista, setUsarPrevista] = useState(false);
   // En que moneda escribe, que no es lo mismo que el libro donde entra la
@@ -382,6 +398,7 @@ export function AddMovementDialog({
     if (!open) {
       setPhotoPath(null);
       setAmountStr("");
+      setProductos([]);
       setPaymentBlocked(false);
       resetErrors();
     }
@@ -410,7 +427,7 @@ export function AddMovementDialog({
   useEffect(() => {
     if (state === initialState || pending || state.error) return;
     if (state.clientId) {
-      toast.success("Movimiento registrado");
+      toast.success("Transacción registrada");
       // "Movement Added" is tracked server-side in addMovement — see the note
       // in client-search-dialog.tsx on why it isn't tracked here too.
       router.refresh();
@@ -427,14 +444,64 @@ export function AddMovementDialog({
         // phone bar these buttons replaced. Desktop follows the same order so
         // the two viewports do not disagree about which side is which.
         <div className={cn("flex gap-2", triggerClassName)}>
-          <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
-            <Plus className="size-4" />
-            Agregar abono
-          </Button>
-          <Button size="sm" className="flex-1" onClick={openForCharge}>
-            <Plus className="size-4" />
-            Agregar fiado
-          </Button>
+          {/* «AGREGAR ABONO» ABRE SU PROPIA PANTALLA, no este dialogo.
+              Decision del dueno el 2026-10-19: el abono SIEMPRE se dirige a un
+              fiado concreto, asi que registrarlo empieza por elegir cual —
+              pantalla 1/3, `/abonos/nuevo`.
+
+              ES EL MISMO MOVIMIENTO QUE HIZO «Venta o fiado» el 2026-10-18, y
+              por la misma razon: este dialogo solo sabe de un monto, y las dos
+              acciones pasaron a preguntar algo antes que el monto.
+
+              EL DIALOGO NO SE VA. Su rama de abono se sigue alcanzando por
+              `?movimiento=abono`, y la de cargo por `?movimiento=fiado`. Lo que
+              cambia es cual de los dos ofrece ESTA pantalla.
+
+              `disabled={!canPayAny}` SE QUEDA Y AHORA ES DOBLE RED: un cliente
+              sin deuda no tiene fiados que listar, asi que la pantalla 1/3 le
+              ensenaria su estado vacio. Apagar el boton se lo ahorra, y el
+              estado vacio cubre el caso en que la deuda se salde entre que la
+              pagina se dibuja y el tendero toca. */}
+          {hrefAbono && canPayAny ? (
+            <Button size="sm" variant="outline" className="flex-1" asChild>
+              <Link href={hrefAbono}>
+                <Plus className="size-4" />
+                Agregar abono
+              </Link>
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="flex-1" disabled={!canPayAny} onClick={openForPayment}>
+              <Plus className="size-4" />
+              Agregar abono
+            </Button>
+          )}
+          {/* «VENTA O FIADO», Y ABRE EL ASISTENTE DE VENTA.
+              Decisión del dueño el 2026-10-18: «renombra el botón de agregar
+              fiado y al seleccionarlo abre el nuevo flujo diseñado para
+              agregar venta o fiado».
+
+              POR QUÉ UN ENLACE Y NO ESTE DIÁLOGO: el asistente pregunta qué
+              se llevó el cliente antes que cuánto debe, y termina pudiendo
+              cobrar parte en el momento. Este diálogo solo sabe de un monto.
+              Un fiado sin productos sigue siendo posible — es una venta sin
+              pago, y el asistente la hace igual.
+
+              EL DIÁLOGO NO SE VA: sigue siendo el de «Agregar abono», y su
+              rama de cargo se alcanza todavía por `?movimiento=fiado`. Lo que
+              cambia es cuál de los dos ofrece ESTA pantalla. */}
+          {hrefVentaOFiado ? (
+            <Button size="sm" className="flex-1" asChild>
+              <Link href={hrefVentaOFiado}>
+                <Plus className="size-4" />
+                Venta o fiado
+              </Link>
+            </Button>
+          ) : (
+            <Button size="sm" className="flex-1" onClick={openForCharge}>
+              <Plus className="size-4" />
+              Agregar fiado
+            </Button>
+          )}
         </div>
       )}
       <Dialog
@@ -453,7 +520,7 @@ export function AddMovementDialog({
           100vh que CLAUDE.md ya nombra para iPhone. */}
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Agregar movimiento</DialogTitle>
+          <DialogTitle>Agregar transacción</DialogTitle>
           <DialogDescription>Para {clientName} · el saldo se recalcula automáticamente.</DialogDescription>
         </DialogHeader>
         {/* gap-8 y no gap-4: los bloques del formulario son cajas con su propio
@@ -542,6 +609,27 @@ export function AddMovementDialog({
                     ? Number(plazoPago)
                     : null
                 }
+              />
+              {/* QUÉ SE LLEVÓ, debajo del plazo y las cuotas. Solo en un fiado:
+                  un abono es dinero que entra y no se lleva mercancía. Decisión
+                  del dueño, 2026-10-17, y la migración `122` lo repite con un
+                  trigger. */}
+              <MovementProductsField
+                value={productos}
+                onValueChange={(lineas) => {
+                  setProductos(lineas);
+                  // EL MONTO SE RELLENA, PERO NO SE BLOQUEA. Su decisión del
+                  // 2026-10-17, y la razón está en su contrario: el día que
+                  // fíe con descuento o redondee y no pueda, vuelve a no usar
+                  // productos -- o apunta mal el dinero, que es peor.
+                  //
+                  // Al quedarse sin líneas NO se borra lo que haya escrito: si
+                  // quitó el último producto de un fiado de 15, el 15 sigue
+                  // siendo lo que acordó con su cliente.
+                  const total = totalDeLineas(lineas);
+                  if (lineas.length > 0) setAmountStr(String(total));
+                }}
+                moneda={(n) => formatDisplayCurrency(n, currency)}
               />
             </>
           ) : null}

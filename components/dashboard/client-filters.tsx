@@ -47,12 +47,29 @@ const STATUS_OPTIONS: { value: ClientStatus | "todos"; label: string }[] = [
 // what this table used to render before any sort control existed (the page
 // query's own `order("days_since_payment", desc)`), so an owner who used
 // the top of the list as their "who to chase today" view doesn't lose it.
-export type SortOption = "nombre" | "monto_desc" | "monto_asc" | "atraso";
+export type SortOption =
+  | "nombre"
+  | "monto_desc"
+  | "monto_asc"
+  | "atraso"
+  | "fecha_desc"
+  | "fecha_asc";
 
+// LAS DOS DE FECHA son del 2026-10-20, pedidas por el dueño. Ordenan por
+// `last_movement_at` — la última vez que pasó ALGO con ese cliente, contando
+// fiados, abonos y ventas de contado.
+//
+// NO ES «cliente desde», que ya estaba en la ficha y era gratis. Se le
+// preguntó con las tres opciones y su coste delante, y eligió ésta sabiendo
+// que era la única que pedía una migración (la `130`). La diferencia se nota
+// justo donde importa: un cliente de hace dos años que compró ayer sale
+// primero con esta y último con la otra.
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "nombre", label: "Orden alfabético" },
   { value: "monto_desc", label: "Monto: mayor a menor" },
   { value: "monto_asc", label: "Monto: menor a mayor" },
+  { value: "fecha_desc", label: "Más reciente a más antiguo" },
+  { value: "fecha_asc", label: "Más antiguo a más reciente" },
   { value: "atraso", label: "Más atrasados primero" },
 ];
 
@@ -128,13 +145,13 @@ export function useClientFilters<T extends ClientSummary>(
       }
       const balance = judgementBalance(row);
       if (statusFilter !== "todos") {
-        const status = getClientStatus(
+        const status = getClientStatus({
           balance,
-          row.days_since_payment,
-          row.oldest_unpaid_charge_at,
-          row.oldest_unpaid_charge_plazo_dias,
-          row.oldest_unpaid_charge_due_at,
-        );
+          daysSincePayment: row.days_since_payment,
+          worstChargeAt: row.worst_unpaid_charge_at ?? null,
+          worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+          worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+        });
         if (status !== statusFilter) return false;
       }
       if (min !== null && !Number.isNaN(min) && balance < min) return false;
@@ -153,6 +170,23 @@ export function useClientFilters<T extends ClientSummary>(
       sorted.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
     } else if (sortBy === "atraso") {
       sorted.sort((a, b) => b.days_since_payment - a.days_since_payment);
+    } else if (sortBy === "fecha_desc" || sortBy === "fecha_asc") {
+      // `localeCompare` sobre la cadena ISO y no `new Date()`: la columna
+      // llega como texto ISO de Postgres, que ya ordena bien tal cual, y
+      // construir una fecha por comparación es trabajo por nada en una lista
+      // que se reordena en cada pulsación.
+      //
+      // EL RESPALDO ES EL ALTA DEL CLIENTE y lo pone la vista, no esto: ver
+      // el `coalesce` de la migración `130`. Aquí queda por si una fila vieja
+      // llegara sin la columna, que es lo que pasa entre desplegar el código
+      // y correr la migración.
+      const direccion = sortBy === "fecha_asc" ? 1 : -1;
+      sorted.sort(
+        (a, b) =>
+          (a.last_movement_at ?? a.client_created_at).localeCompare(
+            b.last_movement_at ?? b.client_created_at,
+          ) * direccion,
+      );
     } else {
       // Same combined-to-USD figure the status and amount filters use, so a
       // VE owner's two ledgers order as one number rather than by whichever

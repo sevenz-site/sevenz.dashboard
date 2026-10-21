@@ -13,6 +13,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
 import type { LendingPeriod } from "@/lib/lending-charts";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // REPORTES — rebuilt to the Figma spec of 2026-10-04 (frame `1074:30167`).
 //
@@ -167,29 +168,27 @@ export default async function ReportesPage({
            reproach for a week they were not here for, and telling someone with
            eight months of history "here you will see your activity" sounds like
            the app lost their data. */
-        <div className="flex flex-col items-center gap-3 rounded-lg border bg-muted/30 px-6 py-12 text-center">
-          <ChartColumn className="size-8 text-muted-foreground" aria-hidden="true" />
-          {everAny ? (
-            <>
-              <p className="font-medium">
-                {selected ? `${selected.name} no tiene movimientos` : "No hay movimientos"} en{" "}
-                {PERIOD_LABEL[period]}
-              </p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                {selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve el movimiento
-                del periodo que elijas.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-medium">Todavía no hay nada que mostrar</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                En cuanto registres tu primer fiado o abono, aquí verás cuánto diste y cuánto te
-                pagaron.
-              </p>
-            </>
-          )}
-        </div>
+        /* EL ICONO SE QUEDA, y es el único estado vacío de la app que lleva
+           uno: esta caja sustituye a un GRÁFICO, no a una lista, y sin él el
+           hueco que deja una gráfica se lee como un error de carga. Va dentro
+           del título por eso --`EmptyState` no tiene ranura de icono y no se
+           le añade una para un solo caso--. */
+        <EmptyState
+          className="bg-muted/30"
+          title={
+            <span className="flex flex-col items-center gap-3">
+              <ChartColumn className="size-8 text-muted-foreground" aria-hidden="true" />
+              {everAny
+                ? `${selected ? `${selected.name} no tiene transacciones` : "No hay transacciones"} en ${PERIOD_LABEL[period]}`
+                : "Todavía no hay nada que mostrar"}
+            </span>
+          }
+          subtitle={
+            everAny
+              ? `${selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve la transacción del periodo que elijas.`
+              : "En cuanto registres tu primer fiado o abono, aquí verás cuánto diste y cuánto te pagaron."
+          }
+        />
       )}
     </div>
   );

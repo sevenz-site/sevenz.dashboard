@@ -120,7 +120,7 @@ export function EditarMovimiento({
             <p className="flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
               <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
               <span>
-                <strong>Nota:</strong> este movimiento se agrega para poder cuadrar las cuentas de
+                <strong>Nota:</strong> esta transacción se agrega para poder cuadrar las cuentas de
                 la suma en tu libreta. El cliente podrá ver este movimiento adicional; si no
                 quieres que lo vea, debes seleccionar la cuenta calculada por Sevenz.
               </span>
@@ -170,7 +170,7 @@ export function EditarMovimiento({
                   value={borrador.currency ?? undefined}
                   onValueChange={(v) => cambiar({ currency: v as LedgerCurrency })}
                 >
-                  <SelectTrigger className="w-[8.5rem]" aria-label="Moneda de este movimiento">
+                  <SelectTrigger className="w-[8.5rem]" aria-label="Moneda de esta transacción">
                     <SelectValue placeholder="Moneda" />
                   </SelectTrigger>
                   <SelectContent>

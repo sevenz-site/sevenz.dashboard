@@ -6,6 +6,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
 import { isUnattended } from "@/lib/orders/catalog-orders";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL BUSCADOR Y EL CHIP DE ESTADO DE PEDIDOS.
 //
@@ -134,7 +135,32 @@ export function OrdersFilterChips() {
   );
 }
 
-export function OrdersResults() {
+// LA TARJETA DE COMPARTIR, SOLO SI YA HAY PEDIDOS — frame `1472:21674`.
+//
+// Instrucción del dueño el 2026-10-20: *«esa card permanente solo se ve
+// cuando hay al menos un pedido en la sección de pedidos»*.
+//
+// ===========================================================================
+// MIRA `total`, NO `visible`, Y NO ES LO MISMO
+//
+// `visible` son los pedidos que pasan el filtro de arriba. Con «Atendidos»
+// marcado y ningún pedido atendido, `visible` es cero y `total` no — y
+// esconder la tarjeta ahí sería decirle al tendero que no tiene pedidos
+// porque acaba de filtrar. La condición del dueño es sobre lo que hay en la
+// sección, no sobre lo que se está mirando.
+//
+// VIVE AQUÍ Y NO EN LA PÁGINA porque la cuenta está en este contexto, y la
+// página es un componente de servidor. Lo que sí viaja desde allí es la
+// tarjeta ya montada: necesita el enlace del catálogo y cuántos productos hay
+// publicados, que son datos del servidor. Es la misma división que ya tiene
+// el estado vacío, explicada en `OrdersList`.
+export function OrdersShareCard({ children }: { children: ReactNode }) {
+  const { total } = useOrdersFilters();
+  if (total === 0) return null;
+  return <>{children}</>;
+}
+
+export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
   const { visible, total } = useOrdersFilters();
 
   // "NOTHING MATCHES" IS NOT "NOTHING HAS ARRIVED", and `OrdersList`'s own
@@ -143,11 +169,12 @@ export function OrdersResults() {
   // perfectly good explanation sitting one tap away in the chip.
   if (total > 0 && visible.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-        Ningún pedido coincide con lo que buscas. Prueba con otro nombre o quita el filtro.
-      </p>
+      <EmptyState
+        title="Ningún pedido coincide con lo que buscas"
+        subtitle="Prueba con otro nombre o quita el filtro."
+      />
     );
   }
 
-  return <OrdersList orders={visible} />;
+  return <OrdersList orders={visible} vacio={vacio} />;
 }

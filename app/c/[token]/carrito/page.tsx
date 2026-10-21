@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { CartScreen } from "@/components/public/cart-screen";
+import type { CatalogStripProduct } from "@/components/public/catalog-strip";
 
 // «TU CARRITO», del frame `1190:5793`.
 //
@@ -30,8 +31,14 @@ export default async function CarritoPage({
 }) {
   const { token } = await params;
 
-  if (!isSupabaseConfigured()) return (
-      <CartScreen token={token} businessName="" ownerWhatsapp={null} ownerCountry={null} />
+  if (!isSupabaseConfigured())
+    return (
+      <CartScreen
+        token={token}
+        businessName=""
+        ownerWhatsapp={null}
+        ownerCountry={null}
+      />
     );
 
   // EL NOMBRE Y EL TELEFONO DEL NEGOCIO, que la pantalla necesita para armar
@@ -45,27 +52,41 @@ export default async function CarritoPage({
     nombre: string;
     whatsapp: string | null;
     pais: string | null;
+    // EL CATÁLOGO, para el carrusel «Otros productos» del comprobante
+    // (encargo del dueño, 2026-10-17). Sale de la MISMA llamada que ya se
+    // hacía aquí: `get_shared_catalog` devuelve los productos de todas
+    // formas, así que esto no cuesta ni una consulta más.
+    productos: CatalogStripProduct[];
   }> => {
     try {
       const supabase = await createClient();
-      const { data, error } = await supabase.rpc("get_shared_catalog", { p_token: token });
+      const { data, error } = await supabase.rpc("get_shared_catalog", {
+        p_token: token,
+      });
       if (error) {
         console.error("[carrito] rpc:", error.message);
-        return { nombre: "", whatsapp: null, pais: null };
+        return { nombre: "", whatsapp: null, pais: null, productos: [] };
       }
       const shared = data as {
         business_name: string | null;
         owner_whatsapp: string | null;
         owner_country: string | null;
+        products: CatalogStripProduct[] | null;
       } | null;
       return {
         nombre: shared?.business_name ?? "",
         whatsapp: shared?.owner_whatsapp ?? null,
         pais: shared?.owner_country ?? null,
+        // OCHO, el mismo tope que la franja del saldo. Un carrusel es una
+        // invitación, no un catálogo; «Ver todo» es para el resto.
+        productos: (shared?.products ?? []).slice(0, 8),
       };
     } catch (error) {
-      console.error("[carrito] threw:", error instanceof Error ? error.message : error);
-      return { nombre: "", whatsapp: null, pais: null };
+      console.error(
+        "[carrito] threw:",
+        error instanceof Error ? error.message : error,
+      );
+      return { nombre: "", whatsapp: null, pais: null, productos: [] };
     }
   })();
 
@@ -75,6 +96,7 @@ export default async function CarritoPage({
       businessName={negocio.nombre}
       ownerWhatsapp={negocio.whatsapp}
       ownerCountry={negocio.pais}
+      relacionados={negocio.productos}
     />
   );
 }

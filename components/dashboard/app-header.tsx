@@ -52,7 +52,60 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     // Es la clase de fallo que no se ve escribiendo la pantalla: la barra de
     // más la pone OTRO componente, y el que escribe la pantalla nueva no tiene
     // ninguna razón para abrir este archivo.
-    pathname.startsWith("/productos");
+    pathname.startsWith("/productos") ||
+    // ── Y LOS FLUJOS DE PANTALLA COMPLETA, desde el 2026-10-18 ──────
+    //
+    // `/ventas/nueva` (frames `1389:8329` y siguientes) no trae una cabecera
+    // OSCURA sino una clara —flecha, titulo, progreso— pero el efecto es el
+    // mismo y por eso entra en esta lista y no en `hasOwnBar`: es su cabecera
+    // a TODAS las anchuras, no una version de telefono. Dejar esta barra
+    // encima daria dos filas de navegacion y la marca repetida.
+    //
+    // `/clients/nuevo` ya estaba cubierto por `startsWith("/clients/")` de
+    // arriba, por suerte y no por diseno.
+    //
+    // ESTO SE ESCAPO AL CONSTRUIR LA PANTALLA, que es literalmente lo que
+    // avisa el comentario de `/productos` unas lineas mas arriba. Van tres
+    // veces: papelera, catalogo, y ahora la venta.
+    pathname.startsWith("/ventas") ||
+    // ── Y VAN CUATRO: `/abonos`, el 2026-10-19 ──────────────────────
+    //
+    // El flujo del abono dirigido son tres pasos con su propia cabecera clara
+    // —flecha, titulo, progreso—, igual que el de venta. Salio con esta barra
+    // encima y el dueno lo reporto con una captura, rodeada en rojo: «agregaste
+    // nuevamente un header que no estaba en el frame, SIEMPRE lo agregas».
+    //
+    // CUATRO VECES EL MISMO FALLO, y el comentario de arriba ya lo contaba. La
+    // razon es la que el de `/productos` explica y que sigue siendo cierta: la
+    // barra de mas la pone ESTE archivo, y quien escribe una pantalla nueva no
+    // tiene ninguna razon para abrirlo. Por eso el 2026-10-19 dejo de ser un
+    // comentario y paso a `CLAUDE.md`: toda pantalla nueva entra aqui ANTES de
+    // escribirse, no despues de que alguien la vea doble.
+    pathname.startsWith("/abonos") ||
+    // ── `/transacciones`, el 2026-10-19 ─────────────────────────────
+    //
+    // El detalle de una transacción dejó de ser un diálogo y pasó a ser una
+    // pantalla, con la cabecera que dibujan los frames `1465:18349` y
+    // `1463:18100`: flecha de volver a la izquierda y «⋮» a la derecha.
+    //
+    // ESTA LÍNEA SE ESCRIBIÓ ANTES QUE LA PANTALLA, que es lo que `CLAUDE.md`
+    // pide desde la cuarta vez que esto pasó. No es criterio: es orden.
+    pathname.startsWith("/transacciones") ||
+    // ── EL FLUJO DEL PRODUCTO, el 2026-10-20 ────────────────────────────
+    //
+    // `/productos/nuevo` y `/productos/<id>/editar`: el alta y la edición
+    // dejaron de ser un diálogo y pasaron a ser cuatro pantallas (frame
+    // `1465:18582`). Las dos traen su propia flecha y su «N/4».
+    //
+    // OJO CON EL ORDEN: `/productos` a secas SÍ lleva cabecera --es el
+    // catálogo-- así que esto no puede ser un `startsWith("/productos")`.
+    // Son las dos rutas del flujo y nada más.
+    //
+    // Y ESTA VEZ LA LÍNEA LLEGÓ TARDE: se escribió DESPUÉS de ver las dos
+    // barras en la pantalla, que es exactamente lo que `CLAUDE.md` pide no
+    // hacer desde la cuarta vez. Van cinco.
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
 
   // Screens that do not need this bar on a phone, for either of two reasons:
   // most carry their own contextual "← back" row, and `/reportes` carries

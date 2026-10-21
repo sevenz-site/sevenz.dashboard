@@ -109,7 +109,7 @@ export function MovementDeletionDialog({
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
-    toast.success("Movimiento restaurado");
+    toast.success("Transacción restaurada");
     onRestored(notification!.id);
     onOpenChange(false);
     router.refresh();
@@ -119,7 +119,7 @@ export function MovementDeletionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Movimiento eliminado</DialogTitle>
+          <DialogTitle>Transacción eliminada</DialogTitle>
         </DialogHeader>
 
         {/* Mismos tres grupos y el mismo aire que la ficha del historial. Es el
@@ -193,7 +193,7 @@ export function MovementDeletionDialog({
                 <a href={notification.photoUrl} target="_blank" rel="noopener noreferrer">
                   <Image
                     src={notification.photoUrl}
-                    alt="Foto del movimiento"
+                    alt="Foto de la transacción"
                     width={640}
                     height={360}
                     unoptimized
@@ -233,7 +233,7 @@ export function MovementDeletionDialog({
 
         <DialogFooter>
           {notification.restored ? (
-            <p className="text-sm font-medium text-money-in">Este movimiento ya fue restaurado.</p>
+            <p className="text-sm font-medium text-money-in">Esta transacción ya fue restaurada.</p>
           ) : (
             <Button type="button" onClick={handleRestore} disabled={restoring} className="w-full">
               <Undo2 className="size-4" />

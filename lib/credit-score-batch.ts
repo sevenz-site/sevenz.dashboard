@@ -66,9 +66,9 @@ export async function computeCreditScoresForClients(
       movements: movementsByClient.get(row.client_id) ?? [],
       balance,
       daysSincePayment: row.days_since_payment,
-      oldestUnpaidChargeAt: row.oldest_unpaid_charge_at,
-      oldestUnpaidChargePlazoDias: row.oldest_unpaid_charge_plazo_dias,
-      oldestUnpaidChargeDueAt: row.oldest_unpaid_charge_due_at,
+      worstChargeAt: row.worst_unpaid_charge_at ?? null,
+      worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+      worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
       isFlagged: row.is_flagged,
       mostRecentUnflaggedAt: lastUnflagByClient.get(row.client_id) ?? null,
     });

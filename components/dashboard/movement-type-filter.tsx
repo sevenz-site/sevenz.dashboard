@@ -12,10 +12,18 @@ import { FilterChip } from "@/components/dashboard/client-filters";
 // had touched one yet. The first edit that reached one and not the other would
 // have given the same product two filters that behave differently, and the
 // client's is the half nobody on this side looks at.
+// «DE CONTADO» ENTRA EL 2026-10-18, a petición del dueño: las ventas pagadas
+// enteras no salían en el historial, porque no escriben nada en `movements`
+// (ver `lib/ventas-de-contado.ts`). Ahora el historial las mezcla, así que el
+// filtro tiene que poder dejarlas solas.
+//
+// `cash` Y NO `sale`: lo que distingue a esa fila no es que venga de una venta
+// —un fiado también— sino que se pagó entera en el momento.
 const TIPOS = [
-  { value: "todos", label: "Todos" },
+  { value: "todos", label: "Todas" },
   { value: "charge", label: "Fiado" },
   { value: "payment", label: "Abono" },
+  { value: "cash", label: "De contado" },
 ] as const;
 
 export type TipoFiltro = (typeof TIPOS)[number]["value"];
@@ -23,16 +31,45 @@ export type TipoFiltro = (typeof TIPOS)[number]["value"];
 export function MovementTypeFilter({
   tipo,
   setTipo,
+  conAbono,
+  conContado = false,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
+  // Si esta lista enseña abonos. La del tendero no desde el 2026-10-20 --viven
+  // dentro del fiado que pagaron-- y la del cliente sí. Ver `opciones`.
+  conAbono: boolean;
+  // UNA OPCION QUE NO FILTRA NADA ES PEOR QUE NO TENERLA. La pantalla del
+  // cliente todavía no recibe las ventas de contado --su RPC no las devuelve,
+  // ver `lib/ventas-de-contado.ts`-- así que allí el chip llevaría a una lista
+  // vacía y a la frase «no tiene ... registrados», que sería falsa.
+  conContado?: boolean;
 }) {
+  // ── QUÉ OPCIONES SE OFRECEN ──────────────────────────────────────────
+  //
+  // `conAbono` es del 2026-10-20 y ES OBLIGATORIO en los dos sitios que
+  // montan este filtro, a propósito: la primera versión quitó «Abono» de esta
+  // lista sin más, y como ESTE COMPONENTE ES COMPARTIDO por las dos pantallas
+  // --la del tendero y la del CLIENTE, que lo importa desde aquí-- se lo quitó
+  // también al cliente, que sigue viendo sus abonos. Un filtro que falta donde
+  // sí hay filas que filtrar.
+  //
+  // Nada avisó: `tsc` pasó, el lint pasó y las suites pasaron, porque quitar
+  // una opción de un array es legal en todas partes. Solo se ve abriendo la
+  // otra pantalla.
+  //
+  // Sin valor por defecto por la misma razón: un `= true` habría dejado al
+  // tendero con su «Abono» de vuelta en silencio el día que alguien olvide
+  // pasarlo, que es el mismo fallo con la otra cara.
+  const opciones = TIPOS.filter(
+    (t) => (t.value !== "cash" || conContado) && (t.value !== "payment" || conAbono),
+  );
   // THE CHIP NAMES ITS VALUE, NEVER ITS FIELD. It used to read "Tipo" while
   // unfiltered, which answers "what does this control?" -- a question the
   // owner stopped asking the moment he saw it, and that the new "Filtrar por"
   // label now answers anyway. "Todos" answers the one that is actually live:
   // what am I looking at right now. Owner's decision, 2026-10-16.
-  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todos";
+  const etiqueta = TIPOS.find((t) => t.value === tipo)?.label ?? "Todas";
 
   return (
     // The label is a sibling of the chip, not part of it: the chip fills in
@@ -43,7 +80,7 @@ export function MovementTypeFilter({
       <FilterChip label={etiqueta} active={tipo !== "todos"}>
         {(close) => (
           <div className="flex flex-col gap-1">
-            {TIPOS.map((opt) => (
+            {opciones.map((opt) => (
               <Button
                 key={opt.value}
                 type="button"

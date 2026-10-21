@@ -205,6 +205,17 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
+  /* EL ALTO DE LA BARRA DE ABAJO, EN UN SOLO SITIO.
+     Frame 1421:15026, 2026-10-18: 80px de barra (8 de aire + 64 de fila +
+     8) mas 8 extra para despegarla de la raya del iPhone. 88px = 5.5rem.
+
+     ESTABA ESCRITO A MANO EN TRES SITIOS: la reserva de AppMain, su variante
+     del flujo de registrar y el bottom del boton flotante, como 4rem.
+
+     Aqui no se puede usar una constante de JavaScript, porque Tailwind genera
+     las clases leyendo el texto del fichero y una clase compuesta no existe;
+     una variable CSS si viaja dentro de la clase literal. */
+  --nav-bar-h: 5.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);

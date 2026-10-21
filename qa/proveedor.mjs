@@ -73,9 +73,54 @@ check(
 );
 
 check(
-  "2d. con el campo vacío ofrece todos",
-  igual(sugerenciasDeProveedor(["Abasto", "Makro"], ""), ["Abasto", "Makro"]),
-  "es el que compra siempre en los mismos dos sitios y no quiere teclear",
+  "2d. con el campo vacío NO ofrece nada",
+  igual(sugerenciasDeProveedor(["Abasto", "Makro"], ""), []),
+  "decisión del dueño el 2026-10-20: «los proveedores deben verse solo al escribir»",
+);
+
+// Esta prueba decía lo CONTRARIO hasta el 2026-10-20 y pasaba: con el campo
+// vacío se ofrecían todos, pensando en el tendero que compra siempre en los
+// mismos dos sitios. El dueño lo cambió porque la lista salía sola al tocar el
+// campo y, en un teléfono, empujaba hacia abajo todo lo que venía después
+// antes de que nadie pidiera nada. Queda escrito para que la próxima vez que
+// alguien lea esta línea sepa que es una decisión y no un descuido.
+
+check(
+  "2d-bis. un espacio tampoco abre la lista",
+  igual(sugerenciasDeProveedor(["Abasto", "Makro"], "   "), []),
+  "se compara con el texto ya recortado, no con lo tecleado en crudo",
+);
+
+// ── 2i-2k. SIN TILDES, que es el fallo que el dueño reportó el 2026-10-20 ──
+//
+// «hay un proveedor de nombre "Éxito", pero al escribir "Ex" no me aparece».
+// Es el peor fallo posible aquí: este campo existe para que el segundo
+// producto del mismo proveedor no cree una variante nueva del nombre, y quien
+// escribe sin tilde no veía el acentuado, lo daba por nuevo, y acababa con dos
+// proveedores que son el mismo.
+
+check(
+  "2i. «Ex» encuentra «Éxito»",
+  igual(sugerenciasDeProveedor(["Éxito", "Makro"], "Ex"), ["Éxito"]),
+  "el caso exacto que reportó el dueño",
+);
+
+check(
+  "2j. y al revés: «Éx» encuentra uno escrito sin tilde",
+  igual(sugerenciasDeProveedor(["Exito"], "Éx"), ["Exito"]),
+  "la comparación normaliza los dos lados, no solo lo tecleado",
+);
+
+check(
+  "2k. escrito entero sin tilde tampoco se vuelve a sugerir",
+  igual(sugerenciasDeProveedor(["Éxito"], "exito"), []),
+  "si no, el acentuado saldría como sugerencia de sí mismo",
+);
+
+check(
+  "2l. la ñ NO se normaliza, y eso es correcto",
+  igual(sugerenciasDeProveedor(["Peñalver"], "Penalver"), []),
+  "una ñ no es una n con marca: es su propia letra, y no son el mismo nombre",
 );
 
 check(
@@ -105,8 +150,11 @@ check(
 // repetidos. Si esto se rompiera, la lista enseñaría «Makro» cuatro veces.
 check(
   "3. una lista con un proveedor por producto no produce duplicados",
-  igual(sugerenciasDeProveedor(["Makro", "Makro", "Makro", "Abasto"], ""), ["Abasto", "Makro"]),
-  JSON.stringify(sugerenciasDeProveedor(["Makro", "Makro", "Makro", "Abasto"], "")),
+  // CON UNA LETRA TECLEADA, no con el campo vacío: desde el 2026-10-20 el
+  // campo vacío no sugiere nada, así que la prueba de los duplicados tenía
+  // que pedir algo para poder verlos.
+  igual(sugerenciasDeProveedor(["Makro", "Makro", "Makro", "Abasto"], "a"), ["Abasto", "Makro"]),
+  JSON.stringify(sugerenciasDeProveedor(["Makro", "Makro", "Makro", "Abasto"], "a")),
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

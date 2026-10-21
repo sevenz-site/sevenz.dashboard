@@ -7,7 +7,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDocumentId } from "@/lib/format";
 import {
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
+  clientStatusLabel,
   MALA_PAGA_BADGE_CLASS,
   type ClientStatus,
 } from "@/lib/types";
@@ -81,6 +81,7 @@ export function ClientCardBody({
   name,
   documentId,
   status,
+  overdueCount,
   hasPendingReview = false,
   isFlagged,
   balance,
@@ -88,10 +89,19 @@ export function ClientCardBody({
   balanceEur,
   ledger,
   note,
+  conFlecha = true,
 }: {
   name: string;
   documentId: string | null;
   status: ClientStatus;
+  // CUÁNTOS FIADOS VENCIDOS, para el contador del chip — migración `134`.
+  //
+  // OBLIGATORIO Y SIN VALOR POR DEFECTO, igual que `conAbono` y `conAcciones`
+  // en las tarjetas de abono: un `= null` dejaría que una pantalla nueva se
+  // olvidara de pasarlo y dibujara «Plazo vencido» a secas junto a otra que
+  // dice «Plazo vencido (3)» del mismo cliente. Así el compilador enumera
+  // cada sitio que monta esta tarjeta.
+  overdueCount: number | null;
   hasPendingReview?: boolean;
   isFlagged: boolean;
   // A CO owner's debt is `balance` (COP); a VE owner's is the two independent
@@ -104,6 +114,8 @@ export function ClientCardBody({
   // An extra muted line under the badges. Papelera puts the hiding date here;
   // the other three screens pass nothing.
   note?: React.ReactNode;
+  // `false` donde la tarjeta no se puede tocar. Ver el comentario de abajo.
+  conFlecha?: boolean;
 }) {
   const usd = formatLedgerAmount(balanceUsd, "USD", ledger);
   const eur = formatLedgerAmount(balanceEur, "EUR", ledger);
@@ -138,7 +150,7 @@ export function ClientCardBody({
         </span>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {CLIENT_STATUS_LABEL[status]}
+            {clientStatusLabel(status, overdueCount)}
           </Badge>
           {isFlagged ? (
             <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
@@ -189,7 +201,18 @@ export function ClientCardBody({
         ) : null}
       </p>
 
-      <ChevronRight className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
+      {/* LA FLECHA SOLO DONDE LA TARJETA LLEVA A ALGÚN SITIO.
+          Hasta el 2026-10-18 se dibujaba siempre, y esta misma tarjeta se
+          reutiliza en dos sitios donde NO se puede tocar: la hoja de «Ver
+          cuenta de …» y el cliente ya elegido del paso 4 de la venta. Una
+          flecha ahí promete una pantalla que no existe — el dueño lo reportó
+          señalando las dos.
+
+          Por defecto `true`, que es lo que hacen las listas de Clientes,
+          Malas pagas y Papelera: ahí la tarjeta SÍ abre la ficha. */}
+      {conFlecha ? (
+        <ChevronRight className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
+      ) : null}
     </>
   );
 }

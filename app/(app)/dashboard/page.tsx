@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
+import { NewSaleButton } from "@/components/dashboard/new-sale-button";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
 import {
@@ -38,6 +39,19 @@ export default async function DashboardPage({
   // is where the movement will appear and where the client list already
   // lives. The dialog clears it from the address once open, so a reload
   // can't reopen it on its own.
+  //
+  // TRES VALORES DESDE EL 2026-10-18, no uno, y los tres abren el mismo
+  // diálogo en sitios distintos. Los pone la hoja de «Registrar» (frame
+  // `1389:11227`) y `1` sigue siendo el de siempre:
+  //
+  //   `1`       — el buscador, tal cual. Lo usa «Registrar cliente nuevo» del
+  //               paso 1/4 del asistente de venta.
+  //   `cliente` — abre directamente en el formulario de alta.
+  //   `abono`   — abre el buscador, y al elegir a alguien lleva a su ficha con
+  //               el diálogo de abono ya abierto.
+  //
+  // Un valor desconocido no abre nada, que es lo que debe pasar con una URL
+  // escrita a mano o con un marcador viejo guardado en un favorito.
   const { nuevo } = await searchParams;
   const supabase = await createClient();
   const {
@@ -271,16 +285,20 @@ export default async function DashboardPage({
                 is the trigger, at md and up there is no bottom bar and this
                 button is the only one. With the old `sm` there was a 128px band
                 — 640 to 768 — where BOTH were on screen. */}
+            {/* DESDE EL 2026-10-18 ABRE LA HOJA DE «REGISTRAR», no el diálogo
+                de movimiento. Decisión del dueño ese día, en dos pasos: primero
+                que «Agregar» abriera el asistente de venta, y luego que abriera
+                una hoja con las tres cosas que se pueden registrar — frame
+                `1389:11227`.
+
+                El diálogo de siempre sigue montado más abajo —lo abren los
+                marcadores `?nuevo=`, que es lo que la hoja navega— pero ya no
+                tiene disparador visible en ninguna anchura. `NewSaleButton`
+                lleva el marcador del tour que el disparador del diálogo
+                llevaba. */}
             <HideWhileResults>
               <div className="hidden md:block">
-                <ClientSearchDialog
-                  clients={clients ?? []}
-                  ownerId={user!.id}
-                  businessName={owner?.business_name || user!.email || "tu negocio"}
-                  ownerCountry={ownerCountry}
-                  rateContext={rateContext}
-                  monedaHabitual={monedaHabitual}
-                />
+                <NewSaleButton />
               </div>
             </HideWhileResults>
           </div>
@@ -365,28 +383,33 @@ export default async function DashboardPage({
           </div>
         </HideWhileResults>
 
-        {/* Phone only. This is the instance the mobile bar's "Agregar" opens, so
-            autoOpen lives here; the desktop one must not also receive it or both
-            would open and stack.
+        {/* EL DIÁLOGO DE REGISTRAR MOVIMIENTO, sin disparador visible y en TODAS
+            las anchuras.
 
             NO VISIBLE BUTTON since delivery 3: the floating "Agregar" took over
-            as the trigger. What stays is the DIALOG, and it has to — the
-            floating button navigates to `?nuevo=1`, and this instance is what
-            reads that marker and opens. Deleting the component instead of its
-            button would leave that button pointing at a screen with nothing to
-            open on it.
+            as the trigger. What stays is the DIALOG, and it has to — something
+            has to read `?nuevo=1` and open.
+
+            DEJÓ DE SER `md:hidden` EL 2026-10-18, y es la mitad que se olvida
+            del cambio de «Agregar»: en escritorio ya no hay ninguna otra
+            instancia —la de arriba pasó a ser `NewSaleButton`— así que con la
+            clase puesta, «Registrar cliente nuevo» del paso 1/4 mandaría a
+            `/dashboard?nuevo=1` y no se abriría nada. Una navegación que no
+            hace nada, sin error, solo en escritorio.
 
             It still moves aside while the match list is open, like the capital
             card: the dialog is invisible, but a mounted Radix trigger is not
             the only thing that can swallow a tap near the list's edge. */}
         <HideWhileResults>
-          <div className="md:hidden">
+          <div>
             <ClientSearchDialog
               clients={clients ?? []}
               ownerId={user!.id}
               businessName={owner?.business_name || user!.email || "tu negocio"}
               ownerCountry={ownerCountry}
-              autoOpen={nuevo === "1"}
+              autoOpen={nuevo === "1" || nuevo === "cliente" || nuevo === "abono"}
+              pasoInicial={nuevo === "cliente" ? "new" : "search"}
+              movimientoAlElegir={nuevo === "abono" ? "abono" : undefined}
               hideTrigger
               showTourTarget={false}
               rateContext={rateContext}

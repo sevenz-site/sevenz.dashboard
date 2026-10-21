@@ -601,3 +601,62 @@ export async function getOrCreateCatalogLink(): Promise<{ token: string } | { er
 
   return { token: created.token };
 }
+
+// ===========================================================================
+// EL BUSCADOR DEL SELECTOR DE PRODUCTOS — paso 8, entregable `E` / `CT-51`
+//
+// WHY A SEARCH ACTION AND NOT A PROP. The movement dialog is mounted on the
+// most used screens in the product, and loading every product of the business
+// on each of those page loads would make the fiado form slower to pay for a
+// field that most movements will not use -- 43% of movements in dev carry a
+// description at all, and the plan measured 56% without one in production.
+// The list is fetched the first time the picker opens, and never before.
+//
+// `limit(12)` IS A PRODUCT DECISION, not a performance one: a list longer than
+// a phone screen stops being a list and becomes a scroll. If what the
+// shopkeeper wants is not in the first twelve, typing two more letters is
+// faster than scrolling, and the quick-create is right underneath.
+export type ProductoBuscado = {
+  id: string;
+  name: string;
+  unit: string | null;
+  priceRetail: number | null;
+  baseCurrencyRetail: string | null;
+};
+
+export async function buscarProductos(query: string): Promise<ProductoBuscado[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const q = query.trim();
+
+  let builder = supabase
+    .from("products")
+    .select("id, name, unit, price_retail, base_currency_retail")
+    .eq("owner_id", user.id)
+    // La papelera no se ofrece: un producto en la papelera no se puede fiar.
+    .is("trashed_at", null)
+    .order("name", { ascending: true })
+    .limit(12);
+
+  // Sin texto se devuelven los primeros por nombre, que es lo que hace util
+  // abrir el selector sin saber todavia que se busca.
+  if (q !== "") builder = builder.ilike("name", `%${q}%`);
+
+  const { data, error } = await builder;
+  if (error) {
+    console.error("buscarProductos:", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    unit: p.unit,
+    priceRetail: p.price_retail == null ? null : Number(p.price_retail),
+    baseCurrencyRetail: p.base_currency_retail,
+  }));
+}

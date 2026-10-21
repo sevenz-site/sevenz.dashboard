@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { Upload, X, Loader2, RotateCw, TriangleAlert, Sparkles, Camera, CircleAlert } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatCurrency } from "@/lib/format";
@@ -81,7 +82,7 @@ import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 const TEXTO_SALIR_DE_LA_REVISION = {
   titulo: "¿Salir sin subir la libreta?",
   cuerpo:
-    "Tienes movimientos leídos que todavía no se han guardado. Si sales ahora se pierden, junto con las correcciones que hayas hecho.",
+    "Tienes transacciones leídas que todavía no se han guardado. Si sales ahora se pierden, junto con las correcciones que hayas hecho.",
 };
 import { ConfirmarImportacion } from "@/components/import/confirmar-importacion";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
@@ -100,6 +101,7 @@ import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import type { OwnerCountry } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 type ExistingClient = ReconcileClient;
 
@@ -165,6 +167,12 @@ export function ImportFlow({
   ownerCountry: string;
 }) {
   const router = useRouter();
+  // CON EL TECLADO ARRIBA, LA BARRA DE ABAJO NO. Esta pantalla tiene un campo
+  // de texto —el nombre del cliente de la libreta— y esa barra encima del
+  // teclado lo tapa. Es la regla de `CLAUDE.md` que el dueño ha pedido tres
+  // veces; se aplicó aquí al buscar si quedaba otra pantalla con el mismo
+  // agujero, no porque nadie lo reportara.
+  const tecladoAbierto = useKeyboardOpen();
   // Only a VE owner has a currency to choose. A CO owner's ledger has no
   // currency dimension at all — null means COP — so showing them a selector
   // would invent a decision they don't have.
@@ -1042,7 +1050,7 @@ export function ImportFlow({
   // fuera y cuantos van a entrar.
   const resumenDelPie =
     sinCompletar > 0 && listosParaSubir.length > 0
-      ? `${sinCompletar} ${sinCompletar === 1 ? "cliente sin completar" : "clientes sin completar"}; se ${movimientosListos === 1 ? "subirá" : "subirán"} ${movimientosListos} ${movimientosListos === 1 ? "movimiento" : "movimientos"}.`
+      ? `${sinCompletar} ${sinCompletar === 1 ? "cliente sin completar" : "clientes sin completar"}; se ${movimientosListos === 1 ? "subirá" : "subirán"} ${movimientosListos} ${movimientosListos === 1 ? "transacción" : "transacciones"}.`
       : null;
 
   // EL ORDEN CAMBIA CUANDO YA SE PUEDE SUBIR ALGO.
@@ -1063,7 +1071,7 @@ export function ImportFlow({
     // Quitar al ultimo cliente deja la lista vacia y el boton apagado. Sin esta
     // frase no hay nada en pantalla que diga por que, ni que la salida es
     // "Volver" — que conserva las fotos y rehace la revision desde cero.
-    ? "Quitaste todos los movimientos de esta libreta. Pulsa Volver para empezar la revisión otra vez: tus fotos siguen ahí."
+    ? "Quitaste todas las transacciones de esta libreta. Pulsa Volver para empezar la revisión otra vez: tus fotos siguen ahí."
     : missingSharedName
     ? "Escribe el nombre del cliente antes de continuar."
     : missingDocumentId
@@ -1692,12 +1700,12 @@ export function ImportFlow({
     const quedan = clientesRevisados.some((c) => !subidosAhora.has(c.nameKey));
     if (quedan) {
       toast.success(
-        `${movimientos} ${movimientos === 1 ? "movimiento importado" : "movimientos importados"}. Sigue con el resto.`,
+        `${movimientos} ${movimientos === 1 ? "transacción importada" : "transacciones importadas"}. Sigue con el resto.`,
       );
       return;
     }
     toast.success(
-      `${movimientos} ${movimientos === 1 ? "movimiento importado" : "movimientos importados"}.`,
+      `${movimientos} ${movimientos === 1 ? "transacción importada" : "transacciones importadas"}.`,
     );
     cerrarRevision();
     clearJobs();
@@ -1720,7 +1728,7 @@ export function ImportFlow({
             alineado a su derecha y los dos tienen que estar en el mismo
             componente para poder compartir el estado. */}
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+          <ScreenTitle>Subir libreta</ScreenTitle>
           <BotonDeshacer pasos={pasado.length} onDeshacer={deshacer} />
         </div>
 
@@ -1792,6 +1800,7 @@ export function ImportFlow({
                   Cédula
                 </Label>
                 <DocumentIdInput
+          sinTipo
                   id="shared-document"
                   country={country}
                   value={sharedDocument}
@@ -2030,7 +2039,7 @@ export function ImportFlow({
             <SheetHeader>
               {/* El titulo del panel es la ACCION, no el nombre: el nombre va
                   dentro, en grande, junto a su estado y su boton de quitar. */}
-              <SheetTitle>Registrar movimientos</SheetTitle>
+              <SheetTitle>Registrar transacciones</SheetTitle>
             </SheetHeader>
             {/* "Registrar movimientos": el detalle de ESE cliente. Sustituye a
                 la tabla de movimientos, que se reutilizó mientras la lista por
@@ -2215,7 +2224,19 @@ export function ImportFlow({
             reservarle hueco con un padding que luego se queda desajustado.
             `pb-[env(safe-area-inset-bottom)]` porque en un iPhone con notch la
             franja de abajo se come el borde del botón. La barra de navegación
-            del teléfono no estorba: durante la revisión está escondida. */}
+            del teléfono no estorba: durante la revisión está escondida.
+
+            Y SE ESCONDE CON EL TECLADO, desde el 2026-10-21. Esta pantalla
+            tiene un campo de texto —el nombre del cliente de la libreta— y
+            esta barra encima del teclado lo tapa. Es la regla de
+            `CLAUDE.md`, que el dueño ha tenido que pedir tres veces; se
+            aplicó aquí al buscar si quedaba alguna otra pantalla con el mismo
+            agujero, no porque nadie lo reportara.
+
+            EL HOOK Y NO `StickyActions`: ese componente trae además su propio
+            aire de 40px abajo, y aquí el relleno es otro. Lo que hace falta
+            es la condición, no el envoltorio. */}
+        {tecladoAbierto ? null : (
         <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {motivoQueBloquea ? (
             <p className="flex items-start gap-1.5 text-sm text-destructive">
@@ -2245,13 +2266,14 @@ export function ImportFlow({
             />
           </div>
         </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Subir libreta</h1>
+      <ScreenTitle>Subir libreta</ScreenTitle>
       {/* Los tres pasos viven aquí y no en la página porque solo valen para
           este momento: explican cómo se importa, y una vez la libreta está
           leída y el dueño está corrigiendo montos, describen algo que ya
@@ -2278,7 +2300,7 @@ export function ImportFlow({
                   <AttachmentTitle>{job.fileName}</AttachmentTitle>
                   <AttachmentDescription>
                     {job.status === "error" ? job.error : STATUS_LABEL[job.status]}
-                    {job.status === "done" ? ` · ${job.movements.length} movimientos` : ""}
+                    {job.status === "done" ? ` · ${job.movements.length} transacciones` : ""}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>
@@ -2309,7 +2331,7 @@ export function ImportFlow({
                   <Loader2 className="size-4 animate-spin" /> Procesando...
                 </>
               ) : (
-                `Ver resultados (${doneJobs.reduce((sum, j) => sum + j.movements.length, 0)} movimientos)`
+                `Ver resultados (${doneJobs.reduce((sum, j) => sum + j.movements.length, 0)} transacciones)`
               )}
             </Button>
             {!isProcessing ? (

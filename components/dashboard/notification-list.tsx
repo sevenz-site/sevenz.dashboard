@@ -10,6 +10,7 @@ import type { NotificationItem } from "@/app/(app)/actions";
 import { restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { restoreProduct } from "@/app/(app)/productos/actions";
 import Link from "next/link";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
 
 // The notification rows themselves, shared by the desktop header's popover
@@ -104,9 +105,19 @@ export function NotificationList({
                 <>
                   <RotateCcw className="mt-0.5 size-4 shrink-0 text-destructive" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium">Se eliminó un movimiento de {n.clientName}</p>
+                    <p className="font-medium">Se eliminó una transacción de {n.clientName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {n.type === "charge" ? "Fiado" : "Abono"} · {formatCurrency(n.amount)} ·{" "}
+                      {/* LA MONEDA DEL MOVIMIENTO, no pesos siempre.
+                          Encontrado el 2026-10-20 probando el borrado de una
+                          venta: un fiado de €30 salía aquí como «$ 30,00».
+
+                          EL DATO YA VIAJABA. `currency` se añadió a esta
+                          notificación justo por este fallo --su propio
+                          comentario en `app/(app)/actions.ts` lo cuenta-- y se
+                          arregló la FICHA que se abre al pulsar «Ver», pero no
+                          esta línea, que es la que se lee sin abrir nada. */}
+                      {n.type === "charge" ? "Fiado" : "Abono"} ·{" "}
+                      {n.currency ? formatDisplayCurrency(n.amount, n.currency) : formatCurrency(n.amount)} ·{" "}
                       {formatDateTime(n.occurredAt)}
                     </p>
                     <Button

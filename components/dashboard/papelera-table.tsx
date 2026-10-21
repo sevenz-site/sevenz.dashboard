@@ -36,6 +36,7 @@ import { track } from "@/lib/mixpanel";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useSharedClientFilters } from "@/components/dashboard/client-filter-context";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 export function PapeleraTable({
   rows,
@@ -111,9 +112,7 @@ export function PapeleraTable({
   return (
     <div className="flex flex-col gap-3">
       {sortedRows.length === 0 ? (
-        <p className="order-2 rounded-lg border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-          Ningún cliente coincide con estos filtros.
-        </p>
+        <EmptyState className="order-2" title="Ningún cliente coincide con estos filtros" />
       ) : null}
 
       {/* Same card as Cartera, Clientes and Malas pagas — ClientCardBody is
@@ -132,13 +131,13 @@ export function PapeleraTable({
           const judgementBalance = rateContext
             ? combinedBalanceUsd(balanceUsd, balanceEur, rateContext.effectiveRate)
             : balance;
-          const status = getClientStatus(
-            judgementBalance,
-            row.days_since_payment,
-            row.oldest_unpaid_charge_at,
-            row.oldest_unpaid_charge_plazo_dias,
-            row.oldest_unpaid_charge_due_at,
-          );
+          const status = getClientStatus({
+            balance: judgementBalance,
+            daysSincePayment: row.days_since_payment,
+            worstChargeAt: row.worst_unpaid_charge_at ?? null,
+            worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+            worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+          });
           const busy = busyId === row.client_id;
           return (
             <div
@@ -173,6 +172,7 @@ export function PapeleraTable({
                   name={row.name}
                   documentId={row.document_id}
                   status={status}
+                  overdueCount={row.overdue_charge_count ?? null}
                   hasPendingReview={row.has_pending_review}
                   isFlagged={row.is_flagged}
                   balance={balance}

@@ -44,13 +44,13 @@ export function ReporteClienteCard({
     ? combinedBalanceUsd(Number(row.balance_usd), Number(row.balance_eur), rateContext.effectiveRate)
     : Number(row.balance);
 
-  const status = getClientStatus(
-    judgement,
-    row.days_since_payment,
-    row.oldest_unpaid_charge_at,
-    row.oldest_unpaid_charge_plazo_dias,
-    row.oldest_unpaid_charge_due_at,
-  );
+  const status = getClientStatus({
+    balance: judgement,
+    daysSincePayment: row.days_since_payment,
+    worstChargeAt: row.worst_unpaid_charge_at ?? null,
+    worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+    worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+  });
 
   return (
     <button
@@ -66,6 +66,7 @@ export function ReporteClienteCard({
           name={row.name}
           documentId={row.document_id}
           status={status}
+          overdueCount={row.overdue_charge_count ?? null}
           hasPendingReview={row.has_pending_review}
           isFlagged={row.is_flagged}
           balance={Number(row.balance)}

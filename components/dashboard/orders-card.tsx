@@ -54,11 +54,21 @@ export function OrdersCard({
   // only the count — 52px tall, as the frame draws it.
   place: "catalogo" | "inicio";
 }) {
+  // SIN PEDIDOS, LA TARJETA CRECE Y EXPLICA — frame `1466:20137`, pedido del
+  // dueño el 2026-10-19 para las dos pantallas.
+  //
+  // La frase es la misma en los dos sitios y es más larga que las dos que
+  // sustituye, así que en Inicio hay que soltar el alto fijo de 52px: ahí
+  // vivía una línea recortada con `truncate`, y la del frame ocupa dos. Con
+  // pedidos esperando, el alto fijo se queda — esa línea es «N sin atender» y
+  // cabe de sobra.
+  const vacia = unattended === 0;
+
   return (
     <Link
       href="/productos/ordenes"
       className={
-        place === "inicio"
+        place === "inicio" && !vacia
           ? "flex h-[52px] items-center justify-between gap-3 rounded-[10px] border px-4 drop-shadow-[0px_2px_1px_rgba(0,0,0,0.02)]"
           : "flex items-center justify-between gap-3 rounded-[10px] border p-3 drop-shadow-[0px_2px_1px_rgba(0,0,0,0.02)]"
       }
@@ -68,7 +78,7 @@ export function OrdersCard({
     >
       <span
         className={
-          place === "inicio"
+          place === "inicio" && !vacia
             ? "flex min-w-0 flex-1 items-center gap-1"
             : "flex min-w-0 flex-1 items-center gap-3"
         }
@@ -81,21 +91,23 @@ export function OrdersCard({
           className="shrink-0"
           aria-hidden="true"
         />
-        {place === "inicio" ? (
-          // THE EMPTY LINE NAMES THE CATALOGUE, and only here. The owner's
-          // wording, 2026-10-16. On Inicio this card arrives with no context
-          // around it -- the sections above and below are money and the
-          // calculator -- so it has to say where an order would come from.
-          // Inside Catálogo the reader is already in it, and the same
-          // sentence there would be explaining a screen by its own name.
-          <span className="truncate text-xs leading-4 text-primary">
-            {unattended > 0 ? `${unattended} sin atender` : "Lo que piden desde tu catálogo"}
-          </span>
+        {place === "inicio" && !vacia ? (
+          <span className="truncate text-xs leading-4 text-primary">{unattended} sin atender</span>
         ) : (
           <span className="flex min-w-0 flex-col justify-center">
-            <span className="font-medium">Pedidos</span>
-            <span className="text-xs leading-4 text-primary">
-              {unattended > 0 ? `${unattended} sin atender` : "Lo que te piden desde tu enlace"}
+            {/* EL TÍTULO NO SE REPITE EN INICIO. Allí la pantalla ya lleva un
+                `<h2>Pedidos</h2>` justo encima de la tarjeta, y meterlo
+                también dentro dejaría la palabra dos veces seguidas. En
+                Catálogo no hay encabezado y la tarjeta lo lleva, que es lo que
+                el frame dibuja. */}
+            {place === "catalogo" ? <span className="font-medium">Pedidos</span> : null}
+            {/* UNA SOLA FRASE PARA LAS DOS PANTALLAS — frame `1466:20137`.
+                Antes eran dos redacciones distintas: «Lo que piden desde tu
+                catálogo» en Inicio y «Lo que te piden desde tu enlace» en
+                Catálogo. Decían lo mismo con palabras distintas, y «tu enlace»
+                además obligaba a saber que el catálogo ES un enlace. */}
+            <span className="text-xs leading-4 text-muted-foreground">
+              {vacia ? "Lo que tus clientes ordenan desde tu catálogo." : `${unattended} sin atender`}
             </span>
           </span>
         )}

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // The same "← Inicio" contextual bar used on Malas pagas and a client's
 // screen is a plain Link there, since neither has anything to lose. "Mi
@@ -27,7 +28,7 @@ export function CarteraBackButton() {
           guard(() => router.replace("/dashboard"));
         }}
       >
-        <ChevronLeft className="size-5" />
+        <IconoVolver className="text-primary" />
       </Link>
     </Button>
   );

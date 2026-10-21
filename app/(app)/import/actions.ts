@@ -116,7 +116,7 @@ export async function confirmImport(
   if (!(await puedeEscribir(supabase, user.id))) {
     return { error: MENSAJE_CUENTA_PAUSADA, imported: 0 };
   }
-  if (rows.length === 0) return { error: "No hay movimientos para subir.", imported: 0 };
+  if (rows.length === 0) return { error: "No hay transacciones para subir.", imported: 0 };
 
   // Resolved once per distinct currency in the batch, not once per row.
   //
@@ -567,7 +567,7 @@ function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?:
     case "cuenta_pausada":
       return MENSAJE_CUENTA_PAUSADA;
     case "sin_movimientos":
-      return "No hay movimientos para subir.";
+      return "No hay transacciones para subir.";
     case "cliente_invalido":
       return "Uno de los clientes de esta libreta ya no está disponible. Vuelve a abrir la revisión.";
     case "cliente_en_papelera":
@@ -591,7 +591,7 @@ function mensajeDeImportacion(r: { code?: string; client_name?: string; hidden?:
     case "documento_repetido_en_lote":
       return `Hay dos clientes con la misma cédula en esta libreta, uno de ellos "${r.client_name ?? ""}". Cada persona necesita la suya.`;
     case "referencia_invalida":
-      return "Un movimiento quedó sin cliente. Vuelve a abrir la revisión.";
+      return "Una transacción quedó sin cliente. Vuelve a abrir la revisión.";
     default:
       return "No pudimos subir la libreta. No se guardó nada, puedes intentarlo otra vez.";
   }

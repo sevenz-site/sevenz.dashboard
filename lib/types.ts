@@ -31,6 +31,18 @@ export type Movement = {
   // payment, and that is every row stored before 2026-10-16. Only a charge with
   // a plazo can carry it -- the check constraint refuses anything else.
   cuotas: number | null;
+  // LA VENTA DE LA QUE NACIÓ, si nació de una (migración `124`). null en todo
+  // lo registrado antes del 2026-10-17 y en lo que entra por la libreta.
+  //
+  // Un fiado manual es «una venta sin pago», así que desde esa fecha lo
+  // normal es que un cargo del formulario SÍ la tenga: es donde viven las
+  // líneas de qué se llevó el cliente.
+  sale_id: string | null;
+  // A QUÉ FIADO SE DIRIGIÓ ESTE ABONO (migración `126`). null en un cargo
+  // siempre, y en los cientos de abonos anteriores al 2026-10-19, que la cola
+  // FIFO repartió sobre el saldo total y por eso dicen «Repartidos al saldo
+  // total» en vez de nombrar un fiado.
+  applies_to_movement_id: string | null;
   created_at: string;
   // Which ledger this movement belongs to. null for a country='CO' owner,
   // whose single ledger is COP.
@@ -152,6 +164,9 @@ export type Client = {
   whatsapp: string | null;
   address: string | null;
   document_id: string | null;
+  // V/E/J en Venezuela, CC/CE/NIT en Colombia (migración 125). NULL = se
+  // guardó antes de que el selector existiera, o no se sabe el país.
+  document_type: string | null;
   // Which country issued document_id. Inherited from the owner's own
   // country when the client is created, correctable per client — CO and VE
   // cédulas can share the same digits and belong to different people, so
@@ -191,6 +206,31 @@ export type ClientSummary = {
   // vencimiento de la PRÓXIMA cuota sin pagar.
   oldest_unpaid_charge_due_at: string | null;
   is_flagged: boolean;
+  // CUÁNDO PASÓ ALGO POR ÚLTIMA VEZ CON ESTE CLIENTE — migración `130`. El
+  // mayor entre su último movimiento vivo y su última venta viva, con el alta
+  // del cliente de respaldo, así que nunca es `null` desde la base. Mira las
+  // DOS tablas porque una venta pagada entera no escribe en `movements`.
+  //
+  // Opcional en el tipo a propósito: entre desplegar este código y correr la
+  // `130` las filas llegan sin ella, y una pantalla rota es peor que un orden
+  // que cae en su respaldo.
+  last_movement_at?: string | null;
+  // EL FIADO QUE DECIDE EL CHIP, desde la migración `134`: el abierto cuyo
+  // propio vencimiento queda más atrás, y si ninguno ha vencido, el que vence
+  // antes. Sustituye a `oldest_unpaid_charge_*` en esa función — ese trío
+  // sigue en la vista porque el código que hay en producción lo lee mientras
+  // la migración corre, pero ya no lo lee ninguna pantalla de aquí.
+  //
+  // OPCIONALES POR LA MISMA RAZÓN QUE `last_movement_at`: entre desplegar
+  // este código y correr la `134` las filas llegan sin ellos, y lo que hace
+  // el `?? null` de cada sitio es caer en «sin plazo», no reventar.
+  worst_unpaid_charge_at?: string | null;
+  worst_unpaid_charge_plazo_dias?: number | null;
+  worst_unpaid_charge_due_at?: string | null;
+  // CUÁNTOS FIADOS VENCIDOS, para el contador del chip. `null` cuando el
+  // cliente no debe nada: la función no devuelve fila y el left join deja
+  // todo en nulo.
+  overdue_charge_count?: number | null;
 };
 
 // client_summary_all — the same view without the "hide the hidden" filter.
@@ -234,27 +274,39 @@ const CRITICO_THRESHOLD_DAYS = 30;
 // had a term at all it's "sin_plazo" — same severity, different reason, so
 // callers can tell them apart. Either way it still escalates to "critico"
 // after CRITICO_THRESHOLD_DAYS since the last payment.
-// EL QUINTO ARGUMENTO ES OBLIGATORIO A PROPÓSITO, desde la migración `118`.
+// RECIBE UN OBJETO Y NO CINCO ARGUMENTOS SUELTOS, desde la migración `134`.
 //
-// Podría tener un valor por defecto y no romper ninguna llamada existente —
-// y eso es exactamente lo que lo hace mala idea: una pantalla que se olvidara
-// de pasarlo seguiría compilando y seguiría juzgando por el plazo entero,
-// mientras la de al lado juzga por cuota. Dos etiquetas distintas para el
-// mismo cliente, sin que nada avise. Obligándolo, el compilador enumera cada
-// sitio que hay que tocar.
-export function getClientStatus(
-  balance: number,
-  daysSincePayment: number,
-  oldestUnpaidChargeAt: string | null,
-  oldestUnpaidChargePlazoDias: number | null,
-  // `client_summary.oldest_unpaid_charge_due_at`. La base ya hizo la cuenta:
-  // aquí solo se compara con hoy.
-  oldestUnpaidChargeDueAt: string | null,
-): ClientStatus {
+// Hasta entonces el cargo que decidía el estado era `oldest_unpaid_charge_*`
+// —el fiado MÁS ANTIGUO— y ahora es `worst_unpaid_charge_*`, el más vencido.
+// Las dos ternas tienen exactamente los mismos tipos, así que una llamada
+// posicional que siguiera pasando la vieja habría compilado sin una sola
+// queja y habría seguido pintando el chip con la regla anterior: el fallo
+// silencioso que esta migración existe para quitar, entrando por la puerta de
+// atrás. Con campos con nombre, el compilador enumera los nueve sitios.
+//
+// Es la misma técnica que el quinto argumento obligatorio de la `118`, subida
+// un escalón porque ahora lo que cambia no es cuántos datos entran sino cuál
+// de dos juegos idénticos es el correcto.
+export function getClientStatus({
+  balance,
+  daysSincePayment,
+  worstChargeAt,
+  worstChargePlazoDias,
+  worstChargeDueAt,
+}: {
+  balance: number;
+  daysSincePayment: number;
+  // `client_summary.worst_unpaid_charge_*`: el fiado abierto cuyo propio
+  // vencimiento queda más atrás. Si ninguno ha vencido, el que vence antes.
+  worstChargeAt: string | null;
+  worstChargePlazoDias: number | null;
+  // La base ya hizo la cuenta, cuotas incluidas: aquí solo se compara con hoy.
+  worstChargeDueAt: string | null;
+}): ClientStatus {
   if (balance === 0) return "sin_deuda";
   if (balance < 0) return "a_favor";
 
-  const hasPlazo = oldestUnpaidChargeAt !== null && oldestUnpaidChargePlazoDias !== null;
+  const hasPlazo = worstChargeAt !== null && worstChargePlazoDias !== null;
   if (hasPlazo) {
     // CON FECHA DE VENCIMIENTO, MANDA ELLA. Es la de la próxima cuota sin
     // pagar, y sin cuotas coincide con el final del plazo.
@@ -264,13 +316,13 @@ export function getClientStatus(
     // que la migración `118` esté en un entorno y no en el otro. En ese caso
     // se juzga como siempre, que es exactamente lo que hay que hacer mientras
     // la columna no exista.
-    if (oldestUnpaidChargeDueAt !== null) {
-      if (Date.now() <= new Date(oldestUnpaidChargeDueAt).getTime()) return "dentro_del_plazo";
+    if (worstChargeDueAt !== null) {
+      if (Date.now() <= new Date(worstChargeDueAt).getTime()) return "dentro_del_plazo";
     } else {
       const daysSinceCharge = Math.floor(
-        (Date.now() - new Date(oldestUnpaidChargeAt).getTime()) / (1000 * 60 * 60 * 24),
+        (Date.now() - new Date(worstChargeAt).getTime()) / (1000 * 60 * 60 * 24),
       );
-      if (daysSinceCharge <= oldestUnpaidChargePlazoDias) return "dentro_del_plazo";
+      if (daysSinceCharge <= worstChargePlazoDias) return "dentro_del_plazo";
     }
   }
 
@@ -295,6 +347,29 @@ export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
   sin_plazo: "Sin plazo",
   critico: "Crítico",
 };
+
+// EL CHIP DICE CUÁNTOS FIADOS VENCIDOS HAY, no solo que hay alguno.
+//
+// Pedido por el dueño el 2026-10-21 junto con la `134`, y es la mitad que
+// convierte el aviso en una conversación: «Plazo vencido» y «Plazo vencido
+// (3)» son dos cosas distintas que decirle al cliente, y el dato ya viajaba
+// en `client_summary.overdue_charge_count`.
+//
+// SOLO DESDE DOS. Un «(1)» no añade nada —si el chip dice vencido, es obvio
+// que hay al menos uno— y le pone un número a la mayoría de las filas, que es
+// la forma de que nadie lea el número cuando de verdad importa.
+//
+// Y SOLO EN LOS ESTADOS QUE CUENTAN DEUDA VENCIDA. En «Dentro del plazo» el
+// contador es cero por definición, y en «Sin deuda» o «A favor» no hay nada
+// que contar. `critico` lo lleva a petición del dueño: es un plazo vencido
+// agravado por los 30 días sin abonar, así que el número significa lo mismo.
+export function clientStatusLabel(status: ClientStatus, overdueCount: number | null): string {
+  const base = CLIENT_STATUS_LABEL[status];
+  const count = overdueCount ?? 0;
+  const showsCount =
+    (status === "plazo_vencido" || status === "sin_plazo" || status === "critico") && count > 1;
+  return showsCount ? `${base} (${count})` : base;
+}
 
 export const CLIENT_STATUS_DESCRIPTION: Record<ClientStatus, string> = {
   sin_deuda: "No debe nada",

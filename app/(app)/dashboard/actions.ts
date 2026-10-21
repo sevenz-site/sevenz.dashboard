@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, normalizeDocumentId } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -14,8 +14,11 @@ import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { recordMovementRejection } from "@/lib/movement-rejection";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { isDocumentTypeFor } from "@/lib/document-id";
+import { buscarDocumentoDuplicado, mensajeDeDuplicado } from "@/lib/clients/duplicate-document";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import type { LineaDeProducto } from "@/lib/sale-lines";
 
 export type MovementFormState = {
   error: string | null;
@@ -48,6 +51,10 @@ type ParsedMovement =
       plazoDias: number | null;
       // En cuántas cuotas se pactó. null = sin cuotas = una sola.
       cuotas: number | null;
+      // Qué se llevó el cliente. Lista vacía = no se eligió ningún producto,
+      // que es el caso de la mayoría: 43% de los movimientos de dev llevan
+      // siquiera una descripción.
+      productos: LineaDeProducto[];
     };
 
 // Un rango, no una lista. El desplegable ofrece 7, 15, 30 y 45 porque son los
@@ -58,6 +65,182 @@ type ParsedMovement =
 // Sigue habiendo límites: cero o negativo no es un plazo, y más de un año es
 // casi siempre un dedo de más al teclear. El plazo alimenta el puntaje del
 // cliente, así que un número absurdo no es inofensivo.
+// ===========================================================================
+// QUÉ SE LLEVÓ EL CLIENTE — paso 8, entregable `E` / `CT-51`
+//
+// Lo que llega del formulario es una cadena JSON en un solo campo, igual que
+// el plazo y las cuotas. Aquí se valida entera antes de tocar nada: un dato
+// que viene del navegador no decide un precio sin pasar por este filtro.
+//
+// NUNCA TUMBA EL MOVIMIENTO. Si el JSON no se entiende, se guarda el fiado sin
+// productos y el dinero queda registrado. Es la regla dura del plan: romper el
+// registro de fiados --lo único que hoy funciona con 24 negocios-- por una
+// función nueva es el peor resultado posible.
+const PRODUCTOS_MAX_LINEAS = 50;
+const PRODUCTO_NOMBRE_MAX = 120;
+
+function parsearProductos(bruto: string): LineaDeProducto[] {
+  if (!bruto) return [];
+  let crudo: unknown;
+  try {
+    crudo = JSON.parse(bruto);
+  } catch {
+    console.error("parsearProductos: JSON invalido");
+    return [];
+  }
+  if (!Array.isArray(crudo)) return [];
+
+  const lineas: LineaDeProducto[] = [];
+  for (const item of crudo.slice(0, PRODUCTOS_MAX_LINEAS)) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    const quantity = Number(o.quantity);
+    const unitPrice = Number(o.unitPrice);
+    const productId = typeof o.productId === "string" && o.productId ? o.productId : null;
+
+    if (name === "" || name.length > PRODUCTO_NOMBRE_MAX) continue;
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
+    if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1e11) continue;
+
+    lineas.push({ productId, name, quantity, unitPrice });
+  }
+  return lineas;
+}
+
+// Guarda las líneas de un movimiento ya creado, dando de alta los productos
+// que el tendero escribió en el momento.
+//
+// EL `owner_id` SALE DE LA SESIÓN Y NUNCA DEL NAVEGADOR, y cada `productId`
+// que llega se comprueba contra los productos de ESE dueño: un id ajeno se
+// descarta y la línea se guarda igual, con su nombre y su precio, pero sin
+// apuntar al producto de otro.
+//
+// SU ERROR NO SE TRAGA EN SILENCIO del todo: se registra en el log Y se
+// devuelve, para que quien llame decida. Hoy nadie tumba el movimiento por
+// esto --ya está guardado y el dinero es lo que importa-- pero el día que haga
+// falta avisar en pantalla, el dato está. Es la lección de `CT-88`.
+//
+// ===========================================================================
+// ESTO CREA UNA VENTA, Y HASTA EL 2026-10-17 INSERTABA EN `movement_products`
+//
+// Un fiado manual es ahora «una venta sin pago»: se crea la fila en `sales`,
+// sus `sale_lines`, y se apunta el movimiento a ella con `sale_id`.
+//
+// POR QUÉ CAMBIÓ: una venta pagada al contado no escribe NADA en `movements`
+// —el recálculo del saldo no tiene fila neutra, ver la migración `124`— así
+// que sus productos no tenían movimiento del que colgar. Con dos tablas, cada
+// pantalla que quisiera enseñar «qué se llevó» tendría que mirar en las dos o
+// quedarse a medias.
+//
+// EL ORDEN IMPORTA Y ES EL MISMO DE ANTES: el dinero primero. Cuando esto
+// corre, el movimiento ya existe y el saldo ya es correcto. Si algo de aquí
+// falla, se pierde el detalle de la compra y nunca la deuda.
+async function guardarVentaDelMovimiento(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  clientId: string,
+  movementId: string,
+  lineas: LineaDeProducto[],
+  // EL LIBRO DEL MOVIMIENTO, que es la moneda base del producto que nazca
+  // aquí. `null` es el único libro de un negocio colombiano, y ahí la base es
+  // el peso. Sin esto el alta falla con `base_currency ... not-null`, que es
+  // exactamente lo que pasó la primera vez que se probó: el fiado se guardó
+  // bien, la línea también, y solo se perdió el enlace con el inventario --
+  // en silencio, porque este error no tumba el movimiento a propósito.
+  ledger: LedgerCurrency | null,
+): Promise<{ error: string | null }> {
+  if (lineas.length === 0) return { error: null };
+
+  const idsPedidos = [...new Set(lineas.map((l) => l.productId).filter((v): v is string => v !== null))];
+  let idsPropios = new Set<string>();
+  if (idsPedidos.length > 0) {
+    const { data } = await supabase
+      .from("products")
+      .select("id")
+      .eq("owner_id", ownerId)
+      .in("id", idsPedidos);
+    idsPropios = new Set((data ?? []).map((p) => p.id));
+  }
+
+  // LA VENTA, antes que sus líneas. Si esto falla no hay dónde colgarlas y se
+  // sale: el movimiento ya está guardado y el saldo ya es correcto.
+  const { data: venta, error: errorVenta } = await supabase
+    .from("sales")
+    .insert({ owner_id: ownerId, client_id: clientId, created_by: ownerId })
+    .select("id")
+    .single();
+  if (errorVenta || !venta) {
+    console.error("guardarVentaDelMovimiento: alta de venta:", errorVenta?.message);
+    return { error: "No pudimos guardar los productos de esta transacción." };
+  }
+
+  const filas: { sale_id: string; product_id: string | null; name: string; quantity: number; unit_price: number; currency: string }[] = [];
+
+  for (const l of lineas) {
+    let productId = l.productId && idsPropios.has(l.productId) ? l.productId : null;
+
+    // ALTA MÍNIMA, decisión 11 del dueño del 2026-10-09: nace CREADO con
+    // nombre y precio, exactamente como si se hubiera dado de alta desde su
+    // ficha. Si el alta falla, la línea se guarda igual sin `product_id`: el
+    // fiado dice qué se llevó aunque el inventario no se haya enterado.
+    if (productId === null && l.productId === null) {
+      const { data: creado, error } = await supabase
+        .from("products")
+        .insert({
+          owner_id: ownerId,
+          name: l.name,
+          price_retail: l.unitPrice,
+          // Las dos, porque desde la `114` el precio al detal lee
+          // `base_currency_retail` y `base_currency` sigue siendo el valor por
+          // defecto del producto.
+          base_currency: ledger ?? "COP",
+          base_currency_retail: ledger ?? "COP",
+        })
+        .select("id")
+        .single();
+      if (error) console.error("guardarVentaDelMovimiento: alta de producto:", error.message);
+      else productId = creado.id;
+    }
+
+    filas.push({
+      sale_id: venta.id,
+      product_id: productId,
+      name: l.name,
+      quantity: l.quantity,
+      unit_price: l.unitPrice,
+      // LA MONEDA DE LA LÍNEA ES LA DEL LIBRO DEL MOVIMIENTO. Un fiado manual
+      // es de una sola moneda --la que el formulario eligió-- así que todas
+      // sus líneas comparten libro. La venta del sitemap sí admite una moneda
+      // por línea, y ese es el camino que esta función todavía no cubre.
+      //
+      // `COP` donde el libro es `null`, que es el único libro de un negocio
+      // colombiano: la columna de `sale_lines` no admite nulos porque una
+      // línea sin moneda no se puede sumar con nada.
+      currency: ledger ?? "COP",
+    });
+  }
+
+  const { error } = await supabase.from("sale_lines").insert(filas);
+  if (error) {
+    console.error("guardarVentaDelMovimiento: lineas:", error.message);
+    return { error: "No pudimos guardar los productos de esta transacción." };
+  }
+
+  // EL ENLACE, AL FINAL. Si esto falla, la venta y sus líneas existen y solo
+  // se pierde el puente desde el movimiento -- recuperable, al contrario que
+  // un saldo mal calculado.
+  const { error: errorEnlace } = await supabase
+    .from("movements")
+    .update({ sale_id: venta.id })
+    .eq("id", movementId);
+  if (errorEnlace) {
+    console.error("guardarVentaDelMovimiento: enlace:", errorEnlace.message);
+  }
+
+  return { error: null };
+}
+
 const PLAZO_MIN_DIAS = 1;
 const PLAZO_MAX_DIAS = 365;
 // CUÁNTAS CUOTAS COMO MUCHO. El tope es el mismo de la migración `118` y no
@@ -76,9 +259,13 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   const photoPath = String(formData.get("photo_path") ?? "").trim();
   const plazoRaw = String(formData.get("plazo_dias") ?? "");
   const cuotasRaw = String(formData.get("cuotas") ?? "");
+  // Solo un fiado lleva productos: decisión del dueño del 2026-10-17, y la
+  // migración `122` lo repite con un trigger. En un abono se descartan aquí,
+  // antes de llegar a la base.
+  const productos = type === "charge" ? parsearProductos(String(formData.get("productos") ?? "")) : [];
 
   if (type !== "charge" && type !== "payment") {
-    return { error: "Selecciona el tipo de movimiento." };
+    return { error: "Selecciona el tipo de transacción." };
   }
   const amount = Number(amountRaw);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -131,6 +318,7 @@ function parseMovementFields(formData: FormData): ParsedMovement {
     photoPath: photoPath || null,
     plazoDias,
     cuotas,
+    productos,
   };
 }
 
@@ -202,6 +390,15 @@ export async function createClientWithMovement(
   // exime a la de abajo. Ver la migracion 079, que cierra la misma puerta en
   // la unica de las tres que se alcanza sin iniciar sesion.
   const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
+  // EL TIPO DE DOCUMENTO (migración 125). Lo manda el `select` que vive dentro
+  // de `DocumentIdInput`, así que llega desde CUALQUIER pantalla que envíe
+  // este formulario sin que haya que acordarse de añadirlo — que es la razón
+  // de que ese control sea parte del campo y no un prop de cada pantalla.
+  //
+  // SE VALIDA CONTRA EL PAÍS DEL NEGOCIO, abajo: un 'NIT' llegando de un
+  // negocio venezolano es un error o una petición escrita a mano, y en los dos
+  // casos se descarta en vez de guardarse.
+  const documentTypeRaw = String(formData.get("document_type") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
   // Inherited from the owner's own country rather than asked for in the
   // form: which country issued a client's cédula is a database concern, not
@@ -237,7 +434,7 @@ export async function createClientWithMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas, productos } = fields;
   let amount = fields.amount;
 
   // A brand-new client has no prior debt, so there's nothing to pay off yet.
@@ -254,28 +451,19 @@ export async function createClientWithMovement(
   // explicitly confirm it's a separate account via confirm_duplicate.
   // Compared normalized (punctuation/case-insensitive) since document_id is
   // stored exactly as typed, with no fixed format.
-  const normalizedDocumentId = normalizeDocumentId(documentId);
+  // LA BÚSQUEDA Y LA FRASE VIVEN EN `lib/clients/duplicate-document.ts` desde
+  // el 2026-10-18, cuando la pantalla de cliente nuevo pasó a necesitar lo
+  // mismo. No se movió por orden: dos copias de esta comprobación se separan,
+  // y lo que se cuela por la que se quede atrás es el MISMO cliente registrado
+  // dos veces, con la mitad de lo que debe en cada ficha. El comportamiento es
+  // idéntico al de antes, incluidos los ocultos y la comparación normalizada.
   const confirmDuplicate = formData.get("confirm_duplicate") === "true";
-  // Hidden clients are deliberately included here. Excluding them would let an
-  // owner re-create someone they had hidden and start their history over —
-  // which is the one thing keeping the identity (decision D1) is meant to
-  // prevent — and would leave one person split across two records.
-  const { data: ownerClients } = await supabase
-    .from("clients")
-    .select("id, name, document_id, trashed_at, deleted_at")
-    .eq("owner_id", user.id)
-    .not("document_id", "is", null);
-  const duplicate = ownerClients?.find(
-    (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizedDocumentId,
-  );
+  const duplicate = await buscarDocumentoDuplicado(supabase, user.id, documentId);
   if (duplicate && !confirmDuplicate) {
-    const hidden = Boolean(duplicate.trashed_at || duplicate.deleted_at);
     return {
-      error: hidden
-        ? `${duplicate.name} ya tiene esta cédula y está en la papelera. Restáuralo desde Papelera en vez de crearlo otra vez.`
-        : `Ya existe un cliente con esta cédula: ${duplicate.name}`,
+      error: mensajeDeDuplicado(duplicate),
       clientId: null,
-      duplicate: { id: duplicate.id as string, name: duplicate.name as string },
+      duplicate: { id: duplicate.id, name: duplicate.name },
     };
   }
 
@@ -287,6 +475,12 @@ export async function createClientWithMovement(
       whatsapp: whatsapp || null,
       address: address || null,
       document_id: documentId || null,
+      // Sin documento no hay tipo que guardar: un tipo suelto describiría un
+      // número que no existe.
+      document_type:
+        documentId && isDocumentTypeFor(documentCountry as "VE" | "CO" | null, documentTypeRaw)
+          ? documentTypeRaw
+          : null,
       // Always typed by the shopkeeper at registration. See supabase/063.
       document_source: documentId ? DOCUMENT_SOURCE.OWNER : null,
       document_country: documentCountry,
@@ -358,8 +552,13 @@ export async function createClientWithMovement(
   }).select("id").single();
 
   if (movementError) {
-    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
+    return { error: mensajeDeError("guardar la transacción", movementError, "movement"), clientId: null };
   }
+
+  // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
+  // esto falla, el fiado ya existe y el saldo ya es correcto -- que es el
+  // orden que importa.
+  await guardarVentaDelMovimiento(supabase, user.id, newClient.id, movimiento.id, productos, resolved.currency);
 
   // Tracked here rather than in the browser: this fires after the response
   // is sent (see trackServer), so it can't slow or break the save, and no
@@ -424,7 +623,7 @@ export async function addMovement(
   // The client detail page already hides the form for a trashed client; this
   // is the guard behind it, since the form is reachable by other routes.
   if (clientRow.trashed_at || clientRow.deleted_at) {
-    return { error: "Este cliente está en la papelera. Restáuralo para registrar movimientos.", clientId: null };
+    return { error: "Este cliente está en la papelera. Restáuralo para registrar transacciones.", clientId: null };
   }
 
   // Se sigue OFRECIENDO para el cliente que no tiene número, y se guarda si el
@@ -447,7 +646,7 @@ export async function addMovement(
 
   const fields = parseMovementFields(formData);
   if (fields.error !== null) return { error: fields.error, clientId: null };
-  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas } = fields;
+  const { type, currency, monedaTecleada, description, photoPath, plazoDias, cuotas, productos } = fields;
   let amount = fields.amount;
 
   // La casilla "aplicar tasa BCV prevista". Llega como marca, no como cifra:
@@ -542,8 +741,13 @@ export async function addMovement(
   }).select("id").single();
 
   if (movementError) {
-    return { error: mensajeDeError("guardar el movimiento", movementError, "movement"), clientId: null };
+    return { error: mensajeDeError("guardar la transacción", movementError, "movement"), clientId: null };
   }
+
+  // QUÉ SE LLEVÓ, después de que el dinero esté guardado y nunca antes. Si
+  // esto falla, el fiado ya existe y el saldo ya es correcto -- que es el
+  // orden que importa.
+  await guardarVentaDelMovimiento(supabase, user.id, clientId, movimiento.id, productos, resolved.currency);
 
   trackServer("Movement Added", user.id, { client_id: clientId, movement_type: type }, user.email);
 
@@ -637,7 +841,7 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos ese movimiento." };
+    return { error: "No encontramos esa transacción." };
   }
 
   const { error: deleteError } = await supabase
@@ -646,7 +850,7 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     .eq("id", movementId);
 
   if (deleteError) {
-    return { error: mensajeDeError("eliminar el movimiento", deleteError, "deleteMovement") };
+    return { error: mensajeDeError("eliminar la transacción", deleteError, "deleteMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
@@ -691,14 +895,32 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, clients!inner(owner_id)")
+    .select("id, client_id, sale_id, clients!inner(owner_id)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos ese movimiento eliminado." };
+    return { error: "No encontramos esa transacción eliminada." };
+  }
+
+  // LA VENTA DE LA QUE NACIÓ VUELVE CON ÉL, si también estaba borrada.
+  //
+  // Desde el 2026-10-20 hay una forma de borrar una venta entera
+  // (`eliminarVenta`), y borra la venta Y sus fiados. Sin esta línea, restaurar
+  // el fiado desde su notificación lo devolvería al saldo mientras su venta
+  // sigue borrada: el movimiento existiría sin los productos que lo explican, y
+  // su parte de contado seguiría sin aparecer. Un restaurado a medias es peor
+  // que no poder restaurar, porque nadie se entera de que falta la mitad.
+  if (movement.sale_id) {
+    const { error: errorVenta } = await supabase
+      .from("sales")
+      .update({ deleted_at: null })
+      .eq("id", movement.sale_id)
+      .eq("owner_id", user.id)
+      .not("deleted_at", "is", null);
+    if (errorVenta) console.error("restoreMovement: no se pudo revivir la venta", errorVenta.message);
   }
 
   const { error: restoreError } = await supabase
@@ -707,7 +929,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     .eq("id", movementId);
 
   if (restoreError) {
-    return { error: mensajeDeError("restaurar el movimiento", restoreError, "restoreMovement") };
+    return { error: mensajeDeError("restaurar la transacción", restoreError, "restoreMovement") };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {

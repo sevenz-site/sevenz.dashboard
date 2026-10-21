@@ -67,8 +67,23 @@ for (const root of ROOTS) {
     if (!src.includes("createServiceClient") || file.endsWith(path.join("supabase", "service.ts"))) continue;
     serviceRoleFiles += 1;
 
-    for (const m of src.matchAll(/\.from\(\s*["'`]([a-z_]+)["'`]/g)) {
-      const table = m[1];
+    // `.storage.from("bucket")` NO ES UNA LECTURA DE TABLA y por eso no cuenta.
+    //
+    // Storage no se gobierna con los grants de `information_schema`: sus
+    // permisos son politicas sobre `storage.objects`, y produccion no le revoca
+    // nada a service_role ahi. Firmar una URL con esa clave funciona igual en
+    // los dos entornos, que es justo lo contrario del fallo que este guion
+    // existe para cazar.
+    //
+    // SE ANADIO EL 2026-10-19, cuando la pantalla del detalle del CLIENTE
+    // empezo a firmar la foto de un movimiento --el bucket `attachments` es
+    // privado y esa pagina no tiene sesion-- y este guion la marco como si
+    // fuera una tabla. Era un falso positivo, y un detector que afirma lo que
+    // no mide es peor que no tenerlo: la siguiente alarma verdadera se lee como
+    // esta.
+    for (const m of src.matchAll(/(\.storage)?\.from\(\s*["'`]([a-z_]+)["'`]/g)) {
+      if (m[1]) continue;
+      const table = m[2];
       if (ALLOWED_TABLES.has(table)) continue;
       const line = src.slice(0, m.index).split("\n").length;
       offenders.push({ file: path.relative(projectRoot, file), line, table });

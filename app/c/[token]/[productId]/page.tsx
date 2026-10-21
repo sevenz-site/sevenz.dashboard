@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ChevronLeft, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -9,6 +9,8 @@ import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -71,7 +73,7 @@ type SharedProductDetail = {
 // diferencia.
 function NoDisponible({ token }: { token: string }) {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-4 py-10 text-center">
       <Image src="/fav-icon-primary.svg" alt="Sevenz" width={48} height={48} className="size-12" />
       <h1 className="text-xl font-semibold">Este producto ya no está</h1>
       <p className="text-sm leading-relaxed text-muted-foreground">
@@ -86,10 +88,22 @@ function NoDisponible({ token }: { token: string }) {
 
 export default async function ProductoPublicoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string; productId: string }>;
+  // `?previa=1` LO TRAE LA TARJETA del catálogo cuando el tendero está
+  // mirando su propia vista previa. Añadido el 2026-10-17 al cerrar `CT-95`.
+  //
+  // Se lee en el SERVIDOR y no en el navegador a propósito: de ello depende
+  // que «Agregar» exista o no, y resolverlo en el cliente pintaría el botón
+  // un instante antes de quitarlo — un parpadeo sobre un control que el
+  // tendero no debe poder tocar.
+  searchParams: Promise<{ previa?: string }>;
 }) {
   const { token, productId } = await params;
+  const { previa } = await searchParams;
+  const esVistaPrevia = previa === "1";
+  const volverAlCatalogo = esVistaPrevia ? `/c/${token}?previa=1` : `/c/${token}`;
 
   if (!isSupabaseConfigured()) return <NoDisponible token={token} />;
 
@@ -148,7 +162,7 @@ export default async function ProductoPublicoPage({
   const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       {/* LA FOTO A SANGRE Y EL CHEVRON ENCIMA, como el frame. El botón vuelve
           a la lista con un Link y no con `history.back()`: si alguien abrió
           este enlace directo —que es para lo que existe la ruta— no hay
@@ -170,17 +184,17 @@ export default async function ProductoPublicoPage({
           </div>
         )}
         <Link
-          href={`/c/${token}`}
+          href={volverAlCatalogo}
           aria-label="Volver al catálogo"
           className="absolute top-4 left-4 flex size-10 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur transition-colors hover:bg-background"
         >
-          <ChevronLeft className="size-5" />
+          <IconoVolver className="text-primary" />
         </Link>
       </div>
 
       <div className="flex flex-col gap-4 px-4 py-5">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{detalle.name}</h1>
+          <ScreenTitle>{detalle.name}</ScreenTitle>
           {detalle.unit ? (
             <p className="text-xs text-muted-foreground">{detalle.unit}</p>
           ) : null}
@@ -207,6 +221,11 @@ export default async function ProductoPublicoPage({
           }}
           rates={rates}
           stock={detalle.stock}
+          /* EN LA VISTA PREVIA EL TENDERO SOLO MIRA. Decisión del dueño el
+             2026-10-17: «el dueño solo puede ver la pantalla del listado de
+             productos y detalle de producto, el resto del flujo no». */
+          isPreview={esVistaPrevia}
+          volverAlCatalogo={volverAlCatalogo}
         />
 
         {/* EL MISMO PIE QUE LA LISTA. Un cliente que llega aquí desde un

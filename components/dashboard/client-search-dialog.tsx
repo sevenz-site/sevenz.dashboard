@@ -37,6 +37,10 @@ import { createClientWithMovement, type MovementFormState } from "@/app/(app)/da
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
+import { MovementProductsField } from "@/components/dashboard/movement-products-field";
+import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatCurrency } from "@/lib/format";
+import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 import {
   MontoCard,
   MonedaTecleadaButtons,
@@ -86,6 +90,8 @@ export function ClientSearchDialog({
   showTourTarget = true,
   rateContext,
   monedaHabitual,
+  pasoInicial = "search",
+  movimientoAlElegir,
 }: {
   clients: ClientOption[];
   ownerId: string;
@@ -114,6 +120,16 @@ export function ClientSearchDialog({
   rateContext: MovementRateContext | null;
   // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
   monedaHabitual: MonedaHabitual | null;
+  // EN QUE PASO ABRE. La hoja de «Registrar» (frame `1389:11227`, 2026-10-18)
+  // tiene una opcion que es literalmente «Nuevo cliente», y llevarla al
+  // buscador para que el tendero pulse otro boton que dice lo mismo seria un
+  // paso de mas en el unico sitio donde ya dijo lo que queria.
+  pasoInicial?: "search" | "new";
+  // QUE DIALOGO ABRIR EN LA FICHA DEL CLIENTE QUE SE ELIJA. La opcion «Abono»
+  // de esa misma hoja necesita saber de quien es el abono antes de poder
+  // registrarlo, asi que pasa por el buscador y el proposito viaja con el:
+  // `/clients/<id>?movimiento=abono` es el marcador que esa pagina ya lee.
+  movimientoAlElegir?: "abono" | "fiado";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -240,6 +256,8 @@ export function ClientSearchDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto">
           <ClientSearchDialogBody
             key={instanceKey}
+            pasoInicial={pasoInicial}
+            movimientoAlElegir={movimientoAlElegir}
             clients={clients}
             ownerId={ownerId}
             businessName={businessName}
@@ -290,6 +308,8 @@ function ClientSearchDialogBody({
   ownerCountry,
   rateContext,
   monedaHabitual,
+  pasoInicial,
+  movimientoAlElegir,
   onDirtyChange,
   onDone,
 }: {
@@ -300,6 +320,8 @@ function ClientSearchDialogBody({
   rateContext: MovementRateContext | null;
   // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
   monedaHabitual: MonedaHabitual | null;
+  pasoInicial: "search" | "new";
+  movimientoAlElegir?: "abono" | "fiado";
   onDirtyChange: (dirty: boolean) => void;
   // Called once this instance is done with the dialog — a client was
   // created, an existing one was picked, or the owner confirmed abandoning
@@ -309,7 +331,10 @@ function ClientSearchDialogBody({
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
-  const [step, setStep] = useState<"search" | "new">("search");
+  // El valor inicial y no un efecto: el cuerpo se REMONTA con `instanceKey`
+  // cada vez que el dialogo se cierra del todo, asi que un estado sembrado
+  // aqui ya es «otra vez el que toca» en la siguiente apertura.
+  const [step, setStep] = useState<"search" | "new">(pasoInicial);
   const [query, setQuery] = useState("");
   const [nameValue, setNameValue] = useState("");
 
@@ -344,6 +369,12 @@ function ClientSearchDialogBody({
   const [cuotas, setCuotas] = useState("1");
   const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
   const [amountStr, setAmountStr] = useState("");
+  // QUÉ SE LLEVÓ. Entra por ESTA puerta también y no solo por la otra: las dos
+  // mandan a la misma acción del servidor, y el 2026-10-16 el campo de cuotas
+  // se puso en una sola -- un cliente nuevo a crédito se guardaba siempre sin
+  // cuotas, en silencio. Es la regla de CLAUDE.md sobre entrar por todas las
+  // puertas de una acción.
+  const [productos, setProductos] = useState<LineaDeProducto[]>([]);
   // Controlled like every other field in this form now — it used to be the
   // one plain uncontrolled input, which is exactly the field a resubmit
   // after the duplicate-document warning could silently blank out.
@@ -426,7 +457,31 @@ function ClientSearchDialogBody({
 
   function selectExisting(id: string) {
     onDone(true);
-    router.push(`/clients/${id}`);
+    // ── «ABONO» ENTRA EN SU PROPIO FLUJO, NO EN LA FICHA ────────────────
+    //
+    // Hasta el 2026-10-20 iba a `/clients/<id>?movimiento=abono`, que abre el
+    // diálogo «Agregar transacción» de siempre. O sea que elegir a alguien en
+    // el buscador desembocaba en el flujo ANTERIOR, con su selector de tipo
+    // —Cargo o Abono— ya resuelto pero todo lo demás igual que antes.
+    //
+    // Lo reportó el dueño ese día: *«al seleccionarlo abre el primer paso del
+    // flujo "Registrar abono: 1/3 Seleccionar fiado / crédito", toda la
+    // transacción se asignará al cliente seleccionado»*.
+    //
+    // `/abonos/nuevo?cliente=<id>` ES ESE PASO 1/3, y ya existía: lo usa el
+    // botón «Agregar abono» de la ficha del cliente desde el 2026-10-19. Lo
+    // único que faltaba era que esta puerta llevara allí.
+    //
+    // `fiado` SE QUEDA COMO ESTABA: su flujo propio es `/ventas/nueva`, que no
+    // admite un cliente por la dirección, así que mandarlo a la ficha sigue
+    // siendo lo correcto hasta que eso cambie.
+    if (movimientoAlElegir === "abono") {
+      router.push(`/abonos/nuevo?cliente=${id}`);
+      return;
+    }
+    // El proposito viaja con la navegacion: sin el, «Abono» dejaria al tendero
+    // en la ficha del cliente teniendo que buscar el boton que acaba de pedir.
+    router.push(movimientoAlElegir ? `/clients/${id}?movimiento=${movimientoAlElegir}` : `/clients/${id}`);
   }
 
   // Every field the form needs is React-controlled now, so the live DOM
@@ -451,9 +506,22 @@ function ClientSearchDialogBody({
 
   return step === "search" ? (
     <>
+      {/* ── LA CABECERA DEL ABONO ES MÁS CORTA, Y SALE DEL FRAME ─────────
+          Frame `1471:21576`: para el abono la modal lleva SOLO el título, la
+          ✕ y el campo. Ni la línea del negocio ni «+ Nuevo cliente».
+          Confirmado con el dueño el 2026-10-20 al enseñarle la diferencia.
+
+          Y «+ Nuevo cliente» no es solo que el frame no lo dibuje: un cliente
+          recién creado no tiene ningún fiado que pagar, así que ese botón
+          lleva a un callejón sin salida en este camino concreto. En el de
+          «Venta o fiado» es justo al revés --dar de alta y venderle en el
+          mismo gesto es lo corriente-- y por eso la diferencia es por camino
+          y no por pantalla. */}
       <DialogHeader>
         <DialogTitle>Buscar cliente</DialogTitle>
-        <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+        {movimientoAlElegir === "abono" ? null : (
+          <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+        )}
       </DialogHeader>
       <div className="flex flex-col gap-3">
         <Input
@@ -472,17 +540,19 @@ function ClientSearchDialogBody({
           <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
         ) : null}
 
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setNameValue(query);
-            setStep("new");
-          }}
-        >
-          <Plus className="size-4" />
-          {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
-        </Button>
+        {movimientoAlElegir === "abono" ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setNameValue(query);
+              setStep("new");
+            }}
+          >
+            <Plus className="size-4" />
+            {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
+          </Button>
+        )}
       </div>
     </>
   ) : (
@@ -620,6 +690,20 @@ function ClientSearchDialogBody({
             plazoPago && plazoPago !== "sin_especificar" && Number.isFinite(Number(plazoPago))
               ? Number(plazoPago)
               : null
+          }
+        />
+        {/* Este formulario SIEMPRE registra un cargo --el `type` oculto de
+            arriba-- así que no lleva la guarda de "solo fiados" que sí tiene
+            el otro: un cliente nuevo siempre empieza debiendo. */}
+        <MovementProductsField
+          value={productos}
+          onValueChange={(lineas) => {
+            setProductos(lineas);
+            const total = totalDeLineas(lineas);
+            if (lineas.length > 0) setAmountStr(String(total));
+          }}
+          moneda={(n) =>
+            ownerCountry === "VE" ? formatDisplayCurrency(n, currency) : formatCurrency(n)
           }
         />
 

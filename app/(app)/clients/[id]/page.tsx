@@ -8,6 +8,8 @@ import { ClientDetailHeader } from "@/components/dashboard/client-detail-header"
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
+import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -20,11 +22,10 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
+  clientStatusLabel,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
   getClientStatus,
@@ -35,7 +36,6 @@ import {
   type OwnerCountry,
 } from "@/lib/types";
 
-const SIGNED_URL_TTL_SECONDS = 300;
 
 export default async function ClientDetailPage({
   params,
@@ -155,24 +155,19 @@ export default async function ClientDetailPage({
   // Status/mora/score are one combined judgement per client even when a VE
   // owner tracks two independent balances — converted to USD so they're
   // comparable, per the "uno solo, combinado" decision.
-  // Un solo mensaje para los dos botones que lo mandan: "Compartir enlace" en
-  // el perfil y "Compartir" dentro de la ficha de cada movimiento. Lo calculaban
-  // dos sitios por su cuenta con la misma llamada repetida; ahora es uno.
+  // El mensaje de «Compartir enlace» del perfil. Lo mandaba también el
+  // «Compartir» de la ficha de cada movimiento, que desde el 2026-10-19 vive en
+  // la pantalla del detalle y lo arma allí con los mismos datos.
   const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
-  const compartir: DatosParaCompartir = {
-    clientName: client.name,
-    balanceText,
-    enlace: { de: "dueño", clientId: client.id },
-  };
 
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
-  const status = getClientStatus(
-    judgementBalance,
-    clientSummary?.days_since_payment ?? 0,
-    clientSummary?.oldest_unpaid_charge_at ?? null,
-    clientSummary?.oldest_unpaid_charge_plazo_dias ?? null,
-    clientSummary?.oldest_unpaid_charge_due_at ?? null,
-  );
+  const status = getClientStatus({
+    balance: judgementBalance,
+    daysSincePayment: clientSummary?.days_since_payment ?? 0,
+    worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
+    worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
+    worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
+  });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -200,6 +195,43 @@ export default async function ClientDetailPage({
         owesMoney={rateContext ? balanceUsd > 0 || balanceEur > 0 : balance > 0}
         hasMovements={(movementCount ?? 0) > 0}
         ownerId={user!.id}
+        // LOS DOS BOTONES VIAJAN A LA CABECERA (2026-10-18, mockup del dueño):
+        // «cuando se haga scrolldown solo se vea el header oscuro más los
+        // botones de registrar abono y fiado». Debajo no se podían pegar — un
+        // `sticky` hermano se despega en cuanto la cabecera pasa de largo— así
+        // que entran dentro del único elemento sticky de la pantalla.
+        //
+        // Un cliente en la papelera no acepta movimientos nuevos —addMovement
+        // los rechaza en el servidor—, y ofrecer un botón que siempre falla es
+        // peor que no ofrecerlo. El aviso de abajo dice cómo recuperarlo.
+        acciones={
+          client.trashed_at ? null : (
+            <AddMovementDialog
+              clientId={client.id}
+              clientName={client.name}
+              clientWhatsapp={client.whatsapp}
+              ownerId={user!.id}
+              ownerCountry={ownerCountry}
+              currentDebtCop={balance}
+              currentDebtUsd={balanceUsd}
+              currentDebtEur={balanceEur}
+              isFlagged={client.is_flagged}
+              consentAsked={
+                // Migración 093, llega por el select("*") de arriba. Mientras
+                // la migración no esté corrida vale undefined, que cae del lado
+                // seguro: la casilla se enseña.
+                Boolean(client.whatsapp_consent_asked_at)
+              }
+              consentGranted={aceptaAvisos === true}
+              triggerClassName="w-full"
+              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
+              hrefAbono={`/abonos/nuevo?cliente=${client.id}`}
+              autoOpen={autoOpenType}
+              rateContext={rateContext}
+              monedaHabitual={monedaHabitual}
+            />
+          )
+        }
       />
 
       {/* A client reached from the Papelera looks identical to a live one
@@ -216,45 +248,15 @@ export default async function ClientDetailPage({
         </div>
       ) : null}
 
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 text-center">
-        {/* Un cliente en la papelera no acepta movimientos nuevos —addMovement
-            los rechaza en el servidor—, y ofrecer un botón que siempre falla es
-            peor que no ofrecerlo. El aviso de arriba dice cómo recuperarlo. */}
-        {client.trashed_at ? null : (
-          <AddMovementDialog
-            clientId={client.id}
-            clientName={client.name}
-            clientWhatsapp={client.whatsapp}
-            ownerId={user!.id}
-            ownerCountry={ownerCountry}
-            currentDebtCop={balance}
-            currentDebtUsd={balanceUsd}
-            currentDebtEur={balanceEur}
-            isFlagged={client.is_flagged}
-            consentAsked={
-              // Migración 093, llega por el select("*") de arriba. Mientras
-              // la migración no esté corrida vale undefined, que cae del lado
-              // seguro: la casilla se enseña.
-              Boolean(client.whatsapp_consent_asked_at)
-            }
-            consentGranted={aceptaAvisos === true}
-            triggerClassName="w-full"
-            autoOpen={autoOpenType}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
-        )}
-      </div>
-
       {/* El estado va junto al título de la sección y no dentro de una tarjeta
           de saldo: juzga la cuenta entera, y abajo hay una tarjeta por moneda. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Por cobrar</h2>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {CLIENT_STATUS_LABEL[status]}
+            {clientStatusLabel(status, clientSummary?.overdue_charge_count ?? null)}
           </Badge>
-          {clientSummary?.has_pending_review ? <Badge variant="outline">movimientos por revisar</Badge> : null}
+          {clientSummary?.has_pending_review ? <Badge variant="outline">transacciones por revisar</Badge> : null}
           {client.is_flagged ? (
             <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
               Mala paga
@@ -293,15 +295,15 @@ export default async function ClientDetailPage({
           balance={judgementBalance}
           effectiveRate={ownerRate?.effectiveRate ?? null}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
-          oldestUnpaidChargeAt={clientSummary?.oldest_unpaid_charge_at ?? null}
-          oldestUnpaidChargePlazoDias={clientSummary?.oldest_unpaid_charge_plazo_dias ?? null}
-          oldestUnpaidChargeDueAt={clientSummary?.oldest_unpaid_charge_due_at ?? null}
+          worstChargeAt={clientSummary?.worst_unpaid_charge_at ?? null}
+          worstChargePlazoDias={clientSummary?.worst_unpaid_charge_plazo_dias ?? null}
+          worstChargeDueAt={clientSummary?.worst_unpaid_charge_due_at ?? null}
           isFlagged={client.is_flagged}
         />
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} ledger={ledger} compartir={compartir} />
+        <MovementHistory clientId={id} ledger={ledger} />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -373,9 +375,9 @@ async function CreditScoreSection({
   balance,
   effectiveRate,
   daysSincePayment,
-  oldestUnpaidChargeAt,
-  oldestUnpaidChargePlazoDias,
-  oldestUnpaidChargeDueAt,
+  worstChargeAt,
+  worstChargePlazoDias,
+  worstChargeDueAt,
   isFlagged,
 }: {
   clientId: string;
@@ -386,10 +388,11 @@ async function CreditScoreSection({
   // because it's the oldest unpaid one, which is wrong.
   effectiveRate: EffectiveRate | null;
   daysSincePayment: number;
-  oldestUnpaidChargeAt: string | null;
-  oldestUnpaidChargePlazoDias: number | null;
+  // Migración `134`: el fiado MÁS VENCIDO, no el más antiguo.
+  worstChargeAt: string | null;
+  worstChargePlazoDias: number | null;
   // Migración `118`: el vencimiento de la próxima cuota sin pagar.
-  oldestUnpaidChargeDueAt: string | null;
+  worstChargeDueAt: string | null;
   isFlagged: boolean;
 }) {
   const supabase = await createClient();
@@ -422,9 +425,9 @@ async function CreditScoreSection({
     movements: scoreMovements,
     balance,
     daysSincePayment,
-    oldestUnpaidChargeAt,
-    oldestUnpaidChargePlazoDias,
-    oldestUnpaidChargeDueAt,
+    worstChargeAt,
+    worstChargePlazoDias,
+    worstChargeDueAt,
     isFlagged,
     mostRecentUnflaggedAt: lastUnflag?.unflagged_at ?? null,
   });
@@ -452,17 +455,20 @@ async function CreditScoreSection({
   );
 }
 
+// EL HISTORIAL YA NO CARGA LO QUE ERA DE LA FICHA.
+//
+// Hasta el 2026-10-19 cada fila montaba un diálogo, así que esta función tenía
+// que traer de antemano todo lo que ese diálogo podía necesitar: una URL
+// firmada por cada foto, el reparto de abonos por fiado, las líneas de venta de
+// cada movimiento y con qué compartir. El detalle pasó a ser una pantalla con
+// dirección propia, y ahora eso lo carga la página de destino — una vez, para
+// el movimiento que se abrió, en vez de para los cincuenta de la lista.
 async function MovementHistory({
   clientId,
   ledger,
-  compartir,
 }: {
   clientId: string;
   ledger: LedgerDisplay | null;
-  // El mismo mensaje y el mismo enlace que "Compartir enlace" del perfil. Se
-  // calcula arriba, donde ya estan el nombre y el saldo, y baja hasta aqui:
-  // este componente solo lee movimientos y no sabria construirlo.
-  compartir: DatosParaCompartir;
 }) {
   const supabase = await createClient();
 
@@ -474,15 +480,88 @@ async function MovementHistory({
     .order("created_at", { ascending: false });
 
   const movementRows = (movements ?? []) as Movement[];
-  const photoPaths = movementRows.map((m) => m.photo_path).filter((p): p is string => Boolean(p));
 
-  const photoUrls = new Map<string, string>();
-  if (photoPaths.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from("attachments")
-      .createSignedUrls(photoPaths, SIGNED_URL_TTL_SECONDS);
-    for (const entry of signed ?? []) {
-      if (entry.path && entry.signedUrl) photoUrls.set(entry.path, entry.signedUrl);
+  // ── LAS VENTAS PAGADAS ENTERAS ──────────────────────────────────
+  //
+  // No son movimientos y por eso no vienen en la consulta de arriba: una
+  // venta pagada no escribe nada en `movements` (migración `124`). Se traen
+  // aparte y la lista las mezcla al pintar. Ver `lib/ventas-de-contado.ts`,
+  // que explica por qué no se arregla metiéndolas en esa tabla.
+  //
+  // Lo reportó el dueño el 2026-10-18: «las transacciones como ventas
+  // directas no están apareciendo en el historial de movimiento del cliente».
+  const { data: ventasCrudas } = await supabase
+    .from("sales")
+    .select("id, created_at")
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  // LOS PARES (VENTA, LIBRO) QUE YA DEJARON UN CARGO, para que ESE libro no
+  // saque además una fila de contado.
+  //
+  // POR MONEDA Y NO POR VENTA, desde el 2026-10-20. Antes era un conjunto de
+  // ids de venta, y una venta mixta perdía su fila de contado en todas las
+  // monedas por tener cargo en una sola: los dólares cobrados al momento no
+  // salían en ninguna parte. Ver la cabecera de `lib/ventas-de-contado.ts`.
+  const clavesConCargo = new Set<string>();
+  for (const m of movementRows) {
+    if (m.sale_id && m.type === "charge") {
+      clavesConCargo.add(claveDeFila(m.sale_id, m.currency));
+    }
+  }
+
+  let ventasDeContado: VentaDeContado[] = [];
+  const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
+  if (idsDeVenta.length > 0) {
+    const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
+      // `rate_used` desde el 2026-10-21: la fila de una venta de contado enseña
+      // los bolívares SELLADOS, no los de hoy (frame `1512:10061`).
+      supabase.from("sale_payments").select("sale_id, currency, amount, rate_used").in("sale_id", idsDeVenta),
+      supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
+    ]);
+    ventasDeContado = filasDeContado(
+      (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
+      pagos ?? [],
+      lineasDeVenta ?? [],
+      clavesConCargo,
+    );
+  }
+
+  // ── EL ESTADO DEL PLAZO DE CADA FIADO, para su chip en la lista ──────
+  //
+  // Pedido por el dueño el 2026-10-20. Se calcula aquí y no en la lista
+  // porque hace falta lo que cada fiado TODAVÍA DEBE, y eso solo lo sabe
+  // `get_open_charges_for_client` -- el `running_balance` de la fila es el
+  // saldo del cliente en ese libro, que es otra cosa.
+  //
+  // UN FIADO QUE NO ESTÉ EN LA LISTA DE ABIERTOS ESTÁ SALDADO, y ese es el
+  // estado «Pagado» que el dueño pidió como nuevo. No es una ausencia de
+  // dato: es la respuesta. Por eso el bucle recorre los MOVIMIENTOS y busca
+  // en el mapa, y no al revés -- recorrer los abiertos dejaría a los pagados
+  // sin chip, que es justo el caso que se quería enseñar.
+  const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
+  const pendientePorFiadoMapa: Record<string, number> = {};
+  const hayFiados = movementRows.some((m) => m.type === "charge");
+  if (hayFiados) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: clientId,
+    });
+    const pendientePorFiado = new Map<string, number>();
+    for (const c of (abiertos ?? []) as { movement_id: string; pending: number }[]) {
+      pendientePorFiado.set(c.movement_id, Number(c.pending));
+    }
+    for (const m of movementRows) {
+      if (m.type !== "charge") continue;
+      const pendiente = pendientePorFiado.get(m.id) ?? 0;
+      pendientePorFiadoMapa[m.id] = pendiente;
+      estadosDeFiado[m.id] = estadoDelFiado({
+        createdAt: m.created_at,
+        plazoDias: m.plazo_dias,
+        cuotas: m.cuotas,
+        amount: Number(m.amount),
+        pendiente,
+      });
     }
   }
 
@@ -492,11 +571,11 @@ async function MovementHistory({
           ir a su derecha, en la misma fila. La tipografía se queda aquí: las
           dos pantallas que usan esa lista titulan distinto. */}
       <MovementHistoryList
-        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de movimientos</h2>}
+        titulo={<h2 className="mt-1 text-xl font-semibold">Historial de transacciones</h2>}
         movements={movementRows}
-        photoUrls={Object.fromEntries(photoUrls)}
         ledger={ledger}
-        compartir={compartir}
+        ventasDeContado={ventasDeContado}
+        pendientePorFiado={pendientePorFiadoMapa}
       />
     </div>
   );

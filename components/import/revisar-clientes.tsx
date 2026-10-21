@@ -133,7 +133,7 @@ function TarjetaCliente({
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate font-semibold">{cliente.name}</span>
           <span className="text-sm text-muted-foreground">
-            {cliente.movimientos} {cliente.movimientos === 1 ? "movimiento" : "movimientos"}
+            {cliente.movimientos} {cliente.movimientos === 1 ? "transacción" : "transacciones"}
           </span>
         </span>
 

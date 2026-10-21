@@ -28,11 +28,20 @@ import {
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import {
+  CatalogStrip,
+  type CatalogStripProduct,
+} from "@/components/public/catalog-strip";
+import { useTokenDelSaldo } from "@/components/public/back-to-balance";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
-import { formatPriceAmount, priceIn, type BolivarRates } from "@/lib/products/price";
+import {
+  formatPriceAmount,
+  priceIn,
+  type BolivarRates,
+} from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { splitForInput } from "@/lib/phone";
+import { telefonoLegible } from "@/lib/phone";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
@@ -43,6 +52,8 @@ import {
 } from "@/lib/cart/cart";
 import { productosDelCarrito, crearOrden } from "@/app/c/[token]/actions";
 import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 // «TU CARRITO», del frame `1190:5793`.
 //
@@ -74,11 +85,20 @@ import { TEXTO_PERMISO_ORDEN, mensajeDeLaOrden } from "@/lib/cart/mensaje";
 
 type Estado =
   | { fase: "cargando" }
-  | { fase: "listo"; productos: Map<string, ProductoDelCarrito>; rates: BolivarRates | null }
+  | {
+      fase: "listo";
+      productos: Map<string, ProductoDelCarrito>;
+      rates: BolivarRates | null;
+    }
   | {
       fase: "enviado";
       mensaje: string;
       comprador: { nombre: string; documento: string; telefono: string };
+      // LOS IDS DE LO COMPRADO, por la MISMA razón que el resumen: esta
+      // pantalla se pinta después de vaciar el carrito, así que leerlos de él
+      // daría una lista vacía y el carrusel de abajo volvería a ofrecer lo que
+      // el comprador acaba de meter en la bolsa.
+      comprados: string[];
       // LA FOTO DEL PEDIDO, no una referencia al carrito: esta pantalla se
       // pinta DESPUÉS de vaciarlo. Calcularla sobre el carrito daría un
       // resumen vacío justo donde el cliente espera ver lo que pidió.
@@ -91,6 +111,7 @@ export function CartScreen({
   businessName,
   ownerWhatsapp,
   ownerCountry,
+  relacionados = [],
 }: {
   token: string;
   businessName: string;
@@ -98,6 +119,11 @@ export function CartScreen({
   // El país del NEGOCIO, solo para que el selector de prefijo abra en el que
   // va a usar el 99 % de sus clientes. El cliente puede cambiarlo.
   ownerCountry: string | null;
+  // EL CATÁLOGO DEL NEGOCIO, para el carrusel «Otros productos» del
+  // comprobante. Por defecto
+  // vacío: la pantalla de «enlace inválido» monta este componente sin datos,
+  // y un carrusel sin productos no se pinta solo.
+  relacionados?: CatalogStripProduct[];
 }) {
   const { lineas, cambiar, quitar, vaciar } = useCarrito(token);
   const [estado, setEstado] = useState<Estado>({ fase: "cargando" });
@@ -111,7 +137,10 @@ export function CartScreen({
 
   // Las claves de las líneas, como texto, para que el efecto no se dispare en
   // cada render por un array nuevo con el mismo contenido.
-  const idsClave = lineas.map((l) => l.productId).sort().join(",");
+  const idsClave = lineas
+    .map((l) => l.productId)
+    .sort()
+    .join(",");
 
   useEffect(() => {
     // Con el carrito vacío no hay nada que pedir, y tampoco nada que mostrar:
@@ -136,11 +165,18 @@ export function CartScreen({
         comprador={estado.comprador}
         resumen={estado.resumen}
         rates={estado.rates}
+        relacionados={relacionados}
+        // LO QUE ACABA DE COMPRAR, para no ofrecérselo otra vez debajo del
+        // recibo. `estado.lineas` es la orden recién enviada.
+        yaComprados={estado.comprados}
       />
     );
   }
 
-  const productos = estado.fase === "listo" ? estado.productos : new Map<string, ProductoDelCarrito>();
+  const productos =
+    estado.fase === "listo"
+      ? estado.productos
+      : new Map<string, ProductoDelCarrito>();
   const rates = estado.fase === "listo" ? estado.rates : null;
   const totales = subtotales(lineas, productos, rates);
   // Solo la PRIMERA carga tapa la lista. Las siguientes —al añadir algo desde
@@ -157,10 +193,12 @@ export function CartScreen({
   // es una que no ha llegado. Confundirlas enseñaría «ya no está disponible»
   // en cada carga.
   const huerfanas =
-    estado.fase === "listo" && !cargando ? lineas.filter((l) => !productos.has(l.productId)) : [];
+    estado.fase === "listo" && !cargando
+      ? lineas.filter((l) => !productos.has(l.productId))
+      : [];
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       <header className="flex items-center justify-between gap-3 px-4 py-4">
         <Link
           href={`/c/${token}`}
@@ -185,14 +223,13 @@ export function CartScreen({
       </header>
 
       <div className="flex flex-1 flex-col gap-4 px-4 pb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Tu carrito</h1>
+        <ScreenTitle>Tu carrito</ScreenTitle>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Todavía no has agregado nada. Vuelve al catálogo y elige lo que quieras pedir.
-            </p>
-          </div>
+          <EmptyState
+            title="Todavía no has agregado nada"
+            subtitle="Vuelve al catálogo y elige lo que quieras pedir."
+          />
         ) : primeraCarga ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Preparando tu carrito...
@@ -205,11 +242,18 @@ export function CartScreen({
                 const precio = p ? precioUnitario(p, l, rates) : null;
                 const bs =
                   precio && rates && precio.currency !== "VES"
-                    ? priceIn("VES", { amount: precio.amount, currency: precio.currency }, rates)
+                    ? priceIn(
+                        "VES",
+                        { amount: precio.amount, currency: precio.currency },
+                        rates,
+                      )
                     : null;
 
                 return (
-                  <li key={l.productId} className="flex gap-3 rounded-xl border p-3">
+                  <li
+                    key={l.productId}
+                    className="flex gap-3 rounded-xl border p-3"
+                  >
                     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {p?.photo_path ? (
                         <Image
@@ -229,7 +273,9 @@ export function CartScreen({
 
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-medium">{p?.name ?? "Producto"}</span>
+                        <span className="text-sm font-medium">
+                          {p?.name ?? "Producto"}
+                        </span>
                         <button
                           type="button"
                           onClick={() => quitar(l.productId)}
@@ -242,15 +288,19 @@ export function CartScreen({
 
                       {p == null ? (
                         cargando ? (
-                          <p className="text-xs text-muted-foreground">Actualizando precio...</p>
+                          <p className="text-xs text-muted-foreground">
+                            Actualizando precio...
+                          </p>
                         ) : (
                           <p className="text-xs leading-relaxed text-destructive">
-                            Ya no está disponible. Quítalo para poder enviar tu pedido.
+                            Ya no está disponible. Quítalo para poder enviar tu
+                            pedido.
                           </p>
                         )
                       ) : precio == null ? (
                         <p className="text-xs leading-relaxed text-destructive">
-                          Este producto ya no tiene precio para esa cantidad. Cámbiala o quítalo.
+                          Este producto ya no tiene precio para esa cantidad.
+                          Cámbiala o quítalo.
                         </p>
                       ) : (
                         <>
@@ -258,7 +308,10 @@ export function CartScreen({
                             {formatPriceAmount(precio.amount, precio.currency)}
                             <span className="text-xs text-muted-foreground">
                               {" "}
-                              c/u · {precio.tier === "wholesale" ? "al mayor" : "al detal"}
+                              c/u ·{" "}
+                              {precio.tier === "wholesale"
+                                ? "al mayor"
+                                : "al detal"}
                             </span>
                           </span>
                           {bs?.amount != null ? (
@@ -270,7 +323,9 @@ export function CartScreen({
                       )}
 
                       {l.comment ? (
-                        <p className="text-xs leading-relaxed text-muted-foreground">«{l.comment}»</p>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          «{l.comment}»
+                        </p>
                       ) : null}
 
                       <div className="flex items-center gap-2 pt-1">
@@ -312,7 +367,10 @@ export function CartScreen({
             {totales.length > 0 ? (
               <div className="flex flex-col gap-1 rounded-xl border p-3">
                 {totales.map((t) => (
-                  <div key={t.currency} className="flex items-baseline justify-between gap-3">
+                  <div
+                    key={t.currency}
+                    className="flex items-baseline justify-between gap-3"
+                  >
                     <span className="text-sm text-muted-foreground">
                       {totales.length > 1 ? `Total en ${t.currency}` : "Total"}
                     </span>
@@ -323,7 +381,8 @@ export function CartScreen({
                 ))}
                 {totales.length > 1 ? (
                   <p className="pt-1 text-xs leading-relaxed text-muted-foreground">
-                    Son dos totales porque pediste en dos monedas. Cada uno se paga por separado.
+                    Son dos totales porque pediste en dos monedas. Cada uno se
+                    paga por separado.
                   </p>
                 ) : null}
               </div>
@@ -332,8 +391,8 @@ export function CartScreen({
         )}
 
         <p className="pt-2 text-center text-xs leading-relaxed text-muted-foreground">
-          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
-          hacerse directamente con el dueño del comercio.
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas.
+          Pagos y abonos deben hacerse directamente con el dueño del comercio.
         </p>
       </div>
 
@@ -342,7 +401,9 @@ export function CartScreen({
           <Button
             type="button"
             className="h-12 w-full"
-            disabled={cargando || estado.fase !== "listo" || huerfanas.length > 0}
+            disabled={
+              cargando || estado.fase !== "listo" || huerfanas.length > 0
+            }
             onClick={() => setAbierto(true)}
           >
             <WhatsappIcon className="size-5" /> Completar orden
@@ -374,6 +435,7 @@ export function CartScreen({
             mensaje,
             comprador,
             resumen: resumenPorMoneda(lineas, productos, rates),
+            comprados: lineas.map((l) => l.productId),
             rates,
           });
           vaciar();
@@ -433,7 +495,8 @@ function FormularioDeLaOrden({
   // El prefijo abre en el país del NEGOCIO, que es el de casi todos sus
   // clientes. `DIAL_POR_PAIS` solo cubre los dos donde Sevenz opera; para
   // cualquier otro, `WhatsappInput` cae en su propio valor por defecto.
-  const prefijo = ownerCountry === "VE" ? "58" : ownerCountry === "CO" ? "57" : undefined;
+  const prefijo =
+    ownerCountry === "VE" ? "58" : ownerCountry === "CO" ? "57" : undefined;
 
   function enviar() {
     setError(null);
@@ -460,32 +523,59 @@ function FormularioDeLaOrden({
         return;
       }
 
-      const mensaje = mensajeDeLaOrden(businessName, nombre, lineas, productos, rates);
+      const mensaje = mensajeDeLaOrden(
+        businessName,
+        nombre,
+        lineas,
+        productos,
+        rates,
+      );
 
-      // SE INTENTA MANDAR EL RECIBO, Y SI NO SE PUEDE NO PASA NADA.
+      // «ENVIAR PEDIDO» MANDA LA FOTO DEL RECIBO, NO EL TEXTO.
       //
-      // El dueño pidió el 2026-10-15 que esto mandara el capture y no el
-      // texto. HAY DOS TOPES DE PLATAFORMA en el camino, y ninguno es
-      // nuestro; quedan escritos porque «sigue mandando texto» se lee como un
-      // fallo y no lo es:
+      // Decisión del dueño el 2026-10-15 —«para evitar que se edite el texto
+      // del mensaje en whatsApp»— y REAFIRMADA por él el 2026-10-17, después
+      // de que yo la invirtiera por error. Las tres versiones quedan escritas
+      // porque el camino de ida y vuelta es justo lo que no hay que repetir:
       //
-      // 1. UN ENLACE `wa.me` SOLO ADMITE TEXTO. No existe ningún parámetro
-      //    para adjuntar un fichero -- comprobado contra la documentación del
-      //    formato el 2026-10-15. Mandar una imagen por WhatsApp solo se
-      //    puede desde la hoja nativa del teléfono o desde la API de negocio.
-      // 2. ESTO OCURRE DESPUÉS DE UN `await`, porque la orden se guarda
-      //    primero. iOS bloquea tanto `window.open` como `navigator.share`
-      //    cuando no vienen de un toque directo, así que ninguna de las dos
-      //    está garantizada aquí.
+      //   1. `{ files, text }` -> WhatsApp adjuntaba el recibo Y debajo el
+      //      mensaje entero: la misma compra contada dos veces. Él lo
+      //      reportó.
+      //   2. `wa.me` con el texto, sin foto -> lo que yo hice al leer «debería
+      //      abrir el wa.me del negocio». Dejaba exactamente lo que él quería
+      //      quitar, el texto editable, y tiraba lo que quería conservar.
+      //   3. `{ files }` a secas, que es esto.
       //
-      // Así que se intenta la hoja CON LA IMAGEN y se cae al `wa.me` de
-      // siempre. Donde funcione, el dueño recibe el recibo; donde no,
-      // exactamente lo de antes -- nunca menos.
+      // ─────────────────────────────────────────────────────────────────────
+      // Y POR QUÉ NO SE PUEDE TENER LAS DOS COSAS, que es el fondo del
+      // malentendido y hay que dejarlo dicho para que nadie lo intente otra
+      // vez creyendo que se nos olvidó:
       //
-      // EL CAMINO FIABLE SIGUE SIENDO EL BOTÓN DEL RESUMEN, que es un toque
-      // directo sin nada esperando por delante. El pedido YA está guardado
-      // —decisión del 2026-10-14— así que lo que falle aquí cuesta un toque
-      // más, no un pedido.
+      //   - `wa.me/<numero>` va DIRECTO al negocio, sin preguntar a quién...
+      //     pero SOLO ADMITE TEXTO. No existe ningún parámetro del formato
+      //     para adjuntar un fichero — comprobado contra su documentación el
+      //     2026-10-15.
+      //   - `navigator.share({files})` SÍ lleva la imagen... pero la hoja
+      //     nativa decide el destinatario, y la Web Share API no permite
+      //     fijarlo.
+      //
+      // «Va solo al negocio» y «lleva la foto» son excluyentes en un toque, y
+      // el dueño eligió la foto. Lo que cuesta: el comprador elige WhatsApp y
+      // el contacto en la hoja. Lo que se gana: lo que llega no se puede
+      // editar de camino, que era el problema original.
+      //
+      // EL `wa.me` SE QUEDA COMO RESERVA, abajo, para el aparato que no puede
+      // compartir ficheros — un escritorio, básicamente. Ahí la elección no
+      // existe: o texto, o nada.
+      //
+      // ESTO OCURRE DESPUÉS DE UN `await`, porque la orden se guarda primero,
+      // y iOS bloquea tanto `window.open` como `navigator.share` cuando no
+      // vienen de un toque directo. Así que ninguna de las dos está
+      // garantizada aquí, y el camino fiable sigue siendo el botón
+      // «Compartir» de la pantalla siguiente, que es un toque directo sin
+      // nada esperando por delante. El pedido YA está guardado —decisión del
+      // 2026-10-14— así que lo que falle aquí cuesta un toque más, no un
+      // pedido.
       const recibo = dibujarRecibo({
         businessName,
         comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
@@ -493,11 +583,20 @@ function FormularioDeLaOrden({
         rates,
       });
       const ficheroRecibo =
-        recibo == null ? null : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
+        recibo == null
+          ? null
+          : new File([recibo], "pedido-sevenz.png", { type: "image/png" });
 
-      if (ficheroRecibo != null && navigator.canShare?.({ files: [ficheroRecibo] })) {
-        void navigator.share({ files: [ficheroRecibo], text: mensaje }).catch(() => {});
+      if (
+        ficheroRecibo != null &&
+        navigator.canShare?.({ files: [ficheroRecibo] })
+      ) {
+        // SIN `text`. Es la primera corrección del 2026-10-17 y sigue en pie:
+        // la imagen va sola, no acompañada del mensaje escrito.
+        void navigator.share({ files: [ficheroRecibo] }).catch(() => {});
       } else {
+        // LA RESERVA. `mensaje` no sobra: es lo único que un `wa.me` admite, y
+        // es también lo que recibe `onEnviada` para la pantalla siguiente.
         const digitos = ownerWhatsapp?.replace(/\D/g, "") ?? "";
         if (digitos !== "") {
           window.open(
@@ -519,7 +618,8 @@ function FormularioDeLaOrden({
         <DialogHeader>
           <DialogTitle>¿Quién hace el pedido?</DialogTitle>
           <DialogDescription>
-            El negocio necesita estos datos para poder responderte y preparar tu pedido.
+            El negocio necesita estos datos para poder responderte y preparar tu
+            pedido.
           </DialogDescription>
         </DialogHeader>
 
@@ -577,16 +677,26 @@ function FormularioDeLaOrden({
               disabled={enviando}
               className="mt-0.5 size-4 shrink-0 accent-foreground"
             />
-            <span className="text-sm leading-relaxed">{TEXTO_PERMISO_ORDEN}</span>
+            <span className="text-sm leading-relaxed">
+              {TEXTO_PERMISO_ORDEN}
+            </span>
           </label>
 
           {error ? (
-            <p className="text-sm leading-relaxed text-destructive" role="alert">
+            <p
+              className="text-sm leading-relaxed text-destructive"
+              role="alert"
+            >
               {error}
             </p>
           ) : null}
 
-          <Button type="button" className="h-12" onClick={enviar} disabled={enviando}>
+          <Button
+            type="button"
+            className="h-12"
+            onClick={enviar}
+            disabled={enviando}
+          >
             {enviando ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -631,6 +741,8 @@ function Enviado({
   comprador,
   resumen,
   rates,
+  relacionados,
+  yaComprados,
 }: {
   token: string;
   mensaje: string;
@@ -638,7 +750,13 @@ function Enviado({
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: ReturnType<typeof resumenPorMoneda>;
   rates: BolivarRates | null;
+  relacionados: CatalogStripProduct[];
+  yaComprados: string[];
 }) {
+  // El enlace del saldo, si este comprador llegó desde el suyo. Decide si
+  // «Ver saldo pendiente» existe — ver donde se pinta, abajo.
+  const tokenDelSaldo = useTokenDelSaldo();
+
   // LA HOJA NATIVA DEL TELÉFONO, no un `wa.me`. A petición del dueño el
   // 2026-10-15, y es lo que dibuja el frame `1326:5835`.
   //
@@ -680,13 +798,18 @@ function Enviado({
       // imagen lo escribiera en crudo, el comprador vería doce dígitos
       // seguidos en el recibo y su número separado arriba, y no sabría cuál
       // de los dos le mandaron al tendero.
-      comprador: { ...comprador, telefono: telefonoLegible(comprador.telefono) },
+      comprador: {
+        ...comprador,
+        telefono: telefonoLegible(comprador.telefono),
+      },
       resumen,
       rates,
     });
 
     if (blob != null) {
-      const fichero = new File([blob], "pedido-sevenz.png", { type: "image/png" });
+      const fichero = new File([blob], "pedido-sevenz.png", {
+        type: "image/png",
+      });
       if (navigator.canShare?.({ files: [fichero] })) {
         // Cerrar la hoja la rechaza. Eso es el comprador decidiendo no
         // mandarlo, no un fallo, así que no lleva aviso.
@@ -715,7 +838,7 @@ function Enviado({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-4 px-4 py-8">
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
         <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
         <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
@@ -734,13 +857,21 @@ function Enviado({
       {resumen.map((bloque) => {
         const enBs =
           rates && bloque.currency !== "VES"
-            ? priceIn("VES", { amount: bloque.total, currency: bloque.currency }, rates)
+            ? priceIn(
+                "VES",
+                { amount: bloque.total, currency: bloque.currency },
+                rates,
+              )
             : null;
         return (
-          <section key={bloque.currency} className="flex flex-col gap-3 rounded-xl border p-4">
+          <section
+            key={bloque.currency}
+            className="flex flex-col gap-3 rounded-xl border p-4"
+          >
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-semibold">
-                Resumen de compra en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
+                Resumen de compra en{" "}
+                {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
               </h2>
               <CurrencyFlagIcon currency={bloque.currency} />
             </div>
@@ -804,10 +935,12 @@ function Enviado({
           className="h-7 w-auto"
         />
         <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas. Pagos y abonos deben
-          hacerse directamente con el dueño del comercio.
+          Sevenz no pide códigos ni pagos vía WhatsApp ni a través de llamadas.
+          Pagos y abonos deben hacerse directamente con el dueño del comercio.
         </p>
-        <p className="text-center text-xs font-medium text-muted-foreground">sevenz.site</p>
+        <p className="text-center text-xs font-medium text-muted-foreground">
+          sevenz.site
+        </p>
       </div>
 
       <div className="flex flex-col gap-2 pt-2">
@@ -818,12 +951,71 @@ function Enviado({
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </button>
+
+        {/* EL CARRUSEL, DEBAJO DE «COMPARTIR». Encargo del dueño el
+            2026-10-17, y es el MISMO componente que la franja del saldo —no
+            una copia— porque las dos enseñan lo mismo y el día que una
+            cambie la otra tiene que cambiar con ella.
+
+            SIN `shareToken`, a propósito: quien lee esto YA está dentro del
+            catálogo, así que no hay ningún «abrió el catálogo desde el
+            enlace» que contar. Mandar ese evento desde aquí inflaría el único
+            número que existe para contestar esa pregunta.
+
+            FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo
+            le ofrece otra vez lo que tiene en la bolsa no es una sugerencia,
+            es un despiste — y en un producto sobre dinero, invitar a comprar
+            dos veces lo mismo es exactamente lo que no conviene.
+
+            EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
+            Nació con lo segundo y el dueño lo cambió el mismo día, al leer
+            que el dato no lo sostenía: la ficha de un producto no tiene
+            categoría, ni etiquetas, ni familia, así que lo único que une a
+            estos con lo comprado es ser de la misma bodega.
+
+            Con seis productos no se nota —«relacionados» y «los otros» son el
+            mismo conjunto— pero el día que una bodega publique decenas, quien
+            compró arroz vería tornillos bajo un título que le prometió otra
+            cosa. «Otros productos» es verdad hoy y lo seguirá siendo cuando
+            el catálogo crezca, que es la única clase de rótulo que no hay que
+            volver a tocar. Cierra `CT-96`.
+
+            Si algún día la ficha gana una categoría, el rótulo puede volver a
+            prometer parentesco — pero entonces habrá con qué cumplirlo. */}
+        <CatalogStrip
+          catalogToken={token}
+          titulo="Otros productos"
+          products={relacionados.filter((p) => !yaComprados.includes(p.id))}
+        />
+
         <Link
           href={`/c/${token}`}
-          className="flex h-12 items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background"
+          className="flex h-12 items-center justify-center gap-2 rounded-lg bg-foreground text-sm font-medium text-background"
         >
-          Volver al catálogo
+          <ArrowLeft className="size-5" aria-hidden="true" /> Volver al catálogo
         </Link>
+
+        {/* «VER SALDO PENDIENTE», Y SOLO PARA QUIEN VINO DE SU SALDO.
+            Decisión del dueño el 2026-10-17: «ese último botón aparecerá solo
+            cuando el cliente accedió desde el link compartido, sino no debe
+            aparecer».
+
+            Tiene su razón: a quien llegó por el enlace del catálogo a secas
+            no le corresponde ningún saldo —puede no ser cliente del negocio—
+            y un botón que promete enseñarle una deuda que no existe es peor
+            que ninguno.
+
+            El mismo almacén que la flecha de volver, leído por el mismo hook.
+            Si está bloqueado, no sale el botón: el comprobante queda como
+            estaba y nadie pierde nada de lo que vino a ver. */}
+        {tokenDelSaldo ? (
+          <Link
+            href={`/s/${tokenDelSaldo}`}
+            className="flex h-12 items-center justify-center rounded-lg border text-sm font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Ver saldo pendiente
+          </Link>
+        ) : null}
       </div>
     </main>
   );
@@ -838,30 +1030,6 @@ const NOMBRE_MONEDA: Record<string, string> = {
   COP: "Pesos",
   VES: "Bolívares",
 };
-
-// EL TELÉFONO SE LEE, NO SE DESCIFRA.
-//
-// Lo que viaja es la cadena combinada de `WhatsappInput`: dígitos pegados,
-// «584148889977». Esta pantalla existe para que el comprador compruebe que
-// sus datos son los suyos, y doce dígitos seguidos no se comprueban de un
-// vistazo — hay que contarlos.
-//
-// Se separa con `splitForInput`, que es la misma función que usa el campo
-// para abrir un número guardado. No se parte a mano por longitud: la
-// migración 073 documenta lo que cuesta — un móvil venezolano «4149900094»
-// se leía como +41 Suiza.
-function telefonoLegible(combinado: string): string {
-  const { dialCode, local } = splitForInput(combinado);
-  if (local === "") return combinado;
-  // OPERADORA Y NÚMERO: los tres primeros dígitos aparte y el resto junto.
-  // Es como se dice un móvil en los dos países donde Sevenz opera — «412
-  // 1234567», «300 1112233» — y no un troceado mecánico.
-  //
-  // La primera versión partía de tres en tres y dejaba «412 123 456 7», con
-  // un dígito suelto al final. Se vio en pantalla, no leyendo el código.
-  if (local.length <= 3) return `+${dialCode} ${local}`;
-  return `+${dialCode} ${local.slice(0, 3)} ${local.slice(3)}`;
-}
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (

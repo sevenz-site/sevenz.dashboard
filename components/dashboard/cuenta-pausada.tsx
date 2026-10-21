@@ -195,11 +195,14 @@ export function useGuardiaDeCuentaPausada(): () => boolean {
 
 // La misma puerta, para los dialogos que se abren SOLOS.
 //
-// El boton "Agregar" de la barra de abajo no abre nada: navega a
-// /dashboard?nuevo=1 y es la pantalla la que, al montarse, decide abrirse. Eso
-// ocurre durante el render, donde no se puede lanzar un evento — asi que aqui
-// se separan las dos mitades: devuelve si hay que abstenerse de abrir, y avisa
-// desde un efecto.
+// Hay dialogos que no los abre un clic sino un MARCADOR en la direccion: la
+// hoja de "Registrar" navega a /dashboard?nuevo=cliente (o ?nuevo=abono) y es
+// la pantalla la que, al montarse, decide abrirse. Eso ocurre durante el
+// render, donde no se puede lanzar un evento -- asi que aqui se separan las dos
+// mitades: devuelve si hay que abstenerse de abrir, y avisa desde un efecto.
+//
+// Hasta el 2026-10-18 el marcador lo ponia el boton "Agregar" de la barra de
+// abajo con ?nuevo=1. Ese boton ahora abre la hoja, que es quien navega.
 export function useGuardiaAlAbrir(quiereAbrir: boolean): boolean {
   const { pausada } = useCuentaPausada();
   const bloqueado = pausada && quiereAbrir;

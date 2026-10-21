@@ -25,7 +25,7 @@ export function AvisoDeBorrador({
   onDescartar: () => void;
 }) {
   const n = borrador.movimientos.length;
-  const movs = `${n} ${n === 1 ? "movimiento" : "movimientos"}`;
+  const movs = `${n} ${n === 1 ? "transacción" : "transacciones"}`;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
       <p className="flex items-start gap-1.5 text-sm">
@@ -48,7 +48,7 @@ export function AvisoDeBorrador({
         <Button type="button" size="sm" onClick={onSeguir}>
           {borrador.revisada
             ? "Seguir con esa revisión"
-            : `Revisar ${n === 1 ? "ese movimiento" : `esos ${n} movimientos`}`}
+            : `Revisar ${n === 1 ? "esa transacción" : `esas ${n} transacciones`}`}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDescartar}>
           Descartarla

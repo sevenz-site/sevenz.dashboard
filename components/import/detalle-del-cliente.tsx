@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import {
   CircleAlert,
   Eye,
@@ -133,7 +134,7 @@ function DecisionDelTotal({
       importe: esc,
       // Se dice ANTES de marcarlo lo que va a pasar, porque lo que pasa es que
       // aparece un movimiento nuevo en la cuenta de una persona.
-      pie: `Agregaremos un movimiento por valor de ${importeDe(Math.abs(diferencia), currency)} para que cuadren las cuentas`,
+      pie: `Agregaremos una transacción por valor de ${importeDe(Math.abs(diferencia), currency)} para que cuadren las cuentas`,
     },
     {
       cual: "suma" as const,
@@ -353,7 +354,7 @@ function FilaMovimiento({
         variant="ghost"
         size="icon"
         className="size-8 shrink-0"
-        aria-label={esAjuste || soloLectura ? "Ver este movimiento" : "Editar este movimiento"}
+        aria-label={esAjuste || soloLectura ? "Ver esta transacción" : "Editar esta transacción"}
         onClick={onEditar}
       >
         {/* EL ICONO DICE LO QUE EL BOTÓN HACE. Cuando la fila es de solo lectura
@@ -368,7 +369,7 @@ function FilaMovimiento({
           variant="ghost"
           size="icon"
           className="size-8 shrink-0"
-          aria-label="Quitar este movimiento"
+          aria-label="Quitar esta transacción"
           onClick={onEliminar}
         >
           <Trash2 className="size-4" />
@@ -556,6 +557,26 @@ export function DetalleDelCliente({
   const seleccionables = subido ? [] : filas.map((f) => f.rowId);
   const seleccion = podarSeleccion(seleccionCruda, seleccionables);
   const enSeleccion = seleccion.size > 0;
+
+  // ── CON EL TECLADO ARRIBA, EL PIE NO ─────────────────────────────────
+  //
+  // Esta pantalla tiene cuatro campos de texto --nombre, cédula, monto,
+  // descripción-- y el pie se queda flotando encima del teclado tapando el
+  // que se está rellenando. Es el mismo fallo que el dueño reportó el
+  // 2026-10-18 con «Registrar y finalizar» sobre el campo Documento y el
+  // 2026-10-20 con «Pagar» sobre el monto del abono: el tercer sitio del
+  // mismo defecto, y el que quedaba.
+  //
+  // SE USA EL HOOK, NO `StickyActions`. Ese componente trae además una
+  // geometría que aquí no vale: sus `-mx-4` y sus 40px de aire cancelan el
+  // padding de `AppMain`, y este pie vive dentro de una HOJA con su propio
+  // scroll y su propio padding --por eso lleva `-mb-4 mt-2` y un `pb` con el
+  // área segura en vez de los 2.5rem--. Meterlo aquí arreglaría el teclado y
+  // descuadraría la banda.
+  //
+  // QUITARLO NO MUEVE NADA DE ARRIBA: el pie es el último hijo de una columna
+  // que ya hace scroll, así que desaparecer solo la acorta por abajo.
+  const tecladoAbierto = useKeyboardOpen();
   const idsSeleccionados = [...seleccion];
   // Las que recibiran la moneda: las marcadas, o todas las del cliente.
   const alcanceDeMoneda = enSeleccion ? idsSeleccionados : filas.map((f) => f.rowId);
@@ -594,7 +615,7 @@ export function DetalleDelCliente({
             />
           )}
           <p className="text-sm text-muted-foreground">
-            {filas.length} {filas.length === 1 ? "movimiento" : "movimientos"}
+            {filas.length} {filas.length === 1 ? "transacción" : "transacciones"}
             {filas.length === 1 ? " registrado" : " registrados"}
           </p>
           <span
@@ -638,7 +659,7 @@ export function DetalleDelCliente({
               <AlertDialogTitle>¿Quitar a {cliente.name} de esta subida?</AlertDialogTitle>
               <AlertDialogDescription>
                 Se quitan sus {filas.length}{" "}
-                {filas.length === 1 ? "movimiento" : "movimientos"} y no se guardará nada suyo. El
+                {filas.length === 1 ? "transacción" : "transacciones"} y no se guardará nada suyo. El
                 resto de la libreta se sube igual. La foto no se borra: puedes volver a empezar la
                 revisión si te equivocas.
               </AlertDialogDescription>
@@ -726,6 +747,7 @@ export function DetalleDelCliente({
                 solo rellena documentos que estén en null, así que un campo
                 editable aceptaría el cambio y lo tiraría en silencio. */}
             <DocumentIdInput
+          sinTipo
               id="detalle-documento"
               country={country}
               disabled={Boolean(documentoGuardado)}
@@ -843,7 +865,7 @@ export function DetalleDelCliente({
           y el título tiene que decir eso antes de que nadie toque nada. */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium">Movimientos</p>
+          <p className="text-sm font-medium">Transacciones</p>
           {/* EL CONTADOR Y SU SALIDA, EN LA MISMA FILA. Un modo en el que se ha
               entrado por un gesto que no se ve tiene que decir dos cosas a la
               vez: en qué modo estás, y cómo sales. Separarlos deja al dueño
@@ -1007,7 +1029,7 @@ export function DetalleDelCliente({
                 variant="ghost"
                 size="icon"
                 className="size-8 shrink-0 text-destructive hover:text-destructive"
-                aria-label="Recuperar este movimiento"
+                aria-label="Recuperar esta transacción"
                 onClick={() => e.mov.uid && onRestaurar(e.mov.uid)}
               >
                 <RotateCcw className="size-4" />
@@ -1067,7 +1089,7 @@ export function DetalleDelCliente({
           Los márgenes negativos cancelan el padding de la hoja para que la
           banda llegue de borde a borde, y el `pb` suma el área segura del
           iPhone: sin ella, el botón queda debajo de la barra de inicio. */}
-      {subido ? null : (
+      {subido || tecladoAbierto ? null : (
         <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {/* UNA ACCIÓN A LA VEZ, decidido con el usuario el 2026-10-02.
               Mientras hay selección el pie es eliminar; al deseleccionar vuelve

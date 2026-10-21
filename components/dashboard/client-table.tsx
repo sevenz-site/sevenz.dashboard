@@ -41,8 +41,10 @@ import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate, formatDocumentId } from "@/lib/format";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   CLIENT_STATUS_BADGE_CLASS,
+  clientStatusLabel,
   CLIENT_STATUS_LABEL,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
@@ -58,7 +60,7 @@ export function ClientTable({
   scores,
   rateContext = null,
   ownerCountry,
-  emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra un movimiento manual.",
+  emptyMessage = "Todavía no tienes clientes. Importa tu libreta o registra una transacción manual.",
   source,
 }: {
   rows: ClientSummary[];
@@ -123,9 +125,7 @@ export function ClientTable({
 
   if (rows.length === 0 && !tourDemoActive) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-      </div>
+      <EmptyState className="flex-1" title={emptyMessage} />
     );
   }
 
@@ -155,13 +155,13 @@ export function ClientTable({
                 repeated here — on mobile the tour only runs step 1. */}
             <div className="flex flex-col gap-3 md:hidden">
               {pagedRows.map((row) => {
-                const status = getClientStatus(
-                  judgementBalance(row),
-                  row.days_since_payment,
-                  row.oldest_unpaid_charge_at,
-                  row.oldest_unpaid_charge_plazo_dias,
-                  row.oldest_unpaid_charge_due_at,
-                );
+                const status = getClientStatus({
+                  balance: judgementBalance(row),
+                  daysSincePayment: row.days_since_payment,
+                  worstChargeAt: row.worst_unpaid_charge_at ?? null,
+                  worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+                  worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+                });
                 return (
                   <button
                     key={row.client_id}
@@ -180,6 +180,7 @@ export function ClientTable({
                       name={row.name}
                       documentId={row.document_id}
                       status={status}
+                      overdueCount={row.overdue_charge_count ?? null}
                       hasPendingReview={row.has_pending_review}
                       isFlagged={row.is_flagged}
                       balance={row.balance}
@@ -273,13 +274,13 @@ export function ClientTable({
                     </>
                   ) : null}
                   {pagedRows.map((row) => {
-                    const status = getClientStatus(
-                      judgementBalance(row),
-                      row.days_since_payment,
-                      row.oldest_unpaid_charge_at,
-                      row.oldest_unpaid_charge_plazo_dias,
-                      row.oldest_unpaid_charge_due_at,
-                    );
+                    const status = getClientStatus({
+                      balance: judgementBalance(row),
+                      daysSincePayment: row.days_since_payment,
+                      worstChargeAt: row.worst_unpaid_charge_at ?? null,
+                      worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
+                      worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+                    });
                     const score = scores?.[row.client_id];
                     return (
                       <TableRow
@@ -330,7 +331,7 @@ export function ClientTable({
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                              {CLIENT_STATUS_LABEL[status]}
+                              {clientStatusLabel(status, row.overdue_charge_count ?? null)}
                             </Badge>
                             {row.is_flagged ? (
                               <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>

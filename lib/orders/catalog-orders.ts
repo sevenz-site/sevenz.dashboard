@@ -102,3 +102,82 @@ export function totalsByCurrency(
     .map(([currency, amount]) => ({ currency, amount }))
     .sort((a, b) => a.currency.localeCompare(b.currency));
 }
+
+// ===========================================================================
+// THE PRODUCT BEHIND AN ORDER LINE — frame 1371:7229, 2026-10-17
+//
+// The owner asked to open a line of an order and see the product in detail.
+// His decision of the same day, after the frame contradicted an earlier one:
+// THE PRODUCT BLOCK IS TODAY'S CATALOGUE, THE ORDER CARD IS SEALED.
+//
+// That is not a compromise, it is what the screen is for. Cost, supplier,
+// margin and stock are the shopkeeper's own numbers and he is reading them to
+// decide whether to fulfil the order -- a stock of "12" from last Tuesday
+// helps nobody, and a frozen cost or margin would be actively misleading. The
+// one thing the customer actually agreed to --how many, at what price, at
+// which tier-- is already sealed in `catalog_order_items` and needs no
+// migration to stay that way.
+//
+// WHAT IT COSTS, said out loud: change a product's photo or description and
+// an old order's card shows the new one. The screen says that block is the
+// catalogue, which is the honest mitigation, not a cure.
+//
+// `product_id` IS NULLABLE AND A DELETED PRODUCT IS A REAL STATE. The line
+// keeps its name and price either way, so the row still reads; the detail
+// then has nothing to show and says so rather than opening half empty.
+export type OrderProductRow = {
+  id: string;
+  name: string;
+  unit: string | null;
+  description: string | null;
+  photo_path: string | null;
+  stock_opening: number | null;
+  cost: number | null;
+  cost_currency: string | null;
+  cost_currency_other: string | null;
+  supplier: string | null;
+  margin_retail_pct: number | null;
+  margin_wholesale_pct: number | null;
+  price_retail: number | null;
+  price_wholesale: number | null;
+  base_currency_retail: string | null;
+  base_currency_wholesale: string | null;
+};
+
+export const ORDER_PRODUCT_COLUMNS =
+  "id, name, unit, description, photo_path, stock_opening, cost, cost_currency, cost_currency_other, supplier, margin_retail_pct, margin_wholesale_pct, price_retail, price_wholesale, base_currency_retail, base_currency_wholesale";
+
+// The products an order's lines point at, indexed by id.
+//
+// ONE QUERY FOR THE WHOLE ORDER, not one per line opened. The detail is a
+// dialog that is already mounted: fetching on open would put a wait exactly
+// where the shopkeeper expects an immediate answer, and an order has a
+// handful of lines.
+//
+// `.eq("owner_id", ownerId)` EXPLICITLY, even though the ids come from an
+// order already proven to be his: it is one filter, and it is the rule this
+// project wrote after `getOrCreateShareLink` and `confirmImport`.
+export async function readOrderProducts(
+  supabase: SupabaseClient,
+  ownerId: string,
+  items: Pick<CatalogOrderItemRow, "product_id">[],
+): Promise<Map<string, OrderProductRow>> {
+  const ids = [...new Set(items.map((i) => i.product_id).filter((v): v is string => v !== null))];
+  if (ids.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(ORDER_PRODUCT_COLUMNS)
+    .eq("owner_id", ownerId)
+    .in("id", ids);
+
+  // A failed read is not "the product was deleted": the dialog would say the
+  // product is gone when it is right there. Logged and left empty, which the
+  // dialog reports as "no pudimos cargarlo".
+  if (error) {
+    console.error("[orders] readOrderProducts:", error.message);
+    return new Map();
+  }
+
+  return new Map((data ?? []).map((p) => [p.id, p as OrderProductRow]));
+}

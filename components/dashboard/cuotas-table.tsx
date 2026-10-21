@@ -1,5 +1,6 @@
-import { calcularCuotas } from "@/lib/cuotas";
 import { formatDate } from "@/lib/format";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 
 // THE AGREED CUOTAS, ONE PER LINE, WITH THE DATE EACH ONE FALLS DUE.
 //
@@ -26,11 +27,23 @@ export function CuotasTable({
   cuotas,
   amount,
   formatearMonto,
+  abonoInicial = 0,
+  abonos = [],
 }: {
   createdAt: string;
   plazoDias: number;
   cuotas: number;
   amount: number;
+  // LO ABONADO, para la columna «Estado» que pidió el dueño el 2026-10-20
+  // (frame `1489:10209`, nodo `1488:10146`). Sin esto la tabla no puede
+  // distinguir una cuota pagada de una vencida, que es justo lo que la
+  // columna contesta.
+  //
+  // Por defecto cero y vacío: una superficie que no sabe lo abonado --la
+  // ficha de un movimiento BORRADO, que no tiene reparto-- dibuja todas las
+  // cuotas como pendientes, que es lo único que puede afirmar.
+  abonoInicial?: number;
+  abonos?: AbonoParaEstado[];
   // THE CALLER FORMATS, and that is not indirection for its own sake: the two
   // cards that mount this table format differently on purpose -- the live
   // movement's shows the bolívar equivalent underneath, the deleted one does
@@ -39,46 +52,92 @@ export function CuotasTable({
   // missing ledger is Colombian pesos -- printing a dollar fiado as pesos.
   formatearMonto: (monto: number) => string;
 }) {
-  const filas = calcularCuotas({ createdAt, plazoDias, cuotas, amount });
+  const { cuotas: filas } = estadosDelFiado({
+    createdAt,
+    plazoDias,
+    cuotas,
+    amount,
+    abonoInicial,
+    abonos,
+  });
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-4 text-xs leading-5">
-        <span className="text-muted-foreground">Cuotas</span>
-        {/* The sentence the single line used to carry stays, shortened: it is
-            the rule, and the rule is what explains why the dates fall where
-            they do. The dates answer "when"; this answers "why those". */}
-        <span className="text-muted-foreground">
-          {cuotas} cuotas dentro de {plazoDias} días
+    <div className="flex flex-col gap-4">
+      {/* LA FILA «Cuotas», AL LADO DE «Plazo de pago» Y CON SU MISMA FORMA.
+          Frames `1463:18100` y `1479:9456`: dicen «00 cuotas» y nada más.
+
+          DECÍA «3 cuotas dentro de 30 días» hasta el 2026-10-20. La frase era
+          mía, no del frame: explicaba de dónde salen las fechas. Lo explica la
+          tabla de abajo, que las enseña — y el plazo ya está escrito en la
+          fila justo encima, así que la frase lo repetía. */}
+      <div className="flex items-baseline justify-between gap-4 py-1">
+        <span className="text-xs leading-4 text-muted-foreground">Cuotas</span>
+        {/* «Pago único» CUANDO ES UNA, que es como lo llama el formulario
+            donde se eligió (`cuotas-select.tsx`) y lo que el dueño leyó al
+            registrarlo. «1 cuotas» no lo dice nadie, y «1 cuota» sería una
+            palabra distinta de la que él escogió. */}
+        <span className="text-sm leading-5 tabular-nums">
+          {cuotas === 1 ? "Pago único" : `${cuotas} cuotas`}
         </span>
       </div>
 
-      <table className="w-full table-fixed text-xs leading-5">
-        <thead>
-          <tr className="text-muted-foreground">
-            <th scope="col" className="w-8 text-left font-normal">
-              #
-            </th>
-            <th scope="col" className="text-left font-normal">
-              Vence
-            </th>
-            <th scope="col" className="text-right font-normal">
-              Monto
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map((c) => (
-            <tr key={c.numero}>
-              <td className="text-muted-foreground tabular-nums">{c.numero}</td>
-              <td>{formatDate(c.fecha.toISOString())}</td>
-              <td className="text-right tabular-nums">
-                {formatearMonto(c.monto)}
-              </td>
+      {/* «Próximas cuotas» SIN RECUADRO Y EN 16 SEMIBOLD, que es como lo
+          dibuja el frame `1489:10209` (nodos `1489:10451` y `1489:10452`).
+
+          TUVO RECUADRO Y TÍTULO DE 14 hasta el 2026-10-20. No fue un capricho
+          quitarlo: la tarjeta de la moneda que lo contiene también perdió el
+          suyo ese día y pasó a separarse con una línea superior, así que un
+          recuadro aquí dentro habría quedado como el único marco de la
+          pantalla. */}
+      <div className="flex flex-col gap-2">
+        <p className="py-2 text-base leading-6 font-semibold">Próximas cuotas</p>
+        <table className="w-full table-fixed">
+          <thead>
+            <tr className="border-b text-sm leading-5">
+              {/* «N°» Y NO «#», que es lo que decía. Es el rótulo del frame, y
+                  además se lee en voz alta — «número» — donde «#» no. */}
+              <th scope="col" className="w-8 text-left font-normal">
+                N°
+              </th>
+              <th scope="col" className="text-left font-normal">
+                Vence
+              </th>
+              <th scope="col" className="text-right font-normal">
+                Monto
+              </th>
+              {/* LA CUARTA COLUMNA, del frame `1488:10146`.
+
+                  `w-32` Y LA FECHA PUEDE PARTIRSE, por instrucción del dueño
+                  el 2026-10-20 con una captura: *«los chips del estado de la
+                  cuota se rompen, dale más ancho, no deben romperse, de ser
+                  necesario la fecha puede ir en dos líneas»*.
+
+                  Estuvo en `w-24` unas horas, y fue mi error de prioridades:
+                  ensanché «Vence» para que la fecha no se partiera y el chip
+                  se partió en su lugar. Una fecha en dos líneas se sigue
+                  leyendo; una pastilla partida parece la pantalla rota.
+
+                  128px es lo que pide «Dentro del plazo» --la etiqueta más
+                  larga-- a 12px con sus 6 de relleno a cada lado. */}
+              <th scope="col" className="w-32 text-right font-normal">
+                Estado
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filas.map((c) => (
+              <tr key={c.numero} className="text-xs leading-4">
+                <td className="py-1 tabular-nums">{c.numero}</td>
+                <td className="py-1">{formatDate(c.fecha.toISOString())}</td>
+                <td className="py-1 text-right tabular-nums">{formatearMonto(c.monto)}</td>
+                <td className="py-1 text-right">
+                  <ChipDeEstado estado={c.estado} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

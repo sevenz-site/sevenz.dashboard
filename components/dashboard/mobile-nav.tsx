@@ -8,8 +8,12 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
+import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { useSearchFocus } from "@/components/dashboard/search-focus-context";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -97,6 +101,10 @@ const DESTINATIONS = (
 // the desktop layout. That is the existing behaviour of every other responsive
 // piece in the app and was left alone on purpose; the tour is made resilient to
 // the switch instead.
+// LA FILA DE LOS CINCO, 64px. El ALTO TOTAL de la barra no sale de aqui: son
+// estos 64 mas el `py-2` de `navClass` mas los 8 extra de abajo, y esa suma
+// vive en `--nav-bar-h` (globals.css) porque la reserva de `AppMain` y el
+// `bottom` del boton flotante tienen que cuadrar con ella al pixel.
 const NAV_HEIGHT_CLASS = "h-16";
 
 function useOverlayOpen() {
@@ -123,27 +131,6 @@ function useOverlayOpen() {
   return open;
 }
 
-function useKeyboardOpen() {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const vv = window.visualViewport;
-    // No signal available: keep the bar visible. A bar that shouldn't be there
-    // is cosmetic; a missing one removes navigation.
-    if (!vv) return;
-
-    // iOS doesn't resize the page when the keyboard appears — it overlays it,
-    // and the visual viewport shrinks while the layout viewport doesn't. That
-    // gap is the only reliable signal. Focus events look tempting but fire for
-    // buttons and selects too, and miss dismissal.
-    const onResize = () => setOpen(vv.height < window.innerHeight * 0.75);
-    vv.addEventListener("resize", onResize);
-    onResize();
-    return () => vv.removeEventListener("resize", onResize);
-  }, []);
-
-  return open;
-}
 
 // Only the three destinations can be marked — Menú opens a sheet and Agregar is
 // an action, so "selected" has no meaning for either. Deliberately exact-match
@@ -163,6 +150,55 @@ function useKeyboardOpen() {
 // active, which on a bar of four is four different heights during a single
 // navigation. The pill can afford to come and go because it wraps the content
 // instead of sitting under it.
+// UN ELEMENTO DE LA BARRA — frame `1421:15026`, 2026-10-18.
+//
+// ===========================================================================
+// EL SUBRAYADO ES DEL CHIP, NO UNA PASTILLA APARTE
+//
+// Hasta hoy el chip y su rayita eran dos cajas apiladas con un hueco entre
+// ellas, y la rayita medía 24px fuera cual fuera el rótulo. El frame lo une:
+// el chip lleva `border-b-4` y por tanto el subrayado mide lo que mide el
+// chip, siempre.
+//
+// SE GANA ALGO QUE NO SE VE EN UNA CAPTURA: con dos cajas, el elemento sin
+// seleccionar reservaba igualmente el alto de la rayita invisible. Si alguien
+// la quitaba «porque no se ve», los cinco elementos se movían dos píxeles.
+//
+// ===========================================================================
+// TRES ESTADOS, Y LOS TRES LOS PIDIÓ EL DUEÑO EL 2026-10-18
+//
+//   · SELECCIONADO: fondo `muted`, borde inferior de 4px y el rótulo en tinta.
+//   · PULSADO: el chip se oscurece mientras el dedo está encima. No es adorno:
+//     entre tocar y que llegue la pantalla no pasaba NADA visible, y en un
+//     teléfono lento eso se lee como que el toque no entró. El `active:` de
+//     CSS dispara con el dedo, sin JavaScript y sin esperar al enrutador.
+//   · CARGANDO: el icono se cambia por un círculo girando. Es lo que ya había
+//     y el dueño pidió conservarlo; lo pone `glyph()` más abajo, no esto.
+//
+// NO HAY `hover:`, a propósito: esta barra es `md:hidden`, así que solo existe
+// donde no hay ratón. Un `hover` ahí se queda pegado después de tocar.
+//
+// ===========================================================================
+// EL ICONO SELECCIONADO NO SE RELLENA. DECISIÓN DEL DUEÑO EL 2026-10-19
+//
+// El frame `1421:15026` dibuja el estado seleccionado con el icono RELLENO, y
+// no está puesto. No es un olvido: con los iconos de este proyecto no se puede.
+//
+// LO QUE SE MIDIÓ, el 2026-10-18: lucide dibuja con `stroke` y las formas
+// vienen abiertas, así que un `fill="currentColor"` no las rellena — las
+// convierte en otra cosa. `Home` sale como un pentágono macizo y `Package`
+// como un hexágono liso: dos siluetas que ya no se reconocen. No es que quede
+// feo, es que deja de decir qué pantalla es.
+//
+// Rellenarlos de verdad exigía traer una segunda familia de iconos (Material
+// Symbols, que publica cada glifo en relleno y en línea) y convivir con dos.
+// Preguntado al dueño, decidió lo contrario: **«no extraigas Material Symbols,
+// deja los íconos originales del design system que estamos usando»**.
+//
+// Así que el estado seleccionado se distingue por el fondo, el subrayado de
+// 4px y la tinta del rótulo — tres señales, que es más de lo que el frame
+// pedía. Si algún día se cambia de familia de iconos, esto se puede retomar;
+// mientras la familia sea lucide, no hay nada que probar aquí.
 function NavItem({
   active,
   children,
@@ -175,25 +211,31 @@ function NavItem({
 } & Record<string, unknown>) {
   return (
     <div className={cn("flex flex-1 items-center justify-center", className)} {...props}>
-      <div className="flex flex-col items-center gap-1.5">
-        <div
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors",
-            active ? "bg-muted text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {children}
-        </div>
-        <span
-          aria-hidden="true"
-          className={cn("h-0.5 w-6 rounded-full", active ? "bg-foreground" : "bg-transparent")}
-        />
+      <div
+        className={cn(
+          // `w-14` son los 56px del frame y `border-b-4` los 4 del subrayado.
+          // El borde se pinta TRANSPARENTE cuando no está seleccionado en vez
+          // de no ponerse: así los cinco chips miden lo mismo y el rótulo no
+          // sube cuatro píxeles al cambiar de pantalla.
+          "flex w-14 flex-col items-center gap-0.5 rounded-[4px] border-b-4 py-1",
+          "text-xs transition-colors",
+          active
+            ? "border-foreground bg-muted text-foreground"
+            : "border-transparent text-muted-foreground active:bg-muted/60",
+        )}
+      >
+        {children}
       </div>
     </div>
   );
 }
 
-export function MobileNav() {
+// ── LA BARRA ────────────────────────────────────────────────────────────
+//
+// SE DESMONTA ENTERA cuando hay un diálogo encima (`return null`, más abajo).
+// Por eso recibe `onRegistrar` en vez de abrir la hoja ella misma: ver el
+// comentario de `MobileNav`, al final del archivo, que cuenta el cuelgue.
+function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { guard } = useUnsavedChangesGuard();
@@ -211,8 +253,53 @@ export function MobileNav() {
 
   // The bar does not render at all on a client's own screen — see below.
   // Note the trailing slash: /clients (the list) keeps its bar, only
-  // /clients/<id> loses it.
+  // /clients/<id> loses it. Eso cubre tambien `/clients/nuevo`, que es un
+  // flujo de pantalla completa y por tanto quiere lo mismo.
   const onClientDetail = pathname.startsWith("/clients/");
+
+  // NI BARRA NI FLOTANTE EN EL ASISTENTE DE VENTA. El frame `1389:8329` dibuja
+  // una pantalla limpia: flecha, titulo, progreso y la cuadricula, y nada mas.
+  //
+  // SE ESCAPO AL CONSTRUIRLA, y es exactamente el fallo del que avisa el
+  // comentario de `app-header.tsx`: la barra de mas la pone OTRO componente, y
+  // quien escribe la pantalla nueva no tiene ninguna razon para abrir este
+  // archivo. Lo vio el dueno en una captura — «una interfaz muy distinta al
+  // frame».
+  //
+  // Y ADEMAS ESTORBA DE VERDAD: el flotante dice «Registrar» y abre la hoja que
+  // empieza una venta, flotando ENCIMA de la venta que el tendero ya esta
+  // haciendo. Pulsarlo tiraria el carrito sin avisar.
+  //
+  // SOLO EL ASISTENTE, desde el 2026-10-18. El resumen de la venta
+  // (`/ventas/<id>`, frame `1389:8595`) SÍ dibuja la barra, y con razón: el
+  // asistente es un flujo a medias del que no se sale sin tirar el carrito, y
+  // el resumen es el final — el tendero ya terminó y lo siguiente que hace es
+  // irse a otro sitio. Quitarle la barra ahí lo dejaría sin salida, porque esa
+  // pantalla tampoco lleva cabecera.
+  // EL FLUJO DEL ABONO TAMPOCO LLEVA BARRA, desde el 2026-10-19: son tres
+  // pasos con su propia barra de progreso, igual que el asistente de venta.
+  // Y EL DEL PRODUCTO, desde el 2026-10-20: cuatro pasos con su barra de
+  // progreso, igual que los otros dos. Sin esto, la barra y el flotante se
+  // montan encima del «Continuar» --visto en la pantalla antes de arreglarlo--.
+  //
+  // `=== "/productos/nuevo"` y no `startsWith("/productos")`: el catálogo SÍ
+  // lleva barra, y es la pantalla de la que se entra.
+  const enAsistenteDeVenta =
+    pathname.startsWith("/ventas/nueva") ||
+    pathname.startsWith("/abonos/nuevo") ||
+    pathname === "/productos/nuevo" ||
+    /^\/productos\/[^/]+\/editar$/.test(pathname);
+
+  // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
+  // dueño: «en la pantalla final de transacción exitosa se debe ver el botón
+  // flotante Registrar, agrégalo».
+  //
+  // LO HABÍA QUITADO YO, razonando que «Registrar» abre la hoja que empieza
+  // OTRA venta encima del resumen de la que se acaba de hacer. El razonamiento
+  // describe bien lo que el botón hace y se equivoca en lo que significa: en
+  // un mostrador, terminar una venta es exactamente el momento en que llega el
+  // siguiente cliente. Queda escrito con su motivo porque si algún día se
+  // vuelve a quitar, conviene saber que ya se quitó una vez y por qué volvió.
 
   // THE FLOATING BUTTON CHANGES WHAT IT DOES ON THE CATALOGUE.
   //
@@ -231,12 +318,46 @@ export function MobileNav() {
   // out of the way of.
   //
   // So it navigates to `?nuevo=1` and the catalogue opens its own dialog from
-  // that marker, exactly as Inicio already does. The mechanism is proven,
+  // that marker, exactly as Inicio already did. The mechanism is proven,
   // including the two traps `ClientSearchDialog` documents: repeat taps, and
   // clearing the marker through the router rather than `replaceState`.
+  //
+  // ========================================================================
+  // DESDE EL 2026-10-18 «REGISTRAR» ABRE UNA HOJA, NO UNA PANTALLA
+  //
+  // Decisión del dueño, el mismo día y en dos pasos: primero *«los cuatro
+  // pasos se mostrarán al presionar el botón "Agregar"»*, y luego *«al
+  // seleccionar el botón "Registrar" mostrarás sheet con opciones: Nuevo
+  // cliente; Fiado o Venta; Abono»* (frame `1389:11227`).
+  //
+  // POR QUÉ CAMBIÓ DOS VECES EN UN DÍA, que es lo que conviene no perder: el
+  // paso 8 rompe la suposición de que hay UNA acción por defecto. Mientras
+  // Sevenz era solo un libro de fiados, «Agregar» podía significar «agregar un
+  // movimiento» sin ambigüedad. Con la venta dentro ya no: el tendero que abre
+  // la app para anotar un abono y el que viene de vender son el mismo número
+  // de tenderos, y un botón que elija por ellos se equivoca con la mitad.
+  //
+  // Y por eso el rótulo también cambió: «Agregar» nombra lo que hace el botón,
+  // «Registrar» nombra lo que el tendero viene a hacer.
+  //
+  // EL CATÁLOGO SIGUE SIENDO OTRA COSA: ahí este mismo botón crea un producto,
+  // y desde el 2026-10-20 navega a `/productos/nuevo`, que es una RUTA de
+  // verdad y no un marcador.
+  //
+  // IBA CON `replace` A `?nuevo=1`, y tenía que ir así: el marcador vivía en
+  // la misma página, y con `push` quedaba en el historial y reabría el
+  // diálogo al volver atrás. Con una ruta propia es al revés — `push` es lo
+  // correcto, porque la flecha del paso 1/4 tiene que poder volver al
+  // catálogo.
   const enCatalogo = pathname === "/productos";
-  const agregarHref = enCatalogo ? "/productos?nuevo=1" : "/dashboard?nuevo=1";
-  const agregarLabel = enCatalogo ? "Crear producto" : "Agregar";
+  // EL FLOTANTE SE APARTA CUANDO EL CATÁLOGO ESTÁ VACÍO. Instrucción del
+  // dueño el 2026-10-20: ese estado vacío estrena su propio botón «Crear
+  // producto» de ancho completo (frame `1500:9705`), y los dos a la vez son
+  // dos controles con la misma etiqueta a cinco centímetros en una pantalla
+  // que solo pide que uses uno. Ver `catalogo-vacio.ts`.
+  const catalogoVacio = useCatalogoVacio();
+  const agregarHref = "/productos/nuevo";
+  const agregarLabel = enCatalogo ? "Crear producto" : "Registrar";
 
   // NADA DE "AGREGAR" EN EL FLUJO DE SUBIR LIBRETA. Decision del dueno el
   // 2026-10-14, con una captura de la pantalla de carga de la foto.
@@ -293,17 +414,56 @@ export function MobileNav() {
   // con la misma línea.
   const enPedidos = pathname.startsWith("/productos/ordenes");
 
+  // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
+  //
+  // Decisión del dueño el 2026-10-20, con una captura y la barra rodeada en
+  // rojo: *«El nav bar no se debe ver en los detalles de las transacciones»*.
+  //
+  // Y DESPLAZA UNA DECISIÓN DEL DÍA ANTERIOR, que queda escrita porque era
+  // razonada y no un descuido: al montar la pantalla se quitó solo el botón
+  // «+» —caía encima de la foto adjunta, que es el respaldo que se abre esta
+  // ficha para mirar— y se dejó la barra «como en Pedidos, porque esto es una
+  // hoja a la que se llega desde una lista, no un flujo a medias». El dueño
+  // vio la pantalla montada y decidió lo contrario.
+  //
+  // La ficha tiene su propia flecha de volver arriba, que además vuelve al
+  // cliente del que salió, así que quitar la barra no deja a nadie encerrado.
+  const enTransaccion = pathname.startsWith("/transacciones");
+
   // Cuenta pausada: ni se navega. Sin esto el boton llevaria a Cartera para
   // que alli saliera el dialogo, y desde Clientes eso es un salto de pantalla
   // que nadie pidio.
   const guardia = useGuardiaDeCuentaPausada();
+
+  // ¿Hay un buscador con el foco? Lo pone `SearchField` y, desde el
+  // 2026-10-18, también el buscador oscuro del Inicio.
+  const { focused: buscando } = useSearchFocus();
 
   // Mientras una libreta leída espera confirmación, la barra se va: son
   // cuatro salidas de un toque junto al pulgar con veintitantos movimientos
   // sin guardar detrás. Todas preguntan antes de salir —van por el mismo
   // guard—, pero un diálogo que salta cuatro veces por error es peor que no
   // tener el atajo. Queda una sola salida, el chevron, y esa sí pregunta.
-  if (overlayOpen || keyboardOpen || revisando) return null;
+  // ── Y MIENTRAS SE BUSCA, TAMPOCO ────────────────────────────────
+  //
+  // ESTO REVIERTE UNA DECISIÓN DEL 2026-09-20, y las dos quedan escritas
+  // porque la nueva no invalida el razonamiento de la vieja: entonces se
+  // decidió DEJAR la barra —«quitarla gana 64px más, pero deja al dueño sin
+  // navegación justo cuando más probable es que quiera salir»— y se midió en
+  // las dos versiones. Ver `search-focus-context.tsx`.
+  //
+  // LO QUE CAMBIÓ NO ES EL CRITERIO, ES EL PROBLEMA. Aquello pesaba sitio
+  // para LEER; esto es que la barra y el botón flotante se ponen ENCIMA de la
+  // lista de resultados y tapan el primero. El dueño lo reportó con una
+  // captura el 2026-10-18: el desplegable sale debajo del campo y «Registrar»
+  // flota justo sobre él. No es incomodidad, es un resultado que no se puede
+  // tocar.
+  //
+  // `useKeyboardOpen` ya lo cubría en un teléfono de verdad; no cubre el caso
+  // en que el campo tiene el foco sin teclado —un escritorio estrecho, un
+  // teclado físico, un móvil que no cambia el viewport visual—, que es
+  // exactamente la captura.
+  if (overlayOpen || keyboardOpen || buscando || revisando) return null;
 
   // Mirrors the sidebar's own link behaviour exactly, including the guard.
   // Without it the bar walked straight out of "Mi negocio" with unsaved edits
@@ -337,9 +497,18 @@ export function MobileNav() {
 
   // The bar's own classes. The layout reserves exactly this much space, and a
   // variant that measured differently would strand the last row of content.
+  // EL ALTO VIVE EN `--nav-bar-h` (globals.css) y de aquí solo salen sus
+  // partes: `py-2` son los 8px de aire de arriba y de abajo del frame, y el
+  // `pb` los sustituye abajo por 16 — los 8 del frame más 8 para despegar la
+  // barra de la raya del iPhone, que es lo que pidió el dueño el 2026-10-18.
+  //
+  // `env(safe-area-inset-bottom)` va ADEMÁS, no en vez de: en un iPhone el
+  // sistema reserva 34px para su raya y esos 16 son el aire por encima. En un
+  // Android o en un escritorio ese `env()` vale 0 y los 16 son todo lo que
+  // separa el chip del filo — que es justo el caso que se veía pegado.
   const navClass = cn(
     "fixed inset-x-0 bottom-0 z-40 border-t bg-background touch-manipulation md:hidden",
-    "pb-[env(safe-area-inset-bottom)]",
+    "py-2 pb-[calc(env(safe-area-inset-bottom)+1rem)]",
   );
 
   // Nothing at all on a client's own screen — neither the bar nor the floating
@@ -349,7 +518,7 @@ export function MobileNav() {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  if (onClientDetail) return null;
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
 
   return (
     <>
@@ -369,7 +538,13 @@ export function MobileNav() {
 
           Y no sale en /import, ni en /profile, ni en Pedidos: ver
           `enSubirLibreta`, `enMiNegocio` y `enPedidos` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && (
+      {/* `enTransaccion` NO entra aquí: esa pantalla se va entera por el
+          `return null` de arriba, así que nombrarla otra vez sería una
+          condición que no se puede dar. */}
+      {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
+          a la vista, su propio botón «Crear producto» hace este sobrar. Ver
+          `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
@@ -381,7 +556,7 @@ export function MobileNav() {
         // the DOM; a marker on a button that opens a different dialog is a
         // tour that explains the wrong thing.
         data-tour={enCatalogo ? undefined : "new-client-button-mobile"}
-        aria-label={enCatalogo ? "Crear producto" : "Agregar movimiento"}
+        aria-label={enCatalogo ? "Crear producto" : "Registrar"}
         onClick={() => {
           if (guardia()) return;
           guard(() => {
@@ -389,8 +564,19 @@ export function MobileNav() {
             // unreachable from a client's page now that this returns null
             // there, but the guard stays cheap and correct if that changes.
             if (tour.step === 1) tour.advance();
+            // FUERA DEL CATÁLOGO NO NAVEGA: abre la hoja aquí mismo. Es lo que
+            // quita el parpadeo de ir a otra pantalla para elegir entre tres
+            // cosas, y lo que deja que el botón funcione igual desde Clientes
+            // o Malas pagas sin mandar al tendero a Inicio primero.
+            if (!enCatalogo) {
+              onRegistrar();
+              return;
+            }
             setGoingTo(agregarHref);
-            startTransition(() => router.replace(agregarHref));
+            // `push` y no `replace`: desde el 2026-10-20 es una RUTA, no un
+            // marcador, y la flecha del paso 1/4 tiene que poder volver aquí.
+            // Ver el comentario de `agregarHref`.
+            startTransition(() => router.push(agregarHref));
           });
         }}
         // Sits one gap above the bar, inside the strip `AppMain` already
@@ -403,7 +589,7 @@ export function MobileNav() {
           "fixed right-4 z-40 flex h-14 items-center gap-1 rounded-full bg-primary py-2 pr-2 pl-4",
           "text-[17px] font-medium text-primary-foreground shadow-lg transition-colors",
           "active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden",
-          "bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)]",
+          "bottom-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         )}
       >
         {/* Label first, glyph second, from the spec. It reads as a sentence
@@ -465,6 +651,42 @@ export function MobileNav() {
           </button>
         </div>
       </nav>
+    </>
+  );
+}
+
+// ── LA BARRA Y LA HOJA, HERMANAS ────────────────────────────────────────
+//
+// LA HOJA NO PUEDE VIVIR DENTRO DE LA BARRA, y no es una cuestión de orden:
+// colgaba la app entera. Se midió el 2026-10-18, el mismo día que se
+// construyó, y el bucle es éste:
+//
+//   1. El botón flotante abre la hoja.
+//   2. Radix monta `[role="dialog"][data-state="open"]`.
+//   3. El `MutationObserver` de `useOverlayOpen` lo ve → `overlayOpen` pasa a
+//      true.
+//   4. `MobileNavBar` hace `return null` — esconderse cuando hay un diálogo
+//      encima es justo su trabajo— y con ella se DESMONTA la hoja.
+//   5. El observer ve que ya no hay diálogo abierto → `overlayOpen` vuelve a
+//      false.
+//   6. La barra se vuelve a montar, el estado «abierta» sigue siendo true, la
+//      hoja se abre otra vez → paso 2.
+//
+// A velocidad de `MutationObserver`, que es cada microtarea: el navegador se
+// queda sin hilo y no responde. No se parece a un bucle de render normal
+// —React no avisa de «máximo de actualizaciones»— porque el ciclo pasa por el
+// DOM y por un observer, no por un `setState` dentro de un render.
+//
+// LA REGLA QUE SE SACA DE AQUÍ: un componente que se desmonta solo bajo cierta
+// condición no puede ser el padre de algo que PROVOCA esa condición. El
+// `return null` de la barra y la hoja que lo dispara tienen que estar en
+// niveles distintos, y por eso el estado vive aquí arriba.
+export function MobileNav() {
+  const [registrar, setRegistrar] = useState(false);
+  return (
+    <>
+      <MobileNavBar onRegistrar={() => setRegistrar(true)} />
+      <RegisterSheet open={registrar} onOpenChange={setRegistrar} />
     </>
   );
 }

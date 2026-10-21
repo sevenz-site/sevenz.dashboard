@@ -1129,10 +1129,21 @@ check("sin seleccion previa, podar no inventa nada", podarSeleccion(new Set(), [
 
 // Concordancia de numero: una plantilla con la "s" pegada a mano acaba diciendo
 // "1 movimientos", y eso sale en pantalla cada vez que se marca el primero.
-check("1 en singular", textoDeSeleccion(1) === "1 movimiento seleccionado");
-check("3 en plural", textoDeSeleccion(3) === "3 movimientos seleccionados");
-check("el boton destructivo lleva el numero", textoDeEliminar(1) === "Eliminar 1 movimiento");
-check("y en plural tambien", textoDeEliminar(12) === "Eliminar 12 movimientos");
+// «TRANSACCION» Y NO «MOVIMIENTO». Estas cuatro esperaban la palabra vieja y
+// llevaban en rojo desde el commit `dc605a4`, que renombro la copy de la app
+// entera -- la suite no se actualizo con ella.
+//
+// SE CORRIGE LA PRUEBA, NO EL CODIGO: «transaccion» es el vocabulario vigente
+// del producto, asi que lo que estaba desfasado era lo que la prueba esperaba.
+//
+// Y LO QUE DE VERDAD COSTO NO SON ESTOS CUATRO: una suite con rojos fijos deja
+// de leerse, y el siguiente rojo -- uno de verdad -- se archiva como «ya, son
+// los de siempre». Esta en `PL-4` para el lint y en la ficha de `DM-3`, que
+// afirmo por escrito durante ocho dias que tres rojos eran lo normal.
+check("1 en singular", textoDeSeleccion(1) === "1 transacción seleccionada", textoDeSeleccion(1));
+check("3 en plural", textoDeSeleccion(3) === "3 transacciones seleccionadas", textoDeSeleccion(3));
+check("el boton destructivo lleva el numero", textoDeEliminar(1) === "Eliminar 1 transacción", textoDeEliminar(1));
+check("y en plural tambien", textoDeEliminar(12) === "Eliminar 12 transacciones", textoDeEliminar(12));
 
 // LA ETIQUETA DE LA MONEDA DICE SOBRE QUE ACTUA. El mismo control hace dos
 // cosas segun haya seleccion o no — decision del usuario del 2026-10-02 — y sin

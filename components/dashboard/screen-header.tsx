@@ -36,6 +36,8 @@ export function ScreenHeader({
   topAction,
   search,
   filters,
+  backHref = "/dashboard",
+  backLabel = "Volver a Inicio",
 }: {
   title: string;
   // Optional since 2026-10-04: the spec turns this layer off on `/reportes`,
@@ -60,6 +62,23 @@ export function ScreenHeader({
   topAction?: React.ReactNode;
   search: React.ReactNode;
   filters: React.ReactNode;
+  // ── ADÓNDE VUELVE LA FLECHA ──────────────────────────────────────────
+  //
+  // Inicio por defecto, que es de donde se llega a Clientes, Malas pagas,
+  // Papelera, Catálogo y Reportes. **Pedidos no**: se entra desde Catálogo, y
+  // hasta el 2026-10-20 la flecha lo sacaba al Inicio de todas formas —el
+  // dueño lo reportó ese día con la flecha rodeada en rojo.
+  //
+  // UN DESTINO EXPLÍCITO Y NO `router.back()`. La historia del navegador no
+  // es la jerarquía de la app: a Pedidos también se llega desde una
+  // notificación o recargando la página, y ahí «atrás» es cualquier cosa o
+  // nada. Lo que la flecha promete es subir un nivel, y eso lo sabe la
+  // pantalla, no el historial.
+  backHref?: string;
+  // Se pasa junto al destino a propósito: son el mismo dato dicho dos veces
+  // —uno para el dedo y otro para quien no ve la pantalla— y separarlos es
+  // cómo acaban contradiciéndose.
+  backLabel?: string;
 }) {
   // Frozen while the owner types, same as Inicio. The context is the page's
   // `ClientFilterProvider`; the default value is `focused: false`, so a screen
@@ -79,8 +98,8 @@ export function ScreenHeader({
           chips. */}
       <div className="flex items-center justify-between gap-3 px-4 py-4">
         <Link
-          href="/dashboard"
-          aria-label="Volver a Inicio"
+          href={backHref}
+          aria-label={backLabel}
           className="-m-2 rounded-md p-2 text-brand-muted outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
         >
           <ArrowLeft className="size-6" aria-hidden="true" />

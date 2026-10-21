@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { WhatsappConsentDialog } from "@/components/public/whatsapp-consent-dialog";
 import { WhatsappDeactivateDialog } from "@/components/public/whatsapp-deactivate-dialog";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // ⋮ › Configuración › Notificaciones — the way a client reaches their own
 // notification setting. Figma frame 1156:5063, owner's flow of 2026-10-09.
@@ -141,7 +142,21 @@ export function ShareSettings({
               nothing or leave the site — and a control that does nothing
               teaches that Sevenz's controls sometimes do nothing, on the one
               screen that most needs to look trustworthy. */}
-          <Button ref={triggerRef} variant="ghost" size="icon" aria-label="Más opciones">
+          {/* BLANCO EXPLÍCITO, no `ghost` a secas. Desde el 2026-10-17 este
+              control vive sobre la banda oscura, y `ghost` pinta
+              `text-foreground` — que en el tema claro es casi negro. Negro
+              sobre `#272727` es el icono invisible que reportó el dueño.
+
+              Los mismos tokens que la flecha de volver de `PublicHeader`, que
+              está en la esquina opuesta de esta misma banda: no hay razón
+              para que dos controles del mismo bloque se vean distintos. */}
+          <Button
+            ref={triggerRef}
+            variant="ghost"
+            size="icon"
+            aria-label="Más opciones"
+            className="text-white hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
+          >
             <MoreVertical className="size-5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
@@ -203,7 +218,7 @@ export function ShareSettings({
               <ArrowLeft className="size-6" aria-hidden="true" />
             </Button>
 
-            <h1 className="text-xl font-medium">Configuración</h1>
+            <ScreenTitle>Configuración</ScreenTitle>
 
             {/* One row, so no list abstraction. The chevron-row pattern is
                 written out by hand in five other places in this codebase and

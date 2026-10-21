@@ -48,6 +48,114 @@ inconsistent with each other.
 Every card on a screen uses this exact combination, so the rate calculator, the
 balance cards and a client's info block read as one family.
 
+## El título de una pantalla y su flecha salen de `screen-chrome.tsx`
+
+**`ScreenTitle` y `IconoVolver`. No se escriben a mano.**
+
+```tsx
+import { IconoVolver, ScreenTitle } from "@/components/dashboard/screen-chrome";
+
+<ScreenTitle>Detalle de transacción</ScreenTitle>   // text-2xl font-semibold tracking-tight
+<IconoVolver className="text-primary" />             // ArrowLeft size-6
+```
+
+**Qué pasó, el 2026-10-20.** El dueño mandó dos capturas: *«el estilo del
+texto "Notificaciones" es el estilo que deben tener todos los títulos de las
+pantallas donde hay títulos [...] los veo distintos»* y *«el ícono back del
+componente Header debe ser la flecha con la raya, no el chevron»*.
+
+Al contarlo había **nueve títulos en `font-normal`** contra cinco en
+`font-semibold tracking-tight`, y **diez sitios** eligiendo entre `ChevronLeft`
+y `ArrowLeft` sin que nadie hubiera decidido nada.
+
+**Y no era descuido de nadie**: no había ningún sitio al que mirar. Es el mismo
+fallo que ya se pagó con la fila de la flecha —cuatro copias del mismo
+`sticky top-0 -mx-4` antes de que `ScreenBackRow` existiera— y con `COP`
+faltando en el mapa de banderas. **Una decisión que se repite a mano no se
+mantiene: se reescribe distinta la quinta vez.**
+
+### El chevron significa otra cosa
+
+Un `ChevronLeft` es el gemelo del `ChevronRight` que lleva **cada fila de lista
+de esta app**, y ahí significa «hay más por aquí». Una flecha con raya significa
+«vuelve». Que la misma pantalla usara una para entrar y la otra para salir es
+lo que hacía que las dos se leyeran igual.
+
+### El color lo pone quien la monta, y `text-primary` no necesita variante
+
+- sobre cabecera oscura → `text-white`
+- sobre fondo claro → **`text-primary`**
+
+`--primary` es `#272727` en claro y se **invierte** a casi blanco en oscuro, así
+que una sola clase vale para los dos temas. Escribir `text-black dark:text-white`
+sería la forma de que un día no coincidan.
+
+### Lo que NO usa `ScreenTitle`
+
+- **Los títulos sobre cabecera oscura** (`ScreenHeader`, `PublicHeader`, la
+  ficha del cliente): van centrados, en blanco, y compiten con los controles de
+  su propia barra. Son otra cosa.
+- **Los rótulos centrados de las pantallas de «listo»** («¡Abono registrado con
+  éxito!», «Tu pedido quedó registrado») y **los de error** («Este enlace ya no
+  sirve»): `text-xl` centrado. Son un mensaje, no el nombre de una pantalla.
+  Quedaron así a propósito el 2026-10-20 y **no están confirmados con el dueño**.
+- **La miga de pan de `/admin`** (`‹ Cuentas`, 12px, gris): es navegación
+  jerárquica con texto, no la flecha de volver de una cabecera.
+
+## El estado vacío de una lista sale de `empty-state.tsx`
+
+**`EmptyState`, con `title`, `subtitle` opcional y botones como hijos.**
+
+```tsx
+import { EmptyState } from "@/components/dashboard/empty-state";
+
+<EmptyState title="Todavía no tienes productos" subtitle="Se van agregando solos cuando vendes." />
+```
+
+Frame `1499:9618`, encargo del dueño el 2026-10-20: *«ese estilo de empty
+state debe ser el estilo para todos los empty states»*.
+
+**Qué había.** Dieciséis escritos a mano, con bordes punteados y sólidos,
+`rounded-lg` y `rounded-xl`, títulos en `text-sm`, `text-base` y
+`font-medium`, y rellenos de `py-8`, `py-10`, `py-12` y `py-16`. Cada uno
+defendible por separado; juntos, cuatro maneras de decir lo mismo. Es la misma
+deriva que el título de pantalla y la flecha de volver, el mismo día, y por la
+misma vía: no había dónde mirar.
+
+### El borde es SÓLIDO, y eso cambió la mitad
+
+Un borde punteado se lee como «aquí falta algo por cargar» — es la convención
+de un hueco o de una zona para soltar archivos. Un estado vacío no es eso: es
+una respuesta completa, y a menudo buena («no tienes pedidos sin atender»).
+
+**La zona de soltar fotos de «Subir libreta» SÍ sigue punteada**, por lo mismo
+al revés: ahí el punteado dice «esto está esperando algo», que es verdad.
+
+### Una frase suelta se parte en título y subtítulo
+
+No es reescribir copy: es repartir la que ya hay entre las dos ranuras que el
+frame define. «Ningún pedido coincide con lo que buscas. Prueba con otro
+nombre o quita el filtro» ya se leía como titular más instrucción; ahora se
+dibuja así — 16 semibold arriba, 12 gris debajo.
+
+**Con los dos en 14 el bloque se lee como un párrafo**, y un párrafo se lee
+entero o no se lee. El salto de tamaño es lo que lo convierte en algo que se
+entiende de un vistazo.
+
+### El único con icono, y por qué
+
+El de Reportes conserva su `ChartColumn`: esa caja sustituye a un **gráfico**,
+no a una lista, y sin icono el hueco que deja una gráfica se lee como un error
+de carga. Va dentro del `title`; no se le añadió una ranura de icono a
+`EmptyState` para un solo caso.
+
+### Lo que NO es un estado vacío
+
+No lo son, y por eso siguen escritos a mano: los marcos de «sin foto adjunta»
+(son el hueco de una imagen), las zonas de soltar archivos de «Subir libreta»,
+y los avisos de error de carga («No pudimos cargar tus pedidos»), que dicen que
+algo falló y no que no hay nada.
+
 ## Contextual bar (phone only)
 
 A screen reached *from* somewhere — a client, Malas pagas — replaces the app
@@ -379,6 +487,30 @@ about a person by accident. Of the 158 documents in production, 154 are already
 bare digits and 4 are something else.
 
 ## Traps that have actually bitten this codebase
+
+**Un `mx-auto max-w-*` DENTRO de un flex column necesita `w-full`, o la
+pantalla se desplaza en horizontal.** `body` es `flex flex-col`, así que cada
+`<main>` es un ítem flex. Las márgenes automáticas de `mx-auto` lo convierten
+en *shrink-to-fit*: en vez de ocupar el ancho del padre, mide **su propio
+contenido**, y lo único que lo frena es el `max-w-*`. Con un hijo ancho —un
+carrusel que se desliza, una tabla— el `main` se va a su máximo y **toda la
+página se desborda**, no solo ese hijo.
+
+Lo delata una medición de dos números: `document.documentElement.clientWidth`
+dice 375 y `main.getBoundingClientRect().width` dice 672, que es
+exactamente `max-w-2xl`. Si ves el máximo clavado, es esto.
+
+**`min-w-0` NO lo arregla**, y es el primer intento de cualquiera porque es el
+remedio del *otro* problema de flex —el hijo que no se deja encoger—. Aquí el
+`main` no está siendo empujado por su hijo: está midiéndose a sí mismo porque
+las márgenes automáticas se lo permiten. Lo que lo arregla es `w-full`, que
+fija el ancho al del padre y deja al `max-w-*` como el tope que debía ser.
+
+**Mordió el 2026-10-17**, en la pantalla del comprobante del catálogo, al
+añadirle el carrusel «Otros productos». Las otras seis pantallas públicas
+tenían la misma trampa armada y sin disparar — el hijo más ancho de cada una
+cabía por casualidad. Se les puso `w-full` a todas. `/s/[token]` nunca falló
+porque ya lo llevaba, y **esa es la única razón**.
 
 **`Input` ignora tu tamaño de fuente desde 768px.** `components/ui/input.tsx`
 trae `md:text-sm` en su clase base. Si le pasas `text-2xl` por `className`,
@@ -768,6 +900,30 @@ blanco al 10% y sobre `#272727` se compone en un gris que no se ve. Es un
 elemento propio con clases explícitas, igual que los chips de filtro y la flecha
 de volver de las otras cabeceras, y por la misma razón.
 
+### Y `variant="ghost"` tampoco. Ni ninguna variante, sobre esa banda
+
+Es la misma trampa un paso más allá, y ya ha mordido tres veces: `outline` con
+el botón de WhatsApp (2026-10-04), `emerald-700` con el de «Contactar vía
+WhatsApp» (2026-10-17) y `ghost` con el `⋮` de la pantalla del cliente ese
+mismo día. **Las tres veces el control se veía perfecto en la pantalla donde
+se escribió y quedó ilegible al subirlo a la banda.**
+
+`ghost` pinta `text-foreground`, que en el tema claro es casi negro. Negro
+sobre `#272727` no es «poco contraste»: es un icono que no está. El dueño lo
+reportó señalando una esquina vacía.
+
+**La regla, entonces: un control que viva sobre `--brand-primary` escribe sus
+colores a mano.** Blanco o `--brand-secondary` para el contenido,
+`hover:bg-white/10`, y el anillo de foco en `white/40`. Son los mismos tres
+que ya usan la flecha de volver de `PublicHeader` y los chips de filtro — si
+dos controles comparten banda, comparten tokens, y si uno no se parece al
+otro es que uno de los dos está mal.
+
+**Cómo se comprueba, porque «se ve bien» no es una medida**: leer el color
+calculado del icono y el fondo del `<header>` en el inspector y sacar el
+cociente. El `⋮` arreglado da 14,94:1 sobre `#272727`; antes daba menos de
+1,5:1. Un número medido se puede discutir; una impresión no.
+
 ## Las tarjetas oscuras son oscuras en los dos temas
 
 Tres piezas de la app son oscuras a propósito: la cabecera del Inicio
@@ -1033,6 +1189,72 @@ cliente— le aplican exactamente igual. Un componente aparte tendría que copia
 las cuatro, y el día que una cambiara, el botón sobreviviría a un teclado del
 que la barra sí se apartó.
 
+## NADA PEGADO AL BORDE INFERIOR SOBREVIVE AL TECLADO. NUNCA.
+
+**Si una pantalla tiene un campo que se escribe y algo pegado abajo —un botón,
+un aviso, una barra, una casilla—, eso se esconde mientras el teclado está
+arriba.** No es una mejora: es un requisito, y el dueño lo ha tenido que pedir
+**tres veces**.
+
+| Cuándo | Qué tapaba | Qué se hizo |
+|---|---|---|
+| 2026-10-18 | «Registrar y finalizar» sobre el campo Documento | Nació `StickyActions` |
+| 2026-10-20 | «Pagar» y el aviso de WhatsApp sobre el teclado numérico | `abono-monto.tsx` llevaba las clases COPIADAS a mano en vez de montar `StickyActions` |
+| 2026-10-21 | Lo mismo, llegando desde «Pagar» del detalle de un fiado | El componente sí montaba `StickyActions`; lo que falló fue el hook |
+
+Sus palabras la tercera vez: *«te lo he dicho mil veces»*. Tenía razón.
+
+### Por qué se repite, que es lo que hay que entender
+
+**Cada vez ha fallado por un motivo distinto, y ninguno se parecía al
+anterior.** Por eso arreglar el caso no bastó ninguna de las dos primeras
+veces:
+
+1. La primera no había componente.
+2. La segunda había componente y una pantalla tenía su copia a mano. Las clases
+   eran casi iguales —`gap-3` contra `gap-4`— así que a la vista no se
+   distinguía del original, pero no heredaba lo único que el original añade.
+3. La tercera el componente estaba bien montado y **el detector de teclado se
+   quedó ciego**: calibra una referencia al montar y solo la sube, así que una
+   pantalla que nace con el teclado arriba —o con el viewport sin estabilizar
+   tras una navegación— graba la referencia mal y ya no detecta nada.
+
+### Las tres cosas que hay que hacer, y las tres hacen falta
+
+1. **Montar `StickyActions`**, nunca copiar sus clases. Si hace falta algo que
+   no tiene, se le añade a él.
+2. **Meter DENTRO todo lo que va pegado abajo**: el botón, el aviso de
+   WhatsApp, la casilla del permiso, los mensajes de error que acompañan. En la
+   captura del 2026-10-21 lo que tapaba el campo no era solo el botón.
+3. **Probarlo con el teclado abierto llegando por cada puerta.** La del
+   2026-10-21 entró por una NAVEGACIÓN (`/abonos/nuevo/<id>/monto` desde el
+   detalle), no por un cambio de paso, y esa diferencia fue justo la que
+   rompió el detector.
+
+### El detector mira DOS señales, y no es redundancia
+
+`useKeyboardOpen` combina:
+
+- **La referencia histórica** — el alto de la ventana la última vez que no
+  había nada enfocado. Es lo que funciona en los Android que redimensionan la
+  ventana entera.
+- **La superposición** — `documentElement.clientHeight − visualViewport.height`.
+  En iOS el teclado se superpone: el viewport visual encoge y el de maquetación
+  no. **No tiene memoria**, así que es la que salva el caso de nacer con el
+  teclado ya arriba.
+
+Basta con que **una** diga que hay teclado. Cada una cubre el sistema donde la
+otra no ve nada, y la segunda existe porque la primera puede nacer mal
+calibrada — que es exactamente lo que pasó el 2026-10-21.
+
+### Y no se puede comprobar en el panel del navegador
+
+El emulador de viewport **desenfoca el campo al cambiar de tamaño**, así que
+simular un teclado ahí apaga la condición que se quiere medir. Está comprobado
+con un control en `/clients/nuevo`. **La única prueba válida es un teléfono
+real**, y hasta entonces la fila de QA dice «no probado», no «pasa».
+
+
 **Y una consecuencia que hay que respetar al añadir un hueco:** desde que la
 barra lleva «Menú», la cabecera del Inicio ya no lleva hamburguesa en teléfono
 —solo de `md` hacia arriba, donde no hay barra— y `/reportes` se salió de la
@@ -1091,6 +1313,79 @@ Papelera**, no al final: el `gapBefore` de Papelera marca dónde acaban las
 pantallas del día a día y empiezan las ocasionales, y el catálogo es de las
 primeras.
 
+### El alto de la barra vive en `--nav-bar-h`, y no en tres clases sueltas
+
+Frame `1421:15026`, 2026-10-18. La barra mide **88px**: 8 de aire arriba, los
+64 de la fila de los cinco, y 16 abajo — los 8 del frame más 8 que el dueño
+pidió para *«levantarlo del widget inferior del teléfono»*. Encima de todo eso
+va `env(safe-area-inset-bottom)`, que en un iPhone añade los 34 de su raya y en
+un Android o un escritorio vale 0 — que es justo el caso que se veía pegado al
+filo.
+
+**Esa medida la tienen que saber otros dos sitios**: la franja que `AppMain`
+reserva debajo de cada pantalla, y el `bottom` del botón flotante. Estaban
+escritos a mano como `4rem` en tres clases distintas. Tres copias de un número
+que tiene que cuadrar al píxel: el día que la barra crece y una no se entera, el
+último botón de una pantalla queda debajo de ella.
+
+**Por qué una variable CSS y no una constante de TypeScript**: Tailwind genera
+las clases leyendo el texto de los ficheros, así que `` `pb-[calc(${ALTO}+…)]` ``
+no existe en la hoja de estilos. Una variable CSS **sí** viaja dentro de una
+clase literal: `pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]`
+es texto fijo, y el valor cambia en un solo sitio.
+
+### Los tres estados de un elemento de la barra
+
+Del mismo frame, y los tres los pidió el dueño el 2026-10-18:
+
+| Estado | Qué se ve |
+|---|---|
+| Seleccionado | Chip `bg-muted`, borde inferior de 4px en `foreground`, rótulo en tinta |
+| Normal | Sin chip, icono y rótulo en `muted-foreground` |
+| Pulsado | El chip aparece en `bg-muted/60` mientras el dedo está encima |
+
+**El subrayado es del chip, no una pastilla aparte.** Hasta ese día eran dos
+cajas apiladas con un hueco entre ellas, y la rayita medía 24px fuera cual
+fuera el rótulo. Con `border-b-4` mide lo que mide el chip, siempre. Y el borde
+se pinta **transparente** cuando no está seleccionado en vez de no ponerse: así
+los cinco chips miden igual y el rótulo no sube cuatro píxeles al cambiar de
+pantalla.
+
+**El pulsado no es adorno.** Entre tocar y que llegue la pantalla no pasaba
+NADA visible, y en un teléfono lento eso se lee como que el toque no entró. Va
+con el `active:` de CSS, que dispara con el dedo sin JavaScript y sin esperar
+al enrutador — al revés que el círculo girando, que solo aparece cuando Next ya
+empezó a navegar.
+
+**No hay `hover:`**, a propósito: la barra es `md:hidden`, así que solo existe
+donde no hay ratón, y ahí un `hover` se queda pegado después de tocar.
+
+#### Lo que NO se marca, y por qué
+
+- **Una subruta no marca a su padre.** En `/clients/123`, `/malas-pagas`,
+  `/papelera` o `/profile` no se enciende ninguno. Decisión del dueño el
+  2026-10-18, preguntada antes de tocarlo: esas pantallas son destinos propios,
+  no la sección.
+- **Menú nunca se marca.** Abre una hoja que tapa la pantalla, y esa hoja
+  desmonta la barra entera — marcarla no se lo enseñaría a nadie. Cambiar eso
+  significa cambiar cómo se desmonta la barra, que es justo lo que colgó la app
+  el 2026-10-18 (ver el apartado del componente que se desmonta solo).
+
+#### El icono relleno al seleccionar: medido, y no sale con lucide
+
+El dueño lo pidió el 2026-10-18. **`fill="currentColor"` sobre los iconos de
+lucide no sirve**, y no es una opinión: se renderizaron los cinco y se miraron.
+`Home` se convierte en un pentágono sólido sin tejado, `ChartColumn` en una
+esquina irreconocible y `Package` en un hexágono liso sin las aristas de la
+caja. Solo `Users` aguanta, y `Menu` no cambia porque no tiene ningún trazo
+cerrado.
+
+La razón es estructural: los iconos de lucide son **trazos**, no siluetas.
+Rellenarlos rellena el hueco que el trazo dibujaba. Tenerlos rellenos exige
+otro juego de iconos — Material Symbols, que es el que usa el frame y sí trae
+contorno y relleno del mismo icono — y eso es cambiar la familia de iconos de
+la barra, no un atributo. Queda pendiente de decisión.
+
 ### El flotante cambia de etiqueta según la pantalla
 
 En `/productos` el botón flotante dice **«Crear producto»** y navega a
@@ -1109,6 +1404,226 @@ Inicio. Ese mecanismo tiene dos trampas ya documentadas en
 sola vez hace que solo funcione el primer toque, y limpiar el marcador con
 `history.replaceState` en vez del router deja al router creyendo que sigue en
 `?nuevo=1`, así que el siguiente toque gira el spinner y no abre nada.
+
+### El flotante cambió otra vez el 2026-10-18: ahora dice «Registrar» y abre una hoja
+
+El rótulo y el destino los cambió el dueño ese día. Fuera del catálogo ya no
+navega a ningún sitio: abre una hoja con **Nuevo cliente**, **Fiado o venta** y
+**Abono** (frame `1389:11227`). Dentro del catálogo sigue diciendo «Crear
+producto» y navegando a `?nuevo=1`, que es el único camino que todavía navega
+desde ese botón.
+
+**Por qué dejó de llevar a un sitio**: con la venta dentro de Sevenz ya no hay
+una acción por defecto evidente. Mientras era solo un libro de fiados,
+«Agregar» podía significar «agregar un movimiento» sin ambigüedad; ahora el
+tendero que viene a anotar un abono y el que viene de vender son el mismo
+número de tenderos, y un botón que elija por ellos se equivoca con la mitad.
+
+## La fila de la flecha es UN componente: `ScreenBackRow`
+
+Notificaciones, Mi negocio, Subir libreta, la ficha de un pedido y todo el
+flujo de registrar comparten la misma cabecera: barra pegada arriba, de borde
+a borde, con línea inferior y la flecha a la izquierda. Es
+`components/dashboard/screen-back-row.tsx` y se usa tal cual.
+
+**Hasta el 2026-10-18 eran cuatro copias escritas a mano**, carácter a
+carácter, del mismo `sticky top-0 z-20 -mx-4 -mt-4 … border-b … px-4 py-3`. No
+fue descuido: `app-header.tsx` incluso lo documentaba —*«any new screen that
+copies the "-mx-4 -mt-4 … sm:hidden" back-arrow row belongs in this list
+too»*— y aun así la quinta copia iba a entrar con la venta. Lo cortó el dueño:
+*«los headers… deben ser el mismo componente ya aplicado en la pantalla
+Notificaciones»*.
+
+Dos cosas que el componente guarda y conviene no redescubrir:
+
+- **Los márgenes negativos no son decorativos.** `AppMain` envuelve toda
+  pantalla en `p-4`; `-mx-4 -mt-4` cancelan ese padding para que la barra
+  llegue a los bordes, y su propio `px-4` lo devuelve para que la flecha quede
+  alineada con el contenido de debajo. Si `AppMain` deja de poner `p-4`, esto
+  se sale de la pantalla.
+- **`soloEnTelefono` por defecto es `true`**, porque en las cuatro pantallas
+  originales esta barra SUSTITUYE a la cabecera de la app, que vuelve a partir
+  de `sm`. El flujo de registrar lo pasa a `false`: ahí `app-header.tsx`
+  esconde su barra a todas las anchuras, así que sin esto un escritorio se
+  queda sin salida.
+
+## `AppMain` ya pone los 16px laterales. No se vuelven a poner.
+
+Toda pantalla vive dentro de `<main class="… p-4 …">`. Un `p-4` propio en la
+raíz de la pantalla no sustituye a ese: **se suma**, y el resultado son 32px de
+margen lateral en vez de 16.
+
+**Pasó en las tres pantallas del flujo de registrar a la vez**, y se descubrió
+con el inspector abierto, no leyendo código: el dueño señaló el `.p-4` y dijo
+*«los que agregaste son muy altos»*. Preguntado cuánto quería, contestó 16px —
+exactamente lo que `AppMain` ya ponía. El arreglo no fue cambiar un número:
+fue quitar el segundo.
+
+Por eso una pantalla nueva empieza con `flex flex-col gap-4` y **sin padding**,
+y solo añade `py-*` donde haga falta ritmo vertical.
+
+### El aire debajo del último botón: 40px en el flujo de registrar
+
+A petición del dueño el 2026-10-18: *«para que los botones no queden tan
+pegados a la parte inferior del teléfono ni el widget»*. Son 2,5rem, los pone
+`AppMain` y se miden hasta lo que haya debajo — el filo de la pantalla donde no
+hay barra, la barra donde la hay.
+
+**No es el nuevo valor de toda la app.** En una pantalla de lista los 16px de
+siempre son correctos, porque lo último no es un botón sino una fila más. Aquí
+lo último SÍ es el botón que cierra la venta.
+
+Y el contenedor del botón no vuelve a pagar su propio `pb`: con `py-4` encima,
+los 40 se convierten en 56. En el flujo, `pt-4`.
+
+### Una clase de Tailwind NO se puede componer con una variable
+
+```tsx
+// NO: esta clase no existe en la hoja de estilos y el padding no se aplica.
+const aire = cond ? "2.5rem" : "1rem";
+className={`pb-[calc(env(safe-area-inset-bottom)+${aire})]`}
+```
+
+Tailwind genera CSS **leyendo el texto de los ficheros**. Una clase formada en
+tiempo de ejecución no aparece en ese texto, así que no se genera. No da error
+de tipos ni de compilación: la pantalla sale sin ese padding y parece que el
+cambio no se hizo. Las variantes se escriben enteras, una por rama, aunque sean
+cuatro líneas casi iguales — ver `app-main.tsx`.
+
+## La tarjeta de producto del asistente es clara, no un mosaico oscuro
+
+Frame `1389:8364`, 2026-10-18. La foto va en su propio recuadro arriba (127px)
+y el texto en tinta debajo, sobre blanco y con borde.
+
+**Lo que se gana sobre la versión anterior**, que era la foto a sangre con el
+nombre en blanco encima de un degradado: ese degradado existía para garantizar
+el contraste pasara lo que pasara en la imagen. Era una defensa contra la foto,
+y costaba oscurecer la mitad de abajo de TODAS las fotos, tuvieran o no el
+problema. Separando los dos, el texto ya no depende de la imagen y la imagen se
+ve entera.
+
+Tres decisiones del dueño el mismo día, preguntadas antes de construir:
+
+- **El «+» no es un botón**, aunque sobre blanco lo parezca mucho más: abre el
+  detalle, igual que toda la tarjeta. Un solo blanco que tocar, y la cantidad,
+  la moneda y el escalón se eligen en la hoja. (Además, un `<button>` dentro de
+  otro no es HTML válido.)
+- **La bandera de la moneda se queda** aunque el frame dibuje el precio pelado:
+  un negocio venezolano vende en dólares y en euros, y sin ella «$10,00» y
+  «€10,00» se distinguen por un carácter al final de la línea.
+- **El «· al mayor» se va**: el escalón se ve entero en el detalle, con su
+  cantidad mínima al lado, y ahí sí significa algo.
+
+Y el recuadro gris sin foto lleva el icono de imagen tachada, no se queda liso:
+un gris plano se lee como una imagen que todavía está cargando.
+
+### Un `startsWith` de ruta alcanza a las pantallas que todavía no existen
+
+**`/ventas` dejó de significar «el asistente» el 2026-10-18**, el día que nació
+`/ventas/<id>`, el resumen de la venta (frame `1389:8595`). Hasta esa mañana la
+barra de abajo y la cabecera lo escondían todo con un
+`pathname.startsWith("/ventas")`, y era correcto: no había más que el asistente
+debajo de ese prefijo.
+
+**La ruta nueva heredó el escondite sin que nadie lo decidiera.** El frame del
+resumen dibuja la barra, y esa pantalla **no tiene cabecera**: sin la barra se
+queda sin ninguna salida. El `startsWith` no falla, no avisa y no sale en
+ningún diff — la regla que escondía la barra está en `mobile-nav.tsx`, y quien
+escribe la pantalla nueva no tiene razón para abrir ese archivo. Es el mismo
+fallo que ya le pasó a `/papelera`, al catálogo y al propio asistente, pero al
+revés: ahí sobraba una barra, aquí faltaba.
+
+**La regla, entonces**: al añadir una ruta bajo un prefijo que ya aparece en
+`mobile-nav.tsx` o en `app-header.tsx`, se abren los dos y se decide si el
+prefijo todavía dice lo que quería decir. Hoy son
+`startsWith("/ventas/nueva")` para el asistente —ni barra ni flotante— y
+cualquier otra `/ventas/` para el resumen, que lleva barra y **no** flotante:
+«Registrar» empieza OTRA venta, encima del resumen de la que se acaba de hacer.
+
+### La imagen que se comparte es OTRO frame, no una deducción del de la pantalla
+
+Lo que se comparte y lo que se mira no son la misma pieza, y la diferencia no
+se adivina: el resumen de una venta tiene **dos frames** —`1414:12447` la
+pantalla, `1414:12570` la imagen— y lo que cambia entre ellos es justo lo que
+depende de dónde se mira cada una.
+
+| | Pantalla | Imagen |
+|---|---|---|
+| Barra de abajo | sí | no |
+| Botón «Compartir» | sí | no |
+| Logo, aviso antifraude, `sevenz.site` | no | sí |
+| Datos del comprador | sí | sí |
+
+La pantalla la mira el tendero dentro de Sevenz; la imagen acaba en un chat
+donde no se ve nada más nuestro, que es exactamente la situación para la que
+existe el aviso. Un mensaje sobre dinero, con cifras y sin firma, es lo que
+manda quien nos imita.
+
+**Lo que costó deducirlo en vez de pedirlo, el 2026-10-18.** La primera versión
+de la imagen se construyó sin frame propio, copiando el recibo del carrito
+(`lib/cart/recibo-imagen.ts`). De ahí salió bien el logo y bien el pie —los dos
+siguen— y mal **el nombre del negocio**, que el recibo del carrito sí lleva y
+este no. El dueño lo vio al día siguiente: *«¿de dónde salió ese label que dice
+"Secuence"?»*. Era su `owners.business_name` en dev, debajo del logo, en una
+imagen que él nunca había dibujado.
+
+**Y la razón por la que el recibo del carrito sí lo lleva sigue siendo buena
+ALLÍ**, que es lo que hace esto fácil de repetir: ese lo manda un **comprador**
+que quizá no recuerda a qué tienda pidió. Este lo manda el **tendero** a su
+propio cliente, por su propio chat. Copiar una decisión correcta a un sitio
+donde su motivo no se cumple es cómo entra un dato que nadie pidió.
+
+### Dibujar una tarjeta en canvas: el borde va DESPUÉS del contenido
+
+Las cifras de la imagen y las de la pantalla salen de las mismas funciones
+—`formatPriceAmount`, `formatCantidad`, `formatBs`, `priceIn`, `formatDocumentId`,
+`telefonoLegible`—, así que pueden separarse en maqueta pero nunca en número.
+Lo que sí hay que resolver a mano es la altura.
+
+**El borde de cada tarjeta se traza después del contenido, con la altura que de
+verdad ocupó.** La primera versión la sumaba aparte —una expresión con un
+sumando por fila— para poder pintarlo primero, y se quedó doce píxeles corta:
+la última fila de la tarjeta de euros salió montada sobre su propio borde. En
+un canvas no hay `height: auto`; lo más parecido es no adelantarse. Se puede
+porque la tarjeta es solo un trazo —no rellena—, así que no tapa el texto que
+ya está debajo.
+
+**Y un canvas no tiene `text-decoration`**: un subrayado se mide con
+`measureText` y se traza a mano. `sevenz.site` lo lleva porque sin él queda
+igual que el aviso de encima y deja de leerse como el sitio al que se puede ir
+a comprobar que Sevenz existe, que es su único trabajo ahí.
+
+### Un componente que se desmonta solo no puede ser el padre de lo que provoca ese desmontaje
+
+**Colgó la app entera el 2026-10-18**, el mismo día que se construyó la hoja, y
+no se parece a un bucle de render normal: React no avisa de «máximo de
+actualizaciones», porque el ciclo no pasa por un `setState` dentro de un
+render — pasa por el DOM y por un `MutationObserver`.
+
+La hoja se montó **dentro** de `MobileNav`, que hace `return null` cuando hay un
+diálogo encima (`useOverlayOpen`). El ciclo:
+
+1. El botón abre la hoja.
+2. Radix monta `[role="dialog"][data-state="open"]`.
+3. El observer lo ve → `overlayOpen` pasa a `true`.
+4. La barra hace `return null` —esconderse cuando hay un diálogo encima es
+   justo su trabajo— y con ella **se desmonta la hoja**.
+5. El observer ve que ya no hay diálogo → `overlayOpen` vuelve a `false`.
+6. La barra se vuelve a montar, el estado «abierta» sigue en `true`, la hoja se
+   abre otra vez → paso 2.
+
+A velocidad de microtarea. El navegador se queda sin hilo.
+
+**La regla, que vale para cualquier overlay y no solo para esta hoja**: si un
+componente se desmonta bajo cierta condición, no puede contener aquello que
+provoca esa condición. El `return null` y el disparador van en **niveles
+distintos** — en `mobile-nav.tsx` el estado vive en un envoltorio y la barra y
+la hoja son hermanas.
+
+Lo mismo aplica a `HideWhileResults`, que también desmonta a sus hijos. Hoy no
+puede entrar en bucle porque depende de la lista de coincidencias y no de que
+haya un diálogo abierto, pero un overlay cuyo estado viva debajo de él
+desaparecería al abrirse la lista.
 
 ## `flex-1` dentro de una columna estira a lo alto, y eso rompió un gráfico
 
@@ -1242,6 +1757,167 @@ habría separado — y el del cliente es el que nadie de este lado mira. Vive en
 
 **La señal de alarma, para la próxima**: si estás a punto de hacer el mismo
 cambio en dos archivos, el cambio no es el problema; la copia sí.
+
+## Los botones del flujo de registrar van en una barra pegada: `StickyActions`
+
+Petición del dueño el 2026-10-18: *«todos los botones del flujo Registrar deben
+mantenerse visibles en la parte inferior de la pantalla»*. Los monta el
+asistente de venta (pasos 2, 3 y 4) y «Nuevo cliente».
+
+**Lo que se gana no es comodidad.** Estaban al FINAL de la columna: en el
+carrito con ocho líneas, o en el paso 4 con el formulario de alta debajo, «Ir a
+pago» y «Finalizar» solo aparecían tras recorrer la pantalla entera. El tendero
+que ya decidió cobrar tenía que buscar el botón que cierra la venta, con el
+cliente delante.
+
+### `sticky` y no `fixed`, que es la decisión que importa
+
+Un `fixed` flota fuera del flujo, así que hay que **reservarle sitio a mano** en
+`AppMain` — tantos píxeles como mida la barra. Esa cuenta se descuadra el día
+que una pantalla ponga dos botones en vez de uno, y este flujo ya tiene las
+dos: `/clients/nuevo` pone dos, el carrito pone uno.
+
+`sticky` ocupa su sitio en la columna: el contenido nunca queda debajo porque el
+navegador ya lo tuvo en cuenta, y la altura la decide el contenido real. Con
+`mt-auto` se va al fondo cuando la pantalla sobra, y se pega al borde inferior
+mientras haya scroll.
+
+### El aire de abajo vive en la barra, y `AppMain` deja de ponerlo
+
+Los 40px que el dueño pidió —«para que los botones no queden tan pegados a la
+parte inferior del teléfono ni el widget»— los pone `StickyActions`. En esas dos
+rutas `AppMain` baja a **solo el área segura del iPhone**: con su `1rem` de
+siempre, el hueco medido salía de **56px**, no de 40. Se vio midiendo en
+pantalla, no leyendo el código.
+
+Es la misma trampa que la del `p-4` doblado de unos días antes: dos sitios
+poniendo el mismo espacio, cada uno convencido de ser el único.
+
+## El teclado se detecta por el FOCO, no midiendo el viewport
+
+`hooks/use-keyboard-open.ts`. Lo miran las dos barras pegadas al borde
+inferior: la de navegación y la de botones del flujo de registrar.
+
+**La primera versión no funcionaba en Android y estuvo meses rota sin que
+nadie lo notara.** Medía `visualViewport.height < window.innerHeight * 0.75`,
+que vale en iOS —ahí el teclado se superpone, el viewport visual encoge y el
+de maquetación no— y **no vale en Android**, donde el navegador suele
+redimensionar los dos: la proporción se queda cerca de 1 y la condición no se
+cumple nunca.
+
+No se notó porque las pantallas donde se habría visto esconden la barra de
+navegación por otros motivos. Apareció cuando una segunda barra empezó a usar
+el mismo hook en una pantalla que sí la enseña. El dueño lo reportó **dos
+veces**: la primera lo tapé sin saberlo añadiendo la señal del buscador —que
+es un evento de foco, y por eso sí funcionaba— y la segunda ya no hubo dónde
+esconderlo.
+
+**La señal que manda es: hay un campo de texto con el foco.** Es lo que de
+verdad significa «el teclado está arriba», no depende de cómo redimensione
+cada navegador, y es un evento en vez de una medida. La del viewport se queda
+como red de seguridad, comparando contra el **máximo visto** y no contra
+`innerHeight`.
+
+Tres detalles que cuestan una tarde si se redescubren:
+
+- **Solo en `pointer: coarse`.** En un escritorio no hay teclado que tape
+  nada, y esconder la barra en cada clic sobre un campo sería un parpadeo.
+- **Un `select` no cuenta.** Abre una rueda, no un teclado. Si contara, la
+  barra desaparecería al tocar el selector de documento o el prefijo del
+  teléfono.
+- **En `focusout` el `activeElement` todavía no se ha actualizado.** Hay que
+  esperar un tick, y de paso eso evita el parpadeo al saltar de un campo al
+  siguiente.
+
+## Con un buscador enfocado no hay barra ni botón flotante
+
+Desde el 2026-10-18. **Esto revierte una decisión del 2026-09-20, y las dos
+quedan escritas** porque la nueva no invalida el razonamiento de la vieja.
+
+Entonces se decidió **dejar** la barra, y se midió en las dos versiones:
+*«quitarla gana 64px más, pero deja al dueño sin navegación justo cuando más
+probable es que quiera salir de donde está»*. El comentario sigue en
+`search-focus-context.tsx` y el argumento sigue siendo bueno.
+
+**Lo que cambió no es el criterio, es el problema.** Aquello pesaba sitio para
+LEER. Esto es que la barra y el botón flotante se ponen **encima** de la lista
+de resultados y tapan el primero: el desplegable sale debajo del campo y
+«Registrar» flota justo sobre él. No es incomodidad, es un resultado que no se
+puede tocar. El dueño lo reportó con una captura.
+
+`useKeyboardOpen` ya lo cubría en un teléfono de verdad. Lo que no cubre es el
+campo enfocado **sin teclado** —un escritorio estrecho, un teclado físico, un
+móvil que no cambia el viewport visual— que es exactamente la captura.
+
+**La reserva de `AppMain` no se toca**, y eso no es un descuido: su franja es
+incondicional a propósito, porque un padding que apareciera y desapareciera con
+la barra haría saltar la página bajo el dedo del dueño. La barra se va; el
+hueco se queda.
+
+**El buscador oscuro del Inicio avisa por su cuenta.** No usa `SearchField`
+—es el de 50px con su propia maqueta— así que llama a `useSearchFocus` él
+mismo. Un buscador nuevo que no lo haga seguirá tapado por la barra, y no
+habrá ningún error que lo diga.
+
+### Una tarjeta sin acción no lleva flecha
+
+`ClientCardBody` dibujaba el `>` siempre. La misma tarjeta se reutiliza en dos
+sitios donde **no se puede tocar** —la hoja de «Ver cuenta de …» y el cliente
+ya elegido del paso 4 de la venta— y ahí la flecha prometía una pantalla que
+no existe. Desde el 2026-10-18 lleva `conFlecha`, por defecto `true`, y esos
+dos lo pasan a `false`.
+
+Es el precio de compartir una tarjeta entre cuatro pantallas: lo que en tres de
+ellas es correcto, en la cuarta es una promesa falsa. Reutilizarla sigue
+mereciendo la pena —el tendero ya aprendió a leerla— pero cada sitio nuevo
+tiene que decidir si la suya abre algo.
+
+## Las tres filas del historial, y qué dice cada color
+
+| Fila | Color | Signo | Qué le hace al saldo |
+|---|---|---|---|
+| Fiado | `--destructive` | `+` | Lo **sube** |
+| Abono | `blue-600` / `blue-400` | `−` | Lo **baja** |
+| De contado | `emerald-700` / `emerald-400` | ninguno | **No lo toca** |
+
+Decisión del dueño el 2026-10-18: *«verde y cambiar abono a azul»*. Hasta ese
+día el verde era del abono y el contado no salía en el historial.
+
+**El contado no lleva signo, y eso no es un olvido.** Un `+` o un `−` prometen
+un movimiento del saldo, y una venta pagada entera no mueve nada: no escribe
+en `movements` (migración `124`), así que ni el saldo, ni el puntaje de
+crédito, ni las gráficas de fiado la ven. La fila existe para que el tendero y
+su cliente sepan que esa compra ocurrió, no para explicar una deuda.
+
+**Y el verde es el 700, no el 600.** `emerald-600` sobre blanco da **3,67:1**,
+por debajo del piso de 4,5:1 de más abajo; el 700 da 5,37:1. O sea que el
+verde que llevaba el abono **llevaba fallando el contraste desde siempre**, y
+el cambio a azul lo arregla de rebote: `blue-600` da 5,26:1. No se heredó aquí
+el fallo por parecerse a lo de antes.
+
+**La gráfica de fiado se movió con él.** Su serie «Abono» pasó de
+`emerald-500` a `blue-500` el mismo día: dos pantallas que pintan «abono» de
+dos colores distintos son la clase de diferencia que nadie reporta y todos
+notan.
+
+### Una venta de contado no es un movimiento, y la lista las MEZCLA
+
+No se arregla metiendo la venta en `movements`: `recalc_client_running_balance`
+no tiene fila neutra, así que un tipo nuevo se leería como abono y **restaría
+del saldo**. Lo que hace el historial es juntar las dos fuentes al pintar y
+ordenarlas por fecha — ver `lib/ventas-de-contado.ts`.
+
+Tres reglas que salen de ahí y conviene no redescubrir:
+
+- **Una fila por moneda.** Una venta puede llevar café en dólares y refresco en
+  euros, y el historial es por libro. Y cada fila lista **solo los productos de
+  SU libro**: la primera versión repartía los de la venta entera y las dos
+  filas afirmaban llevar lo que llevaba la otra. Se vio en pantalla.
+- **Solo las pagadas enteras.** Una venta con parte fiada ya aparece como su
+  cargo; añadirle fila de contado la enseñaría dos veces.
+- **La fila no se abre.** `MovementDetailPopover` está escrito sobre un
+  movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
+  no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
 
 ## Contrast floor
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
+import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
 // The back chevron above the login and signup cards.
 //
@@ -27,11 +28,11 @@ export function AuthBackLink({
       <Button variant="ghost" size="icon" asChild className="-ml-2">
         {external ? (
           <a href={href} aria-label={label}>
-            <ChevronLeft className="size-5" />
+            <IconoVolver className="text-primary" />
           </a>
         ) : (
           <Link href={href} aria-label={label}>
-            <ChevronLeft className="size-5" />
+            <IconoVolver className="text-primary" />
           </Link>
         )}
       </Button>

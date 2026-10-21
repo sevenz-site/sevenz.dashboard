@@ -441,8 +441,8 @@ export function ConfirmarEmparejamiento({
           {candidato?.hidden ? (
             <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/20 dark:bg-amber-500/10">
               {candidato.hidden === "papelera"
-                ? `${candidato.name} está en la papelera. Al subir estos movimientos se restaurará, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`
-                : `${candidato.name} lo ocultaste definitivamente. Al subir estos movimientos volverá a tu cartera, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`}
+                ? `${candidato.name} está en la papelera. Al subir estas transacciones se restaurará, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`
+                : `${candidato.name} lo ocultaste definitivamente. Al subir estas transacciones volverá a tu cartera, y lo que debe (${loQueDebe(candidato)}) volverá a contar en tus totales.`}
             </p>
           ) : null}
         </div>

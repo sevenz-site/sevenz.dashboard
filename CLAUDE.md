@@ -539,6 +539,129 @@ dialogs mounted, duplicate tour markers).
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
 
+## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
+
+**Un enlace a un frame de Figma es una instrucción de leerlo, no una
+referencia decorativa.** Nada de la pantalla se deduce, se recuerda de una
+captura, ni se copia de una pantalla parecida: se replica **al detalle** desde
+el frame — rótulo por rótulo, fila por fila, en el orden en que están.
+
+Exigido por el dueño el 2026-10-20, literalmente: *«SIEMPRE DEBES LEER LOS
+FRAMES Y REPLICARLOS AL DETALLE. SI TE LOS PASO ES PARA QUE LOS LEAS NO PARA
+QUE LOS IGNORES»*.
+
+**Cómo se leen**, porque «mirar la captura» no cuenta: los servidores de Figma
+que responden en este proyecto son los de `mcp__plugin_figma_figma__*`.
+`get_screenshot` da la imagen y **`get_design_context` da la estructura con los
+textos exactos y los `data-node-id`**, que es lo único que distingue «Monto» de
+«Abonó» o «#» de «N°». Si un servidor de Figma contesta que no puede acceder al
+recurso, se prueba otro antes de darse por vencido — el 2026-10-20 uno fallaba
+y otro respondía al mismo nodo.
+
+**Qué pasó por no hacerlo.** El detalle de transacción se construyó deduciendo
+la pantalla. Resultado, en una sola entrega: un campo inventado («Abonos a este
+fiado», que en el frame es «Abonó»), un estado vacío inventado («Todavía sin
+abonos», que en el frame es un importe), dos campos que no existen («Se llevó»
+y «Tasa del día»), las cuotas sin su recuadro «Próximas cuotas» y con «#» en vez
+de «N°», y una frase escrita por mí que nadie pidió. El dueño tuvo que pasar los
+frames y enumerarlo.
+
+**Y lo que de verdad cuesta no es el retrabajo**: es que cada invento se entrega
+con la misma seguridad que lo que sí está en el frame, así que quien lo recibe no
+puede distinguirlos sin abrir Figma él mismo. Eso convierte cada entrega en algo
+que hay que auditar entero.
+
+**La regla práctica, entonces:**
+
+1. **Antes de escribir una línea de UI para la que hay frame, se abre el frame**
+   con `get_design_context`, no solo la captura.
+2. **Si algo del frame no se entiende** —un rótulo ambiguo, un estado que no se
+   ve dibujado— se **pregunta**, y no se rellena con lo que parezca razonable.
+   Una pregunta cuesta un mensaje; un invento cuesta la confianza en todo lo
+   demás.
+3. **Si hay frames de varios estados, se abren TODOS** antes de empezar. El
+   2026-10-20 había uno del fiado sin abonos y otro con abonos, y el estado
+   vacío inventado salió de no abrir el primero.
+4. **Lo que se entregue y no esté en el frame se dice en voz alta** en el
+   reporte, marcado como tal.
+
+## CON EL TECLADO ARRIBA NO QUEDA NADA PEGADO AL BORDE DE ABAJO
+
+**Botón, aviso, casilla, barra: si el teclado está arriba, se esconde.** El
+dueño lo ha pedido TRES veces —2026-10-18, 2026-10-20 y 2026-10-21— y la
+tercera fue así: *«te dije que ese comportamiento es invasivo... cómo debo
+decírtelo... te lo he dicho mil veces»*. Tenía razón.
+
+**Y lo que lo hace repetible es que cada vez falló por un motivo distinto**,
+así que arreglar el caso no bastó ninguna de las dos primeras:
+
+1. **No había componente.** Nació `StickyActions`.
+2. **Una pantalla tenía sus clases COPIADAS a mano** en vez de montarlo. Eran
+   casi idénticas —`gap-3` contra `gap-4`— así que a la vista no se
+   distinguían, pero la copia no heredaba lo único que el original añade.
+3. **El componente estaba bien montado y el DETECTOR se quedó ciego.**
+   `useKeyboardOpen` calibraba una referencia al montar y solo la subía: una
+   pantalla que nace con el teclado arriba, o con el viewport sin estabilizar
+   tras una navegación, graba esa referencia mal y ya no detecta nada el resto
+   de su vida.
+
+**Las tres cosas que hay que hacer, y las tres hacen falta:**
+
+1. **Montar `StickyActions`.** Nunca copiar sus clases; si le falta algo, se le
+   añade a él.
+2. **Meter dentro TODO lo que va pegado abajo** — el botón, el aviso de
+   WhatsApp, la casilla del permiso, el error que los acompaña. La captura del
+   2026-10-21 tenía el aviso tapando tanto como el botón.
+3. **Probarlo entrando por CADA puerta con el teclado abierto.** La del
+   2026-10-21 entró por una navegación (`Pagar` desde el detalle de un fiado),
+   no por un cambio de paso, y esa diferencia fue justo la que rompió el
+   detector.
+
+**El detector mira dos señales y no es redundancia**: la referencia histórica
+—que funciona en los Android que redimensionan la ventana— y la superposición
+`documentElement.clientHeight − visualViewport.height`, que es la de iOS y **no
+tiene memoria**, así que salva el caso de nacer mal calibrado. Basta con que
+una diga que hay teclado.
+
+**No se comprueba en el panel del navegador**: su emulador desenfoca el campo
+al cambiar de tamaño, o sea que apaga justo la condición que se quiere medir.
+La única prueba válida es un teléfono real, y hasta entonces la fila de QA dice
+«no probado», no «pasa». El detalle entero está en `DESIGN-SYSTEM.md`.
+
+## NUNCA añadas la cabecera de la app a una pantalla nueva
+
+**La barra oscura con el menú y el logo de Sevenz NO se pone nunca en una
+pantalla nueva, salvo que el dueño la pida.** Si el frame no la dibuja, no va.
+
+**Ha pasado CUATRO veces**: papelera, catálogo, el asistente de venta y el
+flujo del abono. La cuarta la reportó el dueño el 2026-10-19 con una captura y
+el círculo en rojo: *«agregaste nuevamente un header que no estaba en el frame,
+por favor elimina ese header, SIEMPRE lo agregas»*.
+
+**Y lo que la hace tan repetible es que no es un olvido de quien escribe la
+pantalla.** La barra no la pone la pantalla: la pone `app-header.tsx`, que
+lleva una lista de rutas donde NO debe dibujarse. Quien construye una pantalla
+nueva no tiene ninguna razón para abrir ese archivo, así que la barra aparece
+sola y solo se ve abriendo la página en un navegador — que es justo lo que
+suele quedar para el final.
+
+**La regla, entonces, es de orden y no de criterio:**
+
+1. **Antes de escribir una pantalla nueva, se añade su ruta a la lista de
+   `components/dashboard/app-header.tsx`.** Antes, no después de que alguien la
+   vea con dos barras.
+2. **Y si la pantalla trae su propia fila de volver** —`ScreenBackRow` o una
+   flecha propia— hay que mirar las dos listas de ese archivo: la que suprime
+   la barra a TODAS las anchuras, y la que solo la suprime en el teléfono. Un
+   flujo de pantalla completa va en la primera; si va en la segunda, a partir
+   de `sm` salen las dos.
+3. **`ScreenBackRow` por defecto solo sale en el teléfono.** En una pantalla
+   sin cabecera de app a ninguna anchura hay que pasarle
+   `soloEnTelefono={false}`, o desde `sm` no habrá forma de volver.
+
+**Dos cabeceras no se leen como un bug de maquetación**: se leen como que la
+app está rota, porque la marca sale dos veces en la misma pantalla.
+
 ## Todo evento de analítica documenta su pregunta de negocio
 
 **Un evento sin una pregunta escrita al lado es una columna que nadie va a
@@ -937,6 +1060,7 @@ Sevenz/
 | `REPORTES-PLAN.md` | `../docs/REPORTES-PLAN.md` |
 | `PAPELERA-PLAN.md` | `../docs/PAPELERA-PLAN.md` |
 | `SUBIR-LIBRETA-PLAN.md` | `../docs/SUBIR-LIBRETA-PLAN.md` |
+| `QA-PASO-8-PLAN.md` | `../docs/QA-PASO-8-PLAN.md` |
 
 **Hay que abrirlos a propósito.** Ya no están en el working directory, así que no
 aparecen solos: leer `../docs/PENDIENTES.md` es el primer paso de cualquier

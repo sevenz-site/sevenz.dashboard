@@ -16,10 +16,8 @@ import {
   isPublished,
   PRODUCT_COLUMNS,
   type ProductRow,
-  type PriceOverrideRow,
-  type ProductCurrencyRow,
 } from "@/lib/products/catalog";
-import type { BolivarRates, CostCurrency, PriceCurrency } from "@/lib/products/price";
+import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // EL CATÁLOGO. Primera pantalla de la etapa 1 de inventario.
 //
@@ -34,16 +32,10 @@ import type { BolivarRates, CostCurrency, PriceCurrency } from "@/lib/products/p
 //
 // Así que el estado vacío no se disculpa ni empuja: dice que se llena solo
 // según vaya fiando y vendiendo, que es la decisión 5 del dueño hecha pantalla.
-export default async function ProductosPage({
-  searchParams,
-}: {
-  // `?nuevo=1` lo pone el botón flotante de la barra de abajo, igual que en
-  // Inicio. Es lo que deja que ese botón sea de `MobileNav` —donde viven las
-  // cuatro condiciones que lo esconden— sin tener que mover el estado del
-  // diálogo fuera de esta pantalla.
-  searchParams: Promise<{ nuevo?: string }>;
-}) {
-  const { nuevo } = await searchParams;
+// EL `?nuevo=1` SE FUE EL 2026-10-20. Lo ponía el botón flotante de la barra
+// para abrir el diálogo de alta sin sacar su estado de esta pantalla. Con el
+// alta en su propia ruta (`/productos/nuevo`), ese botón simplemente navega.
+export default async function ProductosPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -51,9 +43,6 @@ export default async function ProductosPage({
 
   const [
     { data: products, error: productsError },
-    { data: overrides },
-    { data: currencies },
-    { data: ultimoProducto },
     { data: owner },
     { data: catalogLink },
     country,
@@ -66,44 +55,11 @@ export default async function ProductosPage({
         .eq("owner_id", user!.id)
         .is("trashed_at", null)
         .order("name"),
-      supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
-      // CON `tier` DESDE LA 114: sin él las dos secciones de la ficha
-      // volverían a leer la misma lista, que es el fallo que la 114 vino a
-      // arreglar.
-      supabase.from("product_currencies").select("product_id, tier, currency"),
-      // LAS DOS MONEDAS DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
-      //
-      // Decisión del dueño el 2026-10-14: «las monedas en la opción de costo y
-      // en la sección de precio aparecerán por defecto según el último
-      // producto creado». Si el último lo creó con el costo en USDT y el
-      // precio en euros, eso es lo que abre el siguiente.
-      //
-      // DESPLAZA LO QUE ÉL MISMO DECIDIÓ ESE MISMO DÍA unas horas antes, que
-      // era «siempre dólares» (y pesos en Colombia). La razón de entonces
-      // queda escrita porque es la que haría falta para revertir esto: el
-      // dólar es la moneda en que se piensa el precio en Venezuela, y arrancar
-      // en otra porque UNA vez se compró en euros convierte un caso raro en el
-      // valor por defecto de todos los productos siguientes. Lo que la
-      // desplaza es que un tendero que compra en USDT lo hace SIEMPRE, no una
-      // vez, y entonces el caso raro es el dólar.
-      //
-      // `created_at` y no `updated_at`, que es lo que la versión anterior de
-      // esta consulta usaba: el dueño dijo «el último producto CREADO», y son
-      // preguntas distintas — corregirle el precio a un producto de hace tres
-      // meses no dice nada sobre en qué moneda compra hoy.
-      //
-      // SALE DE SU PROPIO HISTORIAL Y NO DEL NAVEGADOR, a propósito: iOS
-      // Safari borra `localStorage` tras un tiempo de inactividad, y entonces
-      // la ficha «olvidaría» lo que el tendero lleva meses haciendo. Es la
-      // regla de CLAUDE.md sobre no apoyarse en el navegador para nada que
-      // importe, y el mismo criterio que `moneda-habitual.ts`.
-      supabase
-        .from("products")
-        .select("cost_currency, base_currency")
-        .eq("owner_id", user!.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      // AQUÍ IBAN TRES CONSULTAS MÁS --los precios fijados, las monedas
+      // activas y el último producto creado-- que esta pantalla NO usa: eran
+      // para los dos diálogos que montaba. Desde el 2026-10-20 el alta y la
+      // edición son rutas propias y cada una pide lo suyo, así que el
+      // catálogo hace tres viajes menos por carga.
       supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
       // EL ENLACE QUE YA TIENE, LEIDO SIN CREARLO. Las dos razones son
       // distintas y las dos importan:
@@ -160,20 +116,6 @@ export default async function ProductosPage({
 
   const rows = (products ?? []) as unknown as ProductRow[];
 
-  // LOS PROVEEDORES SALEN DE LAS FILAS QUE YA SE LEYERON, y eso es lo que hace
-  // que el autocompletado del formulario no cueste ni una consulta: esta
-  // pantalla trae TODOS los productos del dueño, sin paginar y sin filtrar en
-  // el servidor —el buscador filtra en el navegador— así que la lista completa
-  // de proveedores ya está en memoria.
-  //
-  // La primera versión de la migración 103 traía una función de Postgres para
-  // esto. Se quitó antes de usarla, al mirar esta línea: habría sido una
-  // SECURITY DEFINER que nadie llama, la misma trampa que la 092 documentó
-  // para los valores de enum.
-  //
-  // Duplicados y mayúsculas los resuelve `SupplierField`, que es quien sabe
-  // cómo quiere la lista. Aquí solo se quitan los vacíos.
-  const supplierSuggestions = rows.map((p) => p.supplier ?? "").filter((s) => s.trim() !== "");
   // Se cuenta aquí y no en el diálogo de compartir: ese es un componente de
   // cliente y tendría que pedir la lista otra vez para saber un número que
   // esta consulta ya trajo.
@@ -220,18 +162,10 @@ export default async function ProductosPage({
             gradient is built from two theme tokens and a second hand-written
             copy of it is a copy that drifts. */}
         <OrdersCard unattended={ordenesSinAtender} place="catalogo" />
-        <CatalogTable
-          loadFailed={productsError != null}
-          overrides={(overrides ?? []) as PriceOverrideRow[]}
-          currencies={(currencies ?? []) as ProductCurrencyRow[]}
-          supplierSuggestions={supplierSuggestions}
-          lastCostCurrency={(ultimoProducto?.cost_currency as CostCurrency | null) ?? null}
-          lastBaseCurrency={(ultimoProducto?.base_currency as PriceCurrency | null) ?? null}
-          rates={rates}
-          defaultCurrency={defaultCurrency}
-          ownerId={user!.id}
-          autoOpen={nuevo === "1"}
-        />
+        {/* SOLO `loadFailed`. Las otras ocho props existían para los dos
+            diálogos que esta tabla montaba; desde el 2026-10-20 el alta y la
+            edición son rutas propias y cada una pide sus datos. */}
+        <CatalogTable loadFailed={productsError != null} />
       </CatalogFilterProvider>
     </div>
   );

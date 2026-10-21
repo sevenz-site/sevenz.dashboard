@@ -2,29 +2,22 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ImageOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { CatalogProductDialog } from "@/components/dashboard/catalog-product-dialog";
 import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
 import { setProductPublished } from "@/app/(app)/productos/actions";
-import {
-  formatPriceAmount,
-  type BolivarRates,
-  type CostCurrency,
-  type PriceCurrency,
-} from "@/lib/products/price";
+import { formatPriceAmount } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
+import { marcarCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
 import {
-  currenciesOf,
   isPublished,
   listPrice,
-  overridesByTier,
   type ProductRow,
-  type PriceOverrideRow,
-  type ProductCurrencyRow,
 } from "@/lib/products/catalog";
 
 // LA REJILLA DEL CATALOGO, segun el frame 1175:5881.
@@ -57,109 +50,78 @@ import {
 // Asi que la tarjeta es un `div`: la zona de la foto, el nombre y el precio es
 // el boton que abre la ficha, y el interruptor vive FUERA de el, en su propia
 // fila al pie. Los dos toques son inconfundibles y ninguno dispara el otro.
-export function CatalogTable({
-  overrides,
-  currencies,
-  supplierSuggestions,
-  lastCostCurrency,
-  lastBaseCurrency,
-  rates,
-  defaultCurrency,
-  ownerId,
-  autoOpen,
-  loadFailed,
-}: {
-  overrides: PriceOverrideRow[];
-  // Las monedas activas de cada producto. Ver la migración 087.
-  currencies: ProductCurrencyRow[];
-  // La ultima moneda de costo que uso este negocio, para que un producto
-  // nuevo abra con ella. Ver la pagina: sale de su historial, no del
-  // navegador.
-  supplierSuggestions: string[];
-  // Las dos monedas del ultimo producto creado. Null si no hay ninguno.
-  lastCostCurrency: CostCurrency | null;
-  lastBaseCurrency: PriceCurrency | null;
-  rates: BolivarRates | null;
-  defaultCurrency: PriceCurrency;
-  ownerId: string;
-  // `?nuevo=1`, que es lo que pone el boton flotante de la barra de abajo.
-  autoOpen: boolean;
+// OCHO PROPS MENOS DESDE EL 2026-10-20. `overrides`, `currencies`,
+// `supplierSuggestions`, las dos monedas del último producto, `rates`,
+// `defaultCurrency` y `ownerId` llegaban hasta aquí SOLO para alimentar los
+// dos diálogos que esta lista montaba. Con el alta y la edición en sus
+// propias rutas, cada una pide lo suyo al servidor y esta tabla vuelve a ser
+// lo que su nombre dice: la rejilla.
+export function CatalogTable({ loadFailed }: {
   // La consulta del catalogo fallo. NO es lo mismo que no tener productos, y
   // esa diferencia tiene su propia pantalla — ver la pagina.
   loadFailed: boolean;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const { visible, total, query } = useCatalogFilters();
-  const [editing, setEditing] = useState<ProductRow | null>(null);
-  const [creating, setCreating] = useState(false);
-  // Cuántos productos se han creado en esta visita. Solo sirve de clave del
-  // diálogo de alta: cambiarla lo desmonta y lo vuelve a montar vacío. Ver
-  // dónde se usa, abajo.
-  const [altas, setAltas] = useState(0);
-
-  // SE ABRE EN CADA TRANSICION false -> true, no con un pestillo de una sola
-  // vez. Es el mismo mecanismo que `ClientSearchDialog`, y los dos fallos que
-  // documenta ya costaron una entrega:
+  const { visible, total, query, sortBy, status, minAmount, maxAmount } = useCatalogFilters();
+  // ── PAGINADO, LA MISMA REGLA QUE CLIENTES ────────────────────────────
   //
-  //   - un pestillo solo dispara una vez, asi que el primer toque del boton
-  //     flotante abria y los siguientes no hacian nada;
-  //   - rearmarlo al cerrar tampoco sirve, porque el marcador sigue en la
-  //     direccion en ese instante y el dialogo se reabre al cerrarse.
+  // Encargo del dueño el 2026-10-20. Hasta hoy esta rejilla pintaba TODOS
+  // los productos de un negocio: con ciento y pico, el teléfono renderiza
+  // ciento y pico de tarjetas con su foto para enseñar seis.
   //
-  // Sembrado en `false` y nunca desde la prop: llegar aqui desde otra pantalla
-  // monta este componente con `autoOpen` YA en true, asi que sembrar desde la
-  // prop no deja transicion que observar y no abre nunca.
-  const [prevAutoOpen, setPrevAutoOpen] = useState(false);
-  if (autoOpen !== prevAutoOpen) {
-    setPrevAutoOpen(autoOpen);
-    if (autoOpen) setCreating(true);
-  }
+  // VUELVE A LA 1 AL FILTRAR O BUSCAR, por lo mismo que el historial: sin
+  // ello, quien esté en la página 3 y escriba en el buscador ve una rejilla
+  // vacía con el paginador diciendo «Página 1 de 1». Se hace con un efecto y
+  // no en el setter porque el filtro vive en un contexto, no aquí.
+  const [page, setPage] = useState(1);
+  const paginas = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const paginaSegura = Math.min(page, paginas);
+  const pagina = visible.slice((paginaSegura - 1) * PAGE_SIZE, paginaSegura * PAGE_SIZE);
 
-  // Y SE LIMPIA EL MARCADOR AL CERRAR, por el router y no por
-  // `history.replaceState`: eso ultimo mueve la barra de direcciones por
-  // detras de Next, el router sigue creyendo que esta en `?nuevo=1`, y el
-  // siguiente toque del flotante es una navegacion a la pagina en la que cree
-  // estar — gira el spinner y no abre nada. Dejarlo sin limpiar es el otro
-  // fallo: un refresco abre el dialogo solo.
+  // SE AJUSTA DURANTE EL RENDER, NO EN UN EFECTO. Un `useEffect` aquí pinta
+  // la página vieja y la corrige después --dos renders donde cabe uno-- y
+  // `eslint` lo rechaza con `react-hooks/set-state-in-effect`. Es el patrón
+  // que React documenta para «ajustar estado cuando cambia una prop».
+  //
+  // LA CLAVE SON LOS FILTROS, NO `visible.length`. Parece lo mismo y no lo
+  // es: borrar un producto también cambia esa longitud, y con ella en la
+  // clave el tendero que borra algo desde la página 3 aterriza en la 1 sin
+  // haber tocado ningún filtro.
+  // LA BANDERA PARA LA BARRA DE ABAJO. Ver `catalogo-vacio.ts`: con el estado
+  // vacío a la vista, su botón flotante de «Crear producto» sobra, porque esa
+  // caja ya trae el suyo.
+  //
+  // `marcarCatalogoVacio` NO es `setState`, así que este efecto no choca con
+  // `react-hooks/set-state-in-effect`. Y la limpieza del `return` es lo que
+  // evita que el flotante desaparezca del resto de la app al salir de aquí.
+  const estadoVacioALaVista = total === 0 && !loadFailed;
   useEffect(() => {
-    if (autoOpen && !creating) router.replace(pathname, { scroll: false });
-  }, [autoOpen, creating, router, pathname]);
+    marcarCatalogoVacio(estadoVacioALaVista);
+    return () => marcarCatalogoVacio(false);
+  }, [estadoVacioALaVista]);
 
-  const nuevo = (
-    <CatalogProductDialog
-      // LA CLAVE ES LO QUE LIMPIA EL FORMULARIO, y hace falta una porque este
-      // diálogo NO se desmonta al cerrarse: solo cambia `open`. Su estado vive
-      // en `useState(...)`, que se evalúa una sola vez, así que tras crear un
-      // producto la siguiente apertura traía los datos del anterior — nombre,
-      // precio, proveedor, foto. Reportado por el dueño el 2026-10-14.
-      //
-      // SOLO AL CREAR, no al cerrar, y eso también lo pidió él: quien cierra
-      // sin guardar casi siempre se equivocó de botón o fue a mirar algo, y
-      // perderle lo escrito sería peor que el problema. Por eso `onSaved` y no
-      // `onOpenChange`: cerrar ocurre en los dos casos, guardar en uno.
-      key={altas}
-      open={creating}
-      onOpenChange={setCreating}
-      onSaved={() => setAltas((n) => n + 1)}
-      product={null}
-      rates={rates}
-      defaultCurrency={defaultCurrency}
-      overrides={{ retail: {}, wholesale: {} }}
-      // UN PRODUCTO NUEVO ARRANCA IGUAL EN LOS DOS ESCALONES. La decisión del
-      // dueño del 2026-10-14 —abrir con la moneda del último producto creado—
-      // no dice nada de escalones, y empezar con dos listas distintas sería
-      // inventarse una intención. Separarlas es un gesto que él hace cuando
-      // quiere, no el punto de partida.
-      initialCurrencies={{
-        retail: [lastBaseCurrency ?? defaultCurrency],
-        wholesale: [lastBaseCurrency ?? defaultCurrency],
-      }}
-      supplierSuggestions={supplierSuggestions}
-      lastCostCurrency={lastCostCurrency}
-      ownerId={ownerId}
-    />
-  );
+  const claveDeFiltros = `${query}|${sortBy}|${status}|${minAmount}|${maxAmount}`;
+  const [claveprevia, setClavePrevia] = useState(claveDeFiltros);
+  if (claveDeFiltros !== claveprevia) {
+    setClavePrevia(claveDeFiltros);
+    setPage(1);
+  }
+  // AQUÍ VIVÍA EL APARATO DE `?nuevo=1`: el estado del diálogo de alta, la
+  // transición false -> true que lo abría en cada toque del flotante, y el
+  // efecto que limpiaba el marcador de la dirección al cerrar. Las tres
+  // piezas existían porque un diálogo comparte pantalla con lo que hay
+  // detrás; con una ruta propia, el flotante NAVEGA y no hay nada que
+  // sincronizar. El historial las guarda con los dos fallos que costaron.
+
+  // AQUÍ VIVÍAN LOS DOS DIÁLOGOS --el de alta y el de edición-- hasta el
+  // 2026-10-20. Ahora los dos son PANTALLAS: `/productos/nuevo` y
+  // `/productos/<id>/editar`, frame `1465:18582`.
+  //
+  // Lo que se va con ellos es todo el aparato que un diálogo que no se
+  // desmonta necesitaba: la `key` que limpiaba el formulario tras crear, el
+  // `onSaved` para distinguir «guardó» de «cerró», y el efecto que borraba el
+  // `?nuevo=1` de la dirección. Una pantalla se desmonta al salir, así que
+  // vuelve a entrar vacía sin que nadie lo organice.
 
   // Antes que el estado vacio, porque se parecen y no son lo mismo. Sin esto,
   // un tendero con cuarenta productos y una consulta caida lee «todavia no
@@ -182,7 +144,6 @@ export function CatalogTable({
           Reintentar
         </Button>
       </div>
-      {nuevo}
       </>
     );
   }
@@ -199,29 +160,25 @@ export function CatalogTable({
             desliz, y se le añade la frase de que se llena solo — que es el
             hallazgo de campo y es lo que quita la sensacion de deberle dos
             horas de trabajo a la pantalla. */}
-        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="text-base font-medium">Todavía no tienes productos</p>
-          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Los productos que agregues acá podrán verse reflejados en el catálogo de producto que
-            ven tus clientes. No hace falta cargarlos ahora: se van agregando solos cuando fías o
-            vendes algo que no esté en la lista.
-          </p>
-          {/* SOLO DESDE `md`, encontrado rindiendo la pantalla el 2026-10-10:
-              por debajo de ahi el boton flotante de la barra ya dice «Crear
-              producto» y hace lo mismo, asi que a 375px habia dos controles
-              con la misma etiqueta en la misma pantalla. Es lo que el frame
-              dibuja —su estado vacio no lleva boton— y lo que el
-              DESIGN-SYSTEM pide. En escritorio no hay flotante, asi que aqui
-              si hace falta. */}
-          <Button
-            type="button"
-            className="hidden md:inline-flex"
-            onClick={() => setCreating(true)}
-          >
-            <Plus className="size-4" /> Crear producto
+        {/* FRAME `1500:9705`. El subtítulo es MÁS CORTO que el que había: el
+            frame se queda en «Los productos que agregues acá podrán verse
+            reflejados en el catálogo» y suelta las dos frases que seguían
+            --que los ven tus clientes, y que se agregan solos al fiar--. Se
+            respeta: en una pantalla cuyo único trabajo es que pulses un
+            botón, cuatro líneas de explicación compiten con él.
+
+            Y EL BOTÓN SALE A TODAS LAS ANCHURAS, relleno y de ancho completo.
+            Antes era `hidden md:inline-flex` porque en el teléfono lo hacía
+            el flotante de la barra; ahora el flotante es el que se aparta
+            --ver `catalogo-vacio.ts`--, que es lo que el dueño pidió. */}
+        <EmptyState
+          title="Todavía no tienes productos"
+          subtitle="Los productos que agregues acá podrán verse reflejados en el catálogo."
+        >
+          <Button type="button" className="h-10 w-full text-base font-semibold" onClick={() => router.push("/productos/nuevo")}>
+            <Plus className="size-5" /> Crear producto
           </Button>
-        </div>
-        {nuevo}
+        </EmptyState>
       </>
     );
   }
@@ -232,7 +189,7 @@ export function CatalogTable({
           barra de abajo, que navega a `?nuevo=1`. Dos disparadores visibles a
           la vez en el mismo tamaño serian dos puertas al mismo cajon. */}
       <div className="hidden md:flex md:justify-end">
-        <Button type="button" onClick={() => setCreating(true)}>
+        <Button type="button" onClick={() => router.push("/productos/nuevo")}>
           <Plus className="size-4" /> Crear producto
         </Button>
       </div>
@@ -244,47 +201,20 @@ export function CatalogTable({
             : "Ningún producto se llama así."}
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {visible.map((p) => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              onEdit={() => setEditing(p)}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {pagina.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                onEdit={() => router.push(`/productos/${p.id}/editar`)}
+              />
+            ))}
+          </ul>
+          <ListPagination page={paginaSegura} pageCount={paginas} onPage={setPage} />
+        </>
       )}
 
-      {nuevo}
-      {editing ? (
-        <CatalogProductDialog
-          // La `key` fuerza una instancia nueva por producto. Sin ella, abrir
-          // un segundo producto reutilizaria los `useState` del primero y la
-          // ficha abriria con el nombre del anterior.
-          key={editing.id}
-          open
-          onOpenChange={(next) => !next && setEditing(null)}
-          product={editing}
-          rates={rates}
-          defaultCurrency={defaultCurrency}
-          overrides={overridesByTier(overrides, editing.id)}
-          // UNA LISTA POR ESCALÓN, cada una con SU base primera. Antes era una
-          // sola para los dos, que es lo que hacía que quitar una moneda al
-          // mayor la quitara también al detal — reportado por el dueño el
-          // 2026-10-15.
-          initialCurrencies={{
-            retail: currenciesOf(currencies, editing.id, "retail", editing.base_currency_retail),
-            wholesale: currenciesOf(
-              currencies,
-              editing.id,
-              "wholesale",
-              editing.base_currency_wholesale,
-            ),
-          }}
-          supplierSuggestions={supplierSuggestions}
-          ownerId={ownerId}
-        />
-      ) : null}
     </div>
   );
 }

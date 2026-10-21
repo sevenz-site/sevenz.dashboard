@@ -5,6 +5,7 @@ import { MetricFilters } from "@/components/admin/metric-filters";
 import { ServiceHealth } from "@/components/admin/service-health";
 import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
 import { requireSuperadmin } from "@/lib/admin/guard";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import {
   getAverageCreditScore,
   getByOwner,
@@ -189,7 +190,7 @@ export default async function AdminMetricsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Métricas de producto</h1>
+        <ScreenTitle>Métricas de producto</ScreenTitle>
         {/* Dice lo que hay en pantalla, no lo que suele haber.
             Ponía "Todos los negocios" siempre, también con tres seleccionados,
             así que el encabezado afirmaba una cosa y las cifras eran otra — y
@@ -211,9 +212,9 @@ export default async function AdminMetricsPage({
           explica="Clientes que los negocios dieron de alta en el periodo filtrado. Cuenta por fecha de creación, así que un cliente creado en agosto no aparece aquí aunque siga activo hoy. Incluye los que después fueron a la papelera."
         />
         <Stat
-          label="Movimientos"
+          label="Transacciones"
           value={String(movementsTotal)}
-          explica="Fiados y abonos registrados, sumando todas las monedas. Los movimientos borrados no cuentan. Es la única cifra donde sí se suman monedas distintas, porque cuenta operaciones y no dinero."
+          explica="Fiados y abonos registrados, sumando todas las monedas. Las transacciones borradas no cuentan. Es la única cifra donde sí se suman monedas distintas, porque cuenta operaciones y no dinero."
         />
         <Stat
           label="Malas pagas"
@@ -243,7 +244,7 @@ export default async function AdminMetricsPage({
           hint={
             health.rejections_total === 0
               ? "ningún dueño se quedó sin registrar"
-              : `${health.rejected_rows} movimientos perdidos · ${health.rejections_sin_moneda} sin moneda · ${health.rejections_pais_desconocido} sin leer el negocio`
+              : `${health.rejected_rows} transacciones perdidas · ${health.rejections_sin_moneda} sin moneda · ${health.rejections_pais_desconocido} sin leer el negocio`
           }
           alert={health.rejections_total > 0}
         />
@@ -377,7 +378,7 @@ export default async function AdminMetricsPage({
                   <th className="px-3 py-2 text-left font-medium">País</th>
                   <th className="px-3 py-2 text-right font-medium">Negocios</th>
                   <th className="px-3 py-2 text-right font-medium">Clientes</th>
-                  <th className="px-3 py-2 text-right font-medium">Movimientos</th>
+                  <th className="px-3 py-2 text-right font-medium">Transacciones</th>
                   <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Total fiado</th>
                 </tr>
               </thead>
@@ -406,7 +407,7 @@ export default async function AdminMetricsPage({
                 <th className="px-3 py-2 text-left font-medium">Negocio</th>
                 <th className="px-3 py-2 text-left font-medium">País</th>
                 <th className="px-3 py-2 text-right font-medium">Clientes</th>
-                <th className="px-3 py-2 text-right font-medium">Movimientos</th>
+                <th className="px-3 py-2 text-right font-medium">Transacciones</th>
                 <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Total fiado</th>
                 <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Última actividad</th>
               </tr>

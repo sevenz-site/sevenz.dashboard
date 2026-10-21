@@ -2,8 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
 import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -27,11 +29,11 @@ export default async function ProfilePage() {
           one: flush to the top, edge to edge. The negative margins cancel main's
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
           up, where the real header returns. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3 sm:hidden">
+      <ScreenBackRow>
         <CarteraBackButton />
-      </div>
+      </ScreenBackRow>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Mi negocio</h1>
+        <ScreenTitle>Mi negocio</ScreenTitle>
         <p className="text-sm text-muted-foreground">
           Estos datos se usan en tu cartera y en lo que ven tus clientes.
         </p>

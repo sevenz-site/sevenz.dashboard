@@ -12,6 +12,7 @@ import {
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
 import { EstadoChip } from "@/components/admin/estado-chip";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -119,9 +120,9 @@ export default async function CuentaDetallePage({
           Cuentas
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <ScreenTitle>
             {cuenta.business_name || "(sin nombre)"}
-          </h1>
+          </ScreenTitle>
           <EstadoChip cuenta={cuenta} />
         </div>
         <p className="text-sm text-muted-foreground">
@@ -191,7 +192,7 @@ export default async function CuentaDetallePage({
         </div>
 
         {historial.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sin movimientos todavía.</p>
+          <p className="text-sm text-muted-foreground">Sin transacciones todavía.</p>
         ) : (
           <ul className="flex flex-col divide-y rounded-lg border">
             {historial.map((e) => (

@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -13,10 +11,19 @@ import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   isUnattended,
+  readOrderProducts,
   totalsByCurrency,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { getBolivarRates } from "@/lib/products/catalog";
+import {
+  OrderProductDialog,
+  OrderProductRowButton,
+} from "@/components/dashboard/order-product-dialog";
+import type { BolivarRates, PriceTier } from "@/lib/products/price";
+import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // ONE ORDER'S PAGE. Deliverable D, reading half.
 //
@@ -75,6 +82,26 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
 
   const items = (itemRows ?? []) as CatalogOrderItemRow[];
 
+  // EL CATÁLOGO DE HOY PARA CADA LÍNEA, y las tasas para los equivalentes en
+  // bolívares. Decisión del dueño del 2026-10-17 al mirar el frame
+  // `1371:7229`: lo sellado es la línea del pedido, el producto es el de hoy
+  // -- un inventario o un costo congelados no ayudan a decidir si se atiende.
+  //
+  // Las dos en el mismo viaje, y no al abrir el diálogo: el detalle ya está
+  // montado, así que pedirlo al tocar pondría una espera justo donde se
+  // espera una respuesta inmediata.
+  const [productosPorId, rateContext] = await Promise.all([
+    readOrderProducts(supabase, user!.id, items),
+    getOwnerRateContext(supabase, user!.id),
+  ]);
+
+  // Un negocio colombiano no tiene Bs/COP y no convierte nada: sin tasas, el
+  // diálogo enseña el precio de su escalón y ya. Ver la cabecera de
+  // lib/products/price.ts.
+  const rates: BolivarRates | null = rateContext
+    ? await getBolivarRates(rateContext.effectiveRate)
+    : null;
+
   // Digits only. The column is already normalised, so this only guards against
   // anything that reached the table by another door than the cart.
   const whatsappDigits = (pedido.customer_whatsapp ?? "").replace(/\D/g, "");
@@ -131,15 +158,11 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           this screen with no way back on a laptop -- and `/productos/ordenes`
           is not in the sidebar, so it would take two clicks through
           Catálogo. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center border-b bg-background px-4 py-3">
-        <Button variant="ghost" size="icon" asChild className="-ml-2">
-          <Link href="/productos/ordenes" aria-label="Volver a Pedidos">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
-      </div>
+      {/* `soloEnTelefono={false}` porque esta pantalla nunca tuvo el
+          `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
+      <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
 
-      <h1 className="text-2xl font-semibold">{pedido.customer_name}</h1>
+      <ScreenTitle>{pedido.customer_name}</ScreenTitle>
 
       <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
       <div className="rounded-lg border bg-muted/30 px-3 py-2">
@@ -210,79 +233,121 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           </p>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="rounded-lg border bg-muted/30 px-3 py-2">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate font-medium">{item.product_name}</span>
-                {/* THE FLAG BESIDE THE AMOUNT, owner's request of
-                    2026-10-16. USDT prints no symbol of its own, so without
-                    it a USDT line is a bare number sitting next to lines that
-                    carry a `$` or a `€`. */}
-                <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold tabular-nums">
-                  <CurrencyFlagIcon currency={item.currency as PriceCurrency} />
-                  {formatPriceAmount(
-                    Number(item.quantity) * Number(item.unit_price),
-                    item.currency as PriceCurrency,
-                  )}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {Number(item.quantity)} ×{" "}
-                {formatPriceAmount(Number(item.unit_price), item.currency as PriceCurrency)}
-                {/* THE TIER, said out loud. Without it a cheap line looks
-                    the same as an invented discount: with it, the shopkeeper
-                    sees it was the wholesale price because they ordered six. */}
-                {" · "}
-                {item.tier === "wholesale" ? "al mayor" : "al detal"}
-              </p>
-              {/* THE COMMENT IS TEXT, NOT A FIELD. Owner's reference,
-                  2026-10-16. It used to render inside a bordered box with a
-                  white background, which on this screen reads as an input the
-                  shopkeeper could type into -- and it is the one thing on the
-                  page they cannot change. A label above it and plain text
-                  below says the same thing without the promise.
-
-                  `whitespace-pre-line` because the customer writes it in a
-                  `Textarea` of three rows (`product-detail.tsx`): their line
-                  breaks are part of what they wrote, and collapsing them runs
-                  two separate requests into one sentence.
-
-                  `break-words` for the pasted link or the unspaced string
-                  that would otherwise push the card sideways on a phone. */}
-              {item.comment ? (
-                <div className="mt-2 flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Comentario</span>
-                  <p className="text-sm leading-snug break-words whitespace-pre-line">
-                    {item.comment}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            // CADA LÍNEA ABRE SU PRODUCTO. Frame `1371:7229`: miniatura,
+            // nombre, cantidad por precio y escalón, el total con su bandera
+            // y un chevron que dice que hay algo detrás.
+            //
+            // EL COMENTARIO SE QUEDA FUERA DE LA FILA y se lee dentro. Antes
+            // vivía aquí debajo y podía ser un párrafo entero: con la fila
+            // ahora tocable, un bloque de texto dentro del botón convierte
+            // una lista de dos renglones en una pared.
+            <OrderProductDialog
+              key={item.id}
+              nombreEnElPedido={item.product_name}
+              cantidad={Number(item.quantity)}
+              precioUnitario={Number(item.unit_price)}
+              moneda={item.currency as PriceCurrency}
+              escalon={item.tier as PriceTier}
+              comentario={item.comment}
+              producto={item.product_id ? (productosPorId.get(item.product_id) ?? null) : null}
+              rates={rates}
+            >
+              <OrderProductRowButton
+                nombre={item.product_name}
+                cantidad={Number(item.quantity)}
+                precioUnitario={Number(item.unit_price)}
+                moneda={item.currency as PriceCurrency}
+                escalon={item.tier as PriceTier}
+                fotoPath={
+                  item.product_id
+                    ? (productosPorId.get(item.product_id)?.photo_path ?? null)
+                    : null
+                }
+              />
+            </OrderProductDialog>
           ))
         )}
       </div>
 
       {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of
           2026-10-14: there is no EUR→USD rate in this product, only BCV to
-          bolívares, so a single total would be an invented number. */}
+          bolívares, so a single total would be an invented number.
+
+          A HEADING AND A CARD EACH, from frame `1371:7229`. They used to be
+          two rows inside the same box as everything else, which read as the
+          last two facts of the order rather than as its bottom line -- and
+          the bottom line is what the shopkeeper opens this screen to see. */}
       {totales.length > 0 ? (
-        <div className="rounded-lg border bg-muted/30 px-3 py-2">
-          {totales.map((t) => (
-            // THE CURRENCY IS ALWAYS NAMED, even when the order carries a
-            // single one -- the owner's request of 2026-10-16. It used to say
-            // a bare "Total" for one currency, which is only unambiguous to
-            // somebody who has just read the lines above it; "Total en
-            // dólares" answers it on its own, and in words rather than the
-            // ISO code, which is bank vocabulary.
-            <Fila key={t.currency} nombre={`Total en ${currencyName(t.currency as PriceCurrency)}`}>
-              <span className="flex items-center justify-end gap-1.5 tabular-nums">
-                <CurrencyFlagIcon currency={t.currency as PriceCurrency} />
-                {formatPriceAmount(t.amount, t.currency as PriceCurrency)}
-              </span>
-            </Fila>
-          ))}
-        </div>
+        <>
+          <h2 className="mt-1 text-xl font-semibold">Totales</h2>
+          {totales.map((t) => {
+            const moneda = t.currency as PriceCurrency;
+            // EL EQUIVALENTE EN BOLÍVARES ES EL DE HOY, y por eso no se
+            // sella: el total está cerrado, lo que vale en bolívares cambia
+            // cada día. Un negocio colombiano no tiene tasa y no lo enseña.
+            const bsPorUnidad =
+              rates == null
+                ? null
+                : moneda === "USD"
+                  ? rates.usd
+                  : moneda === "EUR"
+                    ? rates.eur
+                    : moneda === "USDT"
+                      ? rates.usdt
+                      : null;
+            return (
+              <div key={t.currency} className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    {/* LA MONEDA SIEMPRE NOMBRADA, aunque el pedido traiga
+                        una sola -- petición del dueño del 2026-10-16. Un
+                        «Total» a secas solo es inequívoco para quien acaba
+                        de leer las líneas de arriba. */}
+                    <span className="text-xs font-medium">
+                      Total en {currencyName(moneda)}
+                    </span>
+                    <span className="text-2xl font-semibold text-money-in tabular-nums">
+                      {formatPriceAmount(t.amount, moneda)}
+                    </span>
+                  </div>
+                  {/* CON MAYÚSCULA, como en el frame. `currencyName`
+                      devuelve minúscula porque está escrita para ir dentro de
+                      una frase --«Total en dólares»-- y aquí la palabra va
+                      sola, que en español se escribe como un rótulo. */}
+                  <span className="flex shrink-0 items-center gap-1 text-xs capitalize">
+                    {currencyName(moneda)}
+                    <CurrencyFlagIcon currency={moneda} />
+                  </span>
+                </div>
+                {bsPorUnidad != null ? (
+                  <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                    = {formatPriceAmount(t.amount * bsPorUnidad, "VES")}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
+        </>
       ) : null}
 
+      {/* «REGISTRAR PEDIDO» IS NOT HERE, AND THAT IS THE DECISION, NOT AN
+          OVERSIGHT.
+
+          The frame `1371:7229` draws it, and it shipped disabled on
+          2026-10-17 with the sentence «llega en la próxima entrega»
+          underneath. The owner removed both on 2026-10-21, for launch A:
+          what the button would do is `CT-70`, which is blocked on three of
+          his own decisions and is not built. A disabled control that
+          promises a date is a promise this release cannot keep, and it sits
+          directly above the one action the screen can actually perform.
+
+          SO THE SCREEN NOW ENDS AT «MARCAR COMO ATENDIDO», which is all it
+          has ever been able to do. When `CT-70` lands, the button comes back
+          here with a real action behind it -- never enabled against
+          `OrderAttendButton`, because marking an order attended is a
+          different thing from registering it as a sale, and wiring one to
+          the other would be lying in the owner's own words. `CT-92` tracked
+          this and closes with its removal. */}
       <div className="pt-1">
         <OrderAttendButton
           orderId={pedido.id}

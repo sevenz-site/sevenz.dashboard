@@ -1,11 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
+import { OrdersEmpty } from "@/components/dashboard/orders-empty";
+import { CatalogShareButton } from "@/components/dashboard/catalog-share";
 import { type OrderWithItems } from "@/components/dashboard/orders-list";
 import {
   OrdersFilterProvider,
   OrdersSearchField,
   OrdersFilterChips,
   OrdersResults,
+  OrdersShareCard,
 } from "@/components/dashboard/orders-filters";
 import { readOwnerCountry } from "@/lib/owner-country";
 import {
@@ -40,7 +43,13 @@ export default async function OrdenesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: orders, error: errorOrders }, country] = await Promise.all([
+  const [
+    { data: orders, error: errorOrders },
+    country,
+    { data: owner },
+    { data: catalogLink },
+    { data: publicables, error: errorPublicables },
+  ] = await Promise.all([
     supabase
       .from("catalog_orders")
       .select(ORDER_COLUMNS)
@@ -52,7 +61,63 @@ export default async function OrdenesPage() {
       .order("status", { ascending: true })
       .order("created_at", { ascending: false }),
     readOwnerCountry(supabase, user!.id),
+    // ── LO QUE EL ESTADO VACÍO NECESITA ──────────────────────────────
+    //
+    // Su botón «Compartir catálogo» es el MISMO de la cabecera de Catálogo, y
+    // ese componente pide tres cosas: el nombre del negocio para el mensaje,
+    // el enlace ya servido y cuántos productos hay publicados.
+    //
+    // EN EL MISMO VIAJE QUE LOS PEDIDOS y no después: son tres consultas
+    // diminutas, y encadenarlas detrás de la lista le costaría a esta pantalla
+    // una vuelta entera por algo que casi siempre no se va a dibujar.
+    //
+    // EL ENLACE VIENE SERVIDO, no se crea al pulsar: `navigator.share` tiene
+    // que salir del gesto del dedo, y un `await` entre el toque y la hoja es
+    // lo que iOS Safari rechaza. Misma razón escrita en `productos/page.tsx`.
+    supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
+    supabase.from("catalog_share_links").select("token").eq("owner_id", user!.id).maybeSingle(),
+    supabase
+      .from("products")
+      .select("published_retail, published_wholesale")
+      .eq("owner_id", user!.id)
+      // `trashed_at` Y NO `deleted_at`: esa columna NO EXISTE en `products`.
+      //
+      // Con ella, PostgREST devolvía `42703: column products.deleted_at does
+      // not exist`, `publicables` llegaba `null`, y el contador caía a cero —
+      // así que «Compartir» contestaba «Todavía no has publicado ningún
+      // producto» a un negocio que sí tenía. Lo reportó el dueño el
+      // 2026-10-20 con la captura del aviso encima de su lista de pedidos.
+      //
+      // La pantalla de Catálogo filtra bien desde siempre; esta consulta nació
+      // aquí copiando la forma, no el nombre. La papelera de productos es
+      // `trashed_at` porque un producto se tira a la papelera y se recupera,
+      // que es otra cosa que borrarlo.
+      .is("trashed_at", null),
   ]);
+
+  // ── UNA LECTURA FALLIDA NO ES UNA TIENDA VACÍA ──────────────────────
+  //
+  // Es la MISMA lección que esta pantalla ya tenía escrita quince líneas más
+  // abajo para los pedidos, y que esta consulta no aplicó: con el error
+  // descartado, un fallo de lectura se presentaba como «no has publicado
+  // nada», que es una frase sobre el negocio y no sobre la consulta.
+  //
+  // Ahora se registra, y el contador se queda en cero igual --no hay nada
+  // mejor que contar-- pero el log dice qué pasó en vez de dejar al dueño
+  // buscando un producto que ya había publicado.
+  if (errorPublicables) console.error("[orders] publicables:", errorPublicables.message);
+
+  // Las tres cifras que el botón distingue: sin NINGUNA publicada avisa en vez
+  // de compartir una página que diría «este negocio no tiene productos».
+  const filasPublicables = (publicables ?? []) as {
+    published_retail: boolean;
+    published_wholesale: boolean;
+  }[];
+  const publishedCount = {
+    retail: filasPublicables.filter((p) => p.published_retail).length,
+    wholesale: filasPublicables.filter((p) => p.published_wholesale).length,
+    any: filasPublicables.filter((p) => p.published_retail || p.published_wholesale).length,
+  };
 
   // A FAILED READ IS NOT AN EMPTY SHOP, and until 2026-10-16 this screen said
   // it was. Migration 108 created these tables with RLS on and no grant for
@@ -133,6 +198,12 @@ export default async function OrdenesPage() {
       <div className="flex flex-col gap-4">
         <ScreenHeader
           title="Pedidos"
+          // A CATÁLOGO, NO A INICIO: a Pedidos se entra desde ahí. Lo reportó
+          // el dueño el 2026-10-20 --la flecha lo sacaba al Inicio-- y es la
+          // única de las seis pantallas con cabecera oscura que no cuelga
+          // directamente del Inicio.
+          backHref="/productos"
+          backLabel="Volver a Catálogo"
           // THE SUBTITLE COUNTS EVERYTHING, not what the filter leaves on
           // screen. "2 sin atender" is the state of the business; the list
           // below is a view of it. Making this follow the chip would mean the
@@ -147,6 +218,18 @@ export default async function OrdenesPage() {
           filters={<OrdersFilterChips />}
         />
         <h2 className="mt-1 text-xl font-semibold">Pedidos recibidos</h2>
+
+        {/* LA TARJETA DE COMPARTIR, encima de la lista y solo cuando ya hay
+            pedidos. `OrdersShareCard` pone la condición --ver su comentario--
+            y aquí se monta lo que necesita datos del servidor. */}
+        <OrdersShareCard>
+          <CatalogShareButton
+            publishedCount={publishedCount}
+            businessName={owner?.business_name || "mi negocio"}
+            initialToken={catalogLink?.token ?? null}
+            variante="tarjeta"
+          />
+        </OrdersShareCard>
         {errorOrders ? (
           // The real reason is in the server log and stays there. What the
           // shopkeeper needs is to know that the screen could not answer, so
@@ -155,7 +238,15 @@ export default async function OrdenesPage() {
             No pudimos cargar tus pedidos ahora mismo. Vuelve a intentarlo en un momento.
           </p>
         ) : (
-          <OrdersResults />
+          <OrdersResults
+            vacio={
+              <OrdersEmpty
+                publishedCount={publishedCount}
+                businessName={owner?.business_name || "mi negocio"}
+                initialToken={catalogLink?.token ?? null}
+              />
+            }
+          />
         )}
       </div>
     </OrdersFilterProvider>
