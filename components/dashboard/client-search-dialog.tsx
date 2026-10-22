@@ -403,13 +403,25 @@ function ClientSearchDialogBody({
     amount: amountRule(),
   });
 
+  // SIN ESCRIBIR NADA, EN EL CAMINO DEL ABONO, SE ENSEÑA LA LISTA — frame
+  // `1525:10827`, que la dibuja llena antes de teclear.
+  //
+  // Es por lo que cuesta cada camino. A «Venta o fiado» y a «Nuevo cliente» se
+  // llega sabiendo a quién se le vende y, si no está, se le da de alta ahí
+  // mismo: el campo vacío es la invitación a escribir. Al abono se llega
+  // sabiendo que ALGUIEN pagó, y esa puerta no tiene salida de alta —un
+  // cliente recién creado no tiene fiado que pagar— así que un cuadro vacío
+  // solo le pide al tendero que recuerde cómo escribió un nombre que ya está
+  // en la lista.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
+    if (!q) {
+      return movimientoAlElegir === "abono" ? clients.slice(0, CLIENT_RESULT_LIMIT) : [];
+    }
     return clients
       .filter((c) => c.name.toLowerCase().includes(q) || c.document_id?.toLowerCase().includes(q))
       .slice(0, CLIENT_RESULT_LIMIT);
-  }, [clients, query]);
+  }, [clients, query, movimientoAlElegir]);
 
   // There is something to lose once the owner has actually typed something
   // into the registration form — not merely reached that step, since
@@ -527,7 +539,13 @@ function ClientSearchDialogBody({
           y no por pantalla. */}
       <DialogHeader>
         <DialogTitle>Buscar cliente</DialogTitle>
-        {movimientoAlElegir === "abono" ? null : (
+        {/* EN EL ABONO, «Selecciona un cliente» — el subtítulo del frame
+            `1525:10827`. En los demás caminos sigue el de siempre, que dice
+            de qué negocio es la lista y por qué se puede buscar; aquí sobra
+            porque debajo ya está la lista entera. */}
+        {movimientoAlElegir === "abono" ? (
+          <DialogDescription>Selecciona un cliente</DialogDescription>
+        ) : (
           <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
         )}
       </DialogHeader>
