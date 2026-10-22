@@ -331,6 +331,53 @@ export function AbonoReparto({
 
   const puedeGuardar = enElLibro > 0.005 && !excede && reparto.repartido > 0.005 && !guardando;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // LA FILA DE LA HOJA «REPARTIR ABONO»: ELEGIR, NO MIRAR EL REPARTO
+  //
+  // Frame `1527:12129`. Encargo del dueño el 2026-10-22, y lo dijo así:
+  // *«Este punto ya te lo he comentado varias veces y no me has hecho caso:
+  // al seleccionar "Repartir distinto" las cards deben mostrarse con el botón
+  // pagar y sin saldo a abonar»*. Tenía razón las tres veces.
+  //
+  // POR QUÉ ESTABA MAL: la hoja reusaba `filaDeFiado`, que es la fila de la
+  // lista de abajo. Esa fila existe para ENSEÑAR el reparto —«Abona $0.12», o
+  // «No le toca nada»— y aquí eso sobra y además estorba: un fiado que ya
+  // tiene asignado un importe salía sin botón, así que la hoja que existe
+  // para elegir CUALQUIERA de ellos dejaba fuera justo los que el reparto
+  // automático ya había tocado.
+  //
+  // AQUÍ SIEMPRE HAY BOTÓN, en todos. Esa es la diferencia que importa: la
+  // hoja es «elige a cuál le pongo yo la cifra», y a cualquiera se le puede
+  // poner, tenga o no algo asignado ahora mismo.
+  //
+  // EL RECORRIDO QUE ABRE, y es el que el dueño describe entero: «Pagar» va
+  // al detalle del fiado (`1536:11006`), de ahí «Continuar» a la pantalla del
+  // monto (`1524:10358`), y al pagar se vuelve aquí con la cifra puesta en su
+  // card (`1527:11671`).
+  const filaParaElegir = (f: FiadoAbierto) => (
+    <li key={f.movementId} className="overflow-hidden rounded-[10px] border">
+      <div className="flex items-center justify-between gap-3 pr-3">
+        <div className="min-w-0 flex-1 [&>*]:border-0">
+          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 shrink-0"
+          onClick={() => {
+            // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
+            // desmonta solo al cambiar de ruta.
+            setRepartiendo(false);
+            router.push(`/abonos/nuevo/${f.movementId}?reparto=1`);
+          }}
+        >
+          Pagar
+        </Button>
+      </div>
+    </li>
+  );
+
   // UNA SOLA FILA, USADA EN DOS SITIOS: la lista de «Así se reparte el pago» y
   // la hoja de «Repartir distinto». Es una función y no un componente aparte
   // porque cierra sobre medio estado de esta pantalla —lo asignado, lo fijado
@@ -665,7 +712,7 @@ export function AbonoReparto({
                   Ningún fiado coincide con «{buscaFiado.trim()}».
                 </li>
               ) : (
-                fiadosFiltrados.map(filaDeFiado)
+                fiadosFiltrados.map(filaParaElegir)
               )}
             </ul>
           </div>
