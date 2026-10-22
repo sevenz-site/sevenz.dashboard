@@ -30,6 +30,7 @@ import {
   priceIn,
   suggestedPrice,
   marginFromPrice,
+  priceFromCost,
   parseAmount,
   formatAmountForInput,
   SALE_CURRENCIES_LOCKED,
@@ -131,12 +132,69 @@ check("6b. costo 12 con 0 % sugiere 12", suggestedPrice(12, 0) === 12);
 check("6c. sin costo no se sugiere nada", suggestedPrice(0, 30) === null);
 check(
   "6d. el margen es SOBRE EL COSTO: de 10 a 13 son 30 %, no 23 %",
-  marginFromPrice(10, 13) === 30,
-  String(marginFromPrice(10, 13)),
+  marginFromPrice(10, "USD", 13, "USD", TASAS) === 30,
+  String(marginFromPrice(10, "USD", 13, "USD", TASAS)),
 );
 check(
   "6e. sin costo no hay margen — el caso de todo producto nacido en un fiado",
-  marginFromPrice(null, 13) === null,
+  marginFromPrice(null, "USD", 13, "USD", TASAS) === null,
+);
+
+// ── 6f-6i. EL MARGEN CRUZANDO MONEDAS ────────────────────────────────
+//
+// Reportado por el dueño el 2026-10-22: *«seteo precio en dólares e intentó
+// agregar margen en euros, el dropdown no cambió el valor del porcentaje
+// seleccionado pero sí lo aplicó al precio en euros»*.
+//
+// POR QUÉ NO SE VEÍA. `priceFromCost` --la que ESCRIBE el precio-- convierte el
+// costo a la moneda destino; `marginFromPrice` --la que LEE el margen de
+// vuelta-- no recibía monedas y dividía euros entre dólares. El precio salía
+// bien y el porcentaje no coincidía con ningún preajuste, así que el
+// desplegable se quedaba en lo de antes.
+//
+// Y NO ERA SOLO LA PANTALLA: ese mismo número se guarda en
+// `margin_retail_pct`, de donde sale el informe de ganancia.
+//
+// Con las tasas de arriba --Bs/USD 160, Bs/EUR 180-- un costo de $10 son
+// 1.600 Bs, que son €8,89. Un 30 % sobre 8,89 da 11,56.
+check(
+  "6f. cruzando monedas, el margen de vuelta es 30 y no un número sin sentido",
+  (() => {
+    const precioEur = priceFromCost(10, "USD", 30, "EUR", TASAS);
+    const vuelta = marginFromPrice(10, "USD", precioEur, "EUR", TASAS);
+    // 30,03 Y NO 30 EXACTO, y está bien: el precio se redondea a dos
+    // decimales antes de leerlo de vuelta. Lo que importa es que caiga JUNTO a
+    // 30 y no en el 16 % que salía antes de convertir.
+    return precioEur === 11.56 && Math.abs(vuelta - 30) < 0.1;
+  })(),
+  `precio ${priceFromCost(10, "USD", 30, "EUR", TASAS)} · margen ${marginFromPrice(10, "USD", priceFromCost(10, "USD", 30, "EUR", TASAS), "EUR", TASAS)}`,
+);
+check(
+  "6f2. y por eso el desplegable pregunta AL REVÉS: qué preajuste da este precio",
+  (() => {
+    // Lo mismo que hace `TierSection`: en vez de calcular el margen y buscarlo
+    // en la lista --que con 30,03 falla-- se compara el precio con el que cada
+    // preajuste escribiría. Esa comparación SÍ es exacta.
+    const precioEur = priceFromCost(10, "USD", 30, "EUR", TASAS);
+    const cuadra = [10, 15, 20, 30, 40, 50].find(
+      (m) => Math.abs(priceFromCost(10, "USD", m, "EUR", TASAS) - precioEur) < 0.005,
+    );
+    return cuadra === 30;
+  })(),
+  "si esto falla, el desplegable vuelve a decir «Otro» sobre un precio que él calculó",
+);
+check(
+  "6g. y el fallo que se arregló: dividir sin convertir daría otro número",
+  Math.round(((11.56 - 10) / 10) * 100) === 16,
+  "16 % es lo que salía antes, con euros divididos entre dólares",
+);
+check(
+  "6h. un costo en «Otro» no tiene margen: no hay tasa con que convertirlo",
+  marginFromPrice(10, "OTHER", 13, "USD", TASAS) === null,
+);
+check(
+  "6i. sin tasas, cruzar monedas devuelve null en vez de un número inventado",
+  marginFromPrice(10, "USD", 13, "EUR", null) === null,
 );
 
 // ── 7. El parser de cantidades, que ya rompió el dinero una vez ──────────

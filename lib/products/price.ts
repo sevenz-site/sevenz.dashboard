@@ -212,9 +212,45 @@ export function suggestedPrice(cost: number, marginPct: number): number | null {
  * sustituyó al «¿cargamos estos productos?» descartado — no pide re-trabajo,
  * solo dice que de ese producto todavía no se sabe la ganancia.
  */
-export function marginFromPrice(cost: number | null, price: number): number | null {
+export function marginFromPrice(
+  cost: number | null,
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAS MONEDAS NO SON OPCIONALES, Y ESO ES EL ARREGLO DE UN FALLO
+  //
+  // Esta función tomaba dos números sueltos y dividía uno entre otro. Con un
+  // costo en dólares y un precio en euros, eso restaba euros menos dólares y
+  // devolvía un porcentaje que no significaba nada.
+  //
+  // Lo reportó el dueño el 2026-10-22: *«seteó precio en dólares e intentó
+  // agregar margen en euros, el dropdown no cambió el valor del porcentaje
+  // seleccionado pero sí lo aplicó al precio»*. Esa es exactamente la forma
+  // del fallo: `priceFromCost` --la que ESCRIBE el precio-- sí convierte el
+  // costo a la moneda destino, y esta --la que LEE el margen de vuelta-- no.
+  // El precio salía bien y el desplegable se quedaba en lo de antes, porque
+  // el porcentaje que calculaba no coincidía con ningún preajuste.
+  //
+  // LAS MONEDAS ENTRAN POR LA FIRMA, no por un `if` dentro: así quien la
+  // llame no puede olvidarlas, que es como volvió a pasar en dos sitios.
+  costCurrency: CostCurrency | null,
+  price: number,
+  priceCurrency: PriceCurrency,
+  rates: BolivarRates | null,
+): number | null {
   if (cost == null || !(cost > 0) || !(price > 0)) return null;
-  return redondear(((price - cost) / cost) * 100);
+
+  // Un costo en «Otro» no se puede convertir --no tenemos su tasa-- así que
+  // no hay margen que calcular. Devolver un número aquí sería inventarlo.
+  if (costCurrency == null || costCurrency === "OTHER") return null;
+
+  const enLaMonedaDelPrecio =
+    costCurrency === priceCurrency
+      ? cost
+      : rates == null
+        ? null
+        : priceIn(priceCurrency, { amount: cost, currency: costCurrency }, rates).amount;
+  if (enLaMonedaDelPrecio == null || !(enLaMonedaDelPrecio > 0)) return null;
+
+  return redondear(((price - enLaMonedaDelPrecio) / enLaMonedaDelPrecio) * 100);
 }
 
 // ── Parsing what somebody typed, and what the database returned ──────────
