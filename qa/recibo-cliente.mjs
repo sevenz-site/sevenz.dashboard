@@ -35,6 +35,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   PLANTILLAS_ESPERADAS,
   problemaDelBoton,
@@ -88,7 +89,7 @@ globalThis.fetch = async (url, init) => {
 
 // EL INTERRUPTOR SE PRUEBA EN SUS DOS POSICIONES, y se enciende aqui a mano
 // --no en .env.local-- para que correr esta suite nunca pueda dejarlo puesto.
-const { enviarReciboAlCliente } = await import("../lib/whatsapp/recibo-cliente.ts");
+const { enviarReciboAlCliente, enviarReciboDeGrupo } = await import("../lib/whatsapp/recibo-cliente.ts");
 const apagado = await enviarReciboAlCliente("00000000-0000-4000-8000-000000000000");
 process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
@@ -252,6 +253,69 @@ try {
       interceptados.length === antes,
     JSON.stringify(repetido),
   );
+
+  // ── 7. UN REPARTO: UN SOLO RECIBO, POR EL TOTAL ────────────────────────
+  //
+  // La mitad de `CT-128` que protege al cliente, y la razón de ser de la
+  // migración `137`. Sin ella, `abono_confirmation_v3` sale POR FILA: un
+  // billete repartido en tres le manda TRES WhatsApp por un solo pago y le
+  // enseña tres abonos donde hizo uno.
+  //
+  // Las dos cosas que se afirman aquí son las dos que podrían fallar por
+  // separado: que salga UNO —no tres— y que diga el TOTAL —no lo de una
+  // línea—. Una prueba que solo contara mensajes pasaría con un recibo que
+  // dice $10 de un billete de $34.
+  {
+    const grupo = randomUUID();
+    const comunes = { ...base, type: "payment", source: "manual", payment_group_id: grupo };
+    const { data: l1 } = await admin
+      .from("movements")
+      .insert({ ...comunes, amount: 4 })
+      .select("id")
+      .single();
+    const { data: l2 } = await admin
+      .from("movements")
+      .insert({ ...comunes, amount: 30 })
+      .select("id")
+      .single();
+
+    const antesDelGrupo = interceptados.length;
+    const unoSolo = await enviarReciboDeGrupo(grupo);
+    check(
+      "7a. un reparto manda UN solo recibo",
+      unoSolo.estado === "enviado" && interceptados.length === antesDelGrupo + 1,
+      `${JSON.stringify(unoSolo)} · ${interceptados.length - antesDelGrupo} mensajes`,
+    );
+
+    const delGrupo = interceptados.at(-1);
+    const vals = (delGrupo?.template?.components ?? [])
+      .filter((x) => x.type === "body")
+      .flatMap((x) => x.parameters.map((p) => p.text));
+    check(
+      "7b. y dice el TOTAL del reparto, no el de una línea",
+      vals[1] === "$34.00",
+      `${vals[1]} — las líneas son 4 y 30, ninguna es 34`,
+    );
+
+    const repetidoGrupo = await enviarReciboDeGrupo(grupo);
+    check(
+      "7c. el mismo grupo dos veces no manda un segundo recibo",
+      repetidoGrupo.estado === "omitido" && repetidoGrupo.motivo === "ya_enviado",
+      JSON.stringify(repetidoGrupo),
+    );
+
+    // EL CONTROL DE LA 7a, y hace tanta falta como ella: sin él, «salió uno»
+    // pasaría igual si la clave de idempotencia fuera la del MOVIMIENTO y
+    // simplemente nadie hubiera pedido las otras líneas. Pedir el recibo de
+    // una línea suelta del grupo tiene que chocar con el del grupo.
+    const porLinea = await enviarReciboAlCliente(l1.id);
+    check(
+      "7d. control: pedir el recibo de UNA línea del grupo no abre un segundo envío",
+      porLinea.estado === "omitido",
+      `${JSON.stringify(porLinea)} (línea de 4 sobre un grupo de 34)`,
+    );
+    void l2;
+  }
 
   check(
     "6. ningún mensaje salió de verdad a Kapso",

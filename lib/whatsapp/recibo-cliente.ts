@@ -208,8 +208,29 @@ async function enviarRecibo(
 
 // UN ABONO SUELTO. El camino de siempre, con el mismo nombre y la misma firma:
 // `addMovement` y `registrarAbonoDirigido` lo llaman igual que ayer.
+//
+// PERO SI ESA FILA ES PARTE DE UN REPARTO, MANDA EL DEL GRUPO. La clave de la
+// puerta de envío es el id del movimiento, así que sin esto pedir el recibo de
+// UNA línea de un reparto abre un segundo envío y el cliente recibe un segundo
+// mensaje por un pago que hizo una vez — justo lo que la `137` existe para
+// evitar, entrando por la otra puerta.
+//
+// Hoy no lo alcanza nadie: los dos que llaman aquí no crean grupos. Se cierra
+// igual, porque lo encontró la fila de control `7d` de `qa:recibo` y lo que
+// costaría el día que alguien añada un reintento es un mensaje de más a una
+// persona real sobre su dinero.
 export async function enviarReciboAlCliente(movementId: string): Promise<ResultadoRecibo> {
   if (!clientNoticesEnabled()) return { estado: "omitido", motivo: "desactivado" };
+
+  const { data: grupo } = await createServiceClient().rpc("payment_group_of", {
+    p_movement_id: movementId,
+  });
+
+  // Un fallo al preguntarlo NO para el recibo: el caso normal es que no haya
+  // grupo, y perder el comprobante de un abono suelto porque esta consulta
+  // falló sería cambiar un problema raro por uno corriente.
+  if (typeof grupo === "string" && grupo !== "") return enviarReciboDeGrupo(grupo);
+
   return enviarRecibo(movementId, null);
 }
 
