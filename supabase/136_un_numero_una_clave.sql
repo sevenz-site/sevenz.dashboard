@@ -20,26 +20,28 @@
 -- `573238130265` -- the same phone, written with the dial code. None of the
 -- nine sees it.
 --
--- PRODUCTION IS NOT CLEAN EITHER, and finding that out took three queries,
--- not two. The owner ran all three on 2026-10-21.
+-- PRODUCTION IS CLEAN: 116 consents, every one of them carrying a dial code.
+-- Checked by the owner on 2026-10-21 with three read-only queries. So this
+-- migration repairs dev and arms production against a trap that has not
+-- sprung there.
 --
--- The first two looked for COLLISIONS -- a consent key against a client
--- record, and two client records against each other -- and both returned zero
--- rows. It would have been easy to stop there and write "production is
--- clean". It is not: the third query simply counted the shapes in the ledger
--- and found 114 canonical keys and 2 without a dial code.
+-- TWO OF THOSE 116 ARE NOT VENEZUELAN OR COLOMBIAN, and they are worth
+-- knowing about before anyone widens this rule. They are 11 digits opening
+-- with `569` and `519` -- a Chilean and a Peruvian mobile, each with its own
+-- dial code -- and they came in through the owner's own movement form on the
+-- 19th and the 21st. `lib/countries.ts` offers 226 countries in that selector,
+-- so this is the app working as built, not a stray.
 --
--- The two are invisible to a collision query precisely BECAUSE they collide
--- with nothing: no live client record carries that number, so there is no
--- second key to clash with. The consent is simply stranded. Nobody is being
--- sent the wrong thing; two people said yes and the next shopkeeper who
--- registers them -- with the dial code, like every form does -- will be told
--- nobody ever asked, and will ask again.
+-- They pass through this function untouched: 11 digits matches none of the
+-- branches below and falls to the unjudged pass-through, which is exactly
+-- where a number this file cannot place belongs. Nothing here merges them,
+-- renames them, or gives them a country.
 --
--- WORTH KEEPING AS A LESSON ABOUT MEASURING: a query that looks for a clash
--- answers "is anything broken in the way I pictured it", and returns zero
--- just as happily when the breakage has another shape. The count of shapes
--- asked a duller question and it is the one that found them.
+-- THE REASON THEY GET A PARAGRAPH is that a shape count written to look for
+-- "missing dial code" reported them as missing one, because it asked for
+-- `58` or `57` and called everything else bare. They were never bare. If the
+-- rule below is ever widened past two countries, this is the row shape that
+-- will be sitting there to be misread again.
 --
 -- The three dev rows without a dial code all came in as `client_order` from
 -- test tooling that calls `create_catalog_order` with a bare number. The
@@ -180,19 +182,25 @@ do $$
 declare
   v_sueltos int;
 begin
+  -- SOLO LOS DE 10 DIGITOS, que son los unicos genuinamente ambiguos: un
+  -- numero nacional suelto, sin pais. Cualquier otra longitud YA lleva su
+  -- indicativo y esta bien aunque no sea de los dos paises -- en produccion
+  -- hay un movil chileno y uno peruano, de 11 digitos, perfectamente
+  -- canonicos. Contarlos como «sueltos» fue justo el error que escribio este
+  -- comentario.
   select count(*) into v_sueltos
   from public.client_whatsapp_consents
-  where length(phone) <> 12 or left(phone, 2) not in ('57', '58');
+  where length(phone) = 10;
 
   if v_sueltos > 0 then
-    raise notice 'ATENCION: quedan % consentimientos con una clave que no se pudo canonizar. No es un fallo de esta migracion --es el comportamiento de siempre para un numero que no es ni venezolano ni colombiano-- pero conviene mirarlos.', v_sueltos;
+    raise notice 'ATENCION: quedan % permisos con un numero nacional SUELTO, sin pais. No es un fallo de esta migracion --su forma no es ni venezolana ni colombiana, asi que situarlo seria adivinar-- pero conviene mirarlos uno a uno.', v_sueltos;
   end if;
 end $$;
 
 insert into public.schema_migrations (key, description)
 values (
   '136_un_numero_una_clave',
-  'normalize_whatsapp_phone ahora canoniza: un numero de 10 digitos cuya FORMA solo puede ser venezolana (412/414/416/424/426, o un fijo 2xx) o colombiana (3xx, o un fijo 60x) sale con su indicativo delante. Antes la misma persona producia DOS claves distintas --«04149900094» daba 4149900094 y «+584149900094» daba 584149900094-- y como client_whatsapp_consents esta indexada por ese valor, el permiso dado bajo una era invisible desde la otra: el cliente acepto, su ficha lleva su numero, y Sevenz creia que nadie le habia preguntado. MEDIDO EN DEV el 2026-10-21: un permiso concedido bajo 3238130265 mientras NUEVE fichas vivas llevan 573238130265; ninguna de las nueve lo veia. PRODUCCION TAMPOCO ESTA LIMPIA, y averiguarlo costo TRES consultas: las dos primeras buscaban CHOQUES --una clave de permiso contra una ficha, y dos fichas entre si-- y dieron cero filas las dos; la tercera solo conto las formas del registro y encontro 114 claves canonicas y 2 SIN indicativo. Las dos son invisibles para una consulta de choques precisamente porque no chocan con nada: ninguna ficha viva lleva ese numero, asi que no hay segunda clave con la que chocar; el permiso esta varado. Nadie recibe lo que no debe --dos personas dijeron que si y al proximo tendero que las registre, con indicativo como hacen todos los formularios, se le dira que nunca se les pregunto--. La leccion que conviene no perder: una consulta que busca un choque contesta «se rompio de la forma que yo imaginaba» y devuelve cero igual de contenta cuando la rotura tiene otra forma; la que conto formas hizo una pregunta mas tonta y es la que las encontro. DOS INDICATIVOS ES LO QUE LO HACE SEGURO, decision del dueno del 2026-10-21: con solo Venezuela y Colombia las formas no se solapan --un numero venezolano nunca abre por 3 ni por 6, uno colombiano nunca por 4 ni por 2-- asi que un numero suelto se resuelve a un solo pais o a ninguno. Los prefijos moviles venezolanos van listados uno a uno y no como «empieza por 4», que es lo que usa lib/phone.ts: un numero suelto de 10 digitos tambien puede ser de EE. UU., donde 404 y 415 son indicativos reales, y bajo la regla ancha 4045551234 se archivaria como venezolano. Lo estricto deja el numero como estaba, que es el comportamiento de ayer; lo ancho fusionaria a dos personas en una clave, que es el peor fallo que tiene este producto. LA FUNCION Y LAS FILAS CAMBIAN JUNTAS O NO CAMBIA NADA, y por eso el archivo es UNA transaccion: las filas guardadas son la salida de esta funcion y las busquedas la recalculan, asi que cambiar una sin la otra dejaria huerfano el registro ENTERO --no tres filas, todas-- y nadie recibiria nada. Se reescriben tambien los telefonos de catalog_orders, que no son clave de permiso pero construyen el enlace de wa.me del tendero. Re-ejecutable: la primera rama devuelve intacto lo ya canonico, asi que una segunda pasada no toca nada. Los numeros de 9 digitos (Peru, Chile) siguen dando null como siempre: darles permiso es otra decision y no la toma esta migracion.'
+  'normalize_whatsapp_phone ahora canoniza: un numero de 10 digitos cuya FORMA solo puede ser venezolana (412/414/416/424/426, o un fijo 2xx) o colombiana (3xx, o un fijo 60x) sale con su indicativo delante. Antes la misma persona producia DOS claves distintas --«04149900094» daba 4149900094 y «+584149900094» daba 584149900094-- y como client_whatsapp_consents esta indexada por ese valor, el permiso dado bajo una era invisible desde la otra: el cliente acepto, su ficha lleva su numero, y Sevenz creia que nadie le habia preguntado. MEDIDO EN DEV el 2026-10-21: un permiso concedido bajo 3238130265 mientras NUEVE fichas vivas llevan 573238130265; ninguna de las nueve lo veia. PRODUCCION ESTA LIMPIA: 116 permisos y todos con indicativo, comprobado por el dueno el 2026-10-21 con tres consultas de solo lectura, asi que alli esto desarma una trampa en vez de reparar un dano. DOS DE ESOS 116 NO SON NI VENEZOLANOS NI COLOMBIANOS y conviene saberlo antes de que alguien ensanche esta regla: son de 11 digitos y abren por 569 y 519 --un movil chileno y uno peruano, cada uno con SU indicativo-- y entraron por el formulario de movimiento del propio tendero el 19 y el 21. lib/countries.ts ofrece 226 paises en ese selector, o sea que es la app funcionando como esta hecha y no un numero perdido. Pasan por esta funcion sin tocarse: 11 digitos no casa con ninguna rama y cae al paso directo, que es donde debe quedar un numero que este archivo no puede situar. Y merecen parrafo porque un recuento de formas escrito para buscar «sin indicativo» los conto como si les faltara, por pedir 58 o 57 y llamar sueltos a todos los demas; nunca estuvieron sueltos. DOS INDICATIVOS ES LO QUE LO HACE SEGURO, decision del dueno del 2026-10-21: con solo Venezuela y Colombia las formas no se solapan --un numero venezolano nunca abre por 3 ni por 6, uno colombiano nunca por 4 ni por 2-- asi que un numero suelto se resuelve a un solo pais o a ninguno. Los prefijos moviles venezolanos van listados uno a uno y no como «empieza por 4», que es lo que usa lib/phone.ts: un numero suelto de 10 digitos tambien puede ser de EE. UU., donde 404 y 415 son indicativos reales, y bajo la regla ancha 4045551234 se archivaria como venezolano. Lo estricto deja el numero como estaba, que es el comportamiento de ayer; lo ancho fusionaria a dos personas en una clave, que es el peor fallo que tiene este producto. LA FUNCION Y LAS FILAS CAMBIAN JUNTAS O NO CAMBIA NADA, y por eso el archivo es UNA transaccion: las filas guardadas son la salida de esta funcion y las busquedas la recalculan, asi que cambiar una sin la otra dejaria huerfano el registro ENTERO --no tres filas, todas-- y nadie recibiria nada. Se reescriben tambien los telefonos de catalog_orders, que no son clave de permiso pero construyen el enlace de wa.me del tendero. Re-ejecutable: la primera rama devuelve intacto lo ya canonico, asi que una segunda pasada no toca nada. Los numeros de 9 digitos (Peru, Chile) siguen dando null como siempre: darles permiso es otra decision y no la toma esta migracion.'
 )
 on conflict (key) do nothing;
 
