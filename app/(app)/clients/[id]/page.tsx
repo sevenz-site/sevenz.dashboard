@@ -512,6 +512,14 @@ async function MovementHistory({
   }
 
   let ventasDeContado: VentaDeContado[] = [];
+  // CÓMO SE LLAMA CADA FILA DEL HISTORIAL: `sale_id` → nombres de productos.
+  //
+  // Hasta el 2026-10-22 el nombre salía de `description`, porque el guardado
+  // copiaba ahí los productos cuando el tendero no escribía nada. El dueño
+  // mandó quitar esa copia ese día, así que los nombres se resuelven aquí,
+  // desde donde viven. NO CUESTA UNA LECTURA MÁS: `sale_lines` ya se consulta
+  // justo debajo para las ventas de contado.
+  const productosPorVenta: Record<string, string[]> = {};
   const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
   if (idsDeVenta.length > 0) {
     const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
@@ -520,6 +528,10 @@ async function MovementHistory({
       supabase.from("sale_payments").select("sale_id, currency, amount, rate_used").in("sale_id", idsDeVenta),
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
+    for (const l of lineasDeVenta ?? []) {
+      const id = l.sale_id as string;
+      (productosPorVenta[id] ??= []).push(l.name as string);
+    }
     ventasDeContado = filasDeContado(
       (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
       pagos ?? [],
@@ -576,6 +588,7 @@ async function MovementHistory({
         ledger={ledger}
         ventasDeContado={ventasDeContado}
         pendientePorFiado={pendientePorFiadoMapa}
+        productosPorVenta={productosPorVenta}
       />
     </div>
   );

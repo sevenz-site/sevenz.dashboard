@@ -44,6 +44,11 @@ type SharedMovement = {
   // un sentido o en el otro; ausente cae a 0, que es también lo que vale para
   // todo lo que no tiene venta detrás.
   abono_inicial?: number | null;
+  // QUÉ SE LLEVÓ — migración `139`. Las líneas de la venta de la que nació este
+  // movimiento, solo las de SU moneda. Opcional porque durante un despliegue
+  // el código y la base no coinciden; ausente cae en `[]` y la tabla no se
+  // dibuja, que es exactamente como estaba antes.
+  productos?: { name: string; quantity: number; unit_price: number }[] | null;
 };
 
 // LA TARJETA DE UN FIADO, tal y como la entrega la migración `128`: todo lo
@@ -96,8 +101,13 @@ type AbonoDirigidoJson = {
 //   · NO hay nota del dueño. Ni podría: `get_shared_balance` no la devuelve, y
 //     ese es justo el campo donde el tendero apunta algo que no debe llegar a
 //     la otra parte.
-//   · NO hay productos. Quién se llevó qué es una conversación entre los dos,
-//     pero el inventario del negocio no lo es.
+//   · LOS PRODUCTOS SÍ SE ENSEÑAN desde el 2026-10-22, con la misma tabla que
+//     el dueño. Aquí decía lo contrario --*<<quién se llevó qué es una
+//     conversación entre los dos, pero el inventario del negocio no lo es>>*--
+//     y queda escrito porque era el argumento de la migración `122`. Lo
+//     desplaza el encargo del dueño de ese día: el cliente abre su enlace para
+//     comprobar QUÉ le fiaron, y una ficha que dice «Fiado $44.36» sin decir
+//     de qué no se puede comprobar contra nada. Viajan por la `139`.
 //
 // ===========================================================================
 // ESTA PÁGINA NO LEE `movements`
@@ -272,6 +282,14 @@ export default async function DetalleDelClientePage({
         amount={Number(m.amount)}
         currency={m.currency}
         description={m.description}
+        // LA MISMA TABLA QUE LA DEL DUEÑO, y el mismo componente. La `139` ya
+        // manda solo las líneas de la moneda de este movimiento, así que no
+        // hay nada que filtrar aquí.
+        productos={(m.productos ?? []).map((l) => ({
+          name: l.name,
+          quantity: Number(l.quantity),
+          unitPrice: Number(l.unit_price),
+        }))}
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}
         createdAt={m.created_at}

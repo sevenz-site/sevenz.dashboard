@@ -379,6 +379,61 @@ try {
     );
   }
 
+  // ═════════════════════════════════════════════════════════════════════
+  // 2bis. LA DESCRIPCIÓN ES LO QUE EL TENDERO ESCRIBIÓ, Y NADA MÁS
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // Encargo del dueño el 2026-10-22: hasta ese día, un fiado sin descripción
+  // se guardaba con los NOMBRES DE LOS PRODUCTOS metidos en ese campo, y la
+  // ficha los enseñaba como si el tendero los hubiera escrito.
+  //
+  // ESTO NO SE PUEDE COMPROBAR MIRANDO LA PANTALLA: un fiado con
+  // «Descripción: Casco» se ve igual lo haya escrito él o lo haya copiado el
+  // guardado. La diferencia solo existe en la fila, así que se mira la fila.
+  {
+    const sinDesc = await registrar({
+      clientId: cliente.id,
+      lineas: [linea],
+      pagos: [],
+      credito: credito(),
+    });
+    if (sinDesc.ok) {
+      const { data: mov } = await admin
+        .from("movements")
+        .select("description")
+        .eq("sale_id", sinDesc.saleId)
+        .single();
+      check(
+        "2c. sin descripción escrita, el fiado se guarda SIN ella",
+        mov?.description == null,
+        `guardó ${JSON.stringify(mov?.description)} — si sale el nombre del producto, volvió la copia`,
+      );
+    } else {
+      check("2c. sin descripción escrita, el fiado se guarda SIN ella", false, sinDesc.error);
+    }
+
+    const conDesc = await registrar({
+      clientId: cliente.id,
+      lineas: [linea],
+      pagos: [],
+      credito: credito({ description: "Lo que escribió el tendero" }),
+    });
+    if (conDesc.ok) {
+      const { data: mov } = await admin
+        .from("movements")
+        .select("description")
+        .eq("sale_id", conDesc.saleId)
+        .single();
+      check(
+        "2d. y con descripción escrita, se guarda la suya tal cual",
+        mov?.description === "Lo que escribió el tendero",
+        `guardó ${JSON.stringify(mov?.description)}`,
+      );
+    } else {
+      check("2d. y con descripción escrita, se guarda la suya tal cual", false, conDesc.error);
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // 2. EL MOSTRADOR — `B-28`, el caso que `CT-102` nunca ejecutó
   // ══════════════════════════════════════════════════════════════════════

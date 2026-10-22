@@ -53,6 +53,7 @@ export function MovementHistoryList({
   titulo = null,
   ventasDeContado = [],
   pendientePorFiado = {},
+  productosPorVenta = {},
   navegable = true,
 }: {
   movements: Movement[];
@@ -76,6 +77,17 @@ export function MovementHistoryList({
   // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
   // juntos. Un fiado que falte aquí está saldado.
   pendientePorFiado?: Record<string, number>;
+  // ── CÓMO SE LLAMA CADA FILA: `sale_id` → nombres de sus productos ────
+  //
+  // La fila decía «Fiado · Casco» porque el guardado copiaba los nombres
+  // DENTRO de `description` cuando el tendero no escribía nada. El dueño lo
+  // mandó quitar el 2026-10-22 --*«no estar poniendo los productos en la
+  // descripción»*-- así que los nombres vienen ahora de donde viven.
+  //
+  // POR PROP Y NO POR CONSULTA: esto es un componente de cliente. La página ya
+  // lee `sale_lines` para las ventas de contado, así que el dato ya estaba
+  // allí y no cuesta ninguna lectura más.
+  productosPorVenta?: Record<string, string[]>;
   // ── ¿SE PUEDE TOCAR UNA FILA? ────────────────────────────────────────
   //
   // `false` en la hoja «Cuenta de <cliente>» que sale cuando una cédula ya
@@ -340,6 +352,22 @@ export function MovementHistoryList({
           // LA LÍNEA GRIS DE ARRIBA DICE DE CUÁNDO ES SU CIFRA. Un abono
           // tecleado en bolívares enseña ESOS bolívares, que son los de aquel
           // día; sin ellos cae en la conversión de hoy, y entonces lo dice.
+          // ── CÓMO SE LLAMA ESTA FILA ──────────────────────────────────
+          //
+          // Los productos de su venta primero, y lo que el tendero escribiera
+          // después. Un abono se llama por el fiado que pagó, igual que antes.
+          //
+          // EL RESPALDO EN `description` NO ES PARA UN FALLO: las filas
+          // anteriores al 2026-10-22 llevan el nombre del producto COPIADO
+          // dentro de su descripción, y ese es el único nombre que tienen.
+          const nombreDeLaFila =
+            (fiadoDeLaFila?.sale_id ? (productosPorVenta[fiadoDeLaFila.sale_id] ?? []) : []).join(
+              ", ",
+            ) ||
+            fiadoDeLaFila?.description ||
+            m.description ||
+            null;
+
           const bsDeArriba = bsTecleados ?? amount.secondary;
           const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
           // El mismo reparto para las dos clases de fila: con `navegable` es
@@ -399,9 +427,7 @@ export function MovementHistoryList({
                   <p className="truncate text-sm font-medium">
                     {truncateText(
                       `${m.type === "charge" ? "Fiado" : "Abono"}${
-                        (fiadoDeLaFila?.description ?? m.description)
-                          ? ` · ${fiadoDeLaFila?.description ?? m.description}`
-                          : ""
+                        nombreDeLaFila ? ` · ${nombreDeLaFila}` : ""
                       }`,
                       34,
                     )}

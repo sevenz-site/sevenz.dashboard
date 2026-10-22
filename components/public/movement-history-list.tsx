@@ -40,6 +40,9 @@ type SharedMovement = {
   // Lo manda `get_shared_balance` desde la `126`. Decide si la fila sale en
   // el historial: un abono dirigido vive dentro de su fiado.
   applies_to_movement_id?: string | null;
+  // The sale's product names, from migration `139`. Absent in an environment
+  // where it has not run, and then the row falls back to the description.
+  productos?: { name: string }[] | null;
   // WHAT THIS FIADO STILL OWES — migration `132`, null on a payment. Optional
   // because a `get_shared_balance` where `132` has not run does not send the
   // key at all, and the row then draws no figure instead of a zero that would
@@ -267,6 +270,25 @@ export function MovementHistoryList({
           // when that figure is from: an abono typed in bolívares shows THOSE
           // bolívares, which are that day's; otherwise it falls back to
           // today's conversion and says so.
+          // ── WHAT TO CALL THIS ROW ────────────────────────────────────
+          //
+          // The sale's product names first, then whatever the shopkeeper
+          // typed. It used to be the description alone, which worked because
+          // the write path copied the product names INTO it when he typed
+          // nothing — he had that removed on 2026-10-22, so the names now come
+          // from where they live.
+          //
+          // AN ABONO IS NAMED AFTER THE FIADO IT PAID, same as before.
+          //
+          // Rows written before that day still carry the copied name in their
+          // description, and that is why the fallback stays: it is not a
+          // fallback for a bug, it is the only name those rows have.
+          const nombreDeLaFila =
+            (fiadoDeLaFila?.productos ?? []).map((l) => l.name).join(", ") ||
+            fiadoDeLaFila?.description ||
+            m.description ||
+            null;
+
           const bsDeArriba = bsTecleados ?? amount.secondary;
           const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
 
@@ -302,9 +324,7 @@ export function MovementHistoryList({
                   <p className="truncate text-sm font-medium">
                     {truncateText(
                       `${m.type === "charge" ? "Fiado" : "Abono"}${
-                        (fiadoDeLaFila?.description ?? m.description)
-                          ? ` · ${fiadoDeLaFila?.description ?? m.description}`
-                          : ""
+                        nombreDeLaFila ? ` · ${nombreDeLaFila}` : ""
                       }`,
                       34,
                     )}

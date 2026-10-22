@@ -988,16 +988,31 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         type: "charge",
         amount: resto.amount,
         currency: sello.currency,
-        // LO QUE EL CLIENTE VA A LEER EN SU SALDO: lo que el tendero escribió
-        // al pactar el fiado, si escribió algo; si no, qué se llevó. No dice
-        // «venta» en ningún caso — el detalle está en las líneas.
-        description: (credito.description?.trim()
-          ? credito.description.trim()
-          : lineasResueltas
-              .filter((l) => l.currency === resto.currency)
-              .map((l) => l.name)
-              .join(", ")
-        ).slice(0, 500),
+        // ── LA DESCRIPCIÓN ES LO QUE EL TENDERO ESCRIBIÓ. SOLO ESO ─────
+        //
+        // Caía en los nombres de los productos cuando él no escribía nada, y
+        // el dueño lo mandó quitar el 2026-10-22: *«en la descripción estás
+        // poniendo los productos; si no escribió descripción déjala vacía con
+        // un "-", si escribió agrégala allí pero si no, no»*.
+        //
+        // POR QUÉ ESTABA: era la única forma de que la fila del historial
+        // dijera «Fiado · Casco» en vez de «Fiado» a secas. Pero rellenar un
+        // campo del tendero con un dato que él no puso tiene un precio: la
+        // ficha enseña «Descripción: Casco» como si lo hubiera escrito, y no
+        // hay forma de distinguirlo de una descripción de verdad.
+        //
+        // LOS NOMBRES SIGUEN SALIENDO EN LA FILA, pero de donde viven: de
+        // `sale_lines`. Las dos listas los resuelven desde ahí desde el mismo
+        // día.
+        //
+        // LO YA GUARDADO NO SE TOCA. Un fiado anterior tiene el nombre del
+        // producto metido en su `description` y ahí se queda: borrarlo
+        // exigiría distinguir cuál fue escrito por el tendero y cuál copiado
+        // de la venta, y esa diferencia no está guardada en ningún sitio. Así
+        // que durante un tiempo convivirán fichas con descripción heredada y
+        // fichas con «—». Es el precio de no borrar lo que no se puede
+        // distinguir.
+        description: credito.description?.trim() ? credito.description.trim().slice(0, 500) : null,
         photo_path: credito.photoPath ?? null,
         source: "manual",
         plazo_dias: credito.plazoDias,
