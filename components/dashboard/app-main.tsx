@@ -53,6 +53,8 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   const enAsistenteDeVenta =
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
+    // La propuesta de reparto (`CT-128`), que también monta `StickyActions`.
+    pathname.startsWith("/abonos/reparto-propuesta") ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname);
   const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
@@ -102,6 +104,7 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/ventas/nueva") ||
     pathname === "/clients/nuevo" ||
     pathname.startsWith("/abonos/nuevo/") ||
+    pathname.startsWith("/abonos/reparto-propuesta") ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname) ||
     // EL DETALLE DE UNA TRANSACCIÓN, desde el 2026-10-21: sus botones

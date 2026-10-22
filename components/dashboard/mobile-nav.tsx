@@ -284,9 +284,17 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   //
   // `=== "/productos/nuevo"` y no `startsWith("/productos")`: el catálogo SÍ
   // lleva barra, y es la pantalla de la que se entra.
+  // Y EL REPARTO DE UN ABONO, desde el 2026-10-21. Es la TERCERA lista que hay
+  // que tocar para una pantalla con barra pegada abajo --las otras dos están en
+  // `app-main.tsx`-- y es la única que decide si esta barra se dibuja encima.
+  // Medido en la propuesta antes de añadirla: el botón ocupaba 732-772 y esta
+  // barra 723-812, así que `elementFromPoint` en el centro del botón devolvía
+  // un icono de la barra. No era un botón mal colocado: era un botón que no se
+  // podía pulsar, y desde fuera eso se ve como «le di y no hizo nada».
   const enAsistenteDeVenta =
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
+    pathname.startsWith("/abonos/reparto-propuesta") ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname);
 
