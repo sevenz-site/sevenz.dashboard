@@ -374,6 +374,39 @@ question before implementing. Don't guess and bake the guess into code or
 a migration — this is doubly true for anything touching real customer
 balances or money.
 
+## Todo encargo se evalúa por sus bordes antes de construirlo
+
+**Pedido por el dueño el 2026-10-22, después de que un encargo suyo llegara
+a pantalla roto por un caso que él no había nombrado**: *«todo lo que te pida
+debes evaluar los casos bordes, peores escenarios y soluciones»*.
+
+Antes de escribir una línea de cualquier encargo —suyo o salido de una
+reseña— hay que contestar tres preguntas **por escrito, en el reporte**:
+
+1. **¿Dónde se rompe?** Los bordes: cero, uno, muchos; el cliente que debe en
+   dos monedas; el abono sin dirigir; la fila sin tasa; el negocio colombiano;
+   el campo vacío. Los límites de la app ya han costado fallos reales —`CT-124`
+   con el pendiente recalculado, la venta mixta del 2026-10-20 sumando dólares
+   a euros— y todos eran bordes que nadie enumeró.
+2. **¿Cuál es el peor escenario?** No «se ve raro», sino qué pierde el tendero:
+   dinero mal anotado, un cliente al que se le cobra de más, un mensaje que no
+   sale. Y si el peor caso es silencioso, decirlo: un fallo que no avisa vale
+   más atención que uno que revienta.
+3. **¿Qué se hace con cada uno?** Cubrirlo, o decir en voz alta que se deja
+   fuera y por qué. Un borde identificado y no resuelto es una decisión; uno
+   identificado y callado es una trampa.
+
+**El ejemplo que la motivó**: se le quitó a la pantalla de abono su selector de
+libro porque el desplegable del monto lo sustituía. El desplegable ofrecía
+*el libro actual y bolívares* — suficiente con un cliente que debe en una
+moneda, y sin salida para uno que debe en dólares Y en euros, que es justo el
+caso que él tenía en pantalla. El borde existía desde el primer minuto; lo que
+faltó fue enumerarlo.
+
+**Esto no sustituye a «Ask before assuming», lo alimenta**: la lista de bordes
+es de dónde salen las preguntas que merece la pena hacer. Un borde con una
+sola lectura razonable se resuelve y se cuenta; uno con dos se pregunta.
+
 ## Test every requirement before reporting it delivered
 
 Nothing is reported as done, fixed, or verified until it has been **run and

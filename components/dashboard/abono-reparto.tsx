@@ -229,6 +229,50 @@ export function AbonoReparto({
 
   const bsDelTotal = enBolivares ? montoNum : equivalencia(enElLibro, libro);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAS OPCIONES DEL ÚNICO SELECTOR DE MONEDA
+  //
+  // Una entrada por cada libro en el que este cliente debe algo, más una de
+  // bolívares POR LIBRO si el negocio es venezolano. El porqué de que los
+  // bolívares se dupliquen está junto al desplegable: con dos deudas abiertas,
+  // «Bolívares» a secas no dice a cuál van.
+  //
+  // `libros` sale de los fiados abiertos, así que un cliente que ya pagó sus
+  // euros deja de ver esa opción sola: no hay deuda que abonar ahí.
+  const opcionesDeMoneda = useMemo(() => {
+    const nombre = (l: LedgerCurrency | null) =>
+      l === "EUR" ? "euros" : l === "USD" ? "dólares" : "pesos";
+    const lista: { libro: LedgerCurrency | null; enBolivares: boolean; etiqueta: string }[] = [];
+    for (const l of libros) {
+      lista.push({
+        libro: l,
+        enBolivares: false,
+        etiqueta: l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos",
+      });
+    }
+    if (paisVE) {
+      for (const l of libros) {
+        lista.push({
+          libro: l,
+          enBolivares: true,
+          // LA COLETILLA SOLO CUANDO HACE FALTA. Con un libro no hay ambigüedad
+          // que deshacer, y «Bolívares · a su deuda en dólares» sobre la única
+          // deuda que existe se lee como que hay otra escondida.
+          etiqueta: libros.length > 1 ? `Bolívares · a su deuda en ${nombre(l)}` : "Bolívares",
+        });
+      }
+    }
+    return lista;
+  }, [libros, paisVE]);
+
+  // Lo que dice el botón cerrado. Con un libro basta el nombre; con dos hay
+  // que repetir a cuál van los bolívares, o el botón miente por omisión.
+  const nombreDeMoneda = (enBs: boolean, l: LedgerCurrency | null) => {
+    const propio = l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos";
+    if (!enBs) return propio;
+    return libros.length > 1 ? `Bs. · ${propio.toLowerCase()}` : "Bolívares";
+  };
+
   // ───────────────────────────────────────────────────────────────────────
   // LO QUE DEBE, EN LA MONEDA EN QUE SE ESTÁ TECLEANDO
   //
@@ -380,7 +424,22 @@ export function AbonoReparto({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
+    // ── SIN `p-4` PROPIO: EL PADDING LO PONE `AppMain`, Y SOLO ÉL ──────
+    //
+    // Reportado por el dueño el 2026-10-22, por tercera vez sobre lo mismo:
+    // *«Aún sigo viendo diferencias en los paddings laterales del flujo
+    // completo de abono, debe ser de 16px»*.
+    //
+    // MEDIDO: el `h1` empezaba a 32px del borde. `AppMain` ya trae `p-4` y
+    // esta pantalla añadía otro, así que sumaban. Las otras del flujo no lo
+    // añaden, y de ahí la diferencia que él veía al pasar de una a otra.
+    //
+    // Y ARREGLA UNA SEGUNDA COSA DE PASO: `StickyActions` usa `-mx-4` para
+    // cancelar el padding de `AppMain` y quedar de borde a borde. Con el
+    // padding duplicado solo cancelaba el de aquí, así que la banda de abajo
+    // salía metida 16px por cada lado en vez de a ras. Medido antes: la barra
+    // empezaba en 16 y no en 0.
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4">
       {/* `soloEnTelefono={false}`: `/abonos` está en la lista de
           `app-header.tsx` que suprime la cabecera a TODAS las anchuras, así
           que sin esto, a partir de `sm` la pantalla se queda sin forma de
@@ -448,35 +507,14 @@ export function AbonoReparto({
         </div>
       ) : (
         <>
-          {/* EL LIBRO, SOLO CUANDO HAY MÁS DE UNO. Con un solo libro un
-              selector de una opción es una pregunta sin respuesta posible — y
-              es el caso de casi todos los clientes. */}
-          {libros.length > 1 ? (
-            <div className="flex flex-col gap-1.5">
-              <Label>¿En qué moneda te pagó?</Label>
-              <div className="flex gap-2">
-                {libros.map((l) => (
-                  <Button
-                    key={l ?? "COP"}
-                    type="button"
-                    variant={l === libro ? "default" : "outline"}
-                    className="h-10 flex-1"
-                    onClick={() => {
-                      setLibro(l);
-                      setEnBolivares(false);
-                    }}
-                  >
-                    {l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos"}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs leading-4 text-muted-foreground">
-                Un abono se reparte dentro de una sola moneda: pagar una deuda en dólares con euros
-                exigiría una tasa que nadie acordó.
-              </p>
-            </div>
-          ) : null}
+          {/* AQUÍ ESTUVO «¿En qué moneda te pagó?», un segundo selector con una
+              pastilla por libro. Lo quitó el dueño el 2026-10-22: *«¿por qué la
+              agregaste? Elimínalo, para eso está el dropdown al lado del
+              monto»*. Tenía razón: dos controles para una sola pregunta.
 
+              SU TRABAJO NO DESAPARECE, SE MUDA AL DESPLEGABLE, que ahora lista
+              TODOS los libros en los que ese cliente debe. Ver allí el caso
+              que esto obligaba a resolver. */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="monto">¿Cuánto abona?</Label>
             <div className="flex items-start gap-2">
@@ -488,47 +526,64 @@ export function AbonoReparto({
                 placeholder="00"
                 className="h-10 flex-1 text-lg"
               />
-              {/* LOS BOLÍVARES SOLO SI EL NEGOCIO ES VENEZOLANO. Un negocio
-                  colombiano no tiene tasa con la que convertirlos. */}
-              {/* UN DESPLEGABLE, NO UN INTERRUPTOR — frame `1524:10439`, nodo
-                  `1525:11083`: bandera, nombre y `keyboard_arrow_down`.
-                  Reportado por el dueño el 2026-10-22: *«el dropdown es un
-                  botón, en el mockup es un dropdown»*.
+              {/* ═══════════════════════════════════════════════════════
+                  EL ÚNICO SELECTOR DE MONEDA DE LA PANTALLA
 
-                  NO ES SOLO EL ASPECTO. Un botón que alterna solo sabe decir
-                  «la otra», así que con dos opciones funciona y con tres —que
-                  es lo que pide el mismo encargo— se queda sin forma de
-                  expresarlas. La lista las enseña todas y dice cuál está
-                  puesta sin que haya que pulsarla para averiguarlo.
+                  Frame `1524:10439`, nodo `1525:11083`: bandera, nombre y
+                  `keyboard_arrow_down`. El dueño quitó el 2026-10-22 el
+                  segundo selector que vivía arriba --*«para eso está el
+                  dropdown al lado del monto»*-- así que este carga con las dos
+                  preguntas: en qué LIBRO se abona y en qué moneda se TECLEA.
 
-                  QUÉ SE OFRECE: el libro en el que se está abonando y, si el
-                  negocio es venezolano, bolívares. Los libros del cliente
-                  siguen eligiéndose arriba cuando hay más de uno: «bolívares»
-                  no dice a cuál de las dos deudas van, y meterlo todo en una
-                  lista obligaría a inventar esa respuesta. */}
-              {paisVE && libro ? (
+                  ── EL BORDE QUE ESTO OBLIGA A RESOLVER ─────────────────
+
+                  Un cliente venezolano puede deber en dólares Y en euros --es
+                  el de la captura del reporte--. Con el selector de arriba
+                  fuera, una lista de «Dólares / Bolívares» dejaría los euros
+                  sin ninguna puerta: el tendero no podría abonar esa deuda.
+
+                  Y «Bolívares» a secas no dice a CUÁL de las dos van. Elegir
+                  por él --el último libro, el más grande, el primero-- es
+                  inventar una respuesta sobre dinero, que es justo lo que
+                  `CLAUDE.md` prohíbe.
+
+                  LA SALIDA ES NOMBRARLO EN LA PROPIA OPCIÓN: con dos libros la
+                  lista dice «Bolívares · a su deuda en dólares» y «Bolívares ·
+                  a su deuda en euros». Con uno solo sobra la coletilla y dice
+                  «Bolívares». Nadie tiene que deducir nada y no hace falta un
+                  segundo control.
+
+                  UN NEGOCIO COLOMBIANO NO VE BOLÍVARES --no hay tasa-- y con un
+                  solo libro tampoco ve un selector de una opción, que sería
+                  una pregunta sin respuesta posible. */}
+              {opcionesDeMoneda.length > 1 ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button type="button" variant="outline" className="h-10 shrink-0 gap-2">
                       <CurrencyFlagIcon
-                        currency={enBolivares ? "VES" : libro}
+                        currency={enBolivares ? "VES" : (libro ?? "USD")}
                         className="size-4 shrink-0"
                       />
-                      <span className="text-xs">
-                        {enBolivares ? "Bolívares" : libro === "EUR" ? "Euros" : "Dólares"}
-                      </span>
+                      <span className="text-xs">{nombreDeMoneda(enBolivares, libro)}</span>
                       <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setEnBolivares(false)}>
-                      <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" />
-                      {libro === "EUR" ? "Euros" : "Dólares"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setEnBolivares(true)}>
-                      <CurrencyFlagIcon currency="VES" className="size-4 shrink-0" />
-                      Bolívares
-                    </DropdownMenuItem>
+                    {opcionesDeMoneda.map((o) => (
+                      <DropdownMenuItem
+                        key={`${o.enBolivares ? "ves" : "libro"}-${o.libro ?? "cop"}`}
+                        onSelect={() => {
+                          setLibro(o.libro);
+                          setEnBolivares(o.enBolivares);
+                        }}
+                      >
+                        <CurrencyFlagIcon
+                          currency={o.enBolivares ? "VES" : (o.libro ?? "USD")}
+                          className="size-4 shrink-0"
+                        />
+                        {o.etiqueta}
+                      </DropdownMenuItem>
+                    ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
