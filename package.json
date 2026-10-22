@@ -56,7 +56,8 @@
     "qa:venta-resumen": "node qa/venta-resumen.mjs",
     "qa:colombia": "node qa/fixtures-venta-colombia.mjs",
     "qa:estado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/estado-del-cliente.mts",
-    "qa:permiso-numero": "node qa/permiso-del-numero.mjs"
+    "qa:permiso-numero": "node qa/permiso-del-numero.mjs",
+    "qa:clave-numero": "node qa/clave-del-numero.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
