@@ -5,6 +5,7 @@ import {
   WhatsappConsentDialog,
   WhatsappConsentField,
 } from "@/components/dashboard/whatsapp-consent-field";
+import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
@@ -843,16 +844,31 @@ function ClientSearchDialogBody({
 
         {/* Encima de "Guardar fiado", donde el dueño está mirando cuando
             decide. El cliente todavía no existe, así que el nombre sale del
-            campo que se está tecleando y la frase se arma con él. */}
-        <WhatsappConsentField
-          clientName={nameValue}
-          hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
-          yaTienePermiso={permisoDelNuevo?.granted === true}
-          nombreFichaExistente={permisoDelNuevo?.clientName ?? null}
-          checked={consent}
-          onCheckedChange={setConsent}
-          disabled={pending}
-        />
+            campo que se está tecleando y la frase se arma con él.
+
+            EL AVISO ES EL DE UN ALTA, Y NO EL DEL CAMPO. Esto se hacía con
+            `WhatsappConsentField` y su propia frase de «ya tiene permiso», que
+            está escrita para un cliente que YA EXISTE. Cuando el número acepta
+            pero la ficha es de OTRA bodega no hay nombre que poner, y la frase
+            caía en «Este cliente ya tiene activadas las notificaciones» — sobre
+            un cliente que todavía no existe, y atribuyéndole a él un permiso
+            que es del número. Visto en pantalla el 2026-10-21.
+
+            `AvisoNumeroYaAcepta` es el que ya usan las otras dos altas y dice
+            las dos cosas bien: con nombre cuando la ficha es del propio
+            tendero, y «este número» cuando no lo es. */}
+        {permisoDelNuevo?.granted === true ? (
+          <AvisoNumeroYaAcepta clientName={permisoDelNuevo.clientName} />
+        ) : (
+          <WhatsappConsentField
+            clientName={nameValue}
+            hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
+            yaTienePermiso={false}
+            checked={consent}
+            onCheckedChange={setConsent}
+            disabled={pending}
+          />
+        )}
 
         <DialogFooter>
           {state.duplicate ? (

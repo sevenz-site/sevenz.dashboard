@@ -34,7 +34,6 @@ export function WhatsappConsentField({
   clientName,
   hasWhatsapp,
   yaTienePermiso,
-  nombreFichaExistente = null,
   checked,
   onCheckedChange,
   disabled,
@@ -52,13 +51,6 @@ export function WhatsappConsentField({
   // silencio hacia quien si.
   yaTienePermiso?: boolean;
   // EN UN ALTA, EL NOMBRE DE LA FICHA QUE YA LLEVA ESE NÚMERO — y solo si es
-  // del propio tendero, que es lo único que `whatsapp_consent_for_phone`
-  // devuelve. Cambia la frase porque cambia la situación: con un cliente que
-  // ya existe basta decir que él ya las tiene activadas, pero cuando se está
-  // dando de alta a alguien, lo que el tendero necesita saber es que ese
-  // NÚMERO ya es de una cuenta suya. Null cuando la ficha es de otra bodega:
-  // decir cuál sería contarle que ese teléfono compra en otro negocio.
-  nombreFichaExistente?: string | null;
   // Si el cliente no tiene número guardado. NO esconde la casilla: la deja
   // marcable y explica qué falta. Esconderla perdería el único momento en que
   // el tendero está pensando en esto -- propuesta del dueño el 2026-10-10,
@@ -76,18 +68,22 @@ export function WhatsappConsentField({
   // pintar nada. Quitarlo se hace desde la ficha del cliente (MS-35), no desde
   // aqui: este formulario es para registrar dinero, no para administrar
   // permisos.
+  //
+  // UNA SOLA FRASE, Y ESTÁ ESCRITA PARA UN CLIENTE QUE YA EXISTE. El
+  // 2026-10-21 tuvo una segunda, para el alta —«Ya tienes este número
+  // registrado como X»— y se quitó el mismo día, al verla en pantalla: cuando
+  // el número acepta pero la ficha es de OTRA bodega no hay nombre que poner,
+  // así que caía aquí y le decía a un tendero «Este cliente ya tiene activadas
+  // las notificaciones» sobre alguien que todavía no existe, atribuyéndole un
+  // permiso que es del NÚMERO.
+  //
+  // Las altas usan `AvisoNumeroYaAcepta`, que tiene las dos frases de ese
+  // caso. Una situación, un componente: meter las dos aquí fue lo que permitió
+  // que una se usara donde tocaba la otra.
   if (yaTienePermiso) {
     return (
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {nombreFichaExistente ? (
-          <>
-            Ya tienes este número registrado como{" "}
-            <span className="font-medium text-foreground">{nombreFichaExistente}</span>, y ya
-            recibe notificaciones vía WhatsApp
-          </>
-        ) : (
-          <>{clientName.trim() || "Este cliente"} ya tiene activada las notificaciones vía WhatsApp</>
-        )}
+        {clientName.trim() || "Este cliente"} ya tiene activadas las notificaciones vía WhatsApp
       </p>
     );
   }
