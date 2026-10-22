@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjet
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { registrarAbonoRepartido } from "@/app/(app)/abonos/actions";
+import { guardarBorrador, leerBorrador, borrarBorrador } from "@/lib/abonos/borrador";
 import { repartir, deudaDelLibro, type FiadoParaRepartir } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
@@ -73,9 +74,17 @@ export function AbonoReparto({
   const router = useRouter();
   const [guardando, empezar] = useTransition();
 
-  const [libro, setLibro] = useState<LedgerCurrency | null>(libros[0] ?? null);
-  const [monto, setMonto] = useState("");
-  const [enBolivares, setEnBolivares] = useState(false);
+  // SE ARRANCA DEL BORRADOR SI LO HAY, en el inicializador y no en un efecto:
+  // leerlo después dibujaría primero la pantalla vacía y luego la llena, y el
+  // tendero que vuelve de fijar un fiado vería parpadear su propio reparto.
+  const borrador = typeof window === "undefined" ? null : leerBorrador(clienteId);
+
+  const [libro, setLibro] = useState<LedgerCurrency | null>(
+    (borrador?.libro as LedgerCurrency | null | undefined) ?? libros[0] ?? null,
+  );
+  const [monto, setMonto] = useState(borrador?.monto ?? "");
+  const [enBolivares, setEnBolivares] = useState(borrador?.enBolivares ?? false);
+  const [aMano, setAMano] = useState<Record<string, number>>(borrador?.aMano ?? {});
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,9 +128,17 @@ export function AbonoReparto({
   const excede = enElLibro - deuda > 0.005;
 
   const reparto = useMemo(
-    () => repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, ahora }),
-    [excede, enElLibro, paraRepartir, ahora],
+    () => repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano, ahora }),
+    [excede, enElLibro, paraRepartir, aMano, ahora],
   );
+
+  // EL BORRADOR SE GUARDA EN CUANTO CAMBIA ALGO, no al salir: salir puede ser
+  // un gesto de «atrás» del sistema, y entonces no hay dónde enganchar el
+  // guardado. Es barato —una cadena corta en memoria del navegador— y lo que
+  // compra es que volver de fijar un fiado encuentre la pantalla como estaba.
+  useEffect(() => {
+    guardarBorrador({ clienteId, libro, monto, enBolivares, aMano });
+  }, [clienteId, libro, monto, enBolivares, aMano]);
 
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
   // En el orden del reparto, no en el de la consulta: es el que explica por
@@ -145,6 +162,7 @@ export function AbonoReparto({
         libro,
         montoTecleado: montoNum,
         monedaTecleada: enBolivares ? "VES" : ((libro ?? "COP") as PriceCurrency),
+        aMano,
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
       });
@@ -152,6 +170,10 @@ export function AbonoReparto({
         setError(r.error);
         return;
       }
+      // El borrador ya no describe nada: su reparto está escrito. Dejarlo
+      // haría que volver a «Registrar abono» abriera la pantalla con el pago
+      // que se acaba de hacer, como si estuviera pendiente.
+      borrarBorrador(clienteId);
       router.push(`/clients/${clienteId}`);
     });
   };
@@ -290,28 +312,69 @@ export function AbonoReparto({
                       <div className="[&>*]:rounded-b-none [&>*]:border-0">
                         <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
                       </div>
-                      <div className="flex items-start justify-between gap-3 border-t px-4 py-2">
+                      <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
                         <span className="text-sm text-muted-foreground">
                           {toca > 0.005 ? "Abona" : "No le toca nada"}
                         </span>
                         {toca > 0.005 ? (
-                          <div className="flex flex-col items-end">
-                            <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
-                              {f.currency ? (
-                                <CurrencyFlagIcon
-                                  currency={f.currency}
-                                  className="size-3.5 shrink-0"
-                                />
-                              ) : null}
-                              {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
-                            </span>
-                            {bs != null ? (
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {formatBs(bs)} hoy
+                          <div className="flex items-center gap-2">
+                            <div className="flex flex-col items-end">
+                              <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                                {f.currency ? (
+                                  <CurrencyFlagIcon
+                                    currency={f.currency}
+                                    className="size-3.5 shrink-0"
+                                  />
+                                ) : null}
+                                {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
                               </span>
+                              {bs != null ? (
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {formatBs(bs)} hoy
+                                </span>
+                              ) : null}
+                            </div>
+                            {/* FIJADO A MANO SE PUEDE DESHACER, y tiene que
+                                poder: si no, el tendero que se equivoca al
+                                fijar un fiado no tiene forma de volver al
+                                reparto automático salvo recargando. */}
+                            {aMano[f.movementId] != null ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs"
+                                onClick={() =>
+                                  setAMano((p) => {
+                                    const n = { ...p };
+                                    delete n[f.movementId];
+                                    return n;
+                                  })
+                                }
+                              >
+                                Deshacer
+                              </Button>
                             ) : null}
                           </div>
-                        ) : null}
+                        ) : (
+                          /* EL «PAGAR» DE UN FIADO SIN ASIGNAR — frame
+                             `1536:11205`. Lleva al detalle 2/2, y de ahí al
+                             monto, y vuelve aquí con el renglón puesto.
+                             `?reparto=1` es lo que le dice a esas dos
+                             pantallas que NO guarden: en este flujo lo único
+                             que escribe es «Pagar y finalizar». */
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-10"
+                            onClick={() =>
+                              router.push(`/abonos/nuevo/${f.movementId}?reparto=1`)
+                            }
+                          >
+                            Pagar
+                          </Button>
+                        )}
                       </div>
                     </li>
                   );

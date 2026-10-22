@@ -19,6 +19,7 @@ import {
   montoConvertido,
 } from "@/components/dashboard/movement-currency-field";
 import { registrarAbonoDirigido } from "@/app/(app)/abonos/actions";
+import { fijarEnBorrador } from "@/lib/abonos/borrador";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -52,6 +53,7 @@ import { StickyActions } from "@/components/dashboard/sticky-actions";
 export function AbonoMonto({
   ownerId,
   fiadoId,
+  clienteId,
   clienteNombre,
   clienteTieneWhatsapp,
   libro,
@@ -59,9 +61,11 @@ export function AbonoMonto({
   rateContext,
   yaAceptaAvisos,
   pasoUnico = false,
+  enReparto = false,
 }: {
   ownerId: string;
   fiadoId: string;
+  clienteId: string;
   clienteNombre: string;
   clienteTieneWhatsapp: boolean;
   // La moneda del fiado. `null` es un negocio colombiano: un solo libro, sin
@@ -70,9 +74,12 @@ export function AbonoMonto({
   pendiente: number;
   rateContext: MovementRateContext | null;
   yaAceptaAvisos: boolean;
-  // SE LLEGÓ DESDE LA FICHA DEL FIADO, no desde el paso 2/3. Ver el porqué en
+  // SE LLEGÓ DESDE LA FICHA DEL FIADO, no desde el paso 2/2. Ver el porqué en
   // la página que lo decide; aquí solo cambia el rótulo y la flecha.
   pasoUnico?: boolean;
+  // SE LLEGÓ DESDE UN REPARTO. Entonces esta pantalla NO guarda: fija lo que
+  // le toca a este fiado y vuelve a «1/2 fiados». Ver `fijarYVolver`.
+  enReparto?: boolean;
 }) {
   const router = useRouter();
   const [guardando, startTransition] = useTransition();
@@ -124,6 +131,27 @@ export function AbonoMonto({
   const deMas = enElLibro - pendiente > 0.005;
   const listo = enElLibro > 0 && !deMas;
 
+  // ===========================================================================
+  // DENTRO DE UN REPARTO, ESTA PANTALLA NO GUARDA
+  //
+  // Decisión del dueño del 2026-10-22: al pulsar aquí *«regresa a 1/2 fiados
+  // para seleccionar otro abono a pagar»*. Lo que el tendero fija es cuánto le
+  // toca a ESTE fiado; lo que escribe en la base es «Pagar y finalizar», una
+  // sola vez y con todas las líneas juntas.
+  //
+  // Es la mitad de `CT-128` sin la cual el reparto no sería una transacción:
+  // guardando aquí, tres fiados serían tres pagos y TRES WhatsApp al cliente
+  // por un solo billete.
+  //
+  // El monto se queda en el borrador del navegador, no en la base: mientras el
+  // tendero va y viene no hay NADA escrito, así que abandonar a mitad no deja
+  // medio pago en ningún sitio.
+  function fijarYVolver() {
+    setError(null);
+    fijarEnBorrador(clienteId, fiadoId, enElLibro);
+    router.push(`/abonos/nuevo?cliente=${clienteId}`);
+  }
+
   function guardar() {
     setError(null);
     startTransition(async () => {
@@ -162,7 +190,11 @@ export function AbonoMonto({
           app en todo `/abonos` a TODAS las anchuras: sin esto, desde `sm` la
           pantalla se quedaría sin ninguna salida. */}
       <ScreenBackRow
-        href={pasoUnico ? `/transacciones/${fiadoId}` : `/abonos/nuevo/${fiadoId}`}
+        href={
+          pasoUnico
+            ? `/transacciones/${fiadoId}`
+            : `/abonos/nuevo/${fiadoId}${enReparto ? "?reparto=1" : ""}`
+        }
         label={pasoUnico ? "Volver al detalle" : clienteNombre}
         soloEnTelefono={false}
       />
@@ -174,7 +206,7 @@ export function AbonoMonto({
             un «3/3» con dos pasos que nunca ocurrieron promete un camino de
             vuelta que no existe. */}
         <p className="text-sm text-muted-foreground">
-          {pasoUnico ? "1/1" : "3/3"} Monto a abonar
+          {pasoUnico ? "1/1" : enReparto ? "2/2" : "3/3"} Monto a abonar
         </p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-full rounded-full bg-foreground transition-all" />
@@ -323,15 +355,27 @@ export function AbonoMonto({
             confirmada en producción el 2026-10-16. La `v2` fue la que se aprobó
             con el botón de URL estático y tumbó 12 de 12 envíos (`MS-39`); si
             alguien lee esa ficha y cree que el recibo no funciona, es esa. */}
-        <WhatsappConsentField
-          clientName={clienteNombre}
-          hasWhatsapp={clienteTieneWhatsapp}
-          yaTienePermiso={yaAceptaAvisos}
-          checked={avisar}
-          onCheckedChange={setAvisar}
-          disabled={guardando}
-        />
-        <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={guardar}>
+        {/* EN UN REPARTO, LA CASILLA NO VA AQUÍ. Decisión del dueño del
+            2026-10-22: sube a «1/2 fiados», junto a «Pagar y finalizar».
+            Pedir permiso para mandar en una pantalla que no manda nada es
+            confuso, y pedirlo una vez por fiado lo es más — un reparto de
+            tres preguntaría tres veces por el mismo cliente. */}
+        {enReparto ? null : (
+          <WhatsappConsentField
+            clientName={clienteNombre}
+            hasWhatsapp={clienteTieneWhatsapp}
+            yaTienePermiso={yaAceptaAvisos}
+            checked={avisar}
+            onCheckedChange={setAvisar}
+            disabled={guardando}
+          />
+        )}
+        <Button
+          type="button"
+          className="h-10 w-full"
+          disabled={!listo || guardando}
+          onClick={enReparto ? fijarYVolver : guardar}
+        >
           {guardando
             ? "Guardando…"
             : enElLibro > 0

@@ -21,12 +21,17 @@ export default async function MontoDelAbonoPage({
   params: Promise<{ movementId: string }>;
   // `?desde=detalle` LO PONE EL BOTÓN «Pagar» de la ficha del movimiento.
   // Ver abajo: cambia cómo se presenta la pantalla y adónde vuelve.
-  searchParams: Promise<{ desde?: string }>;
+  //
+  // `?reparto=1` LO PONE EL FLUJO DE «1/2 fiados», a través del detalle 2/2.
+  // Es la bandera que hace que esta pantalla NO guarde: fija lo que le toca a
+  // este fiado y vuelve al reparto, donde el único botón que escribe es
+  // «Pagar y finalizar».
+  searchParams: Promise<{ desde?: string; reparto?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
-  const { desde } = await searchParams;
+  const { desde, reparto } = await searchParams;
 
   // ── DE DÓNDE SE ENTRÓ, Y POR QUÉ IMPORTA ─────────────────────────────
   //
@@ -119,6 +124,7 @@ export default async function MontoDelAbonoPage({
     <AbonoMonto
       ownerId={user.id}
       fiadoId={fiado.id}
+      clienteId={cliente.id}
       clienteNombre={cliente.name}
       clienteTieneWhatsapp={Boolean(cliente.whatsapp?.trim())}
       libro={(fiado.currency ?? null) as LedgerCurrency | null}
@@ -126,6 +132,7 @@ export default async function MontoDelAbonoPage({
       rateContext={rateContext}
       yaAceptaAvisos={acepta === true}
       pasoUnico={desdeElDetalle}
+      enReparto={reparto === "1"}
     />
   );
 }
