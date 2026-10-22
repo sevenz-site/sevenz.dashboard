@@ -44,6 +44,8 @@ export function AbonoCompartir({
   // coincide; de viaje, o con el móvil mal puesto, no. Un recibo con la fecha
   // de otro país es peor que uno sin fecha.
   fecha: string | null;
+  // Para que la pantalla que lo monta pueda anclarlo al fondo. Ver allí por
+  // qué hace falta y por qué el `pb` de `app-main` no bastaba.
 }) {
   function compartir() {
     const blob = dibujarResumenDeAbono({ comprador, abono, rates, fecha });

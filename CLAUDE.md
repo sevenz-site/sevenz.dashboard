@@ -407,6 +407,48 @@ faltó fue enumerarlo.
 es de dónde salen las preguntas que merece la pena hacer. Un borde con una
 sola lectura razonable se resuelve y se cuenta; uno con dos se pregunta.
 
+## El botón flotante no puede pisar las acciones de una pantalla
+
+**Antes de dar por terminada cualquier pantalla que acabe en botones —una
+transacción exitosa, una ficha, un resumen— hay que medir si el botón
+flotante «Registrar» cae encima de ellos.** Pedido por el dueño el
+2026-10-22 tras encontrárselo sentado sobre «Ver cuenta de…».
+
+**No se comprueba mirando: se mide.** Las dos cifras que hacen falta son el
+rectángulo del flotante y el del último botón, y la pregunta es si se
+cruzan:
+
+```js
+const fab = [...document.querySelectorAll('a,button')]
+  .find((b) => /Registrar|Crear producto/.test(b.textContent)
+    && getComputedStyle(b).position === 'fixed');
+const f = fab.getBoundingClientRect();
+const r = ultimoBoton.getBoundingClientRect();
+r.bottom > f.top && r.top < f.bottom && r.right > f.left   // ← solapa
+```
+
+**Y se mide SIN desplazar la página**, que es donde falla: el flotante es
+fijo y el contenido no. Una pantalla larga coloca sus botones fuera de la
+pantalla y, al bajar para verlos, quedan despejados; una corta los deja
+justo dentro de la banda del flotante y ahí se quedan. El caso roto es
+siempre el corto.
+
+**Un `padding` abajo NO lo arregla, y conviene saberlo antes de probarlo.**
+`app-main.tsx` reserva 5,5rem en las pantallas que terminan un flujo, y eso
+solo sirve cuando la página llega a desplazarse: un relleno por debajo
+alarga la página pero no sube contenido que ya está colocado. `mt-auto`
+tampoco, si con ese relleno ya no sobra espacio que repartir. Las dos cosas
+se probaron el 2026-10-22 y ninguna movió un píxel.
+
+**Cuando no hay arreglo de maquetación, es una decisión del producto, no
+tuya**: o el flotante no se dibuja en esa pantalla, o sube. Las dos tienen
+coste y las dos son suyas.
+
+**Por qué merece regla propia**: un botón medio tapado se ve como un
+descuido estético, y no lo es. El tendero le da a «Compartir» con el
+cliente delante y lo que se abre es la hoja de registrar otra venta. El
+síntoma —«le di y se abrió otra cosa»— no se parece en nada a la causa.
+
 ## Test every requirement before reporting it delivered
 
 Nothing is reported as done, fixed, or verified until it has been **run and

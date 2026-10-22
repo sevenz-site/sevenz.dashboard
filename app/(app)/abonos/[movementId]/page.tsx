@@ -248,7 +248,36 @@ export default async function AbonoRegistradoPage({
         </div>
       </section>
 
-      {/* «COMPARTIR», ENCIMA DE «VER CUENTA». Pedido del dueño el 2026-10-19,
+      {/* ══════════════════════════════════════════════════════════════
+          EL FLOTANTE TODAVÍA PISA ESTOS BOTONES, Y QUEDA ABIERTO
+
+          Reportado por el dueño el 2026-10-22. Medido a 375px: el flotante
+          ocupa 652-708 y «Ver cuenta de…» ocupa 628-668. Dieciséis píxeles.
+
+          QUÉ SE PROBÓ Y POR QUÉ NO BASTA, para que nadie lo repita:
+
+            · Subir el `pb` de `app-main.tsx` a 5,5rem, como el resumen de una
+              venta. HECHO, y mejora el caso desplazado —abajo del todo los
+              botones acaban en 636, por encima de los 652 del flotante— pero
+              NO el de reposo: un `padding` por debajo no sube contenido que
+              ya está colocado.
+            · `mt-auto` en el bloque de acciones. No hace nada: con ese `pb`
+              la página ya mide 844 contra 812 de pantalla, así que no sobra
+              espacio que repartir. Se escribió y se quitó el mismo día.
+
+          POR QUÉ EL RESUMEN DE UNA VENTA NO FALLA: su contenido es MÁS LARGO,
+          así que sus botones nacen fuera de la pantalla y para verlos hay que
+          desplazarse —y al hacerlo quedan despejados—. Aquí el contenido
+          termina justo dentro de la banda del flotante.
+
+          LO QUE QUEDA ES UNA DECISIÓN SUYA, NO MÍA: con un botón fijo en esa
+          banda y un contenido que termina dentro de ella, no hay arreglo de
+          CSS que conserve los dos. O el flotante no se dibuja aquí —lo cual
+          revierte su petición del 2026-10-18— o sube unos píxeles solo en
+          estas pantallas. Preguntado el 2026-10-22.
+
+          ────────────────────────────────────────────────────────────────
+          «COMPARTIR», ENCIMA DE «VER CUENTA». Pedido del dueño el 2026-10-19,
           y manda la MISMA IMAGEN PNG que el resumen de una venta — fue su
           elección entre eso y mandar texto. El orden es el del resumen de
           venta: compartir primero, porque es lo que el tendero hace nada más

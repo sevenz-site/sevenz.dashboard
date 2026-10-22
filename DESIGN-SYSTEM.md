@@ -39,6 +39,40 @@ distinct thing — "Malas pagas" names the screen, "Clientes" names the list on
 it. Skipping it because there is only one section is how screens end up
 inconsistent with each other.
 
+### 16px A LOS LADOS. TODAS LAS PANTALLAS, SIEMPRE
+
+**Regla del dueño, 2026-10-22: «todos los paddings laterales de las pantallas
+deben ser de 16px».** Lo reportó tres veces sobre el mismo flujo antes de que
+se midiera.
+
+**Lo pone `AppMain`, y SOLO él.** Su `p-4` son esos 16px y cubre todas las
+pantallas de la app. Una pantalla que añade su propio `p-4` no se queda en 16:
+suma 32, y eso es exactamente lo que el dueño veía al pasar de una pantalla a
+otra dentro del mismo flujo.
+
+```tsx
+// MAL — 32px: el de AppMain más el suyo
+<div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
+
+// BIEN — 16px, los de AppMain
+<div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4">
+```
+
+**Y arrastra una segunda cosa que no se ve venir.** `StickyActions` usa `-mx-4`
+para cancelar el padding de `AppMain` y quedar de borde a borde. Con el padding
+duplicado solo cancela uno de los dos, así que la barra de abajo sale metida
+16px por cada lado en vez de a ras — medido el 2026-10-22: empezaba en 16 y no
+en 0.
+
+**Cómo se comprueba, porque a ojo no se distingue 16 de 32:**
+
+```js
+Math.round(document.querySelector('h1').getBoundingClientRect().left)  // → 16
+```
+
+**La excepción son los títulos centrados**, que miden más porque su caja se
+encoge al contenido. Ahí se mide el contenedor, no el `h1`.
+
 ### El `h1` va en semibold AUNQUE LOS FRAMES LO DIBUJEN EN REGULAR
 
 **Diferencia conocida, decidida por el dueño el 2026-10-22. No es un frame sin
