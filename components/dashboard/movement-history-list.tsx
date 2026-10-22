@@ -136,6 +136,12 @@ export function MovementHistoryList({
   // Decidido por él ese día, entre las dos opciones: cada fila por su propia
   // fecha. Así lo que se ordena y lo que se lee son la misma cifra, que es la
   // única forma de que «ordenado por fecha» signifique algo.
+  // Para encontrar el fiado que pagó un abono sin recorrer la lista en cada
+  // fila. Con doscientos movimientos la diferencia no se nota; el mapa está
+  // porque la alternativa es un `find` dentro de un `map`, que es la forma de
+  // que un día sí se note.
+  const porId = new Map(movements.map((m) => [m.id, m]));
+
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
@@ -276,30 +282,52 @@ export function MovementHistoryList({
           // Ahora dice lo que ESE fiado debe, que es la misma cifra que su
           // propia ficha pone en «Total por cobrar» desde el 2026-10-19 — y la
           // cambió ese día por esta misma razón, encontrada del mismo modo.
-          const pendienteDeEsteFiado =
-            m.type === "charge" ? (pendientePorFiado[m.id] ?? 0) : null;
+          // ═══════════════════════════════════════════════════════════════
+          // «POR COBRAR» SIGNIFICA LO MISMO EN LAS DOS FILAS
+          //
+          // Frames `1548:11075` (fiado) y `1548:11049` (abono), del
+          // 2026-10-22: *«Ajustemos las cards para hacerlas consistentes
+          // entre los diferentes tipos de transacciones»*.
+          //
+          // QUÉ MEDÍA ANTES, Y POR QUÉ NO SE SOSTENÍA. En un fiado era lo que
+          // ESE fiado debe; en un abono, el saldo del cliente entero justo
+          // después de ese pago. Dos cosas distintas bajo un rótulo idéntico,
+          // y se veía: en la ficha de un abono de dev salía «Debe $23.23» en
+          // la tarjeta del fiado y «Total por cobrar $68.59» cuatro líneas más
+          // abajo, sin nada que dijera que no eran comparables.
+          //
+          // AHORA LAS DOS MIRAN AL MISMO FIADO: el propio si la fila es un
+          // fiado, y el que pagó si es un abono. Es la única lectura bajo la
+          // que «consistentes» quiere decir algo, y encaja con que desde hoy
+          // la fila de un abono ABRE ese fiado.
+          //
+          // UN ABONO SIN DIRIGIR SE QUEDA SIN ESTE RENGLÓN, y es correcto: la
+          // cola FIFO lo repartió sin dejar constancia de a cuál, así que no
+          // hay ningún fiado del que informar. Son todos anteriores al
+          // 2026-10-14.
+          const fiadoDeLaFila =
+            m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+          const pendienteDelFiado =
+            fiadoDeLaFila == null ? null : (pendientePorFiado[fiadoDeLaFila.id] ?? 0);
+          const porCobrar =
+            pendienteDelFiado == null
+              ? null
+              : formatLedgerAmount(pendienteDelFiado, m.currency, ledger);
 
-          // ── QUÉ CIFRA LLEVA LA LÍNEA GRIS, Y SON DOS DISTINTAS ────────
+          // ── EL IMPORTE DE ARRIBA ES EL DE LA TRANSACCIÓN ──────────────
           //
-          // FIADO  → lo que ESE fiado todavía debe (`pendientePorFiado`).
-          // ABONO  → el saldo del cliente justo DESPUÉS de ese pago
-          //          (`running_balance`), que es lo que hay en producción.
+          // En un fiado era el PENDIENTE desde el 2026-10-21 --«saldo total
+          // por cobrar de ese fiado», sus palabras-- porque la fila solo tenía
+          // sitio para un número y ese era el que faltaba. Con el segundo piso
+          // caben los dos, así que arriba vuelve lo que se fió y abajo va lo
+          // que queda. No se pierde nada y se recupera lo que esa decisión
+          // había tapado: cuánto se prestó en realidad.
           //
-          // Decisión del dueño el 2026-10-21, elegida entre tres y con el
-          // coste delante: lo vio al comparar la app con producción, donde la
-          // fila del abono dice «Por cobrar $108.95» y aquí no decía nada —
-          // la línea se perdió el 2026-10-20 al pasar el fiado a su propio
-          // pendiente, porque la condición dejó fuera todo lo que no fuera un
-          // cargo.
-          //
-          // EL COSTE QUE ACEPTÓ: «Por cobrar» mide dos cosas según la fila.
-          // En un fiado se comprueba abriéndolo; en un abono es el saldo de
-          // aquel momento. Se le ofreció un rótulo propio para el abono y
-          // prefirió que fuera idéntico a producción, para no cambiarle la
-          // lectura a quien ya la conoce.
-          const cifraDeLaLinea =
-            m.type === "charge" ? pendienteDeEsteFiado : m.running_balance;
-          const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
+          // LA LÍNEA GRIS DE ARRIBA DICE DE CUÁNDO ES SU CIFRA. Un abono
+          // tecleado en bolívares enseña ESOS bolívares, que son los de aquel
+          // día; sin ellos cae en la conversión de hoy, y entonces lo dice.
+          const bsDeArriba = bsTecleados ?? amount.secondary;
+          const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
           // El mismo reparto para las dos clases de fila: con `navegable` es
           // un enlace; sin él, un `div` con las mismas clases menos el
           // `hover`, que prometería algo que no pasa.
@@ -315,8 +343,11 @@ export function MovementHistoryList({
                 cuál-- así que cae en su propia ficha, que es lo único que
                 tiene. Son todos anteriores al 2026-10-14. */}
             <FilaEnvuelta
+              columna
               href={navegable ? `/transacciones/${m.applies_to_movement_id ?? m.id}` : null}
             >
+              {/* ── PISO 1: QUÉ FUE, CUÁNDO Y POR CUÁNTO ──────────────── */}
+              <div className="flex w-full items-center justify-between gap-3">
                 {/* ── LA IZQUIERDA: QUÉ FUE Y CUÁNDO, Y NADA MÁS ──────
                     Frame `1512:10061`, reescrita el 2026-10-21 con la
                     instrucción del dueño delante: *«del lado izquierdo de la
@@ -335,9 +366,18 @@ export function MovementHistoryList({
                     caía en tres renglones. Lo que puede partirse sin perder
                     nada es la cifra de la derecha; el qué y el cuándo, no. */}
                 <div className="shrink-0 whitespace-nowrap">
+                  {/* «Abono · Lapicero», CON EL NOMBRE DEL FIADO QUE PAGÓ —
+                      frame `1548:11049`. Un abono no tiene producto propio: lo
+                      hereda del fiado, que es el mismo que la fila abre al
+                      tocarla. Sin fiado a la vista cae en su propia
+                      descripción, y si tampoco la hay se queda en «Abono». */}
                   <p className="truncate text-sm font-medium">
                     {truncateText(
-                      `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
+                      `${m.type === "charge" ? "Fiado" : "Abono"}${
+                        (fiadoDeLaFila?.description ?? m.description)
+                          ? ` · ${fiadoDeLaFila?.description ?? m.description}`
+                          : ""
+                      }`,
                       34,
                     )}
                   </p>
@@ -358,52 +398,37 @@ export function MovementHistoryList({
                       caso. El cero solo, sin nada que lo explique, se lee como
                       un dato que falta; con el chip al lado se lee como la
                       respuesta que es. */}
-                  {m.type === "charge" && (pendienteDeEsteFiado ?? 0) <= 0.005 ? <ChipDeEstado estado="pagado" /> : null}
+                  {m.type === "charge" && (pendienteDelFiado ?? 0) <= 0.005 ? <ChipDeEstado estado="pagado" /> : null}
 
-                  {/* LA LÍNEA DEL ABONO SE QUEDA AQUÍ, y es la única que
-                      sobrevive en esta columna. El frame dibuja dos filas —la
-                      de contado y la del fiado— y no contempla el abono, que
-                      en esta lista solo aparece cuando no está dirigido a
-                      ningún fiado. Su «Por cobrar» lo decidió el dueño el
-                      2026-10-21, un día antes que este frame, y nada de lo que
-                      el frame dice lo contradice. */}
-                  {m.type === "payment" ? (
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {m.currency ? <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" /> : null}
-                      Por cobrar {balance.primary}
-                    </p>
-                  ) : null}
+                  {/* AQUÍ ESTUVO EL «Por cobrar» DEL ABONO, en texto pequeño
+                      y pegado bajo la fecha. Baja al piso 2, que los frames
+                      `1548:11049` y `1548:11075` dan por igual a los dos
+                      tipos. */}
                 </div>
-                {/* ── LA DERECHA: CUÁNTO ──────────────────────────────
-                    Frame `1512:10061`. En un FIADO son tres renglones: el
-                    rótulo «Por cobrar», el saldo que queda de ESE fiado con su
-                    bandera, y sus bolívares de HOY — porque esa deuda sigue
-                    viva y la pregunta es cuánto vale ahora. En lo demás, el
-                    importe y sus bolívares, sin rótulo.
+                {/* ── LA DERECHA DEL PISO 1: EL IMPORTE DE LA TRANSACCIÓN ──
+                    Frames `1548:11075` y `1548:11049`: bandera, importe, y
+                    debajo sus bolívares. Rojo en un fiado, verde en un abono.
 
-                    EL IMPORTE DEL FIADO DEJA DE SER LO QUE SE FIÓ y pasa a ser
-                    lo que queda: *«saldo total por cobrar de ese fiado»*, sus
-                    palabras del 2026-10-21. Es el mismo número que el detalle
-                    llama «Total por cobrar», que es de donde salió el encargo:
-                    la fila decía lo que se fió y daba a entender que no se
-                    había abonado nada. */}
+                    EL SIGNO SE QUEDA COMO ESTABA --`+` al fiar, `-` al
+                    abonar--. Los dos frames escriben `+$00.00`, también el del
+                    abono, pero ahí el `+` va en verde y en una fila que RESTA
+                    deuda: ponerlo invertiría lo que la fila dice. Queda
+                    preguntado en el reporte del 2026-10-22; si es
+                    deliberado, es cambiar este ternario. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
-                    {m.type === "charge" ? (
-                      <span className="text-xs font-normal text-muted-foreground">Por cobrar</span>
-                    ) : null}
                     <span className="flex items-center gap-1">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
                       {m.type === "charge" ? "+" : "-"}
-                      {m.type === "charge" ? balance.primary : amount.primary}
+                      {amount.primary}
                     </span>
-                    {(m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)) ? (
+                    {bsDeArriba ? (
                       <span className="font-normal text-muted-foreground">
-                        {m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)}
+                        {bsDeArriba} {cuandoEsEsaCifra}
                       </span>
                     ) : null}
                   </div>
@@ -411,6 +436,36 @@ export function MovementHistoryList({
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                   ) : null}
                 </div>
+              </div>
+
+              {/* ── PISO 2: «POR COBRAR» ──────────────────────────────────
+                  Frames `1548:11075` y `1548:11049`, que se lo dan IGUAL a
+                  los dos tipos: rótulo a la izquierda, y a la derecha la
+                  bandera, la cifra en 16 semibold y los bolívares de hoy.
+                  Separado por una línea, que es lo que lo distingue del
+                  importe de arriba.
+
+                  «hoy» Y NO LA TASA SELLADA: esto es una deuda VIVA, así que
+                  la pregunta es cuánto vale ahora. El importe de arriba es
+                  histórico y por eso el suyo dice de cuándo es. */}
+              {porCobrar ? (
+                <div className="flex w-full items-start justify-between gap-3 border-t pt-2">
+                  <span className="text-sm text-muted-foreground">Por cobrar</span>
+                  <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
+                    <span className="flex items-center gap-1 text-base font-semibold">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-4 shrink-0" />
+                      ) : null}
+                      {porCobrar.primary}
+                    </span>
+                    {porCobrar.secondary ? (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {porCobrar.secondary} hoy
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              ) : null}
             </FilaEnvuelta>
 
           </li>
@@ -499,11 +554,19 @@ type Fila =
 function FilaEnvuelta({
   href,
   children,
+  // DOS PISOS, para la fila de un movimiento — frames `1548:11075` y
+  // `1548:11049`. La de contado NO lo lleva y por eso esto es una bandera y
+  // no el único reparto: una venta pagada entera no tiene nada «por cobrar»
+  // que poner debajo, y los frames del 2026-10-22 no la dibujan.
+  columna = false,
 }: {
   href: string | null;
   children: React.ReactNode;
+  columna?: boolean;
 }) {
-  const base = "flex w-full items-center justify-between gap-3 p-3 text-left";
+  const base = columna
+    ? "flex w-full flex-col gap-1.5 p-3 text-left"
+    : "flex w-full items-center justify-between gap-3 p-3 text-left";
   if (!href) return <div className={base}>{children}</div>;
   return (
     <Link

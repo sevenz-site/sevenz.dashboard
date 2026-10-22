@@ -19,7 +19,10 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { getBalanceLabel } from "@/lib/types";
+// `getBalanceLabel` left this file on 2026-10-22 with the abono's own
+// «A favor / Debe» line: tier 2 writes «Por cobrar» for both types, which the
+// frames give alike. It still lives in `lib/types` and the balance card on
+// this same page still uses it.
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
@@ -132,6 +135,9 @@ export function MovementHistoryList({
   // from 2026-10-21, which made sense while abonos were hidden; with the abono
   // on its own row it only produced a list that sorted by one date and printed
   // another. Decided by the owner on 2026-10-22.
+  // To find the fiado an abono paid without scanning the list on every row.
+  const porId = new Map(movements.map((m) => [m.id, m]));
+
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
@@ -226,20 +232,29 @@ export function MovementHistoryList({
           // `pending` arrives with migration `132`. Until it has run the key
           // is missing, and `?? null` keeps the line off rather than printing
           // a zero that would read as «paid».
-          const pendienteDeEsteFiado = m.type === "charge" ? (m.pending ?? null) : null;
-          // MISMA REGLA QUE EN LA DEL TENDERO (ver su comentario largo): el
-          // fiado enseña lo que ESE fiado debe, el abono el saldo que quedaba
-          // tras él. Decisión del dueño el 2026-10-21.
-          // SIN SIGNO, porque el rótulo de al lado ya lo lleva: la fila de un
-          // abono dice «A favor $178.00» y no «A favor −$178.00». Instrucción
-          // del dueño el 2026-10-21, con la misma razón que en la tarjeta de
-          // saldo de esta pantalla — el rótulo sale de `getBalanceLabel`, que
-          // es quien decide entre «Debe», «A favor» y «Sin deuda».
+          // «POR COBRAR» MEANS THE SAME THING IN BOTH ROWS — frames
+          // `1548:11075` (fiado) and `1548:11049` (abono), 2026-10-22. The
+          // long reasoning is in the shopkeeper's list; the short version is
+          // that the label used to measure this fiado's debt in one row and
+          // the client's whole balance in the other.
           //
-          // Un fiado no necesita el `abs`: su pendiente nunca es negativo.
-          const cifraDeLaLinea =
-            m.type === "charge" ? pendienteDeEsteFiado : Math.abs(m.running_balance);
-          const balance = formatLedgerAmount(cifraDeLaLinea ?? 0, m.currency, ledger);
+          // Both now look at the same fiado: its own when the row is a fiado,
+          // and the one it paid when the row is an abono. An undirected abono
+          // has no fiado to report on and so gets no second tier.
+          const fiadoDeLaFila =
+            m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+          const pendienteDelFiado = fiadoDeLaFila?.pending ?? null;
+          const porCobrar =
+            pendienteDelFiado == null
+              ? null
+              : formatLedgerAmount(pendienteDelFiado, m.currency, ledger);
+
+          // THE TOP FIGURE IS THE TRANSACTION'S OWN, and its grey line says
+          // when that figure is from: an abono typed in bolívares shows THOSE
+          // bolívares, which are that day's; otherwise it falls back to
+          // today's conversion and says so.
+          const bsDeArriba = bsTecleados ?? amount.secondary;
+          const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
 
           return (
           <li key={m.id}>
@@ -252,8 +267,10 @@ export function MovementHistoryList({
                 2026-10-14. */}
             <Link
               href={`/s/${token}/t/${m.applies_to_movement_id ?? m.id}`}
-              className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+              className="flex w-full flex-col gap-1.5 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
+              {/* ── TIER 1: WHAT IT WAS, WHEN, AND FOR HOW MUCH ───────── */}
+              <div className="flex w-full items-center justify-between gap-3">
                 {/* `shrink-0 whitespace-nowrap`, COMO EL FRAME `1512:10061`: su
                     columna izquierda no se encoge y la derecha es la que cede.
                     Era al revés —`min-w-0` aquí— y con la línea «Bs. … Al día
@@ -264,7 +281,11 @@ export function MovementHistoryList({
                 <div className="shrink-0 whitespace-nowrap">
                   <p className="truncate text-sm font-medium">
                     {truncateText(
-                      `${m.type === "charge" ? "Fiado" : "Abono"}${m.description ? ` · ${m.description}` : ""}`,
+                      `${m.type === "charge" ? "Fiado" : "Abono"}${
+                        (fiadoDeLaFila?.description ?? m.description)
+                          ? ` · ${fiadoDeLaFila?.description ?? m.description}`
+                          : ""
+                      }`,
                       34,
                     )}
                   </p>
@@ -280,54 +301,66 @@ export function MovementHistoryList({
                   {m.type === "charge" && m.pending != null && m.pending <= 0.005 ? (
                     <ChipDeEstado estado="pagado" />
                   ) : null}
-                  {/* LA LÍNEA SE QUEDA SOLO EN EL ABONO. El frame dibuja la
-                      del fiado a la DERECHA, con su rótulo encima, y no
-                      contempla el abono — que aquí solo sale cuando no está
-                      dirigido a ningún fiado.
-
-                      `getBalanceLabel` en vez de «Te queda por pagar»: el
-                      saldo de un abono puede estar A FAVOR, y ahí esa frase
-                      sería falsa. Decidido el 2026-10-21. */}
-                  {m.type === "payment" ? (
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {m.currency ? (
-                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
-                      ) : null}
-                      {getBalanceLabel(m.running_balance)} {balance.primary}
-                    </p>
-                  ) : null}
+                  {/* THE ABONO'S OWN «Por cobrar» LINE LIVED HERE, small and
+                      tucked under the date. It moves to tier 2, which the
+                      2026-10-22 frames give to both types alike. */}
                 </div>
-                {/* LA DERECHA, frame `1512:10061`: en un FIADO el rótulo
-                    «Por cobrar», lo que queda de ESE fiado y sus bolívares de
-                    HOY —la deuda sigue viva—. En lo demás, el importe y sus
-                    bolívares. Mismo reparto que la lista del tendero.
+                {/* TIER 1 RIGHT: THE TRANSACTION'S OWN AMOUNT — frames
+                    `1548:11075` and `1548:11049`. Flag, amount, and its
+                    bolívares underneath. Red on a fiado, green on an abono.
 
-                    «Por cobrar» Y NO «Te queda por pagar» aquí arriba: el
-                    frame escribe ese rótulo, y es el mismo en las dos
-                    pantallas. La frase propia del cliente queda en el detalle,
-                    donde hay sitio para una oración entera. */}
+                    THE SIGN STAYS AS IT WAS (`+` lending, `-` paying). Both
+                    frames write `+$00.00`, the abono's too, but there it sits
+                    in green on a row that SUBTRACTS debt: writing it would
+                    invert what the row says. Raised with the owner on
+                    2026-10-22; if it is deliberate it is this ternary. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
                   >
-                    {m.type === "charge" ? (
-                      <span className="text-xs font-normal text-muted-foreground">Por cobrar</span>
-                    ) : null}
                     <span className="flex items-center gap-1">
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
                       {m.type === "charge" ? "+" : "-"}
-                      {m.type === "charge" ? balance.primary : amount.primary}
+                      {amount.primary}
                     </span>
-                    {(m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)) ? (
+                    {bsDeArriba ? (
                       <span className="font-normal text-muted-foreground">
-                        {m.type === "charge" ? balance.secondary : (bsTecleados ?? amount.secondary)}
+                        {bsDeArriba} {cuandoEsEsaCifra}
                       </span>
                     ) : null}
                   </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </div>
+              </div>
+
+              {/* ── TIER 2: «Por cobrar» ────────────────────────────────
+                  Frames `1548:11075` and `1548:11049`, which give it to both
+                  types alike: label on the left; flag, 16px semibold figure
+                  and today's bolívares on the right, above a dividing line.
+
+                  «hoy» AND NOT THE SEALED RATE: this is a LIVE debt, so the
+                  question is what it is worth now. The amount above is
+                  historical, which is why its own line says when it is from. */}
+              {porCobrar ? (
+                <div className="flex w-full items-start justify-between gap-3 border-t pt-2">
+                  <span className="text-sm text-muted-foreground">Por cobrar</span>
+                  <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
+                    <span className="flex items-center gap-1 text-base font-semibold">
+                      {m.currency ? (
+                        <CurrencyFlagIcon currency={m.currency} className="size-4 shrink-0" />
+                      ) : null}
+                      {porCobrar.primary}
+                    </span>
+                    {porCobrar.secondary ? (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {porCobrar.secondary} hoy
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              ) : null}
             </Link>
 
           </li>
