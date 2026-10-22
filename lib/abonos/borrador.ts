@@ -46,6 +46,18 @@ export type BorradorDeReparto = {
   libro: string | null;
   monto: string;
   enBolivares: boolean;
+  // LO TECLEADO, YA EN LA MONEDA DEL LIBRO.
+  //
+  // Es `monto` convertido, así que es redundante — y se guarda igual. La
+  // pantalla del monto lo necesita para saber cuánto queda del abono, y la
+  // alternativa es que vuelva a convertir `monto` ella misma: la 1/2 usa
+  // `priceIn` y la del monto usa `montoConvertido` con la tasa prevista o la
+  // efectiva según una casilla distinta. Dos conversiones del mismo billete
+  // que pueden dar dos cifras es exactamente el fallo que un tope existe para
+  // evitar.
+  //
+  // Lo escribe SOLO la 1/2, que es la dueña de esta cifra; las demás leen.
+  totalEnLibro: number;
   // movementId → lo que el tendero le fijó a mano, en el libro.
   aMano: Record<string, number>;
   guardadoEn: number;
@@ -83,7 +95,11 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
     for (const [k, v] of Object.entries(b.aMano ?? {})) {
       if (typeof v === "number" && Number.isFinite(v) && v >= 0) aMano[k] = v;
     }
-    return { ...b, aMano };
+    const totalEnLibro =
+      typeof b.totalEnLibro === "number" && Number.isFinite(b.totalEnLibro) && b.totalEnLibro >= 0
+        ? b.totalEnLibro
+        : 0;
+    return { ...b, aMano, totalEnLibro };
   } catch {
     return null;
   }

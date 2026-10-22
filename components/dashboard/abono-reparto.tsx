@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,12 @@ import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjet
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { registrarAbonoRepartido } from "@/app/(app)/abonos/actions";
-import { guardarBorrador, leerBorrador, borrarBorrador } from "@/lib/abonos/borrador";
+import {
+  guardarBorrador,
+  leerBorrador,
+  borrarBorrador,
+  type BorradorDeReparto,
+} from "@/lib/abonos/borrador";
 import { repartir, deudaDelLibro, type FiadoParaRepartir } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
@@ -52,6 +57,12 @@ import type { LedgerCurrency } from "@/lib/types";
 //     Preguntado el 2026-10-22, el dueño respondió *«Sí mantén la tarjeta»*.
 //     Y es la cifra que decide el reparto: repartir sin ver cuánto falta en
 //     cada fiado es repartir a ciegas.
+// Fuera del componente para que su referencia no cambie en cada render:
+// `useSyncExternalStore` vuelve a suscribirse cuando `subscribe` es otra
+// función, y `SIN_AJUSTES` tiene que ser el MISMO objeto vacío siempre.
+const sinSuscripcion = () => () => {};
+const SIN_AJUSTES: Record<string, number> = {};
+
 export function AbonoReparto({
   clienteId,
   clienteNombre,
@@ -76,17 +87,53 @@ export function AbonoReparto({
   const router = useRouter();
   const [guardando, empezar] = useTransition();
 
-  // SE ARRANCA DEL BORRADOR SI LO HAY, en el inicializador y no en un efecto:
-  // leerlo después dibujaría primero la pantalla vacía y luego la llena, y el
-  // tendero que vuelve de fijar un fiado vería parpadear su propio reparto.
-  const borrador = typeof window === "undefined" ? null : leerBorrador(clienteId);
-
-  const [libro, setLibro] = useState<LedgerCurrency | null>(
-    (borrador?.libro as LedgerCurrency | null | undefined) ?? libros[0] ?? null,
+  // ===========================================================================
+  // SE ARRANCA DEL BORRADOR, Y SE LEE CON `useSyncExternalStore`
+  //
+  // `sessionStorage` no existe en el servidor, así que leerlo en el
+  // inicializador de `useState` --como estaba hasta el 2026-10-22-- hacía que
+  // el servidor pintara la pantalla vacía y el navegador la llena sobre el
+  // mismo HTML. React lo detecta como hidratación fallida y REHACE EL ÁRBOL
+  // ENTERO. Funcionaba, y por eso duró: lo único que se veía era un error en
+  // una consola que nadie mira. Pero es la pantalla donde se teclea dinero.
+  //
+  // Lo que arregla esto es el TERCER argumento: la instantánea del servidor.
+  // React la usa al hidratar y cambia a la del navegador justo después, así
+  // que los dos primeros pintados coinciden por construcción.
+  //
+  // La instantánea se cachea en un `ref` porque tiene que ser la MISMA
+  // referencia en cada render --si no, React vuelve a pintar sin parar-- y
+  // porque el borrador solo se lee al entrar: a partir de ahí manda el estado
+  // de esta pantalla, que es quien lo escribe.
+  const cacheBorrador = useRef<BorradorDeReparto | null | undefined>(undefined);
+  const borrador = useSyncExternalStore(
+    sinSuscripcion,
+    () => {
+      if (cacheBorrador.current === undefined) cacheBorrador.current = leerBorrador(clienteId);
+      return cacheBorrador.current;
+    },
+    () => null,
   );
-  const [monto, setMonto] = useState(borrador?.monto ?? "");
-  const [enBolivares, setEnBolivares] = useState(borrador?.enBolivares ?? false);
-  const [aMano, setAMano] = useState<Record<string, number>>(borrador?.aMano ?? {});
+
+  // EL ESTADO, CON EL BORRADOR DE RESPALDO. `null` es «el tendero no ha tocado
+  // esto todavía», que no es lo mismo que «vale la cadena vacía»: sin esa
+  // distinción, borrar el monto a mano volvería a sacar el del borrador.
+  const [libroEditado, setLibro] = useState<LedgerCurrency | null | undefined>(undefined);
+  const [montoEditado, setMonto] = useState<string | null>(null);
+  const [enBolivaresEditado, setEnBolivares] = useState<boolean | null>(null);
+  const [aManoEditado, setAMano] = useState<Record<string, number> | null>(null);
+
+  const libro =
+    libroEditado !== undefined
+      ? libroEditado
+      : ((borrador?.libro as LedgerCurrency | null | undefined) ?? libros[0] ?? null);
+  const monto = montoEditado ?? borrador?.monto ?? "";
+  const enBolivares = enBolivaresEditado ?? borrador?.enBolivares ?? false;
+  // `SIN_AJUSTES` y no `{}`: un objeto nuevo en cada render haría que el
+  // `useMemo` del reparto y el efecto que guarda el borrador se dispararan
+  // siempre, o sea escribir en `sessionStorage` en cada pintado.
+  const aMano = aManoEditado ?? borrador?.aMano ?? SIN_AJUSTES;
+
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [repartiendo, setRepartiendo] = useState(false);
@@ -141,8 +188,14 @@ export function AbonoReparto({
   // guardado. Es barato —una cadena corta en memoria del navegador— y lo que
   // compra es que volver de fijar un fiado encuentre la pantalla como estaba.
   useEffect(() => {
-    guardarBorrador({ clienteId, libro, monto, enBolivares, aMano });
-  }, [clienteId, libro, monto, enBolivares, aMano]);
+    // NO SE GUARDA ANTES DE HABER LEÍDO. En el primer pintado --el de la
+    // hidratación-- `borrador` todavía vale `null` a propósito, así que lo
+    // que hay en pantalla es la pantalla vacía. Guardar ahí machacaría con
+    // nada el borrador que se está a punto de restaurar: el tendero volvería
+    // de fijar un fiado y se encontraría su reparto en blanco.
+    if (cacheBorrador.current === undefined) return;
+    guardarBorrador({ clienteId, libro, monto, enBolivares, totalEnLibro: enElLibro, aMano });
+  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
 
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
   // En el orden del reparto, no en el de la consulta: es el que explica por
@@ -247,8 +300,11 @@ export function AbonoReparto({
                   size="sm"
                   className="h-8 px-2 text-xs"
                   onClick={() =>
-                    setAMano((p) => {
-                      const n = { ...p };
+                    // Del valor VISIBLE, no del estado: mientras el tendero no
+                    // haya tocado nada, lo visible sale del borrador y el
+                    // estado todavía es `null`.
+                    setAMano(() => {
+                      const n = { ...aMano };
                       delete n[f.movementId];
                       return n;
                     })

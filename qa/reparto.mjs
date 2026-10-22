@@ -174,6 +174,37 @@ const tres = [
   const c = r.lineas.find((l) => l.movementId === "c");
   check("lo fijado a mano también se topa a lo que ese fiado debe", c.asignado === 10, String(c.asignado));
 }
+{
+  // EL CASO QUE LLEGÓ A PANTALLA EL 2026-10-22: teclear 1 y fijar 7 a mano.
+  //
+  // No rompía nada. La 1/2 enseñaba el campo en «1» y el botón en «Pagar y
+  // finalizar $7.00» —dos cifras contradictorias a la vez— y se guardaban 7.
+  // Decisión del dueño ese día: manda lo tecleado.
+  const r = repartir({ monto: 1, fiados: tres, aMano: { b: 7 }, ahora: AHORA });
+  const b = r.lineas.find((l) => l.movementId === "b");
+  check(
+    "lo fijado a mano NO puede pasarse del monto tecleado",
+    b.asignado === 1 && r.repartido === 1,
+    `b:${b.asignado} repartido:${r.repartido}`,
+  );
+  check(
+    "y entonces sinAsignar nunca sale negativo",
+    r.sinAsignar === 0,
+    String(r.sinAsignar),
+  );
+}
+{
+  // DOS LÍNEAS A MANO QUE NO CABEN JUNTAS. 60 tecleados, 50 y 50 pedidos: el
+  // recorte cae sobre la menos grave, no sobre las dos a partes iguales.
+  const r = repartir({ monto: 60, fiados: tres, aMano: { a: 50, b: 50 }, ahora: AHORA });
+  const a = r.lineas.find((l) => l.movementId === "a");
+  const b = r.lineas.find((l) => l.movementId === "b");
+  check(
+    "entre dos a mano que no caben, la del fiado más grave sobrevive entera",
+    a.asignado === 50 && b.asignado === 10 && r.repartido === 60,
+    `a:${a.asignado} b:${b.asignado}`,
+  );
+}
 
 // ── 5. Los bordes que no rompen nada y por eso se prueban ────────────────
 {

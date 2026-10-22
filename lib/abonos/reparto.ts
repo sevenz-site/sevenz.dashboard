@@ -86,10 +86,28 @@ export function repartir({
 
   // PRIMERO LO FIJADO A MANO: su decisión manda sobre el automático, y hasta
   // que no se descuenta no se sabe cuánto queda para los demás.
+  //
+  // PERO NO POR ENCIMA DEL MONTO. Decisión del dueño del 2026-10-22,
+  // preguntada en claro: manda lo tecleado. El campo «¿Cuánto abona?» es el
+  // billete que el cliente puso en el mostrador, y la suma de las líneas no
+  // puede pasarse de él.
+  //
+  // Sin este tope, tecleando $1 y fijando $7 a mano la pantalla 1/2 enseñaba
+  // dos cifras contradictorias --el campo «1», el botón «Pagar y finalizar
+  // $7.00»-- y se guardaban 7. En Venezuela, además, el servidor convierte LO
+  // TECLEADO a bolívares y lo reparte entre líneas que sumaban otra cosa, así
+  // que la equivalencia guardada no correspondía a lo cobrado.
+  //
+  // Va AQUÍ y no solo en la pantalla porque `aMano` llega del navegador: es
+  // el mismo motivo por el que el reparto se recalcula en el servidor en vez
+  // de aceptar las líneas ya repartidas.
+  //
+  // Se recorta en orden de gravedad, así que cuando dos líneas a mano no caben
+  // juntas, la que sobrevive entera es la del fiado más grave.
   for (const f of porOrden) {
     const puesto = aMano[f.movementId];
     if (puesto == null) continue;
-    const v = redondear(Math.max(0, Math.min(puesto, f.pendiente)));
+    const v = redondear(Math.max(0, Math.min(puesto, f.pendiente, queda)));
     lineas.set(f.movementId, { movementId: f.movementId, asignado: v, aMano: true });
     queda = redondear(queda - v);
   }

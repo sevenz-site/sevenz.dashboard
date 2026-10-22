@@ -301,6 +301,76 @@ try {
     r6.ok === false,
     r6.ok ? "SE GUARDÓ" : r6.error,
   );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 7. EL REPARTO NO PUEDE PASARSE DE LO QUE EL TENDERO TECLEÓ
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // `aMano` llega del NAVEGADOR. `qa:reparto` ya comprueba que `repartir()`
+  // lo topa, pero esa es aritmética en memoria: lo que esta fila mira es que
+  // la acción del servidor use ese resultado y no el que le mandan.
+  //
+  // Es un fallo que no rompe nada visible --suma, se guarda, la pantalla dice
+  // que todo bien-- y por eso necesita un control que mire la base. Llegó a
+  // pantalla el 2026-10-22: tecleando $1 y fijando $7 a mano, la 1/2 enseñaba
+  // el campo en «1» y el botón en «$7.00», y se guardaban 7.
+  const accionReparto = await idDeLaAccion(
+    BASE,
+    "registrarAbonoRepartido",
+    cookie,
+    `/abonos/nuevo?cliente=${cliente.id}`,
+  );
+  check(
+    "7. el id de `registrarAbonoRepartido` se descubre en los chunks",
+    accionReparto != null,
+    accionReparto ? `${accionReparto.slice(0, 10)}…` : "NO ENCONTRADO",
+  );
+
+  if (accionReparto) {
+    const res = await fetch(`${BASE}/abonos/nuevo?cliente=${cliente.id}`, {
+      method: "POST",
+      headers: {
+        "Next-Action": accionReparto,
+        "Content-Type": "text/plain;charset=UTF-8",
+        Cookie: cookie,
+      },
+      body: JSON.stringify([
+        {
+          clienteId: cliente.id,
+          libro: "USD",
+          montoTecleado: 10,
+          monedaTecleada: "USD",
+          // 999 sobre un fiado que debe mucho menos Y sobre un abono de 10.
+          aMano: { [viejo]: 999 },
+        },
+      ]),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} llamando al reparto en ${BASE}`);
+    const texto = await res.text();
+    const i = texto.indexOf('{"ok":');
+    const r7 = i >= 0 ? JSON.parse(texto.slice(i, texto.indexOf("}", i) + 1)) : null;
+
+    check(
+      "7a. se acepta el reparto con una línea a mano desorbitada",
+      r7?.ok === true,
+      r7?.ok ? `grupo ${String(r7.groupId).slice(0, 8)}…` : (r7?.error ?? texto.slice(0, 120)),
+    );
+
+    if (r7?.ok) {
+      // LA BASE, NO LA RESPUESTA. Lo que la acción devuelve lo calcula ella
+      // misma; lo que se guardó son filas.
+      const { data: lineas } = await admin
+        .from("movements")
+        .select("amount")
+        .eq("payment_group_id", r7.groupId);
+      const total = (lineas ?? []).reduce((s, l) => s + Number(l.amount), 0);
+      check(
+        "7b. lo guardado son los 10 tecleados, no los 999 que mandó el navegador",
+        Math.abs(total - 10) < 0.005,
+        `${lineas?.length ?? 0} línea(s), total ${total}`,
+      );
+    }
+  }
 } catch (e) {
   check("ERROR: la corrida se detuvo", false, e instanceof Error ? e.message : String(e));
 } finally {

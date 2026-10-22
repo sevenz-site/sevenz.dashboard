@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ import {
   montoConvertido,
 } from "@/components/dashboard/movement-currency-field";
 import { registrarAbonoDirigido } from "@/app/(app)/abonos/actions";
-import { fijarEnBorrador } from "@/lib/abonos/borrador";
+import { fijarEnBorrador, leerBorrador } from "@/lib/abonos/borrador";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -50,6 +50,19 @@ import { StickyActions } from "@/components/dashboard/sticky-actions";
 // LO ÚNICO QUE ESTA PANTALLA AÑADE es que aquí el libro de destino NO se elige:
 // el abono va a UN fiado y ese fiado ya tiene su moneda. Por eso las pastillas
 // llevan dos opciones y no tres, y `MontoARegistrarRow` va sin desplegable.
+
+// LAS TRES RESPUESTAS POSIBLES A «¿CUÁNTO QUEDA DEL ABONO?», como números para
+// que `useSyncExternalStore` pueda compararlas sin inventar un objeto nuevo en
+// cada render. `DESCONOCIDO` es «todavía no se ha leído el borrador» y NO es
+// lo mismo que `SIN_LIMITE`: con el primero el botón se queda apagado, con el
+// segundo manda el tope del fiado.
+const DESCONOCIDO = -1;
+const SIN_LIMITE = Number.POSITIVE_INFINITY;
+
+// Fuera del componente para que su referencia no cambie: `useSyncExternalStore`
+// vuelve a suscribirse cada vez que esta función es otra.
+const sinSuscripcion = () => () => {};
+
 export function AbonoMonto({
   ownerId,
   fiadoId,
@@ -118,18 +131,91 @@ export function AbonoMonto({
       ? (montoConvertido(monto, libro, rateContext, usarPrevista) ?? 0)
       : escrito;
 
+  // ===========================================================================
+  // DENTRO DE UN REPARTO, EL TOPE TAMBIÉN ES LO QUE QUEDA DEL ABONO
+  //
+  // Decisión del dueño del 2026-10-22: manda lo tecleado. El campo «¿Cuánto
+  // abona?» de la 1/2 es el billete que el cliente puso en el mostrador, y una
+  // línea no puede llevarse más que el billete entero.
+  //
+  // Sin esto, tecleando $1 y fijando $7 aquí la pantalla 1/2 acababa diciendo
+  // dos cifras que se contradicen —el campo «1», el botón «Pagar y finalizar
+  // $7.00»— y el servidor guardaba 7. En Venezuela era peor: convierte LO
+  // TECLEADO a bolívares y lo reparte entre líneas que suman otra cosa, así
+  // que la equivalencia guardada no correspondía a lo cobrado.
+  //
+  // Lo que ya está fijado a mano en OTRAS líneas se descuenta; lo de esta no,
+  // para que volver a entrar a corregirla no la deje atrapada en su propia
+  // cifra. Esos importes ya vienen topados a su fiado —los escribió esta misma
+  // pantalla—, así que no hace falta conocer los demás pendientes.
+  // EL BORRADOR SE LEE DESPUÉS DE MONTAR, NO AL PINTAR.
+  //
+  // Vive en `sessionStorage`, que el servidor no tiene. Leerlo durante el
+  // render hace que el servidor pinte «Máximo $50.00» y el navegador «Máximo
+  // $20.00» sobre el mismo HTML: React lo detecta, tira el árbol entero y lo
+  // vuelve a montar. En la pantalla donde se teclea dinero eso no es un aviso
+  // de consola, es la pantalla rehaciéndose debajo del dedo.
+  //
+  // Mientras no se haya leído, el botón se queda apagado. Es un fotograma, no
+  // se ve, y es la única forma de no enseñar un tope permisivo --el del fiado,
+  // más alto-- antes de saber el verdadero.
+  // `useSyncExternalStore` y no un `useState` con su efecto: es la herramienta
+  // que existe para esto, y lo que la hace la correcta aquí es su TERCER
+  // argumento --la instantánea del servidor--. React la usa al hidratar y
+  // cambia a la del navegador después, así que el servidor y el primer pintado
+  // del cliente coinciden sin que nadie tenga que acordarse de nada.
+  //
+  // Sin suscripción: el borrador no cambia mientras esta pantalla vive. Quien
+  // lo cambia es la 1/2, y para volver a ella hay que salir de aquí.
+  const leido = useSyncExternalStore(
+    sinSuscripcion,
+    () => {
+      if (!enReparto) return SIN_LIMITE;
+      const b = leerBorrador(clienteId);
+      if (!b) return SIN_LIMITE;
+      // Lo de ESTA línea no se descuenta: volver a entrar a corregirla la
+      // dejaría atrapada en su propia cifra. Los importes del borrador ya
+      // vienen topados a su fiado --los escribió esta misma pantalla--, así
+      // que no hace falta conocer los demás pendientes.
+      const otras = Object.entries(b.aMano).reduce(
+        (s, [id, v]) => (id === fiadoId ? s : s + v),
+        0,
+      );
+      return Math.max(0, Math.round((b.totalEnLibro - otras) * 100) / 100);
+    },
+    () => DESCONOCIDO,
+  );
+
+  const borradorLeido = leido !== DESCONOCIDO;
+  const restanteDelAbono: number | null =
+    leido === DESCONOCIDO || leido === SIN_LIMITE ? null : leido;
+
+  // El tope de verdad es el menor de los dos, y cuál de ellos manda cambia el
+  // mensaje: «lo que debe este fiado» y «lo que queda del abono» se corrigen
+  // de formas distintas.
+  const topeEnLibro = restanteDelAbono != null ? Math.min(pendiente, restanteDelAbono) : pendiente;
+  const mandaElAbono = restanteDelAbono != null && restanteDelAbono < pendiente - 0.005;
+
   // EL TOPE, EN LA MONEDA EN QUE SE ESTÁ ESCRIBIENDO. Comparar bolívares
   // tecleados contra una deuda en dólares es un fallo que ya estuvo en
   // producción —ver `topeEnBolivares`—, y aquí reaparecería igual: con un fiado
   // de $55, «Bs. 100» son doce céntimos y se rechazarían por ser 100 > 55.
   const topeTecleado: number | null =
-    monedaTecleada !== "VES" ? pendiente : libro ? topeEnBolivares(pendiente, libro, tasaActiva) : null;
+    monedaTecleada !== "VES"
+      ? topeEnLibro
+      : libro
+        ? topeEnBolivares(topeEnLibro, libro, tasaActiva)
+        : null;
 
   const topeLegible =
-    monedaTecleada === "VES" ? formatBs(topeTecleado ?? 0) : formatPriceAmount(pendiente, moneda);
+    monedaTecleada === "VES" ? formatBs(topeTecleado ?? 0) : formatPriceAmount(topeEnLibro, moneda);
 
-  const deMas = enElLibro - pendiente > 0.005;
-  const listo = enElLibro > 0 && !deMas;
+  const deMas = enElLibro - topeEnLibro > 0.005;
+  // Sin nada que repartir no hay cifra válida que escribir, y decirlo aquí
+  // ahorra que el tendero pruebe números hasta rendirse: el abono entero ya
+  // está puesto en otras líneas.
+  const abonoAgotado = restanteDelAbono != null && restanteDelAbono <= 0.005;
+  const listo = enElLibro > 0 && !deMas && borradorLeido;
 
   // ===========================================================================
   // DENTRO DE UN REPARTO, ESTA PANTALLA NO GUARDA
@@ -253,9 +339,13 @@ export function AbonoMonto({
           // decisión que el formulario de «Agregar», donde los dos a la vez
           // hacían que el dueño leyera el mismo aviso repetido.
           ayuda={
-            deMas
-              ? `Ese fiado solo debe ${formatPriceAmount(pendiente, moneda)}. Escribe esa cantidad o menos.`
-              : `Máximo ${topeLegible} — lo que debe este fiado.`
+            abonoAgotado
+              ? "Ya repartiste todo el abono. Vuelve atrás y deshaz otro fiado, o escribe un abono mayor."
+              : deMas
+                ? mandaElAbono
+                  ? `Del abono quedan ${formatPriceAmount(restanteDelAbono ?? 0, moneda)}. Escribe esa cantidad o menos.`
+                  : `Ese fiado solo debe ${formatPriceAmount(pendiente, moneda)}. Escribe esa cantidad o menos.`
+                : `Máximo ${topeLegible} — ${mandaElAbono ? "lo que queda del abono" : "lo que debe este fiado"}.`
           }
         />
 
