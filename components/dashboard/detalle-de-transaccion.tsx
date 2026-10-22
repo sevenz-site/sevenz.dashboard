@@ -165,10 +165,38 @@ export function DetalleDeTransaccion({
   const monedaDelMonto: MovementCurrencyCode | null =
     monedaRegistrada === "VES" && entryAmount != null ? "VES" : currency;
 
-  // AQUÍ VIVÍA `seEnseñaAbonoEnCero`, con el comentario largo que explicaba
-  // cuándo se enseñaba «Equivalencia» y por qué un fiado sin abonos no la
-  // llevaba. Las dos cosas se fueron el 2026-10-21 con esa fila: ver el
-  // comentario del hueco que dejó, más abajo, junto a «Abonos».
+  // ===========================================================================
+  // «EQUIVALENCIA» VUELVE, Y SOLO EN UN ABONO
+  //
+  // El 2026-10-21 se retiró de las DOS fichas por una instrucción que iba
+  // sobre UNA: *«el campo equivalencia se elimina»*, dicha sobre el frame
+  // `1510:9784`, que es el del FIADO. El frame del abono --`1465:18349`, nodo
+  // `1465:18374`-- la dibuja, y al quitarla de ahí también se llevó por
+  // delante el único sitio donde el abono decía cuánto valía.
+  //
+  // QUÉ COSTÓ, medido en dev el 2026-10-22: un abono tecleado como Bs. 1.000
+  // enseñaba «Abonó Bs. 1.000,00» y nada más. Ese pago bajó la deuda en
+  // $1,13, y esa cifra no estaba en ninguna parte de su propia pantalla --ni
+  // la tasa con que se convirtió--. El cliente abre su recibo y no puede
+  // saber cuánto le bajó la deuda, que es lo único que viene a mirar.
+  //
+  // EN UN FIADO SIGUE FUERA, que es lo que él pidió: allí la fila decía los
+  // bolívares del fiado ENTERO pegada debajo de «Abonó», y se leía como la
+  // otra cara de esa cifra sin serlo. En un abono sí lo es: «Abonó» es lo
+  // tecleado y esto es lo mismo en la otra moneda.
+  //
+  // SIN TASA NO HAY FILA. `exchangeRateUsed` es nulo en todo lo de un negocio
+  // colombiano --donde además no hay dos monedas que equiparar-- y en lo
+  // anterior a que se sellara la tasa.
+  const equivalente =
+    type === "payment" && currency && exchangeRateUsed != null
+      ? monedaRegistrada === "VES"
+        ? // Tecleado en bolívares: la equivalencia es lo que quedó en el libro.
+          { texto: ledgerAmount.primary, moneda: currency as MovementCurrencyCode }
+        : // Tecleado en divisa: la equivalencia son los bolívares de ese día,
+          // a la tasa que ESE abono selló y no a la de hoy.
+          { texto: formatBs(amount * exchangeRateUsed), moneda: "VES" as MovementCurrencyCode }
+      : null;
 
   // EL ACUERDO: de un fiado, el suyo; de un abono dirigido, el del fiado que
   // pagó. Un abono nunca tuvo plazo propio —son columnas del cargo y la
@@ -454,22 +482,30 @@ export function DetalleDeTransaccion({
           </Fila>
         )}
 
-        {/* AQUÍ ESTUVO «Equivalencia», retirada el 2026-10-21 por instrucción
-            del dueño: *«el campo equivalencia se elimina»*, en el mismo encargo
-            que añade la tarjeta del abono inicial (frame `1510:9784`).
+        {/* «EQUIVALENCIA» — frame del abono `1465:18349`, nodo `1465:18374`.
+            Va pegada debajo de «Abonó» porque es la otra cara de ESA cifra:
+            lo mismo que se tecleó, en la otra moneda.
 
-            LAS DOS COSAS VAN JUNTAS Y POR ESO SE HACEN A LA VEZ. Esa fila
-            decía los bolívares del fiado entero a la tasa sellada, pegada
-            debajo de «Abonó» — y ya se había reducido el 2026-10-20 por leerse
-            como la otra cara de ESA cifra. Lo que el dueño quería saber de
-            verdad —cuántos bolívares entregó al comprar— no estaba en ninguna
-            parte: ahora lo dice la primera tarjeta de «Abonos», con su propia
-            tasa y su propio rótulo.
-
-            SE VA TAMBIÉN SU CÁLCULO, que no lo usaba nadie más. Lo escribí
-            primero diciendo que lo seguía usando la tarjeta del fiado; el lint
-            lo desmintió en el acto. Queda anotado porque es la clase de frase
-            que nadie vuelve a comprobar. */}
+            EN UN FIADO NO SALE, y el porqué está arriba donde se calcula: allí
+            esta fila decía los bolívares del fiado entero y el dueño la mandó
+            quitar el 2026-10-21. Lo que se arregla ahora es que aquella
+            instrucción se aplicó también al abono, donde el frame sí la
+            dibuja. */}
+        {equivalente ? (
+          <Fila nombre="Equivalencia">
+            <span className="inline-flex flex-col items-end">
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                {equivalente.texto}
+                <CurrencyFlagIcon currency={equivalente.moneda} className="size-4" />
+              </span>
+              {/* «Al día de la transacción» Y NO «hoy»: esta cifra sale de la
+                  tasa que el abono SELLÓ, no de la de ahora. Es el rótulo que
+                  pone el frame, y dice la verdad sobre de cuándo es el
+                  número. */}
+              <span className="text-xs text-muted-foreground">Al día de la transacción</span>
+            </span>
+          </Fila>
+        ) : null}
 
         {/* «TOTAL POR COBRAR», DENTRO DE LA TARJETA Y EN GRANDE — el frame lo
             pone ahí, separado por una línea. No es un dato más del movimiento:
