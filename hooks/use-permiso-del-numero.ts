@@ -45,12 +45,15 @@ export function usePermisoDelNumero(whatsapp: string): PermisoDelNumero | null {
   // que ya no es el que hay en el campo.
   const ultima = useRef(0);
 
+  // DE QUÉ NÚMERO ES LA RESPUESTA QUE HAY GUARDADA. Sin esto, borrar un dígito
+  // de un número ya resuelto dejaría en pantalla la frase del número anterior
+  // mientras el tendero sigue tecleando otro.
+  const [deQueNumero, setDeQueNumero] = useState("");
+
+  const digitos = whatsapp.replace(/\D/g, "");
+
   useEffect(() => {
-    const digitos = whatsapp.replace(/\D/g, "");
-    if (digitos.length < 10) {
-      setPermiso(null);
-      return;
-    }
+    if (digitos.length < 10) return;
 
     // 400ms: el tendero teclea un teléfono de corrido, así que esperar a que
     // pare evita una consulta por dígito sin que la frase llegue tarde.
@@ -58,12 +61,19 @@ export function usePermisoDelNumero(whatsapp: string): PermisoDelNumero | null {
     ultima.current = id;
     const t = setTimeout(() => {
       void permisoDelNumero(whatsapp).then((r) => {
-        if (ultima.current === id) setPermiso(r);
+        if (ultima.current !== id) return;
+        setPermiso(r);
+        setDeQueNumero(digitos);
       });
     }, 400);
 
     return () => clearTimeout(t);
-  }, [whatsapp]);
+  }, [whatsapp, digitos]);
 
-  return permiso;
+  // EL «TODAVÍA NO SE SABE» SE DEDUCE, NO SE GUARDA. Ponerlo a `null` desde el
+  // efecto sería un `setState` dentro de un efecto --lo que el linter de React
+  // 19 rechaza-- y además encadena un render de más en cada tecla. Comparar
+  // aquí da la misma respuesta sin estado que mantener: si lo que hay guardado
+  // no es de este número, es que de este número aún no se sabe nada.
+  return digitos.length < 10 || deQueNumero !== digitos ? null : permiso;
 }
