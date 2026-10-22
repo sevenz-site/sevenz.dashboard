@@ -13,15 +13,33 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+// ── UNA HOJA Y NO UN DIÁLOGO ─────────────────────────────────────────────
+//
+// Encargo del dueño el 2026-10-22: *«El popup para buscar cliente debe ser un
+// sheet»*, con el frame `1535:10874` al lado.
+//
+// NO ES SOLO LA ANIMACIÓN. Un diálogo se centra en la pantalla, así que al
+// subir el teclado --y este flujo pide nombre, cédula y teléfono-- el navegador
+// tiene que decidir dónde ponerlo y acaba empujando el título fuera por arriba.
+// Una hoja nace pegada abajo: el teclado la recorta por el sitio por el que ya
+// crecía, que es el mismo motivo por el que el resto de este flujo ya usa
+// hojas.
+//
+// `@/components/ui/dialog` DEJA DE IMPORTARSE ENTERO. Escribí primero que
+// seguía haciendo falta para los dos `AlertDialog` de dentro --descartar el
+// registro, y la cuenta separada--; el lint lo desmintió en el acto: esos
+// vienen de `ui/alert-dialog`, que es otro módulo. Queda anotado porque es la
+// clase de frase que nadie vuelve a comprobar, y porque los dos AlertDialog
+// SÍ se quedan centrados a propósito: son preguntas de sí o no.
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -215,7 +233,7 @@ export function ClientSearchDialog({
 
   return (
     <>
-      <Dialog
+      <Sheet
         open={open}
         onOpenChange={(next) => {
           if (next) {
@@ -234,7 +252,7 @@ export function ClientSearchDialog({
         }}
       >
         {hideTrigger ? null : (
-          <DialogTrigger asChild>
+          <SheetTrigger asChild>
             <Button
               size="sm"
               className="w-full sm:w-auto"
@@ -246,7 +264,7 @@ export function ClientSearchDialog({
               <Plus className="size-4" />
               Agregar movimiento
             </Button>
-          </DialogTrigger>
+          </SheetTrigger>
         )}
         {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
           del navegador estuviera escondida— así que en un teléfono con la barra
@@ -255,7 +273,7 @@ export function ClientSearchDialog({
           encima del borde y no hay forma de subir hasta él. `svh` mide el
           viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
           100vh que CLAUDE.md ya nombra para iPhone. */}
-      <DialogContent className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-xl">
           <ClientSearchDialogBody
             key={instanceKey}
             pasoInicial={pasoInicial}
@@ -269,8 +287,8 @@ export function ClientSearchDialog({
             onDirtyChange={handleDirtyChange}
             onDone={closeAndReset}
           />
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
         <AlertDialogContent>
@@ -537,18 +555,18 @@ function ClientSearchDialogBody({
           «Venta o fiado» es justo al revés --dar de alta y venderle en el
           mismo gesto es lo corriente-- y por eso la diferencia es por camino
           y no por pantalla. */}
-      <DialogHeader>
-        <DialogTitle>Buscar cliente</DialogTitle>
+      <SheetHeader>
+        <SheetTitle>Buscar cliente</SheetTitle>
         {/* EN EL ABONO, «Selecciona un cliente» — el subtítulo del frame
             `1525:10827`. En los demás caminos sigue el de siempre, que dice
             de qué negocio es la lista y por qué se puede buscar; aquí sobra
             porque debajo ya está la lista entera. */}
         {movimientoAlElegir === "abono" ? (
-          <DialogDescription>Selecciona un cliente</DialogDescription>
+          <SheetDescription>Selecciona un cliente</SheetDescription>
         ) : (
-          <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+          <SheetDescription>Negocio: {businessName} · busca por nombre o cédula.</SheetDescription>
         )}
-      </DialogHeader>
+      </SheetHeader>
       <div className="flex flex-col gap-3">
         <Input
           autoFocus
@@ -583,7 +601,7 @@ function ClientSearchDialogBody({
     </>
   ) : (
     <>
-      <DialogHeader>
+      <SheetHeader>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -594,12 +612,12 @@ function ClientSearchDialogBody({
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <DialogTitle>Registrar cliente nuevo</DialogTitle>
+          <SheetTitle>Registrar cliente nuevo</SheetTitle>
         </div>
-        <DialogDescription>
+        <SheetDescription>
           Negocio: {businessName} · queda con el primer movimiento registrado.
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
       <form
         ref={setFormRef}
         action={formAction}
@@ -888,7 +906,7 @@ function ClientSearchDialogBody({
           />
         )}
 
-        <DialogFooter>
+        <SheetFooter>
           {state.duplicate ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -916,7 +934,7 @@ function ClientSearchDialogBody({
               {pending ? "Guardando fiado..." : "Guardar fiado"}
             </Button>
           )}
-        </DialogFooter>
+        </SheetFooter>
       </form>
 
       <WhatsappConsentDialog
