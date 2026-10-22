@@ -39,6 +39,25 @@ distinct thing — "Malas pagas" names the screen, "Clientes" names the list on
 it. Skipping it because there is only one section is how screens end up
 inconsistent with each other.
 
+### El `h1` va en semibold AUNQUE LOS FRAMES LO DIBUJEN EN REGULAR
+
+**Diferencia conocida, decidida por el dueño el 2026-10-22. No es un frame sin
+replicar: es una regla de la casa que gana a propósito.**
+
+Los frames del sitemap escriben el título de pantalla en `Geist:Regular` (400)
+a 24px — se comprobó en `1465:18349` (detalle de transacción), `1524:10439` y
+`1526:11184` (el flujo de abono). `ScreenTitle` lo pinta en `font-semibold`.
+
+**Por qué se queda como está.** Ese componente lo usan 21 pantallas, así que no
+es una diferencia del flujo donde se encontró: cambiarlo es cambiarlas todas.
+Se le plantearon las tres salidas —cambiar las 21, cambiar solo el abono, o
+dejarlo— y eligió dejarlo. La del medio era la peor: dos pesos de título
+conviviendo y este documento describiendo algo que ya no es cierto.
+
+**Se escribe aquí para que no se vuelva a abrir.** Quien compare el código con
+un frame va a encontrar esto otra vez; sin esta nota, lo normal es tratarlo
+como un descuido y «arreglarlo».
+
 **Content inside a section goes in an outlined card.**
 
 ```tsx
