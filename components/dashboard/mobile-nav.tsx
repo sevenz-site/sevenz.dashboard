@@ -284,17 +284,22 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   //
   // `=== "/productos/nuevo"` y no `startsWith("/productos")`: el catálogo SÍ
   // lleva barra, y es la pantalla de la que se entra.
-  // Y EL REPARTO DE UN ABONO, desde el 2026-10-21. Es la TERCERA lista que hay
-  // que tocar para una pantalla con barra pegada abajo --las otras dos están en
-  // `app-main.tsx`-- y es la única que decide si esta barra se dibuja encima.
-  // Medido en la propuesta antes de añadirla: el botón ocupaba 732-772 y esta
-  // barra 723-812, así que `elementFromPoint` en el centro del botón devolvía
-  // un icono de la barra. No era un botón mal colocado: era un botón que no se
-  // podía pulsar, y desde fuera eso se ve como «le di y no hizo nada».
+  // ESTA ES LA TERCERA LISTA, Y ES LA QUE DE VERDAD TAPA EL BOTÓN. Una
+  // pantalla con barra pegada abajo hay que apuntarla en tres sitios: dos en
+  // `app-main.tsx` --que le dan su aire-- y esta, que es la única que decide
+  // si la barra de navegación se dibuja ENCIMA.
+  //
+  // Medido el 2026-10-21 en una pantalla que faltaba aquí: su botón ocupaba
+  // 732-772 y esta barra 723-812, así que `elementFromPoint` en el centro del
+  // botón devolvía un icono de la barra. No era un botón mal colocado: era un
+  // botón que NO SE PODÍA PULSAR, y desde fuera eso se ve como «le di y no
+  // hizo nada», que es lo último que a alguien se le ocurre mirar aquí.
+  //
+  // Esa pantalla ya no existe --era una propuesta y se retiró-- pero la
+  // lección no depende de ella: el síntoma no se parece en nada a la causa.
   const enAsistenteDeVenta =
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
-    pathname.startsWith("/abonos/reparto-propuesta") ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname);
 
