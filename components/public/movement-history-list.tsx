@@ -309,11 +309,15 @@ export function MovementHistoryList({
                     `1548:11075` and `1548:11049`. Flag, amount, and its
                     bolívares underneath. Red on a fiado, green on an abono.
 
-                    THE SIGN STAYS AS IT WAS (`+` lending, `-` paying). Both
-                    frames write `+$00.00`, the abono's too, but there it sits
-                    in green on a row that SUBTRACTS debt: writing it would
-                    invert what the row says. Raised with the owner on
-                    2026-10-22; if it is deliberate it is this ternary. */}
+                    THE SIGN STAYS AS IT WAS (`+` lending, `-` paying), and
+                    that is the owner's decision of 2026-10-22, not an
+                    oversight. Both frames write `+$00.00`, the abono's too,
+                    and he was shown both readings: the frame's `+` reads as
+                    "twenty dollars came into the till", which is true, but in
+                    a list where the fiado ALSO carries `+` the sign stops
+                    telling them apart and the whole weight falls on colour —
+                    invisible in a greyscale screenshot, and to anyone who
+                    cannot separate red from green. He chose the `-`. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}

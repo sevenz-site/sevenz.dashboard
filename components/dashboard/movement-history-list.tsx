@@ -410,11 +410,14 @@ export function MovementHistoryList({
                     debajo sus bolívares. Rojo en un fiado, verde en un abono.
 
                     EL SIGNO SE QUEDA COMO ESTABA --`+` al fiar, `-` al
-                    abonar--. Los dos frames escriben `+$00.00`, también el del
-                    abono, pero ahí el `+` va en verde y en una fila que RESTA
-                    deuda: ponerlo invertiría lo que la fila dice. Queda
-                    preguntado en el reporte del 2026-10-22; si es
-                    deliberado, es cambiar este ternario. */}
+                    abonar--, y eso es una DECISIÓN DEL DUEÑO del 2026-10-22,
+                    no un olvido. Los dos frames escriben `+$00.00`, también el
+                    del abono, y se le preguntó enseñando las dos lecturas: el
+                    `+` del frame se lee como «entraron 20 dólares a la caja»,
+                    que es cierto, pero en una lista donde el fiado TAMBIÉN
+                    lleva `+` el signo deja de distinguir nada y todo el peso
+                    cae en el color --invisible en una captura en gris, y para
+                    quien no separa el rojo del verde--. Eligió el `-`. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
