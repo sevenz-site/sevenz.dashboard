@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { enviarReciboAlCliente } from "@/lib/whatsapp/recibo-cliente";
+import { enviarReciboAlCliente, enviarReciboDeGrupo } from "@/lib/whatsapp/recibo-cliente";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
@@ -11,6 +11,7 @@ import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares"
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
+import { repartir, deudaDelLibro, type FiadoParaRepartir } from "@/lib/abonos/reparto";
 
 // EL ABONO DIRIGIDO — paso 3/3 del flujo, frame `1389:9381`.
 //
@@ -394,4 +395,268 @@ export async function editarAbonoDirigido(
   if (abono.applies_to_movement_id) revalidatePath(`/transacciones/${abono.applies_to_movement_id}`);
 
   return { ok: true, movementId: abono.id as string };
+}
+
+// ===========================================================================
+// EL ABONO REPARTIDO — «1/2 fiados», frame `1526:11182`.
+//
+// Un billete que cubre varios fiados se registra UNA vez. Encargo del dueño
+// tras un reporte de producción: hoy el tendero tiene que registrar tres
+// abonos, eligiendo un fiado cada vez.
+//
+// ===========================================================================
+// EL REPARTO LO CALCULA ESTE SERVIDOR, NO EL NAVEGADOR
+//
+// La entrada trae lo que el tendero TECLEÓ y lo que ajustó a mano, nunca las
+// líneas ya repartidas. Si viajaran repartidas, cualquiera podría mandar un
+// reparto que no sigue la gravedad, o que le mete a un fiado más de lo que
+// debe, y la pantalla no tendría forma de notarlo.
+//
+// La pantalla llama a `repartir()` también, para enseñarlo antes de guardar.
+// Es la MISMA función con las MISMAS entradas, así que no pueden discrepar —
+// que es distinto de copiarla, y es lo que permite que el tendero vea
+// exactamente lo que se va a escribir.
+//
+// ===========================================================================
+// UNA TASA, UN INSTANTE, PARA TODAS LAS LÍNEAS
+//
+// El sello se resuelve UNA vez y se repite en cada fila, y eso no es ahorro:
+// es un solo pago. Sellar cada línea por separado abriría la puerta a que tres
+// filas del mismo billete queden con tres tasas distintas si la del BCV cambia
+// a mitad del guardado — y el tendero vería en el historial tres equivalencias
+// que no suman lo que él recibió.
+//
+// Es lo contrario del bucle por moneda de `confirmImport`, y por la razón
+// opuesta: allí son movimientos de días distintos que casualmente se guardan
+// juntos; aquí es un movimiento que casualmente ocupa varias filas.
+
+export type AbonoRepartidoEntrada = {
+  clienteId: string;
+  // El libro en el que se reparte. `null` es el de pesos: un negocio
+  // colombiano. Una sola moneda por reparto — decisión del dueño del
+  // 2026-10-22, y la migración `137` la vuelve a exigir al escribir.
+  libro: LedgerCurrency | null;
+  // Lo que el tendero escribió, en la moneda que eligió para escribirlo.
+  montoTecleado: number;
+  monedaTecleada: "VES" | PriceCurrency;
+  usarPrevista?: boolean;
+  // Lo que ajustó a mano, por fiado. Lo que no está aquí lo decide la
+  // gravedad.
+  aMano?: Record<string, number>;
+  // La misma pareja de banderas que mandan las otras puertas: un «no» también
+  // se anota, o el cliente nunca queda marcado como preguntado.
+  permisoMostrado?: boolean;
+  avisarPorWhatsapp?: boolean;
+};
+
+export type AbonoRepartidoResultado =
+  | { ok: true; groupId: string; clientId: string; lineas: number; total: number }
+  | { ok: false; error: string };
+
+// Los códigos que devuelve `registrar_abono_repartido`, en cristiano. Un
+// código crudo en pantalla no le dice nada a un tendero, y la regla de
+// `CLAUDE.md` sobre no filtrar detalle interno vale igual aunque esta puerta
+// exija sesión: «fiado_ajeno» no es un mensaje, es una pista.
+function mensajeDelCodigo(
+  code: string | undefined,
+  pendiente?: number,
+  libro?: LedgerCurrency | null,
+): string {
+  switch (code) {
+    case "excede_el_fiado":
+      return pendiente != null
+        ? `Uno de los fiados solo debe ${formatPriceAmount(pendiente, (libro ?? "COP") as PriceCurrency)}. Ajusta el reparto.`
+        : "Uno de los fiados recibe más de lo que debe. Ajusta el reparto.";
+    case "fiado_saldado":
+      return "Uno de los fiados que ibas a pagar ya está saldado. Vuelve a abrir la pantalla.";
+    case "monedas_mezcladas":
+      return "Un abono se reparte dentro de una sola moneda.";
+    case "fiado_repetido":
+      return "Un mismo fiado aparece dos veces en el reparto.";
+    case "fiado_ajeno":
+      return "No encontramos uno de esos fiados.";
+    case "sin_sesion":
+      return "Tu sesión se cerró. Vuelve a entrar.";
+    default:
+      return "No pudimos guardar el abono. Vuelve a intentarlo.";
+  }
+}
+
+export async function registrarAbonoRepartido(
+  entrada: AbonoRepartidoEntrada,
+): Promise<AbonoRepartidoResultado> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+
+  // LA PROPIEDAD, EXPLÍCITA. El id llega del navegador; la regla de
+  // `CLAUDE.md` es que la política es el respaldo y esto es el candado. La
+  // `137` lo vuelve a comprobar por su cuenta, y las dos cosas están bien.
+  const { data: cliente } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("id", entrada.clienteId)
+    .eq("owner_id", user.id)
+    .is("trashed_at", null)
+    .maybeSingle();
+  if (!cliente) return { ok: false, error: "No encontramos ese cliente." };
+
+  // ── LOS FIADOS ABIERTOS, DE LA MISMA FUNCIÓN QUE LA PANTALLA ────────
+  const { data: abiertos, error: errorAbiertos } = await supabase.rpc(
+    "get_open_charges_for_client",
+    { p_client_id: cliente.id },
+  );
+  if (errorAbiertos) {
+    console.error("[abono repartido] get_open_charges_for_client:", errorAbiertos.message);
+    return { ok: false, error: "No pudimos leer los fiados de este cliente." };
+  }
+
+  const delLibro: FiadoParaRepartir[] = (abiertos ?? [])
+    .filter((c: Record<string, unknown>) => ((c.currency as string | null) ?? null) === entrada.libro)
+    .map((c: Record<string, unknown>) => ({
+      movementId: c.movement_id as string,
+      createdAt: c.charge_at as string,
+      plazoDias: (c.plazo_dias as number | null) ?? null,
+      cuotas: (c.cuotas as number | null) ?? null,
+      amount: Number(c.amount ?? 0),
+      pendiente: Number(c.pending ?? 0),
+    }));
+
+  if (delLibro.length === 0) {
+    return { ok: false, error: "Este cliente no tiene fiados abiertos en esa moneda." };
+  }
+
+  // ── LA TASA, SELLADA ANTES DE CONVERTIR NADA ────────────────────────
+  const resolucion = await resolveMovementRateSnapshot(
+    supabase,
+    user.id,
+    entrada.libro,
+    entrada.usarPrevista === true,
+  );
+  if (!resolucion.ok) return { ok: false, error: resolucion.error };
+  const sello = resolucion.snapshot;
+
+  let total = entrada.montoTecleado;
+  let tecleadoEnBs: number | null = null;
+  let entryCurrency: "VES" | LedgerCurrency | null = sello.entryCurrency;
+  if (entrada.monedaTecleada === "VES" && entrada.libro) {
+    const convertido = convertirDesdeBolivares(total, entrada.libro, sello);
+    if ("error" in convertido) return { ok: false, error: convertido.error };
+    total = convertido.monto;
+    tecleadoEnBs = convertido.entryAmount;
+    entryCurrency = "VES";
+  }
+
+  if (!(total > 0)) return { ok: false, error: "Escribe cuánto te pagó." };
+
+  // EL TOPE DEL TOTAL. Decisión del dueño del 2026-10-21: *«El abono no puede
+  // exceder el saldo total de lo que ese cliente debe»*. Se comprueba DESPUÉS
+  // de convertir, que es el único orden correcto: el tendero escribe bolívares
+  // y los fiados deben dólares.
+  const deuda = deudaDelLibro(delLibro);
+  if (total - deuda > HOLGURA) {
+    return {
+      ok: false,
+      error: `Te debe ${formatPriceAmount(deuda, (entrada.libro ?? "COP") as PriceCurrency)} en esta moneda. Escribe esa cantidad o menos.`,
+    };
+  }
+
+  // ── EL REPARTO ──────────────────────────────────────────────────────
+  const reparto = repartir({ monto: total, fiados: delLibro, aMano: entrada.aMano ?? {} });
+  const lineas = reparto.lineas.filter((l) => l.asignado > HOLGURA);
+
+  if (lineas.length === 0) return { ok: false, error: "Escribe cuánto te pagó." };
+
+  // No debería pasar: el tope de arriba lo impide. Se comprueba igual porque
+  // si pasara, se guardaría MENOS de lo que el tendero escribió y la pantalla
+  // le diría que todo bien.
+  if (reparto.sinAsignar > HOLGURA) {
+    return { ok: false, error: "No pudimos repartir todo el abono. Revisa las cantidades." };
+  }
+
+  // LOS BOLÍVARES DE CADA LÍNEA, CON LA ÚLTIMA ABSORBIENDO EL RESTO.
+  //
+  // Es el mismo patrón que `calcularCuotas` usa para los importes, y por la
+  // misma razón escrita allí: tres líneas redondeadas a la baja suman un
+  // céntimo menos que lo tecleado y dejan al tendero buscando un bolívar que
+  // nunca faltó. Repartirlos proporcionalmente es lo único honesto que se
+  // puede hacer con una cifra que él escribió UNA vez.
+  const bsPorLinea: number[] = [];
+  if (tecleadoEnBs != null) {
+    let acumulado = 0;
+    lineas.forEach((l, i) => {
+      if (i === lineas.length - 1) {
+        bsPorLinea.push(Math.round((tecleadoEnBs - acumulado) * 100) / 100);
+      } else {
+        const v = Math.round(tecleadoEnBs * (l.asignado / total) * 100) / 100;
+        bsPorLinea.push(v);
+        acumulado = Math.round((acumulado + v) * 100) / 100;
+      }
+    });
+  }
+
+  const { data: escrito, error: errorRpc } = await supabase.rpc("registrar_abono_repartido", {
+    p_lineas: lineas.map((l, i) => ({
+      fiado_id: l.movementId,
+      amount: l.asignado,
+      rate_mode_used: sello.rateModeUsed,
+      exchange_rate_used: sello.exchangeRateUsed,
+      official_bcv_rate_at_time: sello.officialBcvRateAtTime,
+      entry_currency: entryCurrency,
+      entry_amount: tecleadoEnBs != null ? bsPorLinea[i] : entryCurrency ? l.asignado : null,
+      rate_usd_at_time: sello.rateUsdAtTime,
+      rate_eur_at_time: sello.rateEurAtTime,
+    })),
+  });
+
+  if (errorRpc) {
+    console.error("[abono repartido] rpc:", errorRpc.message);
+    return { ok: false, error: "No pudimos guardar el abono. Vuelve a intentarlo." };
+  }
+
+  const r = escrito as { ok?: boolean; code?: string; group_id?: string; pendiente?: number } | null;
+  if (!r?.ok) {
+    return { ok: false, error: mensajeDelCodigo(r?.code, r?.pendiente, entrada.libro) };
+  }
+
+  // ── EL PERMISO DE WHATSAPP, DESPUÉS Y SIN PODER TUMBAR EL PAGO ──────
+  if (entrada.permisoMostrado || entrada.avisarPorWhatsapp) {
+    try {
+      await guardarPermisoDeclarado(supabase, {
+        clientId: cliente.id,
+        ownerId: user.id,
+        clientName: cliente.name,
+        source: "owner_movement_form",
+        seMostro: entrada.permisoMostrado !== false,
+        acepta: entrada.avisarPorWhatsapp === true,
+      });
+    } catch (e) {
+      console.error("[abono repartido] permiso de whatsapp:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // ── EL RECIBO: UNO, POR EL TOTAL ────────────────────────────────────
+  //
+  // `enviarReciboDeGrupo` y no `enviarReciboAlCliente` por línea: es la mitad
+  // de la `137` que protege al cliente. Tres mensajes por un billete es lo
+  // que esto existe para evitar.
+  const grupo = r.group_id as string;
+  after(async () => {
+    const res = await enviarReciboDeGrupo(grupo);
+    if (res.estado === "fallido") console.error("[recibo grupo]", grupo, res.error);
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${cliente.id}`);
+  return {
+    ok: true,
+    groupId: grupo,
+    clientId: cliente.id,
+    lineas: lineas.length,
+    total: reparto.repartido,
+  };
 }
