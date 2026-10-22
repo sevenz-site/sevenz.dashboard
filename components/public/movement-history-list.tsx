@@ -115,43 +115,25 @@ export function MovementHistoryList({
   // con una marca y se ordenan por fecha. Dos listas separadas romperían lo
   // único que el cliente busca al abrir su enlace: qué pasó, en orden.
   //
-  // NO ABONOS HERE EITHER, which closes `CT-118`. The owner decided it on
-  // 2026-10-20: *«el eliminar del historial los abonos y mostrar solo los
-  // fiados y de contados tal cual como en la vista del dueño»*.
+  // ABONOS BACK IN, ALL OF THEM — same rule and same reasoning as the
+  // shopkeeper's list, whose long comment lives in
+  // `components/dashboard/movement-history-list.tsx`. Asked for by the owner
+  // on 2026-10-22, reversing his own 2026-10-20 decision to hide them.
   //
-  // THIS FILE ARGUED THE OTHER WAY UNTIL THAT DAY, and the argument is kept
-  // because it is the cost of the decision, not a mistake that was corrected:
-  // for the OWNER an abono is a duplicate — it is already visible inside the
-  // fiado it paid — while for a CLIENT it is the receipt that he paid, and
-  // often the whole reason he opens the link. He now reaches it one tap
-  // further in, inside the fiado. What the two screens gain is being the same
-  // screen, which is the thing Sevenz is for: the shopkeeper and the customer
-  // reading the same account and seeing the same rows.
-  // MISMA REGLA QUE LA DEL TENDERO, y su comentario largo está allí
-  // (`components/dashboard/movement-history-list.tsx`): un abono dirigido vive
-  // dentro de su fiado y no sale aquí; uno sin dirigir sí, porque no tiene
-  // ningún fiado donde verse. El cliente los alcanza igual que el tendero:
-  // desde la `128`, la ficha de un fiado lista sus abonos dirigidos.
-  const esAbonoDirigido = (m: SharedMovement) =>
-    m.type === "payment" && m.applies_to_movement_id != null;
-
-  // LA FECHA DE UN FIADO ES LA DE SU ÚLTIMO ABONO — frame `1512:10061`, misma
-  // regla y mismo comentario que en la lista del tendero. Se calcula con los
-  // movimientos que ya llegan; sin abonos dirigidos se queda la del fiado,
-  // que es la única fecha que tiene.
-  const ultimoAbonoPorFiado = new Map<string, string>();
-  for (const m of movements) {
-    if (!esAbonoDirigido(m) || !m.applies_to_movement_id) continue;
-    const previo = ultimoAbonoPorFiado.get(m.applies_to_movement_id);
-    if (!previo || m.created_at > previo) {
-      ultimoAbonoPorFiado.set(m.applies_to_movement_id, m.created_at);
-    }
-  }
-
+  // THIS FILE ARGUED FOR EXACTLY THIS until that day, and the argument is kept
+  // because it is now the reason rather than the cost: for the OWNER an abono
+  // is a duplicate — it is already visible inside the fiado it paid — while
+  // for a CLIENT it is the receipt that he paid, and often the whole reason he
+  // opens the link. Hiding it put that receipt one tap further in. The two
+  // screens stay identical, which is the thing Sevenz is for: the shopkeeper
+  // and the customer reading the same account and seeing the same rows.
+  //
+  // AND THE DATE OF A FIADO IS ITS OWN AGAIN. It showed its last abono's date
+  // from 2026-10-21, which made sense while abonos were hidden; with the abono
+  // on its own row it only produced a list that sorted by one date and printed
+  // another. Decided by the owner on 2026-10-22.
   const filas: Fila[] = [
-    ...movements
-      .filter((m) => !esAbonoDirigido(m))
-      .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -261,8 +243,15 @@ export function MovementHistoryList({
 
           return (
           <li key={m.id}>
+            {/* AN ABONO OPENS THE FIADO IT PAID, not its own detail — same as
+                the shopkeeper's list, asked for on 2026-10-22. From there its
+                own card leads to the abono's detail.
+
+                `?? m.id` IS NOT REDUNDANT: an undirected abono has no fiado to
+                open, so it falls back to its own page. They all predate
+                2026-10-14. */}
             <Link
-              href={`/s/${token}/t/${m.id}`}
+              href={`/s/${token}/t/${m.applies_to_movement_id ?? m.id}`}
               className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
                 {/* `shrink-0 whitespace-nowrap`, COMO EL FRAME `1512:10061`: su
@@ -279,15 +268,9 @@ export function MovementHistoryList({
                       34,
                     )}
                   </p>
-                  {/* LA FECHA DE UN FIADO ES LA DE SU ÚLTIMO ABONO, frame
-                      `1512:10061`. Ver el comentario del mapa, arriba. */}
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(
-                      m.type === "charge"
-                        ? (ultimoAbonoPorFiado.get(m.id) ?? m.created_at)
-                        : m.created_at,
-                    )}
-                  </p>
+                  {/* SU PROPIA FECHA, que es también la que ordena la lista.
+                      Ver arriba por qué dejó de ser la del último abono. */}
+                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
                   {/* EL CHIP «Pagado» DE UN FIADO SALDADO, igual que en la
                       lista del tendero y por la misma razón — ver su
                       comentario. Aquí el estado sale de `pending`, que llega

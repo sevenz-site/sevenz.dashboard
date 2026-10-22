@@ -100,72 +100,44 @@ export function MovementHistoryList({
   // se juntan aquí con una marca y se ordenan por fecha. La alternativa
   // --dos listas, una debajo de otra-- rompería lo único que el tendero busca
   // en esta pantalla: qué pasó, en orden.
-  // ── LOS ABONOS NO SALEN AQUÍ. NINGUNO ────────────────────────────────
+  // ── LOS ABONOS SÍ SALEN AQUÍ, TODOS ──────────────────────────────────
   //
-  // Decisión del dueño el 2026-10-20, y la eligió con el coste delante:
-  // *«como el fiado se lleva sobre una misma cuenta, agregar los movimientos
-  // de abonos por separados en el historial sería redundante, esos abonos
-  // deberían aparecer solo sobre el movimiento del detalle del fiado, es
-  // decir viven solo ahí, no se ven en el historial»*.
+  // Encargo del dueño el 2026-10-22: *«ver los abonos solo dentro del fiado es
+  // engorroso, agreguemos los abonos también en el historial de transacciones
+  // (el abono se mantiene también en el detalle del fiado) y al abrirlo abre
+  // el fiado a donde fue agregado»*.
   //
-  // ── QUÉ ABONOS SALEN AQUÍ: SOLO LOS QUE NO TIENEN OTRO SITIO ──────
+  // ESTO REVIERTE SU PROPIA DECISIÓN DEL 2026-10-20, y las dos quedan escritas
+  // porque la vieja explica por qué el código estuvo así dos días. Entonces
+  // dijo: *«como el fiado se lleva sobre una misma cuenta, agregar los
+  // movimientos de abonos por separados en el historial sería redundante»*.
+  // Lo que cambió no es el argumento —sigue siendo redundante— sino cuál de
+  // los dos costes pesa más: la redundancia molesta menos que tener que entrar
+  // a un fiado para enterarte de que alguien te pagó.
   //
-  // Regla del dueño, 2026-10-21, después de que las dos pantallas los
-  // escondieran todos durante un día:
+  // De aquel día sobrevive lo que se aprendió por el camino: un abono SIN
+  // dirigir --la cola FIFO lo repartió sin dejar constancia de a cuál-- no
+  // tiene ningún fiado donde verse, así que esconderlos todos lo borraba de la
+  // app entera. Fueron 104 de 115. Ahora salen todos y ese caso desaparece
+  // solo.
   //
-  //   abono DIRIGIDO a un fiado  → NO sale aquí. Vive dentro de ese fiado,
-  //                                que es donde él decidió que viven.
-  //   abono SIN DIRIGIR          → SÍ sale aquí, porque no hay ningún fiado
-  //                                donde pueda verse.
+  // ── LA FECHA DE UN FIADO VUELVE A SER LA SUYA ────────────────────────
   //
-  // POR QUÉ ESTA REGLA Y NO «NINGUNO», que fue lo que se hizo el 2026-10-20 y
-  // duró un día: esconderlos todos daba por hecho que «ya se ven dentro del
-  // fiado», y eso solo es cierto para los dirigidos. Un abono sin dirigir no
-  // pertenece a ningún cargo — la cola FIFO lo repartió entre los más viejos
-  // sin dejar constancia de a cuál— así que al ocultarlo desaparecía de la
-  // app entera: ni aquí, ni dentro de ningún fiado, ni para el tendero ni
-  // para el cliente. Medido ese día: 104 de 115.
+  // El 2026-10-21 la fila de un fiado enseñaba la fecha de su ÚLTIMO ABONO
+  // --*«fecha de último abono (en caso de fiado)»*--, y tenía sentido mientras
+  // los abonos no salían: era la única forma de saber que algo había pasado.
   //
-  // SE APAGA SOLA, y esa es la mejor parte. Desde el 2026-10-14 el flujo de
-  // abono obliga a elegir el fiado antes de pedir el monto, así que todo lo
-  // que entra nuevo va dirigido — comprobado contra la base: el último abono
-  // sin dirigir es de ese día. Esta rama solo alcanza a lo histórico, y se
-  // vaciará sola a medida que esos abonos dejen de estar a la vista. No hay
-  // nada que quitar luego.
+  // CON EL ABONO EN SU PROPIA FILA ESO SE VUELVE EN CONTRA, y además era un
+  // desorden visible: la lista se ORDENABA por `created_at` y ENSEÑABA otra
+  // fecha, así que un fiado de agosto abonado ayer decía «ayer» sentado en
+  // agosto. Es lo que el dueño reportó el 2026-10-22 pidiendo que el historial
+  // vaya *«del más reciente al más antiguo»*.
   //
-  // SE FILTRA AQUÍ Y NO EN LA CONSULTA a propósito: `movements` sigue
-  // llegando entero porque la fila de un fiado necesita su `running_balance`,
-  // que se calcula contra todos los movimientos. Pedir menos a la base
-  // ahorraría nada y rompería esa columna.
-  const esAbonoDirigido = (m: { type: string; applies_to_movement_id: string | null }) =>
-    m.type === "payment" && m.applies_to_movement_id != null;
-
-  // ── LA FECHA QUE ENSEÑA UN FIADO: LA DE SU ÚLTIMO ABONO ──────────────
-  //
-  // Frame `1512:10061` y las palabras del dueño el 2026-10-21: *«fecha de
-  // registro de la transacción (en caso de venta de contado) y fecha de
-  // último abono (en caso de fiado)»*.
-  //
-  // SIN ABONOS DIRIGIDOS SE QUEDA LA SUYA. No es una elección de estilo: es la
-  // única fecha que ese fiado tiene. Dejar la fila sin fecha sería peor que
-  // dar la de su registro, que además es literalmente «la última vez que pasó
-  // algo con este fiado».
-  //
-  // SE CALCULA CON LOS MOVIMIENTOS QUE YA LLEGAN, sin pedir nada más: los
-  // abonos dirigidos están en esta misma lista con su `applies_to_movement_id`
-  // —aunque no se dibujen— así que el dato ya estaba aquí.
-  const ultimoAbonoPorFiado = new Map<string, string>();
-  for (const m of movements) {
-    if (!esAbonoDirigido(m) || !m.applies_to_movement_id) continue;
-    const previo = ultimoAbonoPorFiado.get(m.applies_to_movement_id);
-    if (!previo || m.created_at > previo) {
-      ultimoAbonoPorFiado.set(m.applies_to_movement_id, m.created_at);
-    }
-  }
+  // Decidido por él ese día, entre las dos opciones: cada fila por su propia
+  // fecha. Así lo que se ordena y lo que se lee son la misma cifra, que es la
+  // única forma de que «ordenado por fecha» signifique algo.
   const filas: Fila[] = [
-    ...movements
-      .filter((m) => !esAbonoDirigido(m))
-      .map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -333,7 +305,18 @@ export function MovementHistoryList({
           // `hover`, que prometería algo que no pasa.
           return (
           <li key={m.id}>
-            <FilaEnvuelta href={navegable ? `/transacciones/${m.id}` : null}>
+            {/* UN ABONO ABRE EL FIADO AL QUE FUE, no su propia ficha. Encargo
+                del dueño el 2026-10-22: *«al abrirlo abre el fiado a donde fue
+                agregado»*. Desde ahí se llega a la ficha del abono tocando su
+                tarjeta, que es donde él decidió el 2026-10-19 que vivieran.
+
+                `?? m.id` NO SOBRA: un abono sin dirigir no tiene fiado que
+                abrir --la cola FIFO lo repartió sin dejar constancia de a
+                cuál-- así que cae en su propia ficha, que es lo único que
+                tiene. Son todos anteriores al 2026-10-14. */}
+            <FilaEnvuelta
+              href={navegable ? `/transacciones/${m.applies_to_movement_id ?? m.id}` : null}
+            >
                 {/* ── LA IZQUIERDA: QUÉ FUE Y CUÁNDO, Y NADA MÁS ──────
                     Frame `1512:10061`, reescrita el 2026-10-21 con la
                     instrucción del dueño delante: *«del lado izquierdo de la
@@ -358,13 +341,9 @@ export function MovementHistoryList({
                       34,
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(
-                      m.type === "charge"
-                        ? (ultimoAbonoPorFiado.get(m.id) ?? m.created_at)
-                        : m.created_at,
-                    )}
-                  </p>
+                  {/* SU PROPIA FECHA, que es también la que ordena la lista.
+                      Ver arriba por qué dejó de ser la del último abono. */}
+                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
                   {/* UN FIADO PAGADO LLEVA SU CHIP «Pagado». Instrucción del
                       dueño el 2026-10-21, contestando a la regresión que dejó
                       a un fiado saldado anunciando «Por cobrar +$0.00»:
