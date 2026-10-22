@@ -79,6 +79,23 @@ export type AbonoDelResumen = {
 };
 
 export type DatosDelResumen = {
+  // CUÁNDO PASÓ, YA FORMATEADO POR QUIEN LLAMA.
+  //
+  // Encargo del dueño el 2026-10-22: *«Las pantallas de transacciones
+  // realizadas con éxito no tienen fecha, tampoco los png que se comparten»*.
+  //
+  // Llega como cadena y aquí no se formatea nada, por la misma razón que la
+  // tarjeta de la calculadora: la fecha tiene que ser LA MISMA que la pantalla
+  // está enseñando detrás, y dos formateadores para la misma cifra es como se
+  // separan la imagen y lo que el tendero ve.
+  //
+  // Y SOBRE TODO porque este fichero corre en el navegador, donde `Intl` sin
+  // zona usa la del teléfono. Quien llama la resuelve en la zona del NEGOCIO
+  // con `formatReceiptDateTime`, que es lo único correcto en un recibo.
+  //
+  // `null` no dibuja la línea: una imagen sin fecha es peor que una con una
+  // fecha inventada, pero mucho mejor que una con la fecha equivocada.
+  fecha?: string | null;
   // `null` en una venta de mostrador: ahi no hay a quien nombrar, asi que la
   // tarjeta no se dibuja. Ver el comentario de la pantalla.
   comprador: { nombre: string; documento: string; telefono: string } | null;
@@ -226,10 +243,17 @@ export function dibujarResumenDeAbono(datos: {
   comprador: DatosDelResumen["comprador"];
   abono: AbonoDelResumen;
   rates: BolivarRates | null;
+  fecha?: string | null;
 }): Blob | null {
   // `bloques` vacío a propósito: un abono no tiene tarjetas por moneda, y
   // pasar las dos cosas dibujaría un recibo con dos resúmenes distintos.
-  return dibujar({ comprador: datos.comprador, bloques: [], rates: datos.rates, abono: datos.abono });
+  return dibujar({
+    comprador: datos.comprador,
+    bloques: [],
+    rates: datos.rates,
+    abono: datos.abono,
+    fecha: datos.fecha,
+  });
 }
 
 function dibujar(datos: DatosDelResumen): Blob | null {
@@ -304,6 +328,25 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     );
   }
   y += 10 * ESCALA;
+
+  // ── CUÁNDO PASÓ ──────────────────────────────────────────────────────
+  //
+  // DEBAJO DEL TÍTULO Y EN TENUE, que es donde la mira quien recibe la imagen
+  // en un chat: lo primero es «salió bien» y lo segundo «¿cuándo?». Ponerla
+  // abajo, con el pie, la dejaría a la altura del texto legal, que es donde
+  // deja de leerse.
+  //
+  // LA ALTURA SE SUMA AUNQUE NO HAYA `ctx`, porque `recorrer` mide y dibuja
+  // con la misma función: sumarla solo al dibujar recortaría la imagen por
+  // abajo exactamente la altura de esta línea.
+  if (datos.fecha) {
+    y += 18 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(13);
+      ctx.fillStyle = TENUE;
+      ctx.fillText(datos.fecha, centro, y);
+    }
+  }
 
   if (ctx) ctx.textAlign = "left";
   y += 24 * ESCALA;

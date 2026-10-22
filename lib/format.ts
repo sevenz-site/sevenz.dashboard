@@ -29,6 +29,51 @@ export function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+// ===========================================================================
+// LA FECHA DE UN RECIBO, EN LA ZONA DEL NEGOCIO
+//
+// `formatDate` y `formatDateTime` no fijan zona, así que usan la de quien las
+// ejecuta. Eso vale en una pantalla del tendero --su propio teléfono-- y es
+// FALSO en los dos sitios donde se pone una fecha en un recibo:
+//
+//   · UN COMPONENTE DE SERVIDOR corre en Vercel, que va en UTC. Un abono de
+//     las nueve de la noche en Caracas saldría fechado al día siguiente.
+//   · EL RECIBO DEL CARRITO lo dibuja el teléfono del CLIENTE, que puede estar
+//     en otro país. La fecha de una compra es la del negocio, no la de quien
+//     mira el papel.
+//
+// Es la misma regla que el detalle de un pedido ya tenía escrita desde el
+// 2026-10-13 --*«The owner's zone, never the server's»*-- y vive aquí para
+// que haya UNA implementación: aquella estaba suelta dentro de su página, que
+// es como acaban existiendo dos relojes.
+//
+// SE DEDUCE DEL PAÍS Y NO SE GUARDA, porque Sevenz opera en dos y cada uno
+// tiene una sola zona. El día que haya un tercero con varias, esto deja de
+// valer y la zona pasa a ser un campo de `owners`.
+export function zonaDelNegocio(country: string | null | undefined): string {
+  return country === "VE" ? "America/Caracas" : "America/Bogota";
+}
+
+/**
+ * Fecha y hora de un recibo, en la zona del negocio.
+ *
+ * CON HORA, y no solo la fecha: un tendero puede recibir dos abonos del mismo
+ * cliente el mismo día --pasa en el fixture de dev, tres el 20 de octubre-- y
+ * dos recibos con la misma línea no se distinguen. Un recibo existe para
+ * zanjar «¿me pagaste o no?», y sin hora no zanja ese caso.
+ */
+export function formatReceiptDateTime(iso: string, country: string | null | undefined): string {
+  return new Intl.DateTimeFormat("es-VE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: zonaDelNegocio(country),
+  }).format(new Date(iso));
+}
+
 // null covers both payments (no term applies) and charges left "sin
 // especificar" — both render the same way, as "not applicable".
 export function formatPlazoDias(days: number | null): string {

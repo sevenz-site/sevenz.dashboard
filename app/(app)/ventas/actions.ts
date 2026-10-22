@@ -11,7 +11,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
-import { formatDocumentId } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
@@ -1078,6 +1078,9 @@ export type ResumenDeVenta =
   | {
       ok: true;
       saleId: string;
+      // Cuándo se hizo, ya formateada y en la zona del negocio. Ver dónde se
+      // calcula, al final de `resumenDeVenta`.
+      fecha: string;
       comprador: CompradorDelResumen | null;
       bloques: BloqueDelResumen[];
       rates: BolivarRates | null;
@@ -1207,9 +1210,27 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     };
   });
 
+  // ── CUÁNDO SE HIZO LA VENTA ──────────────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-22: la pantalla de éxito y el PNG que se
+  // comparte desde ella no llevaban fecha.
+  //
+  // SE FORMATEA AQUÍ, EN EL SERVIDOR, Y EN LA ZONA DEL NEGOCIO, por la misma
+  // razón que el documento dos líneas más abajo —lo leen la pantalla y el
+  // canvas— y por una más que solo aplica a una fecha: `Intl` sin zona usa la
+  // de quien ejecuta. En el servidor eso es UTC, así que una venta de las
+  // nueve de la noche en Caracas saldría fechada al día siguiente.
+  //
+  // EL PAÍS SALE DE `monedasDelLibro` y no de otra consulta: un negocio
+  // colombiano tiene un solo libro y es COP. `contextoDeVenta` ya resolvió el
+  // país para saberlo, y volver a preguntarlo sería una lectura más para un
+  // dato que ya está aquí.
+  const esColombiano = contexto.ok && contexto.monedasDelLibro[0] === "COP";
+
   return {
     ok: true,
     saleId: venta.id,
+    fecha: formatReceiptDateTime(venta.created_at as string, esColombiano ? "CO" : "VE"),
     // SE FORMATEA AQUÍ Y NO EN CADA PANTALLA. Esto lo leen dos sitios —la
     // pantalla y el canvas de la imagen— y un documento con puntos en una y
     // sin ellos en la otra es la misma venta contando dos cosas distintas.

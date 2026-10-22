@@ -62,6 +62,14 @@ export type DatosDelRecibo = {
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: Bloque[];
   rates: BolivarRates | null;
+  // CUÁNDO SE PIDIÓ, YA FORMATEADA POR QUIEN LLAMA y en la zona del NEGOCIO.
+  //
+  // Encargo del dueño el 2026-10-22. Aquí no se formatea nada por la misma
+  // razón de siempre --dos formateadores para la misma cifra separan la imagen
+  // de lo que la pantalla enseña-- y por una propia de este fichero: lo
+  // ejecuta el teléfono de QUIEN COMPRA, que puede estar en otro país. La
+  // fecha de un pedido es la del negocio que lo recibe.
+  fecha?: string | null;
 };
 
 const NOMBRE_MONEDA: Record<string, string> = {
@@ -273,6 +281,21 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
       ctx.fillText(datos.businessName, centro, y);
     }
   }
+
+  // CUÁNDO, DEBAJO DEL NEGOCIO. Ese orden y no al revés: quien recibe la
+  // imagen en un chat lee primero de quién es el pedido y después cuándo se
+  // hizo. La altura se suma aunque no haya `ctx` porque esta función mide y
+  // dibuja con el mismo código, y sumarla solo al dibujar recortaría la
+  // imagen por abajo justo la altura de esta línea.
+  if (datos.fecha) {
+    y += 14 * ESCALA;
+    medidor.font = fuente(12);
+    if (ctx) {
+      ctx.fillStyle = TENUE;
+      ctx.fillText(datos.fecha, centro, y);
+    }
+  }
+
   if (ctx) ctx.textAlign = "left";
   y += 22 * ESCALA;
 

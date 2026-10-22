@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { AbonoCompartir } from "@/components/dashboard/abono-compartir";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDocumentId } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { telefonoLegible } from "@/lib/phone";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
 
@@ -51,7 +51,7 @@ export default async function AbonoRegistradoPage({
   const { data: abono } = await supabase
     .from("movements")
     .select(
-      "id, client_id, type, amount, currency, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, clients!inner(id, name, document_id, whatsapp, owner_id)",
+      "id, client_id, type, amount, currency, created_at, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, clients!inner(id, name, document_id, whatsapp, owner_id)",
     )
     .eq("id", movementId)
     .is("deleted_at", null)
@@ -121,6 +121,24 @@ export default async function AbonoRegistradoPage({
 
   const resultado = await getOwnerRateContextResult(supabase, user.id);
   const rates = resultado.kind === "ve" ? await getBolivarRates(resultado.context.effectiveRate) : null;
+
+  // ── CUÁNDO PASÓ ──────────────────────────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-22: esta pantalla no llevaba fecha, ni ella
+  // ni la imagen que se comparte desde aquí.
+  //
+  // SE RESUELVE AQUÍ, EN EL SERVIDOR, Y EN LA ZONA DEL NEGOCIO. Esta página
+  // corre en Vercel, que va en UTC: con `formatDate` a secas, un abono de las
+  // nueve de la noche en Caracas saldría fechado al día siguiente. Y baja ya
+  // formateada al botón de compartir, que corre en el teléfono y usaría LA
+  // SUYA.
+  //
+  // DEL ABONO QUE SE ABRIÓ, aunque sea parte de un reparto: las líneas de un
+  // grupo se escriben en la misma transacción, así que comparten instante.
+  const cuando = formatReceiptDateTime(
+    abono.created_at as string,
+    resultado.kind === "ve" ? "VE" : "CO",
+  );
   const deudaEnBs =
     rates && abono.currency
       ? priceIn("VES", { amount: deudaTotal, currency: moneda }, rates)?.amount
@@ -148,6 +166,11 @@ export default async function AbonoRegistradoPage({
         <h1 className="text-center text-xl leading-7 font-normal">
           ¡Transacción registrada con éxito!
         </h1>
+        {/* LA FECHA, DEBAJO DEL TÍTULO Y EN TENUE — misma posición que en el
+            PNG que se comparte desde aquí, para que la imagen y la pantalla
+            se lean igual. `-mt-2` porque el contenedor ya pone `gap-4` y la
+            fecha pertenece al título, no es un bloque aparte. */}
+        <p className="-mt-2 text-center text-sm text-muted-foreground">{cuando}</p>
       </div>
 
       <section className="flex flex-col rounded-[10px] border p-4">
@@ -248,6 +271,7 @@ export default async function AbonoRegistradoPage({
           deuda: deudaTotal,
         }}
         rates={rates}
+        fecha={cuando}
       />
 
       {/* EL BOTON VA EN EL FLUJO, NO PEGADO ABAJO, y es a proposito: esta
