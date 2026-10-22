@@ -387,11 +387,47 @@ export function AbonoReparto({
           volver. */}
       <ScreenBackRow href={`/clients/${clienteId}`} label={clienteNombre} soloEnTelefono={false} />
 
-      <div className="flex flex-col gap-2">
+      {/* ── EL RITMO VERTICAL DE LA CABECERA, MEDIDO CONTRA EL FRAME ──────
+          Nodos `1526:11184` (contenedor del título) y `1526:11187` (el del
+          subtítulo), del sitemap `1524:10288`.
+
+          Reportado por el dueño el 2026-10-22: *«Paddings del flujo de abono
+          son distintos, creo que no recorriste los frames y solo lo
+          dedujiste»*. Tenía razón: esto llevaba un `gap-2` y un `gap-4`
+          heredados de la pantalla de al lado, no las medidas del frame.
+
+          QUÉ DICE EL FRAME, y de ahí salen los tres números de abajo:
+
+            · contenedor del título    `px-16 py-8`   → 8 abajo
+            · contenedor del subtítulo `px-16 pt-8 pb-16`, gap 8
+            · el contenido empieza con su propio `p-16`
+
+          O sea 8 + 8 = 16 entre el título y el subtítulo, 8 entre el
+          subtítulo y la barra, y 16 + 16 = 32 entre la barra y lo que sigue.
+          Llevaba 8, 8 y 16: la cabecera entera salía comprimida.
+
+          EL GAP DEL CONTENEDOR SE ANULA AQUÍ (`-mt-*` no; `gap-0` y márgenes
+          explícitos sí) porque el `gap-4` de la pantalla se suma a todo lo que
+          se ponga dentro, y entonces cada número de arriba habría que
+          escribirlo menos 16 — que es como se pierde la relación con el
+          frame. */}
+      <div className="flex flex-col gap-0 pb-4">
         <ScreenTitle>Registrar abono</ScreenTitle>
-        <p className="text-sm text-muted-foreground">1/2 fiados</p>
+        {/* `brand-muted` ES EL `--subtle` DEL FRAME, #9a9a9a. Llevaba
+            `muted-foreground`, que es #737373: más oscuro, y por tanto con más
+            peso del que el frame le da a un rótulo de paso. */}
+        {/* MARGEN Y NO RELLENO: un `pt-4` queda DENTRO de la caja del
+            párrafo, así que separa igual pero no se puede medir desde fuera —
+            y esto se comprobó midiendo. Un margen lo dice la geometría. */}
+        <p className="mt-4 text-sm text-brand-muted">1/2 fiados</p>
         {/* `aria-hidden` porque la línea de arriba ya lo dice con palabras. */}
-        <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div aria-hidden="true" className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
+          {/* 50 % Y NO EL 80 % QUE DIBUJA EL FRAME, y se dice en voz alta: el
+              frame usa el componente `Progress` con su variante por defecto
+              (`step="80"`, 4 de 5 segmentos) sobre una pantalla que se llama
+              «1/2». Cuatro quintos en el paso uno de dos no cuadra con nada, y
+              la captura que el dueño mandó ese mismo día enseña la barra a la
+              mitad. Preguntado en el reporte del 2026-10-22. */}
           <div className="h-full w-1/2 rounded-full bg-foreground transition-all" />
         </div>
       </div>
