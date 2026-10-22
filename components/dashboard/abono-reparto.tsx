@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Search } from "lucide-react";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
@@ -87,6 +89,8 @@ export function AbonoReparto({
   const [aMano, setAMano] = useState<Record<string, number>>(borrador?.aMano ?? {});
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repartiendo, setRepartiendo] = useState(false);
+  const [buscaFiado, setBuscaFiado] = useState("");
 
   // UN INSTANTE PARA TODA LA PANTALLA. El orden del reparto y los rótulos que
   // se pintan al lado tienen que salir del mismo, o la lista puede ordenarse
@@ -147,6 +151,18 @@ export function AbonoReparto({
     .map((l) => delLibro.find((f) => f.movementId === l.movementId))
     .filter((f): f is FiadoAbierto => f != null);
 
+  // LO QUE LA HOJA ENSEÑA: los mismos fiados del reparto, filtrados por lo
+  // que el tendero escriba. Se busca por lo que la tarjeta DICE --el nombre de
+  // los productos o la descripción-- y no por el id: es lo único que el
+  // tendero ve y lo único que su cliente le va a nombrar.
+  const fiadosFiltrados = useMemo(() => {
+    const q = buscaFiado.trim().toLowerCase();
+    if (!q) return enOrden;
+    return enOrden.filter((f) =>
+      [...f.productos, f.descripcion ?? ""].join(" ").toLowerCase().includes(q),
+    );
+  }, [enOrden, buscaFiado]);
+
   const equivalencia = (n: number, moneda: PriceCurrency | null) => {
     if (!rates || !moneda || n <= 0) return null;
     return priceIn("VES", { amount: n, currency: moneda }, rates)?.amount ?? null;
@@ -183,6 +199,95 @@ export function AbonoReparto({
   };
 
   const puedeGuardar = enElLibro > 0.005 && !excede && reparto.repartido > 0.005 && !guardando;
+
+  // UNA SOLA FILA, USADA EN DOS SITIOS: la lista de «Así se reparte el pago» y
+  // la hoja de «Repartir distinto». Es una función y no un componente aparte
+  // porque cierra sobre medio estado de esta pantalla —lo asignado, lo fijado
+  // a mano, las tasas— y sacarlo fuera significaría pasarle siete props para
+  // ganar nada. Lo que sí evita es lo de siempre: dos filas que empiezan
+  // iguales y acaban distintas.
+  const filaDeFiado = (f: FiadoAbierto) => {
+    const toca = asignado.get(f.movementId) ?? 0;
+    const bs = equivalencia(toca, f.currency);
+    return (
+      <li key={f.movementId} className="rounded-[10px] border">
+        {/* La tarjeta sin su propio borde: ya lo pone el `li`,
+                        que es quien agrupa el fiado con lo que se le abona.
+                        Dos bordes anidados se leen como dos tarjetas. */}
+        <div className="[&>*]:rounded-b-none [&>*]:border-0">
+          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
+          <span className="text-sm text-muted-foreground">
+            {toca > 0.005 ? "Abona" : "No le toca nada"}
+          </span>
+          {toca > 0.005 ? (
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end">
+                <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                  {f.currency ? (
+                    <CurrencyFlagIcon currency={f.currency} className="size-3.5 shrink-0" />
+                  ) : null}
+                  {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
+                </span>
+                {bs != null ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatBs(bs)} hoy
+                  </span>
+                ) : null}
+              </div>
+              {/* FIJADO A MANO SE PUEDE DESHACER, y tiene que
+                              poder: si no, el tendero que se equivoca al
+                              fijar un fiado no tiene forma de volver al
+                              reparto automático salvo recargando. */}
+              {aMano[f.movementId] != null ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() =>
+                    setAMano((p) => {
+                      const n = { ...p };
+                      delete n[f.movementId];
+                      return n;
+                    })
+                  }
+                >
+                  Deshacer
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            /* EL «PAGAR» DE UN FIADO SIN ASIGNAR — frame
+                           `1536:11205`. Lleva al detalle 2/2, y de ahí al
+                           monto, y vuelve aquí con el renglón puesto.
+                           `?reparto=1` es lo que le dice a esas dos
+                           pantallas que NO guarden: en este flujo lo único
+                           que escribe es «Pagar y finalizar». */
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10"
+              onClick={() => {
+                // SE CIERRA ANTES DE NAVEGAR. Dejarla abierta
+                // durante la transición deja la hoja encima de la
+                // pantalla nueva mientras carga — es la misma nota
+                // que `register-sheet.tsx` ya tiene escrita, y la
+                // misma razón: `Sheet` es un Radix Dialog y no se
+                // desmonta solo al cambiar de ruta.
+                setRepartiendo(false);
+                router.push(`/abonos/nuevo/${f.movementId}?reparto=1`);
+              }}
+            >
+              Pagar
+            </Button>
+          )}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
@@ -304,86 +409,7 @@ export function AbonoReparto({
             <div className="flex flex-col gap-3">
               <h2 className="text-base font-medium">Así se reparte el pago</h2>
 
-              <ul className="flex flex-col gap-3">
-                {enOrden.map((f) => {
-                  const toca = asignado.get(f.movementId) ?? 0;
-                  const bs = equivalencia(toca, f.currency);
-                  return (
-                    <li key={f.movementId} className="rounded-[10px] border">
-                      {/* La tarjeta sin su propio borde: ya lo pone el `li`,
-                          que es quien agrupa el fiado con lo que se le abona.
-                          Dos bordes anidados se leen como dos tarjetas. */}
-                      <div className="[&>*]:rounded-b-none [&>*]:border-0">
-                        <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
-                      </div>
-                      <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
-                        <span className="text-sm text-muted-foreground">
-                          {toca > 0.005 ? "Abona" : "No le toca nada"}
-                        </span>
-                        {toca > 0.005 ? (
-                          <div className="flex items-center gap-2">
-                            <div className="flex flex-col items-end">
-                              <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
-                                {f.currency ? (
-                                  <CurrencyFlagIcon
-                                    currency={f.currency}
-                                    className="size-3.5 shrink-0"
-                                  />
-                                ) : null}
-                                {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
-                              </span>
-                              {bs != null ? (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  {formatBs(bs)} hoy
-                                </span>
-                              ) : null}
-                            </div>
-                            {/* FIJADO A MANO SE PUEDE DESHACER, y tiene que
-                                poder: si no, el tendero que se equivoca al
-                                fijar un fiado no tiene forma de volver al
-                                reparto automático salvo recargando. */}
-                            {aMano[f.movementId] != null ? (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 text-xs"
-                                onClick={() =>
-                                  setAMano((p) => {
-                                    const n = { ...p };
-                                    delete n[f.movementId];
-                                    return n;
-                                  })
-                                }
-                              >
-                                Deshacer
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : (
-                          /* EL «PAGAR» DE UN FIADO SIN ASIGNAR — frame
-                             `1536:11205`. Lleva al detalle 2/2, y de ahí al
-                             monto, y vuelve aquí con el renglón puesto.
-                             `?reparto=1` es lo que le dice a esas dos
-                             pantallas que NO guarden: en este flujo lo único
-                             que escribe es «Pagar y finalizar». */
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-10"
-                            onClick={() =>
-                              router.push(`/abonos/nuevo/${f.movementId}?reparto=1`)
-                            }
-                          >
-                            Pagar
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <ul className="flex flex-col gap-3">{enOrden.map(filaDeFiado)}</ul>
             </div>
           ) : null}
         </>
@@ -394,6 +420,54 @@ export function AbonoReparto({
           {error}
         </p>
       ) : null}
+
+      {/* ── «REPARTIR DISTINTO» Y SU HOJA — frame `1527:11851` ──────────
+          QUÉ AÑADE, AHORA QUE CADA TARJETA YA TIENE SU «Pagar»: buscar. La
+          lista de arriba enseña TODOS los fiados abiertos del cliente, y en
+          una bodega con alguien que lleva veinte, encontrar el que el cliente
+          acaba de nombrar es desplazarse hasta verlo. Aquí se escribe y se
+          filtra.
+
+          Es la MISMA fila de arriba, no una segunda: lo único que cambia es
+          que se puede filtrar y que la hoja se cierra al elegir. */}
+      <Sheet open={repartiendo} onOpenChange={setRepartiendo}>
+        {/* `dvh` y no `vh`: en un teléfono con la barra del navegador a la
+            vista, `vh` mide el viewport grande. Es la misma trampa que la hoja
+            de «Registrar» ya documenta. */}
+        <SheetContent side="bottom" className="flex max-h-[90dvh] flex-col rounded-t-xl">
+          <SheetHeader>
+            <SheetTitle className="text-xl font-medium">Repartir abono</SheetTitle>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-6">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={buscaFiado}
+                onChange={(e) => setBuscaFiado(e.target.value)}
+                placeholder="Buscar fiado"
+                aria-label="Buscar fiado"
+                className="h-10 pl-9"
+              />
+            </div>
+
+            <h3 className="text-base font-medium">Historial</h3>
+
+            <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+              {fiadosFiltrados.length === 0 ? (
+                <li className="py-6 text-center text-sm text-muted-foreground">
+                  Ningún fiado coincide con «{buscaFiado.trim()}».
+                </li>
+              ) : (
+                fiadosFiltrados.map(filaDeFiado)
+              )}
+            </ul>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {fiados.length > 0 ? (
         <StickyActions>
@@ -411,6 +485,23 @@ export function AbonoReparto({
               onCheckedChange={setConsent}
               disabled={guardando}
             />
+          ) : null}
+
+          {/* SOLO CUANDO HAY ALGO QUE REPARTIR. Sin monto escrito no hay
+              reparto que cambiar, y una hoja que se abre para no poder hacer
+              nada es un botón que miente. */}
+          {enElLibro > 0.005 && !excede ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full"
+              onClick={() => {
+                setBuscaFiado("");
+                setRepartiendo(true);
+              }}
+            >
+              Repartir distinto
+            </Button>
           ) : null}
 
           <Button type="button" className="h-10 w-full" disabled={!puedeGuardar} onClick={guardar}>
