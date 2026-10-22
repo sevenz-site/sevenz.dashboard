@@ -51,7 +51,7 @@ export default async function AbonoRegistradoPage({
   const { data: abono } = await supabase
     .from("movements")
     .select(
-      "id, client_id, type, amount, currency, entry_currency, entry_amount, applies_to_movement_id, clients!inner(id, name, document_id, whatsapp, owner_id)",
+      "id, client_id, type, amount, currency, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, clients!inner(id, name, document_id, whatsapp, owner_id)",
     )
     .eq("id", movementId)
     .is("deleted_at", null)
@@ -67,6 +67,45 @@ export default async function AbonoRegistradoPage({
   if (!abono || !cliente || cliente.owner_id !== user.id || abono.type !== "payment") notFound();
 
   const moneda = (abono.currency ?? "COP") as PriceCurrency;
+
+  // ── SI ESTE ABONO ES PARTE DE UN REPARTO, EL RESUMEN ES DEL BILLETE ──
+  //
+  // Un pago repartido entre varios fiados son varias filas en `movements`
+  // —`applies_to_movement_id` admite un destino por abono— pero UNA cosa que
+  // pasó. Enseñar aquí los $1 de la última línea cuando el cliente entregó $20
+  // sería darle al tendero un número que él sabe que es falso, y es el mismo
+  // razonamiento por el que el recibo de WhatsApp sale una vez y por el total
+  // (migración `137`).
+  //
+  // Se lee la tabla y no `payment_group_summary`: esa función es
+  // `security definer` y está concedida solo a `service_role`, para el emisor
+  // del recibo. Aquí hay sesión del dueño y RLS encima, que es la vía normal.
+  const grupo = (abono as { payment_group_id?: string | null }).payment_group_id ?? null;
+  let totalAbonado = Number(abono.amount);
+  let lineasDelGrupo = 1;
+  let entregadoEnBs =
+    abono.entry_currency === "VES" && abono.entry_amount != null
+      ? Number(abono.entry_amount)
+      : null;
+
+  if (grupo) {
+    const { data: lineas } = await supabase
+      .from("movements")
+      .select("amount, entry_currency, entry_amount")
+      .eq("payment_group_id", grupo)
+      .is("deleted_at", null);
+    if (lineas && lineas.length > 0) {
+      totalAbonado = lineas.reduce((s, l) => s + Number(l.amount), 0);
+      lineasDelGrupo = lineas.length;
+      // LOS BOLÍVARES TAMBIÉN SE SUMAN, por la misma razón: el tendero tecleó
+      // UNA cifra y la repartió el servidor. Enseñar la parte de una línea
+      // sería enseñarle un trozo de lo que él escribió.
+      const bs = lineas
+        .filter((l) => l.entry_currency === "VES" && l.entry_amount != null)
+        .reduce((s, l) => s + Number(l.entry_amount), 0);
+      entregadoEnBs = bs > 0 ? Math.round(bs * 100) / 100 : null;
+    }
+  }
 
   // ── LO QUE QUEDA DEBIENDO EN ESTE LIBRO, DESPUÉS DEL ABONO ───────────
   //
@@ -101,7 +140,14 @@ export default async function AbonoRegistradoPage({
             negro no se lee como «salió bien», se lee como un ícono más de la
             pantalla; el verde es lo único que dice que la operación terminó. */}
         <CheckCircle2 className="size-20 text-emerald-600" aria-hidden="true" />
-        <h1 className="text-center text-xl leading-7 font-normal">¡Abono registrado con éxito!</h1>
+        {/* «Transacción» Y NO «Abono» desde el 2026-10-22: es lo que dice el
+            frame `1524:10289` y lo que ya decía el resumen de una venta, que es
+            su pantalla hermana. Un reparto es un abono repartido en varias
+            filas, así que «abono registrado» en singular se quedaba corto
+            justo donde más se nota. */}
+        <h1 className="text-center text-xl leading-7 font-normal">
+          ¡Transacción registrada con éxito!
+        </h1>
       </div>
 
       <section className="flex flex-col rounded-[10px] border p-4">
@@ -129,7 +175,7 @@ export default async function AbonoRegistradoPage({
           <span className="text-xs text-muted-foreground">Abonó en {nombreDeMoneda(moneda)}</span>
           <span className="flex items-center gap-1 text-sm tabular-nums">
             <CurrencyFlagIcon currency={moneda} className="size-3.5 shrink-0" />
-            {formatPriceAmount(Number(abono.amount), moneda)}
+            {formatPriceAmount(totalAbonado, moneda)}
           </span>
         </div>
 
@@ -137,11 +183,23 @@ export default async function AbonoRegistradoPage({
             conversión de hoy: el tendero escribió esa cifra y leer otra, aunque
             difiera en céntimos por el redondeo, no se explica. Misma decisión
             que la fila del historial. */}
-        {abono.entry_currency === "VES" && abono.entry_amount != null ? (
+        {entregadoEnBs != null ? (
           <div className="flex items-center justify-between py-2">
             <span className="text-xs text-muted-foreground">Entregó</span>
-            <span className="text-sm tabular-nums">{formatBs(Number(abono.entry_amount))}</span>
+            <span className="text-sm tabular-nums">{formatBs(entregadoEnBs)}</span>
           </div>
+        ) : null}
+
+        {/* UNA LÍNEA, Y NO ESTÁ EN EL FRAME. Se añade porque sin ella un
+            reparto se lee como un pago suelto: la tarjeta diría «Abonó $20» y
+            nada contaría que ese billete cubrió dos fiados, que es justo lo
+            que el tendero acaba de decidir y lo que su cliente le va a
+            preguntar. Dónde fue cada parte se ve en el historial; aquí basta
+            con que conste que se repartió. */}
+        {lineasDelGrupo > 1 ? (
+          <p className="pt-1 text-xs text-muted-foreground">
+            Repartido entre {lineasDelGrupo} fiados.
+          </p>
         ) : null}
 
         <div className="flex items-center justify-between border-t pt-3">
@@ -183,13 +241,10 @@ export default async function AbonoRegistradoPage({
         }}
         abono={{
           currency: moneda,
-          abonado: Number(abono.amount),
+          abonado: totalAbonado,
           // Los bolívares TECLEADOS, no una conversión de hoy. Misma razón que
           // la fila «Entregó» de arriba.
-          entregadoBs:
-            abono.entry_currency === "VES" && abono.entry_amount != null
-              ? Number(abono.entry_amount)
-              : null,
+          entregadoBs: entregadoEnBs,
           deuda: deudaTotal,
         }}
         rates={rates}

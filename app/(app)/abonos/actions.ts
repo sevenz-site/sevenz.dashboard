@@ -450,7 +450,14 @@ export type AbonoRepartidoEntrada = {
 };
 
 export type AbonoRepartidoResultado =
-  | { ok: true; groupId: string; clientId: string; lineas: number; total: number }
+  | {
+      ok: true;
+      groupId: string;
+      clientId: string;
+      movementId: string | null;
+      lineas: number;
+      total: number;
+    }
   | { ok: false; error: string };
 
 // Los códigos que devuelve `registrar_abono_repartido`, en cristiano. Un
@@ -656,6 +663,11 @@ export async function registrarAbonoRepartido(
     ok: true,
     groupId: grupo,
     clientId: cliente.id,
+    // CUALQUIERA DE SUS LÍNEAS SIRVE PARA ABRIR EL RESUMEN: esa pantalla lee
+    // el grupo y enseña el total, no la fila por la que se entró. Se devuelve
+    // la primera porque es la del fiado más grave, la que el tendero vio
+    // arriba del reparto.
+    movementId: (r as { movement_ids?: string[] }).movement_ids?.[0] ?? null,
     lineas: lineas.length,
     total: reparto.repartido,
   };

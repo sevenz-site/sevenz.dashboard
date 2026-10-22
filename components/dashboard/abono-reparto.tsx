@@ -174,7 +174,11 @@ export function AbonoReparto({
       // haría que volver a «Registrar abono» abriera la pantalla con el pago
       // que se acaba de hacer, como si estuviera pendiente.
       borrarBorrador(clienteId);
-      router.push(`/clients/${clienteId}`);
+      // AL RESUMEN, no a la ficha. Es la pantalla de éxito del frame
+      // `1524:10289`, y lee el grupo entero: enseña el total del billete y no
+      // la línea por la que se entra. Sin movimiento devuelto —no debería
+      // pasar— la ficha sigue siendo una salida honesta.
+      router.push(r.movementId ? `/abonos/${r.movementId}` : `/clients/${clienteId}`);
     });
   };
 
