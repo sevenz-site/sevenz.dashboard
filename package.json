@@ -55,7 +55,8 @@
     "qa:producto-rapido": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/producto-rapido.mjs",
     "qa:venta-resumen": "node qa/venta-resumen.mjs",
     "qa:colombia": "node qa/fixtures-venta-colombia.mjs",
-    "qa:estado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/estado-del-cliente.mts"
+    "qa:estado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/estado-del-cliente.mts",
+    "qa:permiso-numero": "node qa/permiso-del-numero.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
