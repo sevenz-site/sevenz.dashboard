@@ -106,12 +106,20 @@ const conceden = [...ultimo].filter(([, e]) => e === "granted").map(([p]) => p);
 
 const { data: fichas } = await admin
   .from("clients")
-  .select("id, name, whatsapp, owner_id")
+  .select("id, name, whatsapp, owner_id, created_at")
   .not("whatsapp", "is", null)
   .is("trashed_at", null)
   .is("deleted_at", null);
 
-const normaliza = (t) => (t ?? "").replace(/\D/g, "").replace(/^0+/, "");
+// SE PREGUNTA A LA BASE, no se reimplementa aquí. Una copia de la regla en
+// este archivo sería una tercera versión de la misma decisión --ya hay dos,
+// `normalize_whatsapp_phone` y `consentPhoneKey`-- y una prueba que compara
+// el producto contra su propia copia de la regla pasa en verde cuando las dos
+// están equivocadas igual.
+const normaliza = async (t) => {
+  const { data } = await admin.rpc("normalize_whatsapp_phone", { p_raw: t ?? "" });
+  return data;
+};
 
 // ── la sesión del tendero ────────────────────────────────────────────────
 const EMAIL = process.env.QA_OWNER_EMAIL ?? "contactojesusdelgado@gmail.com";
@@ -138,8 +146,40 @@ const dueno = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABAS
 const ownerId = ses.user.id;
 console.log(`\ndueño de prueba: ${EMAIL} (${ownerId.slice(0, 8)})\n`);
 
-const mia = fichas?.find((f) => f.owner_id === ownerId && conceden.includes(normaliza(f.whatsapp)));
-const ajena = fichas?.find((f) => f.owner_id !== ownerId && conceden.includes(normaliza(f.whatsapp)));
+// ===========================================================================
+// LOS DOS CASOS SE ELIGEN, NO SE TOMA EL PRIMERO QUE APAREZCA
+//
+// Esto fue un fallo el 2026-10-21, después de que la migración `136` reparara
+// las claves: el primer número que concedía resultó estar en OCHO fichas mías
+// y una ajena a la vez, así que «el nombre que vuelve» no era comparable con
+// «la ficha que encontré primero», y las dos filas fallaron sin que el
+// producto tuviera nada mal.
+//
+// Para que cada fila afirme lo suyo hacen falta dos números distintos:
+//
+//   EL PROPIO  -> al menos una ficha mía. El nombre que la función devuelve
+//                 es el de la MÁS ANTIGUA de las mías, que es su contrato
+//                 escrito, así que eso es lo que se compara.
+//   EL AJENO   -> CERO fichas mías y al menos una de otro dueño. Si tengo una
+//                 ficha con ese número, que vuelva mi nombre es correcto y la
+//                 fila no probaría la frontera.
+const porNumero = new Map();
+for (const f of fichas ?? []) {
+  const k = await normaliza(f.whatsapp);
+  if (!k || !conceden.includes(k)) continue;
+  if (!porNumero.has(k)) porNumero.set(k, []);
+  porNumero.get(k).push(f);
+}
+
+let mia = null;
+let ajena = null;
+for (const [, lista] of porNumero) {
+  const mias = lista
+    .filter((f) => f.owner_id === ownerId)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  if (!mia && mias.length) mia = mias[0];
+  if (!ajena && mias.length === 0 && lista.length) ajena = lista[0];
+}
 
 // ── 2. un número PROPIO que concede: sale con su nombre ──────────────────
 if (!mia) {
@@ -147,7 +187,7 @@ if (!mia) {
 } else {
   const { data, error } = await dueno.rpc("whatsapp_consent_for_phone", { p_phone: mia.whatsapp });
   check(
-    `número propio que concede devuelve granted y SU nombre (${mia.name})`,
+    `número propio que concede devuelve granted y el nombre de mi ficha MÁS ANTIGUA con ese número («${mia.name}»)`,
     !error && data?.granted === true && data?.client_name === mia.name,
     error ? error.message : JSON.stringify(data),
   );
