@@ -243,7 +243,21 @@ export function MovementHistoryList({
   return (
     <div className="flex flex-col gap-3">
       {cabecera}
-      <ul className="flex flex-col divide-y rounded-lg border">
+      {/* ── UNA CARD POR TRANSACCIÓN, NO UNA LISTA CON DIVISORES ────────
+          Frame `1548:11048`, encargo del dueño el 2026-10-22: *«El historial
+          de transacciones lo dejaste como tabla, son cards, una card por
+          transacción»*.
+
+          Era un solo `ul` con borde y `divide-y`: las filas compartían caja y
+          se separaban con una raya. El frame les da a cada una su borde, su
+          radio y su hueco.
+
+          NO ES SOLO ESTÉTICA, Y SE NOTA DESDE QUE LA FILA TIENE DOS PISOS: con
+          divisores, la raya entre «Por cobrar» y la transacción siguiente se
+          ve igual que la que separa los dos pisos DENTRO de una fila, así que
+          no hay forma de saber dónde acaba una transacción. El borde las
+          cierra. */}
+      <ul className="flex flex-col gap-2">
         {pagina.map((fila) => {
           if (fila.clase === "contado") {
             return <FilaDeContado key={`venta-${fila.v.saleId}-${fila.v.currency ?? "cop"}`} venta={fila.v} ledger={ledger} navegable={navegable} />;
@@ -332,7 +346,7 @@ export function MovementHistoryList({
           // un enlace; sin él, un `div` con las mismas clases menos el
           // `hover`, que prometería algo que no pasa.
           return (
-          <li key={m.id}>
+          <li key={m.id} className="overflow-hidden rounded-[10px] border">
             {/* UN ABONO ABRE EL FIADO AL QUE FUE, no su propia ficha. Encargo
                 del dueño el 2026-10-22: *«al abrirlo abre el fiado a donde fue
                 agregado»*. Desde ahí se llega a la ficha del abono tocando su
@@ -628,7 +642,7 @@ function FilaDeContado({
 
 
   return (
-    <li>
+    <li className="overflow-hidden rounded-[10px] border">
       <FilaEnvuelta
         href={
           navegable

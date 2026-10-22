@@ -197,7 +197,21 @@ export function MovementHistoryList({
   return (
     <div className="flex flex-col gap-3">
       {cabecera}
-      <ul className="flex flex-col divide-y rounded-lg border">
+      {/* ── UNA CARD POR TRANSACCIÓN, NO UNA LISTA CON DIVISORES ────────
+          Frame `1548:11048`, encargo del dueño el 2026-10-22: *«El historial
+          de transacciones lo dejaste como tabla, son cards, una card por
+          transacción»*.
+
+          Era un solo `ul` con borde y `divide-y`: las filas compartían caja y
+          se separaban con una raya. El frame les da a cada una su borde, su
+          radio y su hueco.
+
+          NO ES SOLO ESTÉTICA, Y SE NOTA DESDE QUE LA FILA TIENE DOS PISOS: con
+          divisores, la raya entre «Por cobrar» y la transacción siguiente se
+          ve igual que la que separa los dos pisos DENTRO de una fila, así que
+          no hay forma de saber dónde acaba una transacción. El borde las
+          cierra. */}
+      <ul className="flex flex-col gap-2">
         {pagedMovements.map((fila) => {
           if (fila.clase === "contado") {
             return (
@@ -257,7 +271,7 @@ export function MovementHistoryList({
           const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
 
           return (
-          <li key={m.id}>
+          <li key={m.id} className="overflow-hidden rounded-[10px] border">
             {/* AN ABONO OPENS THE FIADO IT PAID, not its own detail — same as
                 the shopkeeper's list, asked for on 2026-10-22. From there its
                 own card leads to the abono's detail.
@@ -475,7 +489,7 @@ function FilaDeContado({
 
 
   return (
-    <li>
+    <li className="overflow-hidden rounded-[10px] border">
       <Link
         href={`/s/${token}/v/${venta.sale_id}/${(venta.currency ?? "cop").toLowerCase()}`}
         className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
