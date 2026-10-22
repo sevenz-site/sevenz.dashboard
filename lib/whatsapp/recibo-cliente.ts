@@ -67,9 +67,19 @@ function clientNoticesEnabled(): boolean {
   return process.env.WHATSAPP_CLIENT_NOTICES === "on";
 }
 
-export async function enviarReciboAlCliente(movementId: string): Promise<ResultadoRecibo> {
-  if (!clientNoticesEnabled()) return { estado: "omitido", motivo: "desactivado" };
-
+// EL COMPOSITOR, UNO SOLO PARA LAS DOS PUERTAS.
+//
+// Un abono suelto y un reparto mandan EL MISMO mensaje con la misma plantilla,
+// y lo único que cambia son dos cosas: por cuánto, y con qué clave se impide
+// el duplicado. Escribirlo dos veces habría sido empezar a que divergieran —es
+// la razón que `tarjeta-de-fiado.tsx` tiene escrita para existir— y aquí lo
+// que divergiría es un mensaje que le dice a un cliente cuánto pagó.
+//
+// `grupo` null es el camino de siempre, intacto.
+async function enviarRecibo(
+  movementId: string,
+  grupo: { groupId: string; total: number } | null,
+): Promise<ResultadoRecibo> {
   const supabase = createServiceClient();
 
   const { data, error } = await supabase.rpc("movement_notice_target", {
@@ -125,10 +135,17 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
   // de un abono concreto: si el cron o un reintento vuelven a pasar por aquí,
   // la puerta devuelve `ya_enviado` y no sale un segundo comprobante del mismo
   // pago.
+  //
+  // Y EN UN REPARTO ES EL GRUPO, por lo mismo leído una línea más arriba: el
+  // pago concreto del que habla este recibo es el billete entero, no una de
+  // sus líneas. Con la clave del movimiento, las tres líneas de un reparto
+  // serían tres claves distintas y la puerta dejaría salir los tres mensajes
+  // sin tener nada que objetar — que es exactamente el fallo que todo esto
+  // existe para evitar.
   const { data: reserva, error: errorReserva } = await supabase.rpc("whatsapp_send_begin", {
     p_owner_id: objetivo.owner_id,
     p_template: "abono_confirmation_v3",
-    p_period_key: objetivo.movement_id,
+    p_period_key: grupo ? grupo.groupId : objetivo.movement_id,
     p_audience: "client",
     p_recipient: objetivo.phone,
     p_client_id: objetivo.client_id,
@@ -158,7 +175,14 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
     plantilla: "abono_confirmation_v3",
     parametrosCuerpo: [
       { nombre: "client_name", texto: objetivo.client_name },
-      { nombre: "payment_amount", texto: formatear(Number(objetivo.amount), objetivo.currency) },
+      // EL TOTAL DEL REPARTO, NO EL DE UNA LÍNEA. El cliente entregó un
+      // billete; decirle que pagó los $10 de su último fiado cuando entregó
+      // $60 es peor que no mandarle nada, porque le da un número que él sabe
+      // que es falso.
+      {
+        nombre: "payment_amount",
+        texto: formatear(grupo ? grupo.total : Number(objetivo.amount), objetivo.currency),
+      },
       { nombre: "business_display", texto: objetivo.business_display },
       { nombre: "new_balance", texto: formatear(saldo, objetivo.currency) },
     ],
@@ -180,4 +204,59 @@ export async function enviarReciboAlCliente(movementId: string): Promise<Resulta
   }
 
   return { estado: "enviado", messageId: envio.messageId };
+}
+
+// UN ABONO SUELTO. El camino de siempre, con el mismo nombre y la misma firma:
+// `addMovement` y `registrarAbonoDirigido` lo llaman igual que ayer.
+export async function enviarReciboAlCliente(movementId: string): Promise<ResultadoRecibo> {
+  if (!clientNoticesEnabled()) return { estado: "omitido", motivo: "desactivado" };
+  return enviarRecibo(movementId, null);
+}
+
+// UN REPARTO: UN SOLO RECIBO, POR EL TOTAL.
+//
+// Es la mitad de `CT-128` que protege al cliente, y sin ella la migración `137`
+// no sirve de nada: `abono_confirmation_v3` sale por fila, así que un billete
+// repartido en tres le manda TRES WhatsApp por un solo pago y le enseña tres
+// abonos donde hizo uno. A alguien que ya recibe mensajes sobre su deuda desde
+// un número de EE. UU. (`MS-17`), eso lo acerca justo a lo que Sevenz intenta
+// no parecer.
+//
+// PREGUNTA POR LA ÚLTIMA LÍNEA DEL GRUPO, y eso no es un detalle: `new_balance`
+// es el `running_balance` de la fila por la que se pregunta. Con la primera, el
+// mensaje le diría un saldo que todavía debe lo que las otras líneas acaban de
+// pagar.
+//
+// Y NO DECIDE NADA SOBRE SI EL MENSAJE SALE. Eso sigue siendo entero de
+// `movement_notice_target` —el permiso, el número, la papelera, `MS-7`— que es
+// quien lo sabe y a quien el compositor le pregunta. Aquí solo se averigua a
+// qué línea preguntar y por cuánto.
+export async function enviarReciboDeGrupo(groupId: string): Promise<ResultadoRecibo> {
+  if (!clientNoticesEnabled()) return { estado: "omitido", motivo: "desactivado" };
+
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.rpc("payment_group_summary", { p_group_id: groupId });
+
+  if (error) {
+    console.error("[recibo] payment_group_summary:", error.message);
+    return { estado: "fallido", error: "No se pudo leer el reparto." };
+  }
+
+  const resumen = data as {
+    ok: boolean;
+    reason?: string;
+    total: number;
+    last_movement_id: string;
+  } | null;
+
+  // `null` es un grupo sin líneas vivas: no es un fallo, no hay nada que
+  // confirmar. El mismo criterio que los demás «omitido» de este archivo, que
+  // se cuentan y no se registran como errores.
+  if (!resumen) return { estado: "omitido", motivo: "grupo_vacio" };
+  if (!resumen.ok) return { estado: "omitido", motivo: resumen.reason ?? "desconocido" };
+
+  return enviarRecibo(resumen.last_movement_id, {
+    groupId,
+    total: Number(resumen.total),
+  });
 }

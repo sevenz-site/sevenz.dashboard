@@ -284,6 +284,74 @@ $fn$;
 revoke execute on function public.registrar_abono_repartido(jsonb) from public, anon;
 grant execute on function public.registrar_abono_repartido(jsonb) to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- 3. What the receipt needs to say ONE thing about a split
+-- ---------------------------------------------------------------------------
+--
+-- The receipt is composed in `lib/whatsapp/recibo-cliente.ts` from
+-- `movement_notice_target(movement_id)`, which decides whether the message may
+-- go out at all and carries everything the template needs. None of that
+-- changes: it stays the single source of truth, and this function does not
+-- repeat one line of it.
+--
+-- What it cannot answer is what a GROUP adds up to, and that is the whole
+-- question a split receipt asks. So this returns the two facts the sender is
+-- missing -- the total, and which line is the last -- and the sender keeps
+-- asking `movement_notice_target` about that last line for the rest.
+--
+-- THE LAST LINE AND NOT THE FIRST, because `new_balance` is that movement's
+-- `running_balance`: the balance AFTER it. Asking the first line would tell
+-- the client a balance that still owed everything the other lines just paid.
+--
+-- WHY A FUNCTION AND NOT A `select sum(...)` IN TYPESCRIPT: the sender runs
+-- with the service key, and production revokes its SELECT on the customer
+-- tables (`045_dev_grant_parity`). A direct read works in the dev branch and
+-- cannot work in production -- the 2026-09-05 outage, which `qa:service-role`
+-- exists to stop coming back.
+drop function if exists public.payment_group_summary(uuid);
+
+create function public.payment_group_summary(p_group_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select case
+    when count(*) = 0 then null
+    -- ONE CURRENCY, CHECKED AGAIN ON THE WAY OUT. The writer above enforces
+    -- it, so this can only fire if a row was changed by something else -- and
+    -- the cost of being wrong is telling a client he paid a total that adds
+    -- up two ledgers. The coalesce is what makes the check work for a
+    -- Colombian group, where every currency is a legitimate null.
+    when min(coalesce(m.currency, '~COP~')) <> max(coalesce(m.currency, '~COP~'))
+      then jsonb_build_object('ok', false, 'reason', 'monedas_mezcladas')
+    else jsonb_build_object(
+      'ok', true,
+      'group_id', p_group_id,
+      'lines', count(*),
+      'total', sum(m.amount),
+      'last_movement_id', (
+        select m2.id from public.movements m2
+        where m2.payment_group_id = p_group_id and m2.deleted_at is null
+        order by m2.created_at desc, m2.id desc
+        limit 1
+      )
+    )
+  end
+  from public.movements m
+  where m.payment_group_id = p_group_id
+    and m.deleted_at is null;
+$fn$;
+
+-- `service_role` ONLY, like `movement_notice_target`: this is read by the
+-- sender, never by a browser.
+revoke execute on function public.payment_group_summary(uuid) from public, anon, authenticated;
+grant execute on function public.payment_group_summary(uuid) to service_role;
+
+comment on function public.payment_group_summary(uuid) is
+  'Las dos cosas que el recibo no puede saber de un reparto: cuanto suma y cual es su ULTIMA linea. No repite nada de movement_notice_target, que sigue decidiendo si el mensaje sale; esto solo le dice a que movimiento preguntar y por cuanto. La ultima y no la primera porque new_balance es el running_balance de esa fila --preguntar por la primera le diria al cliente un saldo que todavia debe lo que las otras lineas acaban de pagar--. Existe como funcion y no como un select en TypeScript porque el emisor corre con la clave de servicio y produccion le revoca el SELECT sobre las tablas de clientes (045): leer la tabla funciona en dev y no puede funcionar en produccion, que es la caida del 2026-09-05.';
+
 comment on function public.registrar_abono_repartido(jsonb) is
   'Registra UN pago repartido entre varios fiados: N abonos dirigidos con el mismo payment_group_id, o ninguno. Mismo patron que import_libreta (073) y por la misma razon --media operacion escrita es peor que ninguna, y aqui es dinero que el cliente ya entrego--. Comprueba la propiedad en codigo antes de leer nada, porque es security definer; exige una sola moneda para todo el reparto (decision del dueno del 2026-10-22); y vuelve a comprobar el tope de cada fiado DENTRO de la transaccion, llamando a get_open_charges_for_client en vez de recalcular el pendiente, que es la copia que costo CT-124.';
 
