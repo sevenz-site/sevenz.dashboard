@@ -205,3 +205,123 @@ export function estadoDelFiado({
   const vence = new Date(createdAt).getTime() + plazoDias * 24 * 60 * 60 * 1000;
   return ahora.getTime() > vence ? "vencido" : "dentro";
 }
+
+// ===========================================================================
+// EL ORDEN POR GRAVEDAD, Y POR QUÉ VIVE AQUÍ
+//
+// Encargo del dueño el 2026-10-22, para el reparto de un abono: *«Sevenz
+// asigna los otros 10 restantes al siguiente abono disponible por gravedad de
+// estado»*. El dinero cae por el fiado más grave primero.
+//
+// Las tres claves son LAS MISMAS de la migración `134`, que es la que decide
+// el chip de estado del cliente, y eso no es casualidad ni copia: si la
+// pantalla repartiera con un orden y el chip señalara otro, el tendero vería
+// marcado «Crítico» un fiado al que el reparto no le puso nada.
+//
+// Lo que NO se repite es el cálculo del vencimiento con cuotas: eso se lo
+// pregunta a `estadosDelFiado`, que ya lo resuelve y es de donde salen los
+// estados de la tabla de cuotas. Una segunda forma de calcular cuándo vence
+// la cuota 3 de 5 es exactamente lo que `CT-124` costó en su día.
+
+/**
+ * Cuándo vence DE VERDAD un fiado, que con cuotas no es su fecha final.
+ *
+ * Un fiado de 5 cuotas a 90 días no vence a los 90: vence por partes, y lo que
+ * decide su gravedad hoy es la primera cuota que todavía no está cubierta.
+ * Pedirle la fecha final sería tratar como «dentro del plazo» un fiado con
+ * tres cuotas vencidas.
+ *
+ * `null` cuando no hay plazo: no hay nada que vencer, y el orden de abajo lo
+ * trata aparte en vez de inventarle una fecha.
+ */
+export function vencimientoEfectivo({
+  createdAt,
+  plazoDias,
+  cuotas,
+  amount,
+  pendiente,
+  ahora = new Date(),
+}: {
+  createdAt: string;
+  plazoDias: number | null;
+  cuotas: number | null;
+  amount: number;
+  pendiente: number;
+  ahora?: Date;
+}): Date | null {
+  if (plazoDias == null) return null;
+
+  if (cuotas != null && cuotas > 1) {
+    const { cuotas: filas } = estadosDelFiado({
+      createdAt,
+      plazoDias,
+      cuotas,
+      amount,
+      abonoInicial: Math.max(0, Math.round((amount - pendiente) * 100) / 100),
+      ahora,
+    });
+    const siguiente = filas.find((c) => c.estado !== "pagado");
+    // Todas cubiertas y aún queda pendiente: no puede pasar con los umbrales
+    // de `estadosDelFiado`, pero si pasara, la última fecha es la respuesta
+    // menos sorprendente --y desde luego mejor que `null`, que lo mandaría al
+    // final del orden como si no tuviera plazo--.
+    return siguiente ? siguiente.fecha : (filas.at(-1)?.fecha ?? null);
+  }
+
+  return new Date(new Date(createdAt).getTime() + plazoDias * 24 * 60 * 60 * 1000);
+}
+
+export type FiadoOrdenable = {
+  createdAt: string;
+  plazoDias: number | null;
+  cuotas: number | null;
+  amount: number;
+  pendiente: number;
+};
+
+/**
+ * El comparador del reparto: el más grave primero.
+ *
+ * Tres claves, en este orden y con esta razón cada una:
+ *
+ *   1. **Vencido antes que al día.** Lo que ya se pasó de fecha es lo que hay
+ *      que ir a cobrar; lo que está dentro de plazo todavía no es un problema.
+ *   2. **Entre los vencidos, el que TENÍA plazo antes que el que no.** «Plazo
+ *      vencido» dice que había una fecha y se pasó —algo acordado que se
+ *      incumplió—; «sin plazo» dice que nunca se puso ninguna, que es otra
+ *      cosa y no necesariamente peor. Decisión del dueño del 2026-10-21.
+ *   3. **El más vencido primero**, por su vencimiento efectivo.
+ *
+ * `ahora` entra como argumento y no se lee dentro: el orden y los rótulos que
+ * la pantalla pinta al lado tienen que salir del MISMO instante, o la lista
+ * puede ordenarse de una forma y rotularse de otra sin que nada falle.
+ */
+export function porGravedad(ahora: Date) {
+  const t = ahora.getTime();
+
+  // SIN PLAZO, LA FECHA DEL PROPIO FIADO. Es el `coalesce(vence, charge_at)`
+  // de la `134`, copiado a conciencia: un fiado al que nunca se le puso fecha
+  // no es «no vencido», es uno que lleva ahí desde que se tomó. Mandarlo al
+  // final del orden —lo que hacía este comparador antes de que `qa:reparto` lo
+  // cazara— dejaría sin cobrar el más viejo de la lista por no haberle puesto
+  // plazo, que es justo al revés de lo que el tendero espera.
+  const efectivo = (f: FiadoOrdenable): number =>
+    (vencimientoEfectivo({ ...f, ahora }) ?? new Date(f.createdAt)).getTime();
+
+  return (a: FiadoOrdenable, b: FiadoOrdenable): number => {
+    const ea = efectivo(a);
+    const eb = efectivo(b);
+
+    const venA = ea < t;
+    const venB = eb < t;
+    if (venA !== venB) return venA ? -1 : 1;
+
+    // Entre los vencidos, el que tiene plazo manda. Fuera de los vencidos la
+    // distinción no aplica: un fiado sin plazo no está «dentro» de nada.
+    if (venA && (a.plazoDias == null) !== (b.plazoDias == null)) {
+      return a.plazoDias == null ? 1 : -1;
+    }
+
+    return ea - eb;
+  };
+}
