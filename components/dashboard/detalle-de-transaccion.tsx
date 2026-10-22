@@ -99,6 +99,17 @@ export type DatosDelDetalle = {
   // abonos», que es una respuesta; `undefined` es para una superficie que no
   // puede contestar la pregunta y entonces no la plantea.
   abonosRecibidos?: AbonoDirigido[];
+  // ── CUÁL DE LOS ABONOS SE VINO A VER ────────────────────────────────
+  //
+  // Frame `1489:10231`, encargo del dueño el 2026-10-22. Llega por la URL
+  // (`?abono=<id>`) porque la fila del historial abre el FIADO desde ese
+  // mismo día, y sin esto el tendero aterriza entre tres tarjetas iguales
+  // sin saber cuál era la suya.
+  //
+  // UN ID QUE NO ESTÁ EN LA LISTA NO RESALTA NADA, que es lo correcto: viene
+  // de la barra de direcciones y puede ser cualquier cosa. No hay nada que
+  // proteger --solo decide un borde-- pero tampoco hay que fingir.
+  abonoResaltado?: string | null;
   // ── ¿ESTA PANTALLA PUEDE EDITAR? ────────────────────────────────────
   //
   // `false` en la del CLIENTE. Lo reportó el dueño el 2026-10-21: sus
@@ -132,6 +143,7 @@ export function DetalleDeTransaccion({
   abonoInicial = null,
   abonosRecibidos,
   conAcciones,
+  abonoResaltado = null,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
   const balance = formatLedgerAmount(runningBalance, currency, ledger);
@@ -463,6 +475,7 @@ export function DetalleDeTransaccion({
                     estado={estadoDeCadaAbono[i]}
                     pendienteTras={porAbono.get(a.movementId) ?? null}
                     conAcciones={conAcciones}
+                    resaltado={a.movementId === abonoResaltado}
                   />
                 ));
               })()}

@@ -109,12 +109,17 @@ type AbonoDirigidoJson = {
 // entregado para ese token.
 export default async function DetalleDelClientePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string; movementId: string }>;
+  // `?abono=<id>` — which abono card the visitor came in through. Sent by the
+  // history row since 2026-10-22, because that row opens the FIADO.
+  searchParams: Promise<{ abono?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { token, movementId } = await params;
+  const { abono: abonoResaltado } = await searchParams;
   const supabase = await createClient();
 
   const { data } = await supabase.rpc("get_shared_balance", { p_token: token });
@@ -295,6 +300,7 @@ export default async function DetalleDelClientePage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={Number(m.abono_inicial ?? 0)}
         rates={rates}
         // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el

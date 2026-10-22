@@ -73,12 +73,17 @@ async function lineasDe(
 
 export default async function TransaccionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ movementId: string }>;
+  // `?abono=<id>` — cuál de las tarjetas de abono se vino a ver. Lo manda la
+  // fila del historial desde el 2026-10-22, porque esa fila abre el FIADO.
+  searchParams: Promise<{ abono?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
+  const { abono: abonoResaltado } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -315,6 +320,7 @@ export default async function TransaccionPage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={abonoInicial}
         rates={rates}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con

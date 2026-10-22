@@ -344,7 +344,18 @@ export function MovementHistoryList({
                 tiene. Son todos anteriores al 2026-10-14. */}
             <FilaEnvuelta
               columna
-              href={navegable ? `/transacciones/${m.applies_to_movement_id ?? m.id}` : null}
+              href={
+                navegable
+                  ? // `?abono=` MARCA LA TARJETA AL LLEGAR — frame `1489:10231`,
+                    // encargo del 2026-10-22. Sin él, tocar un abono aterriza
+                    // entre tres tarjetas iguales sin saber cuál era la suya.
+                    // Solo cuando la fila ES un abono dirigido: un fiado se
+                    // abre a sí mismo y no hay nada que señalar.
+                    `/transacciones/${m.applies_to_movement_id ?? m.id}${
+                      m.applies_to_movement_id ? `?abono=${m.id}` : ""
+                    }`
+                  : null
+              }
             >
               {/* ── PISO 1: QUÉ FUE, CUÁNDO Y POR CUÁNTO ──────────────── */}
               <div className="flex w-full items-center justify-between gap-3">
