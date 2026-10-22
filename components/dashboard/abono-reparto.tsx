@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Search } from "lucide-react";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
@@ -223,6 +229,34 @@ export function AbonoReparto({
 
   const bsDelTotal = enBolivares ? montoNum : equivalencia(enElLibro, libro);
 
+  // ───────────────────────────────────────────────────────────────────────
+  // LO QUE DEBE, EN LA MONEDA EN QUE SE ESTÁ TECLEANDO
+  //
+  // Reportado por el dueño el 2026-10-22 con una captura: *«El input ¿Cuánto
+  // abona? solo hace el cálculo en dólares, debe hacer el cálculo en la moneda
+  // seleccionada»*.
+  //
+  // QUÉ SE VEÍA. Con «Bolívares» puesto y 102,50 escritos, la línea decía «Te
+  // debe $102.50 en esta moneda» — y los 102,50 que él acababa de teclear eran
+  // BOLÍVARES, que son doce céntimos. Dos cifras idénticas, una al lado de la
+  // otra, en dos monedas distintas y con la palabra «moneda» en medio. Es la
+  // trampa que `topeEnBolivares` ya documenta para el tope de un fiado,
+  // entrando por otra puerta: aquí no rechaza nada, solo lo cuenta mal.
+  //
+  // «en esta moneda» NO ES UN ADORNO: distingue la deuda en dólares de la
+  // deuda en euros del mismo cliente. Lo que faltaba es que «esta moneda»
+  // fuera de verdad la que el tendero tiene elegida.
+  const deudaLegible =
+    enBolivares && libro
+      ? (() => {
+          const bs = equivalencia(deuda, libro);
+          // Sin tasa no se puede convertir, y entonces se dice en el libro:
+          // una cifra en la moneda equivocada es peor que una en otra moneda
+          // nombrada con claridad.
+          return bs == null ? formatPriceAmount(deuda, libro) : formatBs(bs);
+        })()
+      : formatPriceAmount(deuda, (libro ?? "COP") as PriceCurrency);
+
   const guardar = () => {
     setError(null);
     empezar(async () => {
@@ -420,21 +454,47 @@ export function AbonoReparto({
               />
               {/* LOS BOLÍVARES SOLO SI EL NEGOCIO ES VENEZOLANO. Un negocio
                   colombiano no tiene tasa con la que convertirlos. */}
+              {/* UN DESPLEGABLE, NO UN INTERRUPTOR — frame `1524:10439`, nodo
+                  `1525:11083`: bandera, nombre y `keyboard_arrow_down`.
+                  Reportado por el dueño el 2026-10-22: *«el dropdown es un
+                  botón, en el mockup es un dropdown»*.
+
+                  NO ES SOLO EL ASPECTO. Un botón que alterna solo sabe decir
+                  «la otra», así que con dos opciones funciona y con tres —que
+                  es lo que pide el mismo encargo— se queda sin forma de
+                  expresarlas. La lista las enseña todas y dice cuál está
+                  puesta sin que haya que pulsarla para averiguarlo.
+
+                  QUÉ SE OFRECE: el libro en el que se está abonando y, si el
+                  negocio es venezolano, bolívares. Los libros del cliente
+                  siguen eligiéndose arriba cuando hay más de uno: «bolívares»
+                  no dice a cuál de las dos deudas van, y meterlo todo en una
+                  lista obligaría a inventar esa respuesta. */}
               {paisVE && libro ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10 shrink-0 gap-2"
-                  onClick={() => setEnBolivares((v) => !v)}
-                >
-                  <CurrencyFlagIcon
-                    currency={enBolivares ? "VES" : libro}
-                    className="size-4 shrink-0"
-                  />
-                  <span className="text-xs">
-                    {enBolivares ? "Bolívares" : libro === "EUR" ? "Euros" : "Dólares"}
-                  </span>
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" className="h-10 shrink-0 gap-2">
+                      <CurrencyFlagIcon
+                        currency={enBolivares ? "VES" : libro}
+                        className="size-4 shrink-0"
+                      />
+                      <span className="text-xs">
+                        {enBolivares ? "Bolívares" : libro === "EUR" ? "Euros" : "Dólares"}
+                      </span>
+                      <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setEnBolivares(false)}>
+                      <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" />
+                      {libro === "EUR" ? "Euros" : "Dólares"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setEnBolivares(true)}>
+                      <CurrencyFlagIcon currency="VES" className="size-4 shrink-0" />
+                      Bolívares
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
             </div>
 
@@ -450,14 +510,10 @@ export function AbonoReparto({
 
             {excede ? (
               <p className="text-sm leading-5 text-destructive">
-                Te debe {formatPriceAmount(deuda, (libro ?? "COP") as PriceCurrency)} en esta
-                moneda. Escribe esa cantidad o menos.
+                Te debe {deudaLegible} en esta moneda. Escribe esa cantidad o menos.
               </p>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Te debe {formatPriceAmount(deuda, (libro ?? "COP") as PriceCurrency)} en esta
-                moneda.
-              </p>
+              <p className="text-sm text-muted-foreground">Te debe {deudaLegible} en esta moneda.</p>
             )}
           </div>
 

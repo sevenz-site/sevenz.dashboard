@@ -409,15 +409,23 @@ export function MovementHistoryList({
                     Frames `1548:11075` y `1548:11049`: bandera, importe, y
                     debajo sus bolívares. Rojo en un fiado, verde en un abono.
 
-                    EL SIGNO SE QUEDA COMO ESTABA --`+` al fiar, `-` al
-                    abonar--, y eso es una DECISIÓN DEL DUEÑO del 2026-10-22,
-                    no un olvido. Los dos frames escriben `+$00.00`, también el
-                    del abono, y se le preguntó enseñando las dos lecturas: el
-                    `+` del frame se lee como «entraron 20 dólares a la caja»,
-                    que es cierto, pero en una lista donde el fiado TAMBIÉN
-                    lleva `+` el signo deja de distinguir nada y todo el peso
-                    cae en el color --invisible en una captura en gris, y para
-                    quien no separa el rojo del verde--. Eligió el `-`. */}
+                    EL SIGNO MIRA A LA CAJA, NO A LA DEUDA. Corrección del
+                    dueño el 2026-10-22: *«Abonos y ventas con signo positivo
+                    "+" y fiados con signos negativos "-"»*.
+
+                    ES LO CONTRARIO DE LO QUE HABÍA, y las dos lecturas son
+                    coherentes, por eso hubo que preguntarlo: la vieja miraba
+                    la DEUDA --fiar la sube, abonar la baja-- y esta mira el
+                    DINERO del tendero --un abono y una venta entran, un fiado
+                    sale de la estantería y no vuelve hasta que paguen--. Gana
+                    la segunda porque es la que coincide con el color: verde lo
+                    que entra, rojo lo que sale, y ahora el signo dice lo
+                    mismo que el color en vez de lo contrario.
+
+                    HORAS ANTES SE HABÍA DECIDIDO AL REVÉS, ese mismo día y
+                    sobre estos mismos frames. Queda escrito para que nadie lo
+                    «arregle» de vuelta leyendo solo el argumento de la
+                    deuda. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
@@ -426,7 +434,7 @@ export function MovementHistoryList({
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
-                      {m.type === "charge" ? "+" : "-"}
+                      {m.type === "charge" ? "-" : "+"}
                       {amount.primary}
                     </span>
                     {bsDeArriba ? (
@@ -643,7 +651,12 @@ function FilaDeContado({
               {venta.currency ? (
                 <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
               ) : null}
-              {amount.primary}
+              {/* EL «+» DE UNA VENTA DE CONTADO — corrección del dueño el
+                  2026-10-22: *«Abonos y ventas con signo positivo "+"»*. Iba
+                  sin signo, que era el único de los tres tipos que no decía
+                  nada; ahora las tres filas lo llevan y el signo separa lo que
+                  entra de lo que sale. */}
+              +{amount.primary}
             </span>
             {enBsSellados ? (
               <span className="font-normal text-muted-foreground">

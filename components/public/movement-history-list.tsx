@@ -309,15 +309,23 @@ export function MovementHistoryList({
                     `1548:11075` and `1548:11049`. Flag, amount, and its
                     bolívares underneath. Red on a fiado, green on an abono.
 
-                    THE SIGN STAYS AS IT WAS (`+` lending, `-` paying), and
-                    that is the owner's decision of 2026-10-22, not an
-                    oversight. Both frames write `+$00.00`, the abono's too,
-                    and he was shown both readings: the frame's `+` reads as
-                    "twenty dollars came into the till", which is true, but in
-                    a list where the fiado ALSO carries `+` the sign stops
-                    telling them apart and the whole weight falls on colour —
-                    invisible in a greyscale screenshot, and to anyone who
-                    cannot separate red from green. He chose the `-`. */}
+                    THE SIGN FOLLOWS THE TILL, NOT THE DEBT. The owner's
+                    correction of 2026-10-22: *«Abonos y ventas con signo
+                    positivo "+" y fiados con signos negativos "-"»*.
+
+                    IT IS THE OPPOSITE OF WHAT WAS HERE, and both readings
+                    hold, which is why it had to be asked: the old one tracked
+                    the DEBT (lending raises it, paying lowers it) and this one
+                    tracks the shopkeeper's MONEY (an abono and a sale come in,
+                    a fiado leaves the shelf and does not come back until they
+                    pay). The second wins because it agrees with the colour:
+                    green for what comes in, red for what goes out. The sign
+                    now says the same thing as the colour instead of the
+                    opposite.
+
+                    IT WAS DECIDED THE OTHER WAY HOURS EARLIER, the same day
+                    and over these same frames. Written down so nobody "fixes"
+                    it back by reading only the debt argument. */}
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <div
                     className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
@@ -326,7 +334,7 @@ export function MovementHistoryList({
                       {m.currency ? (
                         <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
                       ) : null}
-                      {m.type === "charge" ? "+" : "-"}
+                      {m.type === "charge" ? "-" : "+"}
                       {amount.primary}
                     </span>
                     {bsDeArriba ? (
@@ -478,7 +486,12 @@ function FilaDeContado({
               {venta.currency ? (
                 <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
               ) : null}
-              {amount.primary}
+              {/* EL «+» DE UNA VENTA DE CONTADO — corrección del dueño el
+                  2026-10-22: *«Abonos y ventas con signo positivo "+"»*. Iba
+                  sin signo, que era el único de los tres tipos que no decía
+                  nada; ahora las tres filas lo llevan y el signo separa lo que
+                  entra de lo que sale. */}
+              +{amount.primary}
             </span>
             {enBsSellados ? (
               <span className="font-normal text-muted-foreground">
