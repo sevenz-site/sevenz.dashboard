@@ -370,9 +370,15 @@ export function estadoPorLibro({
   abiertos: CargoAbierto[];
   // Client-wide, from `client_summary`, and deliberately so: «has not paid
   // anything in N days» is a fact about the client, not about one ledger.
-  // It only decides «Crítico». The client's own view has no such figure and
-  // passes zero, so that view never says «Crítico» — stated here because a
-  // reader comparing the two screens would otherwise call it a bug.
+  // It only decides «Crítico».
+  //
+  // BOTH SCREENS PASS A REAL NUMBER since migration `145`. For one day they
+  // did not: the client's view had no such figure and passed zero, so it
+  // could never reach «Crítico», and the owner deleting a payment put
+  // «Crítico» on his screen against «Sin plazo» on the client's. He chose to
+  // level them — *«la propuesta de valor del producto es "Cuentas claras"»* —
+  // so the client now reads the same verdict, harsh word included. The zero
+  // survives only as the fallback for a database without `145`.
   daysSincePayment: number;
   ahora?: Date;
 }): Record<string, ClientStatus> {

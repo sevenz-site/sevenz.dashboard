@@ -326,6 +326,24 @@ export default async function SharedBalancePage({
     }));
   })();
 
+  // LOS DÍAS SIN PAGAR, lo único que le faltaba a esta pantalla para juzgar
+  // igual que la del tendero. Migración `145`.
+  //
+  // FALLA HACIA EL ESTADO MÁS SUAVE, como todo lo demás de esta pantalla: si
+  // la migración no está corrida, o la lectura falla, se queda en `null` y el
+  // chip vuelve a tocar techo en «Plazo vencido». Un «Crítico» adivinado
+  // sobre un cliente que sí paga sería mucho peor que uno que falta.
+  const diasSinPagar = await (async () => {
+    const { data, error: diasError } = await supabase.rpc("get_shared_days_since_payment", {
+      p_token: token,
+    });
+    if (diasError) {
+      console.error("[sharedBalance] days since payment failed:", diasError.message);
+      return null;
+    }
+    return typeof data === "number" ? data : null;
+  })();
+
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
   const logoUrl = shared.owner_logo_path
     ? getPublicLogoUrl(shared.owner_logo_path)
@@ -358,16 +376,26 @@ export default async function SharedBalancePage({
 
   // LA MISMA FUNCIÓN QUE USA LA PANTALLA DEL TENDERO, a propósito: el chip que
   // el cliente ve no puede contradecir al que ve el dueño sobre la misma
-  // cuenta. `daysSincePayment` va en cero porque este lado no lo recibe, así
-  // que esta pantalla nunca dice «Crítico» — y eso está escrito en la propia
-  // función, no se deduce de aquí.
+  // cuenta.
+  //
+  // `diasSinPagar` LLEGA POR LA `145` Y ES LA MITAD QUE FALTABA. Hasta el
+  // 2026-10-23 aquí iba un cero fijo, y con un cero `getClientStatus` no
+  // puede llegar nunca a «Crítico»: el dueño borró un abono, su pantalla
+  // volvió a «Crítico» y este enlace se quedó en «Sin plazo». Decisión suya
+  // ese mismo día, preguntada con las dos pantallas delante: se igualan,
+  // *«la propuesta de valor del producto es "Cuentas claras"»*, el adjetivo
+  // duro incluido.
+  //
+  // EL `?? 0` NO ES UN DESCUIDO: si la `145` no está corrida en este entorno
+  // el cero vuelve, y con él la pantalla de ayer — un estado más suave, nunca
+  // uno inventado.
   const estadosDeLibro: Partial<Record<string, ClientStatus>> = abiertos
     ? estadoPorLibro({
         saldos: rateContext
           ? { USD: shared.balance_usd, EUR: shared.balance_eur }
           : { COP: shared.balance },
         abiertos,
-        daysSincePayment: 0,
+        daysSincePayment: diasSinPagar ?? 0,
       })
     : {};
 
