@@ -17,7 +17,20 @@ const geistMono = Geist_Mono({
 });
 
 const TITULO = "Sevenz — ¡Cuentas claras, mueven el negocio!";
-const DESCRIPCION = "Saldo compartido en tiempo real entre el negocio y sus clientes.";
+// LA FRASE DE LA TARJETA QUE SE VE AL COMPARTIR UN ENLACE.
+//
+// Cambiada por el dueño el 2026-10-23. Antes decía «Saldo compartido en tiempo
+// real entre el negocio y sus clientes», que describía el producto; esta le
+// habla al tendero en sus palabras.
+//
+// VA EN LOS TRES SITIOS A LA VEZ —`description`, `openGraph` y `twitter`—
+// porque es una constante y no tres cadenas copiadas. Eso es lo que impide que
+// WhatsApp enseñe una frase y el navegador otra.
+//
+// Y LA MISMA FRASE ESTÁ PINTADA DENTRO DE `public/og.png`, debajo del logo, que
+// es la que de verdad se lee en la tarjeta de WhatsApp. Cambiar solo esta deja
+// las dos diciendo cosas distintas: si se toca una, se tocan las dos.
+const DESCRIPCION = "¡Lleva las cuentas claras de tu negocio sin tanta vaina!";
 
 export const metadata: Metadata = {
   // Sin esto, Next emite rutas relativas en og:image y WhatsApp no las
