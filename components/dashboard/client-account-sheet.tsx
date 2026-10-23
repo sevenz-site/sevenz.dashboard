@@ -130,6 +130,11 @@ export function ClientAccountSheet({
                 movements={cuenta?.movimientos ?? []}
                 ventasDeContado={cuenta?.ventasDeContado ?? []}
                 pendientePorFiado={cuenta?.pendientePorFiado ?? {}}
+                saldoPorMoneda={{
+                  COP: fila.balance,
+                  USD: fila.balance_usd,
+                  EUR: fila.balance_eur,
+                }}
                 ledger={ledger}
                 titulo={<span className="text-sm font-medium">Últimas transacciones</span>}
                 // SIN NAVEGAR, por instrucción del dueño el 2026-10-21. Esta

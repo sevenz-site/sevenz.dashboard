@@ -53,6 +53,7 @@ export function MovementHistoryList({
   titulo = null,
   ventasDeContado = [],
   pendientePorFiado = {},
+  saldoPorMoneda = {},
   productosPorVenta = {},
   navegable = true,
 }: {
@@ -77,6 +78,18 @@ export function MovementHistoryList({
   // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
   // juntos. Un fiado que falte aquí está saldado.
   pendientePorFiado?: Record<string, number>;
+  // ── LO QUE EL CLIENTE DEBE EN CADA LIBRO, PARA LAS FILAS SIN FIADO ───
+  //
+  // Clave: `"USD"`, `"EUR"` o `"COP"` — la moneda de la fila, con `COP` para
+  // el libro sin moneda de un negocio colombiano.
+  //
+  // Hace falta SOLO para el abono suelto: el que no fue dirigido a ningún
+  // fiado, o aquel cuyo fiado se elimino. Esa fila no tiene un fiado cuyo
+  // pendiente ensenar, y hasta el 2026-10-23 se quedaba SIN el piso de «Por
+  // cobrar» mientras todas sus vecinas lo llevaban. Lo reporto el dueno con
+  // una captura: *«al abono suelto le falta la parte inferior del card "Por
+  // cobrar"»*.
+  saldoPorMoneda?: Partial<Record<string, number>>;
   // ── CÓMO SE LLAMA CADA FILA: `sale_id` → nombres de sus productos ────
   //
   // La fila decía «Fiado · Casco» porque el guardado copiaba los nombres
@@ -362,10 +375,40 @@ export function MovementHistoryList({
             m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
           const pendienteDelFiado =
             fiadoDeLaFila == null ? null : (pendientePorFiado[fiadoDeLaFila.id] ?? 0);
+
+          // ── EL ABONO SUELTO TAMBIÉN LLEVA SU «POR COBRAR» ──────────────
+          //
+          // Encargo del dueño el 2026-10-23: *«toda transacción debe tenerlo
+          // menos "De contado"»*. Las de contado ni llegan aquí — se dibujan
+          // en su propia rama más arriba — así que basta con cubrir la única
+          // que faltaba.
+          //
+          // QUÉ CIFRA, Y POR QUÉ NO ES LA MISMA QUE LA DE AL LADO. Un abono
+          // dirigido enseña lo que le queda AL FIADO que pagó. Uno suelto no
+          // pagó ningún fiado: va contra la cuenta entera, así que lo que
+          // deja debiendo es el saldo del cliente EN ESE LIBRO. Las dos
+          // contestan la misma pregunta —«¿qué queda debiendo de lo que esto
+          // tocó?»— sobre cosas de distinto tamaño. Es también la cifra que
+          // la ficha de ese mismo abono pone en «Total por cobrar».
+          //
+          // Y NO ES `m.running_balance`, que es lo que parecería. Esa es la
+          // deuda que había JUSTO DESPUÉS de ese movimiento, y por eso se
+          // quitó de aquí el 2026-10-21: con los abonos escondidos, la fila
+          // de arriba decía «Por cobrar $89.72» mientras la tarjeta del mismo
+          // cliente decía $68.59. El peor caso es el que la condenó — el
+          // tendero le cobra 89,72 a quien debe 68,59 — y volver a usarla
+          // aquí lo reabriría en una fila.
+          const saldoDelLibro = saldoPorMoneda[m.currency ?? "COP"] ?? null;
+          const cifraPorCobrar =
+            pendienteDelFiado != null
+              ? pendienteDelFiado
+              : m.type === "payment"
+                ? saldoDelLibro
+                : null;
           const porCobrar =
-            pendienteDelFiado == null
+            cifraPorCobrar == null
               ? null
-              : formatLedgerAmount(pendienteDelFiado, m.currency, ledger);
+              : formatLedgerAmount(cifraPorCobrar, m.currency, ledger);
 
           // ── EL IMPORTE DE ARRIBA ES EL DE LA TRANSACCIÓN ──────────────
           //
