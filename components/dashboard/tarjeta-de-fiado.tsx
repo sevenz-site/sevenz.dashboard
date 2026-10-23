@@ -143,7 +143,7 @@ export function TarjetaDeFiado({
               <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
             ) : null}
             {/* ── «−» PORQUE ES UN FIADO ───────────────────────────────────
-                Regla del dueño del 2026-10-22, repetida el 2026-10-24 al ver
+                Regla del dueño del 2026-10-22, repetida el 2026-10-23 al ver
                 esta misma tarjeta: *«en el historial los fiados se ven con
                 signo negativo pero en registrar abono se ven con saldo
                 positivo, revisa que en todo el app sea consistente: abonos y

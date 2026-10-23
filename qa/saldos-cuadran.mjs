@@ -17,7 +17,7 @@
 // ===========================================================================
 // QUÉ LO ROMPIÓ, QUE ES POR LO QUE ESTO EXISTE
 //
-// Encontrado el 2026-10-24: un cliente con cuatro repartos sumaba 0,00 en
+// Encontrado el 2026-10-23: un cliente con cuatro repartos sumaba 0,00 en
 // dólares y la app enseñaba 1,14.
 //
 // `running_balance` lo pone un disparador BEFORE INSERT que busca la fila

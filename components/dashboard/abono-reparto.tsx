@@ -1135,7 +1135,7 @@ export function AbonoReparto({
                  ellas abriendo una hoja encima de la otra.
 
               2. CON UN SOLO FIADO: no hay entre qué repartir. Encargo del
-                 dueño el 2026-10-24.
+                 dueño el 2026-10-23.
 
               3. CUANDO EL MONTO CUBRE TODA LA DEUDA: cada fiado recibe lo
                  suyo entero, así que no queda nada que mover de uno a otro —

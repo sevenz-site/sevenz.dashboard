@@ -595,7 +595,7 @@ una hermana cualquiera** en vez de desde la que de verdad le precede.
 SALDO roto, en la ficha del cliente, en Cartera y en el enlace que el cliente
 abre. No falla nada, no se pone nada en rojo — sale un número creíble y falso.
 
-**Qué costó, el 2026-10-24**: `registrar_abono_repartido` (migración `137`)
+**Qué costó, el 2026-10-23**: `registrar_abono_repartido` (migración `137`)
 escribía sus N líneas sin recalcular. Un cliente con cuatro repartos sumaba
 0,00 en dólares y la app enseñaba 1,14. Lo arregla la `142`, y no llegó a
 producción de milagro: el reparto entero seguía en `dev`.

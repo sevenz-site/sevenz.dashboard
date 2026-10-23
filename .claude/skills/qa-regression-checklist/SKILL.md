@@ -552,7 +552,7 @@ select public.recalc_client_running_balance('<client_id>');
 
 ### De dónde salió esta sección, que es lo que explica su dureza
 
-Añadida el 2026-10-24. El dueño preguntó si un cambio de SIGNO —el «+» de un
+Añadida el 2026-10-23. El dueño preguntó si un cambio de SIGNO —el «+» de un
 fiado pasando a «−»— podía alterar las cuentas. No podía: son dos caracteres
 literales en JSX. Pero la comprobación que lo demostraba encontró **un saldo
 real descuadrado en dev**: un cliente sumaba 0,00 en dólares y la app enseñaba

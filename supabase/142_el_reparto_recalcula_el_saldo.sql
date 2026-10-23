@@ -1,6 +1,6 @@
 -- 142 -- UN REPARTO DEJABA EL SALDO DEL CLIENTE MAL
 --
--- Found in dev on 2026-10-24, while diagnosing whether changing the SIGN a
+-- Found in dev on 2026-10-23, while diagnosing whether changing the SIGN a
 -- fiado is drawn with could have altered anyone's accounts. It could not --
 -- that change is two literal characters in JSX -- but the check that proved
 -- it found this, which is worse and entirely real.
@@ -257,7 +257,7 @@ begin
   -- descuadrada es un SALDO descuadrado en la ficha del cliente, en Cartera y
   -- en el enlace que abre el cliente.
   --
-  -- MEDIDO EN DEV EL 2026-10-24, en un cliente con cuatro repartos: la suma
+  -- MEDIDO EN DEV EL 2026-10-23, en un cliente con cuatro repartos: la suma
   -- real de sus movimientos en dolares daba 0,00 y la app ensenaba 1,14.
   --
   -- `recalc_client_running_balance` recorre cada moneda con
@@ -425,7 +425,7 @@ $rep$;
 insert into public.schema_migrations (key, description)
 values (
   '142_el_reparto_recalcula_el_saldo',
-  'registrar_abono_repartido recalcula la cadena del cliente despues de escribir sus lineas. SIN ESTO EL SALDO QUEDABA MAL tras cada reparto: running_balance lo pone un disparador BEFORE INSERT que busca la fila anterior ordenando por created_at y, como desempate, por id; dentro de una transaccion now() es el instante de la TRANSACCION, asi que todas las lineas de un reparto comparten created_at y el desempate cae en un uuid aleatorio. De la tercera linea en adelante cada una encadena desde una hermana cualquiera en vez de desde la anterior. Y no se queda en una fila rara: client_summary es una vista que lee el running_balance de la ULTIMA fila viva de cada moneda, asi que una cadena descuadrada es un SALDO descuadrado en la ficha del cliente, en Cartera y en el enlace que abre el cliente. Medido en dev el 2026-10-24: un cliente con cuatro repartos sumaba 0,00 en dolares y la app ensenaba 1,14. NUNCA LLEGO A PRODUCCION, comprobado con git log sobre origin/main: el reparto entero vive solo en dev. Se repara ademas cada cliente que ya tiene algun reparto, igual que hicieron las migraciones 024 y 025 con sus propios libros. NO se toca el disparador, que es el camino caliente de TODOS los movimientos del producto incluidos los de produccion: cambiarlo para servir a un caso que en produccion todavia no existe pondria en riesgo el libro entero por un solo llamante.'
+  'registrar_abono_repartido recalcula la cadena del cliente despues de escribir sus lineas. SIN ESTO EL SALDO QUEDABA MAL tras cada reparto: running_balance lo pone un disparador BEFORE INSERT que busca la fila anterior ordenando por created_at y, como desempate, por id; dentro de una transaccion now() es el instante de la TRANSACCION, asi que todas las lineas de un reparto comparten created_at y el desempate cae en un uuid aleatorio. De la tercera linea en adelante cada una encadena desde una hermana cualquiera en vez de desde la anterior. Y no se queda en una fila rara: client_summary es una vista que lee el running_balance de la ULTIMA fila viva de cada moneda, asi que una cadena descuadrada es un SALDO descuadrado en la ficha del cliente, en Cartera y en el enlace que abre el cliente. Medido en dev el 2026-10-23: un cliente con cuatro repartos sumaba 0,00 en dolares y la app ensenaba 1,14. NUNCA LLEGO A PRODUCCION, comprobado con git log sobre origin/main: el reparto entero vive solo en dev. Se repara ademas cada cliente que ya tiene algun reparto, igual que hicieron las migraciones 024 y 025 con sus propios libros. NO se toca el disparador, que es el camino caliente de TODOS los movimientos del producto incluidos los de produccion: cambiarlo para servir a un caso que en produccion todavia no existe pondria en riesgo el libro entero por un solo llamante.'
 )
 on conflict (key) do nothing;
 

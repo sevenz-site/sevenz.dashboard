@@ -337,7 +337,7 @@ function FilaMovimiento({
             el fiado, verde el abono— que es lo que hacía que no saltara a la
             vista: la fila se leía correcta de un vistazo y mentía al leerla.
 
-            Encontrado el 2026-10-24 revisando los signos de toda la app a
+            Encontrado el 2026-10-23 revisando los signos de toda la app a
             petición del dueño. Él había visto el de «Registrar abono»; este
             no lo había visto nadie. */}
         {esCargo ? "-" : "+"}
