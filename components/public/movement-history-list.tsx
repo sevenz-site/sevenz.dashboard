@@ -15,7 +15,8 @@ import {
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
+import { estadoDelFiado } from "@/lib/estado-del-plazo";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -289,9 +290,24 @@ export function MovementHistoryList({
           // absoluto y el chip dice de quién es. Es lo que la tarjeta de
           // arriba ya hacía con su `Math.abs` y su «A favor».
           const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
-          // UN FIADO SALDADO, medido contra el pendiente del propio fiado y
-          // no contra la cifra del pie — ver la lista del tendero.
-          const pagado = m.type === "charge" && pendienteDelFiado != null && pendienteDelFiado <= 0.005;
+          // EL CHIP DE LA FILA, igual que en la lista del tendero y en la
+          // misma sesión: el cliente ve el mismo estado de cada fiado que ve
+          // su bodeguero. Preguntado y decidido por el dueño el 2026-10-23.
+          // El porqué largo está en la otra lista.
+          const chipDeLaFila: EstadoDelChip | null =
+            m.type === "charge"
+              ? pendienteDelFiado == null
+                ? null
+                : (estadoDelFiado({
+                    createdAt: m.created_at,
+                    plazoDias: m.plazo_dias,
+                    cuotas: m.cuotas,
+                    amount: Number(m.amount),
+                    pendiente: pendienteDelFiado,
+                  }) ?? "sin_plazo")
+              : aFavor
+                ? "a_favor"
+                : null;
           const porCobrar =
             cifraPorCobrar == null
               ? null
@@ -439,8 +455,7 @@ export function MovementHistoryList({
                     ) : null}
                     {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez.
                         El porqué largo está en la lista del tendero. */}
-                    {pagado ? <ChipDeEstado estado="pagado" /> : null}
-                    {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
+                    {chipDeLaFila ? <ChipDeEstado estado={chipDeLaFila} /> : null}
                   </span>
                 </div>
               ) : null}

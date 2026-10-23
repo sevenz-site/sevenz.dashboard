@@ -11,11 +11,9 @@ import { MovementHistoryList } from "@/components/dashboard/movement-history-lis
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import {
   estadoDeCliente,
-  estadoDelFiado,
   estadoPorLibro,
   libroDe,
   type CargoAbierto,
-  type EstadoDelPlazo,
 } from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -698,7 +696,11 @@ async function MovementHistory({
   // dato: es la respuesta. Por eso el bucle recorre los MOVIMIENTOS y busca
   // en el mapa, y no al revés -- recorrer los abiertos dejaría a los pagados
   // sin chip, que es justo el caso que se quería enseñar.
-  const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
+  // AQUÍ SE CALCULABA TAMBIÉN `estadosDeFiado`, el estado de cada fiado. Se
+  // fue el 2026-10-23: la lista lo calcula ella sola desde que vuelve a
+  // dibujar ese chip, porque lo único que le faltaba era el pendiente y ese
+  // ya baja por `pendientePorFiado`. Tenerlo aquí era un segundo sitio donde
+  // mantenerlo, y las otras dos pantallas que montan esa lista no lo pasaban.
   const pendientePorFiadoMapa: Record<string, number> = {};
   const hayFiados = movementRows.some((m) => m.type === "charge");
   if (hayFiados) {
@@ -713,13 +715,6 @@ async function MovementHistory({
       if (m.type !== "charge") continue;
       const pendiente = pendientePorFiado.get(m.id) ?? 0;
       pendientePorFiadoMapa[m.id] = pendiente;
-      estadosDeFiado[m.id] = estadoDelFiado({
-        createdAt: m.created_at,
-        plazoDias: m.plazo_dias,
-        cuotas: m.cuotas,
-        amount: Number(m.amount),
-        pendiente,
-      });
     }
   }
 

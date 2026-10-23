@@ -63,13 +63,35 @@ const ESTILO: Record<EstadoDelPlazo, string> = {
 // forma, su borde, su `whitespace-nowrap`— ya está resuelta aquí, con las
 // razones escritas arriba. Un segundo chip con las clases copiadas es
 // exactamente cómo nació la discrepancia de colores que esta cabecera cuenta.
-type EstadoDelChip = EstadoDelPlazo | "a_favor";
+// ── «SIN PLAZO» ENTRA POR LA MISMA PUERTA, Y TAMPOCO ES UN ESTADO DEL PLAZO ─
+//
+// Un fiado al que nunca se le puso fecha no tiene estado de plazo: no hay
+// nada que comparar, y por eso `estadoDelFiado` devuelve `null`. Pero la fila
+// sí necesita decir algo, porque desde el 2026-10-23 el chip existe para que
+// el tendero vea de un vistazo cuál es el fiado más crítico sin abrir ninguno
+// —y un fiado sin fecha es justo uno que hay que ir a arreglar—. Dejarlo en
+// blanco lo escondía.
+//
+// Decisión del dueño ese día, preguntado con las dos salidas delante. Toma
+// la etiqueta y el color de `ClientStatus.sin_plazo`, que es donde ese estado
+// ya vive: mismo ámbar que «Plazo vencido», porque en esa leyenda las dos son
+// igual de graves.
+export type EstadoDelChip = EstadoDelPlazo | "a_favor" | "sin_plazo";
 
-const ESTILO_A_FAVOR = CLIENT_STATUS_BADGE_CLASS.a_favor;
+const ESTILO_DE_CUENTA: Record<"a_favor" | "sin_plazo", string> = {
+  a_favor: CLIENT_STATUS_BADGE_CLASS.a_favor,
+  sin_plazo: CLIENT_STATUS_BADGE_CLASS.sin_plazo,
+};
+
+const ETIQUETA_DE_CUENTA: Record<"a_favor" | "sin_plazo", string> = {
+  a_favor: CLIENT_STATUS_LABEL.a_favor,
+  sin_plazo: CLIENT_STATUS_LABEL.sin_plazo,
+};
 
 export function ChipDeEstado({ estado }: { estado: EstadoDelChip }) {
-  const clase = estado === "a_favor" ? ESTILO_A_FAVOR : ESTILO[estado];
-  const texto = estado === "a_favor" ? CLIENT_STATUS_LABEL.a_favor : ETIQUETA_DEL_ESTADO[estado];
+  const deCuenta = estado === "a_favor" || estado === "sin_plazo";
+  const clase = deCuenta ? ESTILO_DE_CUENTA[estado] : ESTILO[estado];
+  const texto = deCuenta ? ETIQUETA_DE_CUENTA[estado] : ETIQUETA_DEL_ESTADO[estado];
   return (
     <span
       className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${clase}`}

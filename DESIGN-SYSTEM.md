@@ -2006,6 +2006,57 @@ confirmó omitirla. Sin esta nota, el siguiente que abra ese frame la va a
 volver a poner, con toda la razón del mundo y sin forma de saber que ya se
 decidió.
 
+## La fila del historial lleva UN chip, y dice en qué va ese fiado
+
+**Encargo del dueño el 2026-10-23**, con la captura de un fiado «Dentro del
+plazo» cuya fila no lo decía: *«los estados de las cuotas también deberían
+mostrarse en el mismo lugar que "Pagado" o "A favor", eso permitirá al tendero
+tener ese cue visual sin tener que entrar a cada fiado para ver cuál es el más
+crítico»*.
+
+**Un chip por fila, nunca dos, y siempre en el mismo sitio**: debajo de la
+equivalencia en bolívares del pie «Por cobrar».
+
+| Fila | Chip |
+|---|---|
+| Fiado con plazo, con deuda | «Dentro del plazo» o «Plazo vencido» |
+| Fiado **sin** plazo, con deuda | **«Sin plazo»** — decisión del dueño el mismo día |
+| Fiado saldado | «Pagado» |
+| Abono con el saldo del libro a favor | «A favor» |
+| Abono normal · venta de contado | ninguno |
+
+**«Sin plazo» no es un estado del plazo** —no hay fecha que comparar, y
+`estadoDelFiado` devuelve `null`— pero la fila tiene que decir algo: si el chip
+existe para ver de un vistazo cuál es el fiado más crítico, uno sin fecha es
+justo el que hay que ir a arreglar, y dejarlo en blanco lo escondía. Toma
+etiqueta y color de `ClientStatus.sin_plazo`, el mismo ámbar que «Plazo
+vencido».
+
+### Esto DEVUELVE algo que se había quitado, y las dos decisiones valen
+
+El chip estuvo en esta fila el 2026-10-20 y **se retiró el 2026-10-21** al
+reescribirla contra el frame `1512:10061`, que no lo dibuja. La razón vieja era
+buena y se deja escrita.
+
+**Lo que cambió es para qué sirve la fila.** Entre una fecha y otra el
+historial ganó el pie «Por cobrar» en todas sus filas, así que dejó de ser un
+registro de lo que pasó y pasó a ser desde dónde se decide a quién cobrar. Con
+eso, el estado de cada fiado deja de ser decoración: es trabajo que antes
+obligaba a abrir fiado por fiado.
+
+**Y por eso no se vuelve a poner mirando el frame**: si alguien abre el
+`1512:10061` dentro de seis meses va a ver una fila sin chip y va a tener razón
+sobre el dibujo. Esta nota es la que dice que la pantalla ya no es esa.
+
+### Se calcula en la lista, no se pasa como prop
+
+Lo único que `estadoDelFiado` necesita y la fila no tuviera ya es el pendiente
+del fiado, y ese llega por `pendientePorFiado`. Calcularlo dentro del
+componente hace que **las tres pantallas que lo montan** —la ficha del tendero,
+el enlace del cliente y «Ver cuenta de…»— lo hereden sin que nadie tenga que
+acordarse de pasar nada. La ficha lo calculaba por su cuenta y ese cálculo se
+borró: era un segundo sitio donde mantenerlo.
+
 ## Un saldo a favor no lleva menos, y cada libro responde por el suyo
 
 **Dos reglas que salieron del mismo encargo** (2026-10-23) y que se rompen

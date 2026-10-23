@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
+import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
+import { estadoDelFiado } from "@/lib/estado-del-plazo";
 import {
   Pagination,
   PaginationContent,
@@ -413,11 +414,45 @@ export function MovementHistoryList({
           // SOLO PUEDE PASAR EN LA FILA SIN FIADO: el pendiente de un fiado
           // nunca baja de cero. Lo trae el saldo del libro, que sí.
           const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
-          // UN FIADO SALDADO. Se mide contra el pendiente del PROPIO fiado,
-          // nunca contra `cifraPorCobrar`: en una fila de abono esa cifra es
-          // el saldo del cliente en el libro, y un cliente en cero no
-          // convierte su abono en «Pagado».
-          const pagado = m.type === "charge" && pendienteDelFiado != null && pendienteDelFiado <= 0.005;
+          // ── EL CHIP DE LA FILA: UNO SOLO, Y NUNCA DOS ──────────────
+          //
+          // Encargo del dueño el 2026-10-23, con la captura de un fiado
+          // «Dentro del plazo» cuya fila no lo decía: *«los estados de las
+          // cuotas también deberían mostrarse en el mismo lugar que "Pagado"
+          // o "A favor", eso permitirá al tendero tener ese cue visual sin
+          // tener que entrar a cada fiado para ver cuál es el más crítico»*.
+          //
+          // ESTO DEVUELVE ALGO QUE SE QUITÓ, y las dos decisiones quedan
+          // escritas: el chip estuvo aquí el 2026-10-20 y se retiró el
+          // 2026-10-21 al reescribir la fila contra el frame `1512:10061`,
+          // que no lo dibuja. Lo que ha cambiado desde entonces es para qué
+          // sirve esta fila: con el pie «Por cobrar» y el estado al lado, el
+          // historial pasa a ser desde dónde se decide a quién cobrar, que es
+          // trabajo que antes obligaba a abrir fiado por fiado.
+          //
+          // SE CALCULA AQUÍ Y NO LLEGA COMO PROP, aunque la ficha lo tenía
+          // calculado: lo único que `estadoDelFiado` necesita y la fila no
+          // tuviera ya es el pendiente, y ese sí llega. Así las TRES
+          // pantallas que montan esta lista —la ficha, el enlace del cliente
+          // y «Ver cuenta de…»— lo heredan sin que nadie tenga que acordarse
+          // de pasarlo.
+          //
+          // UN FIADO SIN FECHA dice «Sin plazo» y no se queda en blanco:
+          // decisión del dueño el mismo día. El porqué está en el chip.
+          const chipDeLaFila: EstadoDelChip | null =
+            m.type === "charge"
+              ? pendienteDelFiado == null
+                ? null
+                : (estadoDelFiado({
+                    createdAt: m.created_at,
+                    plazoDias: m.plazo_dias,
+                    cuotas: m.cuotas,
+                    amount: Number(m.amount),
+                    pendiente: pendienteDelFiado,
+                  }) ?? "sin_plazo")
+              : aFavor
+                ? "a_favor"
+                : null;
           const porCobrar =
             cifraPorCobrar == null
               ? null
@@ -598,20 +633,19 @@ export function MovementHistoryList({
                         {porCobrar.secondary} hoy
                       </span>
                     ) : null}
-                    {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez:
-                        «Pagado» es un fiado cuyo pendiente llegó a cero, «A
-                        favor» es un saldo que se pasó de largo, y un mismo
-                        número no puede ser las dos cosas.
+                    {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez.
+                        Un fiado dice cómo va respecto de su plazo; un abono
+                        suelto solo tiene algo que decir cuando el saldo se
+                        pasó de largo. Ver `chipDeLaFila`.
 
-                        Y AQUÍ EL «Pagado» DEPENDE DE QUE HAYA CIFRA, que es
-                        una mejora que vino de regalo con la mudanza: arriba se
-                        dibujaba con `(pendienteDelFiado ?? 0) <= 0.005`, así
-                        que un fiado SIN dato de pendiente —una base sin la
-                        migración `132`— salía anunciando «Pagado» sin que
-                        nadie lo hubiera pagado. Dentro del pie no puede pasar:
-                        sin cifra no hay pie. */}
-                    {pagado ? <ChipDeEstado estado="pagado" /> : null}
-                    {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
+                        Y DEPENDE DE QUE HAYA CIFRA, que es una mejora que vino
+                        de regalo al mudarlo aquí: arriba se dibujaba con
+                        `(pendienteDelFiado ?? 0) <= 0.005`, así que un fiado
+                        SIN dato de pendiente —una base sin la migración
+                        `132`— salía anunciando «Pagado» sin que nadie lo
+                        hubiera pagado. Dentro del pie no puede pasar: sin
+                        cifra no hay pie. */}
+                    {chipDeLaFila ? <ChipDeEstado estado={chipDeLaFila} /> : null}
                   </span>
                 </div>
               ) : null}
