@@ -266,6 +266,17 @@ export function computeCreditScore(params: {
   worstChargeDueAt: string | null;
   isFlagged: boolean;
   mostRecentUnflaggedAt: string | null;
+  // SOLO PARA EL RÓTULO «Estado actual», nunca para el número. `CT-137`,
+  // 2026-10-23: la ficha ya juzga un libro a la vez, así que su chip decía
+  // «Crítico» y esta línea, tres centímetros más abajo, «A favor» — las dos
+  // sobre la misma clienta, porque esta sale del saldo combinado.
+  //
+  // EL PUNTAJE NO SE TOCA, y es deliberado: `STANDING_SCORE[status]` sigue
+  // leyendo el estado combinado de abajo. Ese número no se guarda, se calcula
+  // al dibujar, así que cambiar su fórmula movería el puntaje de todos los
+  // clientes de los 24 negocios el mismo día. Lo que se arregla aquí es que
+  // dos frases de la misma tarjeta digan lo mismo, no cómo se puntúa.
+  statusParaMostrar?: ClientStatus;
 }): CreditScoreResult {
   const now = new Date();
   const sorted = [...params.movements].sort(
@@ -345,7 +356,7 @@ export function computeCreditScore(params: {
 
   const breakdown: CreditScoreBreakdownLine[] = [
     { label: "Puntualidad histórica", detail: `${lifetime.onTimeCount} de ${lifetime.n} cargos pagados a tiempo` },
-    { label: "Estado actual", detail: CLIENT_STATUS_LABEL[status] },
+    { label: "Estado actual", detail: CLIENT_STATUS_LABEL[params.statusParaMostrar ?? status] },
   ];
   if (recent.n > 0) {
     breakdown.push({

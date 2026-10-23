@@ -443,3 +443,151 @@ export function peorEstado(estados: ClientStatus[]): ClientStatus {
   }
   return peor;
 }
+
+// ===========================================================================
+// EL ESTADO DE UN CLIENTE EN UNA LISTA, Y DE QUÉ LIBRO ES
+//
+// `CT-137`, encargo del dueño el 2026-10-23: *«debería prelar el estado más
+// crítico con su moneda respectiva, sin cruzar estado con moneda»*.
+//
+// QUÉ SE CRUZABA. La fila de la lista sacaba la CIFRA del libro más grande y
+// el CHIP de los dos saldos convertidos a dólares y sumados. Con 158,50 $ a
+// favor contra 3,50 € de deuda, la suma salía verde: **«Mariangel Mendoza ·
+// A favor · €3.50»**, el chip diciendo una cosa y el número de al lado otra.
+//
+// POR QUÉ NO LO RESUELVE `estadoPorLibro`, que está justo arriba y contesta
+// la misma pregunta: esa necesita los fiados abiertos, y pedirlos cuesta una
+// consulta por cliente. La ficha abre uno; esta lista pinta quince por página
+// y lee el negocio entero de una vez. Así que aquí los datos llegan ya
+// masticados por la `146`, en la fila del resumen, y lo único que se comparte
+// —a propósito— es quien juzga: `getClientStatus` y el orden de `peorEstado`.
+export type FilaDeResumen = {
+  days_since_payment: number;
+  worst_unpaid_charge_at?: string | null;
+  worst_unpaid_charge_plazo_dias?: number | null;
+  worst_unpaid_charge_due_at?: string | null;
+  overdue_charge_count?: number | null;
+  worst_unpaid_charge_at_cop?: string | null;
+  worst_unpaid_charge_plazo_dias_cop?: number | null;
+  worst_unpaid_charge_due_at_cop?: string | null;
+  overdue_charge_count_cop?: number | null;
+  worst_unpaid_charge_at_usd?: string | null;
+  worst_unpaid_charge_plazo_dias_usd?: number | null;
+  worst_unpaid_charge_due_at_usd?: string | null;
+  overdue_charge_count_usd?: number | null;
+  worst_unpaid_charge_at_eur?: string | null;
+  worst_unpaid_charge_plazo_dias_eur?: number | null;
+  worst_unpaid_charge_due_at_eur?: string | null;
+  overdue_charge_count_eur?: number | null;
+};
+
+export type EstadoDeCliente = {
+  status: ClientStatus;
+  // El libro al que pertenece ese estado, para que la cifra de al lado sea la
+  // suya. `null` es el libro de un negocio colombiano — y también lo que
+  // devuelve la degradación, donde no hay un libro que señalar.
+  currency: "USD" | "EUR" | null;
+  // Los vencidos DE ESE LIBRO, para el «(3)» del chip. Antes era el total del
+  // cliente, que con el chip de un solo libro contaría fiados de otro.
+  overdueCount: number | null;
+};
+
+export function estadoDeCliente({
+  fila,
+  saldos,
+  saldoCombinado,
+  dosLibros,
+}: {
+  fila: FilaDeResumen;
+  // En la moneda de cada libro, sin convertir. La papelera pasa los saldos
+  // congelados en vez de los vivos, que es justo por lo que entran como
+  // argumento y no se leen de `fila`.
+  saldos: { cop: number; usd: number; eur: number };
+  // Los dos saldos convertidos y sumados, como se hacía en todas partes hasta
+  // hoy. SOLO se usa en la degradación de abajo; que siga entrando es lo que
+  // permite que una base sin la `146` enseñe exactamente la pantalla de ayer.
+  saldoCombinado: number;
+  // `true` para un negocio venezolano, que lleva dos libros independientes.
+  dosLibros: boolean;
+}): EstadoDeCliente {
+  // LA CLAVE AUSENTE ES LA SEÑAL, y no un `null`: una vista sin la `146` no
+  // manda estas columnas, mientras que un libro sin nada abierto sí las manda
+  // en nulo. Distinguirlo es lo que separa «todavía no sé juzgar por libro»
+  // de «este libro no debe nada».
+  if (fila.worst_unpaid_charge_at_usd === undefined) {
+    return {
+      status: getClientStatus({
+        balance: saldoCombinado,
+        daysSincePayment: fila.days_since_payment,
+        worstChargeAt: fila.worst_unpaid_charge_at ?? null,
+        worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
+        worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+      }),
+      currency: null,
+      overdueCount: fila.overdue_charge_count ?? null,
+    };
+  }
+
+  const libros = dosLibros
+    ? ([
+        {
+          currency: "USD" as const,
+          saldo: saldos.usd,
+          at: fila.worst_unpaid_charge_at_usd ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_usd ?? null,
+          due: fila.worst_unpaid_charge_due_at_usd ?? null,
+          count: fila.overdue_charge_count_usd ?? null,
+        },
+        {
+          currency: "EUR" as const,
+          saldo: saldos.eur,
+          at: fila.worst_unpaid_charge_at_eur ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_eur ?? null,
+          due: fila.worst_unpaid_charge_due_at_eur ?? null,
+          count: fila.overdue_charge_count_eur ?? null,
+        },
+      ])
+    : ([
+        {
+          currency: null,
+          saldo: saldos.cop,
+          at: fila.worst_unpaid_charge_at_cop ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_cop ?? null,
+          due: fila.worst_unpaid_charge_due_at_cop ?? null,
+          count: fila.overdue_charge_count_cop ?? null,
+        },
+      ]);
+
+  let elegido: EstadoDeCliente | null = null;
+  let saldoDelElegido = 0;
+
+  for (const libro of libros) {
+    // Medio céntimo no es una deuda — mismo umbral y misma razón que
+    // `estadoPorLibro`: `getClientStatus` compara con cero exacto.
+    const neto = Math.abs(libro.saldo) <= HOLGURA ? 0 : libro.saldo;
+    const status = getClientStatus({
+      balance: neto,
+      daysSincePayment: fila.days_since_payment,
+      worstChargeAt: libro.at,
+      worstChargePlazoDias: libro.plazo,
+      worstChargeDueAt: libro.due,
+    });
+
+    if (elegido !== null) {
+      // El que ya estaba es más grave: este libro no manda.
+      if (peorEstado([status, elegido.status]) !== status) continue;
+      // A IGUALDAD DE GRAVEDAD MANDA EL SALDO MÁS GRANDE, que es la regla que
+      // la tarjeta ya usaba para elegir qué cifra enseñar. Así, en el caso
+      // normal —los dos libros en el mismo estado— la fila sigue enseñando
+      // exactamente lo que enseñaba, y lo único que cambia es el caso que el
+      // dueño reportó.
+      if (status === elegido.status && neto <= saldoDelElegido) continue;
+    }
+
+    elegido = { status, currency: libro.currency, overdueCount: libro.count };
+    saldoDelElegido = neto;
+  }
+
+  // `libros` nunca está vacío, pero el tipo no lo sabe.
+  return elegido ?? { status: "sin_deuda", currency: null, overdueCount: null };
+}

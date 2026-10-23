@@ -370,6 +370,10 @@ export default async function ClientDetailPage({
       <Suspense fallback={<CreditScoreSkeleton />}>
         <CreditScoreSection
           clientId={id}
+          // SOLO PARA EL RÓTULO «Estado actual» de esa tarjeta. El puntaje
+          // sigue saliendo de `judgementBalance`, el saldo combinado, que es
+          // una decisión vieja y a propósito.
+          statusParaMostrar={status}
           balance={judgementBalance}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           worstChargeAt={clientSummary?.worst_unpaid_charge_at ?? null}
@@ -461,6 +465,7 @@ function CreditScoreSkeleton() {
 
 async function CreditScoreSection({
   clientId,
+  statusParaMostrar,
   balance,
   daysSincePayment,
   worstChargeAt,
@@ -469,6 +474,10 @@ async function CreditScoreSection({
   isFlagged,
 }: {
   clientId: string;
+  // SOLO el rótulo «Estado actual» de la tarjeta. Ver el comentario de este
+  // campo en `computeCreditScore`: el puntaje sigue saliendo del saldo
+  // combinado de abajo, a propósito.
+  statusParaMostrar: ClientStatus;
   // Ya convertido a dólares por quien llama, cuando el dueño es venezolano.
   //
   // ESTE COMPONENTE YA NO RECIBE LA TASA, desde `CT-124` (2026-10-23): estaba
@@ -516,6 +525,7 @@ async function CreditScoreSection({
 
   const result = computeCreditScore({
     movements: movementRows,
+    statusParaMostrar,
     balance,
     daysSincePayment,
     worstChargeAt,

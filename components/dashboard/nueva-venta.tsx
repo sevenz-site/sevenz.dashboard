@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,7 +92,6 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import { formatDate } from "@/lib/format";
 import {
   DEFAULT_PLAZO_PAGO,
-  getClientStatus,
   type ClientSummary,
   type OwnerCountry,
 } from "@/lib/types";
@@ -1588,15 +1588,20 @@ function PasoCliente({
   // antes cómo se deshace.
   if (cliente) {
     const fila = clientes.find((c) => c.client_id === cliente.id) ?? null;
-    const status = fila
-      ? getClientStatus({
-          balance: fila.balance,
-          daysSincePayment: fila.days_since_payment,
-          worstChargeAt: fila.worst_unpaid_charge_at ?? null,
-          worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
-          worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+    // `CT-137`, un libro a la vez, igual que la lista de la que sale este
+    // cliente. Es la tarjeta que el tendero tiene delante justo antes de
+    // fiarle, así que es el último sitio donde conviene un chip más suave que
+    // el de su ficha.
+    const { status, currency, overdueCount } = fila
+      ? estadoDeCliente({
+          fila,
+          saldos: { cop: fila.balance, usd: fila.balance_usd, eur: fila.balance_eur },
+          // Como antes de `CT-137`: esta pantalla juzgaba por `fila.balance`,
+          // y eso es lo que sigue haciendo si la `146` no está corrida.
+          saldoCombinado: fila.balance,
+          dosLibros: ledger !== null,
         })
-      : "sin_deuda";
+      : { status: "sin_deuda" as const, currency: null, overdueCount: null };
 
     return (
       <div className="flex flex-1 flex-col gap-4">
@@ -1637,7 +1642,8 @@ function PasoCliente({
                   name={fila.name}
                   documentId={fila.document_id}
                   status={status}
-                  overdueCount={fila?.overdue_charge_count ?? null}
+                  overdueCount={overdueCount}
+                  monedaDelEstado={currency}
                   isFlagged={fila.is_flagged}
                   balance={fila.balance}
                   balanceUsd={fila.balance_usd}

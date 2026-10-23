@@ -231,6 +231,28 @@ export type ClientSummary = {
   // cliente no debe nada: la función no devuelve fila y el left join deja
   // todo en nulo.
   overdue_charge_count?: number | null;
+  // ── LO MISMO, UN JUEGO POR LIBRO — migración `146`, `CT-137` ────────
+  //
+  // El cuarteto de arriba es del cliente ENTERO, así que un chip calculado
+  // con él mezcla los dos libros. Con 158,50 $ a favor y 3,50 € de deuda la
+  // lista decía «A favor» con la deuda impresa al lado. Estos doce campos son
+  // los que dejan juzgar cada libro por separado.
+  //
+  // OPCIONALES, y el `undefined` significa algo: la clave AUSENTE es una base
+  // sin la `146` corrida, y ahí `estadoDeCliente` vuelve al juicio combinado
+  // de siempre. `null` es otra cosa — es un libro sin nada abierto.
+  worst_unpaid_charge_at_cop?: string | null;
+  worst_unpaid_charge_plazo_dias_cop?: number | null;
+  worst_unpaid_charge_due_at_cop?: string | null;
+  overdue_charge_count_cop?: number | null;
+  worst_unpaid_charge_at_usd?: string | null;
+  worst_unpaid_charge_plazo_dias_usd?: number | null;
+  worst_unpaid_charge_due_at_usd?: string | null;
+  overdue_charge_count_usd?: number | null;
+  worst_unpaid_charge_at_eur?: string | null;
+  worst_unpaid_charge_plazo_dias_eur?: number | null;
+  worst_unpaid_charge_due_at_eur?: string | null;
+  overdue_charge_count_eur?: number | null;
 };
 
 // client_summary_all — the same view without the "hide the hidden" filter.

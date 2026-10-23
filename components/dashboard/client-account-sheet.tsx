@@ -10,7 +10,7 @@ import {
 } from "@/components/dashboard/client-card";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { cuentaDelCliente, type CuentaDelCliente } from "@/app/(app)/ventas/actions";
-import { getClientStatus } from "@/lib/types";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
 
@@ -72,15 +72,20 @@ export function ClientAccountSheet({
   }, [clientId]);
 
   const fila = cuenta?.fila ?? null;
-  const status = fila
-    ? getClientStatus({
-        balance: fila.balance,
-        daysSincePayment: fila.days_since_payment,
-        worstChargeAt: fila.worst_unpaid_charge_at ?? null,
-        worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
-        worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+  // `CT-137`, un libro a la vez, igual que las cuatro listas. Esta hoja se
+  // abre en medio de una venta para contestar una sola pregunta —«¿le fío a
+  // este?»—, así que el chip que enseña no puede ser más suave que el de la
+  // ficha del mismo cliente.
+  const { status, currency, overdueCount } = fila
+    ? estadoDeCliente({
+        fila,
+        saldos: { cop: fila.balance, usd: fila.balance_usd, eur: fila.balance_eur },
+        // Igual que antes de `CT-137`: aquí nunca hubo tasa a mano con la que
+        // convertir, así que la degradación juzga por el libro colombiano.
+        saldoCombinado: fila.balance,
+        dosLibros: ledger !== null,
       })
-    : "sin_deuda";
+    : { status: "sin_deuda" as const, currency: null, overdueCount: null };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -100,7 +105,8 @@ export function ClientAccountSheet({
                     name={fila.name}
                     documentId={fila.document_id}
                     status={status}
-                    overdueCount={fila?.overdue_charge_count ?? null}
+                    overdueCount={overdueCount}
+                    monedaDelEstado={currency}
                     isFlagged={fila.is_flagged}
                     balance={fila.balance}
                     balanceUsd={fila.balance_usd}

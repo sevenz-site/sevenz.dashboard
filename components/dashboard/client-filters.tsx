@@ -14,10 +14,10 @@ import {
   CLIENT_STATUS_BADGE_CLASS,
   CLIENT_STATUS_DESCRIPTION,
   CLIENT_STATUS_LABEL,
-  getClientStatus,
   type ClientStatus,
   type ClientSummary,
 } from "@/lib/types";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
 
 // El estado de filtros y los chips que lo tocan, compartidos por las cuatro
 // listas de clientes — Cartera, Clientes, Malas pagas y Papelera — para que no
@@ -132,6 +132,25 @@ export function useClientFilters<T extends ClientSummary>(
     return rateContext ? combinedBalanceUsd(b.usd, b.eur, rateContext.effectiveRate) : b.cop;
   };
 
+  // EL ESTADO DE LA FILA, UN LIBRO A LA VEZ — `CT-137`, 2026-10-23.
+  //
+  // Vive aquí y no en cada tabla porque este hook ya lo comparten las cuatro
+  // listas de clientes, y porque el filtro de estado de abajo tiene que
+  // decidir con EXACTAMENTE el mismo criterio que el chip que se dibuja: si
+  // filtrar por «Plazo vencido» usara un juicio y el chip otro, la lista
+  // devolvería filas que no llevan ese chip, que es peor que no filtrar.
+  //
+  // `judgementBalance` sigue existiendo y sigue siendo la suma convertida: es
+  // lo que ordena y filtra por MONTO, donde sumar los dos libros sí es la
+  // pregunta («quién me debe más»). Lo que deja de salir de ahí es el estado.
+  const estadoDe = (row: T) =>
+    estadoDeCliente({
+      fila: row,
+      saldos: balancesOf(row),
+      saldoCombinado: judgementBalance(row),
+      dosLibros: rateContext !== null,
+    });
+
   const filteredRows = useMemo(() => {
     const query = nameQuery.trim().toLowerCase();
     const min = minAmount.trim() ? Number(minAmount) : null;
@@ -145,14 +164,7 @@ export function useClientFilters<T extends ClientSummary>(
       }
       const balance = judgementBalance(row);
       if (statusFilter !== "todos") {
-        const status = getClientStatus({
-          balance,
-          daysSincePayment: row.days_since_payment,
-          worstChargeAt: row.worst_unpaid_charge_at ?? null,
-          worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
-          worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
-        });
-        if (status !== statusFilter) return false;
+        if (estadoDe(row).status !== statusFilter) return false;
       }
       if (min !== null && !Number.isNaN(min) && balance < min) return false;
       if (max !== null && !Number.isNaN(max) && balance > max) return false;
@@ -220,6 +232,7 @@ export function useClientFilters<T extends ClientSummary>(
   return {
     sortedRows,
     judgementBalance,
+    estadoDe,
     hasActiveFilters,
     clearFilters,
     controls: {
