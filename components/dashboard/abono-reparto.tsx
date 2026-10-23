@@ -171,6 +171,24 @@ export function AbonoReparto({
   // lo haya pedido.
   const cruzaLibros = enBolivares && libros.length > 1;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // EL SEGUNDO ESTADO DE ESTA PANTALLA — frame `1564:11211`
+  //
+  // La 1/2 nace con un campo: el tendero escribe el billete y el reparto cae
+  // por gravedad. En cuanto paga UN fiado a mano, cambia: el campo se
+  // sustituye por un buscador y el total pasa a ser la suma de lo que él vaya
+  // fijando, fiado por fiado.
+  //
+  // Encargo del dueño el 2026-10-22 y confirmado al preguntárselo el
+  // 2026-10-23: *«Es el SEGUNDO estado, tras pagar el primero»*. No sustituye
+  // a la 1/2 — convive con ella.
+  //
+  // SE DEDUCE, NO SE GUARDA: hay líneas fijadas y no hay monto escrito. Ese
+  // par solo lo produce `fijarEnBorrador`, que limpia el campo al volver de
+  // pagar un fiado. Una bandera aparte en el borrador diría lo mismo y podría
+  // desincronizarse de los dos datos que la producen.
+  const modoSeleccion = monto.trim() === "" && Object.keys(aMano).length > 0;
+
   // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
   // con la tasa que él mismo sella, que es la que se guarda; estas son para
   // ENSEÑAR. Es la misma asimetría que ya tenía la pantalla del monto, escrita
@@ -225,16 +243,28 @@ export function AbonoReparto({
   // reparto se hace SIEMPRE sobre la cifra del libro. Sin tasa no se puede
   // convertir y la pantalla lo dice en vez de inventar una.
   const enElLibro = useMemo(() => {
-    // CRUZANDO LIBROS LA UNIDAD YA SON BOLÍVARES: no hay un libro al que
-    // convertir, porque son dos. El reparto se hace en bolívares y cada línea
-    // sale en la moneda de su fiado.
+    // EN MODO SELECCIÓN NO HAY CAMPO: el total es lo que suman las líneas que
+    // el tendero ha ido fijando, cada una topada a lo que debe su fiado.
+    //
+    // Se suma en la UNIDAD DEL REPARTO —bolívares si cruza libros, la moneda
+    // del libro si no— por lo mismo que todo lo demás de esta pantalla: una
+    // sola unidad para el tope, el reparto y el rótulo del botón.
+    if (modoSeleccion) {
+      return delLibro.reduce((suma, f) => {
+        const puesto = aMano[f.movementId];
+        if (puesto == null) return suma;
+        const topado = Math.max(0, Math.min(puesto, f.pending));
+        if (!cruzaLibros) return suma + topado;
+        return suma + (aBolivares(topado, (f.currency ?? null) as LedgerCurrency | null) ?? 0);
+      }, 0);
+    }
     if (cruzaLibros) return montoNum;
     if (!enBolivares) return montoNum;
     if (!libro || !rates) return 0;
     // `amount` es `number | null`: null cuando falta la tasa. Cae a 0, que
     // deja el botón apagado — mejor que convertir con una tasa inventada.
     return priceIn(libro, { amount: montoNum, currency: "VES" }, rates).amount ?? 0;
-  }, [cruzaLibros, enBolivares, montoNum, libro, rates]);
+  }, [modoSeleccion, delLibro, aMano, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
 
   const excede = enElLibro - deuda > 0.005;
 
@@ -278,7 +308,25 @@ export function AbonoReparto({
     // nada el borrador que se está a punto de restaurar: el tendero volvería
     // de fijar un fiado y se encontraría su reparto en blanco.
     if (cacheBorrador.current === undefined) return;
-    guardarBorrador({ clienteId, libro, monto, enBolivares, totalEnLibro: enElLibro, aMano });
+    guardarBorrador({
+      clienteId,
+      libro,
+      monto,
+      enBolivares,
+      // SIN MONTO TECLEADO NO HAY BILLETE, y eso es `null`, no `0`.
+      //
+      // El tope que viaja aquí existe para que las líneas fijadas a mano no
+      // sumen más que lo que el cliente puso en el mostrador. Sin monto no hay
+      // nada que exceder, así que no hay tope — cada fiado queda topado solo
+      // por lo que debe.
+      //
+      // CON `0` LA PANTALLA DEL MONTO SE BLOQUEABA: desde que «Seleccionar
+      // fiados» se dibuja siempre (2026-10-23), el tendero puede entrar sin
+      // teclear nada, y allí se encontraba «Ya repartiste todo el abono» con
+      // el campo vacío y ningún abono repartido. Medido en dev el 2026-10-23.
+      totalEnLibro: monto.trim() === "" ? null : enElLibro,
+      aMano,
+    });
   }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
 
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
@@ -420,8 +468,23 @@ export function AbonoReparto({
         // bolívares y más de un libro; la acción lo vuelve a exigir por su
         // cuenta, porque esto viaja desde el navegador.
         cruzaLibros,
-        montoTecleado: montoNum,
-        monedaTecleada: enBolivares ? "VES" : ((libro ?? "COP") as PriceCurrency),
+        // EN MODO SELECCIÓN NO HAY CAMPO, así que lo tecleado es la SUMA de lo
+        // que el tendero fue fijando fiado por fiado — que es exactamente lo
+        // que `enElLibro` calcula y lo que el botón de abajo enseña.
+        //
+        // MANDAR `montoNum` AQUÍ ERA MANDAR CERO: el campo está vacío, y el
+        // servidor contestaba «Escribe cuánto te pagó» con dos fiados ya
+        // puestos en pantalla y el botón diciendo $20.00. Medido en dev el
+        // 2026-10-23, al guardar por primera vez desde este estado.
+        //
+        // El servidor NO se fía de esta cifra: vuelve a repartir con las
+        // mismas entradas y topa cada línea contra lo que su fiado debe. Esto
+        // le dice cuánto es el billete, no cómo se reparte.
+        montoTecleado: modoSeleccion ? enElLibro : montoNum,
+        monedaTecleada:
+          enBolivares || (modoSeleccion && cruzaLibros)
+            ? "VES"
+            : ((libro ?? "COP") as PriceCurrency),
         aMano,
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
@@ -675,6 +738,30 @@ export function AbonoReparto({
               SU TRABAJO NO DESAPARECE, SE MUDA AL DESPLEGABLE, que ahora lista
               TODOS los libros en los que ese cliente debe. Ver allí el caso
               que esto obligaba a resolver. */}
+          {/* ── EL CAMPO, O EL BUSCADOR ───────────────────────────────
+              En modo selección el campo se sustituye por «Buscar fiado» —
+              frame `1564:11211`—, porque ya no hay un billete que repartir:
+              el tendero va eligiendo fiados y poniéndoles cifra uno a uno, y
+              lo que necesita es encontrarlos. Ver `modoSeleccion`.
+
+              LA LUPA VA A LA DERECHA, como en el frame, y no a la izquierda
+              como en la hoja de «Seleccionar fiados». Son dos buscadores de
+              dos sitios distintos y cada uno sigue el suyo. */}
+          {modoSeleccion ? (
+            <div className="relative">
+              <Input
+                value={buscaFiado}
+                onChange={(e) => setBuscaFiado(e.target.value)}
+                placeholder="Buscar fiado"
+                aria-label="Buscar fiado"
+                className="h-10 pr-10"
+              />
+              <Search
+                className="pointer-events-none absolute top-1/2 right-3 size-5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+            </div>
+          ) : (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="monto">¿Cuánto abona?</Label>
             <div className="flex items-start gap-2">
@@ -795,10 +882,20 @@ export function AbonoReparto({
               <p className="text-sm text-muted-foreground">Te debe {deudaLegible} en esta moneda.</p>
             )}
           </div>
+          )}
 
-          {enElLibro > 0.005 && !excede ? (
+          {/* EN SELECCIÓN LA LISTA SALE SIEMPRE, aunque todavía no haya nada
+              fijado: es la lista de fiados entre los que elegir, y esconderla
+              dejaría la pantalla con un buscador y nada que buscar. */}
+          {modoSeleccion || (enElLibro > 0.005 && !excede) ? (
             <div className="flex flex-col gap-3">
-              <h2 className="text-base font-medium">Así se reparte el pago</h2>
+              {/* «FIADOS» EN SELECCIÓN Y «ASÍ SE REPARTE EL PAGO» CUANDO HAY
+                  BILLETE — frame `1564:11211`. No son dos nombres para lo
+                  mismo: con billete la lista EXPLICA un reparto que se hizo
+                  solo; en selección es el catálogo del que el tendero escoge. */}
+              <h2 className="text-base font-medium">
+                {modoSeleccion ? "Fiados" : "Así se reparte el pago"}
+              </h2>
 
               {/* SOLO LOS QUE RECIBEN ALGO — encargo del dueño el 2026-10-23:
                   *«cuando el monto a abonar es menor al de cualquier fiado
@@ -823,9 +920,19 @@ export function AbonoReparto({
                   «Seleccionar fiados», que es justo para lo que él la quiere
                   siempre a mano. */}
               <ul className="flex flex-col gap-3">
-                {enOrden
-                  .filter((f) => (asignado.get(f.movementId) ?? 0) > 0.005)
-                  .map(filaDeFiado)}
+                {(modoSeleccion ? fiadosFiltrados : enOrden)
+                  .filter((f) => modoSeleccion || (asignado.get(f.movementId) ?? 0) > 0.005)
+                  .map((f) =>
+                    // EN SELECCIÓN CONVIVEN LAS DOS FILAS: la del fiado que ya
+                    // tiene su cifra —con su renglón «Abona»— y la del que
+                    // todavía no, con su botón «Pagar». Es lo que dibuja el
+                    // frame `1564:11211`, y es lo que hace que la pantalla
+                    // sirva para lo que el dueño quiere: ir pagando de uno en
+                    // uno sin perder de vista lo que ya lleva puesto.
+                    modoSeleccion && (asignado.get(f.movementId) ?? 0) <= 0.005
+                      ? filaParaElegir(f)
+                      : filaDeFiado(f),
+                  )}
               </ul>
             </div>
           ) : null}
@@ -919,17 +1026,23 @@ export function AbonoReparto({
               Y EL RÓTULO CAMBIA POR LO MISMO: «Repartir distinto» describe lo
               que hace con un monto puesto; «Seleccionar fiados» describe lo
               que hace siempre. */}
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 w-full"
-            onClick={() => {
-              setBuscaFiado("");
-              setRepartiendo(true);
-            }}
-          >
-            Seleccionar fiados
-          </Button>
+          {/* EN SELECCIÓN NO SE DIBUJA: su trabajo —encontrar un fiado y
+              ponerle cifra— ya lo hace el buscador de arriba con la lista
+              entera debajo. Dos puertas a lo mismo en la misma pantalla, y una
+              de ellas abriendo una hoja encima de la otra. */}
+          {modoSeleccion ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full"
+              onClick={() => {
+                setBuscaFiado("");
+                setRepartiendo(true);
+              }}
+            >
+              Seleccionar fiados
+            </Button>
+          )}
 
           <Button type="button" className="h-10 w-full" disabled={!puedeGuardar} onClick={guardar}>
             {guardando

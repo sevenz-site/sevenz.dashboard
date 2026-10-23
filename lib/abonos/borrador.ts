@@ -57,7 +57,17 @@ export type BorradorDeReparto = {
   // evitar.
   //
   // Lo escribe SOLO la 1/2, que es la dueña de esta cifra; las demás leen.
-  totalEnLibro: number;
+  //
+  // `null` ES «YA NO HAY BILLETE», y es un estado distinto de «el billete es
+  // cero». Aparece en cuanto el tendero paga un fiado a mano: desde ahí la
+  // pantalla 1/2 deja de tener un monto tecleado y pasa a sumar lo que él va
+  // fijando fiado por fiado. La pantalla del monto lo lee como «sin tope del
+  // abono», o sea cada fiado topado solo por lo que debe.
+  //
+  // Con `0` en vez de `null`, la pantalla del monto calcularía «me queda 0 del
+  // abono» y no dejaría fijar ni un céntimo más: el tendero pagaría UN fiado y
+  // se quedaría encerrado.
+  totalEnLibro: number | null;
   // movementId → lo que el tendero le fijó a mano, en el libro.
   aMano: Record<string, number>;
   guardadoEn: number;
@@ -95,10 +105,25 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
     for (const [k, v] of Object.entries(b.aMano ?? {})) {
       if (typeof v === "number" && Number.isFinite(v) && v >= 0) aMano[k] = v;
     }
+    // `null` SOBREVIVE AL SANEO, y eso es la mitad del arreglo. Este `else 0`
+    // convertía «no hay billete» en «el billete es cero» antes de que nadie lo
+    // leyera, así que el `null` que escribe `fijarEnBorrador` no llegaba nunca
+    // a la pantalla del monto: el tendero entraba a pagar un fiado y se
+    // encontraba «Ya repartiste todo el abono» con el campo vacío. Medido en
+    // dev el 2026-10-23, después de arreglar las otras dos mitades y seguir
+    // viendo el mismo mensaje.
+    //
+    // El `0` sigue siendo el valor de respaldo para lo que NO es un número:
+    // esto viene de almacenamiento que cualquiera puede editar, y un texto o
+    // un negativo ahí no pueden pasar por «sin tope».
     const totalEnLibro =
-      typeof b.totalEnLibro === "number" && Number.isFinite(b.totalEnLibro) && b.totalEnLibro >= 0
-        ? b.totalEnLibro
-        : 0;
+      b.totalEnLibro === null
+        ? null
+        : typeof b.totalEnLibro === "number" &&
+            Number.isFinite(b.totalEnLibro) &&
+            b.totalEnLibro >= 0
+          ? b.totalEnLibro
+          : 0;
     return { ...b, aMano, totalEnLibro };
   } catch {
     return null;
@@ -106,10 +131,32 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
 }
 
 /** Fija lo que le toca a UN fiado y deja el resto del borrador como estaba. */
+// ═══════════════════════════════════════════════════════════════════════════
+// FIJAR UNA LÍNEA VACÍA EL CAMPO, Y ESO ES EL ENCARGO
+//
+// Reportado por el dueño el 2026-10-22: entró por «Seleccionar fiados», le
+// abonó 5.000 Bs a un fiado concreto, volvió — y la 1/2 seguía repartiendo
+// los 20 dólares que había tecleado antes, ignorando lo que acababa de hacer.
+// *«Debió solo aplicar el abono de los 5.000 Bs y limpiar el abono repartido
+// antes hecho de 20 USD así como el input»*.
+//
+// Pasaba porque esto solo añadía la línea: el monto seguía ahí, y `repartir`
+// hacía lo suyo — repartir ESE monto, respetando la línea fijada y bajando el
+// resto por gravedad. Hacía exactamente lo que se le pedía; lo que estaba mal
+// era lo que se le pedía.
+//
+// Al limpiar el monto, la 1/2 cambia de estado: el campo se sustituye por un
+// buscador y el total pasa a ser la suma de lo que él vaya fijando. Es el
+// frame `1564:11211`, y el dueño lo confirmó así al preguntárselo.
 export function fijarEnBorrador(clienteId: string, movementId: string, monto: number): void {
   const b = leerBorrador(clienteId);
   if (!b) return;
-  guardarBorrador({ ...b, aMano: { ...b.aMano, [movementId]: monto } });
+  guardarBorrador({
+    ...b,
+    monto: "",
+    totalEnLibro: null,
+    aMano: { ...b.aMano, [movementId]: monto },
+  });
 }
 
 export function borrarBorrador(clienteId: string): void {

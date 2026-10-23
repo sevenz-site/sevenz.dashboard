@@ -174,6 +174,10 @@ export function AbonoMonto({
       if (!enReparto) return SIN_LIMITE;
       const b = leerBorrador(clienteId);
       if (!b) return SIN_LIMITE;
+      // SIN BILLETE NO HAY TOPE DEL ABONO: cada fiado queda topado solo por lo
+      // que debe. Es el estado en el que entra la 1/2 cuando el tendero empieza
+      // a pagar fiado por fiado; ver `totalEnLibro` en `borrador.ts`.
+      if (b.totalEnLibro == null) return SIN_LIMITE;
       // Lo de ESTA línea no se descuenta: volver a entrar a corregirla la
       // dejaría atrapada en su propia cifra. Los importes del borrador ya
       // vienen topados a su fiado --los escribió esta misma pantalla--, así
