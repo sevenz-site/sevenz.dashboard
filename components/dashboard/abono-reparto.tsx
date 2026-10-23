@@ -27,7 +27,13 @@ import {
   borrarBorrador,
   type BorradorDeReparto,
 } from "@/lib/abonos/borrador";
-import { repartir, deudaDelLibro, type FiadoParaRepartir } from "@/lib/abonos/reparto";
+import {
+  repartir,
+  deudaDelLibro,
+  repartirEnBolivares,
+  deudaEnBolivares,
+  type FiadoParaRepartirMulti,
+} from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
@@ -150,12 +156,51 @@ export function AbonoReparto({
   // de una forma y rotularse de otra sin que nada falle.
   const [ahora] = useState(() => new Date());
 
-  const delLibro = useMemo(
-    () => fiados.filter((f) => (f.currency ?? null) === libro),
-    [fiados, libro],
+  // ═══════════════════════════════════════════════════════════════════════
+  // ¿ESTE ABONO CRUZA LIBROS?
+  //
+  // Encargo del dueño el 2026-10-23: con «Bolívares» elegido y un cliente que
+  // debe en euros Y en dólares, el billete cae sobre los fiados más críticos
+  // «sin importar moneda».
+  //
+  // CON UN SOLO LIBRO NO CAMBIA NADA, y por eso la condición lleva
+  // `libros.length > 1`: un cliente que solo debe dólares, pagando en
+  // bolívares, sigue por el camino de siempre. No es una optimización — es que
+  // «cruzar» un solo libro no significa nada, y meterlo por la rama nueva
+  // cambiaría su aritmética (la ida y vuelta de la conversión) sin que nadie
+  // lo haya pedido.
+  const cruzaLibros = enBolivares && libros.length > 1;
+
+  // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
+  // con la tasa que él mismo sella, que es la que se guarda; estas son para
+  // ENSEÑAR. Es la misma asimetría que ya tenía la pantalla del monto, escrita
+  // allí: una informa, la otra decide, y la que decide nunca viaja en la
+  // petición.
+  const aBolivares = useMemo(
+    () => (monto: number, moneda: LedgerCurrency | null) =>
+      rates && moneda ? (priceIn("VES", { amount: monto, currency: moneda }, rates).amount ?? null) : null,
+    [rates],
+  );
+  const desdeBolivares = useMemo(
+    () => (bs: number, moneda: LedgerCurrency | null) =>
+      rates && moneda ? (priceIn(moneda, { amount: bs, currency: "VES" }, rates).amount ?? null) : null,
+    [rates],
   );
 
-  const paraRepartir: FiadoParaRepartir[] = useMemo(
+  // LOS FIADOS QUE ENTRAN EN EL REPARTO: los del libro elegido, o TODOS si se
+  // cruza. Una sola lista, para que el tope, el reparto y lo que se dibuja
+  // salgan siempre de la misma — que es la trampa que `deudaEnBolivares`
+  // documenta en `reparto.ts`.
+  const delLibro = useMemo(
+    () => (cruzaLibros ? fiados : fiados.filter((f) => (f.currency ?? null) === libro)),
+    [fiados, libro, cruzaLibros],
+  );
+
+  // LLEVA `currency` SIEMPRE, aunque el camino de un solo libro no la mire:
+  // `FiadoParaRepartirMulti` extiende a `FiadoParaRepartir`, así que una sola
+  // lista sirve para las dos funciones. Dos listas que se construyen igual y
+  // se llenan en sitios distintos es como acaban diciendo cosas distintas.
+  const paraRepartir: FiadoParaRepartirMulti[] = useMemo(
     () =>
       delLibro.map((f) => ({
         movementId: f.movementId,
@@ -164,30 +209,63 @@ export function AbonoReparto({
         cuotas: f.cuotas,
         amount: f.amount,
         pendiente: f.pending,
+        currency: (f.currency ?? null) as LedgerCurrency | null,
       })),
     [delLibro],
   );
 
-  const deuda = deudaDelLibro(paraRepartir);
+  // LA DEUDA, EN LA UNIDAD EN QUE SE ESTÁ REPARTIENDO: bolívares si se cruza,
+  // la moneda del libro si no.
+  const deuda = cruzaLibros
+    ? deudaEnBolivares(paraRepartir, aBolivares)
+    : deudaDelLibro(paraRepartir);
   const montoNum = Number(monto.replace(",", ".")) || 0;
 
   // LO QUE SE TECLEA PUEDE SER BOLÍVARES Y EL LIBRO SER DÓLARES, así que el
   // reparto se hace SIEMPRE sobre la cifra del libro. Sin tasa no se puede
   // convertir y la pantalla lo dice en vez de inventar una.
   const enElLibro = useMemo(() => {
+    // CRUZANDO LIBROS LA UNIDAD YA SON BOLÍVARES: no hay un libro al que
+    // convertir, porque son dos. El reparto se hace en bolívares y cada línea
+    // sale en la moneda de su fiado.
+    if (cruzaLibros) return montoNum;
     if (!enBolivares) return montoNum;
     if (!libro || !rates) return 0;
     // `amount` es `number | null`: null cuando falta la tasa. Cae a 0, que
     // deja el botón apagado — mejor que convertir con una tasa inventada.
     return priceIn(libro, { amount: montoNum, currency: "VES" }, rates).amount ?? 0;
-  }, [enBolivares, montoNum, libro, rates]);
+  }, [cruzaLibros, enBolivares, montoNum, libro, rates]);
 
   const excede = enElLibro - deuda > 0.005;
 
-  const reparto = useMemo(
-    () => repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano, ahora }),
-    [excede, enElLibro, paraRepartir, aMano, ahora],
-  );
+  // ═══════════════════════════════════════════════════════════════════════
+  // EL REPARTO, EN UNA FORMA SOLA PARA LAS DOS ARITMÉTICAS
+  //
+  // Las dos funciones devuelven cosas distintas —una en la moneda del libro,
+  // la otra en bolívares y con la moneda de cada línea— y todo lo que hay
+  // debajo necesita lo mismo: cuánto le toca a cada fiado EN SU MONEDA, y
+  // cuánto suma el billete. Se normaliza aquí, una vez, para que ninguna
+  // condición de abajo tenga que preguntar por qué camino se vino.
+  const reparto = useMemo(() => {
+    if (cruzaLibros) {
+      const r = repartirEnBolivares({
+        montoBs: excede ? 0 : enElLibro,
+        fiados: paraRepartir,
+        aMano,
+        ahora,
+        aBolivares,
+        desdeBolivares,
+      });
+      return {
+        lineas: r.lineas as { movementId: string; asignado: number }[],
+        // EN BOLÍVARES, que es la unidad de este camino. El rótulo del botón
+        // lo formatea con `formatBs`; ver allí.
+        repartido: r.repartidoBs,
+        sinAsignar: r.sinAsignarBs,
+      };
+    }
+    return repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano, ahora });
+  }, [cruzaLibros, excede, enElLibro, paraRepartir, aMano, ahora, aBolivares, desdeBolivares]);
 
   // EL BORRADOR SE GUARDA EN CUANTO CAMBIA ALGO, no al salir: salir puede ser
   // un gesto de «atrás» del sistema, y entonces no hay dónde enganchar el
@@ -204,6 +282,25 @@ export function AbonoReparto({
   }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
 
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
+
+  // LOS BOLÍVARES DE CADA LÍNEA, TAL COMO LOS REPARTIÓ EL REPARTO.
+  //
+  // Cruzando libros NO se reconvierten desde `asignado`: esa cifra ya está
+  // redondeada al céntimo de su moneda, y volverla a bolívares da un número
+  // ligeramente distinto del que se gastó del billete. Medido en dev el
+  // 2026-10-23 con 110.000 Bs sobre dos fiados: las dos tarjetas sumaban
+  // 110.000,25 mientras el botón decía 110.000,00.
+  //
+  // No es dinero perdido —lo que se guarda es `asignado`, en la moneda del
+  // fiado— pero son dos cifras distintas del MISMO billete en la misma
+  // pantalla, que es exactamente lo que `reparto.ts` documenta al devolver
+  // `asignadoBs` ya calculado en vez de dejar que lo recalcule quien llame.
+  const asignadoBs = new Map(
+    reparto.lineas.map((l) => [
+      l.movementId,
+      (l as { asignadoBs?: number }).asignadoBs ?? null,
+    ]),
+  );
   // En el orden del reparto, no en el de la consulta: es el que explica por
   // qué al primero le tocó todo.
   const enOrden = reparto.lineas
@@ -240,8 +337,6 @@ export function AbonoReparto({
   // `libros` sale de los fiados abiertos, así que un cliente que ya pagó sus
   // euros deja de ver esa opción sola: no hay deuda que abonar ahí.
   const opcionesDeMoneda = useMemo(() => {
-    const nombre = (l: LedgerCurrency | null) =>
-      l === "EUR" ? "euros" : l === "USD" ? "dólares" : "pesos";
     const lista: { libro: LedgerCurrency | null; enBolivares: boolean; etiqueta: string }[] = [];
     for (const l of libros) {
       lista.push({
@@ -250,27 +345,35 @@ export function AbonoReparto({
         etiqueta: l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos",
       });
     }
+    // UNA SOLA ENTRADA DE BOLÍVARES, Y ESO ES UN CAMBIO DE MODELO
+    //
+    // Hasta el 2026-10-23 había una POR LIBRO —«Bolívares · a su deuda en
+    // euros», «Bolívares · a su deuda en dólares»— porque un reparto no podía
+    // mezclar monedas y había que elegir a cuál iban. El dueño lo reportó con
+    // una captura: *«está mostrando dos monedas en bolívares, está mal, debe
+    // mostrar solo Bolívares»*.
+    //
+    // Ahora no hay nada que elegir: los bolívares caen sobre los fiados más
+    // críticos, sean del libro que sean. La migración `141` lo acepta al
+    // escribir y `repartirEnBolivares` decide cuánto le toca a cada uno.
+    //
+    // `libro` SIGUE VIAJANDO en la opción y no sobra: con un solo libro este
+    // camino es el de siempre —se teclea en bolívares y se reparte en ESE
+    // libro— así que la opción tiene que decir cuál es.
     if (paisVE) {
-      for (const l of libros) {
-        lista.push({
-          libro: l,
-          enBolivares: true,
-          // LA COLETILLA SOLO CUANDO HACE FALTA. Con un libro no hay ambigüedad
-          // que deshacer, y «Bolívares · a su deuda en dólares» sobre la única
-          // deuda que existe se lee como que hay otra escondida.
-          etiqueta: libros.length > 1 ? `Bolívares · a su deuda en ${nombre(l)}` : "Bolívares",
-        });
-      }
+      lista.push({ libro: libros[0] ?? null, enBolivares: true, etiqueta: "Bolívares" });
     }
     return lista;
   }, [libros, paisVE]);
 
   // Lo que dice el botón cerrado. Con un libro basta el nombre; con dos hay
   // que repetir a cuál van los bolívares, o el botón miente por omisión.
+  // Lo que dice el botón cerrado. «Bolívares» a secas desde el 2026-10-23: ya
+  // no hay dos entradas de bolívares entre las que distinguir, así que la
+  // coletilla «· dólares» describiría una elección que ya no se hace.
   const nombreDeMoneda = (enBs: boolean, l: LedgerCurrency | null) => {
-    const propio = l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos";
-    if (!enBs) return propio;
-    return libros.length > 1 ? `Bs. · ${propio.toLowerCase()}` : "Bolívares";
+    if (enBs) return "Bolívares";
+    return l === "EUR" ? "Euros" : l === "USD" ? "Dólares" : "Pesos";
   };
 
   // ───────────────────────────────────────────────────────────────────────
@@ -290,8 +393,14 @@ export function AbonoReparto({
   // «en esta moneda» NO ES UN ADORNO: distingue la deuda en dólares de la
   // deuda en euros del mismo cliente. Lo que faltaba es que «esta moneda»
   // fuera de verdad la que el tendero tiene elegida.
-  const deudaLegible =
-    enBolivares && libro
+  const deudaLegible = cruzaLibros
+    ? // CRUZANDO LIBROS, `deuda` YA ES LA SUMA EN BOLÍVARES de los dos libros
+      // —la calcula `deudaEnBolivares`— así que aquí no hay nada que
+      // convertir. Pasarla por `equivalencia` la multiplicaría por la tasa
+      // una segunda vez, y eso no se ve: el resultado sigue siendo un número
+      // grande y plausible en bolívares.
+      formatBs(deuda)
+    : enBolivares && libro
       ? (() => {
           const bs = equivalencia(deuda, libro);
           // Sin tasa no se puede convertir, y entonces se dice en el libro:
@@ -307,6 +416,10 @@ export function AbonoReparto({
       const r = await registrarAbonoRepartido({
         clienteId,
         libro,
+        // LA BANDERA QUE ABRE EL CAMINO NUEVO EN EL SERVIDOR. Solo con
+        // bolívares y más de un libro; la acción lo vuelve a exigir por su
+        // cuenta, porque esto viaja desde el navegador.
+        cruzaLibros,
         montoTecleado: montoNum,
         monedaTecleada: enBolivares ? "VES" : ((libro ?? "COP") as PriceCurrency),
         aMano,
@@ -402,7 +515,9 @@ export function AbonoReparto({
   // iguales y acaban distintas.
   const filaDeFiado = (f: FiadoAbierto) => {
     const toca = asignado.get(f.movementId) ?? 0;
-    const bs = equivalencia(toca, f.currency);
+    // Del reparto cuando lo trae —cruzando libros— y reconvertida si no. Ver
+    // el comentario de `asignadoBs`.
+    const bs = asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency);
     return (
       <li key={f.movementId} className="rounded-[10px] border">
         {/* La tarjeta sin su propio borde: ya lo pone el `li`,
@@ -636,7 +751,18 @@ export function AbonoReparto({
 
             {/* LA EQUIVALENCIA, Y SOLO CUANDO SE PUEDE CALCULAR. Sin tasa no
                 se dibuja: inventar una conversión es peor que no darla. */}
-            {bsDelTotal != null && montoNum > 0 ? (
+            {/* CRUZANDO LIBROS NO SE DIBUJA, y eso no es un hueco: esta línea
+                dice «lo que has tecleado, en la otra moneda», y cuando el
+                billete se reparte entre dos libros no hay UNA otra moneda.
+
+                QUÉ SE VEÍA MIENTRAS ESTUVO: tecleando 110.000 bolívares
+                ponía «€110,000.00 hoy» —la misma cifra, etiquetada como
+                euros— porque la unidad del reparto ya eran bolívares y el
+                rótulo seguía asumiendo que no. Medido en dev el 2026-10-23.
+
+                Lo que esa línea daba lo da mejor la lista de abajo: cada
+                tarjeta enseña lo suyo en su moneda Y en bolívares. */}
+            {!cruzaLibros && bsDelTotal != null && montoNum > 0 ? (
               // LA BANDERA A LA IZQUIERDA DEL RÓTULO — encargo del dueño el
               // 2026-10-23. Es la misma que ya acompaña a cada cifra en las
               // tarjetas y en el historial, y por el mismo motivo que allí:
@@ -809,7 +935,15 @@ export function AbonoReparto({
             {guardando
               ? "Guardando…"
               : enElLibro > 0.005 && !excede
-                ? `Pagar y finalizar ${formatPriceAmount(reparto.repartido, (libro ?? "COP") as PriceCurrency)}`
+                ? // CRUZANDO LIBROS EL TOTAL ESTÁ EN BOLÍVARES y no en ningún
+                  // libro: es la única moneda en la que ese billete existe
+                  // entero. Enseñarlo en dólares exigiría sumar dólares y
+                  // euros, que es justo lo que no se puede hacer.
+                  `Pagar y finalizar ${
+                    cruzaLibros
+                      ? formatBs(reparto.repartido)
+                      : formatPriceAmount(reparto.repartido, (libro ?? "COP") as PriceCurrency)
+                  }`
                 : "Pagar y finalizar"}
           </Button>
         </StickyActions>
