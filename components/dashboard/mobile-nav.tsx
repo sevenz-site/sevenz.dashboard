@@ -427,6 +427,34 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // con la misma línea.
   const enPedidos = pathname.startsWith("/productos/ordenes");
 
+  // ══════════════════════════════════════════════════════════════════════
+  // EL ABONO REGISTRADO NO DIBUJA EL FLOTANTE. LA BARRA SÍ
+  //
+  // Decisión del dueño el 2026-10-22, elegida entre tres con el coste
+  // delante. Lo reportó con una captura: «Registrar» sentado encima de «Ver
+  // cuenta de…».
+  //
+  // MEDIDO a 375px antes de decidirlo: el flotante ocupa 652-708 y ese botón
+  // 628-668. Dieciséis píxeles montados, y en reposo —sin desplazar— que es
+  // donde el tendero lo encuentra.
+  //
+  // POR QUÉ NO SE ARREGLÓ CON MAQUETACIÓN, que fue lo primero que se intentó:
+  // el flotante es fijo y el contenido de esta pantalla TERMINA dentro de su
+  // banda. Un `pb` por debajo no sube contenido ya colocado, y un `mt-auto` no
+  // reparte un espacio que no sobra. Las dos cosas se probaron y se midieron
+  // el mismo día; están escritas en la propia pantalla.
+  //
+  // EL RESUMEN DE UNA VENTA SÍ LO CONSERVA, y eso NO es un descuido: ahí no
+  // hay solape —sus botones caen en 746, muy por debajo de la banda, porque su
+  // contenido es más largo— y el flotante en esa pantalla es una petición
+  // suya del 2026-10-18 hecha sobre ESA pantalla. Se quita donde estorba, no
+  // donde se pidió.
+  //
+  // `(?!nuevo)` NO SOBRA: `/abonos/nuevo` es el paso 1/2 del flujo y ya sale
+  // por `enAsistenteDeVenta`, pero encaja en `[^/]+` y dejarlo fuera aquí
+  // también hace la intención legible sin ir a buscar la otra bandera.
+  const enAbonoRegistrado = /^\/abonos\/(?!nuevo$)[^/]+$/.test(pathname);
+
   // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
   //
   // Decisión del dueño el 2026-10-20, con una captura y la barra rodeada en
@@ -557,7 +585,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
