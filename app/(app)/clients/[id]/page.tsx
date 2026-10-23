@@ -20,7 +20,7 @@ import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
-import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
+import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
@@ -293,7 +293,6 @@ export default async function ClientDetailPage({
         <CreditScoreSection
           clientId={id}
           balance={judgementBalance}
-          effectiveRate={ownerRate?.effectiveRate ?? null}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           worstChargeAt={clientSummary?.worst_unpaid_charge_at ?? null}
           worstChargePlazoDias={clientSummary?.worst_unpaid_charge_plazo_dias ?? null}
@@ -373,7 +372,6 @@ function CreditScoreSkeleton() {
 async function CreditScoreSection({
   clientId,
   balance,
-  effectiveRate,
   daysSincePayment,
   worstChargeAt,
   worstChargePlazoDias,
@@ -381,12 +379,13 @@ async function CreditScoreSection({
   isFlagged,
 }: {
   clientId: string;
+  // Ya convertido a dólares por quien llama, cuando el dueño es venezolano.
+  //
+  // ESTE COMPONENTE YA NO RECIBE LA TASA, desde `CT-124` (2026-10-23): estaba
+  // aquí para convertir los movimientos antes de repartir los abonos, y ese
+  // reparto ahora lleva un libro por moneda —igual que la base— así que cada
+  // uno se mide en su propio dinero y no hay nada que convertir.
   balance: number;
-  // Only present for a VE owner — needed to convert USD/EUR movements into
-  // one comparable unit before the score's FIFO payment-matching runs.
-  // Without this, a EUR payment could appear to close a USD charge just
-  // because it's the oldest unpaid one, which is wrong.
-  effectiveRate: EffectiveRate | null;
   daysSincePayment: number;
   // Migración `134`: el fiado MÁS VENCIDO, no el más antiguo.
   worstChargeAt: string | null;
@@ -400,7 +399,7 @@ async function CreditScoreSection({
   const [{ data: movements }, { data: lastUnflag }] = await Promise.all([
     supabase
       .from("movements")
-      .select("type, amount, currency, created_at, plazo_dias")
+      .select("id, type, amount, currency, created_at, plazo_dias, applies_to_movement_id")
       .eq("client_id", clientId)
       .is("deleted_at", null),
     supabase
@@ -413,16 +412,20 @@ async function CreditScoreSection({
       .maybeSingle(),
   ]);
 
+  // SIN CONVERTIR A DÓLARES, desde `CT-124` (2026-10-23). `buildChargeLedger`
+  // lleva ahora un libro por moneda, igual que `get_open_charges_for_client`,
+  // así que cada uno se mide en su propio dinero. La conversión que había aquí
+  // no separaba los libros —solo igualaba las cifras— y metía decimales que la
+  // base no guarda: un fiado de 3 € pagado con tres abonos de 1 € se quedaba
+  // en 0,01 y no cerraba nunca. `balance`, más arriba, sí sigue convertido:
+  // ahí la pregunta es «cuánto debe en total», que es otra.
   const movementRows = (movements ?? []) as Pick<
     Movement,
-    "type" | "amount" | "currency" | "created_at" | "plazo_dias"
+    "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
   >[];
-  const scoreMovements = effectiveRate
-    ? movementRows.map((m) => ({ ...m, amount: toCombinedUsd(m.amount, m.currency, effectiveRate) }))
-    : movementRows;
 
   const result = computeCreditScore({
-    movements: scoreMovements,
+    movements: movementRows,
     balance,
     daysSincePayment,
     worstChargeAt,

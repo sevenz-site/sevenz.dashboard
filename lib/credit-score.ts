@@ -1,4 +1,10 @@
-import { getClientStatus, CLIENT_STATUS_LABEL, type ClientStatus, type Movement } from "@/lib/types";
+import {
+  getClientStatus,
+  CLIENT_STATUS_LABEL,
+  type ClientStatus,
+  type LedgerCurrency,
+  type Movement,
+} from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -47,56 +53,156 @@ export type CreditScoreResult = {
   breakdown: CreditScoreBreakdownLine[];
 };
 
-type MovementInput = Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">;
+// `id`, `currency` and `applies_to_movement_id` joined this list on 2026-10-23
+// (`CT-124`): without them the walk below cannot reproduce what the database
+// does, and every caller that leaves one out silently gets the old answer.
+type MovementInput = Pick<
+  Movement,
+  "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
+>;
 
-type ChargeLedgerEntry = {
+export type ChargeLedgerEntry = {
+  movementId: string;
+  currency: LedgerCurrency | null;
   createdAt: string;
   plazoDias: number | null;
   remaining: number;
   closedAt: string | null;
 };
 
-// FIFO walk: oldest charge paid off first, recording every charge's close
-// date instead of only the oldest still-unpaid one.
-//
-// THIS NO LONGER MATCHES WHAT THE DATABASE DOES, and the comment that used to
-// claim it did was wrong from migration `126` onwards. Since then the ledger
-// honours a payment's DIRECTION -- the fiado the shopkeeper picked -- and this
-// walk does not; it cannot, because `MovementInput` does not even carry
-// `applies_to_movement_id`.
-//
-// What that costs is written up as `CT-124`: with two fiados on different
-// terms, the ledger can say the older one is still owed in full while this
-// walk counts it as «paid on time». The badge, the balance and the charge the
-// screen points at all come from the database and are right; only the
-// historical-punctuality factor below drifts.
-//
-// Left as it is deliberately for launch A rather than fixed in passing:
-// teaching it the direction changes the score of every client who pays, which
-// is its own piece of work with its own measurements.
-function buildChargeLedger(sortedMovements: MovementInput[]): ChargeLedgerEntry[] {
-  const charges: ChargeLedgerEntry[] = [];
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
-  for (const m of sortedMovements) {
-    if (m.type === "charge") {
-      charges.push({ createdAt: m.created_at, plazoDias: m.plazo_dias, remaining: m.amount, closedAt: null });
-      continue;
-    }
+// One ledger per currency, with NULL as a ledger of its own.
+//
+// Mirrors `currency is not distinct from cur.currency` in the database: for a
+// Colombian business NULL is a real ledger, not "no currency". The sentinel is
+// a string no `LedgerCurrency` can be: the type is "USD" | "EUR".
+const NULL_LEDGER = "SIN_MONEDA";
 
-    let remainingPayment = m.amount;
-    for (const charge of charges) {
-      if (remainingPayment <= 0) break;
-      if (charge.remaining <= 0) continue;
-      const applied = Math.min(charge.remaining, remainingPayment);
-      charge.remaining = Math.round((charge.remaining - applied) * 100) / 100;
-      remainingPayment = Math.round((remainingPayment - applied) * 100) / 100;
-      if (charge.remaining <= 0 && charge.closedAt === null) {
-        charge.closedAt = m.created_at;
+// HOW A PAYMENT IS SPREAD OVER THE CHARGES — the same rule the database runs.
+//
+// This is the second copy of one rule, and that is a known cost, taken on
+// deliberately: the first lives in `get_open_charges_for_client` (migration
+// `126`) and the punctuality factor below needs something that function does
+// not return — WHEN each charge was closed, not just which ones are still
+// open. Moving the whole walk into SQL is the other answer and a much larger
+// one; it is written down in `CT-124`.
+//
+// WHAT KEEPS THE TWO COPIES HONEST is `qa/puntaje-reparte-igual.mjs`
+// (`npm run qa:puntaje`): it compares this walk against the database's, fiado
+// by fiado, over every dev client that has a directed payment. Change anything
+// here and run it. A unit test written against what this function is MEANT to
+// do passes while the two halves drift apart -- which is exactly what happened
+// for the four days migration `126` was live.
+//
+// ===========================================================================
+// WHAT IT GOT WRONG UNTIL 2026-10-23 (`CT-124`), and both halves mattered
+//
+//   1. IT IGNORED THE DIRECTION. Migration `126` taught the database to honour
+//      the fiado the shopkeeper picked; this walk kept paying the oldest one.
+//      Measured in dev: two $50 fiados, one with 60 days left and one overdue
+//      by 23, and a $50 payment aimed at the overdue one. The database said the
+//      first was still owed in full; the score said «1 of 2 charges paid on
+//      time» -- crediting a punctual payment to a fiado nobody had paid, and
+//      forgiving the late one. The score exists to warn about who does not pay,
+//      so it was rewarding the client who dodges his oldest debt.
+//
+//   2. IT KEPT ONE QUEUE FOR ALL CURRENCIES. The database keeps one per
+//      currency, so a payment in euros could never close a charge in dollars.
+//      Here it could, just by being the oldest unpaid one. The callers worked
+//      around it by converting every amount to USD first, which does not
+//      separate the ledgers at all -- it only makes the numbers comparable --
+//      and introduced a bug of its own: converted amounts carry decimals the
+//      database never stores, and this walk rounds at every step, so a 3 EUR
+//      fiado paid with three 1 EUR payments ended at 0.01 and NEVER CLOSED.
+//      It was then counted as late. Those conversions are gone; each ledger is
+//      measured in its own currency, which is exact.
+function porLibro(movements: MovementInput[]): Map<string, MovementInput[]> {
+  const libros = new Map<string, MovementInput[]>();
+  for (const m of movements) {
+    const clave = m.currency ?? NULL_LEDGER;
+    const lista = libros.get(clave) ?? [];
+    lista.push(m);
+    libros.set(clave, lista);
+  }
+  return libros;
+}
+
+export function buildChargeLedger(movements: MovementInput[]): ChargeLedgerEntry[] {
+  const todos: ChargeLedgerEntry[] = [];
+
+  for (const [, delLibro] of porLibro(movements)) {
+    // `created_at asc, id asc`, the database's exact order. THE `id` TIEBREAK
+    // IS NOT DECORATION: every line of one split payment shares a
+    // `created_at`, because inside a transaction `now()` is the transaction's
+    // timestamp. Sorting by date alone leaves their order to however the rows
+    // arrived, so the same client could score differently on two page loads.
+    const enOrden = [...delLibro].sort((a, b) => {
+      const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (d !== 0) return d;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+
+    const charges: ChargeLedgerEntry[] = [];
+
+    for (const m of enOrden) {
+      if (m.type === "charge") {
+        charges.push({
+          movementId: m.id,
+          currency: m.currency,
+          createdAt: m.created_at,
+          plazoDias: m.plazo_dias,
+          remaining: m.amount,
+          closedAt: null,
+        });
+        continue;
+      }
+
+      // ── THE DIRECTED PAYMENT GOES FIRST ──────────────────────────────
+      //
+      // Only if the fiado it names is already in this ledger's queue, which is
+      // the database's condition too: a target in another currency, or one
+      // that is not a charge, is not there, and the payment falls through to
+      // the queue below. The excess over what that fiado owed is DROPPED and
+      // not passed on to the next -- `greatest(... , 0)` in SQL -- so an
+      // over-sized directed payment cannot settle a second fiado here either.
+      let dirigido = false;
+      if (m.applies_to_movement_id) {
+        const destino = charges.find((c) => c.movementId === m.applies_to_movement_id);
+        if (destino) {
+          destino.remaining = round2(Math.max(destino.remaining - m.amount, 0));
+          // Only the FIRST time it reaches zero. A later directed payment onto
+          // an already-settled fiado must not move its close date forward and
+          // turn a punctual payment into a late one.
+          if (destino.remaining <= 0 && destino.closedAt === null) {
+            destino.closedAt = m.created_at;
+          }
+          dirigido = true;
+        }
+      }
+      if (dirigido) continue;
+
+      // ── OTHERWISE, OLDEST FIRST ──────────────────────────────────────
+      //
+      // Every payment written before migration `126` lands here, which is most
+      // of what production holds: none of them carries a direction.
+      let resto = m.amount;
+      for (const charge of charges) {
+        if (resto <= 0) break;
+        if (charge.remaining <= 0) continue;
+        const aplicado = Math.min(charge.remaining, resto);
+        charge.remaining = round2(charge.remaining - aplicado);
+        resto = round2(resto - aplicado);
+        if (charge.remaining <= 0 && charge.closedAt === null) {
+          charge.closedAt = m.created_at;
+        }
       }
     }
+
+    todos.push(...charges);
   }
 
-  return charges;
+  return todos;
 }
 
 type ChargeEval = { onTime: boolean; ageDays: number };
@@ -152,8 +258,11 @@ export function computeCreditScore(params: {
   // Desde la migración `118`. Lo que NO cambia es la puntualidad histórica de
   // más abajo, que sigue juzgando cada fiado contra su plazo entero:
   // convertir cada cuota en un vencimiento multiplicaría los juicios de todo
-  // el mundo sin que nadie lo haya pedido. Esa parte además sigue repartiendo
-  // los abonos por orden de antigüedad y no por su dirección — ver `CT-124`.
+  // el mundo sin que nadie lo haya pedido.
+  //
+  // Lo que SÍ cambió el 2026-10-23 (`CT-124`) es cómo esa parte reparte los
+  // abonos: ya no por antigüedad, sino como la base — la dirección primero y
+  // un libro por moneda.
   worstChargeDueAt: string | null;
   isFlagged: boolean;
   mostRecentUnflaggedAt: string | null;

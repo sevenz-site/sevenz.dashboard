@@ -106,11 +106,19 @@ path in both, in production (`CT-35`).
   otro dueño, dirigir un abono a otro abono). La segunda **necesita el
   servidor corriendo**.
 
-  LO QUE ESTAS SUITES NO MIRAN, y hay que saberlo: el puntaje de crédito
-  **ignora la dirección** y sigue repartiendo por antigüedad, así que puede
-  acreditarle a un cliente un pago puntual que no hizo. Está medido y abierto
-  como `CT-124`; mientras siga abierto, una discrepancia entre el chip y la
-  puntualidad histórica del mismo cliente **no es un fallo nuevo**.
+  **Y `npm run qa:puntaje`**, que mira la otra mitad de la misma ficha: que el
+  puntaje de crédito reparta cada abono entre los fiados **igual que la base**.
+  No escribe nada salvo su propio caso de prueba, que borra.
+
+  Hace falta porque la ficha enseña dos cosas calculadas en dos sitios: el
+  saldo y el chip los hace Postgres (`get_open_charges_for_client`), y la
+  «Puntualidad histórica» la hace TypeScript (`buildChargeLedger`). Estuvieron
+  separadas desde la migración `126` hasta el 2026-10-23 —`CT-124`, ya
+  cerrado—: la base respetaba el fiado que el tendero elegía y el puntaje
+  pagaba el más viejo, así que le acreditaba pagos puntuales a fiados que nadie
+  había pagado. **Si esta suite se pone roja, las dos mitades volvieron a
+  separarse**, y eso no es cosmético: el puntaje existe para avisar de quién no
+  paga.
 - Delete a movement, then restore it. Balance recalculates correctly both
   times (`recalc_client_running_balance`).
 - Mala paga flag/unflag cycle still works and affects status correctly.

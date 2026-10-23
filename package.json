@@ -59,7 +59,8 @@
     "qa:clave-numero": "node qa/clave-del-numero.mjs",
     "qa:abono-repartido": "node qa/abono-repartido.mjs",
     "qa:reparto": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reparto.mjs",
-    "qa:saldos": "node qa/saldos-cuadran.mjs"
+    "qa:saldos": "node qa/saldos-cuadran.mjs",
+    "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
