@@ -169,6 +169,29 @@ export function AbonoReparto({
   // «cruzar» un solo libro no significa nada, y meterlo por la rama nueva
   // cambiaría su aritmética (la ida y vuelta de la conversión) sin que nadie
   // lo haya pedido.
+  //
+  // ═══════════════════════════════════════════════════════════════════════
+  // QUÉ FIADOS SALEN EN LA LISTA: LO DECIDE LA MONEDA ELEGIDA ARRIBA
+  //
+  // Confirmado por el dueño el 2026-10-23, preguntado en claro y con la
+  // alternativa encima de la mesa:
+  //
+  //   * «Bolívares» → TODOS sus fiados, de los dos libros. Unos bolívares se
+  //     convierten a cualquiera de las dos monedas.
+  //   * «Euros» → solo los de euros. Con euros no se paga una deuda en
+  //     dólares sin una tasa euro/dólar que nadie acordó — que es la parte de
+  //     la decisión del 2026-10-22 que la del 2026-10-23 NO cambió.
+  //
+  // LA ALTERNATIVA ERA «SIEMPRE TODOS», y se descartó por lo que arrastra: en
+  // cuanto el tendero le pusiera cifra a un fiado en euros Y a uno en
+  // dólares, el total de abajo dejaría de poder decirse en cualquiera de las
+  // dos —serían peras y manzanas— y pasaría a decirse en bolívares aunque él
+  // nunca hubiera tocado los bolívares.
+  //
+  // «Te pagó en euros, te enseño lo que puedes pagar con euros» es una regla
+  // que el tendero deduce sin que nadie se la explique. Esa es la razón, y es
+  // también la razón de que esté escrita aquí: desde fuera la lista filtrada
+  // se lee como fiados que faltan.
   const cruzaLibros = enBolivares && libros.length > 1;
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -910,6 +933,14 @@ export function AbonoReparto({
               // sigue siendo cierta —dos números parecidos en dos monedas, uno
               // encima del otro— pero la bandera de Venezuela aparecía tantas
               // veces por pantalla que dejaba de distinguir nada.
+              //
+              // CONFIRMADO POR ÉL EL 2026-10-23 al señalarle que el frame
+              // `1564:11586` SÍ la dibuja: *«omitamos la bandera en la
+              // equivalencia»*. O sea que esto desplaza también al frame, y
+              // por eso la regla entera está en `DESIGN-SYSTEM.md` —«La
+              // bandera va en el MONTO, no en su equivalencia»—: sin ella, el
+              // siguiente que abra ese frame la vuelve a poner con toda la
+              // razón y sin forma de saber que ya se decidió.
               //
               // TECLEANDO BOLÍVARES SÍ LA LLEVA, y no es una excepción: ahí la
               // cifra de esta línea está en la moneda del LIBRO, que es

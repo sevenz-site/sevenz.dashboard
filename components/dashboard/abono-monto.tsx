@@ -357,7 +357,11 @@ export function AbonoMonto({
               esta misma línea señalada: *«en la equivalencia en Bolívares no
               agregues la bandera, solo en el monto principal en dólares o
               euros»*. La llevaba desde esa misma mañana, cuando pidió añadir
-              la equivalencia; las dos peticiones quedan escritas. */}
+              la equivalencia; las dos peticiones quedan escritas.
+
+              CONFIRMADO al señalarle que el frame `1564:11586` sí la dibuja.
+              La regla y su frontera —qué es «monto principal» y qué es
+              «equivalencia»— están en `DESIGN-SYSTEM.md`. */}
           {llevaDivisas && rateContext ? (
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatBs(toBs(pendiente, libro, rateContext.effectiveRate))} hoy

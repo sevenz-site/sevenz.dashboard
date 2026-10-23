@@ -1972,6 +1972,40 @@ Tres reglas que salen de ahí y conviene no redescubrir:
   movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
   no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
 
+## La bandera va en el MONTO, no en su equivalencia
+
+**Una cifra lleva bandera cuando es la que el tendero va a decir en voz alta.
+La línea gris de debajo, que traduce esa misma cifra a otra moneda, no.**
+
+Decisión del dueño el 2026-10-23, confirmada al día siguiente de pedir lo
+contrario: *«en la equivalencia en Bolívares no agregues la bandera, solo en
+el monto principal en dólares o euros»*.
+
+**Las dos peticiones quedan anotadas, porque la primera no era un capricho.**
+El 2026-10-23 por la mañana pidió justamente añadirla, y la razón sigue siendo
+cierta: en una bodega venezolana la deuda en dólares y la de euros se escriben
+con cifras parecidas, una encima de la otra, y el símbolo de un carácter al
+principio es lo único que las separa. Lo que cambió es que, aplicada también a
+las equivalencias, la bandera de Venezuela salía tres o cuatro veces por
+pantalla y dejaba de distinguir nada: cuando todo lleva marca, la marca no
+marca.
+
+**Dónde está la frontera, que es lo que hay que saber para aplicarla:**
+
+- ✅ **Monto principal** — «Debe $21,50», «+€100,00», «Total en Bolívares
+  Bs. 4.431,13». Lleva bandera. La de bolívares también, cuando los bolívares
+  son LA cifra y no la traducción de otra.
+- ❌ **Equivalencia** — «Bs. 19.053,88 hoy» debajo de «$21,50», o «≈ Bs. …»
+  debajo del campo. Sin bandera: la moneda ya la dice el «Bs.» y la cifra de
+  arriba ya dijo cuál es la principal.
+
+**Y ESTO DESPLAZA A UN FRAME, que es la razón de escribirlo aquí.** El
+`1564:11586` —dentro del bloque `1564:11567` que el dueño pasó ese mismo día—
+**sí dibuja** la bandera junto a «Bs. 000.000.000 hoy». Se le señaló y
+confirmó omitirla. Sin esta nota, el siguiente que abra ese frame la va a
+volver a poner, con toda la razón del mundo y sin forma de saber que ya se
+decidió.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
