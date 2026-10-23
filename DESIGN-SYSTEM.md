@@ -2044,6 +2044,25 @@ chip inventado con cara de correcto—. Las dos pantallas pasan `null` cuando
 la consulta falla y entonces **no dibujan chip**, que es la pantalla de ayer
 y no miente.
 
+### La excepción a «no dos veces»: la tarjeta del cliente repite, y es a propósito
+
+En `/s/[token]` el rótulo no es neutro —lo pone `getBalanceLabel`— así que un
+saldo a favor sale **«A favor en Dólares»** y el chip debajo dice **«A favor»**
+otra vez. Lo mismo con «Sin deuda». Es la misma palabra dos veces en la misma
+tarjeta, o sea justo lo que la regla de arriba prohíbe.
+
+**Decisión del dueño el 2026-10-23**, preguntado con la captura delante y con
+las tres salidas sobre la mesa —quitar el chip cuando no aporte, volver el
+rótulo neutro como en la pantalla del tendero, o dejarlo—: **se deja**. Cada
+tarjeta lleva su chip sin excepción, que es lo que él pidió, y la repetición
+se asume como refuerzo.
+
+**La razón vieja queda escrita porque sigue siendo buena**: «no dos veces»
+nació de que «A favor en Dólares · −$158.50» decía la dirección dos veces **y
+se contradecía una**. Aquí no hay contradicción —las dos dicen lo mismo— y esa
+es la diferencia que hace que la excepción no rompa la regla. Si algún día se
+revierte, esto es lo que hay que volver a mirar.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
