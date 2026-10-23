@@ -14,7 +14,12 @@
 //
 // Lo que se puede comprobar con aritmética se comprueba con aritmética: es la
 // única parte de este flujo que no depende de que alguien haga clic bien.
-import { repartir, deudaDelLibro } from "../lib/abonos/reparto.ts";
+import {
+  repartir,
+  deudaDelLibro,
+  repartirEnBolivares,
+  deudaEnBolivares,
+} from "../lib/abonos/reparto.ts";
 import { vencimientoEfectivo, porGravedad } from "../lib/estado-del-plazo.ts";
 
 const filas = [];
@@ -234,6 +239,185 @@ const tres = [
     r.repartido === 0.3 && r.sinAsignar === 0 && r.lineas.every((l) => l.asignado === 0.1),
     `repartido ${r.repartido} · sinAsignar ${r.sinAsignar}`,
   );
+}
+
+// ── 6. EL REPARTO QUE CRUZA LIBROS ───────────────────────────────────────
+//
+// Migración `141` y `repartirEnBolivares`: el tendero recibe BOLÍVARES y el
+// billete cae por gravedad sobre todos los fiados, estén en dólares o en
+// euros. Decisión del dueño del 2026-10-23.
+//
+// LAS TASAS SON INVENTADAS Y REDONDAS a propósito: 100 Bs por dólar y 200 por
+// euro. Con tasas reales —38,2 y 44,7— cada fila habría que comprobarla con
+// una calculadora, y una prueba cuyo valor esperado hay que calcular aparte
+// es una prueba que se escribe mirando el resultado.
+{
+  const TASA = { USD: 100, EUR: 200 };
+  const aBolivares = (monto, moneda) => (moneda == null ? null : monto * TASA[moneda]);
+  const desdeBolivares = (bs, moneda) => (moneda == null ? null : bs / TASA[moneda]);
+
+  const conMoneda = (id, currency, opciones) => ({ ...fiado(id, opciones), currency });
+
+  // Dos libros. El de euros está MÁS VENCIDO, así que la gravedad lo pone
+  // primero aunque sea el de la otra moneda — que es el punto entero.
+  const dosLibros = [
+    conMoneda("usd", "USD", { pendiente: 10, dias: 5, plazo: 30 }),
+    conMoneda("eur", "EUR", { pendiente: 10, dias: 60, plazo: 30 }),
+  ];
+
+  {
+    // 1.000 Bs = 5 euros. El de euros debe 10 EUR = 2.000 Bs, así que se lo
+    // lleva todo y al de dólares no le llega nada.
+    const r = repartirEnBolivares({
+      montoBs: 1000,
+      fiados: dosLibros,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    const porId = new Map(r.lineas.map((l) => [l.movementId, l]));
+    check(
+      "el billete cae primero en el fiado MÁS GRAVE, aunque sea de otro libro",
+      porId.get("eur").asignado === 5 && porId.get("usd").asignado === 0,
+      `euros ${porId.get("eur").asignado} · dólares ${porId.get("usd").asignado}`,
+    );
+    check(
+      "y la línea queda en la moneda de SU fiado, no en bolívares",
+      porId.get("eur").currency === "EUR" && porId.get("eur").asignadoBs === 1000,
+      `${porId.get("eur").asignado} ${porId.get("eur").currency} · ${porId.get("eur").asignadoBs} Bs`,
+    );
+  }
+
+  {
+    // 3.000 Bs: 2.000 saldan el fiado en euros (10 EUR) y los 1.000 que
+    // sobran bajan al de dólares (10 USD). Un reparto MIXTO, que es lo que la
+    // `141` hizo posible.
+    const r = repartirEnBolivares({
+      montoBs: 3000,
+      fiados: dosLibros,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    const porId = new Map(r.lineas.map((l) => [l.movementId, l]));
+    check(
+      "lo que sobra del primero CRUZA al otro libro",
+      porId.get("eur").asignado === 10 && porId.get("usd").asignado === 10,
+      `euros ${porId.get("eur").asignado} · dólares ${porId.get("usd").asignado}`,
+    );
+    check(
+      "y el billete se gasta entero, sin sobrante",
+      r.repartidoBs === 3000 && r.sinAsignarBs === 0,
+      `repartido ${r.repartidoBs} Bs · sin asignar ${r.sinAsignarBs} Bs`,
+    );
+  }
+
+  {
+    // MÁS DINERO QUE DEUDA. Los dos fiados suman 3.000 Bs; con 5.000 sobran
+    // 2.000, y ninguna línea puede pasarse de lo suyo.
+    const r = repartirEnBolivares({
+      montoBs: 5000,
+      fiados: dosLibros,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    check(
+      "nunca le mete a un fiado más de lo que debe, y lo que sobra se dice",
+      r.lineas.every((l) => l.asignado <= 10.005) && r.sinAsignarBs === 2000,
+      `sobran ${r.sinAsignarBs} Bs · líneas ${r.lineas.map((l) => l.asignado).join(", ")}`,
+    );
+  }
+
+  {
+    // LO FIJADO A MANO VIENE EN LA MONEDA DE SU FIADO, no en bolívares: es lo
+    // que el tendero tecleó en la pantalla de ese fiado. Aquí le fija 3 USD al
+    // de dólares, que son 300 Bs, y al de euros le quedan 700 Bs = 3,5 EUR.
+    const r = repartirEnBolivares({
+      montoBs: 1000,
+      fiados: dosLibros,
+      aMano: { usd: 3 },
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    const porId = new Map(r.lineas.map((l) => [l.movementId, l]));
+    check(
+      "lo fijado a mano se respeta en SU moneda y el resto baja por gravedad",
+      porId.get("usd").asignado === 3 &&
+        porId.get("usd").aMano === true &&
+        porId.get("eur").asignado === 3.5,
+      `dólares ${porId.get("usd").asignado} · euros ${porId.get("eur").asignado}`,
+    );
+  }
+
+  {
+    // UN FIADO SIN TASA no entra, ni rompe el reparto de los demás. `null` es
+    // el libro colombiano, que aquí no debería llegar nunca — y si llega, lo
+    // que no puede hacer es colarse con una cifra inventada.
+    const conHuerfano = [
+      ...dosLibros,
+      conMoneda("sinTasa", null, { pendiente: 10, dias: 90, plazo: 30 }),
+    ];
+    const r = repartirEnBolivares({
+      montoBs: 1000,
+      fiados: conHuerfano,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    const porId = new Map(r.lineas.map((l) => [l.movementId, l]));
+    check(
+      "un fiado cuya moneda no se puede convertir recibe 0, y los demás siguen",
+      porId.get("sinTasa").asignado === 0 && porId.get("eur").asignado === 5,
+      `sin tasa ${porId.get("sinTasa").asignado} · euros ${porId.get("eur").asignado}`,
+    );
+  }
+
+  {
+    // EL TOPE QUE LA PANTALLA ENSEÑA Y EL QUE EL REPARTO USA SALEN DE LA MISMA
+    // LISTA. Si no, la pantalla aceptaría una cifra que luego no cabe.
+    const conHuerfano = [
+      ...dosLibros,
+      conMoneda("sinTasa", null, { pendiente: 10, dias: 90, plazo: 30 }),
+    ];
+    const tope = deudaEnBolivares(conHuerfano, aBolivares);
+    const r = repartirEnBolivares({
+      montoBs: tope,
+      fiados: conHuerfano,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    check(
+      "tecleando el tope exacto no sobra nada: el tope ignora lo mismo que el reparto",
+      tope === 3000 && r.sinAsignarBs === 0,
+      `tope ${tope} Bs · sin asignar ${r.sinAsignarBs} Bs`,
+    );
+  }
+
+  {
+    // UN SOLO LIBRO: tiene que dar lo mismo que `repartir`, que es la función
+    // que lleva veinte filas probadas. Si las dos se separan, esta fila lo
+    // dice antes de que lo diga un tendero.
+    const soloUsd = [
+      conMoneda("a", "USD", { pendiente: 10, dias: 60, plazo: 30 }),
+      conMoneda("b", "USD", { pendiente: 10, dias: 5, plazo: 30 }),
+    ];
+    const multi = repartirEnBolivares({
+      montoBs: 1500,
+      fiados: soloUsd,
+      ahora: AHORA,
+      aBolivares,
+      desdeBolivares,
+    });
+    const simple = repartir({ monto: 15, fiados: soloUsd, ahora: AHORA });
+    check(
+      "con un solo libro da lo mismo que `repartir`",
+      multi.lineas.map((l) => l.asignado).join() === simple.lineas.map((l) => l.asignado).join(),
+      `multi ${multi.lineas.map((l) => l.asignado).join(", ")} · simple ${simple.lineas.map((l) => l.asignado).join(", ")}`,
+    );
+  }
 }
 
 const fallos = filas.filter((f) => !f.pasa).length;
