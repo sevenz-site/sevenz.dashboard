@@ -385,11 +385,26 @@ export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
 // contador es cero por definición, y en «Sin deuda» o «A favor» no hay nada
 // que contar. `critico` lo lleva a petición del dueño: es un plazo vencido
 // agravado por los 30 días sin abonar, así que el número significa lo mismo.
-export function clientStatusLabel(status: ClientStatus, overdueCount: number | null): string {
+export function clientStatusLabel(
+  status: ClientStatus,
+  overdueCount: number | null,
+  // DESDE UNO, en las tarjetas de «Por cobrar» de cada moneda. El dueño las
+  // pidió con contador el 2026-10-23 y volvió a reclamarlo al verlas sin
+  // número: su cliente tenía UN vencido en cada libro, y con el umbral de dos
+  // —el de las listas— las dos salían sin cifra, que desde fuera se lee como
+  // que el contador no se puso.
+  //
+  // Las LISTAS conservan el umbral, y la razón sigue en pie: ahí un «(1)»
+  // le pondría número a casi todas las filas y dejaría de destacar al cliente
+  // con cinco. En una tarjeta de libro no hay filas que comparar — hay dos
+  // tarjetas— así que el número es información y no ruido.
+  desdeUno = false,
+): string {
   const base = CLIENT_STATUS_LABEL[status];
   const count = overdueCount ?? 0;
-  const showsCount =
-    (status === "plazo_vencido" || status === "sin_plazo" || status === "critico") && count > 1;
+  const llevaContador =
+    status === "plazo_vencido" || status === "sin_plazo" || status === "critico";
+  const showsCount = llevaContador && count > (desdeUno ? 0 : 1);
   return showsCount ? `${base} (${count})` : base;
 }
 

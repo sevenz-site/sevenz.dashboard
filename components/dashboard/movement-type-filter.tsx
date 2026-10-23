@@ -33,15 +33,9 @@ export type TipoFiltro = (typeof TIPOS)[number]["value"];
 export function MovementTypeFilter({
   tipo,
   setTipo,
-  conContado = false,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
-  // UNA OPCION QUE NO FILTRA NADA ES PEOR QUE NO TENERLA. La pantalla del
-  // cliente todavía no recibe las ventas de contado --su RPC no las devuelve,
-  // ver `lib/ventas-de-contado.ts`-- así que allí el chip llevaría a una lista
-  // vacía y a la frase «no tiene ... registrados», que sería falsa.
-  conContado?: boolean;
 }) {
   // ── QUÉ OPCIONES SE OFRECEN ──────────────────────────────────────────
   //
@@ -59,15 +53,18 @@ export function MovementTypeFilter({
   // Sin valor por defecto por la misma razón: un `= true` habría dejado al
   // tendero con su «Abono» de vuelta en silencio el día que alguien olvide
   // pasarlo, que es el mismo fallo con la otra cara.
-  // «Abono» YA NO SE ESCONDE cuando el cliente no tiene ninguno, por la misma
-  // instrucción del 2026-10-23 que abrió los estados: el aviso de la lista
-  // vacía lo explica mejor que una opción que aparece y desaparece.
+  // LOS CUATRO, SIEMPRE. Ni «Abono» ni «De contado» se esconden ya cuando el
+  // cliente no tiene ninguno: el aviso de la lista vacía lo explica mejor que
+  // una opción que aparece y desaparece según a quién se abra.
   //
-  // «De contado» SÍ SIGUE CONDICIONADO, y la diferencia importa: en la
-  // pantalla del cliente esas ventas no llegan nunca —su RPC no las devuelve—
-  // así que no es «hoy no hay», es «aquí no puede haber». Una opción
-  // permanentemente vacía no es un filtro, es un callejón.
-  const opciones = TIPOS.filter((t) => t.value !== "cash" || conContado);
+  // «De contado» ESTUVO CONDICIONADO por un comentario que había dejado de
+  // ser cierto: decía que la pantalla del cliente no recibe esas ventas
+  // —«su RPC no las devuelve»— y sí las recibe, por `ventas_de_contado`, que
+  // `/s/[token]` lee y le pasa a la lista. Se comprobó el 2026-10-23 leyendo
+  // las dos pantallas, y se quitó. Es el riesgo de una condición cuya razón
+  // envejece sin que nada avise: la condición seguía funcionando y protegía
+  // de algo que ya no pasaba.
+  const opciones = TIPOS;
   // THE CHIP NAMES ITS VALUE, NEVER ITS FIELD. It used to read "Tipo" while
   // unfiltered, which answers "what does this control?" -- a question the
   // owner stopped asking the moment he saw it, and that the new "Filtrar por"
@@ -217,7 +214,6 @@ export function MovementStatusFilter({
 export function FiltrosDelHistorial({
   tipo,
   setTipo,
-  conContado = false,
   estado,
   setEstado,
   moneda,
@@ -226,7 +222,6 @@ export function FiltrosDelHistorial({
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
-  conContado?: boolean;
   estado: EstadoFiltro;
   setEstado: (v: EstadoFiltro) => void;
   moneda: MonedaFiltro;
@@ -242,7 +237,7 @@ export function FiltrosDelHistorial({
     // chips se explican entre ellos y el rótulo solo gastaba ancho en la
     // única fila que tiene que caber a 375px.
     <div className="flex flex-wrap items-center gap-2">
-      <MovementTypeFilter tipo={tipo} setTipo={setTipo} conContado={conContado} />
+      <MovementTypeFilter tipo={tipo} setTipo={setTipo} />
       <MovementStatusFilter estado={estado} setEstado={setEstado} />
       {monedas.length > 1 ? (
         <MovementCurrencyFilter moneda={moneda} setMoneda={setMoneda} monedas={monedas} />

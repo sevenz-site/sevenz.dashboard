@@ -280,7 +280,6 @@ export function MovementHistoryList({
             setTipo(t);
             setPage(1);
           }}
-          conContado={ventasDeContado.length > 0}
           estado={estado}
           setEstado={(e) => {
             setEstado(e);
@@ -317,7 +316,7 @@ export function MovementHistoryList({
         {/* El mismo título que en la lista del tendero, del mismo sitio:
             las dos pantallas tienen que decir lo mismo ante los mismos
             filtros. Ver `tituloDeListaVacia`. */}
-        <EmptyState title={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
       </div>
     );
   }

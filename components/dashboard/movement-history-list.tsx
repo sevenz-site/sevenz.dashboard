@@ -395,7 +395,6 @@ export function MovementHistoryList({
         <FiltrosDelHistorial
           tipo={tipo}
           setTipo={cambiarTipo}
-          conContado={ventasDeContado.length > 0}
           estado={estado}
           setEstado={cambiarEstado}
           moneda={moneda}
@@ -439,7 +438,7 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <EmptyState title={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
       </div>
     );
   }

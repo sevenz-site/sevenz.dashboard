@@ -181,7 +181,7 @@ function BalanceRowCard({
       {libro ? (
         <div className="flex justify-end pt-1.5">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[libro.status]}>
-            {clientStatusLabel(libro.status, libro.vencidos)}
+            {clientStatusLabel(libro.status, libro.vencidos, true)}
           </Badge>
         </div>
       ) : null}
