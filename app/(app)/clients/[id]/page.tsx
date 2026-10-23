@@ -10,10 +10,10 @@ import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radi
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import {
+  estadoDeCliente,
   estadoDelFiado,
   estadoPorLibro,
   libroDe,
-  peorEstado,
   type CargoAbierto,
   type EstadoDelPlazo,
 } from "@/lib/estado-del-plazo";
@@ -36,7 +36,6 @@ import {
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
   CLIENT_STATUS_LABEL,
-  getClientStatus,
   type Client,
   type ClientFlag,
   type ClientStatus,
@@ -221,15 +220,41 @@ export default async function ClientDetailPage({
         daysSincePayment: clientSummary?.days_since_payment ?? 0,
       })
     : {};
-  const status = abiertos
-    ? peorEstado(Object.values(estadosDeLibro) as ClientStatus[])
-    : getClientStatus({
-        balance: judgementBalance,
-        daysSincePayment: clientSummary?.days_since_payment ?? 0,
-        worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
-        worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
-        worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
-      });
+  // EL CHIP DE LA SECCIÓN SALE DE DONDE SALE EL DE LA LISTA, no de los
+  // fiados abiertos de aquí arriba. Encontrado verificando `CT-137`: la ficha
+  // decía «Crítico (2)» y la fila de la misma clienta en Clientes decía
+  // «Crítico» a secas, porque el contador de la ficha sumaba los vencidos de
+  // los DOS libros mientras el chip hablaba de uno. Son la misma clienta en
+  // dos pantallas, y era justo lo que esta ficha estaba arreglando.
+  //
+  // LAS TARJETAS DE ABAJO SIGUEN CON `estadoPorLibro`, que lee los fiados
+  // abiertos: esa necesita un estado POR libro y `estadoDeCliente` devuelve
+  // solo el que gana. Las dos comparten quien juzga —`getClientStatus`— y el
+  // orden de gravedad, así que no pueden discrepar sobre cuál es el peor.
+  const { status, overdueCount } = estadoDeCliente({
+    fila: {
+      days_since_payment: clientSummary?.days_since_payment ?? 0,
+      worst_unpaid_charge_at: clientSummary?.worst_unpaid_charge_at,
+      worst_unpaid_charge_plazo_dias: clientSummary?.worst_unpaid_charge_plazo_dias,
+      worst_unpaid_charge_due_at: clientSummary?.worst_unpaid_charge_due_at,
+      overdue_charge_count: clientSummary?.overdue_charge_count,
+      worst_unpaid_charge_at_cop: clientSummary?.worst_unpaid_charge_at_cop,
+      worst_unpaid_charge_plazo_dias_cop: clientSummary?.worst_unpaid_charge_plazo_dias_cop,
+      worst_unpaid_charge_due_at_cop: clientSummary?.worst_unpaid_charge_due_at_cop,
+      overdue_charge_count_cop: clientSummary?.overdue_charge_count_cop,
+      worst_unpaid_charge_at_usd: clientSummary?.worst_unpaid_charge_at_usd,
+      worst_unpaid_charge_plazo_dias_usd: clientSummary?.worst_unpaid_charge_plazo_dias_usd,
+      worst_unpaid_charge_due_at_usd: clientSummary?.worst_unpaid_charge_due_at_usd,
+      overdue_charge_count_usd: clientSummary?.overdue_charge_count_usd,
+      worst_unpaid_charge_at_eur: clientSummary?.worst_unpaid_charge_at_eur,
+      worst_unpaid_charge_plazo_dias_eur: clientSummary?.worst_unpaid_charge_plazo_dias_eur,
+      worst_unpaid_charge_due_at_eur: clientSummary?.worst_unpaid_charge_due_at_eur,
+      overdue_charge_count_eur: clientSummary?.overdue_charge_count_eur,
+    },
+    saldos: { cop: balance, usd: balanceUsd, eur: balanceEur },
+    saldoCombinado: judgementBalance,
+    dosLibros: rateContext !== null,
+  });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -316,7 +341,7 @@ export default async function ClientDetailPage({
         <h2 className="text-xl font-semibold">Por cobrar</h2>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {clientStatusLabel(status, clientSummary?.overdue_charge_count ?? null)}
+            {clientStatusLabel(status, overdueCount)}
           </Badge>
           {clientSummary?.has_pending_review ? <Badge variant="outline">transacciones por revisar</Badge> : null}
           {client.is_flagged ? (
