@@ -577,6 +577,42 @@ Y vale igual al revés: **una acción que empieza a leer un campo nuevo tiene qu
 decir qué formularios se lo van a mandar**, porque los que no lo hagan van a
 guardar `null` sin quejarse.
 
+## Quien escribe varios movimientos de golpe, recalcula el saldo
+
+**Toda función que inserte MÁS DE UN movimiento en la misma transacción tiene
+que terminar llamando a `recalc_client_running_balance(client_id)`.** No es una
+buena práctica: sin eso, el saldo que la app enseña queda mal.
+
+`movements.running_balance` lo pone un disparador BEFORE INSERT que busca la
+fila anterior con `order by created_at desc, id desc`. Dentro de una
+transacción, `now()` es el instante de la TRANSACCIÓN — así que todas las filas
+que se inserten ahí comparten `created_at` y el desempate cae en `id`, que es
+un uuid aleatorio. **De la tercera fila en adelante, cada una encadena desde
+una hermana cualquiera** en vez de desde la que de verdad le precede.
+
+**Y no se queda en una fila rara.** `client_summary` es una VISTA que lee el
+`running_balance` de la ÚLTIMA fila viva de cada moneda: una cadena rota es un
+SALDO roto, en la ficha del cliente, en Cartera y en el enlace que el cliente
+abre. No falla nada, no se pone nada en rojo — sale un número creíble y falso.
+
+**Qué costó, el 2026-10-24**: `registrar_abono_repartido` (migración `137`)
+escribía sus N líneas sin recalcular. Un cliente con cuatro repartos sumaba
+0,00 en dólares y la app enseñaba 1,14. Lo arregla la `142`, y no llegó a
+producción de milagro: el reparto entero seguía en `dev`.
+
+**La otra mitad de la regla: también hay que recalcular si se inserta con fecha
+HACIA ATRÁS.** El disparador toma como anterior la fila más nueva, así que un
+movimiento con `created_at` viejo nace con el saldo equivocado y deja sin
+actualizar todos los que van después. `import_libreta` lo hace bien desde la
+`075` y es el ejemplo a copiar.
+
+**Cómo se comprueba, y está en el `qa-regression-checklist` como parada dura**:
+`npm run qa:saldos` en dev recorre todos los clientes y compara el saldo que la
+app enseña con la suma de sus movimientos. Para producción hay una consulta de
+solo lectura en la sección 4c del checklist. **Se mira aunque el diff no toque
+nada de esto**: el síntoma no es un error, es un número creíble, así que la
+única forma de saber que no está pasando es preguntarlo.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a

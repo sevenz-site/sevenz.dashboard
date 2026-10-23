@@ -488,6 +488,92 @@ an unrelated FAQ entry — not by any check. That is the gap this section closes
 If a surface needs an edit, say so in the report and remember it is a **second
 merge**: a dashboard release does not publish the website.
 
+## 4c. El saldo es la suma de los movimientos — en los DOS entornos
+
+**Parada dura. Si esto no cuadra, no se lanza.**
+
+`client_summary` es una VISTA que lee el `running_balance` de la ÚLTIMA fila
+viva de cada moneda. O sea que el saldo no se calcula al mirarlo: se arrastra
+fila a fila desde la primera que se escribió. Cualquier escritura que rompa esa
+cadena deja un número **plausible y falso** en la ficha del cliente, en Cartera
+y en el enlace que el cliente abre — y nada falla, nada se pone rojo, nadie se
+entera hasta que un cliente discute su cuenta.
+
+**En dev**, desde `dashboard/`:
+
+```sh
+npm run qa:saldos
+```
+
+Recorre todos los clientes, suma sus movimientos vivos y lo compara con lo que
+la app enseña. No escribe nada. Si falla, dice qué clientes y si tienen
+repartos, que es la pista de por dónde empezar.
+
+**En producción** (`rabmiyqodnvnrwiartuj`), con esta consulta de SOLO LECTURA:
+
+```sql
+with suma as (
+  select m.client_id,
+         coalesce(m.currency, 'COP') as libro,
+         sum(case when m.type = 'charge' then m.amount else -m.amount end) as real_sum
+  from public.movements m
+  where m.deleted_at is null
+  group by m.client_id, coalesce(m.currency, 'COP')
+),
+ensenado as (
+  select client_id, 'COP' as libro, balance     as valor from public.client_summary_all
+  union all
+  select client_id, 'USD',          balance_usd       from public.client_summary_all
+  union all
+  select client_id, 'EUR',          balance_eur       from public.client_summary_all
+)
+select c.name,
+       e.libro,
+       e.valor                              as ensena,
+       coalesce(s.real_sum, 0)              as suma_real,
+       round(e.valor - coalesce(s.real_sum, 0), 2) as diferencia
+from ensenado e
+join public.clients c on c.id = e.client_id
+left join suma s on s.client_id = e.client_id and s.libro = e.libro
+where abs(e.valor - coalesce(s.real_sum, 0)) > 0.005
+order by abs(e.valor - coalesce(s.real_sum, 0)) desc;
+```
+
+**Cero filas = todo cuadra.** Cualquier fila es un cliente al que la app le
+está enseñando un saldo que no es.
+
+**Si aparece alguna**, la reparación es recalcular la cadena de ese cliente.
+Eso SÍ escribe, así que va con el permiso explícito del dueño y cliente a
+cliente, nunca en bloque a ciegas:
+
+```sql
+select public.recalc_client_running_balance('<client_id>');
+```
+
+### De dónde salió esta sección, que es lo que explica su dureza
+
+Añadida el 2026-10-24. El dueño preguntó si un cambio de SIGNO —el «+» de un
+fiado pasando a «−»— podía alterar las cuentas. No podía: son dos caracteres
+literales en JSX. Pero la comprobación que lo demostraba encontró **un saldo
+real descuadrado en dev**: un cliente sumaba 0,00 en dólares y la app enseñaba
+1,14.
+
+La causa fue `registrar_abono_repartido` escribiendo varias líneas en una
+transacción sin recalcular: dentro de una transacción `now()` es el instante de
+la TRANSACCIÓN, así que todas las líneas comparten `created_at` y el desempate
+del disparador cae en un uuid aleatorio. La migración `142` lo arregla.
+
+**La lección que generaliza, y por eso esto es una parada y no un consejo:** el
+fallo no era del reparto, era de **quien escribe varios movimientos en una
+transacción y no llama a `recalc_client_running_balance`**. Hoy los escritores
+así son dos —`import_libreta`, que sí recalcula desde la `075`, y el reparto,
+que no lo hacía— y mañana habrá un tercero. Una comprobación del reparto habría
+cazado ESTE caso; esta comprobación caza la REGLA.
+
+Y se mira en producción **aunque el diff no toque nada de esto**: el síntoma no
+es un error, es un número creíble, así que la única forma de saber que no está
+pasando es preguntarlo.
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
