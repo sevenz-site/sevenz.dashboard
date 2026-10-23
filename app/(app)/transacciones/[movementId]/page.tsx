@@ -209,12 +209,28 @@ export default async function TransaccionPage({
       // POR MONEDA TAMBIÉN, por lo mismo que las líneas: en la venta mixta
       // del 2026-10-20 esto sumaba los 40 dólares de contado al «Abonó» del
       // fiado en euros y lo enseñaba como «€40,00».
+      //
+      // NORMALIZANDO LOS DOS LADOS, y eso no es cosmética. Hasta el 2026-10-22
+      // la comparación era `(p.currency ?? null) === m.currency`, que para un
+      // negocio COLOMBIANO compara `'COP'` contra `null` y no casa nunca:
+      // `sale_payments` escribe el libro colombiano como 'COP' y `movements`
+      // lo escribe NULL. Resultado medido en dev: un fiado de 16.000 con
+      // 8.000 entregados al comprar enseñaba «Abonó $0» al tendero, mientras
+      // su cliente veía los 8.000 en el enlace compartido. Dinero real
+      // contradiciéndose entre las dos pantallas del mismo fiado.
+      //
+      // `?? "COP"` es la misma normalización que usa `get_shared_balance`
+      // para las líneas de la venta (migración 139) y que `qa:currency`
+      // vigila desde el 2026-09-11. Y conserva intacto el arreglo del
+      // 2026-10-20: en Venezuela 'USD' y 'EUR' siguen sin casar entre sí.
+      //
+      // Lo vigila `qa:colombia`, filas 5 y 6.
       const { data: pagos } = await supabase
         .from("sale_payments")
         .select("amount, currency")
         .eq("sale_id", m.sale_id);
       abonoInicial = (pagos ?? [])
-        .filter((p) => (p.currency ?? null) === m.currency)
+        .filter((p) => (p.currency ?? "COP") === (m.currency ?? "COP"))
         .reduce((suma, p) => suma + Number(p.amount), 0);
     }
 
