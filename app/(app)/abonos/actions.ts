@@ -6,12 +6,23 @@ import { createClient } from "@/lib/supabase/server";
 import { enviarReciboAlCliente, enviarReciboDeGrupo } from "@/lib/whatsapp/recibo-cliente";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
+import {
+  resolveMovementRateSnapshot,
+  type MovementRateSnapshot,
+} from "@/lib/exchange-rate/resolve-movement-rate";
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
-import { repartir, deudaDelLibro, type FiadoParaRepartir } from "@/lib/abonos/reparto";
+import {
+  repartir,
+  deudaDelLibro,
+  repartirEnBolivares,
+  deudaEnBolivares,
+  type FiadoParaRepartir,
+  type FiadoParaRepartirMulti,
+} from "@/lib/abonos/reparto";
+import { formatBs } from "@/lib/exchange-rate/format";
 
 // EL ABONO DIRIGIDO — paso 3/3 del flujo, frame `1389:9381`.
 //
@@ -436,6 +447,21 @@ export type AbonoRepartidoEntrada = {
   // colombiano. Una sola moneda por reparto — decisión del dueño del
   // 2026-10-22, y la migración `137` la vuelve a exigir al escribir.
   libro: LedgerCurrency | null;
+  // ── ¿CRUZA LIBROS? ────────────────────────────────────────────────
+  //
+  // `true` cuando el tendero eligió «Bolívares» y el cliente debe en más de
+  // un libro: el billete cae sobre los fiados más críticos sin importar la
+  // moneda. Encargo del dueño del 2026-10-23, que desplaza la decisión del
+  // 2026-10-22 de que un reparto no mezcla monedas; la migración `141` lo
+  // acepta al escribir y `armarRepartoCruzandoLibros` lo arma.
+  //
+  // SOLO VALE CON `monedaTecleada === "VES"`, y se comprueba en el servidor:
+  // cruzar libros exige una moneda que convierta a los dos, y unos dólares en
+  // la mano no convierten a euros sin una tasa que nadie acordó.
+  //
+  // CON `false` O AUSENTE NADA CAMBIA: el camino de un solo libro es el mismo
+  // de siempre, línea por línea.
+  cruzaLibros?: boolean;
   // Lo que el tendero escribió, en la moneda que eligió para escribirlo.
   montoTecleado: number;
   monedaTecleada: "VES" | PriceCurrency;
@@ -456,7 +482,11 @@ export type AbonoRepartidoResultado =
       clientId: string;
       movementId: string | null;
       lineas: number;
+      // EN BOLÍVARES CUANDO `totalEnBolivares` ES `true`. Ver el comentario
+      // del `return`: un reparto que cruza libros no tiene un total en
+      // ninguno de los dos.
       total: number;
+      totalEnBolivares: boolean;
     }
   | { ok: false; error: string };
 
@@ -487,6 +517,163 @@ function mensajeDelCodigo(
     default:
       return "No pudimos guardar el abono. Vuelve a intentarlo.";
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL REPARTO QUE CRUZA LIBROS, ARMADO APARTE
+//
+// Encargo del dueño el 2026-10-23: con «Bolívares» elegido, el billete cae
+// sobre los fiados más críticos SIN IMPORTAR LA MONEDA. La migración `141` lo
+// acepta al escribir; esto es lo que decide qué se le manda.
+//
+// ===========================================================================
+// UNA TASA POR LIBRO, UN SOLO INSTANTE
+//
+// La cabecera de `registrarAbonoRepartido` dice «una tasa, un instante, para
+// todas las líneas», y esa frase se queda a medias aquí: un fiado en dólares y
+// uno en euros NO pueden compartir tasa, porque son dos conversiones distintas
+// del mismo billete.
+//
+// Lo que sí se conserva es lo que esa regla protegía: el INSTANTE. Los dos
+// sellos se resuelven en la misma petición, antes de escribir nada, así que no
+// puede pasar que la tasa del BCV cambie a mitad del guardado y tres filas del
+// mismo billete queden con tasas de dos momentos.
+//
+// ===========================================================================
+// SOLO CON BOLÍVARES, Y NO ES UNA RESTRICCIÓN ARBITRARIA
+//
+// Cruzar libros exige una moneda que convierta a los dos. Si el tendero teclea
+// DÓLARES, lo que tiene en la mano son dólares: meterlos en un fiado en euros
+// exigiría una tasa euro/dólar que nadie acordó — que es exactamente lo que la
+// decisión del 2026-10-22 rechazaba, y lo que la del 2026-10-23 no cambia.
+type ArmadoDelReparto =
+  | { error: string }
+  | {
+      lineas: Record<string, unknown>[];
+      // En bolívares, porque es la única moneda en la que este reparto tiene
+      // un total. Ver el comentario de `totalEnBolivares` en el resultado.
+      totalBs: number;
+    };
+
+async function armarRepartoCruzandoLibros(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  entrada: AbonoRepartidoEntrada,
+  abiertos: Record<string, unknown>[],
+): Promise<ArmadoDelReparto> {
+  if (entrada.monedaTecleada !== "VES") {
+    // No debería llegar: la pantalla solo ofrece cruzar libros con bolívares.
+    // Se comprueba igual porque esto es un server action y la entrada viene
+    // del navegador.
+    return { error: "Para repartir entre varias monedas, escribe el monto en bolívares." };
+  }
+
+  const fiados: FiadoParaRepartirMulti[] = abiertos.map((c) => ({
+    movementId: c.movement_id as string,
+    createdAt: c.charge_at as string,
+    plazoDias: (c.plazo_dias as number | null) ?? null,
+    cuotas: (c.cuotas as number | null) ?? null,
+    amount: Number(c.amount ?? 0),
+    pendiente: Number(c.pending ?? 0),
+    currency: ((c.currency as LedgerCurrency | null) ?? null) as LedgerCurrency | null,
+  }));
+
+  if (fiados.length === 0) return { error: "Este cliente no tiene fiados abiertos." };
+
+  // UN SELLO POR CADA LIBRO QUE DE VERDAD APARECE, y no por cada libro que
+  // existe: resolver la tasa del euro para un cliente que solo debe dólares
+  // es una lectura de más y un modo de fallo de más.
+  const libros = [...new Set(fiados.map((f) => f.currency))].filter(
+    (l): l is LedgerCurrency => l != null,
+  );
+  if (libros.length === 0) {
+    // Todos sin moneda = negocio colombiano, que no tiene bolívares. La
+    // pantalla no le ofrece esta opción; si llegara, lo honesto es decirlo.
+    return { error: "Este negocio no maneja bolívares." };
+  }
+
+  const sellos = new Map<LedgerCurrency, MovementRateSnapshot>();
+  for (const libro of libros) {
+    const r = await resolveMovementRateSnapshot(
+      supabase,
+      ownerId,
+      libro,
+      entrada.usarPrevista === true,
+    );
+    if (!r.ok) return { error: r.error };
+    sellos.set(libro, r.snapshot);
+  }
+
+  // LAS DOS CONVERSIONES SALEN DEL SELLO, no de la tasa de hoy leída otra vez.
+  // Es la misma cifra que se va a guardar en `exchange_rate_used` de cada
+  // línea, así que lo que la pantalla sumó y lo que la base guarda no pueden
+  // separarse.
+  const tasaDe = (moneda: LedgerCurrency | null): number | null => {
+    if (moneda == null) return null;
+    const t = sellos.get(moneda)?.exchangeRateUsed ?? null;
+    return t != null && t > 0 ? t : null;
+  };
+  const aBolivares = (monto: number, moneda: LedgerCurrency | null) => {
+    const t = tasaDe(moneda);
+    return t == null ? null : Math.round(monto * t * 100) / 100;
+  };
+  const desdeBolivares = (bs: number, moneda: LedgerCurrency | null) => {
+    const t = tasaDe(moneda);
+    return t == null ? null : Math.round((bs / t) * 100) / 100;
+  };
+
+  const montoBs = entrada.montoTecleado;
+  if (!(montoBs > 0)) return { error: "Escribe cuánto te pagó." };
+
+  // EL TOPE, EN BOLÍVARES Y DE LA MISMA LISTA QUE EL REPARTO. Decisión del
+  // dueño del 2026-10-21: el abono no puede exceder lo que ese cliente debe.
+  const deuda = deudaEnBolivares(fiados, aBolivares);
+  if (montoBs - deuda > HOLGURA) {
+    return { error: `Te debe ${formatBs(deuda)} en total. Escribe esa cantidad o menos.` };
+  }
+
+  const reparto = repartirEnBolivares({
+    montoBs,
+    fiados,
+    aMano: entrada.aMano ?? {},
+    aBolivares,
+    desdeBolivares,
+  });
+  const conImporte = reparto.lineas.filter((l) => l.asignado > HOLGURA);
+  if (conImporte.length === 0) return { error: "Escribe cuánto te pagó." };
+
+  // No debería pasar: el tope de arriba lo impide. Se comprueba igual porque
+  // si pasara se guardaría MENOS de lo que el tendero escribió y la pantalla
+  // le diría que todo bien.
+  if (reparto.sinAsignarBs > HOLGURA) {
+    return { error: "No pudimos repartir todo el abono. Revisa las cantidades." };
+  }
+
+  return {
+    totalBs: reparto.repartidoBs,
+    lineas: conImporte.map((l) => {
+      const sello = l.currency ? sellos.get(l.currency) : undefined;
+      return {
+        fiado_id: l.movementId,
+        amount: l.asignado,
+        rate_mode_used: sello?.rateModeUsed ?? null,
+        // LA TASA DE SU LIBRO, no una común. Es la mitad del encargo que no se
+        // ve en la pantalla y la que haría la cuenta falsa si se copiara.
+        exchange_rate_used: sello?.exchangeRateUsed ?? null,
+        official_bcv_rate_at_time: sello?.officialBcvRateAtTime ?? null,
+        entry_currency: "VES",
+        // LOS BOLÍVARES DE ESTA LÍNEA, CALCULADOS POR EL REPARTO y no
+        // repartidos luego en proporción como en el camino de un solo libro.
+        // Allí hace falta ese reparto proporcional porque las líneas salen en
+        // la moneda del libro y los bolívares hay que volver a trocearlos;
+        // aquí el reparto ya fue EN bolívares, así que cada línea trae los
+        // suyos exactos y no hay nada que trocear ni céntimo que absorber.
+        entry_amount: l.asignadoBs,
+        rate_usd_at_time: sello?.rateUsdAtTime ?? null,
+        rate_eur_at_time: sello?.rateEurAtTime ?? null,
+      };
+    }),
+  };
 }
 
 export async function registrarAbonoRepartido(
@@ -522,6 +709,34 @@ export async function registrarAbonoRepartido(
     return { ok: false, error: "No pudimos leer los fiados de este cliente." };
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // DOS CAMINOS A PARTIR DE AQUÍ, Y EL DE SIEMPRE NO SE TOCA
+  //
+  // Lo que comparten es todo lo que ya pasó —sesión, cuenta pausada,
+  // propiedad del cliente, los fiados abiertos— y todo lo que viene después:
+  // la llamada a la `141`, el permiso de WhatsApp, el recibo y la
+  // revalidación. Lo único que cambia es cómo se arman las líneas.
+  //
+  // Se separa así y no con un `if` dentro del cálculo porque las dos
+  // aritméticas son distintas de verdad: una reparte en la moneda del libro,
+  // la otra en bolívares y convierte. Mezclarlas habría metido una rama de
+  // conversión en el camino que lleva meses en producción.
+  let lineasRpc: Record<string, unknown>[];
+  let totalDelResultado: number;
+  let totalEnBolivares = false;
+
+  if (entrada.cruzaLibros) {
+    const armado = await armarRepartoCruzandoLibros(
+      supabase,
+      user.id,
+      entrada,
+      (abiertos ?? []) as Record<string, unknown>[],
+    );
+    if ("error" in armado) return { ok: false, error: armado.error };
+    lineasRpc = armado.lineas;
+    totalDelResultado = armado.totalBs;
+    totalEnBolivares = true;
+  } else {
   const delLibro: FiadoParaRepartir[] = (abiertos ?? [])
     .filter((c: Record<string, unknown>) => ((c.currency as string | null) ?? null) === entrada.libro)
     .map((c: Record<string, unknown>) => ({
@@ -606,8 +821,7 @@ export async function registrarAbonoRepartido(
     });
   }
 
-  const { data: escrito, error: errorRpc } = await supabase.rpc("registrar_abono_repartido", {
-    p_lineas: lineas.map((l, i) => ({
+    lineasRpc = lineas.map((l, i) => ({
       fiado_id: l.movementId,
       amount: l.asignado,
       rate_mode_used: sello.rateModeUsed,
@@ -617,7 +831,12 @@ export async function registrarAbonoRepartido(
       entry_amount: tecleadoEnBs != null ? bsPorLinea[i] : entryCurrency ? l.asignado : null,
       rate_usd_at_time: sello.rateUsdAtTime,
       rate_eur_at_time: sello.rateEurAtTime,
-    })),
+    }));
+    totalDelResultado = reparto.repartido;
+  }
+
+  const { data: escrito, error: errorRpc } = await supabase.rpc("registrar_abono_repartido", {
+    p_lineas: lineasRpc,
   });
 
   if (errorRpc) {
@@ -668,7 +887,13 @@ export async function registrarAbonoRepartido(
     // la primera porque es la del fiado más grave, la que el tendero vio
     // arriba del reparto.
     movementId: (r as { movement_ids?: string[] }).movement_ids?.[0] ?? null,
-    lineas: lineas.length,
-    total: reparto.repartido,
+    lineas: lineasRpc.length,
+    total: totalDelResultado,
+    // EN QUÉ MONEDA ESTÁ `total`. Un reparto que cruza libros no tiene un
+    // total en ninguno de los dos, así que el suyo va en bolívares, que es la
+    // única moneda en la que ese billete existe entero. La bandera está aquí
+    // para que nadie lo lea como dólares más adelante: hoy la pantalla solo
+    // usa `movementId`, y ese «hoy» es justamente lo que caduca.
+    totalEnBolivares,
   };
 }
