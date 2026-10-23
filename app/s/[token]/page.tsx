@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   estadoPorLibro,
   libroDe,
+  peorEstado,
   type CargoAbierto,
   type LibroJuzgado,
 } from "@/lib/estado-del-plazo";
@@ -403,6 +404,17 @@ export default async function SharedBalancePage({
       })
     : {};
 
+  // EL RESUMEN DE LA CUENTA, para el chip que va junto a «Pendiente»: el peor
+  // estado de sus libros y la suma de sus vencidos. Mismas dos reglas que la
+  // ficha del dueño — el chip de arriba habla del CLIENTE, el de cada tarjeta
+  // de su libro.
+  const librosJuzgados = Object.values(estadosDeLibro).filter(
+    (l): l is LibroJuzgado => l != null,
+  );
+  const estadoDeLaCuenta = peorEstado(librosJuzgados.map((l) => l.status));
+  const vencidosEnTotal = librosJuzgados.reduce((n, l) => n + l.vencidos, 0);
+
+
   // El mismo mensaje que manda el dueño desde su lado, para que el cliente que
   // reenvia un movimiento mande exactamente lo que habria mandado el.
   //
@@ -539,7 +551,30 @@ export default async function SharedBalancePage({
           El `mt-1` no es decoración: con el `gap-4` de esta columna produce
           los 20px sobre cada título que el documento mide. «Pendiente» gana
           esos 4px al unificarlos, que es lo único que cambia de él. */}
-        <h2 className="mt-1 text-xl font-semibold">Pendiente</h2>
+        {/* EL ESTADO DE LA CUENTA, JUNTO AL TÍTULO, igual que en la ficha del
+          dueño. Pedido por él el 2026-10-23 al auditar las dos pantallas: el
+          cliente tenía un chip por moneda pero ninguno que resumiera la
+          cuenta, que es lo primero que mira quien abre su enlace.
+
+          EL PEOR DE SUS LIBROS, y el contador suma los vencidos de TODOS —las
+          dos mitades de la regla del mismo día, aquí sin `client_summary`:
+          `estadoPorLibro` ya devuelve los vencidos de cada libro, así que
+          sumarlos da el total del cliente sin pedir nada más.
+
+          SIN CHIP SI NO HAY DATO: cuando la lectura de los fiados abiertos
+          falla —o falta la migración `144`— `estadosDeLibro` llega vacío y
+          aquí no se dibuja nada, que es la pantalla de antes. */}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold">Pendiente</h2>
+          {librosJuzgados.length > 0 ? (
+            <Badge
+              variant="outline"
+              className={CLIENT_STATUS_BADGE_CLASS[estadoDeLaCuenta]}
+            >
+              {clientStatusLabel(estadoDeLaCuenta, vencidosEnTotal)}
+            </Badge>
+          ) : null}
+        </div>
 
         {/* One card per currency, label left and figure right. The label is
           getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
