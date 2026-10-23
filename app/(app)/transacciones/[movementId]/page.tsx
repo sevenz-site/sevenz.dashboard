@@ -260,14 +260,12 @@ export default async function TransaccionPage({
       currency: p.currency as AbonoDirigido["currency"],
       // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
       tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
-      // En qué moneda se tecleó y cuánto, para el diálogo de editar: se edita
-      // en la misma moneda que se usó, no en la del libro.
+      // En qué moneda se tecleó y cuánto. El diálogo de editar que los pedía
+      // se quitó el 2026-10-23, pero siguen haciendo falta: el menú del «⋮»
+      // los usa para decir «la deuda vuelve a subir Bs. 900» en la moneda en
+      // que el tendero escribió, no en la del libro.
       entryCurrency: (p.entry_currency ?? null) as AbonoDirigido["entryCurrency"],
       entryAmount: p.entry_amount == null ? null : Number(p.entry_amount),
-      // EL TOPE DE LA EDICIÓN: lo que el fiado debe MÁS lo que este abono vale
-      // hoy. `pending` ya lo descuenta, así que sin ese `+` subir un abono de
-      // 10 a 11 en un fiado saldado se rechazaría aunque sobre sitio.
-      techo: pendienteDelFiado == null ? null : pendienteDelFiado + Number(p.amount),
       amount: Number(p.amount),
       descripcion: (p.description as string | null) ?? null,
     }));

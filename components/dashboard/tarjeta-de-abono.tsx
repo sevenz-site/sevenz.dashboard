@@ -42,7 +42,6 @@ export type AbonoDirigido = {
   entryAmount?: number | null;
   // Lo máximo que admite su fiado contando este abono, para el tope del
   // diálogo. `null` en un abono sin dirigir.
-  techo?: number | null;
 };
 
 export function TarjetaDeAbono({
@@ -108,10 +107,11 @@ export function TarjetaDeAbono({
   // de editar y eliminar el abono, está mal»*. Tiene razón, y además son
   // acciones que no son suyas.
   //
-  // QUÉ PASABA DE VERDAD SI LAS TOCABA: nada. `deleteMovement` y
-  // `editarAbonoDirigido` piden sesión y comprueban que el cliente sea del
-  // dueño que llama, así que le habrían contestado «Sesión expirada, vuelve a
-  // entrar». No era una fuga; era ofrecerle una puerta que no abre.
+  // QUÉ PASABA DE VERDAD SI LAS TOCABA: nada. `deleteMovement` pide sesión y
+  // comprueba que el cliente sea del dueño que llama, así que le habría
+  // contestado «Sesión expirada, vuelve a entrar». No era una fuga; era
+  // ofrecerle una puerta que no abre. (Hasta el 2026-10-23 el menú traía
+  // además «Editar abono» y valía lo mismo para su acción.)
   //
   // OBLIGATORIA Y SIN VALOR POR DEFECTO, igual que `conAbono` en
   // `movement-type-filter.tsx` y por lo que allí costó: un `= true` devolvería
@@ -265,7 +265,6 @@ export function TarjetaDeAbono({
         movementId={abono.movementId}
         montoTecleado={abono.entryAmount ?? abono.amount}
         monedaTecleada={abono.entryCurrency ?? abono.currency}
-        techo={abono.techo ?? null}
         monedaDelLibro={abono.currency}
       />
       )}
