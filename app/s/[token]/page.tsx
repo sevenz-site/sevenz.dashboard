@@ -17,12 +17,19 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { getBalanceLabel } from "@/lib/types";
+import {
+  getBalanceLabel,
+  CLIENT_STATUS_BADGE_CLASS,
+  CLIENT_STATUS_LABEL,
+} from "@/lib/types";
 import type {
+  ClientStatus,
   ExchangeRateMode,
   LedgerCurrency,
   MovementCurrencyCode,
 } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { estadoPorLibro, libroDe, type CargoAbierto } from "@/lib/estado-del-plazo";
 import {
   type LedgerDisplay,
 } from "@/lib/exchange-rate/movement-display";
@@ -147,10 +154,15 @@ type SharedBalance = {
 function BalanceRowCard({
   label,
   currency,
+  estado,
   children,
 }: {
   label: string;
   currency?: PriceCurrency | null;
+  // El estado de ESTE libro, debajo de la equivalencia. Mismo sitio y mismo
+  // vocabulario que en la pantalla del dueño: un cliente que le pregunta por
+  // WhatsApp tiene que estar mirando la misma palabra que él.
+  estado?: ClientStatus;
   children: React.ReactNode;
 }) {
   return (
@@ -162,6 +174,13 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
+      {estado ? (
+        <div className="flex justify-end pt-1.5">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[estado]}>
+            {CLIENT_STATUS_LABEL[estado]}
+          </Badge>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -265,6 +284,48 @@ export default async function SharedBalancePage({
     }
   })();
 
+  // EL ESTADO DE CADA LIBRO, para el chip de su tarjeta (2026-10-23).
+  //
+  // Se pide aparte y no se saca de `shared.movements` porque esa lista llega
+  // recortada a los 50 últimos: el estado saldría bien en un historial corto
+  // y mal en uno largo, y mal hacia el lado tranquilizador — la lista va del
+  // más nuevo al más viejo, así que el fiado vencido más antiguo es justo el
+  // que se cae de ella. La migración `144` lo cuenta entero.
+  //
+  // FALLA HACIA NO PINTAR CHIP, como el consentimiento de arriba: si la
+  // migración no está corrida en este entorno, el cliente ve sus tarjetas sin
+  // chip, que es la pantalla de ayer. Un chip adivinado sería peor.
+  //
+  // Y «no pintar chip» ES `null`, NO UNA LISTA VACÍA. Es la primera versión de
+  // esto y el error cabe en una línea: una lista vacía es una respuesta —«este
+  // cliente no tiene ningún fiado abierto»—, así que un saldo en deuda saldría
+  // «Sin plazo», un chip inventado con cara de correcto. Vacío y no leído no
+  // son lo mismo, y aquí la diferencia la ve el cliente.
+  const abiertos: CargoAbierto[] | null = await (async () => {
+    const { data, error: abiertosError } = await supabase.rpc("get_shared_open_charges", {
+      p_token: token,
+    });
+    if (abiertosError) {
+      console.error("[sharedBalance] open charges failed:", abiertosError.message);
+      return null;
+    }
+    return ((data ?? []) as {
+      charge_at: string;
+      currency: string | null;
+      amount: number;
+      pending: number;
+      plazo_dias: number | null;
+      cuotas: number | null;
+    }[]).map((c) => ({
+      createdAt: c.charge_at,
+      currency: c.currency,
+      amount: Number(c.amount),
+      pendiente: Number(c.pending),
+      plazoDias: c.plazo_dias,
+      cuotas: c.cuotas,
+    }));
+  })();
+
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
   const logoUrl = shared.owner_logo_path
     ? getPublicLogoUrl(shared.owner_logo_path)
@@ -294,6 +355,21 @@ export default async function SharedBalancePage({
   const ledger: LedgerDisplay | null = rateContext
     ? { rate: rateContext.effectiveRate }
     : null;
+
+  // LA MISMA FUNCIÓN QUE USA LA PANTALLA DEL TENDERO, a propósito: el chip que
+  // el cliente ve no puede contradecir al que ve el dueño sobre la misma
+  // cuenta. `daysSincePayment` va en cero porque este lado no lo recibe, así
+  // que esta pantalla nunca dice «Crítico» — y eso está escrito en la propia
+  // función, no se deduce de aquí.
+  const estadosDeLibro: Partial<Record<string, ClientStatus>> = abiertos
+    ? estadoPorLibro({
+        saldos: rateContext
+          ? { USD: shared.balance_usd, EUR: shared.balance_eur }
+          : { COP: shared.balance },
+        abiertos,
+        daysSincePayment: 0,
+      })
+    : {};
 
   // El mismo mensaje que manda el dueño desde su lado, para que el cliente que
   // reenvia un movimiento mande exactamente lo que habria mandado el.
@@ -455,6 +531,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}
               currency="USD"
+              estado={estadosDeLibro[libroDe("USD")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_usd)}
@@ -467,6 +544,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_eur)} en Euros`}
               currency="EUR"
+              estado={estadosDeLibro[libroDe("EUR")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_eur)}
@@ -478,7 +556,7 @@ export default async function SharedBalancePage({
             </BalanceRowCard>
           </>
         ) : (
-          <BalanceRowCard label={getBalanceLabel(shared.balance)}>
+          <BalanceRowCard label={getBalanceLabel(shared.balance)} estado={estadosDeLibro[libroDe(null)]}>
             <ExchangeRateBalanceDisplay
               balance={Math.abs(shared.balance)}
               currency={null}

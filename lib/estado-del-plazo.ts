@@ -1,4 +1,5 @@
 import { calcularCuotas } from "@/lib/cuotas";
+import { getClientStatus, type ClientStatus } from "@/lib/types";
 
 // LOS TRES ESTADOS DE UN PLAZO, y a qué cuota pertenece cada abono.
 //
@@ -324,4 +325,115 @@ export function porGravedad(ahora: Date) {
 
     return ea - eb;
   };
+}
+
+// ===========================================================================
+// UN ESTADO POR LIBRO, Y EL PEOR DE ELLOS
+//
+// Requested by the owner on 2026-10-23: *«cada card de total por cobrar lleva
+// su propio chip y prela el más grave sobre el estado general del cliente»*.
+//
+// WHY THE CLIENT-WIDE STATUS COULD NOT ANSWER THIS, which is the part worth
+// keeping: `client_summary` carries ONE `worst_unpaid_charge_*` across both
+// ledgers, and the page fed `getClientStatus` a balance converted to dollars.
+// So a client $158.50 in credit and €3.50 in debt came out as a single
+// «A favor» — the exact screen the owner reported, with the euro debt
+// invisible behind a green chip. The two ledgers are never summed anywhere
+// else in the app; the status was the last place that still did.
+//
+// SAME DERIVATION FOR BOTH VIEWS, on purpose. The shopkeeper's page and the
+// client's `/s/[token]` both call this with the same shape, so the chip the
+// client sees cannot disagree with the one the owner sees. Two derivations of
+// one figure is how the $89.72-vs-$68.59 row happened on 2026-10-21.
+export type CargoAbierto = FiadoOrdenable & {
+  // `null` is a Colombian business's ledger, not «no currency» — the same
+  // distinction `get_open_charges_for_client` keeps in SQL.
+  currency: string | null;
+};
+
+// The key a ledger goes under. `COP` for a Colombian business, matching the
+// `saldoPorMoneda` convention the two history lists already use.
+export function libroDe(currency: string | null): string {
+  return currency ?? "COP";
+}
+
+export function estadoPorLibro({
+  saldos,
+  abiertos,
+  daysSincePayment,
+  ahora = new Date(),
+}: {
+  // One entry per ledger the screen draws a card for, keyed by `libroDe`.
+  // A ledger absent from here gets no status, and one present with a zero
+  // balance gets «Sin deuda» — which is the answer, not a missing one.
+  saldos: Partial<Record<string, number>>;
+  abiertos: CargoAbierto[];
+  // Client-wide, from `client_summary`, and deliberately so: «has not paid
+  // anything in N days» is a fact about the client, not about one ledger.
+  // It only decides «Crítico». The client's own view has no such figure and
+  // passes zero, so that view never says «Crítico» — stated here because a
+  // reader comparing the two screens would otherwise call it a bug.
+  daysSincePayment: number;
+  ahora?: Date;
+}): Record<string, ClientStatus> {
+  const porLibro: Record<string, CargoAbierto[]> = {};
+  for (const c of abiertos) {
+    if (c.pendiente <= HOLGURA) continue;
+    const libro = libroDe(c.currency);
+    (porLibro[libro] ??= []).push(c);
+  }
+
+  const estados: Record<string, ClientStatus> = {};
+  for (const [libro, saldo] of Object.entries(saldos)) {
+    if (saldo == null) continue;
+
+    // THE WORST OPEN CHARGE OF THIS LEDGER, by the same rule
+    // `client_summary` applies to the whole client: the one whose own due
+    // date sits furthest back, or, with none overdue, the one that falls due
+    // first. That is exactly what `porGravedad` orders, so the rule lives in
+    // one comparator instead of being restated here.
+    const peor = [...(porLibro[libro] ?? [])].sort(porGravedad(ahora))[0] ?? null;
+
+    // HALF A CENT IS NOT A DEBT. `getClientStatus` compares the balance to
+    // zero exactly, so a ledger left at 0,004 by rounding would be judged as
+    // owing money while its card prints $0,00 — a chip contradicting the
+    // figure right next to it.
+    const neto = Math.abs(saldo) <= HOLGURA ? 0 : saldo;
+
+    estados[libro] = getClientStatus({
+      balance: neto,
+      daysSincePayment,
+      worstChargeAt: peor?.createdAt ?? null,
+      worstChargePlazoDias: peor?.plazoDias ?? null,
+      // The database's `worst_unpaid_charge_due_at` for one fiado, computed
+      // here because this list has what it takes: with cuotas it is the next
+      // unpaid instalment's date, without them the end of the plazo.
+      worstChargeDueAt: peor
+        ? (vencimientoEfectivo({ ...peor, ahora })?.toISOString() ?? null)
+        : null,
+    });
+  }
+  return estados;
+}
+
+// EL ORDEN DE GRAVEDAD, del peor al que no es problema. The two at the bottom
+// are not problems at all and their order only decides which of them a client
+// with nothing pending shows: «A favor» says more than «Sin deuda», so it
+// wins.
+const GRAVEDAD_DEL_ESTADO: Record<ClientStatus, number> = {
+  critico: 5,
+  plazo_vencido: 4,
+  sin_plazo: 3,
+  dentro_del_plazo: 2,
+  a_favor: 1,
+  sin_deuda: 0,
+};
+
+/** El estado general del cliente: el más grave de sus libros. */
+export function peorEstado(estados: ClientStatus[]): ClientStatus {
+  let peor: ClientStatus = "sin_deuda";
+  for (const e of estados) {
+    if (GRAVEDAD_DEL_ESTADO[e] > GRAVEDAD_DEL_ESTADO[peor]) peor = e;
+  }
+  return peor;
 }

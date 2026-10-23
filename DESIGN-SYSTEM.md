@@ -2006,6 +2006,44 @@ confirmó omitirla. Sin esta nota, el siguiente que abra ese frame la va a
 volver a poner, con toda la razón del mundo y sin forma de saber que ya se
 decidió.
 
+## Un saldo a favor no lleva menos, y cada libro responde por el suyo
+
+**Dos reglas que salieron del mismo encargo** (2026-10-23) y que se rompen
+juntas, así que van juntas.
+
+**1. La cifra va en absoluto; el signo lo dice el chip.** Un saldo a favor
+salía `-$158,50` en verde, y su equivalencia `Bs. -140.467,00`. Dos menos
+para decir lo que una palabra dice mejor. Donde el rótulo ya lo dice —«A
+favor en Dólares», en la vista del cliente— el `Math.abs` ya estaba desde el
+2026-10-21; lo que faltaba era el resto de la app, donde el rótulo es neutro
+(«Por cobrar») y el chip es quien tiene que decirlo.
+
+La regla NO es «sin negativos»: es **«no dos veces»**. Donde no haya ni
+rótulo ni chip que marquen la dirección, el menos es lo único que la dice y
+se queda.
+
+**2. Una pantalla con un libro por moneda lleva un chip POR LIBRO**, y el
+estado general del cliente es **el peor de ellos**, nunca el de la suma.
+
+Lo pidió el dueño con el caso delante: *«puede tener un saldo a favor en
+dólares pero un plazo vencido en euros»*. Antes había un solo chip calculado
+sobre los dos saldos convertidos a dólares, y una clienta con 158,50 $ a
+favor y 3,50 € en deuda salía **«A favor»**, con la deuda en euros invisible
+en toda la pantalla. Los dos libros no se suman en ningún otro sitio de la
+app; el chip era el último que todavía lo hacía.
+
+**Cómo se monta**, y es lo que impide que las dos pantallas se separen:
+`estadoPorLibro()` en `lib/estado-del-plazo.ts` es la ÚNICA derivación, y la
+llaman tanto la ficha del dueño como `/s/[token]`. El chip que ve el cliente
+no puede contradecir al que ve su bodeguero, porque sale de la misma función
+con la misma forma de datos.
+
+**Y una lectura fallida NO es una lista vacía.** Es la trampa de esto y cabe
+en una línea: sin fiados abiertos, un saldo en deuda sale «Sin plazo» —un
+chip inventado con cara de correcto—. Las dos pantallas pasan `null` cuando
+la consulta falla y entonces **no dibujan chip**, que es la pantalla de ayer
+y no miente.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

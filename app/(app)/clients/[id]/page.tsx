@@ -9,7 +9,14 @@ import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
-import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import {
+  estadoDelFiado,
+  estadoPorLibro,
+  libroDe,
+  peorEstado,
+  type CargoAbierto,
+  type EstadoDelPlazo,
+} from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -28,9 +35,11 @@ import {
   clientStatusLabel,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
+  CLIENT_STATUS_LABEL,
   getClientStatus,
   type Client,
   type ClientFlag,
+  type ClientStatus,
   type ClientSummary,
   type Movement,
   type OwnerCountry,
@@ -66,6 +75,7 @@ export default async function ClientDetailPage({
     { count: movementCount },
     monedaHabitual,
     { data: aceptaAvisos },
+    { data: cargosAbiertos, error: cargosError },
   ] =
     await Promise.all([
       supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
@@ -102,6 +112,14 @@ export default async function ClientDetailPage({
       // Va la ultima: el orden de este array es el de la linea de arriba.
       getMonedaHabitual(supabase, user!.id),
       supabase.rpc("client_accepts_whatsapp", { p_client_id: id }),
+      // LOS FIADOS ABIERTOS, para el chip de cada tarjeta de «Por cobrar».
+      //
+      // `MovementHistory`, más abajo, pide esta misma función por su cuenta, y
+      // la duplicación es deliberada: ese bloque vive dentro de un `Suspense`
+      // y se dibuja cuando puede. Hacerle esperar aquí para ahorrar una
+      // llamada le quitaría el streaming a la mitad más lenta de la pantalla,
+      // y esta llamada va en paralelo con las otras seis.
+      supabase.rpc("get_open_charges_for_client", { p_client_id: id }),
     ]);
 
   if (!client) notFound();
@@ -161,13 +179,57 @@ export default async function ClientDetailPage({
   const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
 
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
-  const status = getClientStatus({
-    balance: judgementBalance,
-    daysSincePayment: clientSummary?.days_since_payment ?? 0,
-    worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
-    worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
-    worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
-  });
+
+  // UN ESTADO POR LIBRO, Y EL GENERAL ES EL PEOR DE ELLOS (2026-10-23).
+  //
+  // Antes esto era un solo `getClientStatus` sobre `judgementBalance`, el
+  // saldo de los dos libros convertido a dólares. Con eso, una clienta con
+  // 158,50 $ a favor y 3,50 € en deuda salía «A favor» y la deuda en euros
+  // no se veía en ninguna parte. El porqué largo está en `estadoPorLibro`.
+  //
+  // `judgementBalance` SE QUEDA, y no es un resto: el puntaje de crédito es
+  // deliberadamente un juicio único y combinado por cliente, decisión que no
+  // se toca aquí. Lo que deja de ser combinado es el chip.
+  //
+  // UNA LECTURA FALLIDA NO ES UNA LISTA VACÍA. Vacía significa «este cliente
+  // no tiene ningún fiado abierto», y con eso un saldo en deuda saldría «Sin
+  // plazo»: un chip inventado con cara de correcto. Si la lectura falla, las
+  // tarjetas se quedan sin chip y el badge de la sección vuelve al juicio
+  // combinado de siempre — la pantalla de ayer, que al menos no miente.
+  const abiertos: CargoAbierto[] | null = cargosError
+    ? null
+    : ((cargosAbiertos ?? []) as {
+        charge_at: string;
+        currency: string | null;
+        amount: number;
+        pending: number;
+        plazo_dias: number | null;
+        cuotas: number | null;
+      }[]).map((c) => ({
+        createdAt: c.charge_at,
+        currency: c.currency,
+        amount: Number(c.amount),
+        pendiente: Number(c.pending),
+        plazoDias: c.plazo_dias,
+        cuotas: c.cuotas,
+      }));
+
+  const estadosDeLibro: Partial<Record<string, ClientStatus>> = abiertos
+    ? estadoPorLibro({
+        saldos: rateContext ? { USD: balanceUsd, EUR: balanceEur } : { COP: balance },
+        abiertos,
+        daysSincePayment: clientSummary?.days_since_payment ?? 0,
+      })
+    : {};
+  const status = abiertos
+    ? peorEstado(Object.values(estadosDeLibro) as ClientStatus[])
+    : getClientStatus({
+        balance: judgementBalance,
+        daysSincePayment: clientSummary?.days_since_payment ?? 0,
+        worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
+        worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
+        worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
+      });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -265,18 +327,34 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
+      {/* CADA TARJETA LLEVA SU PROPIO CHIP, y su cifra va en absoluto.
+          Encargo del dueño el 2026-10-23: un saldo a favor salía con un menos
+          delante —«-$158,50», y su equivalencia también— y el único chip de
+          la pantalla juzgaba los dos libros juntos. Ahora el signo lo dice el
+          chip, que es lo que la lista de movimientos ya hacía desde el mismo
+          día, y cada libro responde por el suyo. */}
       {rateContext ? (
         <>
-          <BalanceRowCard label="Por cobrar Dólares" currency="USD">
-            <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
+          <BalanceRowCard label="Por cobrar Dólares" currency="USD" estado={estadosDeLibro[libroDe("USD")]}>
+            <ExchangeRateBalanceDisplay
+              balance={Math.abs(balanceUsd)}
+              currency="USD"
+              ledger={ledger}
+              align="end"
+            />
           </BalanceRowCard>
-          <BalanceRowCard label="Por cobrar Euros" currency="EUR">
-            <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
+          <BalanceRowCard label="Por cobrar Euros" currency="EUR" estado={estadosDeLibro[libroDe("EUR")]}>
+            <ExchangeRateBalanceDisplay
+              balance={Math.abs(balanceEur)}
+              currency="EUR"
+              ledger={ledger}
+              align="end"
+            />
           </BalanceRowCard>
         </>
       ) : (
-        <BalanceRowCard label="Por cobrar">
-          <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
+        <BalanceRowCard label="Por cobrar" estado={estadosDeLibro[libroDe(null)]}>
+          <ExchangeRateBalanceDisplay balance={Math.abs(balance)} currency={null} ledger={null} align="end" />
         </BalanceRowCard>
       )}
 
@@ -329,11 +407,16 @@ export default async function ClientDetailPage({
 function BalanceRowCard({
   label,
   currency,
+  estado,
   children,
 }: {
   label: string;
   // null para un negocio colombiano: allí no hay dos libros que distinguir.
   currency?: PriceCurrency | null;
+  // El estado de ESTE libro. Va debajo de la equivalencia y no al lado del
+  // rótulo: ahí es donde el dueño lo pidió, y es donde ya está el chip de las
+  // filas del historial, así que las dos pantallas se leen igual.
+  estado?: ClientStatus;
   children: React.ReactNode;
 }) {
   return (
@@ -345,6 +428,13 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
+      {estado ? (
+        <div className="flex justify-end pt-1">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[estado]}>
+            {CLIENT_STATUS_LABEL[estado]}
+          </Badge>
+        </div>
+      ) : null}
     </div>
   );
 }
