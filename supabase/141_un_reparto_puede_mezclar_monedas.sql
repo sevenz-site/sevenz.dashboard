@@ -340,8 +340,17 @@ as $fn$
     select
       count(*)::int as libros,
       coalesce(sum(p.lineas), 0)::int as lineas,
+      -- `min()` SOBRE EL TOTAL Y `array_agg` SOBRE EL ID, y la diferencia no
+      -- es estilo: Postgres no tiene `min(uuid)`. Con `min(p.ultimo)` el
+      -- archivo entero fallaba al crearse —42883, medido en dev el
+      -- 2026-10-23— y como todo va en una transacción, se deshacía sin dejar
+      -- rastro.
+      --
+      -- Las dos ramas solo se evalúan cuando hay UNA fila, así que cualquier
+      -- agregado que devuelva ese único valor sirve; `(array_agg(…))[1]`
+      -- funciona para cualquier tipo y por eso es el que va en el uuid.
       case when count(*) = 1 then min(p.total) end as total_unico,
-      case when count(*) = 1 then min(p.ultimo) end as ultimo_unico,
+      case when count(*) = 1 then (array_agg(p.ultimo))[1] end as ultimo_unico,
       jsonb_agg(
         jsonb_build_object(
           'currency', p.moneda,
