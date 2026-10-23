@@ -357,6 +357,16 @@ export function libroDe(currency: string | null): string {
   return currency ?? "COP";
 }
 
+export type LibroJuzgado = {
+  status: ClientStatus;
+  // CUÁNTOS FIADOS VENCIDOS TIENE ESTE LIBRO, para el «(2)» de su chip.
+  // Encargo del dueño el 2026-10-23: *«las cards por cobrar por cada moneda
+  // debería contar los plazos vencidos por cada moneda»* —mientras que el
+  // chip del cliente entero cuenta los de todos sus libros—. Sale del mismo
+  // recorrido que el estado, así que no pueden contradecirse.
+  vencidos: number;
+};
+
 export function estadoPorLibro({
   saldos,
   abiertos,
@@ -381,7 +391,7 @@ export function estadoPorLibro({
   // survives only as the fallback for a database without `145`.
   daysSincePayment: number;
   ahora?: Date;
-}): Record<string, ClientStatus> {
+}): Record<string, LibroJuzgado> {
   const porLibro: Record<string, CargoAbierto[]> = {};
   for (const c of abiertos) {
     if (c.pendiente <= HOLGURA) continue;
@@ -389,9 +399,15 @@ export function estadoPorLibro({
     (porLibro[libro] ??= []).push(c);
   }
 
-  const estados: Record<string, ClientStatus> = {};
+  const estados: Record<string, LibroJuzgado> = {};
   for (const [libro, saldo] of Object.entries(saldos)) {
     if (saldo == null) continue;
+
+    // Los vencidos de ESTE libro, por la misma regla que usa el orden: sin
+    // fecha propia, un fiado cuenta como vencido desde el día que se tomó.
+    const vencidos = (porLibro[libro] ?? []).filter(
+      (c) => (vencimientoEfectivo({ ...c, ahora }) ?? new Date(c.createdAt)) < ahora,
+    ).length;
 
     // THE WORST OPEN CHARGE OF THIS LEDGER, by the same rule
     // `client_summary` applies to the whole client: the one whose own due
@@ -406,7 +422,9 @@ export function estadoPorLibro({
     // figure right next to it.
     const neto = Math.abs(saldo) <= HOLGURA ? 0 : saldo;
 
-    estados[libro] = getClientStatus({
+    estados[libro] = {
+      vencidos,
+      status: getClientStatus({
       balance: neto,
       daysSincePayment,
       worstChargeAt: peor?.createdAt ?? null,
@@ -417,7 +435,8 @@ export function estadoPorLibro({
       worstChargeDueAt: peor
         ? (vencimientoEfectivo({ ...peor, ahora })?.toISOString() ?? null)
         : null,
-    });
+      }),
+    };
   }
   return estados;
 }
@@ -487,8 +506,15 @@ export type EstadoDeCliente = {
   // suya. `null` es el libro de un negocio colombiano — y también lo que
   // devuelve la degradación, donde no hay un libro que señalar.
   currency: "USD" | "EUR" | null;
-  // Los vencidos DE ESE LIBRO, para el «(3)» del chip. Antes era el total del
-  // cliente, que con el chip de un solo libro contaría fiados de otro.
+  // LOS VENCIDOS DEL CLIENTE ENTERO, no los del libro que ganó.
+  //
+  // Estuvo siendo el del libro durante unas horas del 2026-10-23 y el dueño lo
+  // corrigió el mismo día, con Camilo delante: su chip decía «Plazo vencido
+  // (2)» y en el historial se le veían TRES, dos en euros y uno en dólares.
+  // *«Debería contar los totales»*. Y tiene razón por lo que el chip es: una
+  // respuesta sobre el CLIENTE —cuántos fiados suyos hay que ir a cobrar—, no
+  // sobre un libro. Los de cada libro los cuenta su propia tarjeta, con
+  // `estadoPorLibro`.
   overdueCount: number | null;
 };
 
@@ -584,7 +610,11 @@ export function estadoDeCliente({
       if (status === elegido.status && neto <= saldoDelElegido) continue;
     }
 
-    elegido = { status, currency: libro.currency, overdueCount: libro.count };
+    elegido = {
+      status,
+      currency: libro.currency,
+      overdueCount: fila.overdue_charge_count ?? null,
+    };
     saldoDelElegido = neto;
   }
 

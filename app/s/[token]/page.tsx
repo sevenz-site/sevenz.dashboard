@@ -20,16 +20,20 @@ import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-di
 import {
   getBalanceLabel,
   CLIENT_STATUS_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
+  clientStatusLabel,
 } from "@/lib/types";
 import type {
-  ClientStatus,
   ExchangeRateMode,
   LedgerCurrency,
   MovementCurrencyCode,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { estadoPorLibro, libroDe, type CargoAbierto } from "@/lib/estado-del-plazo";
+import {
+  estadoPorLibro,
+  libroDe,
+  type CargoAbierto,
+  type LibroJuzgado,
+} from "@/lib/estado-del-plazo";
 import {
   type LedgerDisplay,
 } from "@/lib/exchange-rate/movement-display";
@@ -154,15 +158,15 @@ type SharedBalance = {
 function BalanceRowCard({
   label,
   currency,
-  estado,
+  libro,
   children,
 }: {
   label: string;
   currency?: PriceCurrency | null;
-  // El estado de ESTE libro, debajo de la equivalencia. Mismo sitio y mismo
-  // vocabulario que en la pantalla del dueño: un cliente que le pregunta por
-  // WhatsApp tiene que estar mirando la misma palabra que él.
-  estado?: ClientStatus;
+  // El juicio de ESTE libro, debajo de la equivalencia. Mismo sitio, mismo
+  // vocabulario y mismo contador que en la pantalla del dueño: un cliente que
+  // le pregunta por WhatsApp tiene que estar mirando lo mismo que él.
+  libro?: LibroJuzgado;
   children: React.ReactNode;
 }) {
   return (
@@ -174,10 +178,10 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
-      {estado ? (
+      {libro ? (
         <div className="flex justify-end pt-1.5">
-          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[estado]}>
-            {CLIENT_STATUS_LABEL[estado]}
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[libro.status]}>
+            {clientStatusLabel(libro.status, libro.vencidos)}
           </Badge>
         </div>
       ) : null}
@@ -389,7 +393,7 @@ export default async function SharedBalancePage({
   // EL `?? 0` NO ES UN DESCUIDO: si la `145` no está corrida en este entorno
   // el cero vuelve, y con él la pantalla de ayer — un estado más suave, nunca
   // uno inventado.
-  const estadosDeLibro: Partial<Record<string, ClientStatus>> = abiertos
+  const estadosDeLibro: Partial<Record<string, LibroJuzgado>> = abiertos
     ? estadoPorLibro({
         saldos: rateContext
           ? { USD: shared.balance_usd, EUR: shared.balance_eur }
@@ -559,7 +563,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}
               currency="USD"
-              estado={estadosDeLibro[libroDe("USD")]}
+              libro={estadosDeLibro[libroDe("USD")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_usd)}
@@ -572,7 +576,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_eur)} en Euros`}
               currency="EUR"
-              estado={estadosDeLibro[libroDe("EUR")]}
+              libro={estadosDeLibro[libroDe("EUR")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_eur)}
@@ -584,7 +588,7 @@ export default async function SharedBalancePage({
             </BalanceRowCard>
           </>
         ) : (
-          <BalanceRowCard label={getBalanceLabel(shared.balance)} estado={estadosDeLibro[libroDe(null)]}>
+          <BalanceRowCard label={getBalanceLabel(shared.balance)} libro={estadosDeLibro[libroDe(null)]}>
             <ExchangeRateBalanceDisplay
               balance={Math.abs(shared.balance)}
               currency={null}

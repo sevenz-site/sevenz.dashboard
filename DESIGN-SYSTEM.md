@@ -2006,6 +2006,61 @@ confirmó omitirla. Sin esta nota, el siguiente que abra ese frame la va a
 volver a poner, con toda la razón del mundo y sin forma de saber que ya se
 decidió.
 
+## Dos filtros, debajo del título, y solo uno nombra su campo
+
+**2026-10-23**: *«el filtro "Filtrar por" agreguemos un filtro por estado,
+también en la vista del cliente. Bajemos los filtros para abajo del título de
+la sección "Historial de transacciones"»*.
+
+**Van debajo y no al lado.** El de tipo iba a la derecha del título, en la
+misma línea. Con dos chips ahí ya no caben a 375px sin partir el título en dos
+renglones, así que bajan los dos juntos, en una fila con un solo «Filtrar por».
+
+**Los dos salen de `FiltrosDelHistorial`**, un componente y no dos sueltos en
+cada lista: es el único sitio donde consta que el rótulo se escribe una vez y
+que el orden es tipo y luego estado. Las dos pantallas que lo montan no pueden
+ordenarlos distinto ni duplicar el rótulo.
+
+### El chip sin filtro: «Todas» en uno, «Estado» en el otro
+
+La regla del 2026-10-16 es que **el chip nombra su VALOR y no su campo** —
+«Todas» contesta «qué estoy mirando» en vez de «para qué sirve esto». Vale con
+un chip. Con dos, los dos decían «Todas» y no había forma de saber cuál era
+cuál; se vio en pantalla al montarlos.
+
+Así que el de tipo se queda como estaba y **el de estado nombra su campo
+mientras no filtre nada**. En cuanto se elige algo vuelve a nombrar su valor:
+«Plazo vencido», nunca «Estado: Plazo vencido». La regla sigue valiendo donde
+importa, que es cuando hay un filtro puesto y hay que poder leerlo de un
+vistazo.
+
+### Un filtro ofrece solo lo que esa lista tiene
+
+Igual que `conAbono` en el de tipo, y por lo mismo: ofrecer «Pagado» a un
+cliente que no tiene ninguno saldado da una lista vacía por un filtro que no
+podía dar otra cosa. Los estados disponibles se cuentan **sobre las filas del
+tipo ya elegido**, así que con «Fiado» puesto desaparece «A favor», que solo
+llevan los abonos.
+
+**Y el filtro mira el MISMO chip que se dibuja**, no una regla paralela: los
+dos salen de `pieDeLaFila`. Si el filtro juzgara por su cuenta, elegir «Plazo
+vencido» devolvería filas que no llevan ese chip — peor que no filtrar.
+
+## El contador del chip: el del cliente arriba, el de cada libro en su tarjeta
+
+**2026-10-23, corrigiendo lo que se había hecho esa misma mañana.** El chip de
+la sección «Por cobrar» cuenta los fiados vencidos **del cliente entero**; el
+de cada tarjeta de moneda, **los de ese libro**.
+
+Durante unas horas el de arriba contó solo los del libro que ganaba, y el dueño
+lo cazó con Camilo delante: decía «Plazo vencido (2)» y en el historial se le
+veían tres, dos en euros y uno en dólares. *«Debería contar los totales»*.
+
+**La razón, que es la que hay que recordar**: son dos preguntas distintas. El
+chip de arriba responde sobre el CLIENTE —cuántos fiados suyos hay que ir a
+cobrar—; el de la tarjeta, sobre ese libro. Un contador que mezcla las dos no
+contesta ninguna.
+
 ## La fila del historial lleva UN chip, y dice en qué va ese fiado
 
 **Encargo del dueño el 2026-10-23**, con la captura de un fiado «Dentro del

@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/pagination";
 import Link from "next/link";
 import {
-  MovementTypeFilter,
+  FiltrosDelHistorial,
+  type EstadoFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -127,6 +128,7 @@ export function MovementHistoryList({
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
+  const [estado, setEstado] = useState<EstadoFiltro>("todos");
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ────────────────────────
   //
@@ -155,29 +157,102 @@ export function MovementHistoryList({
   // To find the fiado an abono paid without scanning the list on every row.
   const porId = new Map(movements.map((m) => [m.id, m]));
 
+  // EL PIE DE UNA FILA, CALCULADO UNA VEZ. Igual que en la lista del tendero
+  // y por lo mismo: el filtro por estado necesita el MISMO chip que se
+  // dibuja, o devolvería filas que no lo llevan.
+  function pieDeLaFila(m: SharedMovement) {
+        const fiadoDeLaFila =
+          m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+        const pendienteDelFiado = fiadoDeLaFila?.pending ?? null;
+        // EL ABONO SUELTO TAMBIÉN LLEVA SU PIE, desde el 2026-10-23. No pagó
+        // ningún fiado, así que lo que deja debiendo es el saldo del cliente
+        // EN ESE LIBRO — la misma cifra que la tarjeta de arriba de esta
+        // misma pantalla.
+        const saldoDelLibro = saldoPorMoneda[m.currency ?? "COP"] ?? null;
+        const cifraPorCobrar =
+          pendienteDelFiado != null
+            ? pendienteDelFiado
+            : m.type === "payment"
+              ? saldoDelLibro
+              : null;
+        // Y UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS: la cifra va en
+        // absoluto y el chip dice de quién es. Es lo que la tarjeta de
+        // arriba ya hacía con su `Math.abs` y su «A favor».
+        const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
+        // EL CHIP DE LA FILA, igual que en la lista del tendero y en la
+        // misma sesión: el cliente ve el mismo estado de cada fiado que ve
+        // su bodeguero. Preguntado y decidido por el dueño el 2026-10-23.
+        // El porqué largo está en la otra lista.
+        const chipDeLaFila: EstadoDelChip | null =
+          m.type === "charge"
+            ? pendienteDelFiado == null
+              ? null
+              : (estadoDelFiado({
+                  createdAt: m.created_at,
+                  plazoDias: m.plazo_dias,
+                  cuotas: m.cuotas,
+                  amount: Number(m.amount),
+                  pendiente: pendienteDelFiado,
+                }) ?? "sin_plazo")
+            : aFavor
+              ? "a_favor"
+              : null;
+
+    return { fiadoDeLaFila, cifraPorCobrar, aFavor, chipDeLaFila };
+  }
+
+
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-  const visibles =
+  const porTipo =
     tipo === "todos"
       ? filas
       : filas.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
+  // El filtro mira el chip que se dibuja, no una regla paralela. Ver la lista
+  // del tendero.
+  const visibles =
+    estado === "todos"
+      ? porTipo
+      : porTipo.filter(
+          (f) => f.clase === "movimiento" && pieDeLaFila(f.m).chipDeLaFila === estado,
+        );
+
+  const estadosDisponibles = new Set(
+    porTipo.flatMap((f) => (f.clase === "movimiento" ? [pieDeLaFila(f.m).chipDeLaFila] : [])).filter(
+      (c): c is NonNullable<typeof c> => c != null,
+    ),
+  );
+
   // La cabecera se pinta siempre: un filtro que no deja nada no puede
   // llevarse por delante el control que sirve para deshacerlo.
   const cabecera = titulo ? (
-    <div className="flex items-center justify-between gap-3">
+    // Título arriba y filtros debajo, igual que en la lista del tendero y en
+    // la misma sesión — ver su comentario.
+    <div className="flex flex-col gap-2">
       {titulo}
-      {filas.length > 0 ? <MovementTypeFilter
+      {filas.length > 0 ? (
+        <FiltrosDelHistorial
           tipo={tipo}
-          setTipo={setTipo}
+          setTipo={(t) => {
+            setTipo(t);
+            setPage(1);
+          }}
           conAbono={filas.some((f) => f.clase === "movimiento" && f.m.type === "payment")}
           conContado={ventasDeContado.length > 0}
-        /> : null}
+          estado={estado}
+          setEstado={(e) => {
+            setEstado(e);
+            setPage(1);
+          }}
+          estadosDisponibles={estadosDisponibles}
+        />
+      ) : null}
     </div>
   ) : null;
 
@@ -272,42 +347,7 @@ export function MovementHistoryList({
           // Both now look at the same fiado: its own when the row is a fiado,
           // and the one it paid when the row is an abono. An undirected abono
           // has no fiado to report on and so gets no second tier.
-          const fiadoDeLaFila =
-            m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
-          const pendienteDelFiado = fiadoDeLaFila?.pending ?? null;
-          // EL ABONO SUELTO TAMBIÉN LLEVA SU PIE, desde el 2026-10-23. No pagó
-          // ningún fiado, así que lo que deja debiendo es el saldo del cliente
-          // EN ESE LIBRO — la misma cifra que la tarjeta de arriba de esta
-          // misma pantalla.
-          const saldoDelLibro = saldoPorMoneda[m.currency ?? "COP"] ?? null;
-          const cifraPorCobrar =
-            pendienteDelFiado != null
-              ? pendienteDelFiado
-              : m.type === "payment"
-                ? saldoDelLibro
-                : null;
-          // Y UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS: la cifra va en
-          // absoluto y el chip dice de quién es. Es lo que la tarjeta de
-          // arriba ya hacía con su `Math.abs` y su «A favor».
-          const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
-          // EL CHIP DE LA FILA, igual que en la lista del tendero y en la
-          // misma sesión: el cliente ve el mismo estado de cada fiado que ve
-          // su bodeguero. Preguntado y decidido por el dueño el 2026-10-23.
-          // El porqué largo está en la otra lista.
-          const chipDeLaFila: EstadoDelChip | null =
-            m.type === "charge"
-              ? pendienteDelFiado == null
-                ? null
-                : (estadoDelFiado({
-                    createdAt: m.created_at,
-                    plazoDias: m.plazo_dias,
-                    cuotas: m.cuotas,
-                    amount: Number(m.amount),
-                    pendiente: pendienteDelFiado,
-                  }) ?? "sin_plazo")
-              : aFavor
-                ? "a_favor"
-                : null;
+          const { fiadoDeLaFila, cifraPorCobrar, chipDeLaFila } = pieDeLaFila(m);
           const porCobrar =
             cifraPorCobrar == null
               ? null

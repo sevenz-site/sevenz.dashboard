@@ -14,6 +14,7 @@ import {
   estadoPorLibro,
   libroDe,
   type CargoAbierto,
+  type LibroJuzgado,
 } from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -33,7 +34,6 @@ import {
   clientStatusLabel,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
-  CLIENT_STATUS_LABEL,
   type Client,
   type ClientFlag,
   type ClientStatus,
@@ -211,7 +211,7 @@ export default async function ClientDetailPage({
         cuotas: c.cuotas,
       }));
 
-  const estadosDeLibro: Partial<Record<string, ClientStatus>> = abiertos
+  const estadosDeLibro: Partial<Record<string, LibroJuzgado>> = abiertos
     ? estadoPorLibro({
         saldos: rateContext ? { USD: balanceUsd, EUR: balanceEur } : { COP: balance },
         abiertos,
@@ -358,7 +358,7 @@ export default async function ClientDetailPage({
           día, y cada libro responde por el suyo. */}
       {rateContext ? (
         <>
-          <BalanceRowCard label="Por cobrar Dólares" currency="USD" estado={estadosDeLibro[libroDe("USD")]}>
+          <BalanceRowCard label="Por cobrar Dólares" currency="USD" libro={estadosDeLibro[libroDe("USD")]}>
             <ExchangeRateBalanceDisplay
               balance={Math.abs(balanceUsd)}
               currency="USD"
@@ -366,7 +366,7 @@ export default async function ClientDetailPage({
               align="end"
             />
           </BalanceRowCard>
-          <BalanceRowCard label="Por cobrar Euros" currency="EUR" estado={estadosDeLibro[libroDe("EUR")]}>
+          <BalanceRowCard label="Por cobrar Euros" currency="EUR" libro={estadosDeLibro[libroDe("EUR")]}>
             <ExchangeRateBalanceDisplay
               balance={Math.abs(balanceEur)}
               currency="EUR"
@@ -376,7 +376,7 @@ export default async function ClientDetailPage({
           </BalanceRowCard>
         </>
       ) : (
-        <BalanceRowCard label="Por cobrar" estado={estadosDeLibro[libroDe(null)]}>
+        <BalanceRowCard label="Por cobrar" libro={estadosDeLibro[libroDe(null)]}>
           <ExchangeRateBalanceDisplay balance={Math.abs(balance)} currency={null} ledger={null} align="end" />
         </BalanceRowCard>
       )}
@@ -434,16 +434,23 @@ export default async function ClientDetailPage({
 function BalanceRowCard({
   label,
   currency,
-  estado,
+  libro,
   children,
 }: {
   label: string;
   // null para un negocio colombiano: allí no hay dos libros que distinguir.
   currency?: PriceCurrency | null;
-  // El estado de ESTE libro. Va debajo de la equivalencia y no al lado del
-  // rótulo: ahí es donde el dueño lo pidió, y es donde ya está el chip de las
-  // filas del historial, así que las dos pantallas se leen igual.
-  estado?: ClientStatus;
+  // EL JUICIO DE ESTE LIBRO: su estado y cuántos fiados suyos están vencidos.
+  //
+  // El chip va debajo de la equivalencia y no al lado del rótulo: ahí es donde
+  // el dueño lo pidió, y es donde ya está el chip de las filas del historial,
+  // así que las dos pantallas se leen igual.
+  //
+  // Y LLEVA SU PROPIO CONTADOR, por encargo del dueño el 2026-10-23: *«las
+  // cards por cobrar por cada moneda debería contar los plazos vencidos por
+  // cada moneda»*. El chip de arriba, el del cliente entero, cuenta los de
+  // todos los libros — son dos preguntas distintas y cada una tiene su sitio.
+  libro?: LibroJuzgado;
   children: React.ReactNode;
 }) {
   return (
@@ -455,10 +462,10 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
-      {estado ? (
+      {libro ? (
         <div className="flex justify-end pt-1">
-          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[estado]}>
-            {CLIENT_STATUS_LABEL[estado]}
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[libro.status]}>
+            {clientStatusLabel(libro.status, libro.vencidos)}
           </Badge>
         </div>
       ) : null}
