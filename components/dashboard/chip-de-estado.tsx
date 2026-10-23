@@ -1,5 +1,5 @@
 import { ETIQUETA_DEL_ESTADO, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
-import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
+import { CLIENT_STATUS_BADGE_CLASS, CLIENT_STATUS_LABEL } from "@/lib/types";
 
 // EL CHIP DE «Dentro del plazo» / «Plazo vencido» / «Pagado».
 //
@@ -49,12 +49,32 @@ const ESTILO: Record<EstadoDelPlazo, string> = {
 // Quien lo monte tiene que darle sitio. Es la regla al revés de lo normal --
 // aquí NO cede el chip, cede la columna de al lado-- y es deliberada: el
 // estado es la respuesta de esa fila.
-export function ChipDeEstado({ estado }: { estado: EstadoDelPlazo }) {
+// ── «A FAVOR» ENTRA AQUÍ, Y NO ES UN ESTADO DEL PLAZO ──────────────────
+//
+// Lo pidió el dueño el 2026-10-23, viendo un «Total por cobrar» en verde con
+// un signo menos: *«si el motivo es porque el cliente tiene saldo a favor
+// entonces pongámosle el chip "A favor"»*.
+//
+// NO SE AÑADE A `EstadoDelPlazo`, que describe cómo va un FIADO respecto de su
+// plazo. Que un cliente tenga saldo a favor no es eso: es un estado de su
+// CUENTA, y ya vive en `ClientStatus` con su etiqueta y su color.
+//
+// Y ENTRA EN ESTE COMPONENTE EN VEZ DE EN UNO NUEVO porque la pastilla —su
+// forma, su borde, su `whitespace-nowrap`— ya está resuelta aquí, con las
+// razones escritas arriba. Un segundo chip con las clases copiadas es
+// exactamente cómo nació la discrepancia de colores que esta cabecera cuenta.
+type EstadoDelChip = EstadoDelPlazo | "a_favor";
+
+const ESTILO_A_FAVOR = CLIENT_STATUS_BADGE_CLASS.a_favor;
+
+export function ChipDeEstado({ estado }: { estado: EstadoDelChip }) {
+  const clase = estado === "a_favor" ? ESTILO_A_FAVOR : ESTILO[estado];
+  const texto = estado === "a_favor" ? CLIENT_STATUS_LABEL.a_favor : ETIQUETA_DEL_ESTADO[estado];
   return (
     <span
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${ESTILO[estado]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${clase}`}
     >
-      {ETIQUETA_DEL_ESTADO[estado]}
+      {texto}
     </span>
   );
 }

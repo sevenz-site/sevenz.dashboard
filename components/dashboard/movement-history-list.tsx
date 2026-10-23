@@ -405,10 +405,18 @@ export function MovementHistoryList({
               : m.type === "payment"
                 ? saldoDelLibro
                 : null;
+          // UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS. Lo mismo que en la
+          // ficha de la transacción, y por el mismo motivo: «Por cobrar −178»
+          // bajo ese rótulo se lee como un error de la app. La cifra va en
+          // absoluto y el chip de abajo dice de quién es.
+          //
+          // SOLO PUEDE PASAR EN LA FILA SIN FIADO: el pendiente de un fiado
+          // nunca baja de cero. Lo trae el saldo del libro, que sí.
+          const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
           const porCobrar =
             cifraPorCobrar == null
               ? null
-              : formatLedgerAmount(cifraPorCobrar, m.currency, ledger);
+              : formatLedgerAmount(Math.abs(cifraPorCobrar), m.currency, ledger);
 
           // ── EL IMPORTE DE ARRIBA ES EL DE LA TRANSACCIÓN ──────────────
           //
@@ -593,6 +601,7 @@ export function MovementHistoryList({
                         {porCobrar.secondary} hoy
                       </span>
                     ) : null}
+                    {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
                   </span>
                 </div>
               ) : null}

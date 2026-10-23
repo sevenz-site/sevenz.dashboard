@@ -555,6 +555,11 @@ export default async function SharedBalancePage({
             ventasDeContado={ventasDeContado}
             token={token}
             ledger={ledger}
+            saldoPorMoneda={{
+              COP: shared.balance,
+              USD: shared.balance_usd,
+              EUR: shared.balance_eur,
+            }}
           />
           {/* EL PIE CUENTA LAS DOS COSAS desde la `131`. Antes contaba solo
               movimientos, y con las ventas de contado en la lista decía

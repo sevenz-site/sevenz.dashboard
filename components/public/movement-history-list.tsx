@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import {
   Pagination,
   PaginationContent,
@@ -16,6 +15,7 @@ import {
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -95,6 +95,7 @@ export function MovementHistoryList({
   token,
   ledger = null,
   titulo = null,
+  saldoPorMoneda = {},
 }: {
   movements: SharedMovement[];
   // LAS VENTAS PAGADAS ENTERAS, que llegan aparte por lo dicho en
@@ -110,6 +111,18 @@ export function MovementHistoryList({
   ledger?: LedgerDisplay | null;
   // El rótulo de la sección, para poder poner el filtro a su derecha.
   titulo?: React.ReactNode;
+  // ── LO QUE DEBE EN CADA LIBRO, PARA LAS FILAS SIN FIADO ──────────────
+  //
+  // Clave: `"USD"`, `"EUR"` o `"COP"`. Hace falta solo para el abono suelto,
+  // que no tiene un fiado cuyo pendiente enseñar.
+  //
+  // ESTA LISTA LA VE EL CLIENTE, y por eso llega aquí el mismo día que a la
+  // del dueño: el 2026-10-23 el dueño amplió la regla a las dos —*«toda
+  // transacción en el historial de transacciones tanto en el dueño como en el
+  // cliente debe tener ese pie "Por cobrar"»*—. Una fila sin pie en la
+  // pantalla que el cliente abre para mirar su cuenta es justo donde más se
+  // nota que falta algo.
+  saldoPorMoneda?: Partial<Record<string, number>>;
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
@@ -261,10 +274,25 @@ export function MovementHistoryList({
           const fiadoDeLaFila =
             m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
           const pendienteDelFiado = fiadoDeLaFila?.pending ?? null;
+          // EL ABONO SUELTO TAMBIÉN LLEVA SU PIE, desde el 2026-10-23. No pagó
+          // ningún fiado, así que lo que deja debiendo es el saldo del cliente
+          // EN ESE LIBRO — la misma cifra que la tarjeta de arriba de esta
+          // misma pantalla.
+          const saldoDelLibro = saldoPorMoneda[m.currency ?? "COP"] ?? null;
+          const cifraPorCobrar =
+            pendienteDelFiado != null
+              ? pendienteDelFiado
+              : m.type === "payment"
+                ? saldoDelLibro
+                : null;
+          // Y UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS: la cifra va en
+          // absoluto y el chip dice de quién es. Es lo que la tarjeta de
+          // arriba ya hacía con su `Math.abs` y su «A favor».
+          const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
           const porCobrar =
-            pendienteDelFiado == null
+            cifraPorCobrar == null
               ? null
-              : formatLedgerAmount(pendienteDelFiado, m.currency, ledger);
+              : formatLedgerAmount(Math.abs(cifraPorCobrar), m.currency, ledger);
 
           // THE TOP FIGURE IS THE TRANSACTION'S OWN, and its grey line says
           // when that figure is from: an abono typed in bolívares shows THOSE
@@ -410,6 +438,7 @@ export function MovementHistoryList({
                         {porCobrar.secondary} hoy
                       </span>
                     ) : null}
+                    {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
                   </span>
                 </div>
               ) : null}

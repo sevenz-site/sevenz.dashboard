@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { ArrowUpRight, EyeOff, ImageOff, Percent } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
@@ -157,7 +158,23 @@ export function DetalleDeTransaccion({
   abonoResaltado = null,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
-  const balance = formatLedgerAmount(runningBalance, currency, ledger);
+// ── UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS ────────────────────
+  //
+  // Reportado por el dueño el 2026-10-23, con la captura de un abono antiguo:
+  // «Total por cobrar −$178.00» en verde, y debajo «Bs. −157.748,42». Dos
+  // signos menos bajo un rótulo que dice «por cobrar».
+  //
+  // EL NÚMERO ERA CORRECTO Y LA PANTALLA MENTÍA IGUAL: el cliente tiene 178
+  // dólares A FAVOR —pagó de más— y eso en la base es un saldo negativo. Pero
+  // «por cobrar −178» no se lee como «te sobran 178»; se lee como un error de
+  // la app, o peor, como una deuda con el signo al revés.
+  //
+  // LA CIFRA VA EN ABSOLUTO Y LO QUE EXPLICA EL SIGNO ES EL CHIP, que es lo
+  // que el dueño pidió: *«pongámosle el chip "A favor" debajo de la
+  // equivalencia»*. El verde se queda, y ahora dice lo mismo que el chip en
+  // vez de contradecir al rótulo.
+  const aFavor = runningBalance < 0;
+  const balance = formatLedgerAmount(Math.abs(runningBalance), currency, ledger);
 
   // En qué moneda se escribió este movimiento. Solo tiene sentido en un negocio
   // que lleva divisas; en uno colombiano hay una sola moneda y decirlo sería
@@ -575,6 +592,15 @@ export function DetalleDeTransaccion({
               {balance.secondary ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {balance.secondary} hoy
+                </span>
+              ) : null}
+              {/* DEBAJO DE LA EQUIVALENCIA, donde lo pidió el dueño: la cifra
+                  dice cuánto y el chip dice de quién es. Sin él, un «por
+                  cobrar» en verde sobre una cuenta que no debe nada es un
+                  dato sin explicación. */}
+              {aFavor ? (
+                <span className="pt-0.5">
+                  <ChipDeEstado estado="a_favor" />
                 </span>
               ) : null}
             </span>

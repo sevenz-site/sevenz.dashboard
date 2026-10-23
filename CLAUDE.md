@@ -613,6 +613,61 @@ solo lectura en la sección 4c del checklist. **Se mira aunque el diff no toque
 nada de esto**: el síntoma no es un error, es un número creíble, así que la
 única forma de saber que no está pasando es preguntarlo.
 
+## Toda fila del historial lleva su pie «Por cobrar», menos «De contado»
+
+**En los DOS historiales: el del dueño y el del cliente.** Pedido por el dueño
+el 2026-10-23, y ampliado por él mismo esa misma tarde: *«toda transacción en
+el historial de transacciones tanto en el dueño como en el cliente debe tener
+ese pie "Por cobrar" a excepción de transacciones "De contado"»*.
+
+Son dos componentes distintos y es justo lo que hace que esto se rompa:
+`components/dashboard/movement-history-list.tsx` y
+`components/public/movement-history-list.tsx`. **Lo que se toque en uno se
+toca en el otro en la misma sesión**, o la pantalla que el cliente abre deja
+de parecerse a la que el tendero tiene delante — que es lo único que este
+producto promete.
+
+**«De contado» es la única excepción**, y no por capricho: una venta pagada
+entera no deja nada debiendo, así que su pie diría siempre cero.
+
+### Qué cifra va ahí, que no es obvia y ya costó un fallo
+
+- **Fila de un fiado** → lo que ESE fiado todavía debe.
+- **Abono dirigido** → lo que le queda al fiado que pagó.
+- **Abono suelto** —sin dirigir, o con su fiado eliminado— → **el saldo del
+  cliente en ESE libro**, leído de `client_summary`. No pagó ningún fiado: fue
+  contra la cuenta entera.
+
+Las tres contestan la misma pregunta —«¿qué queda debiendo de lo que esto
+tocó?»— sobre cosas de distinto tamaño.
+
+**Lo que NUNCA va ahí es `movements.running_balance`**, que es lo que parece a
+primera vista. Esa es la deuda que había JUSTO DESPUÉS de ese movimiento. Se
+quitó el 2026-10-21 porque, con los abonos escondidos por el filtro, la fila de
+arriba decía «Por cobrar $89.72» mientras la tarjeta del mismo cliente decía
+$68.59. **El peor caso es el que la condenó: el tendero le cobra 89,72 a quien
+debe 68,59**, y la app le dio las dos cifras sin decir cuál valía.
+
+Por lo mismo, el saldo se lee de `client_summary` y **no se suma a mano** desde
+las filas que la lista ya tiene: esa fuente es la que alimenta la tarjeta del
+cliente de esa misma pantalla, así que las dos cifras no pueden discrepar.
+
+### Un saldo A FAVOR no se escribe con un menos
+
+Un cliente que pagó de más tiene saldo negativo en la base. Escrito tal cual
+bajo un rótulo que dice «por cobrar», sale **«Por cobrar −$178.00»** — que no
+se lee como «te sobran 178» sino como un error de la app, o peor, como una
+deuda con el signo al revés. Lo reportó el dueño el 2026-10-23 con la captura
+de un abono antiguo.
+
+**La cifra va en valor absoluto y lo que explica el signo es el chip «A
+favor»**, debajo de la equivalencia en bolívares. El verde se queda: con el
+chip al lado dice lo mismo que él, en vez de contradecir al rótulo.
+
+Vale en los dos historiales **y en la ficha de la transacción**, que es donde
+se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
+`Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
