@@ -190,10 +190,8 @@ export default async function AbonoRegistradoPage({
     abono.created_at as string,
     resultado.kind === "ve" ? "VE" : "CO",
   );
-  const deudaEnBs =
-    rates && abono.currency
-      ? priceIn("VES", { amount: deudaTotal, currency: moneda }, rates)?.amount
-      : null;
+  // `deudaEnBs` vivía aquí y se fue con las tarjetas nuevas: ahora cada una
+  // convierte LO SUYO, porque cada tarjeta habla de un libro y no de la suma.
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -240,96 +238,134 @@ export default async function AbonoRegistradoPage({
         />
       </section>
 
-      <section className="flex flex-col rounded-[10px] border p-4">
-        {/* EL RÓTULO NO NOMBRA UNA MONEDA CUANDO HAY DOS. Decirlo «en Euros»
-            sobre un billete que pagó euros Y dólares es la misma mentira que
-            la suma de abajo, escrita más arriba. */}
-        <h2 className="pb-2 text-base font-semibold">
-          {abonadoPorMoneda.length > 1
-            ? "Resumen de transacción"
-            : `Resumen de transacción en ${nombreDeMoneda(moneda)}`}
-        </h2>
+      {/* ══════════════════════════════════════════════════════════════
+          UNA TARJETA POR LIBRO — frames `1576:11405` y `1576:11484`
 
-        {/* UNA LÍNEA POR LIBRO. Con uno solo —todos los repartos anteriores al
-            2026-10-23 y la mayoría de los que vendrán— es exactamente la línea
-            de siempre; con dos, dos líneas que sí se pueden leer en voz alta. */}
-        {abonadoPorMoneda.map((a) => (
-          <div key={a.currency ?? "cop"} className="flex items-center justify-between py-2">
-            <span className="text-xs text-muted-foreground">
-              Abonó en {nombreDeMoneda((a.currency ?? "COP") as PriceCurrency)}
-            </span>
-            <span className="flex items-center gap-1 text-sm tabular-nums">
-              <CurrencyFlagIcon
-                currency={(a.currency ?? "COP") as PriceCurrency}
-                className="size-3.5 shrink-0"
-              />
-              {formatPriceAmount(a.total, (a.currency ?? "COP") as PriceCurrency)}
-            </span>
-          </div>
-        ))}
+          Encargo del dueño el 2026-10-23 (`CT-135`), con los dos frames: el
+          libro al que se abonó lleva su tarjeta completa, y el libro al que
+          NO se abonó pero todavía debe lleva una tarjeta aparte, reducida a
+          su «Deuda total».
 
-        {/* SI PAGÓ EN BOLÍVARES, los que entregó. Son los TECLEADOS y no una
-            conversión de hoy: el tendero escribió esa cifra y leer otra, aunque
-            difiera en céntimos por el redondeo, no se explica. Misma decisión
-            que la fila del historial. */}
-        {entregadoEnBs != null ? (
-          <div className="flex items-center justify-between py-2">
-            <span className="text-xs text-muted-foreground">Entregó</span>
-            <span className="text-sm tabular-nums">{formatBs(entregadoEnBs)}</span>
-          </div>
-        ) : null}
+          QUÉ SUSTITUYE, Y POR QUÉ NO ERA SOSTENIBLE: hasta hoy había UNA
+          tarjeta y, debajo de «Deuda total», las cifras de los dos libros
+          apiladas. Leído de corrido, «Deuda total: €40,95 $7,50» se parece
+          demasiado a una suma — y las dos monedas de esta app no se suman
+          nunca. El frame lo resuelve separando: cada libro, su tarjeta.
 
-        {/* UNA LÍNEA, Y NO ESTÁ EN EL FRAME. Se añade porque sin ella un
-            reparto se lee como un pago suelto: la tarjeta diría «Abonó $20» y
-            nada contaría que ese billete cubrió dos fiados, que es justo lo
-            que el tendero acaba de decidir y lo que su cliente le va a
-            preguntar. Dónde fue cada parte se ve en el historial; aquí basta
-            con que conste que se repartió. */}
-        {lineasDelGrupo > 1 ? (
-          <p className="pt-1 text-xs text-muted-foreground">
-            Repartido entre {lineasDelGrupo} fiados.
-          </p>
-        ) : null}
+          LA BANDERA ESTÁ EN UN SITIO DISTINTO EN CADA UNA, y es deliberado:
+          en la tarjeta con título la lleva la cabecera (24px) y el importe NO
+          la repite; en la tarjeta sin título la lleva el importe (16px),
+          porque es lo único que dice de qué libro habla. Es la regla de
+          `DESIGN-SYSTEM.md` —la bandera va donde identifica— aplicada a dos
+          casos distintos. */}
+      {abonadoPorMoneda.map((a, i) => {
+        const cur = (a.currency ?? "COP") as PriceCurrency;
+        const pendienteDeEste =
+          pendientePorMoneda.find((p) => (p.currency ?? null) === (a.currency ?? null))?.pending ??
+          0;
+        const debe = pendienteDeEste > 0.005;
+        const enBs =
+          rates && debe
+            ? priceIn("VES", { amount: pendienteDeEste, currency: cur }, rates)?.amount
+            : null;
 
-        <div className="flex items-center justify-between border-t pt-3">
-          <span className="text-base font-semibold">Deuda total</span>
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-end">
-              {/* LOS DOS CASOS QUE EL FRAME ENSEÑA CON SUS DOS TARJETAS. Cero
-                  no se escribe como «$0,00»: se dice que no debe nada, que es
-                  lo que el tendero le va a leer en voz alta al cliente.
-
-                  «SIN DEUDA» SOLO CUANDO NO QUEDA NADA EN NINGÚN LIBRO. Antes
-                  miraba solo el del movimiento de entrada, así que un reparto
-                  que saldaba los euros decía «Sin deuda» con cinco dólares
-                  todavía abiertos. */}
-              {pendientePorMoneda.length === 0 ? (
-                <span className="text-base font-semibold tabular-nums">Sin deuda</span>
-              ) : (
-                pendientePorMoneda.map((p) => (
-                  <span
-                    key={p.currency ?? "cop"}
-                    className="flex items-center gap-1.5 text-base font-semibold tabular-nums"
-                  >
-                    <CurrencyFlagIcon
-                      currency={(p.currency ?? "COP") as PriceCurrency}
-                      className="size-4 shrink-0"
-                    />
-                    {formatPriceAmount(p.pending, (p.currency ?? "COP") as PriceCurrency)}
-                  </span>
-                ))
-              )}
-              {/* Los bolívares, solo cuando hay UN libro que convertir: con dos
-                  habría que decir cuál es cuál y la línea deja de caber. */}
-              {deudaEnBs != null && pendientePorMoneda.length === 1 && deudaTotal > 0.005 ? (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {formatBs(deudaEnBs)} hoy
-                </span>
-              ) : null}
+        return (
+          <section
+            key={`abonado-${a.currency ?? "cop"}`}
+            className="flex flex-col rounded-[10px] border p-4"
+          >
+            <div className="flex items-center justify-between pt-2 pb-4">
+              <h2 className="text-base font-semibold">
+                Resumen de transacción en {nombreDeMoneda(cur)}
+              </h2>
+              <CurrencyFlagIcon currency={cur} className="size-6 shrink-0" aria-hidden="true" />
             </div>
-          </div>
-        </div>
-      </section>
+
+            <div className="flex items-center justify-between py-3">
+              <span className="text-xs">Abonó en {nombreDeMoneda(cur)}</span>
+              <span className="text-xs tabular-nums">{formatPriceAmount(a.total, cur)}</span>
+            </div>
+
+            {/* ── LAS DOS LÍNEAS QUE NO DIBUJA EL FRAME, Y VAN UNA SOLA VEZ ──
+                «Entregó» son los bolívares que el tendero TECLEÓ y «Repartido
+                entre N fiados» cuenta que ese billete cubrió varios. Las dos
+                describen EL BILLETE, que es uno solo aunque haya tocado dos
+                libros — así que se escriben en la primera tarjeta y no se
+                repiten en la segunda. Repetirlas sería contar dos veces lo
+                que el cliente entregó una. */}
+            {i === 0 && entregadoEnBs != null ? (
+              <div className="flex items-center justify-between py-2">
+                <span className="text-xs text-muted-foreground">Entregó</span>
+                <span className="text-sm tabular-nums">{formatBs(entregadoEnBs)}</span>
+              </div>
+            ) : null}
+            {i === 0 && lineasDelGrupo > 1 ? (
+              <p className="pt-1 pb-2 text-xs text-muted-foreground">
+                Repartido entre {lineasDelGrupo} fiados.
+              </p>
+            ) : null}
+
+            <div className="flex items-start justify-between border-t pt-3">
+              <span className="text-base font-semibold">Deuda total</span>
+              <div className="flex flex-col items-end gap-1">
+                {/* CERO NO SE ESCRIBE «$0,00»: se dice que no debe nada, que
+                    es lo que el tendero le lee en voz alta al cliente. El
+                    frame dibuja `$0,00` en todas sus cifras porque es su
+                    estado vacío de maqueta, no una decisión sobre el cero. */}
+                {debe ? (
+                  <span className="text-base font-semibold tabular-nums">
+                    {formatPriceAmount(pendienteDeEste, cur)}
+                  </span>
+                ) : (
+                  <span className="text-base font-semibold">Sin deuda</span>
+                )}
+                {enBs != null ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatBs(enBs)} hoy
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        );
+      })}
+
+      {/* ── EL LIBRO AL QUE NO SE ABONÓ Y TODAVÍA DEBE — frame `1576:11484` ──
+          Sin título y sin más filas: solo su «Deuda total». Aquí el importe SÍ
+          lleva bandera, porque sin cabecera es lo único que dice de qué libro
+          habla.
+
+          SOLO SE DIBUJA SI DEBE. Un libro saldado no tiene nada que decir en
+          esta pantalla, y uno a FAVOR tampoco: la tarjeta se titula «Deuda
+          total» y poner ahí un saldo a favor sería llamar deuda a lo
+          contrario. `pendientePorMoneda` ya filtra los dos casos. */}
+      {pendientePorMoneda
+        .filter((p) => !abonadoPorMoneda.some((a) => (a.currency ?? null) === (p.currency ?? null)))
+        .map((p) => {
+          const cur = (p.currency ?? "COP") as PriceCurrency;
+          const enBs = rates
+            ? priceIn("VES", { amount: p.pending, currency: cur }, rates)?.amount
+            : null;
+          return (
+            <section
+              key={`debe-${p.currency ?? "cop"}`}
+              className="flex items-start justify-between rounded-[10px] border p-4"
+            >
+              <span className="text-base font-semibold">Deuda total</span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                  <CurrencyFlagIcon currency={cur} className="size-4 shrink-0" aria-hidden="true" />
+                  {formatPriceAmount(p.pending, cur)}
+                </span>
+                {enBs != null ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatBs(enBs)} hoy
+                  </span>
+                ) : null}
+              </div>
+            </section>
+          );
+        })}
 
       {/* ══════════════════════════════════════════════════════════════
           EL FLOTANTE TODAVÍA PISA ESTOS BOTONES, Y QUEDA ABIERTO
