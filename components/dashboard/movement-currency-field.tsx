@@ -311,7 +311,13 @@ export function ResumenMonto({
   const tasa =
     usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext?.effectiveRate;
   // Lo tecleado gana siempre sobre lo calculado.
-  const tecleados = Number(bolivaresTecleados);
+  //
+  // `parseAmount` Y NO `Number(...)`: esta tarjeta la dibuja la pantalla del
+  // abono, cuyo campo agrupa los miles desde el 2026-10-23. `Number("20.000")`
+  // es VEINTE, así que el recuadro que existe para que el tendero confirme lo
+  // que escribió le habría enseñado `Bs. 20,00` con `20.000` en el campo —
+  // justo el error que esta tarjeta está aquí para evitar.
+  const tecleados = parseAmount(bolivaresTecleados) ?? Number.NaN;
   const bs =
     bolivaresTecleados && Number.isFinite(tecleados) && tecleados > 0
       ? tecleados
