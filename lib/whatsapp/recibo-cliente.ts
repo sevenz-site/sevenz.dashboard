@@ -78,7 +78,9 @@ function clientNoticesEnabled(): boolean {
 // `grupo` null es el camino de siempre, intacto.
 async function enviarRecibo(
   movementId: string,
-  grupo: { groupId: string; total: number } | null,
+  // `clave` SOLO LA PONE EL REPARTO QUE CRUZA LIBROS. Ausente, la clave de
+  // idempotencia es el grupo, que es lo de siempre.
+  grupo: { groupId: string; total: number; clave?: string } | null,
 ): Promise<ResultadoRecibo> {
   const supabase = createServiceClient();
 
@@ -142,10 +144,21 @@ async function enviarRecibo(
   // serían tres claves distintas y la puerta dejaría salir los tres mensajes
   // sin tener nada que objetar — que es exactamente el fallo que todo esto
   // existe para evitar.
+  //
+  // SALVO EN UN REPARTO QUE CRUZA LIBROS, donde `clave` la pone quien llama y
+  // lleva la moneda dentro. Desde la decisión del dueño del 2026-10-23 —«un
+  // mensaje por moneda»— ese grupo manda DOS recibos legítimos, y con la
+  // clave del grupo a secas el segundo se leía como un duplicado del primero:
+  // la puerta devolvía `ya_enviado` y el cliente se quedaba sin saber de la
+  // mitad de su pago. Medido en dev el 2026-10-23, en la primera corrida de
+  // la fila 8a.
+  //
+  // Lo que la clave protege sigue protegido: un reintento de CUALQUIERA de
+  // los dos vuelve a chocar con la suya.
   const { data: reserva, error: errorReserva } = await supabase.rpc("whatsapp_send_begin", {
     p_owner_id: objetivo.owner_id,
     p_template: "abono_confirmation_v3",
-    p_period_key: grupo ? grupo.groupId : objetivo.movement_id,
+    p_period_key: grupo ? (grupo.clave ?? grupo.groupId) : objetivo.movement_id,
     p_audience: "client",
     p_recipient: objetivo.phone,
     p_client_id: objetivo.client_id,
@@ -266,15 +279,73 @@ export async function enviarReciboDeGrupo(groupId: string): Promise<ResultadoRec
   const resumen = data as {
     ok: boolean;
     reason?: string;
-    total: number;
-    last_movement_id: string;
+    total: number | null;
+    last_movement_id: string | null;
+    por_moneda?: {
+      currency: string | null;
+      lines: number;
+      total: number;
+      last_movement_id: string;
+    }[];
   } | null;
 
   // `null` es un grupo sin líneas vivas: no es un fallo, no hay nada que
   // confirmar. El mismo criterio que los demás «omitido» de este archivo, que
   // se cuentan y no se registran como errores.
   if (!resumen) return { estado: "omitido", motivo: "grupo_vacio" };
+
+  // ── UN MENSAJE POR MONEDA CUANDO EL REPARTO CRUZA LIBROS ────────────
+  //
+  // Decisión del dueño el 2026-10-23, elegida entre las dos que la migración
+  // `141` dejó abiertas: *«Un mensaje por moneda (dos como mucho)»*.
+  //
+  // POR QUÉ NO UNO SOLO: `abono_confirmation_v3` lleva UN importe. Un grupo
+  // de dos libros no tiene un total que quepa ahí —«abonaste 150» por unos
+  // bolívares que fueron 100 euros y 50 dólares es falso en las dos monedas—
+  // y por eso `payment_group_summary` se niega a dar uno. La alternativa era
+  // una plantilla nueva, con su espera de aprobación de Meta.
+  //
+  // DOS COMO MUCHO, y no es una promesa floja: solo hay dos libros en todo el
+  // producto. El `slice` no está por si acaso, está para que el día que
+  // aparezca un tercero esto no se convierta en una ráfaga de mensajes a
+  // alguien que hizo UN pago — que es exactamente lo que `137` existe para
+  // evitar.
+  //
+  // LA ÚLTIMA LÍNEA DE CADA LIBRO, no la del grupo: `new_balance` es el
+  // `running_balance` de la fila por la que se pregunta, y la última del
+  // grupo está en el libro equivocado la mitad de las veces.
+  if (!resumen.ok && resumen.reason === "monedas_mezcladas") {
+    const porMoneda = (resumen.por_moneda ?? []).slice(0, 2);
+    if (porMoneda.length === 0) return { estado: "omitido", motivo: "sin_desglose" };
+
+    const resultados: ResultadoRecibo[] = [];
+    for (const libro of porMoneda) {
+      resultados.push(
+        await enviarRecibo(libro.last_movement_id, {
+          groupId,
+          total: Number(libro.total),
+          // LA CLAVE LLEVA LA MONEDA: ver `whatsapp_send_begin` más arriba.
+          // Sin ella el segundo recibo se lee como un duplicado del primero.
+          clave: `${groupId}:${libro.currency ?? "COP"}`,
+        }),
+      );
+    }
+
+    // QUÉ SE DEVUELVE CUANDO SON DOS, y por qué no «el primero»: quien llama
+    // solo registra el fallo, así que lo que importa es no esconder uno.
+    // Falla el conjunto si falla cualquiera; se omite solo si se omiten
+    // todos; y si al menos uno salió, salió.
+    const fallido = resultados.find((x) => x.estado === "fallido");
+    if (fallido) return fallido;
+    const enviado = resultados.find((x) => x.estado === "enviado");
+    if (enviado) return enviado;
+    return resultados[0];
+  }
+
   if (!resumen.ok) return { estado: "omitido", motivo: resumen.reason ?? "desconocido" };
+  if (resumen.last_movement_id == null || resumen.total == null) {
+    return { estado: "omitido", motivo: "grupo_sin_total" };
+  }
 
   return enviarRecibo(resumen.last_movement_id, {
     groupId,

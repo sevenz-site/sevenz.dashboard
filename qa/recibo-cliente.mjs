@@ -317,6 +317,54 @@ try {
     void l2;
   }
 
+  // ── 8. UN REPARTO QUE CRUZA LIBROS: UN MENSAJE POR MONEDA ──────────────
+  //
+  // Decisión del dueño el 2026-10-23, elegida entre las dos que la migración
+  // `141` dejó abiertas: *«Un mensaje por moneda (dos como mucho)»*.
+  //
+  // LAS TRES COSAS QUE SE AFIRMAN AQUÍ PUEDEN FALLAR POR SEPARADO, y por eso
+  // son tres filas: que salgan DOS —no uno ni tres—, que cada uno diga el
+  // total de SU libro —no la suma, que es el número falso en las dos
+  // monedas—, y que repetir el grupo no abra una segunda ráfaga.
+  {
+    const grupo = randomUUID();
+    const comunes = { ...base, type: "payment", source: "manual", payment_group_id: grupo };
+    await admin.from("movements").insert({ ...comunes, amount: 7, currency: "USD" });
+    await admin.from("movements").insert({ ...comunes, amount: 11, currency: "EUR" });
+
+    const antes = interceptados.length;
+    const mixto = await enviarReciboDeGrupo(grupo);
+    const salieron = interceptados.length - antes;
+    check(
+      "8a. un reparto MIXTO manda DOS recibos, uno por moneda",
+      salieron === 2,
+      `${salieron} mensaje(s) · ${JSON.stringify(mixto)}`,
+    );
+
+    const dos = interceptados.slice(-2);
+    const importes = dos.map((m) =>
+      (m?.template?.components ?? [])
+        .filter((x) => x.type === "body")
+        .flatMap((x) => x.parameters.map((p) => p.text))
+        .at(1),
+    );
+    check(
+      "8b. cada uno dice el total de SU libro, no la suma de los dos",
+      importes.includes("$7.00") &&
+        importes.includes("€11.00") &&
+        !importes.some((v) => v === "$18.00" || v === "€18.00"),
+      `${importes.join(" · ")} — la suma sería 18, que es falsa en las dos monedas`,
+    );
+
+    const antesDeRepetir = interceptados.length;
+    const repetido = await enviarReciboDeGrupo(grupo);
+    check(
+      "8c. repetir el grupo mixto no abre una segunda ráfaga",
+      interceptados.length === antesDeRepetir,
+      `${interceptados.length - antesDeRepetir} mensaje(s) de más · ${JSON.stringify(repetido)}`,
+    );
+  }
+
   check(
     "6. ningún mensaje salió de verdad a Kapso",
     true,

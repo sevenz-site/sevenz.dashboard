@@ -23,6 +23,7 @@ import { fijarEnBorrador, leerBorrador } from "@/lib/abonos/borrador";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { formatBs } from "@/lib/exchange-rate/format";
+import { toBs } from "@/lib/exchange-rate/convert";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -304,9 +305,32 @@ export function AbonoMonto({
           entera del límite cuando la acción se la rechaza. */}
       <div className="flex items-center justify-between gap-4 rounded-[10px] border px-4 py-3">
         <span className="text-xs text-muted-foreground">Fiado seleccionado</span>
-        <span className="flex items-center gap-1.5 text-base font-semibold tabular-nums">
-          {llevaDivisas ? <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" /> : null}
-          {formatPriceAmount(pendiente, moneda)}
+        <span className="flex flex-col items-end">
+          <span className="flex items-center gap-1.5 text-base font-semibold tabular-nums">
+            {llevaDivisas ? <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" /> : null}
+            {formatPriceAmount(pendiente, moneda)}
+          </span>
+          {/* LA EQUIVALENCIA, SIEMPRE Y DEBAJO — frame `1564:11409`, y encargo
+              del dueño el 2026-10-23: *«en la card "Fiado seleccionado"
+              agregar la equivalencia en bolívares siempre»*.
+
+              SIEMPRE Y NO SOLO AL TECLEAR BOLÍVARES: esta cifra es el TOPE, y
+              el tendero que va a escribir bolívares necesita saber contra qué
+              se mide ANTES de escribir. Sin ella escribe a ciegas y se entera
+              del límite cuando la pantalla se lo rechaza.
+
+              CON LA TASA DE HOY (`effectiveRate`) y no con la prevista: esto
+              no es lo que se va a guardar —eso es el «Resumen» de abajo, que
+              sí sigue la casilla— es cuánto debe ese fiado si se mirara hoy.
+              La palabra «hoy» es parte de la frase por eso.
+
+              Un negocio colombiano no la ve: no hay bolívares que enseñar. */}
+          {llevaDivisas && rateContext ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+              <CurrencyFlagIcon currency="VES" className="size-3.5 shrink-0" />
+              {formatBs(toBs(pendiente, libro, rateContext.effectiveRate))} hoy
+            </span>
+          ) : null}
         </span>
       </div>
 
