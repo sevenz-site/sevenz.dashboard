@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -35,7 +43,13 @@ import {
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
+import {
+  formatAmountWhileTyping,
+  formatPriceAmount,
+  priceIn,
+  type BolivarRates,
+  type PriceCurrency,
+} from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
 
 // PASO 1/2 DEL ABONO REPARTIDO — frame `1526:11182`.
@@ -134,6 +148,30 @@ export function AbonoReparto({
   const [montoEditado, setMonto] = useState<string | null>(null);
   const [enBolivaresEditado, setEnBolivares] = useState<boolean | null>(null);
   const [aManoEditado, setAMano] = useState<Record<string, number> | null>(null);
+
+  // ── EL MONTO SE AGRUPA MIENTRAS SE TECLEA ─────────────────────────────
+  //
+  // El mismo trato que el campo de la hoja de cobro, por petición del dueño el
+  // 2026-10-23. Aquí no llega relleno con una cifra fea —nace vacío o con lo
+  // que el tendero escribió antes— pero dejarlo sin agrupar era la otra mitad
+  // de la incoherencia: la línea de debajo YA decía `Bs. 12.260.350,06` y el
+  // campo de encima, `12345,6789012`.
+  //
+  // EL CURSOR HAY QUE DEVOLVERLO A MANO: el campo es controlado, así que React
+  // repinta su valor en cada tecla y lo deja al final. Sin esto, cada millar
+  // que aparece lo empuja y corregir un dígito del medio es imposible. Va en
+  // un `useLayoutEffect` porque cuando el `onChange` corre, el valor nuevo
+  // todavía no está en el DOM.
+  const campoMonto = useRef<HTMLInputElement>(null);
+  const cursorPendiente = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const destino = cursorPendiente.current;
+    if (destino == null || campoMonto.current == null) return;
+    cursorPendiente.current = null;
+    campoMonto.current.setSelectionRange(destino, destino);
+  });
+
 
   const libro =
     libroEditado !== undefined
@@ -841,7 +879,19 @@ export function AbonoReparto({
                 id="monto"
                 inputMode="decimal"
                 value={monto}
-                onChange={(e) => setMonto(e.target.value.replace(/[^0-9.,]/g, ""))}
+                ref={campoMonto}
+                onChange={(e) => {
+                  // El filtro de caracteres que había aquí lo hace ya
+                  // `formatAmountWhileTyping`, que además agrupa y acota los
+                  // decimales a cuatro.
+                  const { texto, cursor } = formatAmountWhileTyping(
+                    e.target.value,
+                    monto,
+                    e.target.selectionStart ?? e.target.value.length,
+                  );
+                  cursorPendiente.current = cursor;
+                  setMonto(texto);
+                }}
                 placeholder="00"
                 className="h-10 flex-1 text-lg"
               />

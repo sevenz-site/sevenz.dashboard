@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useSyncExternalStore, useTransition } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,7 +36,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { toBs } from "@/lib/exchange-rate/convert";
-import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import {
+  formatAmountWhileTyping,
+  formatPriceAmount,
+  type PriceCurrency,
+} from "@/lib/products/price";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
@@ -115,6 +125,30 @@ export function AbonoMonto({
 
   const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(libro ?? "USD");
   const [monto, setMonto] = useState("");
+
+  // ── EL MONTO SE AGRUPA MIENTRAS SE TECLEA ─────────────────────────────
+  //
+  // El mismo trato que el campo de la hoja de cobro, por petición del dueño el
+  // 2026-10-23. Aquí no llega relleno con una cifra fea —nace vacío o con lo
+  // que el tendero escribió antes— pero dejarlo sin agrupar era la otra mitad
+  // de la incoherencia: la línea de debajo YA decía `Bs. 12.260.350,06` y el
+  // campo de encima, `12345,6789012`.
+  //
+  // EL CURSOR HAY QUE DEVOLVERLO A MANO: el campo es controlado, así que React
+  // repinta su valor en cada tecla y lo deja al final. Sin esto, cada millar
+  // que aparece lo empuja y corregir un dígito del medio es imposible. Va en
+  // un `useLayoutEffect` porque cuando el `onChange` corre, el valor nuevo
+  // todavía no está en el DOM.
+  const campoMonto = useRef<HTMLInputElement>(null);
+  const cursorPendiente = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const destino = cursorPendiente.current;
+    if (destino == null || campoMonto.current == null) return;
+    cursorPendiente.current = null;
+    campoMonto.current.setSelectionRange(destino, destino);
+  });
+
   const [usarPrevista, setUsarPrevista] = useState(false);
   const [descripcion, setDescripcion] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
@@ -396,7 +430,16 @@ export function AbonoMonto({
             name="monto"
             inputMode="decimal"
             value={monto}
-            onChange={(e) => setMonto(e.target.value)}
+            ref={campoMonto}
+            onChange={(e) => {
+              const { texto, cursor } = formatAmountWhileTyping(
+                e.target.value,
+                monto,
+                e.target.selectionStart ?? e.target.value.length,
+              );
+              cursorPendiente.current = cursor;
+              setMonto(texto);
+            }}
             placeholder="00"
             aria-invalid={deMas || undefined}
             className="h-10 flex-1 text-lg"
