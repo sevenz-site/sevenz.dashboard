@@ -39,6 +39,7 @@ import { toBs } from "@/lib/exchange-rate/convert";
 import {
   formatAmountWhileTyping,
   formatPriceAmount,
+  parseAmount,
   type PriceCurrency,
 } from "@/lib/products/price";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
@@ -154,7 +155,19 @@ export function AbonoMonto({
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [avisar, setAvisar] = useState(false);
 
-  const escrito = Number(monto) || 0;
+  // `parseAmount` Y NO `Number(...)`, que es lo que había aquí.
+  //
+  // `Number("0,95")` es `NaN`, y con `|| 0` eso se convierte en CERO sin que
+  // nada chille. El campo lleva `inputMode="decimal"` y el texto de al lado
+  // escribe las cifras con coma, así que el tendero teclea comas: ESTE CAMPO
+  // NUNCA SUPO LEERLAS. Es anterior al formateo de miles del 2026-10-23, pero
+  // ese formateo lo dejó al descubierto —desde él, el campo solo produce
+  // comas— así que lo que era «a veces» pasó a ser «siempre».
+  //
+  // `parseAmount` es el lector de dinero del repo y entiende las dos
+  // convenciones, los miles y los decimales. Su comentario ya lo decía: dos
+  // copias de un lector de dinero son dos oportunidades de arreglar solo una.
+  const escrito = parseAmount(monto) ?? 0;
 
   // La misma tasa que el servidor va a sellar, no una copia: el objeto viene
   // del servidor y la casilla solo elige cuál de las dos usar.
@@ -484,7 +497,7 @@ export function AbonoMonto({
 
             SOLO CON UNA CIFRA ESCRITA: «Bs. 0,00» debajo de un campo vacío no
             informa de nada y empuja hacia abajo el aviso del tope. */}
-        {rateContext && libro && Number(monto) > 0 ? (
+        {rateContext && libro && (parseAmount(monto) ?? 0) > 0 ? (
           monedaTecleada === "VES" ? (
             <MontoARegistrarRow
               bolivares={monto}

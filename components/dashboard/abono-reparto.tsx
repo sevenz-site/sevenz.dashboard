@@ -46,6 +46,7 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import {
   formatAmountWhileTyping,
   formatPriceAmount,
+  parseAmount,
   priceIn,
   type BolivarRates,
   type PriceCurrency,
@@ -298,7 +299,24 @@ export function AbonoReparto({
   const deuda = cruzaLibros
     ? deudaEnBolivares(paraRepartir, aBolivares)
     : deudaDelLibro(paraRepartir);
-  const montoNum = Number(monto.replace(",", ".")) || 0;
+  // `parseAmount` Y NO `Number(...)`, que es lo que había aquí.
+  //
+  // `Number("0,95")` es `NaN`, y con `|| 0` eso se convierte en CERO sin que
+  // nada chille. El campo lleva `inputMode="decimal"` y el texto de al lado
+  // escribe las cifras con coma, así que el tendero teclea comas: ESTE CAMPO
+  // NUNCA SUPO LEERLAS. Es anterior al formateo de miles del 2026-10-23, pero
+  // ese formateo lo dejó al descubierto —desde él, el campo solo produce
+  // comas— así que lo que era «a veces» pasó a ser «siempre».
+  //
+  // `parseAmount` es el lector de dinero del repo y entiende las dos
+  // convenciones, los miles y los decimales. Su comentario ya lo decía: dos
+  // copias de un lector de dinero son dos oportunidades de arreglar solo una.
+  //
+  // Y EL `replace(",", ".")` QUE HABÍA ERA PEOR QUE NADA: cambia LA PRIMERA
+  // coma, así que con miles agrupados `12.345,6789` se volvía
+  // `12.345.6789` --dos puntos-- y `Number` devolvía `NaN`. Cero otra vez,
+  // y con el reparto entero desaparecido de la pantalla.
+  const montoNum = parseAmount(monto) ?? 0;
 
   // LO QUE SE TECLEA PUEDE SER BOLÍVARES Y EL LIBRO SER DÓLARES, así que el
   // reparto se hace SIEMPRE sobre la cifra del libro. Sin tasa no se puede

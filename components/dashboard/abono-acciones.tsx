@@ -36,7 +36,7 @@ import { deleteMovement } from "@/app/(app)/dashboard/actions";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, parseAmount, type PriceCurrency } from "@/lib/products/price";
 
 // EL «⋮» DE CADA ABONO, dentro de la ficha de su fiado.
 //
@@ -83,7 +83,11 @@ export function AbonoAcciones({
 
   function guardar() {
     setError(null);
-    const valor = Number(monto);
+    // `parseAmount` Y NO `Number(...)`: con coma devolvía `NaN` y la pantalla
+    // contestaba «Escribe cuánto te pagó» CON LA CIFRA ESCRITA DELANTE, que es
+    // de los mensajes que más desconciertan. Defecto anterior al formateo del
+    // 2026-10-23; arreglado el mismo día al encontrarlo.
+    const valor = parseAmount(monto) ?? Number.NaN;
     if (!Number.isFinite(valor) || valor <= 0) {
       setError("Escribe cuánto te pagó.");
       return;
