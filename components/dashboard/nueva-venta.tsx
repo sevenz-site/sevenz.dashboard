@@ -2061,13 +2061,32 @@ function PagoSheet({
   // input de monto se pone el monto total de pago» (el dueño, 2026-10-18). Le
   // pagan todo en la mayoría de las ventas, así que el caso corriente es cero
   // teclas.
+  // CÓMO SE ESCRIBE EN EL CAMPO: con separador de miles y 4 decimales como
+  // mucho. Petición del dueño el 2026-10-23, al ver que la hoja se abría
+  // enseñando `5760,4761499999` — el total de la venta multiplicado por la
+  // tasa, con toda la cola que deja la multiplicación.
+  //
+  // NO ES SOLO FEO: una cifra de catorce dígitos en el campo donde el tendero
+  // escribe lo que le acaban de poner en la mano no se lee como «el total», se
+  // lee como que la app calculó algo raro. Y cobrar es el momento en que menos
+  // margen hay para dudar.
+  //
+  // CUATRO DECIMALES ES LA PRECISIÓN DE LA BASE, no un recorte a ojo:
+  // `unit_price` y los precios de producto son `numeric(14, 4)`. El quinto
+  // dígito no se iba a guardar de ninguna forma. En bolívares, además, un
+  // diezmilésimo no existe.
+  const COMO_SE_ESCRIBE = { miles: true, maxDecimales: 4 } as const;
+
   const enEntrega = (enElLibro: number) =>
-    formatAmountForInput(entregaInicial === "VES" && tasa ? enElLibro * tasa : enElLibro);
+    formatAmountForInput(
+      entregaInicial === "VES" && tasa ? enElLibro * tasa : enElLibro,
+      COMO_SE_ESCRIBE,
+    );
 
   const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(entregaInicial);
   const [monto, setMonto] = useState(() =>
     inicial?.entryAmount != null
-      ? formatAmountForInput(inicial.entryAmount)
+      ? formatAmountForInput(inicial.entryAmount, COMO_SE_ESCRIBE)
       : enEntrega(inicial?.amount ?? total),
   );
   const [usarPrevista, setUsarPrevista] = useState(inicial?.usarPrevista ?? false);
@@ -2313,10 +2332,17 @@ function PagoSheet({
                           // rotulado «Dólares» no sería un fallo silencioso
                           // —el tope de la venta lo frena— pero sí un susto, y
                           // obliga a reteclear lo que la app ya sabe convertir.
+                          // LA SEGUNDA PUERTA AL MISMO CAMPO, y la que más
+                          // decimales suelta: dividir entre la tasa deja cola
+                          // casi siempre. Si esta se quedara sin
+                          // `COMO_SE_ESCRIBE`, el campo se vería bien al abrir
+                          // y se ensuciaría al tocar el desplegable — que es
+                          // peor que verse mal desde el principio.
                           const actual = parseAmount(monto) ?? 0;
                           setMonto(
                             formatAmountForInput(
                               siguiente === "VES" ? actual * tasa : actual / tasa,
+                              COMO_SE_ESCRIBE,
                             ),
                           );
                           setMonedaEntrega(siguiente);

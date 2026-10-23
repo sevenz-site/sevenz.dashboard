@@ -246,6 +246,47 @@ for (const n of IDA_Y_VUELTA) {
   );
 }
 
+// ── 8e. EL CAMPO «MONTO» DE LA HOJA DE COBRO ──────────────────────────────
+//
+// `formatAmountForInput` con `{ miles: true, maxDecimales: 4 }`. Lo pidió el
+// dueño el 2026-10-23: la hoja se abría enseñando `5760,4761499999` — el total
+// de la venta por la tasa, con toda la cola de la multiplicación.
+//
+// LO QUE DE VERDAD SE VIGILA AQUÍ ES LA IDA Y VUELTA, no el aspecto. Ese campo
+// se vuelve a leer con `parseAmount` para calcular lo que se guarda, así que un
+// formato que esta función no sepa releer no se vería mal: se guardaría MAL. Y
+// la trampa está servida, porque el separador de miles es el punto y el decimal
+// es la coma, o sea los dos caracteres que `parseAmount` tiene que desambiguar.
+//
+// El caso que lo resume: 1125 se escribe «1.125» y 1,125 se escribe «1,1250».
+// Si alguien quitara el cero de más del formateador, el segundo pasaría a
+// «1,125» y volvería como MIL CIENTO VEINTICINCO.
+const MILES = { miles: true, maxDecimales: 4 };
+
+check(
+  `8e. el caso del dueño: 5760,4761499999 → "${formatAmountForInput(5760.4761499999, MILES)}"`,
+  formatAmountForInput(5760.4761499999, MILES) === "5.760,4761",
+);
+check(
+  "8e. un entero se agrupa y no gana decimales",
+  formatAmountForInput(1234567, MILES) === "1.234.567",
+);
+check("8e. por debajo de mil no se agrupa nada", formatAmountForInput(999, MILES) === "999");
+check(
+  "8e. el quinto decimal se redondea, no se corta",
+  formatAmountForInput(0.00006, MILES) === "0,0001",
+);
+check(
+  "8e. SIN opciones, el formulario de productos se escribe igual que ayer",
+  formatAmountForInput(1234.5) === "1234,5" && formatAmountForInput(1.125) === "1,1250",
+);
+
+const IDA_Y_VUELTA_MILES = [5760.4761, 1234567, 999, 12000, 1125, 1.125, 0.5, 11.5, 1234.56];
+for (const n of IDA_Y_VUELTA_MILES) {
+  const escrito = formatAmountForInput(n, MILES);
+  check(`8e. ${n} → "${escrito}" → ${parseAmount(escrito)}`, parseAmount(escrito) === n);
+}
+
 // ── 9. EL CANDADO DEL PRECIO EN USDT ──────────────────────────────────────
 //
 // `CT-79`. Es lógica pura, así que se puede probar sin base de datos y sin

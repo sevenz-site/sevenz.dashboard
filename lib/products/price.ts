@@ -339,14 +339,58 @@ export function parseAmount(value: string | null | undefined): number | null {
  *
  * Checked by the round-trip case in `qa/product-price.mjs`, because this is
  * precisely the kind of pairing that survives one half being changed.
+ *
+ * ── THE TWO OPTIONS, AND WHY THEY ARE OPTIONS ───────────────────────────
+ *
+ * Added 2026-10-23, asked for by the owner about ONE field: the «Monto» of the
+ * payment sheet, which opened showing `5760,4761499999` — the sale's total
+ * converted to bolívares, with every digit the division left behind. His
+ * words: *«ese campo usa decimales pero no separador de miles, agrega los
+ * separadores de miles y los decimales a máximo 4»*.
+ *
+ * They are OPTIONS and not the new default because this function also fills
+ * every field of the product form — price, cost, stock, minimum quantity —
+ * and nobody asked for those to change. Defaults off means that form keeps
+ * rendering exactly what it rendered yesterday, and the diff cannot reach it.
+ *
+ * `maxDecimales: 4` is not an arbitrary cut: `price_retail`, `price_wholesale`,
+ * `cost` and `unit_price` are all `numeric(14, 4)`, so four decimals is the
+ * precision the database itself keeps. A fifth digit in that field was never
+ * going to be stored.
+ *
+ * GROUPING SURVIVES THE ROUND TRIP, and it is worth saying why rather than
+ * trusting it: with thousands separators the integer `1125` is written
+ * `1.125`, which `parseAmount` reads by rule 1 (one kind of separator, last
+ * group of three) and returns 1125. The decimal `1.125` is still written
+ * `1,1250` by the paragraph above, which is rule 2. The two never collide
+ * because the zero-padding keeps a real decimal from ever showing exactly
+ * three digits. `qa:product-price` checks both halves.
  */
-export function formatAmountForInput(value: number | null | undefined): string {
+export function formatAmountForInput(
+  value: number | null | undefined,
+  opciones?: { miles?: boolean; maxDecimales?: number },
+): string {
   if (value == null) return "";
-  const texto = String(value);
+
+  const { miles = false, maxDecimales } = opciones ?? {};
+  const redondeado = maxDecimales != null ? Number(value.toFixed(maxDecimales)) : value;
+  const texto = String(redondeado);
+
+  // Exponential notation — `String(1e21)` is `"1e+21"` — would be mangled by
+  // everything below. It comes back as it always did: out of this product's
+  // range, and not a case this change is here to improve.
+  if (!/^-?\d+(\.\d+)?$/.test(texto)) return texto.replace(".", ",");
+
   const punto = texto.indexOf(".");
-  const conDecimales =
-    punto !== -1 && texto.length - punto - 1 === 3 ? `${texto}0` : texto;
-  return conDecimales.replace(".", ",");
+  const conDecimales = punto !== -1 && texto.length - punto - 1 === 3 ? `${texto}0` : texto;
+
+  if (!miles) return conDecimales.replace(".", ",");
+
+  const [entera, decimales] = conDecimales.split(".");
+  const signo = entera.startsWith("-") ? "-" : "";
+  const digitos = signo ? entera.slice(1) : entera;
+  const agrupada = digitos.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return decimales ? `${signo}${agrupada},${decimales}` : `${signo}${agrupada}`;
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────
