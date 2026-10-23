@@ -11,9 +11,7 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import {
   BsAmountPreview,
-  MonedaTecleadaButtons,
   MontoARegistrarRow,
-  MontoCard,
   PrevistaCheckbox,
   ResumenMonto,
   montoConvertido,
@@ -22,6 +20,14 @@ import { registrarAbonoDirigido } from "@/app/(app)/abonos/actions";
 import { fijarEnBorrador, leerBorrador } from "@/lib/abonos/borrador";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { topeEnBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
+import { ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { toBs } from "@/lib/exchange-rate/convert";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -239,7 +245,7 @@ export function AbonoMonto({
   // medio pago en ningún sitio.
   function fijarYVolver() {
     setError(null);
-    fijarEnBorrador(clienteId, fiadoId, enElLibro);
+    fijarEnBorrador(clienteId, fiadoId, enElLibro, libro);
     router.push(`/abonos/nuevo?cliente=${clienteId}`);
   }
 
@@ -281,10 +287,16 @@ export function AbonoMonto({
           app en todo `/abonos` a TODAS las anchuras: sin esto, desde `sm` la
           pantalla se quedaría sin ninguna salida. */}
       <ScreenBackRow
+        // SIN EL DETALLE INTERMEDIO, la vuelta del reparto es la 1/2 — que
+        // es de donde se vino desde que el dueño quitó ese paso el
+        // 2026-10-23. Antes volvía a `/abonos/nuevo/<fiado>?reparto=1`, una
+        // pantalla que ya no está en el camino.
         href={
           pasoUnico
             ? `/transacciones/${fiadoId}`
-            : `/abonos/nuevo/${fiadoId}${enReparto ? "?reparto=1" : ""}`
+            : enReparto
+              ? `/abonos/nuevo?cliente=${clienteId}`
+              : `/abonos/nuevo/${fiadoId}`
         }
         label={pasoUnico ? "Volver al detalle" : clienteNombre}
         soloEnTelefono={false}
@@ -292,12 +304,24 @@ export function AbonoMonto({
 
       <div className="flex flex-col gap-2">
         <ScreenTitle>Registrar abono</ScreenTitle>
-        {/* «1/1» Y NO «3/3» cuando se entra por la ficha. El contador no es
-            decoración: dice cuántas pantallas quedan y cuántas hay detrás, y
-            un «3/3» con dos pasos que nunca ocurrieron promete un camino de
-            vuelta que no existe. */}
+        {/* ── EL CONTADOR, DESPUÉS DE QUITAR EL PASO INTERMEDIO ──────
+            El dueño lo reportó el 2026-10-23: *«los pasos y el progreso de la
+            barra no coinciden»*. Tenía razón, y había DOS cosas mal.
+
+            LA PRIMERA: «3/3» no existía en ningún camino real. El reparto era
+            1/2 → 2/2 (detalle) → 2/2 (monto) —dos pantallas con el MISMO
+            número— y desde la ficha de un fiado era 1/1. El «3/3» se quedó de
+            una versión con tres pasos que ya no estaba.
+
+            LA SEGUNDA: la barra iba siempre al 100 %, también en el paso
+            intermedio. Una barra llena en mitad del camino dice «ya está» y
+            la pantalla siguiente la desmiente.
+
+            AHORA SON DOS CAMINOS Y SE CUENTAN SOLOS: por el reparto, 1/2
+            fiados → 2/2 monto; por la ficha de un fiado, 1/1. La barra va al
+            100 % porque en los dos casos ESTA es la última pantalla. */}
         <p className="text-sm text-muted-foreground">
-          {pasoUnico ? "1/1" : enReparto ? "2/2" : "3/3"} Monto a abonar
+          {pasoUnico || !enReparto ? "1/1" : "2/2"} Monto a abonar
         </p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-full rounded-full bg-foreground transition-all" />
@@ -329,77 +353,151 @@ export function AbonoMonto({
               La palabra «hoy» es parte de la frase por eso.
 
               Un negocio colombiano no la ve: no hay bolívares que enseñar. */}
+          {/* SIN BANDERA — encargo del dueño el 2026-10-23, con la captura de
+              esta misma línea señalada: *«en la equivalencia en Bolívares no
+              agregues la bandera, solo en el monto principal en dólares o
+              euros»*. La llevaba desde esa misma mañana, cuando pidió añadir
+              la equivalencia; las dos peticiones quedan escritas. */}
           {llevaDivisas && rateContext ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-              <CurrencyFlagIcon currency="VES" className="size-3.5 shrink-0" />
+            <span className="text-xs text-muted-foreground tabular-nums">
               {formatBs(toBs(pendiente, libro, rateContext.effectiveRate))} hoy
             </span>
           ) : null}
         </span>
       </div>
 
-      {/* DOS OPCIONES, NO TRES: bolívares y la moneda de este fiado. La tercera
-          sería abonar un fiado en dólares con euros, que es la conversión entre
-          libros que este producto no hace nunca (ver `convert.ts`). */}
-      {puedeBolivares ? (
-        <MonedaTecleadaButtons
-          value={monedaTecleada}
-          onValueChange={setMonedaTecleada}
-          opciones={[
-            { value: "VES", label: "Bolívares" },
-            { value: libro, label: libro === "USD" ? "Dólares" : "Euros" },
-          ]}
-        />
-      ) : null}
+      {/* ═══════════════════════════════════════════════════════════════
+          UN SOLO BLOQUE: «¿CUÁNTO ABONA?» + DESPLEGABLE — frame `1564:11567`
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="monto">Monto</Label>
-        <MontoCard
-          id="monto"
-          name="monto"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-          moneda={llevaDivisas ? monedaTecleada : null}
-          max={topeTecleado ?? undefined}
-          invalid={deMas}
-          // UN SOLO RENGLÓN debajo de la cifra, no dos: el tope en gris
-          // mientras va bien y el error rojo EN SU LUGAR cuando se pasa. Misma
-          // decisión que el formulario de «Agregar», donde los dos a la vez
-          // hacían que el dueño leyera el mismo aviso repetido.
-          ayuda={
-            abonoAgotado
-              ? "Ya repartiste todo el abono. Vuelve atrás y deshaz otro fiado, o escribe un abono mayor."
-              : deMas
-                ? mandaElAbono
-                  ? `Del abono quedan ${formatPriceAmount(restanteDelAbono ?? 0, moneda)}. Escribe esa cantidad o menos.`
-                  : `Ese fiado solo debe ${formatPriceAmount(pendiente, moneda)}. Escribe esa cantidad o menos.`
-                : `Máximo ${topeLegible} — ${mandaElAbono ? "lo que queda del abono" : "lo que debe este fiado"}.`
-          }
-        />
+          Eran DOS secciones: «Moneda a registrar», con una pastilla por
+          moneda, y «Monto», con su campo debajo. El dueño pasó el frame el
+          2026-10-23: *«en la sección "Moneda a registrar" y "Monto" no es lo
+          que te pasé en el frame, acá la sección precisa que unifica ambas»*.
 
-        {/* Tecleando bolívares, la cifra que importa es la convertida: la deuda
-            no vive en bolívares. Tecleando la moneda del fiado no hace falta,
-            porque lo escrito ya es lo que se guarda. */}
-        {monedaTecleada === "VES" && libro && rateContext ? (
-          <MontoARegistrarRow
-            bolivares={monto}
-            destino={libro}
-            rateContext={rateContext}
-            usarPrevista={usarPrevista}
-            type="payment"
+          ES EL MISMO PATRÓN QUE LA 1/2, y eso es la mitad del encargo: las
+          dos pantallas del mismo flujo preguntan lo mismo —cuánto y en qué
+          moneda— y hasta hoy lo preguntaban de dos formas distintas. Un
+          tendero que aprende una tiene que volver a aprender la otra.
+
+          LAS OPCIONES SIGUEN SIENDO DOS, NO TRES: bolívares y la moneda de
+          este fiado. La tercera sería abonar un fiado en dólares con euros,
+          que es la conversión entre libros que este producto no hace nunca
+          (ver `convert.ts`). Lo que cambió es la forma del control, no lo que
+          ofrece. */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="monto">¿Cuánto abona?</Label>
+        <div className="flex items-start gap-2">
+          <Input
+            id="monto"
+            name="monto"
+            inputMode="decimal"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            placeholder="00"
+            aria-invalid={deMas || undefined}
+            className="h-10 flex-1 text-lg"
           />
+          {/* SIN DESPLEGABLE CUANDO NO HAY NADA QUE ELEGIR: un negocio
+              colombiano, o uno venezolano sin tasa con la que convertir. Un
+              selector de una sola opción es una pregunta sin respuesta
+              posible. */}
+          {puedeBolivares ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" className="h-10 shrink-0 gap-2">
+                  <CurrencyFlagIcon
+                    currency={monedaTecleada as PriceCurrency}
+                    className="size-4 shrink-0"
+                  />
+                  <span className="text-xs">
+                    {monedaTecleada === "VES"
+                      ? "Bolívares"
+                      : monedaTecleada === "EUR"
+                        ? "Euros"
+                        : "Dólares"}
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {(["VES", libro] as const).map((m) => (
+                  <DropdownMenuItem key={m} onSelect={() => setMonedaTecleada(m as MonedaTecleada)}>
+                    <CurrencyFlagIcon currency={m as PriceCurrency} className="size-4 shrink-0" />
+                    {m === "VES" ? "Bolívares" : m === "EUR" ? "Euros" : "Dólares"}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+
+        {/* LA EQUIVALENCIA, DEBAJO Y SIN BANDERA — frame `1564:11586` y el
+            encargo del 2026-10-23 sobre las banderas. Enseña la OTRA moneda:
+            tecleando bolívares dice lo que son en el libro, y al revés.
+
+            SOLO CON UNA CIFRA ESCRITA: «Bs. 0,00» debajo de un campo vacío no
+            informa de nada y empuja hacia abajo el aviso del tope. */}
+        {rateContext && libro && Number(monto) > 0 ? (
+          monedaTecleada === "VES" ? (
+            <MontoARegistrarRow
+              bolivares={monto}
+              destino={libro}
+              rateContext={rateContext}
+              usarPrevista={usarPrevista}
+              type="payment"
+            />
+          ) : (
+            <BsAmountPreview
+              amount={monto}
+              currency={libro}
+              rateContext={rateContext}
+              usarPrevista={usarPrevista}
+            />
+          )
+        ) : null}
+
+        {/* UN SOLO RENGLÓN con el tope: en gris mientras va bien y el error
+            rojo EN SU LUGAR cuando se pasa. Misma decisión que el formulario
+            de «Agregar», donde los dos a la vez hacían que el dueño leyera el
+            mismo aviso repetido.
+
+            ESTO NO ESTÁ EN EL FRAME y se queda: es el tope del abono, y sin
+            él el tendero escribe a ciegas y se entera del límite cuando la
+            acción se lo rechaza. */}
+        <p
+          className={
+            deMas || abonoAgotado
+              ? "text-sm leading-5 text-destructive"
+              : "text-sm text-muted-foreground"
+          }
+        >
+          {abonoAgotado
+            ? "Ya repartiste todo el abono. Vuelve atrás y deshaz otro fiado, o escribe un abono mayor."
+            : deMas
+              ? mandaElAbono
+                ? `Del abono quedan ${formatPriceAmount(restanteDelAbono ?? 0, moneda)}. Escribe esa cantidad o menos.`
+                : `Ese fiado solo debe ${formatPriceAmount(pendiente, moneda)}. Escribe esa cantidad o menos.`
+              : `Máximo ${topeLegible} — ${mandaElAbono ? "lo que queda del abono" : "lo que debe este fiado"}.`}
+        </p>
+
+        {/* LA FRASE DEL FRAME, REESCRITA CON LO QUE DE VERDAD PASA.
+            El frame dice «Abono quedará guardado en Bolívares a la tasa
+            equivalente», y eso es FALSO en este producto: el abono se guarda
+            en la moneda del FIADO, con la tasa sellada de hoy. Preguntado al
+            dueño el 2026-10-23 entre quitarla y reescribirla, eligió
+            reescribirla — dice lo que el frame quería decir (que hay una
+            conversión de por medio) sin afirmar algo que no ocurre.
+
+            SOLO TECLEANDO BOLÍVARES: es cuando hay conversión que explicar. */}
+        {monedaTecleada === "VES" && libro ? (
+          <p className="text-xs leading-4 text-muted-foreground">
+            Se guarda en {libro === "EUR" ? "euros" : "dólares"} a la tasa de hoy; los bolívares
+            son la equivalencia.
+          </p>
         ) : null}
 
         {rateContext && libro ? (
           <>
-            {monedaTecleada === "VES" ? null : (
-              <BsAmountPreview
-                amount={monto}
-                currency={libro}
-                rateContext={rateContext}
-                usarPrevista={usarPrevista}
-              />
-            )}
             {/* LA CASILLA DE LA PREVISTA SE GOBIERNA SOLA. El frame la dibuja
                 siempre porque su maqueta tiene uno de esos viernes; el
                 componente aplica `tocaOfrecerPrevista`, la misma ventana que

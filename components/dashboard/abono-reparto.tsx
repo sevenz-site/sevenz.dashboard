@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, Trash2 } from "lucide-react";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
@@ -561,7 +561,15 @@ export function AbonoReparto({
             // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
             // desmonta solo al cambiar de ruta.
             setRepartiendo(false);
-            router.push(`/abonos/nuevo/${f.movementId}?reparto=1`);
+            // DIRECTO AL MONTO, SIN EL PASO INTERMEDIO. Encargo del dueño
+            // el 2026-10-23: *«elimina el paso "Detalle de transacción 2/2
+            // confirma transacción a abonar"»*.
+            //
+            // Esa pantalla enseñaba el fiado y pedía «Continuar» — y lo que
+            // enseñaba ya está en la tarjeta desde la que se pulsa «Pagar»:
+            // el producto, la fecha, lo que debe. Era un toque para confirmar
+            // lo que el tendero acababa de elegir.
+            router.push(`/abonos/nuevo/${f.movementId}/monto?reparto=1`);
           }}
         >
           Pagar
@@ -618,13 +626,26 @@ export function AbonoReparto({
               {/* FIJADO A MANO SE PUEDE DESHACER, y tiene que
                               poder: si no, el tendero que se equivoca al
                               fijar un fiado no tiene forma de volver al
-                              reparto automático salvo recargando. */}
+                              reparto automático salvo recargando.
+
+                              ERA UN BOTÓN DE TEXTO «Deshacer» hasta el
+                              2026-10-23. Ahora es el MISMO botón de papelera
+                              del carrito del catálogo —`destructive`, `size-10
+                              rounded-xl`, icono de 4— por encargo del dueño.
+
+                              POR QUÉ IMPORTA QUE SEA EL MISMO Y NO UNO
+                              PARECIDO: en el carrito ese botón significa
+                              «quita esta línea», y aquí significa lo mismo.
+                              Dos iconos distintos para el mismo gesto es cómo
+                              el tendero deja de saber cuál quita y cuál
+                              resta. */}
               {aMano[f.movementId] != null ? (
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs"
+                  variant="destructive"
+                  size="icon"
+                  className="size-10 rounded-xl"
+                  aria-label="Quitar lo asignado a este fiado"
                   onClick={() =>
                     // Del valor VISIBLE, no del estado: mientras el tendero no
                     // haya tocado nada, lo visible sale del borrador y el
@@ -636,7 +657,7 @@ export function AbonoReparto({
                     })
                   }
                 >
-                  Deshacer
+                  <Trash2 className="size-4" aria-hidden="true" />
                 </Button>
               ) : null}
             </div>
@@ -667,7 +688,23 @@ export function AbonoReparto({
           `app-header.tsx` que suprime la cabecera a TODAS las anchuras, así
           que sin esto, a partir de `sm` la pantalla se queda sin forma de
           volver. */}
-      <ScreenBackRow href={`/clients/${clienteId}`} label={clienteNombre} soloEnTelefono={false} />
+      {/* ── LA FLECHA VUELVE AL BUSCADOR, NO A LA FICHA ───────────────────
+          Encargo del dueño el 2026-10-23: *«al seleccionar "atrás" debe
+          llevar a sheet para buscar cliente, no al perfil del cliente»*.
+
+          POR QUÉ TIENE SENTIDO: a esta pantalla se llega eligiendo un cliente
+          en esa hoja. «Atrás» es deshacer esa elección —me equivoqué de
+          cliente— y la ficha del cliente no es el paso anterior de nada: es
+          otro sitio, desde el que además habría que volver a empezar.
+
+          `?nuevo=abono` ES LA MISMA HOJA, no una copia: la monta `/dashboard`
+          y abre directa en el buscador con el propósito «abono», que es lo
+          que hace que al elegir cliente vuelva aquí. */}
+      <ScreenBackRow
+        href="/dashboard?nuevo=abono"
+        label="Buscar otro cliente"
+        soloEnTelefono={false}
+      />
 
       {/* ── EL RITMO VERTICAL DE LA CABECERA, MEDIDO CONTRA EL FRAME ──────
           Nodos `1526:11184` (contenedor del título) y `1526:11187` (el del
@@ -863,11 +900,27 @@ export function AbonoReparto({
               // así que lleva la del libro; tecleando en el libro dice los
               // bolívares y lleva la de Venezuela. Al revés estaría etiquetando
               // cada número con la moneda del otro.
+              // SIN BANDERA CUANDO LA CIFRA ES EN BOLÍVARES — encargo del
+              // dueño el 2026-10-23: *«en la equivalencia en Bolívares no
+              // agregues la bandera, solo en el monto principal en dólares o
+              // euros»*.
+              //
+              // DESPLAZA SU PROPIA PETICIÓN DEL 2026-10-23 por la mañana, que
+              // era justo añadirla. La razón de aquella sigue escrita abajo y
+              // sigue siendo cierta —dos números parecidos en dos monedas, uno
+              // encima del otro— pero la bandera de Venezuela aparecía tantas
+              // veces por pantalla que dejaba de distinguir nada.
+              //
+              // TECLEANDO BOLÍVARES SÍ LA LLEVA, y no es una excepción: ahí la
+              // cifra de esta línea está en la moneda del LIBRO, que es
+              // «el monto principal en dólares o euros» del encargo.
               <p className="flex items-center gap-1 text-sm text-muted-foreground tabular-nums">
-                <CurrencyFlagIcon
-                  currency={enBolivares ? ((libro ?? "USD") as PriceCurrency) : "VES"}
-                  className="size-3.5 shrink-0"
-                />
+                {enBolivares ? (
+                  <CurrencyFlagIcon
+                    currency={(libro ?? "USD") as PriceCurrency}
+                    className="size-3.5 shrink-0"
+                  />
+                ) : null}
                 {enBolivares
                   ? `${formatPriceAmount(enElLibro, (libro ?? "COP") as PriceCurrency)} hoy`
                   : `${formatBs(bsDelTotal)} hoy`}
@@ -1023,9 +1076,12 @@ export function AbonoReparto({
               deja al tendero sin forma de llegar al fiado que su cliente
               acaba de nombrar.
 
-              Y EL RÓTULO CAMBIA POR LO MISMO: «Repartir distinto» describe lo
-              que hace con un monto puesto; «Seleccionar fiados» describe lo
-              que hace siempre. */}
+              EL RÓTULO HA CAMBIADO DOS VECES y las dos quedan escritas.
+              «Repartir distinto» describía lo que hace con un monto puesto;
+              «Seleccionar fiados» lo que hace siempre; y «Repartir
+              manualmente» —encargo del dueño el 2026-10-23— dice además QUIÉN
+              decide, que es lo que de verdad distingue a esta puerta de la
+              lista automática de arriba. */}
           {/* EN SELECCIÓN NO SE DIBUJA: su trabajo —encontrar un fiado y
               ponerle cifra— ya lo hace el buscador de arriba con la lista
               entera debajo. Dos puertas a lo mismo en la misma pantalla, y una
@@ -1040,7 +1096,7 @@ export function AbonoReparto({
                 setRepartiendo(true);
               }}
             >
-              Seleccionar fiados
+              Repartir manualmente
             </Button>
           )}
 

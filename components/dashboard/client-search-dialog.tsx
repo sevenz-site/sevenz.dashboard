@@ -567,7 +567,20 @@ function ClientSearchDialogBody({
           <SheetDescription>Negocio: {businessName} · busca por nombre o cédula.</SheetDescription>
         )}
       </SheetHeader>
-      <div className="flex flex-col gap-3">
+      {/* ── LOS 16px DE LOS LADOS, QUE AQUÍ FALTABAN ───────────────────────
+          `SheetHeader` trae su propio `p-4`; `SheetContent` NO trae ninguno.
+          Así que el título iba indentado y el buscador con la lista pegados a
+          los dos bordes — reportado por el dueño el 2026-10-23 con la captura
+          y los dos lados señalados en rojo.
+
+          SE LEÍA COMO DOS COLUMNAS DISTINTAS en la misma hoja, que es lo que
+          la regla de `DESIGN-SYSTEM.md` evita: 16px a los lados, todas las
+          pantallas. El `pb-6` es el aire de abajo que la hoja tampoco tenía.
+
+          VA AQUÍ Y NO EN `SheetContent`: ese componente lo usan todas las
+          hojas de la app, varias de las cuales ponen su propio relleno
+          dentro. Cambiarlo allí sumaría dos rellenos en todas ellas. */}
+      <div className="flex flex-col gap-3 px-4 pb-6">
         <Input
           autoFocus
           placeholder="Nombre o cédula del cliente"
@@ -632,7 +645,9 @@ function ClientSearchDialogBody({
             setConsentDialog(true);
           }
         }}
-        className="flex flex-col gap-4"
+        // Los mismos 16px del cuerpo de arriba: el alta de cliente es la
+        // segunda cara de esta hoja y tenía el mismo borde a borde.
+        className="flex flex-col gap-4 px-4 pb-6"
       >
         <input type="hidden" name="confirm_duplicate" defaultValue="false" />
         {/* Viaja siempre: en el alta de cliente la casilla se ensena siempre,

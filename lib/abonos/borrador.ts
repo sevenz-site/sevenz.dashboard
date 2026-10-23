@@ -148,14 +148,45 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
 // Al limpiar el monto, la 1/2 cambia de estado: el campo se sustituye por un
 // buscador y el total pasa a ser la suma de lo que él vaya fijando. Es el
 // frame `1564:11211`, y el dueño lo confirmó así al preguntárselo.
-export function fijarEnBorrador(clienteId: string, movementId: string, monto: number): void {
+export function fijarEnBorrador(
+  clienteId: string,
+  movementId: string,
+  monto: number,
+  // EL LIBRO, PARA PODER CREAR EL BORRADOR SI NO HAY NINGUNO. Ver abajo.
+  libro: string | null,
+): void {
   const b = leerBorrador(clienteId);
-  if (!b) return;
+
+  // ── SIN BORRADOR SE CREA UNO, NO SE ABANDONA ───────────────────────
+  //
+  // Esto hacía `if (!b) return;` — o sea, el tendero pagaba un fiado, volvía
+  // a la 1/2 y no había nada: su cifra se perdía sin un solo aviso. Y no es
+  // un caso de laboratorio: `CLAUDE.md` avisa de que iOS borra el
+  // almacenamiento del navegador sin pedir permiso, y basta con que lo haga
+  // entre la 1/2 y la pantalla del monto.
+  //
+  // Encontrado el 2026-10-23 recorriendo el flujo con el almacenamiento
+  // limpio a mano. La regla de la casa es la misma que para los eventos de
+  // analítica: nada que importe depende de que el navegador coopere.
+  //
+  // LO QUE SE PIERDE AL RECREARLO es la moneda tecleada y lo fijado en OTROS
+  // fiados, que ya no existen en ninguna parte. Lo que se salva es la cifra
+  // que el tendero acaba de escribir, que es lo único que no se puede
+  // recuperar mirando la pantalla.
+  const base = b ?? {
+    clienteId,
+    libro,
+    monto: "",
+    enBolivares: false,
+    totalEnLibro: null,
+    aMano: {},
+  };
+
   guardarBorrador({
-    ...b,
+    ...base,
     monto: "",
     totalEnLibro: null,
-    aMano: { ...b.aMano, [movementId]: monto },
+    aMano: { ...base.aMano, [movementId]: monto },
   });
 }
 
