@@ -430,6 +430,87 @@ try {
     lineasHuerfanas === 0 && pagosHuerfanos === 0,
     `${lineasHuerfanas} líneas · ${pagosHuerfanos} pagos sobrevivieron`,
   );
+  // ── 10. LO QUE RECIBE EL CLIENTE, LEÍDO COMO ANON ────────────────
+  //
+  // Migration 139 added `productos` to `get_shared_balance`. This reads it the
+  // way the client's page does -- with the anon key and a token, no session --
+  // because that is the only caller there will ever be, and the service role
+  // would answer this question for a reader that does not exist.
+  const { data: enlace } = await admin
+    .from("share_links")
+    .insert({ client_id: cliente.id })
+    .select("token")
+    .single();
+
+  // A SECOND LINE IN ANOTHER BOOK, on the same sale as the USD charge. This is
+  // the 2026-10-20 bug made into a check: a mixed sale used to travel whole,
+  // so the screen added ten dollars to what was paid in euros.
+  await admin.from("sale_lines").insert({
+    sale_id: ventaCredito.id,
+    product_id: null,
+    name: `${MARCA} en euros`,
+    quantity: 1,
+    unit_price: 7,
+    currency: "EUR",
+  });
+
+  // A CHARGE WITH NO SALE BEHIND IT -- everything from before 2026-10-17 and
+  // everything the libreta imports. `productos` has to arrive as `[]`, not
+  // null: the page maps over it without asking first.
+  const { data: sinVenta } = await admin
+    .from("movements")
+    .insert({
+      client_id: cliente.id,
+      type: "charge",
+      amount: 3,
+      currency: "USD",
+      description: `${MARCA} sin venta`,
+    })
+    .select("id")
+    .single();
+  movimientos.push(sinVenta.id);
+
+  const anonCliente = createClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  const r10 = await anonCliente.rpc("get_shared_balance", { p_token: enlace.token });
+  const movs = r10.data?.movements ?? [];
+  const elCargo = movs.find((m) => m.id === cargo.id);
+  const elSuelto = movs.find((m) => m.id === sinVenta.id);
+
+  check(
+    "10. el CLIENTE ve lo que se llevó — nombre, cantidad y precio, sin sesión",
+    elCargo != null &&
+      Array.isArray(elCargo.productos) &&
+      elCargo.productos.length === 1 &&
+      elCargo.productos[0].name === `${MARCA} producto` &&
+      Number(elCargo.productos[0].quantity) === 1 &&
+      Number(elCargo.productos[0].unit_price) === 10,
+    r10.error
+      ? r10.error.message
+      : elCargo == null
+        ? "EL CARGO NO VIAJÓ — la comprobación no mide nada"
+        : JSON.stringify(elCargo.productos),
+  );
+
+  check(
+    "10b. y SOLO las de su moneda — la línea en euros no entra en el fiado en dólares",
+    elCargo != null &&
+      Array.isArray(elCargo.productos) &&
+      !elCargo.productos.some((p) => /en euros/.test(p.name)),
+    elCargo == null ? "EL CARGO NO VIAJÓ" : JSON.stringify(elCargo.productos),
+  );
+
+  check(
+    "10c. un cargo sin venta detrás llega con `[]`, no con null — la página lo recorre sin preguntar",
+    elSuelto != null && Array.isArray(elSuelto.productos) && elSuelto.productos.length === 0,
+    elSuelto == null
+      ? "EL CARGO SUELTO NO VIAJÓ"
+      : `productos = ${JSON.stringify(elSuelto.productos)}`,
+  );
+
 } catch (e) {
   check("la suite llegó al final", false, e instanceof Error ? e.message : String(e));
 } finally {

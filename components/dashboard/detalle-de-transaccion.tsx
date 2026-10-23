@@ -414,7 +414,20 @@ export function DetalleDeTransaccion({
 
                   SU TASA ES LA DEL FIADO (`exchangeRateUsed`), que es la que
                   se selló ese día. Con cero abonado los bolívares salen cero,
-                  que es lo que el dueño pidió literalmente. */}
+                  que es lo que el dueño pidió literalmente.
+
+                  PERO SOLO DONDE HAY BOLÍVARES. El `: 0` se escribió mirando
+                  un negocio venezolano y hacía que un fiado COLOMBIANO sin
+                  abono inicial dibujara «Bs. 0,00 al día de la compra» —
+                  medido en dev el 2026-10-22, en la ficha del cliente y en la
+                  del dueño, que comparten este componente. `0` no es `null`
+                  para `TarjetaDeAbono`: cualquier número hace que dibuje la
+                  línea, y 0 × 0 es 0.
+
+                  `currency != null` ES la prueba de «este negocio tiene
+                  bolívares», no un atajo: un libro venezolano es 'USD' o
+                  'EUR' y el colombiano viaja NULL. Es la misma normalización
+                  que `qa:currency` vigila desde el 2026-09-11. */}
               <TarjetaDeAbono
                 inicial
                 abono={{
@@ -426,7 +439,12 @@ export function DetalleDeTransaccion({
                   currency,
                   amount: abonoInicial ?? 0,
                   descripcion: null,
-                  tasaSellada: (abonoInicial ?? 0) > 0.005 ? exchangeRateUsed : 0,
+                  tasaSellada:
+                    (abonoInicial ?? 0) > 0.005
+                      ? exchangeRateUsed
+                      : currency != null
+                        ? 0
+                        : null,
                 }}
                 // LO QUE QUEDÓ TRAS EL PAGO DE LA COMPRA, que es `amount` tal
                 // cual: la migración `124` escribe el movimiento por lo que
