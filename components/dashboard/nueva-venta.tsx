@@ -17,12 +17,19 @@ import {
   ChevronRight,
   ImageOff,
   Minus,
+  ChevronDown,
   Percent,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -2361,43 +2368,75 @@ function PagoSheet({
                       frames lo dibujan igual: un fiado pactado en bolívares es
                       tan posible como un cobro en bolívares, y la deuda se
                       guarda convertida al libro exactamente igual. */}
+                  {/* EL DESPLEGABLE DEL DESIGN SYSTEM, NO EL NATIVO.
+                      Instrucción del dueño el 2026-10-23 con la captura: un
+                      `<select>` abre la rueda gris del sistema operativo —otra
+                      tipografía, otros colores, otro radio— en medio de una
+                      pantalla que es toda de la app.
+
+                      ES EL MISMO MONTAJE QUE `abono-monto.tsx`, a propósito y
+                      no por copiar: botón `outline` de 40px con la bandera, el
+                      nombre y el chevron, y los ítems con su bandera. Los dos
+                      campos preguntan lo mismo —«¿en qué moneda te lo
+                      entregan?»— en dos flujos distintos, así que tienen que
+                      verse iguales. Si a uno hay que cambiarle algo, al otro
+                      también. */}
                   {tasa ? (
-                    <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
-                      <CurrencyFlagIcon
-                        currency={monedaEntrega === "VES" ? "VES" : moneda}
-                        className="size-4"
-                      />
-                      <select
-                        aria-label="Moneda que te entrega"
-                        value={monedaEntrega}
-                        onChange={(e) => {
-                          const siguiente = e.target.value as "VES" | PriceCurrency;
-                          if (siguiente === monedaEntrega || !tasa) return;
-                          // SE REEXPRESA LA CIFRA AL CAMBIAR. Dejar 5.756,66
-                          // rotulado «Dólares» no sería un fallo silencioso
-                          // —el tope de la venta lo frena— pero sí un susto, y
-                          // obliga a reteclear lo que la app ya sabe convertir.
-                          // LA SEGUNDA PUERTA AL MISMO CAMPO, y la que más
-                          // decimales suelta: dividir entre la tasa deja cola
-                          // casi siempre. Si esta se quedara sin
-                          // `COMO_SE_ESCRIBE`, el campo se vería bien al abrir
-                          // y se ensuciaría al tocar el desplegable — que es
-                          // peor que verse mal desde el principio.
-                          const actual = parseAmount(monto) ?? 0;
-                          setMonto(
-                            formatAmountForInput(
-                              siguiente === "VES" ? actual * tasa : actual / tasa,
-                              COMO_SE_ESCRIBE,
-                            ),
-                          );
-                          setMonedaEntrega(siguiente);
-                        }}
-                        className="bg-transparent text-base outline-none"
-                      >
-                        <option value={moneda}>{NOMBRE[moneda] ?? moneda}</option>
-                        <option value="VES">Bolívares</option>
-                      </select>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 shrink-0 gap-2"
+                          aria-label="Moneda que te entrega"
+                        >
+                          <CurrencyFlagIcon
+                            currency={monedaEntrega === "VES" ? "VES" : moneda}
+                            className="size-4 shrink-0"
+                          />
+                          <span className="text-xs">
+                            {monedaEntrega === "VES" ? "Bolívares" : (NOMBRE[moneda] ?? moneda)}
+                          </span>
+                          <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {([moneda, "VES"] as const).map((opcion) => (
+                          <DropdownMenuItem
+                            key={opcion}
+                            onSelect={() => {
+                              const siguiente = opcion as "VES" | PriceCurrency;
+                              if (siguiente === monedaEntrega || !tasa) return;
+                              // SE REEXPRESA LA CIFRA AL CAMBIAR. Dejar
+                              // 5.756,66 rotulado «Dólares» no sería un fallo
+                              // silencioso —el tope de la venta lo frena— pero
+                              // sí un susto, y obliga a reteclear lo que la
+                              // app ya sabe convertir.
+                              // LA SEGUNDA PUERTA AL MISMO CAMPO, y la que más
+                              // decimales suelta: dividir entre la tasa deja
+                              // cola casi siempre. Si esta se quedara sin
+                              // `COMO_SE_ESCRIBE`, el campo se vería bien al
+                              // abrir y se ensuciaría al tocar el desplegable
+                              // — que es peor que verse mal desde el principio.
+                              const actual = parseAmount(monto) ?? 0;
+                              setMonto(
+                                formatAmountForInput(
+                                  siguiente === "VES" ? actual * tasa : actual / tasa,
+                                  COMO_SE_ESCRIBE,
+                                ),
+                              );
+                              setMonedaEntrega(siguiente);
+                            }}
+                          >
+                            <CurrencyFlagIcon
+                              currency={opcion === "VES" ? "VES" : moneda}
+                              className="size-4 shrink-0"
+                            />
+                            {opcion === "VES" ? "Bolívares" : (NOMBRE[moneda] ?? moneda)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   ) : null}
                 </div>
               </div>

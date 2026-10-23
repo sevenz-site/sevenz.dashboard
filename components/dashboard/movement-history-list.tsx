@@ -413,6 +413,11 @@ export function MovementHistoryList({
           // SOLO PUEDE PASAR EN LA FILA SIN FIADO: el pendiente de un fiado
           // nunca baja de cero. Lo trae el saldo del libro, que sí.
           const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
+          // UN FIADO SALDADO. Se mide contra el pendiente del PROPIO fiado,
+          // nunca contra `cifraPorCobrar`: en una fila de abono esa cifra es
+          // el saldo del cliente en el libro, y un cliente en cero no
+          // convierte su abono en «Pagado».
+          const pagado = m.type === "charge" && pendienteDelFiado != null && pendienteDelFiado <= 0.005;
           const porCobrar =
             cifraPorCobrar == null
               ? null
@@ -511,21 +516,13 @@ export function MovementHistoryList({
                   {/* SU PROPIA FECHA, que es también la que ordena la lista.
                       Ver arriba por qué dejó de ser la del último abono. */}
                   <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                  {/* UN FIADO PAGADO LLEVA SU CHIP «Pagado». Instrucción del
-                      dueño el 2026-10-21, contestando a la regresión que dejó
-                      a un fiado saldado anunciando «Por cobrar +$0.00»:
-                      *«debe tener estado "Pagado" como se definió en el chip y
-                      saldo por cobrar = 0»*.
-
-                      SOLO ESE ESTADO, y es deliberado: el frame `1512:10061`
-                      no dibuja chip ninguno, y los de «Dentro del plazo» y
-                      «Plazo vencido» se retiraron de esta fila ese mismo día
-                      por eso. Pero el frame tampoco dibuja un fiado saldado —
-                      su ejemplo tiene deuda— así que no dice nada sobre este
-                      caso. El cero solo, sin nada que lo explique, se lee como
-                      un dato que falta; con el chip al lado se lee como la
-                      respuesta que es. */}
-                  {m.type === "charge" && (pendienteDelFiado ?? 0) <= 0.005 ? <ChipDeEstado estado="pagado" /> : null}
+                  {/* AQUÍ ESTUVO EL CHIP «Pagado», bajo la fecha, desde el
+                      2026-10-21. Baja al pie el 2026-10-23, al sitio exacto
+                      del chip «A favor», por instrucción del dueño con la
+                      captura delante. Los dos contestan la misma pregunta
+                      —«¿y entonces qué queda debiendo?»— así que leerlos en
+                      dos esquinas distintas obligaba a buscar cuál estaba
+                      puesto. Ver el pie de esta misma fila. */}
 
                   {/* AQUÍ ESTUVO EL «Por cobrar» DEL ABONO, en texto pequeño
                       y pegado bajo la fecha. Baja al piso 2, que los frames
@@ -601,6 +598,19 @@ export function MovementHistoryList({
                         {porCobrar.secondary} hoy
                       </span>
                     ) : null}
+                    {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez:
+                        «Pagado» es un fiado cuyo pendiente llegó a cero, «A
+                        favor» es un saldo que se pasó de largo, y un mismo
+                        número no puede ser las dos cosas.
+
+                        Y AQUÍ EL «Pagado» DEPENDE DE QUE HAYA CIFRA, que es
+                        una mejora que vino de regalo con la mudanza: arriba se
+                        dibujaba con `(pendienteDelFiado ?? 0) <= 0.005`, así
+                        que un fiado SIN dato de pendiente —una base sin la
+                        migración `132`— salía anunciando «Pagado» sin que
+                        nadie lo hubiera pagado. Dentro del pie no puede pasar:
+                        sin cifra no hay pie. */}
+                    {pagado ? <ChipDeEstado estado="pagado" /> : null}
                     {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
                   </span>
                 </div>

@@ -408,12 +408,19 @@ export function AbonoReparto({
     });
   }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
 
-  // ── LAS DOS CONDICIONES QUE APAGAN «REPARTIR MANUALMENTE» ──────────
+  // ── LO QUE APAGA «REPARTIR MANUALMENTE» ────────────────────────────
   //
-  // `delLibro` y no `fiados`: lo que importa es cuántos hay EN LA LISTA que
-  // se está repartiendo, no cuántos tiene el cliente. Con «Euros» elegido y
-  // un solo fiado en euros, el botón sobra aunque deba otros tres en dólares.
-  const unSoloFiado = delLibro.length <= 1;
+  // AQUÍ VIVÍA `unSoloFiado = delLibro.length <= 1`, y su comentario decía
+  // «lo que importa es cuántos hay EN LA LISTA que se está repartiendo». La
+  // intención era la correcta y la variable no: `delLibro` son los fiados del
+  // LIBRO, no los que la pantalla dibuja. Con dos fiados en dólares y un
+  // abono de 1 $, la lista enseña UNO —el reparto no llega al segundo— y el
+  // botón salía igual, ofreciendo repartir entre una sola tarjeta.
+  //
+  // Lo cazó el dueño el 2026-10-23 jugando a cambiar de moneda, que es justo
+  // lo que hace que las dos listas se separen. La condición de verdad está
+  // más abajo, en `enPantalla`, contada sobre las mismas filas que se pintan.
+  //
   // `deuda` ya está en la unidad del reparto —bolívares si cruza libros— así
   // que esto compara dos cifras de la misma moneda. Comparar `montoNum` con
   // `deuda` sería comparar bolívares con dólares en cuanto se tecleara en
@@ -457,6 +464,18 @@ export function AbonoReparto({
       [...f.productos, f.descripcion ?? ""].join(" ").toLowerCase().includes(q),
     );
   }, [enOrden, buscaFiado]);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LO QUE LA PANTALLA ENSEÑA DE VERDAD, contado una sola vez
+  //
+  // La lista de abajo se pinta con esta misma expresión, y el botón «Repartir
+  // manualmente» se enciende con ella. No es una comodidad: tenerlas por
+  // separado es exactamente lo que falló — la lista filtraba por lo que cada
+  // fiado RECIBE y el botón contaba los del libro, así que discrepaban en
+  // cuanto el abono no alcanzaba para todos.
+  const enPantalla = (modoSeleccion ? fiadosFiltrados : enOrden).filter(
+    (f) => modoSeleccion || (asignado.get(f.movementId) ?? 0) > 0.005,
+  );
 
   const equivalencia = (n: number, moneda: PriceCurrency | null) => {
     if (!rates || !moneda || n <= 0) return null;
@@ -1084,8 +1103,7 @@ export function AbonoReparto({
                   «Seleccionar fiados», que es justo para lo que él la quiere
                   siempre a mano. */}
               <ul className="flex flex-col gap-3">
-                {(modoSeleccion ? fiadosFiltrados : enOrden)
-                  .filter((f) => modoSeleccion || (asignado.get(f.movementId) ?? 0) > 0.005)
+                {enPantalla
                   .map((f) =>
                     // EN SELECCIÓN CONVIVEN LAS DOS FILAS: la del fiado que ya
                     // tiene su cifra —con su renglón «Abona»— y la del que
@@ -1213,8 +1231,22 @@ export function AbonoReparto({
               EL TERCERO INCLUYE EL CASO EN QUE SE PASA (`excede`), y es a
               propósito: si tecleó más de lo que el cliente debe, tampoco hay
               reparto que ajustar — lo que hay es una cifra que corregir, y
-              eso lo dice la línea roja de arriba. */}
-          {modoSeleccion || unSoloFiado || cubreTodo ? null : (
+              eso lo dice la línea roja de arriba.
+
+              EL SEGUNDO SE CUENTA SOBRE `enPantalla`, las filas que esta
+              pantalla pinta de verdad, y no sobre los fiados del libro. Eso
+              cubre de una vez los dos casos que el dueño reportó el
+              2026-10-23: sin monto tecleado no recibe nadie, la lista está
+              vacía y el botón sobra; y con un abono que solo alcanza al
+              primero sale una tarjeta, y repartir entre una tarjeta no es
+              repartir.
+
+              Y ESTO DESPLAZA LA DECISIÓN DEL 2026-10-23 DE ARRIBA —«que se
+              dibuje siempre, aunque no haya monto, para poder llegar al fiado
+              que el cliente nombró»—, que queda escrita en su comentario. La
+              puerta no se pierde: en cuanto hay una cifra con la que repartir,
+              el botón vuelve. */}
+          {modoSeleccion || cubreTodo || enPantalla.length <= 1 ? null : (
             <Button
               type="button"
               variant="outline"

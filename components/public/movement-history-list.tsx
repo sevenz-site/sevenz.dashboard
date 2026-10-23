@@ -289,6 +289,9 @@ export function MovementHistoryList({
           // absoluto y el chip dice de quién es. Es lo que la tarjeta de
           // arriba ya hacía con su `Math.abs` y su «A favor».
           const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
+          // UN FIADO SALDADO, medido contra el pendiente del propio fiado y
+          // no contra la cifra del pie — ver la lista del tendero.
+          const pagado = m.type === "charge" && pendienteDelFiado != null && pendienteDelFiado <= 0.005;
           const porCobrar =
             cifraPorCobrar == null
               ? null
@@ -360,15 +363,11 @@ export function MovementHistoryList({
                   {/* SU PROPIA FECHA, que es también la que ordena la lista.
                       Ver arriba por qué dejó de ser la del último abono. */}
                   <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                  {/* EL CHIP «Pagado» DE UN FIADO SALDADO, igual que en la
-                      lista del tendero y por la misma razón — ver su
-                      comentario. Aquí el estado sale de `pending`, que llega
-                      con la migración `132`: sin ella la clave no viene, el
-                      pendiente es `null` y no se dibuja nada, que es como
-                      estaba antes. */}
-                  {m.type === "charge" && m.pending != null && m.pending <= 0.005 ? (
-                    <ChipDeEstado estado="pagado" />
-                  ) : null}
+                  {/* EL CHIP «Pagado» ESTUVO AQUÍ y bajó al pie el
+                      2026-10-23, al sitio del chip «A favor», en la misma
+                      sesión que el de la lista del tendero — que es la única
+                      forma de que estas dos pantallas sigan pareciéndose.
+                      Ver el pie de esta misma fila. */}
                   {/* THE ABONO'S OWN «Por cobrar» LINE LIVED HERE, small and
                       tucked under the date. It moves to tier 2, which the
                       2026-10-22 frames give to both types alike. */}
@@ -438,6 +437,9 @@ export function MovementHistoryList({
                         {porCobrar.secondary} hoy
                       </span>
                     ) : null}
+                    {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez.
+                        El porqué largo está en la lista del tendero. */}
+                    {pagado ? <ChipDeEstado estado="pagado" /> : null}
                     {aFavor ? <ChipDeEstado estado="a_favor" /> : null}
                   </span>
                 </div>

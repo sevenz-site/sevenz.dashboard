@@ -668,6 +668,42 @@ Vale en los dos historiales **y en la ficha de la transacción**, que es donde
 se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
 `Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
 
+## Todo encargo del app del dueño se pregunta para la vista del cliente
+
+**Pedido por el dueño el 2026-10-23**: *«todo requerimiento que te solicite
+dentro del app del dueño debes preguntar si algo de ello se debe implementar
+en la vista del cliente, si se implementa tal cual o si debe haber alguna
+variante»*.
+
+Son **tres** respuestas posibles, no dos, y por eso se pregunta en vez de
+decidirlo solo:
+
+1. **Igual** — el chip «A favor» y el pie «Por cobrar» del historial.
+2. **Con variante** — la misma idea, distinta por lo que cada lado sabe o
+   puede. El chip por libro va en las dos, pero la vista del cliente no recibe
+   `days_since_payment`, así que nunca dice «Crítico».
+3. **No aplica** — la pantalla no existe ahí. Registrar una venta, repartir un
+   abono o elegir la moneda de un producto son cosas del tendero; el cliente
+   no registra nada.
+
+**Se contesta en el reporte, por escrito y antes de construir**, aunque la
+respuesta sea «no aplica» en los cuatro puntos. Decirlo cuesta una línea y es
+lo que deja constancia de que se miró.
+
+**Por qué merece regla propia.** Las dos pantallas son dos componentes
+distintos —`components/dashboard/movement-history-list.tsx` y
+`components/public/movement-history-list.tsx`— así que lo que se arregla en
+uno NO llega al otro, y nada avisa. El tendero mira su pantalla, la da por
+buena, y la contradicción solo aparece cuando un cliente abre su enlace con él
+delante. Eso no se lee como un detalle sin terminar: se lee como que la app le
+está diciendo a su cliente otra cosa de la que le dice a él, que es lo único
+que este producto promete no hacer.
+
+Y el caso de arriba enseña la otra mitad: el chip de estado por libro **sí**
+tenía que ir en la vista del cliente, pero su payload llega recortado a 50
+movimientos, así que replicarlo «tal cual» habría dado un estado falso en
+cualquier historial largo. La pregunta no es solo «¿va?», es «¿va igual?».
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
