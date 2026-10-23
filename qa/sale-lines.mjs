@@ -454,6 +454,22 @@ try {
     currency: "EUR",
   });
 
+  // AND A PAYMENT IN THAT OTHER BOOK, so the sale is paid in two currencies.
+  // Migration 140 is what makes the client's `abono_inicial` ignore it: until
+  // then `get_shared_balance` summed every payment of the sale with no filter,
+  // so a real fiado of 40,69 EUR whose sale also took 10 USD told the customer
+  // he had paid 50,45 EUR — more than the debt, in a book he never paid into.
+  //
+  // DEV HAD EXACTLY ONE SALE LIKE THIS, which is why it went unnoticed for two
+  // days. That is the reason this row builds its own instead of looking for
+  // one: a check that depends on a single fixture row existing stops checking
+  // the day somebody cleans it up, and says nothing when it does.
+  await admin.from("sale_payments").insert({
+    sale_id: ventaCredito.id,
+    currency: "EUR",
+    amount: 7,
+  });
+
   // A CHARGE WITH NO SALE BEHIND IT -- everything from before 2026-10-17 and
   // everything the libreta imports. `productos` has to arrive as `[]`, not
   // null: the page maps over it without asking first.
@@ -509,6 +525,18 @@ try {
     elSuelto == null
       ? "EL CARGO SUELTO NO VIAJÓ"
       : `productos = ${JSON.stringify(elSuelto.productos)}`,
+  );
+
+  // THE AMOUNT, NOT JUST THE NAMES. Rows 10 and 10b watch which products
+  // travel; this one watches the figure printed next to them. They broke
+  // separately and were fixed separately — the products by migration 139, the
+  // down payment by 140 — so one row cannot stand in for the other.
+  check(
+    "10d. el abono inicial cuenta SOLO los pagos de su libro — el de euros no entra en el fiado en dólares",
+    elCargo != null && Math.abs(Number(elCargo.abono_inicial) - 5) < 0.005,
+    elCargo == null
+      ? "EL CARGO NO VIAJÓ"
+      : `abono_inicial = ${elCargo.abono_inicial} · la venta cobró 5 USD + 7 EUR, así que lo correcto es 5`,
   );
 
 } catch (e) {
