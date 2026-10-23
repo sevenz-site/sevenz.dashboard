@@ -96,6 +96,7 @@ declare
   v_pendiente numeric;
   v_moneda text;
   v_monedas text[] := '{}';
+  v_monedas_reales text[] := '{}';
   v_ids uuid[] := '{}';
   v_nuevo uuid;
   -- Half a cent, the same tolerance `registrarAbonoDirigido` uses when it
@@ -200,10 +201,16 @@ begin
       );
     end if;
 
-    -- The sentinel keeps a Colombian split from reading as «no currency at
-    -- all»; it is translated back to null on the way out.
+    -- DOS ARRAYS EN PARALELO, y el segundo no es redundante. El primero
+    -- lleva el centinela, que es lo que permite distinguir «todavía no he
+    -- visto este libro» de «este libro es el colombiano, cuya moneda es
+    -- null»; el segundo lleva la moneda de verdad, que es lo que sale en la
+    -- respuesta. Traducir el centinela de vuelta al final exigía un
+    -- `array(select …)` dentro del `return`, que es justo la construcción que
+    -- no hay forma de probar sin correrla.
     if not (coalesce(v_moneda, '~COP~') = any (v_monedas)) then
       v_monedas := array_append(v_monedas, coalesce(v_moneda, '~COP~'));
+      v_monedas_reales := array_append(v_monedas_reales, v_moneda);
     end if;
   end loop;
 
@@ -258,14 +265,12 @@ begin
     -- written when there was always exactly one, so a mixed split hands it
     -- null rather than a currency picked out of a hat.
     'currency', case
-      when array_length(v_monedas, 1) = 1 then nullif(v_monedas[1], '~COP~')
+      when array_length(v_monedas_reales, 1) = 1 then v_monedas_reales[1]
       else null
     end,
-    -- AND THE FULL LIST, which is the new fact. '~COP~' is translated back so
-    -- that nothing downstream has to know about the sentinel.
-    'currencies', to_jsonb(array(
-      select nullif(x, '~COP~') from unnest(v_monedas) as x
-    )),
+    -- AND THE FULL LIST, which is the new fact. It carries the real
+    -- currencies, so nothing downstream has to know about the sentinel.
+    'currencies', to_jsonb(v_monedas_reales),
     'movement_ids', to_jsonb(v_ids)
   );
 end;
@@ -315,53 +320,55 @@ stable
 security definer
 set search_path = public
 as $fn$
-  with lineas as (
-    select m.id, m.amount, m.currency, m.created_at,
-           coalesce(m.currency, '~COP~') as libro
-    from public.movements m
-    where m.payment_group_id = p_group_id
-      and m.deleted_at is null
-  ),
-  por_libro as (
-    select
-      l.libro,
-      count(*) as lines,
-      sum(l.amount) as total,
-      (
-        select l2.id from lineas l2
-        where l2.libro = l.libro
-        order by l2.created_at desc, l2.id desc
-        limit 1
-      ) as last_movement_id
-    from lineas l
-    group by l.libro
-  )
   select case
-    when (select count(*) from lineas) = 0 then null
+    when x.libros = 0 then null
     else jsonb_build_object(
-      -- ONE LEDGER = THE SHAPE THIS ALWAYS HAD, unchanged, so the sender keeps
-      -- working untouched for every split written before today and for every
-      -- single-currency one written after.
-      'ok', (select count(*) from por_libro) = 1,
-      'reason', case when (select count(*) from por_libro) > 1
-                     then 'monedas_mezcladas' end,
+      -- UN SOLO LIBRO = LA FORMA QUE ESTO SIEMPRE TUVO, intacta, para que el
+      -- emisor siga funcionando sin tocarlo: en todos los repartos escritos
+      -- antes de hoy y en todos los de una sola moneda escritos despues.
+      'ok', x.libros = 1,
+      'reason', case when x.libros > 1 then 'monedas_mezcladas'::text end,
       'group_id', p_group_id,
-      'lines', (select count(*) from lineas),
-      'total', (select p.total from por_libro p limit 1),
-      'last_movement_id', (select p.last_movement_id from por_libro p limit 1),
-      -- THE NEW FACT, present in both cases. See the note above.
-      'por_moneda', (
-        select jsonb_agg(jsonb_build_object(
-          'currency', nullif(p.libro, '~COP~'),
-          'lines', p.lines,
-          'total', p.total,
-          'last_movement_id', p.last_movement_id
-        ) order by p.libro)
-        from por_libro p
-      )
+      'lines', x.lineas,
+      -- NULL CUANDO HAY DOS LIBROS, y nunca una suma: ver la nota de arriba.
+      'total', x.total_unico,
+      'last_movement_id', x.ultimo_unico,
+      'por_moneda', x.por_moneda
     )
-  end;
+  end
+  from (
+    select
+      count(*)::int as libros,
+      coalesce(sum(p.lineas), 0)::int as lineas,
+      case when count(*) = 1 then min(p.total) end as total_unico,
+      case when count(*) = 1 then min(p.ultimo) end as ultimo_unico,
+      jsonb_agg(
+        jsonb_build_object(
+          'currency', p.moneda,
+          'lines', p.lineas,
+          'total', p.total,
+          'last_movement_id', p.ultimo
+        )
+        order by p.libro
+      ) as por_moneda
+    from (
+      select
+        coalesce(m.currency, '~COP~') as libro,
+        m.currency as moneda,
+        count(*)::int as lineas,
+        sum(m.amount) as total,
+        -- LA ULTIMA DE SU LIBRO. `array_agg` ordenado y su primer elemento, en
+        -- vez de un subselect correlacionado: dice lo mismo y se lee de una
+        -- pasada.
+        (array_agg(m.id order by m.created_at desc, m.id desc))[1] as ultimo
+      from public.movements m
+      where m.payment_group_id = p_group_id
+        and m.deleted_at is null
+      group by coalesce(m.currency, '~COP~'), m.currency
+    ) p
+  ) x;
 $fn$;
+
 
 -- `service_role` ONLY, like `movement_notice_target`: this is read by the
 -- sender, never by a browser.
