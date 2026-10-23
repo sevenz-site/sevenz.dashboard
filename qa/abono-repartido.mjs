@@ -266,6 +266,20 @@ try {
       JSON.stringify(data?.code),
     );
   }
+  // ── 4b. MEZCLAR MONEDAS: AHORA SE PUEDE, Y ESTA FILA ESTABA AL REVÉS ───
+  //
+  // Hasta la migración `141` esto comprobaba lo CONTRARIO: que un reparto con
+  // un fiado en dólares y otro en euros se rechazara con `monedas_mezcladas`.
+  // Era la decisión del dueño del 2026-10-22, y el 2026-10-23 la cambió al
+  // diseñar la opción única de «Bolívares»: *«A los fiados más críticos sin
+  // importar moneda»*.
+  //
+  // LO QUE ESTA FILA ENSEÑÓ DE PASO, y es la razón de que lleve este comentario
+  // tan largo: mientras la `141` no entró —falló dos veces y la transacción la
+  // deshizo entera— esta suite dio 18/18 con esta fila en VERDE. Verde porque
+  // la regla vieja seguía viva. Una suite escrita contra el comportamiento
+  // anterior no distingue «la migración no entró» de «todo bien», y lo único
+  // que lo destapó fue mirar `schema_migrations` y `pg_proc`.
   {
     const { data } = await dueno.rpc("registrar_abono_repartido", {
       p_lineas: [
@@ -274,10 +288,69 @@ try {
       ],
     });
     check(
-      "no deja mezclar monedas en un mismo reparto",
-      data?.ok === false && data?.code === "monedas_mezcladas",
-      JSON.stringify(data?.code),
+      "SÍ deja mezclar monedas en un reparto (migración 141)",
+      data?.ok === true,
+      data?.ok ? JSON.stringify(data.currencies) : JSON.stringify(data?.code),
     );
+
+    // CADA LÍNEA EN LA MONEDA DE SU FIADO, leída de la base y no de lo que
+    // devolvió la función. Es el punto entero de la `141`: la moneda sale del
+    // fiado y nunca del payload, así que lo que hay que mirar es la fila
+    // escrita.
+    const ids = data?.ok ? data.movement_ids : [];
+    const { data: filas } = await admin
+      .from("movements")
+      .select("id, currency, applies_to_movement_id, payment_group_id")
+      .in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+
+    const porFiado = new Map((filas ?? []).map((f) => [f.applies_to_movement_id, f.currency]));
+    check(
+      "y cada línea queda en la moneda de SU fiado, no en una común",
+      porFiado.get(c) === "USD" && porFiado.get(eur) === "EUR",
+      `al fiado en dólares le quedó ${porFiado.get(c)} · al de euros ${porFiado.get(eur)}`,
+    );
+
+    check(
+      "las dos líneas siguen siendo UN pago: mismo payment_group_id",
+      (filas ?? []).length === 2 &&
+        filas[0].payment_group_id != null &&
+        filas[0].payment_group_id === filas[1].payment_group_id,
+      `${(filas ?? []).length} filas · grupo ${filas?.[0]?.payment_group_id ?? "ninguno"}`,
+    );
+
+    // ── EL RECIBO DE UN GRUPO MIXTO ───────────────────────────────────
+    //
+    // `abono_confirmation_v3` lleva UN importe, así que un grupo de dos libros
+    // no tiene un total que quepa en él. La función se niega a dar uno, y el
+    // emisor ya trata `ok:false` como «omitido»: no manda recibo en vez de
+    // mandar uno con un número que es falso en las dos monedas.
+    const grupo = filas?.[0]?.payment_group_id ?? null;
+    const { data: resumen } = await admin.rpc("payment_group_summary", { p_group_id: grupo });
+    check(
+      "el resumen del recibo NO da un total único para un grupo mixto",
+      resumen?.ok === false && resumen?.reason === "monedas_mezcladas" && resumen?.total == null,
+      JSON.stringify({ ok: resumen?.ok, reason: resumen?.reason, total: resumen?.total }),
+    );
+
+    // Y SÍ DA EL DESGLOSE, que es lo que permitirá decidir después entre un
+    // mensaje por moneda o uno solo, sin otra migración.
+    const porMoneda = resumen?.por_moneda ?? [];
+    const usd = porMoneda.find((p) => p.currency === "USD");
+    const e = porMoneda.find((p) => p.currency === "EUR");
+    check(
+      "pero sí el desglose por libro, con su total y su última línea",
+      porMoneda.length === 2 &&
+        Number(usd?.total) === 1 &&
+        Number(e?.total) === 1 &&
+        usd?.last_movement_id != null &&
+        e?.last_movement_id != null &&
+        usd.last_movement_id !== e.last_movement_id,
+      JSON.stringify(porMoneda),
+    );
+
+    // Limpieza de este bloque: lo escrito aquí no existía antes y el `finally`
+    // de la suite borra por marca, no por grupo.
+    if (ids.length) await admin.from("movements").delete().in("id", ids);
   }
   {
     const { data } = await dueno.rpc("registrar_abono_repartido", {
