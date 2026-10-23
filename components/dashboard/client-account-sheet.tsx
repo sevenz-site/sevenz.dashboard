@@ -136,6 +136,7 @@ export function ClientAccountSheet({
                 movements={cuenta?.movimientos ?? []}
                 ventasDeContado={cuenta?.ventasDeContado ?? []}
                 pendientePorFiado={cuenta?.pendientePorFiado ?? {}}
+                diasSinPagar={fila?.days_since_payment ?? 0}
                 ledger={ledger}
                 titulo={<span className="text-sm font-medium">Últimas transacciones</span>}
                 // SIN NAVEGAR, por instrucción del dueño el 2026-10-21. Esta

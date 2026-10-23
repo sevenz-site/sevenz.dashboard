@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/dashboard/client-filters";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import type { PriceCurrency } from "@/lib/products/price";
 
 // THE HISTORY'S TYPE FILTER, asked for by the owner on 2026-10-16: "Todos",
 // "Fiado" and "Abono", to the right of the history's title.
@@ -31,14 +33,10 @@ export type TipoFiltro = (typeof TIPOS)[number]["value"];
 export function MovementTypeFilter({
   tipo,
   setTipo,
-  conAbono,
   conContado = false,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
-  // Si esta lista enseña abonos. La del tendero no desde el 2026-10-20 --viven
-  // dentro del fiado que pagaron-- y la del cliente sí. Ver `opciones`.
-  conAbono: boolean;
   // UNA OPCION QUE NO FILTRA NADA ES PEOR QUE NO TENERLA. La pantalla del
   // cliente todavía no recibe las ventas de contado --su RPC no las devuelve,
   // ver `lib/ventas-de-contado.ts`-- así que allí el chip llevaría a una lista
@@ -61,9 +59,15 @@ export function MovementTypeFilter({
   // Sin valor por defecto por la misma razón: un `= true` habría dejado al
   // tendero con su «Abono» de vuelta en silencio el día que alguien olvide
   // pasarlo, que es el mismo fallo con la otra cara.
-  const opciones = TIPOS.filter(
-    (t) => (t.value !== "cash" || conContado) && (t.value !== "payment" || conAbono),
-  );
+  // «Abono» YA NO SE ESCONDE cuando el cliente no tiene ninguno, por la misma
+  // instrucción del 2026-10-23 que abrió los estados: el aviso de la lista
+  // vacía lo explica mejor que una opción que aparece y desaparece.
+  //
+  // «De contado» SÍ SIGUE CONDICIONADO, y la diferencia importa: en la
+  // pantalla del cliente esas ventas no llegan nunca —su RPC no las devuelve—
+  // así que no es «hoy no hay», es «aquí no puede haber». Una opción
+  // permanentemente vacía no es un filtro, es un callejón.
+  const opciones = TIPOS.filter((t) => t.value !== "cash" || conContado);
   // THE CHIP NAMES ITS VALUE, NEVER ITS FIELD. It used to read "Tipo" while
   // unfiltered, which answers "what does this control?" -- a question the
   // owner stopped asking the moment he saw it, and that the new "Filtrar por"
@@ -123,11 +127,27 @@ export function MovementTypeFilter({
 // VIVE EN ESTE ARCHIVO Y NO EN UNO NUEVO por lo que la cabecera de arriba
 // cuenta: las dos pantallas montan los dos filtros, y dos copias que hoy son
 // iguales se separan en la primera edición que llegue a una sola.
+// LOS SEIS, SIEMPRE, aunque esta lista no tenga ninguno de ese estado.
+// Instrucción del dueño el 2026-10-23: *«los filtros deben mostrar todos los
+// estados así no hayan transacciones en ese estado; si se aplica el filtro y
+// no hay transacciones se debe mostrar empty state»*.
+//
+// ESTO DESPLAZA LO QUE HABÍA, que escondía las opciones vacías para no
+// ofrecer un filtro que no podía dar otra cosa que una lista vacía. La razón
+// vieja era buena y falla por un sitio: una opción que aparece y desaparece
+// según el cliente obliga a aprender el control de nuevo en cada ficha, y no
+// deja distinguir «no tiene ninguno» de «este filtro no existe». El aviso de
+// abajo contesta eso en palabras, que es más barato que una lista cambiante.
+//
+// «Crítico» ENTRA EL MISMO DÍA. Hasta entonces ninguna fila podía decirlo
+// —era un estado de la cuenta, no del fiado— y el dueño lo pidió al no
+// encontrar en el historial el fiado que ponía «Crítico» a su tarjeta.
 const ESTADOS = [
   { value: "todos", label: "Todas" },
-  { value: "dentro", label: "Dentro del plazo" },
-  { value: "vencido", label: "Plazo vencido" },
+  { value: "dentro_del_plazo", label: "Dentro del plazo" },
+  { value: "plazo_vencido", label: "Plazo vencido" },
   { value: "sin_plazo", label: "Sin plazo" },
+  { value: "critico", label: "Crítico" },
   { value: "pagado", label: "Pagado" },
   { value: "a_favor", label: "A favor" },
 ] as const;
@@ -137,18 +157,11 @@ export type EstadoFiltro = (typeof ESTADOS)[number]["value"];
 export function MovementStatusFilter({
   estado,
   setEstado,
-  // LOS ESTADOS QUE DE VERDAD HAY EN ESTA LISTA. Misma razón que `conAbono`
-  // en el filtro de al lado: ofrecer «Pagado» a un cliente que no tiene
-  // ninguno saldado da una lista vacía por un filtro que no podía dar otra
-  // cosa. Entra como argumento obligatorio para que nadie se lo deje puesto
-  // por defecto y la opción reaparezca en silencio.
-  disponibles,
 }: {
   estado: EstadoFiltro;
   setEstado: (v: EstadoFiltro) => void;
-  disponibles: ReadonlySet<string>;
 }) {
-  const opciones = ESTADOS.filter((e) => e.value === "todos" || disponibles.has(e.value));
+  const opciones = ESTADOS;
 
   // SIN FILTRO DICE «Estado», Y ESO CONTRADICE AL CHIP DE AL LADO a propósito.
   //
@@ -204,34 +217,134 @@ export function MovementStatusFilter({
 export function FiltrosDelHistorial({
   tipo,
   setTipo,
-  conAbono,
   conContado = false,
   estado,
   setEstado,
-  estadosDisponibles,
+  moneda,
+  setMoneda,
+  monedas,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
-  conAbono: boolean;
   conContado?: boolean;
   estado: EstadoFiltro;
   setEstado: (v: EstadoFiltro) => void;
-  estadosDisponibles: ReadonlySet<string>;
+  moneda: MonedaFiltro;
+  setMoneda: (v: MonedaFiltro) => void;
+  // Los libros que lleva este negocio. Vacío en uno colombiano, que tiene uno
+  // solo: ahí el filtro no se dibuja, y no por estar vacío —ver el comentario
+  // de los estados— sino porque elegir entre una cosa no es elegir.
+  monedas: readonly PriceCurrency[];
 }) {
   return (
+    // SIN EL RÓTULO «Filtrar por», que se fue el 2026-10-23 por instrucción
+    // del dueño. Con un solo chip explicaba para qué servía; con tres, los
+    // chips se explican entre ellos y el rótulo solo gastaba ancho en la
+    // única fila que tiene que caber a 375px.
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground">Filtrar por</span>
-      <MovementTypeFilter
-        tipo={tipo}
-        setTipo={setTipo}
-        conAbono={conAbono}
-        conContado={conContado}
-      />
-      <MovementStatusFilter
-        estado={estado}
-        setEstado={setEstado}
-        disponibles={estadosDisponibles}
-      />
+      <MovementTypeFilter tipo={tipo} setTipo={setTipo} conContado={conContado} />
+      <MovementStatusFilter estado={estado} setEstado={setEstado} />
+      {monedas.length > 1 ? (
+        <MovementCurrencyFilter moneda={moneda} setMoneda={setMoneda} monedas={monedas} />
+      ) : null}
     </div>
   );
+}
+
+// ===========================================================================
+// EL FILTRO POR MONEDA
+//
+// *«Agregar filtro "Moneda"»* — dueño, 2026-10-23, el mismo día que el
+// historial pasa a enseñar el saldo de cada libro en el pie de cada fila. Es
+// su consecuencia: con dos libros mezclados en una sola lista, poder quedarse
+// con uno es lo que hace legible la serie de cifras que ese pie dibuja.
+//
+// SOLO CON DOS LIBROS O MÁS. Un negocio colombiano lleva uno, y un desplegable
+// de una sola opción no decide nada — la misma regla que ya siguen los
+// selectores de moneda del abono y de la venta.
+const MONEDAS: Partial<Record<PriceCurrency, string>> = {
+  USD: "Dólares",
+  EUR: "Euros",
+  COP: "Pesos",
+};
+const nombreDeMoneda = (c: PriceCurrency) => MONEDAS[c] ?? c;
+
+export type MonedaFiltro = "todas" | PriceCurrency;
+
+export function MovementCurrencyFilter({
+  moneda,
+  setMoneda,
+  monedas,
+}: {
+  moneda: MonedaFiltro;
+  setMoneda: (v: MonedaFiltro) => void;
+  monedas: readonly PriceCurrency[];
+}) {
+  const etiqueta = moneda === "todas" ? "Moneda" : nombreDeMoneda(moneda);
+  return (
+    <FilterChip label={etiqueta} active={moneda !== "todas"}>
+      {(close) => (
+        <div className="flex flex-col gap-1">
+          {(["todas", ...monedas] as const).map((opt) => (
+            <Button
+              key={opt}
+              type="button"
+              variant={moneda === opt ? "secondary" : "ghost"}
+              size="sm"
+              className="justify-start gap-2"
+              onClick={() => {
+                setMoneda(opt);
+                close();
+              }}
+            >
+              {opt === "todas" ? null : <CurrencyFlagIcon currency={opt} className="size-4" />}
+              {opt === "todas" ? "Todas" : nombreDeMoneda(opt)}
+            </Button>
+          ))}
+        </div>
+      )}
+    </FilterChip>
+  );
+}
+
+// ===========================================================================
+// QUÉ DICE LA LISTA CUANDO UN FILTRO NO DEJA NADA
+//
+// *«Si se aplica el filtro y no hay transacciones en ese filtro se debe
+// mostrar empty state mencionando que no hay transacciones en ese estado
+// seleccionado»* — dueño, 2026-10-23, al abrir todas las opciones.
+//
+// NOMBRA LOS FILTROS PUESTOS, uno a uno, y no dice «no coincide con los
+// filtros»: con tres chips encima, esa frase obliga a mirarlos de vuelta para
+// saber cuál quitar. Diciendo «No hay fiados en euros en "Plazo vencido"» se
+// sabe qué soltar sin levantar la vista.
+//
+// LO QUE NO DICE, a propósito: que el cliente no tenga NINGUNA transacción.
+// Esa frase es de otro sitio —la lista vacía de verdad, que además explica
+// cómo registrar la primera— y sería falsa con la lista entera a un toque.
+export function tituloDeListaVacia({
+  tipo,
+  estado,
+  moneda,
+}: {
+  tipo: TipoFiltro;
+  estado: EstadoFiltro;
+  moneda: MonedaFiltro;
+}): string {
+  const sustantivo =
+    tipo === "charge"
+      ? "fiados"
+      : tipo === "payment"
+        ? "abonos"
+        : tipo === "cash"
+          ? "ventas de contado"
+          : "transacciones";
+
+  const partes = [`No hay ${sustantivo}`];
+  if (moneda !== "todas") partes.push(`en ${nombreDeMoneda(moneda).toLowerCase()}`);
+  if (estado !== "todos") {
+    const etiqueta = ESTADOS.find((e) => e.value === estado)?.label ?? estado;
+    partes.push(`en «${etiqueta}»`);
+  }
+  return partes.join(" ");
 }

@@ -658,6 +658,7 @@ export default async function SharedBalancePage({
           {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
             pueda ir a su derecha, en la misma fila. */}
           <MovementHistoryList
+            diasSinPagar={diasSinPagar ?? 0}
             titulo={
               <h2 className="mt-1 text-xl font-semibold">Historial</h2>
             }

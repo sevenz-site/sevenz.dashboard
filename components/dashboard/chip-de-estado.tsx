@@ -1,5 +1,9 @@
 import { ETIQUETA_DEL_ESTADO, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
-import { CLIENT_STATUS_BADGE_CLASS, CLIENT_STATUS_LABEL } from "@/lib/types";
+import {
+  CLIENT_STATUS_BADGE_CLASS,
+  CLIENT_STATUS_LABEL,
+  type ClientStatus,
+} from "@/lib/types";
 
 // EL CHIP DE «Dentro del plazo» / «Plazo vencido» / «Pagado».
 //
@@ -63,35 +67,43 @@ const ESTILO: Record<EstadoDelPlazo, string> = {
 // forma, su borde, su `whitespace-nowrap`— ya está resuelta aquí, con las
 // razones escritas arriba. Un segundo chip con las clases copiadas es
 // exactamente cómo nació la discrepancia de colores que esta cabecera cuenta.
-// ── «SIN PLAZO» ENTRA POR LA MISMA PUERTA, Y TAMPOCO ES UN ESTADO DEL PLAZO ─
+// ── Y «CRÍTICO» TAMBIÉN, desde el 2026-10-23 ───────────────────────────
 //
-// Un fiado al que nunca se le puso fecha no tiene estado de plazo: no hay
-// nada que comparar, y por eso `estadoDelFiado` devuelve `null`. Pero la fila
-// sí necesita decir algo, porque desde el 2026-10-23 el chip existe para que
-// el tendero vea de un vistazo cuál es el fiado más crítico sin abrir ninguno
-// —y un fiado sin fecha es justo uno que hay que ir a arreglar—. Dejarlo en
-// blanco lo escondía.
+// Lo pidió el dueño al no encontrar en el historial el fiado que ponía
+// «Crítico» a su tarjeta de euros: *«Mariangel tiene estado crítico en su
+// cuenta por cobrar en Euros (…) pero al buscar esa transacción en estado
+// crítico en historial no logré encontrarla»*. No podía: ningún fiado podía
+// estarlo, porque «Crítico» no era un estado del plazo sino de la CUENTA —
+// debe, y lleva más de 30 días sin abonar nada.
 //
-// Decisión del dueño ese día, preguntado con las dos salidas delante. Toma
-// la etiqueta y el color de `ClientStatus.sin_plazo`, que es donde ese estado
-// ya vive: mismo ámbar que «Plazo vencido», porque en esa leyenda las dos son
-// igual de graves.
-export type EstadoDelChip = EstadoDelPlazo | "a_favor" | "sin_plazo";
+// Se le ofrecieron las dos salidas y eligió que la fila hable el mismo
+// idioma que la tarjeta. Así el filtro lleva al fiado culpable en vez de
+// dejar al tendero buscando una palabra que el historial no decía nunca.
+//
+// LO QUE CUESTA, dicho al elegirlo: un fiado pasa de «Sin plazo» a
+// «Crítico» sin que nadie lo toque, solo porque corren los días.
+//
+// ===========================================================================
+// POR QUÉ EL TIPO ES LA UNIÓN DE LOS DOS VOCABULARIOS
+//
+// `EstadoDelPlazo` tiene tres valores —`dentro`, `vencido`, `pagado`— y
+// `ClientStatus` seis, con dos que significan lo mismo escritos distinto
+// (`dentro_del_plazo`, `plazo_vencido`). No se fusionan: el primero describe
+// un FIADO contra su plazo y el segundo una CUENTA, y hay sitios que siguen
+// hablando solo el primero —la tabla de cuotas, los abonos dentro de un
+// fiado—. Este chip los pinta a los dos y resuelve cada uno por su tabla.
+export type EstadoDelChip = EstadoDelPlazo | ClientStatus;
 
-const ESTILO_DE_CUENTA: Record<"a_favor" | "sin_plazo", string> = {
-  a_favor: CLIENT_STATUS_BADGE_CLASS.a_favor,
-  sin_plazo: CLIENT_STATUS_BADGE_CLASS.sin_plazo,
-};
-
-const ETIQUETA_DE_CUENTA: Record<"a_favor" | "sin_plazo", string> = {
-  a_favor: CLIENT_STATUS_LABEL.a_favor,
-  sin_plazo: CLIENT_STATUS_LABEL.sin_plazo,
-};
+const DEL_PLAZO = new Set<string>(["dentro", "vencido", "pagado"]);
 
 export function ChipDeEstado({ estado }: { estado: EstadoDelChip }) {
-  const deCuenta = estado === "a_favor" || estado === "sin_plazo";
-  const clase = deCuenta ? ESTILO_DE_CUENTA[estado] : ESTILO[estado];
-  const texto = deCuenta ? ETIQUETA_DE_CUENTA[estado] : ETIQUETA_DEL_ESTADO[estado];
+  const delPlazo = DEL_PLAZO.has(estado);
+  const clase = delPlazo
+    ? ESTILO[estado as EstadoDelPlazo]
+    : CLIENT_STATUS_BADGE_CLASS[estado as ClientStatus];
+  const texto = delPlazo
+    ? ETIQUETA_DEL_ESTADO[estado as EstadoDelPlazo]
+    : CLIENT_STATUS_LABEL[estado as ClientStatus];
   return (
     <span
       className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${clase}`}

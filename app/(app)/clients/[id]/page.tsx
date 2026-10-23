@@ -407,7 +407,14 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} ledger={ledger} />
+        <MovementHistory
+          clientId={id}
+          ledger={ledger}
+          // PARA QUE LA FILA PUEDA DECIR «Crítico». Es un dato del CLIENTE
+          // —cuántos días lleva sin abonar nada—, así que no cabe en una
+          // consulta de movimientos: baja de aquí, donde ya está leído.
+          diasSinPagar={clientSummary?.days_since_payment ?? 0}
+        />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -599,9 +606,11 @@ async function CreditScoreSection({
 async function MovementHistory({
   clientId,
   ledger,
+  diasSinPagar,
 }: {
   clientId: string;
   ledger: LedgerDisplay | null;
+  diasSinPagar: number;
 }) {
   const supabase = await createClient();
 
@@ -723,6 +732,7 @@ async function MovementHistory({
         ledger={ledger}
         ventasDeContado={ventasDeContado}
         pendientePorFiado={pendientePorFiadoMapa}
+        diasSinPagar={diasSinPagar}
         productosPorVenta={productosPorVenta}
       />
     </div>

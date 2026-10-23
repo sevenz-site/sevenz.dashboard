@@ -2021,7 +2021,13 @@ cada lista: es el único sitio donde consta que el rótulo se escribe una vez y
 que el orden es tipo y luego estado. Las dos pantallas que lo montan no pueden
 ordenarlos distinto ni duplicar el rótulo.
 
-### El chip sin filtro: «Todas» en uno, «Estado» en el otro
+### Sin rótulo «Filtrar por»
+
+Se fue el 2026-10-23. Con un solo chip explicaba para qué servía; con tres,
+los chips se explican entre ellos y el rótulo solo gastaba ancho en la única
+fila que tiene que caber a 375px.
+
+### El chip sin filtro: «Todas» en uno, «Estado» y «Moneda» en los otros
 
 La regla del 2026-10-16 es que **el chip nombra su VALOR y no su campo** —
 «Todas» contesta «qué estoy mirando» en vez de «para qué sirve esto». Vale con

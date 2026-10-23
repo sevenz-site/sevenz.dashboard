@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
-import { estadoDelFiado } from "@/lib/estado-del-plazo";
+import { vencimientoEfectivo } from "@/lib/estado-del-plazo";
+import { getClientStatus } from "@/lib/types";
 import {
   Pagination,
   PaginationContent,
@@ -14,9 +15,12 @@ import {
 import Link from "next/link";
 import {
   FiltrosDelHistorial,
+  tituloDeListaVacia,
   type EstadoFiltro,
+  type MonedaFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
+import type { PriceCurrency } from "@/lib/products/price";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -55,6 +59,7 @@ export function MovementHistoryList({
   titulo = null,
   ventasDeContado = [],
   pendientePorFiado = {},
+  diasSinPagar = 0,
   productosPorVenta = {},
   navegable = true,
 }: {
@@ -79,6 +84,16 @@ export function MovementHistoryList({
   // que `estadosDeFiado` -- `get_open_charges_for_client` -- y por eso llegan
   // juntos. Un fiado que falte aquí está saldado.
   pendientePorFiado?: Record<string, number>;
+  // ── CUÁNTOS DÍAS LLEVA EL CLIENTE SIN ABONAR NADA ────────────────────
+  //
+  // Lo único que una fila no puede saber por sí misma y que hace falta para
+  // que diga «Crítico»: es un dato del CLIENTE, no del movimiento. Baja de la
+  // página, que ya lo tiene leído.
+  //
+  // CERO POR DEFECTO, que es el lado seguro: con cero nadie llega nunca a
+  // «Crítico», así que una pantalla que olvide pasarlo enseña el estado más
+  // suave en vez de inventarse una alarma.
+  diasSinPagar?: number;
   // AQUÍ ESTUVO `saldoPorMoneda`, el saldo del cliente en cada libro. Lo
   // necesitaba la fila del abono suelto, la única que no tenía un fiado del
   // que informar. Se fue el 2026-10-23 cuando el pie pasó a enseñar
@@ -113,6 +128,7 @@ export function MovementHistoryList({
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
+  const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ─────────────────────
   //
@@ -219,42 +235,46 @@ export function MovementHistoryList({
         // SOLO PUEDE PASAR EN LA FILA SIN FIADO: el pendiente de un fiado
         // nunca baja de cero. Lo trae el saldo del libro, que sí.
         const aFavor = cifraPorCobrar != null && cifraPorCobrar < 0;
-        // ── EL CHIP DE LA FILA: UNO SOLO, Y NUNCA DOS ──────────────
+        // ── EL CHIP DE LA FILA: UNO SOLO, Y EL MISMO JUEZ QUE LA TARJETA ──
         //
-        // Encargo del dueño el 2026-10-23, con la captura de un fiado
-        // «Dentro del plazo» cuya fila no lo decía: *«los estados de las
-        // cuotas también deberían mostrarse en el mismo lugar que "Pagado"
-        // o "A favor", eso permitirá al tendero tener ese cue visual sin
-        // tener que entrar a cada fiado para ver cuál es el más crítico»*.
+        // Encargo del dueño el 2026-10-23, en dos pasos. El primero: que cada
+        // fiado diga en qué va sin tener que abrirlo. El segundo, al no
+        // encontrar en el historial el fiado que ponía «Crítico» a su
+        // tarjeta: que la fila hable el MISMO idioma que esa tarjeta.
         //
-        // ESTO DEVUELVE ALGO QUE SE QUITÓ, y las dos decisiones quedan
-        // escritas: el chip estuvo aquí el 2026-10-20 y se retiró el
-        // 2026-10-21 al reescribir la fila contra el frame `1512:10061`,
-        // que no lo dibuja. Lo que ha cambiado desde entonces es para qué
-        // sirve esta fila: con el pie «Por cobrar» y el estado al lado, el
-        // historial pasa a ser desde dónde se decide a quién cobrar, que es
-        // trabajo que antes obligaba a abrir fiado por fiado.
+        // Por eso quien juzga es `getClientStatus`, el mismo de las tarjetas
+        // y las listas, aplicado al fiado en vez de al libro: su saldo es lo
+        // que ESE fiado debe, y su «peor cargo» es él mismo. Con eso, un
+        // fiado vencido o sin plazo de un cliente que lleva más de 30 días
+        // sin abonar sale «Crítico», igual que su tarjeta.
         //
-        // SE CALCULA AQUÍ Y NO LLEGA COMO PROP, aunque la ficha lo tenía
-        // calculado: lo único que `estadoDelFiado` necesita y la fila no
-        // tuviera ya es el pendiente, y ese sí llega. Así las TRES
-        // pantallas que montan esta lista —la ficha, el enlace del cliente
-        // y «Ver cuenta de…»— lo heredan sin que nadie tenga que acordarse
-        // de pasarlo.
+        // «PAGADO» SE RESUELVE ANTES y no por `getClientStatus`, que para un
+        // saldo en cero diría «Sin deuda»: un fiado saldado no es una cuenta
+        // sin deuda, es un fiado que se pagó, y esa palabra la pidió el dueño
+        // el 2026-10-21 por su nombre.
         //
-        // UN FIADO SIN FECHA dice «Sin plazo» y no se queda en blanco:
-        // decisión del dueño el mismo día. El porqué está en el chip.
+        // UN FIADO SIN FECHA dice «Sin plazo» y no se queda en blanco, que es
+        // lo que `getClientStatus` ya hace sin ayuda.
         const chipDeLaFila: EstadoDelChip | null =
           m.type === "charge"
             ? pendienteDelFiado == null
               ? null
-              : (estadoDelFiado({
-                  createdAt: m.created_at,
-                  plazoDias: m.plazo_dias,
-                  cuotas: m.cuotas,
-                  amount: Number(m.amount),
-                  pendiente: pendienteDelFiado,
-                }) ?? "sin_plazo")
+              : pendienteDelFiado <= 0.005
+                ? "pagado"
+                : getClientStatus({
+                    balance: pendienteDelFiado,
+                    daysSincePayment: diasSinPagar,
+                    worstChargeAt: m.created_at,
+                    worstChargePlazoDias: m.plazo_dias,
+                    worstChargeDueAt:
+                      vencimientoEfectivo({
+                        createdAt: m.created_at,
+                        plazoDias: m.plazo_dias,
+                        cuotas: m.cuotas,
+                        amount: Number(m.amount),
+                        pendiente: pendienteDelFiado,
+                      })?.toISOString() ?? null,
+                  })
             : aFavor
               ? "a_favor"
               : null;
@@ -305,21 +325,25 @@ export function MovementHistoryList({
   // EL FILTRO POR ESTADO MIRA EL CHIP QUE SE DIBUJA, no una regla paralela:
   // los dos salen de `pieDeLaFila`. Una venta de contado no tiene chip, así
   // que ningún estado la selecciona — y es correcto: no deja nada debiendo.
+  const porMoneda =
+    moneda === "todas"
+      ? porTipo
+      : porTipo.filter((f) =>
+          f.clase === "movimiento" ? f.m.currency === moneda : f.v.currency === moneda,
+        );
+
   const visibles =
     estado === "todos"
-      ? porTipo
-      : porTipo.filter(
+      ? porMoneda
+      : porMoneda.filter(
           (f) => f.clase === "movimiento" && pieDeLaFila(f.m).chipDeLaFila === estado,
         );
 
-  // LOS ESTADOS QUE ESTA LISTA PUEDE OFRECER. Se cuentan sobre las filas del
-  // tipo elegido y no sobre todas: con «Fiado» puesto, ofrecer «A favor»
-  // —que solo llevan los abonos— daría una lista vacía.
-  const estadosDisponibles = new Set(
-    porTipo.flatMap((f) => (f.clase === "movimiento" ? [pieDeLaFila(f.m).chipDeLaFila] : [])).filter(
-      (c): c is NonNullable<typeof c> => c != null,
-    ),
-  );
+  // LOS LIBROS QUE ESTE NEGOCIO LLEVA, para el filtro de moneda. De `ledger`
+  // y no de las filas: un negocio venezolano lleva dólares y euros aunque
+  // este cliente solo tenga movimientos en uno, y el filtro tiene que ser el
+  // mismo en todas las fichas. Vacío en uno colombiano, donde no se dibuja.
+  const monedasDelNegocio: readonly PriceCurrency[] = ledger ? (["USD", "EUR"] as const) : [];
 
   // LA PÁGINA VUELVE A LA 1 AL CAMBIAR DE FILTRO, y esto no es cosmético.
   // Sin ello, quien esté en la página 3 de «Todas» y toque «De contado» ve una
@@ -352,6 +376,11 @@ export function MovementHistoryList({
     setPage(1);
   }
 
+  function cambiarMoneda(c: MonedaFiltro) {
+    setMoneda(c);
+    setPage(1);
+  }
+
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
   // delante el único control que sirve para deshacerlo.
@@ -366,16 +395,12 @@ export function MovementHistoryList({
         <FiltrosDelHistorial
           tipo={tipo}
           setTipo={cambiarTipo}
-          // «Abono» VUELVE AL FILTRO, PERO SOLO SI HAY ALGUNO QUE FILTRAR.
-          // Desde el 2026-10-21 la lista enseña los abonos sin dirigir, y un
-          // filtro tiene que poder nombrar lo que se ve. Al revés también: en
-          // un cliente cuyos abonos estén todos dirigidos, ofrecer «Abono»
-          // daría una lista vacía por un filtro que no podía dar otra cosa.
-          conAbono={filas.some((f) => f.clase === "movimiento" && f.m.type === "payment")}
           conContado={ventasDeContado.length > 0}
           estado={estado}
           setEstado={cambiarEstado}
-          estadosDisponibles={estadosDisponibles}
+          moneda={moneda}
+          setMoneda={cambiarMoneda}
+          monedas={monedasDelNegocio}
         />
       ) : null}
     </div>
@@ -405,15 +430,16 @@ export function MovementHistoryList({
     );
   }
 
-  // "No hay de ese tipo" no es "no hay ninguno", y la segunda frase sería
-  // falsa con la lista entera a un toque de distancia.
+  // «No hay de ESO» no es «no hay ninguno», y la segunda frase sería falsa con
+  // la lista entera a un toque de distancia. El título lo arma
+  // `tituloDeListaVacia`, compartido con la pantalla del cliente para que las
+  // dos digan lo mismo — y nombra los filtros puestos en vez de un genérico
+  // «no coincide», que con tres chips obliga a mirarlos de vuelta.
   if (visibles.length === 0) {
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <EmptyState
-          title={`Este cliente no tiene ${tipo === "charge" ? "fiados" : "ventas de contado"} registrados`}
-        />
+        <EmptyState title={tituloDeListaVacia({ tipo, estado, moneda })} />
       </div>
     );
   }
