@@ -142,7 +142,25 @@ export function TarjetaDeFiado({
             {fiado.currency ? (
               <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
             ) : null}
-            +{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
+            {/* ── «−» PORQUE ES UN FIADO ───────────────────────────────────
+                Regla del dueño del 2026-10-22, repetida el 2026-10-24 al ver
+                esta misma tarjeta: *«en el historial los fiados se ven con
+                signo negativo pero en registrar abono se ven con saldo
+                positivo, revisa que en todo el app sea consistente: abonos y
+                de contados con "+", fiados con "-"»*.
+
+                EL SIGNO ES EL DEL DINERO DEL TENDERO, no el de la deuda del
+                cliente: un fiado es mercancía que sale sin cobrar, un abono es
+                dinero que entra. Por eso el fiado va en rojo Y con menos, y
+                esta tarjeta llevaba el color bien y el signo al revés.
+
+                DESPLAZA UNA DECISIÓN TOMADA DESDE UN FRAME. `tarjeta-de-abono`
+                documenta que el frame `1465:18552` dibuja «+» en rojo también
+                en la tarjeta del fiado, y por eso esta la llevaba. La regla de
+                consistencia gana: un mismo fiado no puede salir con «+» en una
+                pantalla y con «−» en otra, que es exactamente lo que el dueño
+                vio. */}
+            -{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
           </span>
           {enBs != null ? (
             <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>

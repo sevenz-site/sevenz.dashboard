@@ -352,6 +352,18 @@ export function AbonoReparto({
     });
   }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
 
+  // ── LAS DOS CONDICIONES QUE APAGAN «REPARTIR MANUALMENTE» ──────────
+  //
+  // `delLibro` y no `fiados`: lo que importa es cuántos hay EN LA LISTA que
+  // se está repartiendo, no cuántos tiene el cliente. Con «Euros» elegido y
+  // un solo fiado en euros, el botón sobra aunque deba otros tres en dólares.
+  const unSoloFiado = delLibro.length <= 1;
+  // `deuda` ya está en la unidad del reparto —bolívares si cruza libros— así
+  // que esto compara dos cifras de la misma moneda. Comparar `montoNum` con
+  // `deuda` sería comparar bolívares con dólares en cuanto se tecleara en
+  // bolívares, que es la trampa que esta pantalla ya documenta dos veces.
+  const cubreTodo = enElLibro > 0.005 && deuda - enElLibro <= 0.005;
+
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
 
   // LOS BOLÍVARES DE CADA LÍNEA, TAL COMO LOS REPARTIÓ EL REPARTO.
@@ -1113,11 +1125,28 @@ export function AbonoReparto({
               manualmente» —encargo del dueño el 2026-10-23— dice además QUIÉN
               decide, que es lo que de verdad distingue a esta puerta de la
               lista automática de arriba. */}
-          {/* EN SELECCIÓN NO SE DIBUJA: su trabajo —encontrar un fiado y
-              ponerle cifra— ya lo hace el buscador de arriba con la lista
-              entera debajo. Dos puertas a lo mismo en la misma pantalla, y una
-              de ellas abriendo una hoja encima de la otra. */}
-          {modoSeleccion ? null : (
+          {/* ── CUÁNDO NO SE DIBUJA ───────────────────────────────────
+              Tres casos, y en los tres el botón abriría una hoja donde no hay
+              nada que decidir:
+
+              1. EN MODO SELECCIÓN: su trabajo —encontrar un fiado y ponerle
+                 cifra— ya lo hace el buscador de arriba con la lista entera
+                 debajo. Dos puertas a lo mismo en la misma pantalla, y una de
+                 ellas abriendo una hoja encima de la otra.
+
+              2. CON UN SOLO FIADO: no hay entre qué repartir. Encargo del
+                 dueño el 2026-10-24.
+
+              3. CUANDO EL MONTO CUBRE TODA LA DEUDA: cada fiado recibe lo
+                 suyo entero, así que no queda nada que mover de uno a otro —
+                 cada línea ya está topada a lo que ese fiado debe. Mismo
+                 encargo.
+
+              EL TERCERO INCLUYE EL CASO EN QUE SE PASA (`excede`), y es a
+              propósito: si tecleó más de lo que el cliente debe, tampoco hay
+              reparto que ajustar — lo que hay es una cifra que corregir, y
+              eso lo dice la línea roja de arriba. */}
+          {modoSeleccion || unSoloFiado || cubreTodo ? null : (
             <Button
               type="button"
               variant="outline"
