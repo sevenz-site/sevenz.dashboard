@@ -2078,6 +2078,13 @@ crítico»*.
 **Un chip por fila, nunca dos, y siempre en el mismo sitio**: debajo de la
 equivalencia en bolívares del pie «Por cobrar».
 
+**Y en las tarjetas de «Por cobrar» de cada moneda el contador empieza en
+UNO**, no en dos como en las listas. Lo reclamó el dueño al verlas sin número:
+su cliente tenía UN vencido en cada libro y las dos tarjetas salían sin cifra,
+que desde fuera se lee como que el contador no se puso. En una lista un «(1)»
+le pondría número a casi todas las filas y dejaría de destacar al que tiene
+cinco; entre dos tarjetas es información.
+
 | Fila | Chip |
 |---|---|
 | Fiado con plazo, con deuda | «Dentro del plazo» o «Plazo vencido» |
