@@ -682,6 +682,32 @@ con la misma seguridad que lo que sí está en el frame, así que quien lo recib
 puede distinguirlos sin abrir Figma él mismo. Eso convierte cada entrega en algo
 que hay que auditar entero.
 
+### ACCEDER a Figma no es leer el enlace. Y si no se puede, se dice
+
+**Pedido por el dueño el 2026-10-23**: *«siempre que te entregue un frame debes
+acceder al figma, no solo leerlo. Si no puedes acceder al figma debes
+mencionarlo»*.
+
+**Acceder** quiere decir una llamada a `get_design_context` sobre ese nodo, que
+devuelve la estructura con los textos exactos, los tamaños y los `data-node-id`.
+No cuenta nada de esto:
+
+- deducir la pantalla del nombre del frame o de lo que diga el mensaje;
+- mirar solo `get_screenshot`, que da la imagen pero no los rótulos;
+- reutilizar lo que se leyó de un frame parecido en otra sesión.
+
+**Y si no se puede acceder, se dice en la respuesta, antes de construir nada.**
+No se construye «con lo que se entiende del enlace» y se avisa después: quien
+recibe la entrega no puede distinguir lo replicado de lo inventado sin abrir
+Figma él mismo, que es justo lo que esta sección entera existe para evitar.
+
+**Los servidores de Figma de este proyecto fallan por separado**, así que
+«no responde» casi nunca es «no hay acceso»: el 2026-10-23 el servidor `figma`
+devolvía `ECONNREFUSED` durante toda la sesión mientras
+`mcp__plugin_figma_figma__*` contestaba a los mismos nodos sin un fallo. Se
+prueban los otros antes de decir que no se puede — y solo si ninguno responde
+se dice, nombrando el error.
+
 **La regla práctica, entonces:**
 
 1. **Antes de escribir una línea de UI para la que hay frame, se abre el frame**
