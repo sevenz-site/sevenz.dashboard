@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { CheckCircle2, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import type { LedgerCurrency } from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
@@ -83,6 +84,11 @@ export default async function AbonoRegistradoPage({
   const grupo = (abono as { payment_group_id?: string | null }).payment_group_id ?? null;
   let totalAbonado = Number(abono.amount);
   let lineasDelGrupo = 1;
+  // Una entrada por libro tocado. Con un solo libro tiene una sola, y todo lo
+  // de abajo se dibuja igual que siempre.
+  let abonadoPorMoneda: { currency: LedgerCurrency | null; total: number }[] = [
+    { currency: (abono.currency as LedgerCurrency | null) ?? null, total: Number(abono.amount) },
+  ];
   let entregadoEnBs =
     abono.entry_currency === "VES" && abono.entry_amount != null
       ? Number(abono.entry_amount)
@@ -91,12 +97,36 @@ export default async function AbonoRegistradoPage({
   if (grupo) {
     const { data: lineas } = await supabase
       .from("movements")
-      .select("amount, entry_currency, entry_amount")
+      .select("amount, currency, entry_currency, entry_amount")
       .eq("payment_group_id", grupo)
       .is("deleted_at", null);
     if (lineas && lineas.length > 0) {
-      totalAbonado = lineas.reduce((s, l) => s + Number(l.amount), 0);
       lineasDelGrupo = lineas.length;
+
+      // ── UN TOTAL POR LIBRO, Y NO UNA SUMA ──────────────────────────
+      //
+      // Hasta el 2026-10-23 esto era `lineas.reduce(... + l.amount)`, y era
+      // correcto mientras un reparto no podía mezclar monedas. La migración
+      // `141` lo permite, y la primera prueba en pantalla enseñó lo que esa
+      // suma produce: un billete repartido en 10 EUR y 5 USD salía como
+      // «Abonó en Euros €15.00» — una cifra que es falsa en las dos monedas,
+      // en la pantalla que el tendero le enseña al cliente con el teléfono en
+      // la mano.
+      //
+      // Se agrupa por moneda y se dibuja una línea por libro. Con un solo
+      // libro —todos los repartos anteriores a hoy y la mayoría de los que
+      // vendrán— sale exactamente la misma línea de siempre.
+      const suma = new Map<string | null, number>();
+      for (const l of lineas) {
+        const k = (l.currency as string | null) ?? null;
+        suma.set(k, (suma.get(k) ?? 0) + Number(l.amount));
+      }
+      abonadoPorMoneda = [...suma.entries()].map(([currency, total]) => ({
+        currency: currency as LedgerCurrency | null,
+        total,
+      }));
+      totalAbonado = abonadoPorMoneda.find((a) => a.currency === (abono.currency ?? null))?.total ??
+        Number(abono.amount);
       // LOS BOLÍVARES TAMBIÉN SE SUMAN, por la misma razón: el tendero tecleó
       // UNA cifra y la repartió el servidor. Enseñar la parte de una línea
       // sería enseñarle un trozo de lo que él escribió.
@@ -115,9 +145,30 @@ export default async function AbonoRegistradoPage({
   const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
     p_client_id: cliente.id,
   });
-  const deudaTotal = ((abiertos ?? []) as { currency: string | null; pending: number }[])
-    .filter((c) => (c.currency ?? null) === (abono.currency ?? null))
-    .reduce((suma, c) => suma + Number(c.pending), 0);
+  // ── LO QUE QUEDA DEBIENDO, EN CADA LIBRO ─────────────────────────────
+  //
+  // Filtraba por la moneda del movimiento de entrada, y con un reparto que
+  // cruza libros eso MIENTE: se entra por la línea en euros, se filtran los
+  // fiados en euros —que el abono saldó— y la pantalla dice «Sin deuda»
+  // mientras el cliente sigue debiendo 5 dólares. Visto en dev el 2026-10-23,
+  // en la primera prueba de punta a punta.
+  //
+  // Ahora se agrupa por libro y se dibuja lo que queda en cada uno. «Sin
+  // deuda» solo cuando no queda nada en NINGUNO, que es lo que esa frase
+  // siempre pretendió decir.
+  const pendientePorMoneda = (() => {
+    const suma = new Map<string | null, number>();
+    for (const c of (abiertos ?? []) as { currency: string | null; pending: number }[]) {
+      const k = c.currency ?? null;
+      suma.set(k, (suma.get(k) ?? 0) + Number(c.pending));
+    }
+    return [...suma.entries()]
+      .map(([currency, pending]) => ({ currency: currency as LedgerCurrency | null, pending }))
+      .filter((x) => x.pending > 0.005);
+  })();
+  const deudaTotal = pendientePorMoneda
+    .filter((c) => c.currency === (abono.currency ?? null))
+    .reduce((suma, c) => suma + c.pending, 0);
 
   const resultado = await getOwnerRateContextResult(supabase, user.id);
   const rates = resultado.kind === "ve" ? await getBolivarRates(resultado.context.effectiveRate) : null;
@@ -190,17 +241,32 @@ export default async function AbonoRegistradoPage({
       </section>
 
       <section className="flex flex-col rounded-[10px] border p-4">
+        {/* EL RÓTULO NO NOMBRA UNA MONEDA CUANDO HAY DOS. Decirlo «en Euros»
+            sobre un billete que pagó euros Y dólares es la misma mentira que
+            la suma de abajo, escrita más arriba. */}
         <h2 className="pb-2 text-base font-semibold">
-          Resumen de transacción en {nombreDeMoneda(moneda)}
+          {abonadoPorMoneda.length > 1
+            ? "Resumen de transacción"
+            : `Resumen de transacción en ${nombreDeMoneda(moneda)}`}
         </h2>
 
-        <div className="flex items-center justify-between py-2">
-          <span className="text-xs text-muted-foreground">Abonó en {nombreDeMoneda(moneda)}</span>
-          <span className="flex items-center gap-1 text-sm tabular-nums">
-            <CurrencyFlagIcon currency={moneda} className="size-3.5 shrink-0" />
-            {formatPriceAmount(totalAbonado, moneda)}
-          </span>
-        </div>
+        {/* UNA LÍNEA POR LIBRO. Con uno solo —todos los repartos anteriores al
+            2026-10-23 y la mayoría de los que vendrán— es exactamente la línea
+            de siempre; con dos, dos líneas que sí se pueden leer en voz alta. */}
+        {abonadoPorMoneda.map((a) => (
+          <div key={a.currency ?? "cop"} className="flex items-center justify-between py-2">
+            <span className="text-xs text-muted-foreground">
+              Abonó en {nombreDeMoneda((a.currency ?? "COP") as PriceCurrency)}
+            </span>
+            <span className="flex items-center gap-1 text-sm tabular-nums">
+              <CurrencyFlagIcon
+                currency={(a.currency ?? "COP") as PriceCurrency}
+                className="size-3.5 shrink-0"
+              />
+              {formatPriceAmount(a.total, (a.currency ?? "COP") as PriceCurrency)}
+            </span>
+          </div>
+        ))}
 
         {/* SI PAGÓ EN BOLÍVARES, los que entregó. Son los TECLEADOS y no una
             conversión de hoy: el tendero escribió esa cifra y leer otra, aunque
@@ -229,21 +295,38 @@ export default async function AbonoRegistradoPage({
           <span className="text-base font-semibold">Deuda total</span>
           <div className="flex items-center gap-2">
             <div className="flex flex-col items-end">
-              <span className="text-base font-semibold tabular-nums">
-                {/* LOS DOS CASOS QUE EL FRAME ENSEÑA CON SUS DOS TARJETAS. Cero
-                    no se escribe como «$0,00»: se dice que no debe nada, que es
-                    lo que el tendero le va a leer en voz alta al cliente. */}
-                {deudaTotal > 0.005 ? formatPriceAmount(deudaTotal, moneda) : "Sin deuda"}
-              </span>
-              {deudaEnBs != null && deudaTotal > 0.005 ? (
+              {/* LOS DOS CASOS QUE EL FRAME ENSEÑA CON SUS DOS TARJETAS. Cero
+                  no se escribe como «$0,00»: se dice que no debe nada, que es
+                  lo que el tendero le va a leer en voz alta al cliente.
+
+                  «SIN DEUDA» SOLO CUANDO NO QUEDA NADA EN NINGÚN LIBRO. Antes
+                  miraba solo el del movimiento de entrada, así que un reparto
+                  que saldaba los euros decía «Sin deuda» con cinco dólares
+                  todavía abiertos. */}
+              {pendientePorMoneda.length === 0 ? (
+                <span className="text-base font-semibold tabular-nums">Sin deuda</span>
+              ) : (
+                pendientePorMoneda.map((p) => (
+                  <span
+                    key={p.currency ?? "cop"}
+                    className="flex items-center gap-1.5 text-base font-semibold tabular-nums"
+                  >
+                    <CurrencyFlagIcon
+                      currency={(p.currency ?? "COP") as PriceCurrency}
+                      className="size-4 shrink-0"
+                    />
+                    {formatPriceAmount(p.pending, (p.currency ?? "COP") as PriceCurrency)}
+                  </span>
+                ))
+              )}
+              {/* Los bolívares, solo cuando hay UN libro que convertir: con dos
+                  habría que decir cuál es cuál y la línea deja de caber. */}
+              {deudaEnBs != null && pendientePorMoneda.length === 1 && deudaTotal > 0.005 ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {formatBs(deudaEnBs)} hoy
                 </span>
               ) : null}
             </div>
-            {deudaTotal > 0.005 ? (
-              <CurrencyFlagIcon currency={moneda} className="size-6 shrink-0" />
-            ) : null}
           </div>
         </div>
       </section>
