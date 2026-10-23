@@ -532,43 +532,34 @@ export function DetalleDeTransaccion({
             </dd>
           </div>
         ) : (
-          /* EN UN ABONO la fila sigue siendo una cifra suelta: lo que se
-             entregó. Las tarjetas son cosa de un fiado, que es el que tiene
-             pagos que listar. */
+          /* ── «ABONÓ», UNA SOLA FILA — frame `1580:11687` ──────────────
+             Encargo del dueño el 2026-10-23. Eran DOS filas —«Abonó» con la
+             cifra y «Equivalencia» debajo con la otra moneda— y el frame las
+             funde en una: arriba lo que entró, en verde y con su bandera; en
+             gris debajo, lo mismo en la otra moneda con «al día del abono».
+
+             LAS TARJETAS SON COSA DE UN FIADO, que es el que tiene pagos que
+             listar; un abono es una cifra suelta. Por eso esto vive en la
+             rama `else`. */
           <Fila nombre="Abonó">
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              {monto}
-              {monedaDelMonto ? (
-                <CurrencyFlagIcon currency={monedaDelMonto} className="size-4" />
+            <span className="inline-flex flex-col items-end">
+              <span className="inline-flex items-center gap-1 text-base font-semibold tabular-nums text-money-in">
+                +{monto}
+                {monedaDelMonto ? (
+                  <CurrencyFlagIcon currency={monedaDelMonto} className="size-4" />
+                ) : null}
+              </span>
+              {/* «al día del abono» PEGADO A LA CIFRA, no como rótulo suelto:
+                  califica a ESTA cantidad, y lo que dice es que sale de la
+                  tasa que el abono SELLÓ, no de la de hoy. */}
+              {equivalente ? (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {equivalente.texto} al día del abono
+                </span>
               ) : null}
             </span>
           </Fila>
         )}
-
-        {/* «EQUIVALENCIA» — frame del abono `1465:18349`, nodo `1465:18374`.
-            Va pegada debajo de «Abonó» porque es la otra cara de ESA cifra:
-            lo mismo que se tecleó, en la otra moneda.
-
-            EN UN FIADO NO SALE, y el porqué está arriba donde se calcula: allí
-            esta fila decía los bolívares del fiado entero y el dueño la mandó
-            quitar el 2026-10-21. Lo que se arregla ahora es que aquella
-            instrucción se aplicó también al abono, donde el frame sí la
-            dibuja. */}
-        {equivalente ? (
-          <Fila nombre="Equivalencia">
-            <span className="inline-flex flex-col items-end">
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {equivalente.texto}
-                <CurrencyFlagIcon currency={equivalente.moneda} className="size-4" />
-              </span>
-              {/* «Al día de la transacción» Y NO «hoy»: esta cifra sale de la
-                  tasa que el abono SELLÓ, no de la de ahora. Es el rótulo que
-                  pone el frame, y dice la verdad sobre de cuándo es el
-                  número. */}
-              <span className="text-xs text-muted-foreground">Al día de la transacción</span>
-            </span>
-          </Fila>
-        ) : null}
 
         {/* «TOTAL POR COBRAR», DENTRO DE LA TARJETA Y EN GRANDE — el frame lo
             pone ahí, separado por una línea. No es un dato más del movimiento:

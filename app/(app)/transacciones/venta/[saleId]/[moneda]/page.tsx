@@ -211,39 +211,39 @@ export default async function VentaDeContadoPage({
             <ProductosDelMovimiento productos={lineas} formatearMonto={formatear} />
           ) : null}
 
+          {/* ── «PAGÓ», UNA SOLA FILA — frame `1580:11620` ──────────────
+              Encargo del dueño el 2026-10-23. Eran DOS filas, «Pagó» con los
+              bolívares entregados y «Equivalencia» con lo que valían en el
+              libro, y el frame las funde en una.
+
+              LO QUE CAMBIA DE VERDAD ES CUÁL MANDA. Antes la cifra grande era
+              la de bolívares y el libro iba debajo; ahora es al revés: arriba
+              lo que entra en el libro —que es lo que mueve la cuenta— y
+              debajo, en gris, los bolívares que el cliente puso en la mano.
+
+              LOS BOLÍVARES SOLO SI SE PAGÓ EN BOLÍVARES. Pagando en la moneda
+              del libro serían la misma cifra dos veces; el frame dibuja el
+              caso venezolano porque es el que tiene dos. */}
           <div className="border-t pt-1.5">
             <Fila nombre="Pagó">
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {monedaTecleada === "VES" ? formatBs(entregado) : formatear(entregado)}
-                {monedaTecleada ? (
-                  <CurrencyFlagIcon currency={monedaTecleada} className="size-4" />
+              <span className="inline-flex flex-col items-end">
+                <span className="inline-flex items-center gap-1 text-base font-semibold tabular-nums text-money-in">
+                  +{formatear(total)}
+                  {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4" /> : null}
+                </span>
+                {/* «al día del pago» PEGADO A LA CIFRA, no en su propia línea.
+                    Antes era un «Al día de pago» suelto debajo de la
+                    equivalencia y se leía como un rótulo más; aquí califica a
+                    los bolívares, que es lo único que esa fecha explica: esa
+                    cantidad valió eso ESE día, no hoy. */}
+                {monedaTecleada === "VES" ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatBs(entregado)} al día del pago
+                  </span>
                 ) : null}
               </span>
             </Fila>
           </div>
-
-          {/* LA EQUIVALENCIA SOLO SI SE PAGÓ EN OTRA MONEDA. Con un pago en la
-              moneda del libro, «Pagó» y «Equivalencia» serían la misma cifra
-              dos veces, que es lo que el frame dibuja porque su maqueta es de
-              un pago en bolívares. */}
-          {monedaTecleada === "VES" && moneda ? (
-            <Fila nombre="Equivalencia">
-              <span className="inline-flex flex-col items-end">
-                <span className="inline-flex items-center gap-1.5 tabular-nums">
-                  {formatear(total)}
-                  <CurrencyFlagIcon currency={moneda} className="size-4" />
-                </span>
-                {/* «Al día de pago» AQUÍ TAMBIÉN, no «Al día de la
-                    transacción» como en el fiado. En una venta de contado las
-                    dos fechas son el mismo instante, así que ninguna de las
-                    dos sería falsa -- pero tener los dos rótulos en la misma
-                    tarjeta se lee como si fueran dos fechas distintas, y el
-                    «Total» de abajo ya dice «al día de pago» por decisión del
-                    dueño del 2026-10-20. */}
-                <span className="text-xs text-muted-foreground">Al día de pago</span>
-              </span>
-            </Fila>
-          ) : null}
 
           {/* «Total» Y NO «Total por cobrar»: aquí no queda nada por cobrar.
               Es la diferencia que el frame `1487:9972` marca contra el del
