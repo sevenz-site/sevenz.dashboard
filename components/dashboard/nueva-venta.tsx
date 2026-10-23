@@ -1222,10 +1222,12 @@ function PasoPago({
   ownerId: string;
 }) {
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
-  // El aviso de «te falta registrar…». Se limpia solo al registrar algo, en el
-  // `onGuardar` de la hoja: dejarlo puesto después de arreglar lo que señalaba
-  // convierte un aviso útil en ruido que se aprende a ignorar.
-  const [faltan, setFaltan] = useState<string | null>(null);
+
+  // ¿ESTÁ TODO REGISTRADO? Una sola condición, y de ella cuelga lo único que
+  // puede hacer avanzar esta pantalla. Antes había dos —la que dibujaba el
+  // aviso al pulsar y la que dejaba guardar— y dos condiciones para la misma
+  // pregunta es como acaban diciendo cosas distintas.
+  const todoRegistrado = sinRegistrar.length === 0;
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -1316,7 +1318,6 @@ function PasoPago({
               ) : (
                 <Button
                   type="button"
-                  variant="outline"
                   className="h-10 shrink-0"
                   onClick={() => setCobrando(c.currency)}
                 >
@@ -1403,32 +1404,51 @@ function PasoPago({
           Lo decide `conCliente`, que es por dónde se ENTRÓ, y no si hay
           cliente ahora mismo: en el paso 4 se elige uno, y con la otra regla
           el botón cambiaría de palabra a mitad del recorrido. */}
-      {/* EL AVISO VA PEGADO AL BOTÓN, debajo, que es donde el tendero está
-          mirando cuando lo pulsa. Arriba del todo se lo perdería: a 375px las
-          tarjetas ya ocupan la pantalla. */}
-      {faltan ? <p className="text-sm text-destructive">{faltan}</p> : null}
+      {/* ── EL BOTÓN NO ESTÁ HASTA QUE TODO ESTÉ REGISTRADO ──────────────
+          Regla del dueño, 2026-10-23: *«el botón "Finalizar" estará oculto
+          hasta que todos los totales estén pagos. Cuando los totales estén
+          pagos (de contado o fiado/crédito) el botón "Finalizar" se hará
+          visible»*. Vale igual para «Continuar», que es el mismo botón cuando
+          se entró sin cliente: no se puede pasar al paso 4 dejando una moneda
+          sin decidir.
 
-      {/* NO SE DESHABILITA, SE EXPLICA. Un botón apagado significa que
+          ESTO DESPLAZA UNA DECISIÓN ESCRITA AQUÍ MISMO, y las dos quedan.
+          Decía: «NO SE DESHABILITA, SE EXPLICA. Un botón apagado significa que
           pulsarlo no hace nada, y lo que hace falta aquí es que DIGA por qué
-          no se puede — es el mismo criterio que `TipoButtons` ya aplica al
-          abono imposible en el diálogo de movimientos. */}
+          no se puede.» La razón seguía siendo buena — y es justamente la que
+          obliga a lo de abajo.
+
+          POR ESO EL AVISO SE QUEDA, Y AHORA SE VE SIN PULSAR NADA. Ocultar el
+          botón se lleva por delante el único sitio donde la pantalla contaba
+          qué falta: el tendero termina su venta, no ve ningún botón, y nada le
+          dice por qué. Con el cliente delante. Así que el mismo texto que
+          antes salía AL PULSAR sale ahora MIENTRAS FALTE, en el hueco del
+          botón — la pantalla nunca se queda muda.
+
+          Y va dentro de `StickyActions`, no fuera: es lo que ocupa el borde de
+          abajo mientras el botón no está, y lo de ahí abajo se esconde con el
+          teclado arriba como todo lo demás. */}
       <StickyActions>
-        <Button
-          type="button"
-          className="h-10 w-full"
-          disabled={guardando}
-          onClick={() => {
-            if (sinRegistrar.length > 0) {
-              setFaltan(textoFaltaRegistrar(sinRegistrar));
-              return;
-            }
-            setFaltan(null);
-            if (conCliente) void guardar();
-            else onContinuar();
-          }}
-        >
-          {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
-        </Button>
+        {todoRegistrado ? (
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={guardando}
+            onClick={() => {
+              if (conCliente) void guardar();
+              else onContinuar();
+            }}
+          >
+            {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
+          </Button>
+        ) : (
+          // EN GRIS Y NO EN ROJO: no hay nada mal, solo queda trabajo por
+          // hacer. El rojo de antes tenía sentido como respuesta a un intento
+          // fallido; permanente, sería una pantalla que riñe desde que se abre.
+          <p className="text-center text-sm text-muted-foreground">
+            {textoFaltaRegistrar(sinRegistrar)}
+          </p>
+        )}
       </StickyActions>
 
       {cobrando ? (
@@ -1444,7 +1464,6 @@ function PasoPago({
           inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
-            setFaltan(null);
             setCobrando(null);
           }}
         />
