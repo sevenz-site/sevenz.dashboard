@@ -641,7 +641,17 @@ export function AbonoReparto({
   // monto (`1524:10358`), y al pagar se vuelve aquí con la cifra puesta en su
   // card (`1527:11671`).
   const filaParaElegir = (f: FiadoAbierto) => (
-    <li key={f.movementId} className="overflow-hidden rounded-[10px] border">
+    // `shrink-0` NO ES DECORACIÓN. Esta misma fila se monta dentro de la hoja
+    // «Repartir abono», cuya lista es un contenedor flex en columna con
+    // altura acotada (`max-h-[90dvh]` + `overflow-y-auto`). Un hijo de un
+    // flex encoge por defecto, así que con el teclado arriba —que es cuando
+    // esa hoja se abre, con el buscador enfocado— las tarjetas se aplastaban
+    // unas contra otras y el renglón «Debe €0.95» quedaba cortado. Lo
+    // reportó el dueño el 2026-10-23 con la captura.
+    //
+    // Va en la FILA y no en la hoja porque es la fila la que no debe ceder su
+    // altura: la hoja ya tiene su scroll, que es quien sobra cuando no caben.
+    <li key={f.movementId} className="shrink-0 overflow-hidden rounded-[10px] border">
       <div className="flex items-center justify-between gap-3 pr-3">
         {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace otra
             cosa. Encargo del dueño el 2026-10-23: *«todo el card es
@@ -699,8 +709,9 @@ export function AbonoReparto({
     // Del reparto cuando lo trae —cruzando libros— y reconvertida si no. Ver
     // el comentario de `asignadoBs`.
     const bs = asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency);
+    // `shrink-0`: ver la otra fila, unas líneas más arriba.
     return (
-      <li key={f.movementId} className="rounded-[10px] border">
+      <li key={f.movementId} className="shrink-0 rounded-[10px] border">
         {/* La tarjeta sin su propio borde: ya lo pone el `li`,
                         que es quien agrupa el fiado con lo que se le abona.
                         Dos bordes anidados se leen como dos tarjetas. */}

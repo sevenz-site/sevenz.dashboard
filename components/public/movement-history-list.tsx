@@ -97,7 +97,6 @@ export function MovementHistoryList({
   token,
   ledger = null,
   titulo = null,
-  saldoPorMoneda = {},
 }: {
   movements: SharedMovement[];
   // LAS VENTAS PAGADAS ENTERAS, que llegan aparte por lo dicho en
@@ -118,13 +117,9 @@ export function MovementHistoryList({
   // Clave: `"USD"`, `"EUR"` o `"COP"`. Hace falta solo para el abono suelto,
   // que no tiene un fiado cuyo pendiente enseñar.
   //
-  // ESTA LISTA LA VE EL CLIENTE, y por eso llega aquí el mismo día que a la
-  // del dueño: el 2026-10-23 el dueño amplió la regla a las dos —*«toda
-  // transacción en el historial de transacciones tanto en el dueño como en el
-  // cliente debe tener ese pie "Por cobrar"»*—. Una fila sin pie en la
-  // pantalla que el cliente abre para mirar su cuenta es justo donde más se
-  // nota que falta algo.
-  saldoPorMoneda?: Partial<Record<string, number>>;
+  // AQUÍ ESTUVO `saldoPorMoneda`, que la fila del abono suelto necesitaba
+  // para tener pie. Se fue el 2026-10-23 al pasar el pie a `running_balance`,
+  // que viene en el propio movimiento. Ver la lista del tendero.
 }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
@@ -164,17 +159,13 @@ export function MovementHistoryList({
         const fiadoDeLaFila =
           m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
         const pendienteDelFiado = fiadoDeLaFila?.pending ?? null;
-        // EL ABONO SUELTO TAMBIÉN LLEVA SU PIE, desde el 2026-10-23. No pagó
-        // ningún fiado, así que lo que deja debiendo es el saldo del cliente
-        // EN ESE LIBRO — la misma cifra que la tarjeta de arriba de esta
-        // misma pantalla.
-        const saldoDelLibro = saldoPorMoneda[m.currency ?? "COP"] ?? null;
-        const cifraPorCobrar =
-          pendienteDelFiado != null
-            ? pendienteDelFiado
-            : m.type === "payment"
-              ? saldoDelLibro
-              : null;
+        // QUÉ CIFRA VA AQUÍ: el saldo que ese libro debía DESPUÉS de este
+        // movimiento, `running_balance`. Encargo del dueño el 2026-10-23, y
+        // su criterio de cierre —la última fila y la tarjeta de arriba
+        // tienen que coincidir—, que se cumple por construcción. El porqué
+        // largo, y la regla del 2026-10-21 que esto desplaza, están en la
+        // lista del tendero.
+        const cifraPorCobrar = m.running_balance ?? null;
         // Y UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS: la cifra va en
         // absoluto y el chip dice de quién es. Es lo que la tarjeta de
         // arriba ya hacía con su `Math.abs` y su «A favor».

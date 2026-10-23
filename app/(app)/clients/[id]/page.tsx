@@ -614,23 +614,10 @@ async function MovementHistory({
 
   const movementRows = (movements ?? []) as Movement[];
 
-  // ── EL SALDO DE CADA LIBRO, PARA EL «POR COBRAR» DEL ABONO SUELTO ──
-  //
-  // Un abono que no fue dirigido a ningún fiado —o cuyo fiado se eliminó— no
-  // tiene un pendiente que enseñar, así que su fila se quedaba sin el piso de
-  // «Por cobrar» que llevan todas sus vecinas. Lo reportó el dueño el
-  // 2026-10-23.
-  //
-  // DE `client_summary` Y NO SUMANDO LAS FILAS QUE YA ESTÁN AQUÍ: es la misma
-  // fuente que la tarjeta del cliente de esta misma pantalla, así que las dos
-  // cifras no pueden discrepar. Sumar a mano abriría exactamente el hueco que
-  // se cerró el 2026-10-21, cuando la fila decía «Por cobrar $89.72» y la
-  // tarjeta del mismo cliente decía $68.59.
-  const { data: saldos } = await supabase
-    .from("client_summary")
-    .select("balance, balance_usd, balance_eur")
-    .eq("client_id", clientId)
-    .maybeSingle();
+  // AQUÍ SE LEÍA EL SALDO DE CADA LIBRO, para que la fila del abono suelto
+  // tuviera pie. Se fue el 2026-10-23: desde ese día el pie de TODAS las
+  // filas es `running_balance`, que ya viaja en el propio movimiento, así
+  // que esta consulta se quedó sin lector.
 
   // ── LAS VENTAS PAGADAS ENTERAS ──────────────────────────────────
   //
@@ -736,11 +723,6 @@ async function MovementHistory({
         ledger={ledger}
         ventasDeContado={ventasDeContado}
         pendientePorFiado={pendientePorFiadoMapa}
-        saldoPorMoneda={{
-          COP: saldos?.balance ?? 0,
-          USD: saldos?.balance_usd ?? 0,
-          EUR: saldos?.balance_eur ?? 0,
-        }}
         productosPorVenta={productosPorVenta}
       />
     </div>

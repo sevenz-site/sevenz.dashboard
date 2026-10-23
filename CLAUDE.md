@@ -630,27 +630,45 @@ producto promete.
 **«De contado» es la única excepción**, y no por capricho: una venta pagada
 entera no deja nada debiendo, así que su pie diría siempre cero.
 
-### Qué cifra va ahí, que no es obvia y ya costó un fallo
+### Qué cifra va ahí: el saldo del libro DESPUÉS de esa transacción
 
-- **Fila de un fiado** → lo que ESE fiado todavía debe.
-- **Abono dirigido** → lo que le queda al fiado que pagó.
-- **Abono suelto** —sin dirigir, o con su fiado eliminado— → **el saldo del
-  cliente en ESE libro**, leído de `client_summary`. No pagó ningún fiado: fue
-  contra la cuenta entera.
+**Es `movements.running_balance`**, y la regla la fijó el dueño el 2026-10-23:
+*«"Por cobrar" en el pie de cada card es el monto por cobrar total del libro
+de esa moneda, no del fiado ni de otra transacción (…) es para que le diga al
+cliente y dueño en cuánto le queda la deuda DESPUÉS DE ESA TRANSACCIÓN»*.
 
-Las tres contestan la misma pregunta —«¿qué queda debiendo de lo que esto
-tocó?»— sobre cosas de distinto tamaño.
+Y el criterio con el que lo cerró, que es el que vale como prueba: *«si el
+cliente debe 100 y abonó 50, "Por cobrar" es 50 en la card principal de la
+moneda y en la card de la última transacción. **Deben coincidir**»*.
 
-**Lo que NUNCA va ahí es `movements.running_balance`**, que es lo que parece a
-primera vista. Esa es la deuda que había JUSTO DESPUÉS de ese movimiento. Se
-quitó el 2026-10-21 porque, con los abonos escondidos por el filtro, la fila de
-arriba decía «Por cobrar $89.72» mientras la tarjeta del mismo cliente decía
-$68.59. **El peor caso es el que la condenó: el tendero le cobra 89,72 a quien
-debe 68,59**, y la app le dio las dos cifras sin decir cuál valía.
+**Esa invariante se cumple por construcción**, y conviene saber por qué:
+`client_summary.balance_eur` ES el `running_balance` del último movimiento
+vivo en euros. Así que la fila más nueva de un libro y la tarjeta de arriba no
+pueden discrepar — no hay nada que sincronizar.
 
-Por lo mismo, el saldo se lee de `client_summary` y **no se suma a mano** desde
-las filas que la lista ya tiene: esa fuente es la que alimenta la tarjeta del
-cliente de esa misma pantalla, así que las dos cifras no pueden discrepar.
+#### Esto DESPLAZA la regla del 2026-10-21, y las dos quedan escritas
+
+`running_balance` estuvo en este pie y **se quitó** ese día porque, con los
+abonos escondidos por el filtro, la fila de arriba decía «Por cobrar $89.72»
+mientras la tarjeta del mismo cliente decía $68.59, y nada decía cuál cobrar.
+**El peor caso es el que la condenó: el tendero le cobra 89,72 a quien debe
+68,59.**
+
+Lo que cambió entre una fecha y otra es la fila: el pie lo llevan **todas**,
+así que las cifras se leen como una serie que baja y termina en la de la
+tarjeta, en vez de como dos números sueltos que se contradicen.
+
+**Lo que sigue costando, dicho para que nadie lo redescubra**: con un filtro
+puesto —«Fiado», por ejemplo— la fila más nueva que quede en pantalla puede
+ser vieja, y entonces su cifra NO es la de la tarjeta. Es inherente a enseñar
+un dato histórico, y el dueño lo eligió avisado de ese caso por su nombre.
+
+#### El chip de al lado habla de otra cosa
+
+No confundirlos: el chip dice cómo va **ese fiado** —su propio plazo, su
+propio pendiente— y el pie dice qué debía **el libro** después de esa fila. Un
+fiado puede salir «Pagado» con un pie de €55,95: el fiado está saldado y el
+libro sigue debiendo.
 
 ### Un saldo A FAVOR no se escribe con un menos
 
