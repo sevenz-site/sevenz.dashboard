@@ -393,6 +393,134 @@ export function formatAmountForInput(
   return decimales ? `${signo}${agrupada},${decimales}` : `${signo}${agrupada}`;
 }
 
+/**
+ * The same number, grouped WHILE IT IS BEING TYPED.
+ *
+ * Asked for by the owner on 2026-10-23, right after the field stopped opening
+ * with `5760,4761499999`: *«agrupa también mientras se teclea»*. So the amount
+ * reads the same whether the app filled it in or the shopkeeper did.
+ *
+ * ── WHY IT NEEDS THE PREVIOUS VALUE, which is the whole difficulty ───────
+ *
+ * Type `12345`. After the fourth digit the field already shows `1.234`.
+ * Inserting the `5` makes the raw value `1.2345` — and read by `parseAmount`'s
+ * «the last separator decides», that is ONE POINT TWO THREE FOUR FIVE, not
+ * twelve thousand. The text alone cannot tell our own grouping mark from a
+ * decimal point the shopkeeper just pressed.
+ *
+ * So the rule is: **what was typed decides**.
+ *
+ *   · one character inserted, and it is `.` or `,` → that is the decimal mark,
+ *     exactly where it was pressed;
+ *   · one character inserted or removed, anything else → the decimal mark is
+ *     the last comma, and every dot is ours;
+ *   · anything bigger (a paste, select-all-and-replace) → hand it to
+ *     `parseAmount`, which already knows both conventions, and re-format.
+ *
+ * A typed `.` is therefore honoured as a decimal mark, which it has to be: an
+ * Android keypad offers it even on a Spanish phone, and this field accepted it
+ * before.
+ *
+ * ── WHAT IT DELIBERATELY KEEPS, because formatting must not fight typing ──
+ *
+ * A trailing separator with nothing after it (`5760,`) and trailing zeros
+ * (`5,10`) survive. Collapsing them would undo the keystroke the shopkeeper
+ * just made, which is how these fields end up feeling broken.
+ *
+ * Returns the caret too: the caller has to put it back, because the input is
+ * controlled and React would otherwise drop it at the end on every keystroke.
+ */
+export function formatAmountWhileTyping(
+  bruto: string,
+  anterior: string,
+  cursor: number,
+  maxDecimales = 4,
+): { texto: string; cursor: number } {
+  const limpio = bruto.replace(/[^\d.,]/g, "");
+  if (limpio === "") return { texto: "", cursor: 0 };
+
+  const cambio = bruto.length - anterior.length;
+
+  // Lo que de verdad ancla el cursor son los DÍGITOS que quedan a su
+  // izquierda: los puntos de agrupación los pone y los quita esta función, así
+  // que contarlos haría saltar el cursor con cada millar que aparece.
+  let digitosAntes = (bruto.slice(0, cursor).match(/\d/g) ?? []).length;
+
+  // ── BORRAR UN PUNTO DE AGRUPACIÓN BORRA EL DÍGITO DE SU IZQUIERDA ──────
+  //
+  // Sin esto, el retroceso sobre un punto no hace NADA visible: se quita el
+  // punto, se reformatea y vuelve a salir. El tendero pulsa tres veces y el
+  // número sigue igual, que es la queja clásica de un campo agrupado.
+  let digitos = limpio;
+  if (cambio === -1 && anterior[cursor] === ".") {
+    digitos = (bruto.slice(0, cursor - 1) + bruto.slice(cursor)).replace(/[^\d.,]/g, "");
+    digitosAntes = Math.max(0, digitosAntes - 1);
+  }
+
+  let enteros: string;
+  let decimales: string | null;
+  // Dónde quedó el separador decimal DENTRO DE `bruto`, para saber si el
+  // cursor lo pasó o no. -1 cuando todavía no hay decimales.
+  let separadorEn = -1;
+
+  const insertadoUno = cambio === 1 ? bruto[cursor - 1] : null;
+
+  if (insertadoUno === "." || insertadoUno === ",") {
+    // Acaba de pedir decimales, justo ahí.
+    separadorEn = cursor - 1;
+    enteros = digitos.slice(0, separadorEn).replace(/[.,]/g, "");
+    decimales = digitos
+      .slice(separadorEn + 1)
+      .replace(/[.,]/g, "")
+      .slice(0, maxDecimales);
+  } else if (Math.abs(cambio) <= 1) {
+    // Una tecla normal, o un borrado. La coma manda; los puntos son nuestros.
+    const coma = digitos.lastIndexOf(",");
+    if (coma === -1) {
+      enteros = digitos.replace(/[.,]/g, "");
+      decimales = null;
+    } else {
+      separadorEn = coma;
+      enteros = digitos.slice(0, coma).replace(/[.,]/g, "");
+      decimales = digitos
+        .slice(coma + 1)
+        .replace(/[.,]/g, "")
+        .slice(0, maxDecimales);
+    }
+  } else {
+    // Un pegado, o un reemplazo entero. Aquí no hay pulsación que interpretar,
+    // así que decide quien ya sabe leer las dos convenciones.
+    const n = parseAmount(digitos);
+    const texto = n == null ? "" : formatAmountForInput(n, { miles: true, maxDecimales });
+    return { texto, cursor: texto.length };
+  }
+
+  const sinCerosDeMas = enteros.replace(/^0+(?=\d)/, "");
+  const agrupados = sinCerosDeMas.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const texto = decimales === null ? agrupados : `${agrupados},${decimales}`;
+
+  // ── EL CURSOR, DE VUELTA ───────────────────────────────────────────────
+  //
+  // Se avanza por el texto nuevo hasta dejar atrás los mismos dígitos que
+  // había a la izquierda del cursor. Y SI EL SEPARADOR DECIMAL QUEDÓ DETRÁS,
+  // se pasa también por encima de él: sin eso, teclear la coma deja el cursor
+  // DELANTE, y el siguiente dígito entra en los enteros. Era el fallo de
+  // `12.5`, que salía `125,`.
+  const pasoElSeparador = separadorEn !== -1 && separadorEn < cursor;
+  let vistos = 0;
+  let destino = 0;
+  while (destino < texto.length && vistos < digitosAntes) {
+    // DÍGITOS, no «todo lo que no sea punto»: contando la coma, cada decimal
+    // nuevo aterrizaba pegado a ella y los dígitos salían del revés —
+    // `5760,4761` se escribía `5.760,1674`.
+    if (texto[destino] >= "0" && texto[destino] <= "9") vistos++;
+    destino++;
+  }
+  if (pasoElSeparador && texto[destino] === ",") destino++;
+
+  return { texto, cursor: destino };
+}
+
 // ── Formatting ───────────────────────────────────────────────────────────
 //
 // Reuses the formatters the rest of the product already uses, instead of

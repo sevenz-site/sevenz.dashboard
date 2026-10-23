@@ -33,6 +33,7 @@ import {
   priceFromCost,
   parseAmount,
   formatAmountForInput,
+  formatAmountWhileTyping,
   SALE_CURRENCIES_LOCKED,
   isSaleCurrencyLocked,
   withoutLockedSaleCurrencies,
@@ -285,6 +286,117 @@ const IDA_Y_VUELTA_MILES = [5760.4761, 1234567, 999, 12000, 1125, 1.125, 0.5, 11
 for (const n of IDA_Y_VUELTA_MILES) {
   const escrito = formatAmountForInput(n, MILES);
   check(`8e. ${n} → "${escrito}" → ${parseAmount(escrito)}`, parseAmount(escrito) === n);
+}
+
+// ── 8f. AGRUPAR MIENTRAS SE TECLEA ────────────────────────────────────────
+//
+// `formatAmountWhileTyping`, pedida por el dueño el 2026-10-23.
+//
+// SE PRUEBA PULSACIÓN A PULSACIÓN y no con el texto final, porque el fallo de
+// esta clase de campo no está en el resultado: está en la tecla 5 de 5. Al
+// teclear `12345`, tras el cuarto dígito el campo ya dice `1.234`, y el valor
+// crudo que llega al insertar el `5` es `1.2345` — que leído «el último
+// separador manda» es UNO COMA DOS TRES CUATRO CINCO. Una prueba que solo
+// mirara el final no distingue las dos lecturas.
+//
+// Y SE COMPRUEBA EL CURSOR, que es la otra mitad. Un campo que agrupa bien y
+// deja el cursor donde no es se vuelve inservible en cuanto hay que corregir
+// un dígito del medio — que es justo lo que se hace con un monto.
+const teclear = (teclas, desde = { texto: "", cursor: 0 }) => {
+  let estado = desde;
+  for (const t of teclas) {
+    const bruto = estado.texto.slice(0, estado.cursor) + t + estado.texto.slice(estado.cursor);
+    estado = formatAmountWhileTyping(bruto, estado.texto, estado.cursor + 1);
+  }
+  return estado;
+};
+
+const retroceso = (estado) => {
+  if (estado.cursor === 0) return estado;
+  const bruto = estado.texto.slice(0, estado.cursor - 1) + estado.texto.slice(estado.cursor);
+  return formatAmountWhileTyping(bruto, estado.texto, estado.cursor - 1);
+};
+
+check(`8f. tecleando 12345 → "${teclear("12345").texto}"`, teclear("12345").texto === "12.345");
+check(
+  `8f. tecleando 1234567 → "${teclear("1234567").texto}"`,
+  teclear("1234567").texto === "1.234.567",
+);
+check(`8f. por debajo de mil no agrupa → "${teclear("999").texto}"`, teclear("999").texto === "999");
+
+// La coma, tecleada, abre los decimales y SE QUEDA aunque todavía no haya nada
+// detrás: quitarla deshace la tecla que el tendero acaba de pulsar.
+check(`8f. "5760," se queda con su coma → "${teclear("5760,").texto}"`, teclear("5760,").texto === "5.760,");
+check(
+  `8f. y los decimales entran detrás → "${teclear("5760,4761").texto}"`,
+  teclear("5760,4761").texto === "5.760,4761",
+);
+check(
+  `8f. el quinto decimal no entra → "${teclear("5760,47614").texto}"`,
+  teclear("5760,47614").texto === "5.760,4761",
+);
+check(`8f. un cero final sobrevive → "${teclear("5,10").texto}"`, teclear("5,10").texto === "5,10");
+
+// El punto tecleado TAMBIÉN abre decimales: un teclado Android lo ofrece
+// aunque el teléfono esté en español, y este campo lo aceptaba antes.
+check(`8f. el punto tecleado es decimal → "${teclear("12.5").texto}"`, teclear("12.5").texto === "12,5");
+
+// Y la trampa al revés: un punto tecleado DESPUÉS de que ya agrupemos.
+check(
+  `8f. 1234 y luego punto y 5 → "${teclear("1234.5").texto}"`,
+  teclear("1234.5").texto === "1.234,5",
+);
+
+check("8f. campo vacío", formatAmountWhileTyping("", "", 0).texto === "");
+check(`8f. un cero a la izquierda se va → "${teclear("05").texto}"`, teclear("05").texto === "5");
+check(`8f. pero 0, sigue siendo 0, → "${teclear("0,5").texto}"`, teclear("0,5").texto === "0,5");
+
+// ── EL CURSOR ──────────────────────────────────────────────────────────
+const tras12345 = teclear("12345");
+check(
+  `8f. el cursor queda al final tras teclear → ${tras12345.cursor} de ${tras12345.texto.length}`,
+  tras12345.cursor === tras12345.texto.length,
+);
+
+// Corregir un dígito del MEDIO: el caso que de verdad usa el cursor.
+// Insertar «9» en «1.234» con el cursor tras el «2» deja el crudo «1.2934» y
+// el cursor en 4 --detras del 9 recien puesto--, no en 3.
+const enMedio = formatAmountWhileTyping("1.2934", "1.234", 4);
+check(
+  `8f. meter un 9 en medio de 1.234 → "${enMedio.texto}" cursor ${enMedio.cursor}`,
+  enMedio.texto === "12.934" && enMedio.cursor === 4,
+);
+
+// ── EL RETROCESO SOBRE UN PUNTO ────────────────────────────────────────
+//
+// Sin trato especial, borrar el punto de «1.234» no hace nada: se quita y se
+// vuelve a poner. Aquí se borra además el dígito de su izquierda, que es lo
+// que el tendero quería.
+const borrandoElPunto = retroceso({ texto: "1.234", cursor: 2 });
+check(
+  `8f. retroceso sobre el punto de 1.234 → "${borrandoElPunto.texto}"`,
+  borrandoElPunto.texto === "234",
+);
+const borrandoUnDigito = retroceso({ texto: "12.345", cursor: 6 });
+check(
+  `8f. retroceso normal sobre un dígito → "${borrandoUnDigito.texto}"`,
+  borrandoUnDigito.texto === "1.234",
+);
+
+// ── PEGAR ──────────────────────────────────────────────────────────────
+const pegado = formatAmountWhileTyping("5760.4761499999", "", 15);
+check(
+  `8f. pegar 5760.4761499999 → "${pegado.texto}"`,
+  pegado.texto === "5.760,4761",
+);
+
+// ── Y LA IDA Y VUELTA, que es lo que decide lo que se GUARDA ───────────
+for (const teclas of ["12345", "5760,4761", "1234.5", "999", "0,5", "1125"]) {
+  const { texto } = teclear(teclas);
+  check(
+    `8f. tecleando "${teclas}" → "${texto}" → ${parseAmount(texto)}`,
+    parseAmount(texto) === parseAmount(teclas.replace(".", ",")),
+  );
 }
 
 // ── 9. EL CANDADO DEL PRECIO EN USDT ──────────────────────────────────────

@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -66,6 +74,7 @@ import {
 } from "@/lib/products/public-pricing";
 import {
   formatAmountForInput,
+  formatAmountWhileTyping,
   formatPriceAmount,
   parseAmount,
   type BolivarRates,
@@ -2089,6 +2098,26 @@ function PagoSheet({
       ? formatAmountForInput(inicial.entryAmount, COMO_SE_ESCRIBE)
       : enEntrega(inicial?.amount ?? total),
   );
+  // ── EL CURSOR, QUE HAY QUE DEVOLVER A MANO ────────────────────────────
+  //
+  // El campo es controlado: React vuelve a pintar su `value` en cada tecla y
+  // deja el cursor AL FINAL. Mientras el texto no cambiaba de forma eso no se
+  // notaba; agrupando, cada millar que aparece lo empujaría y corregir un
+  // dígito del medio sería imposible.
+  //
+  // Va en un `useLayoutEffect` y no en el propio `onChange` porque el valor
+  // nuevo todavía no está en el DOM cuando el manejador corre: colocarlo allí
+  // lo pone sobre el texto viejo y React lo pisa al repintar.
+  const campoMonto = useRef<HTMLInputElement>(null);
+  const cursorPendiente = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const destino = cursorPendiente.current;
+    if (destino == null || campoMonto.current == null) return;
+    cursorPendiente.current = null;
+    campoMonto.current.setSelectionRange(destino, destino);
+  });
+
   const [usarPrevista, setUsarPrevista] = useState(inicial?.usarPrevista ?? false);
   const [photoPath, setPhotoPath] = useState<string | null>(inicial?.photoPath ?? null);
   const [plazo, setPlazo] = useState(inicial?.plazo ?? DEFAULT_PLAZO_PAGO);
@@ -2291,10 +2320,26 @@ function PagoSheet({
                   <div className="relative min-w-0 flex-1">
                     <Input
                       id="pago-monto"
+                      ref={campoMonto}
                       className={monto ? "pr-9" : undefined}
                       inputMode="decimal"
                       value={monto}
-                      onChange={(e) => setMonto(e.target.value)}
+                      onChange={(e) => {
+                        // SE AGRUPA MIENTRAS SE TECLEA, a petición del dueño
+                        // el 2026-10-23. `formatAmountWhileTyping` necesita el
+                        // valor ANTERIOR además del nuevo, y no es un capricho
+                        // de su firma: tecleando `12345`, al llegar el `5` el
+                        // texto crudo es `1.2345`, que leído solo no se
+                        // distingue de «uno coma dos tres cuatro cinco».
+                        const { texto, cursor } = formatAmountWhileTyping(
+                          e.target.value,
+                          monto,
+                          e.target.selectionStart ?? e.target.value.length,
+                          COMO_SE_ESCRIBE.maxDecimales,
+                        );
+                        cursorPendiente.current = cursor;
+                        setMonto(texto);
+                      }}
                       placeholder="00"
                     />
                     {monto ? (
