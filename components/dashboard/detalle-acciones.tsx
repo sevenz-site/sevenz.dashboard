@@ -123,9 +123,9 @@ export function DetalleAcciones({
   // fiado. Marcada por defecto, un toque de más le borraría al cliente un pago
   // que sí hizo — y eso no se ve hasta que alguien discute el saldo.
   //
-  // SE REARMA AL ABRIR, no al cerrar: si el tendero la marca, cancela y vuelve
-  // a entrar, la encuentra como la dejó y borra dos cosas creyendo que borra
-  // una. Ver el `onOpenChange` del diálogo.
+  // SE REARMA EN LOS DOS SITIOS —al cerrar el diálogo y al abrirlo desde el
+  // menú— porque uno solo no basta. El porqué, y lo que se midió, está en el
+  // `onOpenChange` del diálogo.
   const [tambienAbonos, setTambienAbonos] = useState(false);
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
@@ -188,6 +188,9 @@ export function DetalleAcciones({
               // Sin esto el menú se cierra ANTES de que el estado cambie y la
               // confirmación se abre sobre algo que se está desmontando.
               e.preventDefault();
+              // LA CASILLA SE REARMA AQUÍ, que es donde de verdad se abre.
+              // Ver el porqué en el `onOpenChange` del diálogo.
+              setTambienAbonos(false);
               setConfirmando(true);
             }}
           >
@@ -202,9 +205,20 @@ export function DetalleAcciones({
       <AlertDialog
         open={confirmando}
         onOpenChange={(abierto) => {
-          // AL ABRIR SE REARMA. Ver el comentario de `tambienAbonos`: dejarla
-          // marcada de una vez cancelada es cómo se borra un pago sin querer.
-          if (abierto) setTambienAbonos(false);
+          // SE REARMA AL CERRAR, Y TAMBIÉN AL ABRIR DESDE EL MENÚ.
+          //
+          // HACEN FALTA LAS DOS, y esto estuvo mal escrito hasta que se probó.
+          // `onOpenChange` es de Radix y solo se dispara cuando el DIÁLOGO
+          // pide el cambio —Cancelar, Escape, tocar fuera—, no cuando el menú
+          // pone `setConfirmando(true)` a mano. Con el rearme solo aquí y solo
+          // «al abrir», marcar la casilla, cancelar y volver a entrar la
+          // encontraba MARCADA: medido en dev el 2026-10-23, con el comentario
+          // de al lado afirmando lo contrario.
+          //
+          // POR QUÉ IMPORTA: la segunda vez el tendero cree que borra el fiado
+          // y borra también el pago que su cliente sí hizo. No falla nada y no
+          // se ve hasta que alguien discute el saldo.
+          setTambienAbonos(false);
           setConfirmando(abierto);
         }}
       >
