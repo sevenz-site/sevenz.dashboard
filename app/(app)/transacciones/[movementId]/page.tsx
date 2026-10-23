@@ -312,6 +312,11 @@ export default async function TransaccionPage({
           clientId={cliente.id}
           compartir={compartir}
           puedePagar={puedePagar}
+          // CUÁNTOS ABONOS COLGARÍAN DE ESTE FIADO AL BORRARLO. Decide si el
+          // diálogo de confirmación pregunta qué hacer con ellos. Ya está
+          // calculado arriba para la propia ficha, así que no cuesta otra
+          // consulta; `?? []` cubre el caso de un abono, donde no se pide.
+          abonosDirigidos={(abonosRecibidos ?? []).length}
         />
       </div>
 
@@ -334,6 +339,10 @@ export default async function TransaccionPage({
         exchangeRateUsed={m.exchange_rate_used == null ? null : Number(m.exchange_rate_used)}
         ledger={ledger}
         fiadoAplicado={fiadoAplicado}
+        // APUNTABA A UNO Y NO SE ENCONTRÓ = se borró. La consulta de arriba
+        // filtra por `deleted_at is null`, así que «no está» y «está borrado»
+        // son lo mismo aquí.
+        fiadoBorrado={m.type === "payment" && m.applies_to_movement_id != null && fiadoAplicado == null}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
         abonoResaltado={abonoResaltado ?? null}

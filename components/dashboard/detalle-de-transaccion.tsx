@@ -66,6 +66,16 @@ export type DatosDelDetalle = {
   ledger?: LedgerDisplay | null;
   // El fiado al que fue este abono, si fue a uno. Ver `TarjetaDeFiado`.
   fiadoAplicado?: FiadoAbierto | null;
+  // SU FIADO EXISTIÓ Y SE BORRÓ. Distinto de `fiadoAplicado = null`, que
+  // significa «nunca apuntó a ninguno»: los cientos de abonos anteriores a la
+  // migración `126`, que la cola FIFO repartió sobre el saldo total.
+  //
+  // SIN ESTA DISTINCIÓN LA FICHA MENTÍA. Un abono cuyo fiado se borró caía en
+  // el mismo sitio que aquellos y decía «Abonó a: Repartidos al saldo total»,
+  // que es falso: ese abono se dirigió a un fiado concreto, y lo que pasó es
+  // que ese fiado ya no está. Encontrado el 2026-10-23 siguiendo el 404 que
+  // reportó el dueño.
+  fiadoBorrado?: boolean;
   // A dónde lleva esa tarjeta. Cada superficie tiene su ruta.
   hrefDelFiado?: string | null;
   rates?: BolivarRates | null;
@@ -137,6 +147,7 @@ export function DetalleDeTransaccion({
   exchangeRateUsed = null,
   ledger = null,
   fiadoAplicado = null,
+  fiadoBorrado = false,
   hrefDelFiado = null,
   rates = null,
   mostrarPendienteDelFiado = true,
@@ -351,12 +362,33 @@ export function DetalleDeTransaccion({
               rates={rates}
               href={hrefDelFiado}
               mostrarPendiente={mostrarPendienteDelFiado}
+              // AQUÍ SÍ: esta tarjeta está sola, navega, y la flecha es la
+              // única señal de que se puede tocar.
+              conChevron
             />
           ) : (
-            // LOS CIENTOS QUE YA EXISTÍAN. Decisión del dueño el 2026-10-19: no
-            // se deja en blanco, se dice qué pasó. La cola FIFO los repartió
-            // sobre el saldo total y no hubo decisión del tendero que enseñar.
-            <Fila nombre="Abonó a">Repartidos al saldo total</Fila>
+            // DOS FRASES, Y DICEN COSAS DISTINTAS:
+            //
+            //   * «Repartidos al saldo total» — LOS CIENTOS QUE YA EXISTÍAN.
+            //     Decisión del dueño el 2026-10-19: no se deja en blanco, se
+            //     dice qué pasó. La cola FIFO los repartió sobre el saldo y no
+            //     hubo decisión del tendero que enseñar.
+            //   * «Un fiado que se eliminó» — este abono SÍ eligió fiado, y el
+            //     fiado ya no está. La segunda línea es la que importa: ese
+            //     dinero sigue descontando del saldo, y es justo lo que nadie
+            //     ve si no se dice aquí.
+            <Fila nombre="Abonó a">
+              {fiadoBorrado ? (
+                <span className="flex flex-col items-end gap-0.5">
+                  <span>Un fiado que se eliminó</span>
+                  <span className="text-xs text-muted-foreground">
+                    Este abono sigue descontándose del saldo
+                  </span>
+                </span>
+              ) : (
+                "Repartidos al saldo total"
+              )}
+            </Fila>
           )
         ) : null}
 

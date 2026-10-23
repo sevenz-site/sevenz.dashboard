@@ -55,6 +55,7 @@ export function TarjetaDeFiado({
   href,
   onClick,
   mostrarPendiente = true,
+  conChevron,
 }: {
   fiado: FiadoAbierto;
   rates: BolivarRates | null;
@@ -70,6 +71,23 @@ export function TarjetaDeFiado({
   // está mirando sin moverse de sitio.
   href?: string;
   onClick?: () => void;
+  // ── ¿HAY «›»? ──────────────────────────────────────────────────────
+  //
+  // Se dibujaba SIEMPRE, incluso donde la tarjeta no abría nada: en la lista
+  // de «Así se reparte el pago» y en la hoja de «Repartir abono» no llevaba
+  // ni `href` ni `onClick`, así que la flecha prometía una pantalla que no
+  // existía. El dueño lo reportó el 2026-10-23 señalando la de la hoja.
+  //
+  // OBLIGATORIA Y SIN VALOR POR DEFECTO, igual que `conAcciones` en
+  // `tarjeta-de-abono.tsx` y por lo que allí costó: un `= true` devolvería la
+  // flecha en silencio el día que alguien monte esta tarjeta en un sitio
+  // nuevo y no se acuerde de pasarla. Así no compila.
+  //
+  // NO SE DEDUCE DE `href`, y se probó: en la hoja la tarjeta SÍ navega —al
+  // detalle de la transacción— y aun así va sin flecha, porque la fila ya
+  // lleva un botón «Pagar» al lado. Dos señales de «aquí se toca» en la misma
+  // fila, apuntando a sitios distintos, es justo lo que confunde.
+  conChevron: boolean;
 }) {
   // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Fiado · lo que se llevó». Si la
   // venta trae productos van ellos; si no, lo que el tendero escribió; y si no
@@ -130,7 +148,9 @@ export function TarjetaDeFiado({
             <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
           ) : null}
         </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {conChevron ? (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : null}
       </div>
     </>
   );

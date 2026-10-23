@@ -357,8 +357,24 @@ export function AbonoReparto({
   const filaParaElegir = (f: FiadoAbierto) => (
     <li key={f.movementId} className="overflow-hidden rounded-[10px] border">
       <div className="flex items-center justify-between gap-3 pr-3">
+        {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace otra
+            cosa. Encargo del dueño el 2026-10-23: *«todo el card es
+            clickeable, lleva al detalle de la transacción, eliminar icono "›"
+            en la card»*.
+
+            SON DOS DESTINOS EN UNA FILA, a propósito: tocar la tarjeta es
+            «déjame ver qué fue esto» y lleva a `/transacciones/…`; tocar
+            «Pagar» es «a este le pongo yo la cifra» y entra en el flujo del
+            reparto. Por eso la flecha sobra: con dos cosas tocables al lado,
+            una flecha solo dice cuál de las dos no es. */}
         <div className="min-w-0 flex-1 [&>*]:border-0">
-          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
+          <TarjetaDeFiado
+            fiado={f}
+            rates={rates}
+            mostrarPendiente
+            href={`/transacciones/${f.movementId}`}
+            conChevron={false}
+          />
         </div>
         <Button
           type="button"
@@ -393,13 +409,20 @@ export function AbonoReparto({
                         que es quien agrupa el fiado con lo que se le abona.
                         Dos bordes anidados se leen como dos tarjetas. */}
         <div className="[&>*]:rounded-b-none [&>*]:border-0">
-          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente />
+          {/* SIN FLECHA: esta tarjeta no abre nada. La dibujaba igual hasta el
+              2026-10-23, prometiendo una pantalla que no existe desde aquí. */}
+          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente conChevron={false} />
         </div>
+        {/* SIEMPRE «Abona» Y SIEMPRE CON CIFRA. Hasta el 2026-10-23 esta fila
+            tenía una segunda cara —«No le toca nada» y un botón «Pagar»— para
+            los fiados que el reparto no alcanzaba. Ya no se puede llegar a
+            ella: la lista de arriba solo monta los que reciben algo, así que
+            `toca` siempre pasa de cero aquí. Lo que aquella cara ofrecía —ir a
+            un fiado que el reparto no tocó— lo da ahora «Seleccionar fiados»,
+            y desde ahí para TODOS, no solo para los que quedaron a cero. */}
         <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
-          <span className="text-sm text-muted-foreground">
-            {toca > 0.005 ? "Abona" : "No le toca nada"}
-          </span>
-          {toca > 0.005 ? (
+          <span className="text-sm text-muted-foreground">Abona</span>
+          {
             <div className="flex items-center gap-2">
               <div className="flex flex-col items-end">
                 <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
@@ -439,32 +462,7 @@ export function AbonoReparto({
                 </Button>
               ) : null}
             </div>
-          ) : (
-            /* EL «PAGAR» DE UN FIADO SIN ASIGNAR — frame
-                           `1536:11205`. Lleva al detalle 2/2, y de ahí al
-                           monto, y vuelve aquí con el renglón puesto.
-                           `?reparto=1` es lo que le dice a esas dos
-                           pantallas que NO guarden: en este flujo lo único
-                           que escribe es «Pagar y finalizar». */
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-10"
-              onClick={() => {
-                // SE CIERRA ANTES DE NAVEGAR. Dejarla abierta
-                // durante la transición deja la hoja encima de la
-                // pantalla nueva mientras carga — es la misma nota
-                // que `register-sheet.tsx` ya tiene escrita, y la
-                // misma razón: `Sheet` es un Radix Dialog y no se
-                // desmonta solo al cambiar de ruta.
-                setRepartiendo(false);
-                router.push(`/abonos/nuevo/${f.movementId}?reparto=1`);
-              }}
-            >
-              Pagar
-            </Button>
-          )}
+          }
         </div>
       </li>
     );
@@ -639,7 +637,24 @@ export function AbonoReparto({
             {/* LA EQUIVALENCIA, Y SOLO CUANDO SE PUEDE CALCULAR. Sin tasa no
                 se dibuja: inventar una conversión es peor que no darla. */}
             {bsDelTotal != null && montoNum > 0 ? (
-              <p className="text-sm text-muted-foreground tabular-nums">
+              // LA BANDERA A LA IZQUIERDA DEL RÓTULO — encargo del dueño el
+              // 2026-10-23. Es la misma que ya acompaña a cada cifra en las
+              // tarjetas y en el historial, y por el mismo motivo que allí:
+              // esta línea y la de abajo —«Te debe …»— son dos números
+              // parecidos en DOS monedas distintas, uno encima del otro. El
+              // símbolo de un carácter al principio es lo único que los
+              // separaba.
+              //
+              // LA BANDERA ES LA DE LA CIFRA QUE SE ENSEÑA, no la del campo:
+              // tecleando en bolívares esta línea dice lo que son en el libro,
+              // así que lleva la del libro; tecleando en el libro dice los
+              // bolívares y lleva la de Venezuela. Al revés estaría etiquetando
+              // cada número con la moneda del otro.
+              <p className="flex items-center gap-1 text-sm text-muted-foreground tabular-nums">
+                <CurrencyFlagIcon
+                  currency={enBolivares ? ((libro ?? "USD") as PriceCurrency) : "VES"}
+                  className="size-3.5 shrink-0"
+                />
                 {enBolivares
                   ? `${formatPriceAmount(enElLibro, (libro ?? "COP") as PriceCurrency)} hoy`
                   : `${formatBs(bsDelTotal)} hoy`}
@@ -659,7 +674,33 @@ export function AbonoReparto({
             <div className="flex flex-col gap-3">
               <h2 className="text-base font-medium">Así se reparte el pago</h2>
 
-              <ul className="flex flex-col gap-3">{enOrden.map(filaDeFiado)}</ul>
+              {/* SOLO LOS QUE RECIBEN ALGO — encargo del dueño el 2026-10-23:
+                  *«cuando el monto a abonar es menor al de cualquier fiado
+                  está mostrando fiado con abono y resto de fiados con botón
+                  "Pagar", cambiemos eso por solo mostrar el abono al fiado más
+                  crítico (solo un abono), no muestres más fiados»*.
+
+                  QUÉ SE VEÍA: con $20 sobre fiados de $41,50 y $62, la lista
+                  enseñaba el de $20 y debajo el otro con «No le toca nada» y
+                  un botón «Pagar». Dos tarjetas para un pago, y la segunda
+                  ofreciendo otra cosa en la pantalla donde se confirma la
+                  primera.
+
+                  LA REGLA ES «LOS QUE RECIBEN», no «el primero». Dicho así
+                  cubre los dos casos sin un segundo criterio: cuando el billete
+                  no llega al fiado más grave sale una sola tarjeta, que es su
+                  caso; cuando da para dos, salen las dos, y esas dos sí
+                  explican el reparto. Un `slice(0, 1)` enseñaría una tarjeta
+                  mientras el botón cobra por dos.
+
+                  Y LOS QUE NO RECIBEN SIGUEN ALCANZABLES: están en la hoja de
+                  «Seleccionar fiados», que es justo para lo que él la quiere
+                  siempre a mano. */}
+              <ul className="flex flex-col gap-3">
+                {enOrden
+                  .filter((f) => (asignado.get(f.movementId) ?? 0) > 0.005)
+                  .map(filaDeFiado)}
+              </ul>
             </div>
           ) : null}
         </>
@@ -737,22 +778,32 @@ export function AbonoReparto({
             />
           ) : null}
 
-          {/* SOLO CUANDO HAY ALGO QUE REPARTIR. Sin monto escrito no hay
-              reparto que cambiar, y una hoja que se abre para no poder hacer
-              nada es un botón que miente. */}
-          {enElLibro > 0.005 && !excede ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 w-full"
-              onClick={() => {
-                setBuscaFiado("");
-                setRepartiendo(true);
-              }}
-            >
-              Repartir distinto
-            </Button>
-          ) : null}
+          {/* «SELECCIONAR FIADOS», Y SIEMPRE — encargo del dueño el
+              2026-10-23: *«cambiar cta por "Seleccionar fiados" siempre en esa
+              pantalla, eso permitirá al dueño cambiar el fiado a abonar»*.
+
+              ESTABA CONDICIONADO a haber escrito un monto, con el argumento de
+              que sin cifra no hay reparto que cambiar. Ese argumento valía
+              cuando la hoja solo servía para repartir; desde que la lista de
+              arriba enseña únicamente los fiados que reciben algo, la hoja es
+              el único sitio donde están los demás. Esconderla hasta teclear
+              deja al tendero sin forma de llegar al fiado que su cliente
+              acaba de nombrar.
+
+              Y EL RÓTULO CAMBIA POR LO MISMO: «Repartir distinto» describe lo
+              que hace con un monto puesto; «Seleccionar fiados» describe lo
+              que hace siempre. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full"
+            onClick={() => {
+              setBuscaFiado("");
+              setRepartiendo(true);
+            }}
+          >
+            Seleccionar fiados
+          </Button>
 
           <Button type="button" className="h-10 w-full" disabled={!puedeGuardar} onClick={guardar}>
             {guardando

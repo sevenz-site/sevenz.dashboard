@@ -154,6 +154,33 @@ export function MovementHistoryList({
   // que un día sí se note.
   const porId = new Map(movements.map((m) => [m.id, m]));
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // A DÓNDE VA CADA FILA, Y POR QUÉ NO SIEMPRE A SU FIADO
+  //
+  // Un abono dirigido abre la ficha de SU fiado, con `?abono=` para resaltar
+  // su tarjeta. Eso vale mientras el fiado exista.
+  //
+  // QUÉ PASABA SI NO EXISTE, reportado por el dueño el 2026-10-23 con una
+  // captura de una pantalla en blanco: borró un fiado que tenía un abono
+  // dentro, el abono pasó al historial —correcto, sigue siendo un pago que
+  // recibió— y tocarlo llevaba a `/transacciones/<fiado borrado>`, que llama a
+  // `notFound()`. Medido en dev: 404 con el cuerpo vacío. No es un error que
+  // se lea como error; es una pantalla en blanco.
+  //
+  // CÓMO SE SABE QUE EL FIADO NO ESTÁ: esta lista recibe los movimientos VIVOS
+  // del cliente, así que un padre que no está en `porId` es un padre borrado.
+  //
+  // Y SI EL PADRE SOLO ESTÁ FUERA DE LA VENTANA —una lista recortada, no el
+  // caso de hoy— el enlace cae igualmente en la ficha del propio abono, que
+  // existe y se dibuja entera. El modo de fallo de esta heurística es «abre
+  // una pantalla distinta de la ideal», no «abre una en blanco», y esa
+  // asimetría es la razón de resolverlo así y no con otra consulta.
+  const hrefDeLaFila = (m: Movement) => {
+    const padre = m.applies_to_movement_id;
+    if (padre != null && porId.has(padre)) return `/transacciones/${padre}?abono=${m.id}`;
+    return `/transacciones/${m.id}`;
+  };
+
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
@@ -393,9 +420,7 @@ export function MovementHistoryList({
                     // entre tres tarjetas iguales sin saber cuál era la suya.
                     // Solo cuando la fila ES un abono dirigido: un fiado se
                     // abre a sí mismo y no hay nada que señalar.
-                    `/transacciones/${m.applies_to_movement_id ?? m.id}${
-                      m.applies_to_movement_id ? `?abono=${m.id}` : ""
-                    }`
+                    hrefDeLaFila(m)
                   : null
               }
             >
