@@ -508,12 +508,30 @@ exception
 end;
 $fn$;
 
-revoke execute on function public.create_catalog_order(text, text, text, text, boolean, text, jsonb) from public;
+-- EL `revoke` APUNTA A LA FIRMA NUEVA, y aquí hubo un error que costó un
+-- intento: este archivo se generó a partir del cuerpo de la `114`, y junto a
+-- la función se vino pegado SU `revoke`, el de la firma de siete argumentos.
+-- Un `revoke` no admite `if exists`, y los `drop` de arriba ya habían quitado
+-- esa función, así que el archivo entero se caía con
+-- `42883: function ... does not exist`.
+--
+-- LA LECCIÓN, porque va a volver a pasar: copiar el cuerpo de una función de
+-- una migración vieja arrastra las sentencias que la rodean, y esas nombran
+-- la firma ANTIGUA. Después de extraerla hay que buscar toda referencia a la
+-- firma vieja —`revoke`, `grant`, `comment on function`— y apuntarlas a la
+-- nueva.
+revoke execute on function public.create_catalog_order(text, text, text, text, text, boolean, text, jsonb) from public;
 
 -- `anon` TAMBIÉN, como hasta hoy: quien pide por el catálogo no tiene sesión.
 -- Es la única escritura de Sevenz sin sesión detrás, y por eso toda su
 -- validación vive dentro de la función. Ver `qa:orden`.
 grant execute on function public.create_catalog_order(text, text, text, text, text, boolean, text, jsonb) to anon, authenticated;
+
+-- EL COMENTARIO TAMBIÉN SE REHACE: `drop function` se lo llevó con la función
+-- vieja, así que sin esto la firma nueva queda sin describir y el siguiente
+-- que la abra no sabe qué candados tiene.
+comment on function public.create_catalog_order(text, text, text, text, text, boolean, text, jsonb) is
+  'Crea una orden desde el catálogo público. La llama un visitante ANÓNIMO. Cinco candados: el dueño sale del token y nunca del navegador; cada producto se valida como suyo, no en papelera y publicado; topes de tamaño (50 líneas, textos acotados); tope de 20 órdenes por enlace y minuto; y el PRECIO lo calcula esta función, nunca viaja en la petición. Desde la 114 el importe se convierte con la base DEL ESCALÓN. Desde la 155 recibe además customer_document_type, validado contra el país del negocio y descartado a null si no corresponde — la letra es un adorno del documento y nunca tumba la orden.';
 
 insert into public.schema_migrations (key, description)
 values (
