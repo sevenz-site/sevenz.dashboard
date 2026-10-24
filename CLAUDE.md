@@ -1209,6 +1209,28 @@ tendero es **guardarla**, no recalcularla.
    `aManoBs` que la del monto acababa de escribir. La cifra se guardaba bien y
    se perdía un instante después.
 
+### La auditoría se hace por TABLA, no por pantalla
+
+El 2026-10-24, el mismo día que se escribió esta regla, se auditó la app
+«entera» recorriendo pantallas: el reparto, las filas del historial, la venta
+de contado. Se arreglaron las tres. Y el dueño encontró una cuarta a la media
+hora —el abono del momento de la compra, que salía como Bs. 1.003,02 por unos
+Bs. 1.000 tecleados—, porque **no era ninguna de las pantallas de la lista**:
+ese pago no vive en `movements` sino en `sale_payments`, y se dibuja como la
+primera fila de «Abonos relacionados» dentro de la ficha de un fiado.
+
+**Una lista de pantallas nunca está completa**: la misma cifra se enseña en
+sitios que no se parecen entre sí. Una lista de columnas sí lo está.
+
+Son dos, y buscar sus lectores es un `grep`:
+
+- `movements.entry_amount`
+- `sale_payments.entry_amount`
+
+Y el patrón que delata a un lector que no las usa es `amount * tasa` o
+`* exchange_rate_used` / `* rate_used` junto a un `formatBs`. **Esa búsqueda
+es la auditoría**; recorrer pantallas de memoria no lo es.
+
 ### Dónde aplica, que es en todas partes
 
 Abonos, ventas, fiados, el comprobante PNG, el mensaje de WhatsApp, el enlace
