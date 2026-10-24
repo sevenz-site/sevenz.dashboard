@@ -69,7 +69,14 @@ export type SubmitDocumentIdState = { error: string | null };
 // this action is just a thin, unauthenticated-safe wrapper. Errors are
 // generic by design (mask-raw-errors rule): nothing here should leak
 // database detail to an anonymous caller.
-export async function submitDocumentId(token: string, documentId: string): Promise<SubmitDocumentIdState> {
+export async function submitDocumentId(
+  token: string,
+  documentId: string,
+  // LA LETRA — migración `156`. `null` cuando el negocio no tiene país
+  // conocido: ahí el diálogo no dibuja selector, porque sin país no se sabe
+  // qué juego de letras corresponde.
+  documentType: string | null,
+): Promise<SubmitDocumentIdState> {
   const trimmed = documentId.trim();
   if (!trimmed) {
     return { error: "Escribe tu número de cédula." };
@@ -83,6 +90,7 @@ export async function submitDocumentId(token: string, documentId: string): Promi
   const { data, error } = await supabase.rpc("submit_shared_document_id", {
     p_token: token,
     p_document_id: trimmed,
+    p_document_type: documentType,
   });
 
   if (error) {
