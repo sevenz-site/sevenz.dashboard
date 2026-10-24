@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -136,6 +137,7 @@ export default async function VentaDeContadoDelClientePage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={venta.transaction_code ?? null} />
 
       <dl className="flex flex-col gap-4">
         <Grupo>

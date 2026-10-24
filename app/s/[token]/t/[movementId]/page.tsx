@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +22,9 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
+  // El código de su transacción — migración 148. Opcional: sin ella la ficha
+  // sale sin esa línea, como salía hasta hoy.
+  transaction_code?: string | null;
   amount: number;
   currency: LedgerCurrency | null;
   description: string | null;
@@ -85,6 +89,9 @@ type AbonoDirigidoJson = {
   // código y la base no coinciden; sin ella la tarjeta no dibuja su línea de
   // bolívares, que es exactamente como estaba antes.
   exchange_rate_used?: number | null;
+  // Llega con la `148`, y opcional por lo mismo: sin ella la tarjeta sale sin
+  // pie, como salía hasta hoy.
+  transaction_code?: string | null;
 };
 
 // EL DETALLE DE UNA TRANSACCIÓN, PARA EL CLIENTE — mismos frames que la del
@@ -243,6 +250,9 @@ export default async function DetalleDelClientePage({
           // estado en ESTA pantalla, porque esta clave no viajaba.
           tasaSellada:
             a.exchange_rate_used == null ? null : Number(a.exchange_rate_used),
+          // El código de su transacción, para el pie de la tarjeta — el mismo
+          // que ve el tendero en la suya.
+          transactionCode: a.transaction_code ?? null,
         }))
       : undefined;
 
@@ -259,6 +269,7 @@ export default async function DetalleDelClientePage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={m.transaction_code ?? null} />
 
       {/* «Total por cobrar» TAMBIÉN EN LA PANTALLA DEL CLIENTE, igual que en
           la del dueño. Decisión del dueño el 2026-10-20, preguntada: los
