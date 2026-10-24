@@ -225,14 +225,35 @@ export function AbonoReparto({
   const aManoBs = aManoEditado ? SIN_AJUSTES : (borrador?.aManoBs ?? SIN_AJUSTES);
 
   // Ver `soloDeFiadosVivos` en el guardado del borrador, más abajo.
-  const idsVivos = useMemo(() => new Set(fiados.map((f) => f.movementId)), [fiados]);
+  const pendientePorId = useMemo(
+    () => new Map(fiados.map((f) => [f.movementId, f.pending])),
+    [fiados],
+  );
   const soloDeFiadosVivos = useCallback(
-    (m: Record<string, number>) => {
+    (m: Record<string, number>, enBolivares = false) => {
       const limpio: Record<string, number> = {};
-      for (const [id, v] of Object.entries(m)) if (idsVivos.has(id)) limpio[id] = v;
+      for (const [id, v] of Object.entries(m)) {
+        const pendiente = pendientePorId.get(id);
+        // 1. FIADO QUE YA NO ESTÁ: fuera. Ver el porqué en el guardado.
+        if (pendiente == null) continue;
+        // 2. FIADO QUE AHORA DEBE MENOS: se recorta a lo que debe HOY.
+        //
+        // Es el otro medio fallo, y el que de verdad muerde: el id sigue vivo,
+        // así que limpiar por id no lo ve. El tendero fija $1,02 a un fiado,
+        // ese fiado se cobra por otro camino y pasa a deber $0,58, y la cifra
+        // vieja se queda en el borrador — restándose del tope como si todavía
+        // valiera. Un abono de $1,13 acaba diciendo «del abono quedan $0.11».
+        //
+        // LOS BOLÍVARES NO SE RECORTAN, y por eso el segundo parámetro: su
+        // tope es otro —la deuda convertida— y recortarlos contra la cifra del
+        // libro los dejaría en una cantidad que nadie tecleó, que es justo lo
+        // que la regla de los montos tecleados prohíbe. Se quedan o se van con
+        // su línea.
+        limpio[id] = enBolivares ? v : Math.min(v, pendiente);
+      }
       return limpio;
     },
-    [idsVivos],
+    [pendientePorId],
   );
 
   const [consent, setConsent] = useState(false);
@@ -489,7 +510,7 @@ export function AbonoReparto({
       //
       // La lección, para la próxima: cuando dos pantallas escriben el mismo
       // borrador, la que no es dueña de un campo tiene que arrastrarlo.
-      aManoBs: soloDeFiadosVivos(aManoBs),
+      aManoBs: soloDeFiadosVivos(aManoBs, true),
     });
   }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs, soloDeFiadosVivos]);
 
