@@ -273,6 +273,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                   escalon={item.tier as PriceTier}
                   productoBorrado={producto == null}
                   hrefEditar={producto ? `/productos/${producto.id}` : null}
+                  hrefRegistrar={`/productos/ordenes/${pedido.id}/registrar/${item.id}`}
                   rates={rates}
                 >
                   <OrderProductSheet

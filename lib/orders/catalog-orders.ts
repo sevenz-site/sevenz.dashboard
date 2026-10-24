@@ -37,6 +37,20 @@ export type CatalogOrderRow = {
   status: CatalogOrderStatus;
   seen_at: string | null;
   created_at: string;
+  // La dirección, desde la migración `157`: la pide el carrito y es `null` en
+  // todo pedido anterior.
+  customer_address: string | null;
+  // SI ESTE PEDIDO YA ES UNA VENTA — migración `157`. Las dos columnas, y no
+  // una: `sale_id` dice CUÁL es y `registered_at` CUÁNDO se hizo, que es lo
+  // que la pantalla del pedido enseña.
+  //
+  // Se seleccionan SIEMPRE y no solo donde hacen falta. Son la única parada
+  // que impide registrar dos veces el mismo pedido, y una parada que depende
+  // de que cada lector se acuerde de pedir la columna no es una parada: la
+  // pantalla que la olvide sigue compilando y deja al cliente debiendo el
+  // doble, sin error y sin nada en rojo.
+  sale_id: string | null;
+  registered_at: string | null;
 };
 
 export type CatalogOrderItemRow = {
@@ -52,7 +66,7 @@ export type CatalogOrderItemRow = {
 };
 
 export const ORDER_COLUMNS =
-  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at";
+  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at, customer_address, sale_id, registered_at";
 
 export const ORDER_ITEM_COLUMNS =
   "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment";

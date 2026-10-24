@@ -884,6 +884,52 @@ se dice, nombrando el error.
 4. **Lo que se entregue y no esté en el frame se dice en voz alta** en el
    reporte, marcado como tal.
 
+### UN SITEMAP SON FLECHAS, NO CAJAS
+
+**Pedido por el dueño el 2026-10-24**, al preguntar por qué un botón dibujado
+en su sitemap se entregó sin saber a dónde iba: *«debes leer los frames siempre
+que te los entrego, debes leer las flechas para poder entender el flujo
+completo, cada flecha dirige a un nuevo frame o una instrucción precisa, en el
+recorrido de una flecha también puedes encontrar instrucciones»*.
+
+**Las dos mitades hacen falta y son distintas:**
+
+- **Los frames** dicen cómo se ve cada pantalla. Eso ya lo cubre todo lo de
+  arriba, y vale **siempre que el dueño entregue un frame**, sin excepción.
+- **Las flechas** dicen qué hace cada botón. Y son nodos **hermanos sueltos en
+  la página, fuera de todos los frames**, así que `get_design_context` sobre un
+  frame no las devuelve nunca — por muchos frames que se lean.
+
+**Una flecha lleva dos cosas, y la segunda es la que se pierde**: a dónde va, y
+**su rótulo**, que a veces es la instrucción entera. *«Al seleccionar producto
+abre detalle en componente sheet»* no está dibujado en ninguna pantalla: está
+escrito encima de una flecha.
+
+**Cómo se leen**, con el puente de escritorio (`mcp__figma-console__figma_execute`),
+y se hace **antes** de construir, sobre el contenedor del flujo:
+
+```js
+await figma.loadAllPagesAsync();
+const page = figma.root.children.find((p) => p.name === '<página>');
+const conectores = page.findAllWithCriteria({ types: ['CONNECTOR'] });
+// Por cada uno: connectorStart.endpointNodeId, connectorEnd.endpointNodeId
+// y text.characters — el rótulo, que es donde vive la instrucción.
+```
+
+**Qué costó, el 2026-10-24.** El botón «Registrar» de cada producto se entregó
+sin construir, con la pregunta «¿a dónde lleva?» puesta al dueño — y la flecha
+existía, rotulada, desde el primer día. Se leyeron los cinco frames y ni un
+conector. Peor: «Editar» sí se construyó, apuntando a la ficha del catálogo,
+cuando su flecha dice que lleva al mismo asistente en su paso de editar. O sea
+que **no leer las flechas no solo deja trabajo sin hacer: entrega trabajo mal
+hecho con la misma seguridad que el bien hecho.**
+
+**Y la trampa de ese día, que conviene no redescubrir**: las flechas no salían
+del frame que el dueño pasó. Había **cuatro frames con el nombre idéntico**
+(«De contado V7») en la misma página, y las flechas salían de otro. Por eso los
+conectores se enumeran **del contenedor del flujo entero** y no del frame suelto
+que se esté mirando: así da igual de cuál de los gemelos salgan.
+
 ## CON EL TECLADO ARRIBA NO QUEDA NADA PEGADO AL BORDE DE ABAJO
 
 **Botón, aviso, casilla, barra: si el teclado está arriba, se esconde.** El

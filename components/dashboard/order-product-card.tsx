@@ -51,6 +51,11 @@ export function OrderProductCard({
   // same condition as `productoBorrado` and is passed apart so this component
   // never builds a route out of an id it was not given.
   hrefEditar,
+  // Where «Registrar» goes: step 1/2 of turning THIS line into a sale. Unlike
+  // «Editar» it survives a deleted product, because the line keeps everything
+  // that gets charged — name, quantity, price — and 1/2 draws its own «this
+  // product is gone» state.
+  hrefRegistrar,
   rates,
   children,
 }: {
@@ -60,6 +65,7 @@ export function OrderProductCard({
   escalon: PriceTier;
   productoBorrado: boolean;
   hrefEditar: string | null;
+  hrefRegistrar: string;
   rates: BolivarRates | null;
   // The sheet's trigger, cloned onto the top row by `SheetTrigger asChild`.
   children: React.ReactNode;
@@ -117,15 +123,24 @@ export function OrderProductCard({
         </div>
       ) : null}
 
-      {hrefEditar ? (
-        <div className="flex gap-4 pt-2">
-          {/* HALF AND HALF, from the frame: 145 and 143 of the 304 available.
-              `flex-1` on both gives the same split at any width. */}
+      {/* HALF AND HALF, from the frame: 145 and 143 of the 304 available.
+          `flex-1` on both gives the same split at any width. «Editar» is the
+          outlined one and «Registrar» the filled one, in that order, as
+          `1544:12040` and `1544:12041` are drawn.
+
+          WITH THE PRODUCT DELETED, ONLY «REGISTRAR» IS LEFT, and it then takes
+          the whole row. Editing the catalogue entry of a product that is no
+          longer there has nowhere to go; charging the line still does. */}
+      <div className="flex gap-4 pt-2">
+        {hrefEditar ? (
           <Button variant="outline" size="sm" className="h-10 flex-1" asChild>
             <Link href={hrefEditar}>Editar</Link>
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+        <Button size="sm" className="h-10 flex-1" asChild>
+          <Link href={hrefRegistrar}>Registrar</Link>
+        </Button>
+      </div>
     </div>
   );
 }
