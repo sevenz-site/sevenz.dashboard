@@ -70,6 +70,20 @@ export type BorradorDeReparto = {
   totalEnLibro: number | null;
   // movementId → lo que el tendero le fijó a mano, en el libro.
   aMano: Record<string, number>;
+  // ── Y LO MISMO, EN LOS BOLÍVARES QUE TECLEÓ ─────────────────────────
+  //
+  // movementId → la cifra EXACTA que escribió, cuando la escribió en
+  // bolívares. Vacío cuando la escribió en la moneda del libro.
+  //
+  // POR QUÉ NO BASTA CON `aMano`, que es la misma cifra convertida: la vuelta
+  // no da lo mismo. Bs. 100.000 entre 886,2271 son $112,8381, que guardados
+  // al céntimo son $112,84 — y esos $112,84 valen Bs. 100.001,87. El tendero
+  // tecleó 100.000 y la fila le decía 100.001,87.
+  //
+  // Lo reportó el dueño el 2026-10-24: *«Eso es crítico y escandalosamente
+  // mal»*. Guardar lo tecleado es la única forma de que la pantalla y el
+  // recibo repitan su cifra en vez de recalcularla.
+  aManoBs?: Record<string, number>;
   guardadoEn: number;
 };
 
@@ -105,6 +119,12 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
     for (const [k, v] of Object.entries(b.aMano ?? {})) {
       if (typeof v === "number" && Number.isFinite(v) && v >= 0) aMano[k] = v;
     }
+    // La misma limpieza, por la misma razón: esto sale de un almacenamiento
+    // que cualquiera puede editar desde las herramientas del navegador.
+    const aManoBs: Record<string, number> = {};
+    for (const [k, v] of Object.entries(b.aManoBs ?? {})) {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) aManoBs[k] = v;
+    }
     // `null` SOBREVIVE AL SANEO, y eso es la mitad del arreglo. Este `else 0`
     // convertía «no hay billete» en «el billete es cero» antes de que nadie lo
     // leyera, así que el `null` que escribe `fijarEnBorrador` no llegaba nunca
@@ -124,7 +144,7 @@ export function leerBorrador(clienteId: string): BorradorDeReparto | null {
             b.totalEnLibro >= 0
           ? b.totalEnLibro
           : 0;
-    return { ...b, aMano, totalEnLibro };
+    return { ...b, aMano, aManoBs, totalEnLibro };
   } catch {
     return null;
   }
@@ -154,6 +174,9 @@ export function fijarEnBorrador(
   monto: number,
   // EL LIBRO, PARA PODER CREAR EL BORRADOR SI NO HAY NINGUNO. Ver abajo.
   libro: string | null,
+  // LOS BOLÍVARES QUE TECLEÓ PARA ESTE FIADO, si los tecleó así. Ver
+  // `aManoBs` arriba y lo que costó no tenerlos.
+  montoBs?: number | null,
 ): void {
   const b = leerBorrador(clienteId);
 
@@ -180,13 +203,22 @@ export function fijarEnBorrador(
     enBolivares: false,
     totalEnLibro: null,
     aMano: {},
+    aManoBs: {},
   };
+
+  // SI ESTA VEZ NO SE TECLEÓ EN BOLÍVARES, SE BORRA EL BOLÍVAR VIEJO de ese
+  // fiado en vez de dejarlo: una cifra en bolívares que ya no corresponde a
+  // lo fijado es peor que ninguna.
+  const bsNuevos: Record<string, number> = { ...(base.aManoBs ?? {}) };
+  if (montoBs != null && montoBs > 0) bsNuevos[movementId] = montoBs;
+  else delete bsNuevos[movementId];
 
   guardarBorrador({
     ...base,
     monto: "",
     totalEnLibro: null,
     aMano: { ...base.aMano, [movementId]: monto },
+    aManoBs: bsNuevos,
   });
 }
 

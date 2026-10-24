@@ -214,6 +214,15 @@ export function AbonoReparto({
   // `useMemo` del reparto y el efecto que guarda el borrador se dispararan
   // siempre, o sea escribir en `sessionStorage` en cada pintado.
   const aMano = aManoEditado ?? borrador?.aMano ?? SIN_AJUSTES;
+  // LOS BOLÍVARES QUE TECLEÓ EN CADA FIADO, cuando los tecleó así. Se usan
+  // para el total y viajan al servidor; sin ellos, la suma y lo guardado
+  // serían reconversiones y no la cifra del tendero. Ver `aManoBs` en
+  // `lib/abonos/borrador.ts` y lo que costó el 2026-10-24.
+  //
+  // SE IGNORA CUANDO HAY EDICIÓN EN CURSO (`aManoEditado`): esa viene de
+  // tocar la pantalla, no del borrador, y mezclar las dos daría bolívares de
+  // una cifra que ya cambió.
+  const aManoBs = aManoEditado ? SIN_AJUSTES : (borrador?.aManoBs ?? SIN_AJUSTES);
 
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -364,6 +373,13 @@ export function AbonoReparto({
         if (puesto == null) return suma;
         const topado = Math.max(0, Math.min(puesto, f.pending));
         if (!cruzaLibros) return suma + topado;
+        // SU CIFRA PRIMERO Y LA CONVERSIÓN DESPUÉS. Sumando conversiones, dos
+        // líneas de Bs. 100.000 daban un botón de Bs. 200.005,87 — ver
+        // `aManoBs`. La conversión solo entra cuando ese fiado se fijó en la
+        // moneda del libro, donde no hay bolívar tecleado que respetar.
+        const suyos = aManoBs[f.movementId];
+        if (suyos != null && Math.abs(puesto - f.pending) > 0.005) return suma + suyos;
+        if (suyos != null && puesto <= f.pending) return suma + suyos;
         return suma + (aBolivares(topado, (f.currency ?? null) as LedgerCurrency | null) ?? 0);
       }, 0);
     }
@@ -373,7 +389,7 @@ export function AbonoReparto({
     // `amount` es `number | null`: null cuando falta la tasa. Cae a 0, que
     // deja el botón apagado — mejor que convertir con una tasa inventada.
     return priceIn(libro, { amount: montoNum, currency: "VES" }, rates).amount ?? 0;
-  }, [modoSeleccion, delLibro, aMano, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
+  }, [modoSeleccion, delLibro, aMano, aManoBs, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
 
   const excede = enElLibro - deuda > 0.005;
 
@@ -435,8 +451,21 @@ export function AbonoReparto({
       // el campo vacío y ningún abono repartido. Medido en dev el 2026-10-23.
       totalEnLibro: monto.trim() === "" ? null : enElLibro,
       aMano,
+      // ── Y LOS BOLÍVARES TECLEADOS, QUE ESTA PANTALLA NO TOCA ─────────
+      //
+      // SE REESCRIBEN TAL CUAL, y omitirlos no era neutral: este efecto
+      // guarda el borrador ENTERO en cada render, así que al volver de la
+      // pantalla del monto borraba el `aManoBs` que ella acababa de escribir.
+      // El síntoma era que la tarjeta seguía enseñando la reconversión —Bs.
+      // 100.001,87 en vez de los 100.000 tecleados— y costó media hora de
+      // mirar el sitio equivocado el 2026-10-24: la cifra se guardaba bien y
+      // se borraba un instante después.
+      //
+      // La lección, para la próxima: cuando dos pantallas escriben el mismo
+      // borrador, la que no es dueña de un campo tiene que arrastrarlo.
+      aManoBs,
     });
-  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
+  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs]);
 
   // ── LO QUE APAGA «REPARTIR MANUALMENTE» ────────────────────────────
   //
@@ -634,6 +663,9 @@ export function AbonoReparto({
             ? "VES"
             : ((libro ?? "COP") as PriceCurrency),
         aMano,
+        // Lo tecleado en bolívares por fiado, para que el servidor guarde SU
+        // cifra y no una reconversión.
+        aManoBs,
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
       });
@@ -781,7 +813,23 @@ export function AbonoReparto({
     const toca = asignado.get(f.movementId) ?? 0;
     // Del reparto cuando lo trae —cruzando libros— y reconvertida si no. Ver
     // el comentario de `asignadoBs`.
-    const bs = asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency);
+    // ── LOS BOLÍVARES DE ESTA TARJETA ────────────────────────────────
+    //
+    // SU CIFRA PRIMERO. Si el tendero fijó este fiado tecleando bolívares, la
+    // tarjeta repite ESA cifra. Lo demás son conversiones, y la vuelta no da
+    // lo mismo: Bs. 100.000 son $112,8381, al céntimo $112,84, que valen
+    // Bs. 100.001,87. Eso es lo que la tarjeta decía, y el dueño lo reportó
+    // el 2026-10-24: *«tecleo = 100.000, tu conversión = 100.001,87»*.
+    //
+    // SOLO SI LA LÍNEA SIGUE VALIENDO LO QUE ÉL PUSO: en cuanto el reparto la
+    // recorta —porque el billete no llega— su cifra deja de describir lo que
+    // esta tarjeta abona, y entonces manda la conversión de lo que de verdad
+    // le toca.
+    const suyos = aManoBs[f.movementId];
+    const sigueEntero = suyos != null && Math.abs((aMano[f.movementId] ?? 0) - toca) <= 0.005;
+    const bs = sigueEntero
+      ? suyos
+      : (asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency));
     // `shrink-0`: ver la otra fila, unas líneas más arriba.
     return (
       <li key={f.movementId} className="shrink-0 rounded-[10px] border">

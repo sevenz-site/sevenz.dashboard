@@ -298,7 +298,18 @@ export function AbonoMonto({
   // medio pago en ningún sitio.
   function fijarYVolver() {
     setError(null);
-    fijarEnBorrador(clienteId, fiadoId, enElLibro, libro);
+    // LOS BOLÍVARES TECLEADOS VIAJAN APARTE, y no se deducen de `enElLibro`:
+    // la vuelta no da lo mismo. Bs. 100.000 son $112,8381, que al céntimo son
+    // $112,84, que valen Bs. 100.001,87 — y esa era la cifra que la fila del
+    // historial le enseñaba al tendero en vez de la suya. Reportado el
+    // 2026-10-24. Ver `aManoBs` en `lib/abonos/borrador.ts`.
+    fijarEnBorrador(
+      clienteId,
+      fiadoId,
+      enElLibro,
+      libro,
+      monedaTecleada === "VES" ? escrito : null,
+    );
     router.push(`/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`);
   }
 
