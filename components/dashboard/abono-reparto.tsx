@@ -1244,20 +1244,36 @@ export function AbonoReparto({
               reparto que ajustar — lo que hay es una cifra que corregir, y
               eso lo dice la línea roja de arriba.
 
-              EL SEGUNDO SE CUENTA SOBRE `enPantalla`, las filas que esta
-              pantalla pinta de verdad, y no sobre los fiados del libro. Eso
-              cubre de una vez los dos casos que el dueño reportó el
-              2026-10-23: sin monto tecleado no recibe nadie, la lista está
-              vacía y el botón sobra; y con un abono que solo alcanza al
-              primero sale una tarjeta, y repartir entre una tarjeta no es
-              repartir.
+              EL SEGUNDO SE CUENTA SOBRE LOS FIADOS DEL LIBRO, no sobre las
+              tarjetas que se dibujan — y esto ya se equivocó una vez, así que
+              va escrito entero.
 
-              Y ESTO DESPLAZA LA DECISIÓN DEL 2026-10-23 DE ARRIBA —«que se
-              dibuje siempre, aunque no haya monto, para poder llegar al fiado
-              que el cliente nombró»—, que queda escrita en su comentario. La
-              puerta no se pierde: en cuanto hay una cifra con la que repartir,
-              el botón vuelve. */}
-          {modoSeleccion || cubreTodo || enPantalla.length <= 1 ? null : (
+              El 2026-10-23 por la mañana el dueño pidió esconderlo «cuando en
+              la lista de fiados hay solo un fiado (…) porque solo hay un fiado
+              a pagar», y se contó sobre las tarjetas pintadas. Esa tarde, con
+              producción delante, reportó lo contrario: su clienta tenía CUATRO
+              fiados vencidos y la pantalla le enseñaba uno solo, sin forma de
+              llegar a los otros tres.
+
+              Las dos peticiones son la misma confusión vista por sus dos
+              caras: la lista solo dibuja a quien RECIBE algo, así que con un
+              monto menor de lo que debe el peor fiado sale una tarjeta — y de
+              ahí se concluye «solo hay un fiado». Contándolo sobre las
+              tarjetas, el botón desaparece **justo cuando es la única puerta a
+              los demás**, que es lo que esta hoja existe para ser.
+
+              MEDIDO con los cuatro fiados de un cliente de dev el mismo día:
+              €10 sobre un libro que debe €55,95 reparte una sola tarjeta;
+              €20 reparte dos; Bs. 20.000 cruza libros y reparte tres. El
+              reparto nunca estuvo mal — lo que estaba mal era esconder la
+              puerta.
+
+              LO QUE CUESTA, y es el precio de elegir esta cara: con dos fiados
+              y un monto que solo alcanza al primero, el botón se ve aunque la
+              lista enseñe una tarjeta. Es exactamente lo que él pidió quitar
+              por la mañana. Se elige así porque la alternativa es que un
+              fiado abierto no tenga ninguna puerta. */}
+          {modoSeleccion || cubreTodo || delLibro.length <= 1 ? null : (
             <Button
               type="button"
               variant="outline"
