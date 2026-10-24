@@ -159,13 +159,12 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
       <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
       <div className="rounded-lg border bg-muted/30 px-3 py-2">
         <Fila nombre="Nombre">{pedido.customer_name}</Fila>
-        {/* SIN PREFIJO, Y NO ES UN OLVIDO: `catalog_orders.customer_document`
-            es un texto suelto y esa tabla NO tiene columna de tipo — el
-            formulario público del catálogo nunca pregunta la letra. Enseñar
-            una aquí sería inventarla sobre alguien que ni siquiera es cliente
-            todavía. Para cerrarlo hay que añadir el selector a ese formulario
-            y una columna a la tabla, que es trabajo aparte. */}
-        <Fila nombre="Documento">{formatDocumentId(pedido.customer_document, null)}</Fila>
+        {/* CON SU LETRA desde la migración `155`, que añadió la columna y el
+            selector al formulario público. `null` en los pedidos anteriores:
+            a esos clientes nunca se les preguntó. */}
+        <Fila nombre="Documento">
+          {formatDocumentId(pedido.customer_document, pedido.customer_document_type)}
+        </Fila>
         {/* THE RAW ONE, NOT THE NORMALISED ONE: it is what the person
             typed, and what the shopkeeper needs in order to judge whether it
             is right. The normalised one is the key the database stores it

@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import { defaultDocumentType, type DocumentType } from "@/lib/document-id";
+import type { OwnerCountry } from "@/lib/types";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -495,6 +498,13 @@ function FormularioDeLaOrden({
 }) {
   const [nombre, setNombre] = useState("");
   const [documento, setDocumento] = useState("");
+  // LA LETRA, CON LA PRIMERA DEL PAÍS PUESTA — 'V' en Venezuela, 'CC' en
+  // Colombia—, que es lo que ya hace el alta de cliente del tendero. Sin país
+  // conocido se queda en `null` y el campo no dibuja selector: elegir una a
+  // ciegas guardaría una «V» en la cédula de un colombiano.
+  const [tipoDeDocumento, setTipoDeDocumento] = useState<DocumentType | null>(() =>
+    defaultDocumentType(ownerCountry as OwnerCountry | null),
+  );
   const [whatsapp, setWhatsapp] = useState("");
   // DESMARCADA, aunque el frame la dibuje marcada. El porqué está en
   // `lib/cart/mensaje.ts`, junto al texto: Meta exige consentimiento
@@ -517,6 +527,7 @@ function FormularioDeLaOrden({
         {
           nombre,
           documento,
+          tipoDeDocumento,
           whatsapp,
           quiereAvisos,
           textoDelPermiso: quiereAvisos ? TEXTO_PERMISO_ORDEN : null,
@@ -672,12 +683,23 @@ function FormularioDeLaOrden({
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="orden_documento">Documento</Label>
-            <Input
+            {/* EL MISMO COMPONENTE QUE EL ALTA DE CLIENTE, no una copia de sus
+                clases. Resuelve ya el filtrado a dígitos, el selector por país
+                y el caso del documento antiguo con letras dentro, y sobre todo
+                evita que las dos pantallas se separen el día que una cambie —
+                que es exactamente lo que pasó con `StickyActions`.
+
+                `sinTipo` NO se pasa: desde la migración `155` el servidor
+                guarda la letra. Esa bandera existe para las pantallas cuyo
+                servidor NO la guarda, y dejarla puesta aquí sería un selector
+                cuya elección nadie escribe. */}
+            <DocumentIdInput
               id="orden_documento"
+              country={(ownerCountry as OwnerCountry | null) ?? null}
               value={documento}
-              onChange={(e) => setDocumento(e.target.value)}
-              placeholder="Escribe documento"
-              maxLength={40}
+              onChange={setDocumento}
+              type={tipoDeDocumento}
+              onTypeChange={setTipoDeDocumento}
               disabled={enviando}
             />
           </div>

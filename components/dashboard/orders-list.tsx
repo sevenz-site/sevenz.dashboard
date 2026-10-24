@@ -221,8 +221,7 @@ export function OrdersList({
                 </TableCell>
                 <TableCell className="tabular-nums">
                   <Link href={`/productos/ordenes/${order.id}`} className="block">
-                    {/* Sin prefijo: ver la ficha del pedido. `catalog_orders` no guarda el tipo. */}
-                    {formatDocumentId(order.customer_document, null)}
+                    {formatDocumentId(order.customer_document, order.customer_document_type)}
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">

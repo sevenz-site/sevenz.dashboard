@@ -28,6 +28,9 @@ export type CatalogOrderRow = {
   catalog_link_id: string | null;
   customer_name: string;
   customer_document: string;
+  // La letra, desde la migración `155`. `null` en todo pedido anterior: a
+  // nadie se le preguntó, y no hay nada que deducir.
+  customer_document_type: string | null;
   customer_whatsapp: string;
   customer_whatsapp_raw: string;
   wants_whatsapp_notices: boolean;
@@ -49,7 +52,7 @@ export type CatalogOrderItemRow = {
 };
 
 export const ORDER_COLUMNS =
-  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at";
+  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at";
 
 export const ORDER_ITEM_COLUMNS =
   "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment";

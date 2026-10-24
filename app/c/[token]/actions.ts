@@ -106,6 +106,10 @@ export async function productosDelCarrito(
 export type DatosDeLaOrden = {
   nombre: string;
   documento: string;
+  // LA LETRA DEL DOCUMENTO — migración `155`. `null` si el negocio no tiene
+  // país conocido: ahí el formulario no dibuja selector, porque sin país no se
+  // sabe qué juego de letras corresponde.
+  tipoDeDocumento: string | null;
   whatsapp: string;
   quiereAvisos: boolean;
   textoDelPermiso: string | null;
@@ -160,6 +164,7 @@ export async function crearOrden(
       p_token: token,
       p_customer_name: datos.nombre,
       p_customer_document: datos.documento,
+      p_customer_document_type: datos.tipoDeDocumento,
       p_customer_whatsapp: datos.whatsapp,
       p_wants_notices: datos.quiereAvisos,
       p_consent_text: datos.textoDelPermiso,
