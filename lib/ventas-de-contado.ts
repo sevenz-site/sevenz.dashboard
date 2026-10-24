@@ -62,6 +62,9 @@ export type VentaDeContado = {
   // `null` en un negocio colombiano y en lo anterior al sellado; entonces la
   // fila no dibuja esa línea en vez de inventarse una conversión.
   tasaSellada: number | null;
+  // LOS BOLÍVARES QUE SE TECLEARON, cuando se tecleó en bolívares. Mandan
+  // sobre la conversión: ver `entry_currency` en `PagoCrudo`.
+  tecleadoEnBs: number | null;
   // El código de la transacción, para el buscador del historial y para la
   // ficha. Una venta pagada entera no escribe movimiento, así que su código
   // vive en `sales` y este es el único sitio por el que llega a la pantalla.
@@ -90,6 +93,12 @@ export type PagoCrudo = {
   // describe una operación que nadie hizo. Es la misma regla que ya rige la
   // tarjeta de un abono.
   rate_used?: number | string | null;
+  // EN QUÉ SE TECLEÓ ESE PAGO Y CUÁNTO. Con `'VES'` aquí, la fila enseña ESOS
+  // bolívares en vez de `amount × rate_used`, que es una reconversión y no da
+  // lo mismo. Ver la regla «siempre manda el monto que tecleó el tendero» en
+  // CLAUDE.md y lo que costó el 2026-10-24.
+  entry_currency?: string | null;
+  entry_amount?: number | string | null;
 };
 export type LineaCruda = {
   sale_id: string;
@@ -155,6 +164,8 @@ export function filasDeContado(
   // «De contado» por sus dos importes sumados, no dos filas iguales.
   const sumas = new Map<string, number>();
   const tasas = new Map<string, number>();
+  const bsTecleados = new Map<string, number>();
+  const mezclados = new Set<string>();
   for (const p of pagos) {
     if (!porVenta.has(p.sale_id)) continue;
     const clave = `${p.sale_id}|${libro(p.currency) ?? ""}`;
@@ -164,6 +175,18 @@ export function filasDeContado(
     // misma tasa; si alguna vez no lo fueran, promediarlas daría un número
     // que no selló ningún pago. Se queda la primera, que es un dato real.
     if (!tasas.has(clave) && p.rate_used != null) tasas.set(clave, Number(p.rate_used));
+    // LOS BOLÍVARES TECLEADOS DE ESE LIBRO, sumados igual que los importes:
+    // dos pagos en bolívares de la misma venta son una fila por su suma.
+    //
+    // SOLO SI TODOS LOS PAGOS DE ESE LIBRO SE TECLEARON EN BOLÍVARES. Con uno
+    // en bolívares y otro en dólares no hay una cifra tecleada que describa
+    // la fila entera, y entonces manda la conversión, que al menos es
+    // coherente. Es la misma regla que la RPC del cliente ya aplica.
+    if (p.entry_currency === "VES" && p.entry_amount != null) {
+      bsTecleados.set(clave, (bsTecleados.get(clave) ?? 0) + Number(p.entry_amount));
+    } else {
+      mezclados.add(clave);
+    }
   }
 
   const filas: VentaDeContado[] = [];
@@ -188,6 +211,11 @@ export function filasDeContado(
       // Dos decimales, el mismo redondeo que el resto del código de dinero.
       amount: Math.round(amount * 100) / 100,
       tasaSellada: tasas.get(clave) ?? null,
+      tecleadoEnBs: mezclados.has(clave)
+        ? null
+        : (bsTecleados.get(clave) != null
+            ? Math.round(bsTecleados.get(clave)! * 100) / 100
+            : null),
       transactionCode: venta.transaction_code ?? null,
       lineas: lineasPorVentaYLibro.get(clave) ?? [],
     });

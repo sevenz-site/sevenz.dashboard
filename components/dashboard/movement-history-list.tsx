@@ -933,8 +933,15 @@ function FilaDeContado({
   // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
   // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
   // callar.
+  // LOS TECLEADOS PRIMERO, y la conversión solo si no los hay. Regla crítica
+  // del 2026-10-24: `amount × tasaSellada` devuelve una cifra que nadie
+  // escribió — Bs. 100.000 vuelven como Bs. 100.001,87. Ver CLAUDE.md.
   const enBsSellados =
-    venta.tasaSellada == null ? null : formatBs(venta.amount * Number(venta.tasaSellada));
+    venta.tecleadoEnBs != null
+      ? formatBs(venta.tecleadoEnBs)
+      : venta.tasaSellada == null
+        ? null
+        : formatBs(venta.amount * Number(venta.tasaSellada));
 
 
   return (

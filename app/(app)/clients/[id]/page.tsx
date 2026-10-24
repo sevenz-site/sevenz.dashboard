@@ -677,7 +677,12 @@ async function MovementHistory({
     const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
       // `rate_used` desde el 2026-10-21: la fila de una venta de contado enseña
       // los bolívares SELLADOS, no los de hoy (frame `1512:10061`).
-      supabase.from("sale_payments").select("sale_id, currency, amount, rate_used").in("sale_id", idsDeVenta),
+      supabase
+        .from("sale_payments")
+        // `entry_*` PARA QUE LA FILA ENSEÑE LOS BOLÍVARES TECLEADOS y no una
+        // reconversión. Regla crítica del 2026-10-24, en CLAUDE.md.
+        .select("sale_id, currency, amount, rate_used, entry_currency, entry_amount")
+        .in("sale_id", idsDeVenta),
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
     for (const l of lineasDeVenta ?? []) {

@@ -708,7 +708,13 @@ function FilaDeContado({
   // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
   // callar.
   const enBsSellados =
-    venta.rate_used == null ? null : formatBs(venta.amount * Number(venta.rate_used));
+    venta.entry_currency === "VES" && venta.entry_amount != null
+      ? // LOS TECLEADOS MANDAN, igual que en la pantalla del tendero. Regla
+        // crítica del 2026-10-24: la reconversión devuelve otra cifra.
+        formatBs(Number(venta.entry_amount))
+      : venta.rate_used == null
+        ? null
+        : formatBs(venta.amount * Number(venta.rate_used));
 
 
   return (
