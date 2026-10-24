@@ -70,6 +70,23 @@ estaban escritos.
   (server actions, the `movements`/`client_summary` schema, RLS policies,
   auth) even if the change looks unrelated, since those are exactly the
   places a small change breaks something distant.
+- **Run `npm run qa:guiones` — un segundo, sin base de datos.** Comprueba que
+  todo guion de `qa/` se puede lanzar con un `npm run qa:*`, o bien lo importa
+  otro guion. Va **aquí**, antes de decidir qué suites corren, porque esta lista
+  se recorre leyendo `package.json`: un guion que no esté ahí no es un guion que
+  se olvide correr, es uno que **no se puede elegir** — y su ausencia se lee como
+  cobertura que nadie escribió, no como cobertura que se perdió.
+
+  Pasó el 2026-10-23: `qa/monto-bolivares.mjs` y `qa/fixtures-venta-colombia.mjs`
+  habían perdido su entrada. Los dos seguían pasando al invocarlos a mano, que es
+  justo lo que lo hace silencioso — nada estaba roto, el archivo era invisible. Y
+  el primero vigila la cuenta de bolívares a la moneda del libro, o sea la
+  aritmética entre lo que teclea el tendero y lo que se guarda.
+
+  No lleva lista de excepciones a propósito: un módulo compartido como
+  `qa/plantillas-esperadas.mjs` se salva porque alguien lo importa, y eso se lee
+  de los archivos. Una lista a mano habría que mantenerla, y una desactualizada
+  falla en silencio — el mismo fallo que este control cierra.
 
 ## 2. Core money-path flows
 
