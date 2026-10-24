@@ -385,6 +385,40 @@ rule is specifically about endpoints anyone can reach with no account at
 all — e.g. `/s/[token]` and its `get_shared_balance()` RPC, or any future
 public page or webhook receiver.
 
+## Si lo pide dos veces, es una regla: dilo
+
+**Pedido por el dueño el 2026-10-24**: *«deberás identificar cuando te pida de
+manera repetida en más de una vez el mismo requerimiento y sugerirme agregarlo
+como regla»*.
+
+Su ejemplo: el día anterior pidió **tres veces** ajustar los paddings laterales
+de una pantalla a 16px. A la segunda ya debería haber salido la frase.
+
+**La regla, entera**: cuando un encargo se parece a otro que ya hizo —no
+idéntico, *de la misma clase*— se le dice en una línea, con la cita de la vez
+anterior, y se le ofrece escribirlo en este archivo. Se sigue haciendo el
+trabajo igual; esto es una línea de más en el reporte, no una pausa.
+
+> Esto ya me lo pediste el 2026-10-23 («los paddings laterales van a 16px»).
+> Van dos. ¿Lo escribo como regla en `CLAUDE.md` para que no haya una tercera?
+
+**Por qué merece una regla propia, y no es burocracia.** Un encargo repetido no
+es el dueño siendo insistente: es la prueba de que el repo no lo sabe. La
+primera vez es una petición; la segunda es un patrón que el siguiente que toque
+esa pantalla va a romper otra vez, porque no hay nada escrito que se lo impida.
+Lo que cuesta no es la repetición — es que **cada vez la tiene que cazar él**,
+mirando pantallas, en vez de que el archivo lo impida solo.
+
+**Qué cuenta como «la misma clase»**: el mismo valor de diseño (paddings,
+tamaños, colores), la misma decisión de producto (qué manda cuando dos cifras
+compiten), el mismo comportamiento (qué se esconde con el teclado, a dónde
+vuelve una flecha). No cuenta un bug reportado dos veces en sitios distintos:
+eso es una causa común sin arreglar, y lo que toca ahí es buscarla, no escribir
+una regla.
+
+**Y se ofrece, no se hace solo.** El archivo es suyo; lo que se hace sin pedir
+permiso es notarlo y decirlo.
+
 ## Ask before assuming
 
 For product/data-modeling decisions, currency or financial-logic choices,
