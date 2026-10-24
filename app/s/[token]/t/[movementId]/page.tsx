@@ -20,6 +20,9 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
+  // LOS BOLÍVARES TECLEADOS AL COMPRAR — migración `152`. Opcional: sin ella
+  // la tarjeta de la compra cae en la conversión, como hasta hoy.
+  abono_inicial_bs?: number | null;
   // El código de su transacción — migración 148. Opcional: sin ella la ficha
   // sale sin esa línea, como salía hasta hoy.
   transaction_code?: string | null;
@@ -349,6 +352,10 @@ export default async function DetalleDelClientePage({
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
         abonoInicial={Number(m.abono_inicial ?? 0)}
+        // Los bolívares que se teclearon al comprar — migración `152`. Sin
+        // ellos la tarjeta enseñaría la reconversión, y el cliente vería una
+        // cifra distinta de la del tendero por el mismo pago.
+        abonoInicialBs={m.abono_inicial_bs == null ? null : Number(m.abono_inicial_bs)}
         // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el
         // 2026-10-21 con una captura de esta pantalla enseñando «Editar abono» y
         // «Eliminar abono». Las acciones le habrían contestado «Sesión expirada»

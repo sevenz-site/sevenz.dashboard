@@ -174,6 +174,7 @@ export default async function TransaccionPage({
   // cargo, así que comparten el `if`.
   let puedePagar = false;
   let abonoInicial = 0;
+  let abonoInicialBs: number | null = null;
   let pendienteDelFiado: number | null = null;
   let abonosRecibidos: AbonoDirigido[] | undefined;
   if (m.type === "charge") {
@@ -233,11 +234,27 @@ export default async function TransaccionPage({
       // Lo vigila `qa:colombia`, filas 5 y 6.
       const { data: pagos } = await supabase
         .from("sale_payments")
-        .select("amount, currency")
+        // `entry_*` PARA ENSEÑAR LOS BOLÍVARES TECLEADOS. Regla crítica del
+        // 2026-10-24, en CLAUDE.md. Sin ellos esta tarjeta convertía
+        // `amount × tasa` y devolvía una cifra que nadie escribió: Bs. 1.000
+        // entregados al comprar salían como «Bs. 1.003,02».
+        .select("amount, currency, entry_currency, entry_amount")
         .eq("sale_id", m.sale_id);
-      abonoInicial = (pagos ?? [])
-        .filter((p) => (p.currency ?? "COP") === (m.currency ?? "COP"))
-        .reduce((suma, p) => suma + Number(p.amount), 0);
+      const delLibro = (pagos ?? []).filter(
+        (p) => (p.currency ?? "COP") === (m.currency ?? "COP"),
+      );
+      abonoInicial = delLibro.reduce((suma, p) => suma + Number(p.amount), 0);
+      // LOS BOLÍVARES TECLEADOS DE ESE LIBRO, y solo si TODOS sus pagos se
+      // tecletaron así: con uno en bolívares y otro en divisa no hay una cifra
+      // tecleada que describa la suma, y entonces manda la conversión, que al
+      // menos es coherente. Misma regla que la fila de contado.
+      abonoInicialBs =
+        delLibro.length > 0 &&
+        delLibro.every((p) => p.entry_currency === "VES" && p.entry_amount != null)
+          ? Math.round(
+              delLibro.reduce((suma, p) => suma + Number(p.entry_amount), 0) * 100,
+            ) / 100
+          : null;
     }
 
     // LOS ABONOS DIRIGIDOS A ESTE FIADO. Encargo del dueño el 2026-10-20.
@@ -356,6 +373,7 @@ export default async function TransaccionPage({
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
         abonoInicial={abonoInicial}
+        abonoInicialBs={abonoInicialBs}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con
         // «Editar abono» y «Eliminar abono». La del cliente pasa `false`.
       />

@@ -127,7 +127,18 @@ export default async function VentaDeContadoPage({
   // Se toma la del primer pago que la tenga: los pagos de una misma venta son
   // del mismo momento, así que o la tienen todos igual o no la tiene ninguno.
   const tasaSellada = pagos.map((p) => p.rate_used).find((r) => r != null);
-  const enBs = tasaSellada != null ? total * Number(tasaSellada) : null;
+  // ── Y LOS BOLÍVARES TECLEADOS MANDAN SOBRE ESA CONVERSIÓN ───────────
+  //
+  // Regla crítica del 2026-10-24. Solo si TODOS los pagos de este libro se
+  // teclearon en bolívares: con uno en bolívares y otro en divisa no hay una
+  // cifra tecleada que describa el total, y entonces vale más la conversión,
+  // que al menos es coherente.
+  const tecleadoEnBs =
+    pagos.length > 0 && pagos.every((p) => p.entry_currency === "VES" && p.entry_amount != null)
+      ? Math.round(pagos.reduce((s, p) => s + Number(p.entry_amount), 0) * 100) / 100
+      : null;
+  const enBs =
+    tecleadoEnBs != null ? tecleadoEnBs : tasaSellada != null ? total * Number(tasaSellada) : null;
 
   // El libro, solo para formatear. Un negocio colombiano no lo necesita.
   const resultado = await getOwnerRateContextResult(supabase, user.id);

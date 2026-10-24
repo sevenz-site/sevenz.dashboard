@@ -95,6 +95,11 @@ export type DatosDelDetalle = {
   // `124` escribe el movimiento por LO QUE QUEDA, nunca por el total, así que
   // lo pagado en el momento no está en `movements` y hay que ir a buscarlo.
   abonoInicial?: number | null;
+  // LOS BOLÍVARES QUE SE TECLEARON AL COMPRAR, si se pagó así. Mandan sobre
+  // la conversión: regla crítica del 2026-10-24. `null` cuando no se tecleó
+  // en bolívares, o cuando los pagos de ese libro mezclan formas y no hay una
+  // cifra tecleada que describa la suma.
+  abonoInicialBs?: number | null;
   // LOS ABONOS DIRIGIDOS A ESTE FIADO, el reflejo de `fiadoAplicado`. Encargo
   // del dueño el 2026-10-20: *«Detalle de los fiados también deben mostrar la
   // lista de lo que se ha abonado (mismo patrón como abono muestra los
@@ -147,6 +152,7 @@ export function DetalleDeTransaccion({
   fiadoBorrado = false,
   hrefDelFiado = null,
   abonoInicial = null,
+  abonoInicialBs = null,
   abonosRecibidos,
   hrefDeUnAbono = null,
 }: DatosDelDetalle) {
@@ -456,6 +462,19 @@ export function DetalleDeTransaccion({
                       : currency != null
                         ? 0
                         : null,
+                  // ── LOS BOLÍVARES QUE TECLEÓ AL COMPRAR ──────────────
+                  //
+                  // Mandan sobre `tasaSellada`, que es una reconversión. Sin
+                  // esto, Bs. 1.000 entregados al registrar la venta salían
+                  // aquí como «Bs. 1.003,02» — €1,01 × 993,088.
+                  //
+                  // Lo reportó el dueño el 2026-10-24, el mismo día que pidió
+                  // la regla, y sobre un camino que la auditoría de esa regla
+                  // no había mirado: se revisó el reparto, el historial y la
+                  // fila de contado, y NO el pago del momento de la compra,
+                  // que vive en `sale_payments` y se dibuja aquí.
+                  entryCurrency: abonoInicialBs != null ? "VES" : null,
+                  entryAmount: abonoInicialBs,
                 }}
                 // LO QUE QUEDÓ TRAS EL PAGO DE LA COMPRA, que es `amount` tal
                 // cual: la migración `124` escribe el movimiento por lo que
