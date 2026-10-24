@@ -283,9 +283,9 @@ export default async function TransaccionPage({
       currency: p.currency as AbonoDirigido["currency"],
       // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
       tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
-      // El código de su transacción, para el pie de la tarjeta. Ver
-      // `transactionCode` en `tarjeta-de-abono.tsx`.
-      transactionCode: (p.transaction_code as string | null) ?? null,
+      // `transactionCode` YA NO VIAJA: la fila dejó de dibujarlo el
+      // 2026-10-24 por decisión del dueño. La consulta sigue pidiendo la
+      // columna, que cuesta lo mismo y deja la vuelta atrás en una línea.
       // En qué moneda se tecleó y cuánto. El diálogo de editar que los pedía
       // se quitó el 2026-10-23, pero siguen haciendo falta: el menú del «⋮»
       // los usa para decir «la deuda vuelve a subir Bs. 900» en la moneda en

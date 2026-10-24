@@ -267,9 +267,10 @@ export default async function DetalleDelClientePage({
           // estado en ESTA pantalla, porque esta clave no viajaba.
           tasaSellada:
             a.exchange_rate_used == null ? null : Number(a.exchange_rate_used),
-          // El código de su transacción, para el pie de la tarjeta — el mismo
-          // que ve el tendero en la suya.
-          transactionCode: a.transaction_code ?? null,
+          // `transactionCode` YA NO VIAJA, igual que en la pantalla del
+          // tendero: la fila dejó de dibujarlo el 2026-10-24. La migración
+          // `148` sigue mandándolo en el payload, así que volver a ponerlo no
+          // necesita tocar la base.
           entryCurrency: (a.entry_currency ?? null) as "VES" | null,
           entryAmount: a.entry_amount == null ? null : Number(a.entry_amount),
         }))

@@ -1,7 +1,6 @@
 "use client";
 
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { BotonCopiarCodigo } from "@/components/dashboard/boton-copiar-codigo";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
@@ -40,15 +39,17 @@ export type AbonoDirigido = {
   // convertiría ese respaldo en mentira.
   entryCurrency?: "VES" | PriceCurrency | null;
   entryAmount?: number | null;
-  // EL CÓDIGO DE SU TRANSACCIÓN — migración 147, encargo del dueño el
-  // 2026-10-23: *«Para los abonos asociados a fiados dentro de fiados
-  // aparecerán en el footer de la card dentro del fiado»*.
+  // `transactionCode` SE FUE EL 2026-10-24, y la razón la dio el dueño: *«el
+  // usuario podrá verla al acceder al detalle del abono»*. Lo pidió el
+  // 2026-10-23 y lo quitó al verlo en pantalla — seis filas seguidas, cada una
+  // con su línea de código y su botón de copiar, convertían un índice en una
+  // pared de texto.
   //
-  // Es el de la TRANSACCIÓN, no el del abono: un pago repartido entre tres
-  // fiados deja tres tarjetas como esta, en tres fichas distintas, y las tres
-  // llevan el mismo código. Buscarlo es lo que las vuelve a juntar, que es
-  // justo para lo que este código existe.
-  transactionCode?: string | null;
+  // NO SE PIERDE NADA QUE SE PUEDA BUSCAR: el código sigue en la cabecera de
+  // la ficha de cada abono (a donde lleva el chevron de esta fila), en la del
+  // fiado, en las dos pantallas de éxito y en su PNG. Y el buscador del
+  // historial sigue encontrándolo, porque busca sobre el dato y no sobre lo
+  // que la fila dibuja.
   // Lo máximo que admite su fiado contando este abono, para el tope del
   // diálogo. `null` en un abono sin dirigir.
 };
@@ -119,8 +120,6 @@ export function TarjetaDeAbono({
         ? abono.amount * abono.tasaSellada
         : null;
 
-  const codigo = abono.transactionCode ?? null;
-
   // ═══════════════════════════════════════════════════════════════════════
   // YA NO ES UNA TARJETA: ES UNA FILA — frame `1599:11697`, 2026-10-24
   //
@@ -133,9 +132,6 @@ export function TarjetaDeAbono({
   // fiado tras ese abono—, que el frame nuevo no dibuja. Esa cifra sigue
   // estando donde se puede leer entera, en «Total por cobrar» de la ficha.
   //
-  // EL CÓDIGO SE QUEDA, y a propósito: el frame se actualizó ese mismo día
-  // para incluirlo cuando se preguntó si cabía. Va en su propia línea,
-  // alineado a la derecha, con su botón de copiar.
   // EL CHIP GRIS DE LA COMPRA NO ES UN `ChipDeEstado`: no es un estado del
   // plazo, es «esto se pagó el mismo día» — nodo `1510:9975`, gris y sin
   // borde. Los demás sí salen del plazo.
@@ -179,6 +175,8 @@ export function TarjetaDeAbono({
     </div>
   );
 
+  // `flex-col gap-2` SE QUEDA aunque hoy la fila tenga un solo hijo: el
+  // segundo renglón —el del código— vivió aquí un día entero y puede volver.
   return (
     <li className="flex flex-col gap-2 border-t py-4">
       {href ? (
@@ -188,19 +186,6 @@ export function TarjetaDeAbono({
       ) : (
         cuerpo
       )}
-
-      {/* EL CÓDIGO, A LA DERECHA Y EN SU PROPIA LÍNEA — nodo `1600:11888`.
-          Fuera del enlace: así el botón de copiar no tiene que frenar un
-          evento que no existe, y tocar el código no navega. */}
-      {codigo ? (
-        <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-          <span>
-            Código de transacción:{" "}
-            <span className="font-medium text-primary tabular-nums">{codigo}</span>
-          </span>
-          <BotonCopiarCodigo codigo={codigo} />
-        </div>
-      ) : null}
     </li>
   );
 }
