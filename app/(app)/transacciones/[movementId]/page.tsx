@@ -135,7 +135,7 @@ export default async function TransaccionPage({
   if (m.type === "payment" && m.applies_to_movement_id) {
     const { data: f } = await supabase
       .from("movements")
-      .select("id, sale_id, created_at, currency, amount, plazo_dias, cuotas, description")
+      .select("id, sale_id, created_at, currency, amount, plazo_dias, cuotas, description, transaction_code")
       .eq("id", m.applies_to_movement_id)
       .eq("client_id", cliente.id)
       .is("deleted_at", null)
@@ -163,6 +163,10 @@ export default async function TransaccionPage({
         cuotas: (f.cuotas as number | null) ?? null,
         productos: lineas.map((l) => l.name),
         descripcion: (f.description as string | null) ?? null,
+        // Su código, para el pie de la tarjeta con el botón de copiar. Solo
+        // lo lleva esta tarjeta —la «relacionada»—; la de la hoja de repartir
+        // no, ver `transactionCode` en `tarjeta-de-fiado.tsx`.
+        transactionCode: (f.transaction_code as string | null) ?? null,
       };
     }
   }

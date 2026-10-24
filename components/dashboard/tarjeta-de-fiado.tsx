@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BotonCopiarCodigo } from "@/components/dashboard/boton-copiar-codigo";
 import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -47,6 +48,17 @@ export type FiadoAbierto = {
   cuotas: number | null;
   productos: string[];
   descripcion: string | null;
+  // EL CÓDIGO DE SU TRANSACCIÓN, y solo lo trae quien quiere el pie.
+  //
+  // Encargo del dueño el 2026-10-23: las tarjetas RELACIONADAS —la del fiado
+  // dentro de un abono y las de los abonos dentro de un fiado— llevan el
+  // código con su botón de copiar. Las otras no: en la hoja de repartir un
+  // abono, siete caracteres por tarjeta no ayudan a elegir a cuál pagar y
+  // alargan una lista que ya se desplaza.
+  //
+  // Por eso el pie se dibuja o no según venga esto, en vez de con un `boolean`
+  // aparte: quien tiene el código es quien quiere enseñarlo.
+  transactionCode?: string | null;
 };
 
 export function TarjetaDeFiado({
@@ -197,16 +209,37 @@ export function TarjetaDeFiado({
     </>
   );
 
+  const codigo = fiado.transactionCode ?? null;
+
+  // CON PIE SE ENVUELVE, igual que en `tarjeta-de-abono.tsx`: el borde lo pone
+  // el envoltorio y la tarjeta de dentro lo suelta, porque dos bordes
+  // anidados se leen como dos tarjetas.
+  const conPie = (cuerpo: React.ReactNode) =>
+    codigo == null ? (
+      cuerpo
+    ) : (
+      <div className="w-full overflow-hidden rounded-[10px] border [&>a]:rounded-none [&>a]:border-0 [&>button]:rounded-none [&>button]:border-0">
+        {cuerpo}
+        <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Código de transacción:{" "}
+            <span className="font-medium text-primary tabular-nums">{codigo}</span>
+          </span>
+          <BotonCopiarCodigo codigo={codigo} />
+        </div>
+      </div>
+    );
+
   if (href) {
-    return (
+    return conPie(
       <Link href={href} className={clase}>
         {contenido}
-      </Link>
+      </Link>,
     );
   }
-  return (
+  return conPie(
     <button type="button" onClick={onClick} className={clase}>
       {contenido}
-    </button>
+    </button>,
   );
 }

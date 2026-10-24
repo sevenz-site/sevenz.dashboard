@@ -17,7 +17,7 @@ import {
   type MonedaFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
-import type { PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
 import { vencimientoEfectivo } from "@/lib/estado-del-plazo";
@@ -264,14 +264,54 @@ export function MovementHistoryList({
   // UNA FILA SIN CÓDIGO NO CASA NUNCA, y es correcto: es anterior a la
   // migración 147 y no hay código por el que buscarla. Hoy no existe
   // ninguna, ni en dev ni en producción.
-  const codigoBuscado = codigo.trim().toUpperCase();
+  // ── QUÉ SE BUSCA CON EL BUSCADOR ──────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-23: *«el search buscar, debe permitir buscar
+  // por código, monto o producto»*. Nació buscando solo el código.
+  //
+  // SE BUSCA LO QUE LA FILA DICE, y por eso el texto se arma con las MISMAS
+  // piezas que la fila pinta: su código, su nombre —los productos de la venta
+  // o lo que el tendero escribió— y sus importes. Un buscador que mire
+  // columnas que la pantalla no enseña devuelve filas que, a la vista, no
+  // tienen nada que ver con lo buscado.
+  //
+  // LOS IMPORTES VAN EN LAS DOS FORMAS, cruda y formateada, a propósito: el
+  // tendero teclea lo que recuerda («112.84») o lo que copia de la pantalla
+  // («Bs. 100.001,87»), y las dos tienen que encontrar la misma fila. Es más
+  // barato meter las dos cadenas que adivinar en cuál está pensando.
+  //
+  // Y LOS BOLÍVARES TECLEADOS TAMBIÉN, cuando los hay: para un abono pagado
+  // en bolívares, esa es la cifra que el cliente entregó y la que el tendero
+  // tiene en la cabeza.
+  const textoDeLaFila = (f: Fila) => {
+    if (f.clase === "contado") {
+      return [
+        f.v.transaction_code ?? "",
+        f.v.lineas.map((l) => l.name).join(" "),
+        String(f.v.amount),
+        formatPriceAmount(f.v.amount, (f.v.currency ?? "COP") as PriceCurrency),
+      ].join(" ");
+    }
+    const m = f.m;
+    const fiado = m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+    const nombre =
+      (fiado?.productos ?? []).map((l) => l.name).join(" ") ||
+      fiado?.description ||
+      m.description ||
+      "";
+    return [
+      m.transaction_code ?? "",
+      nombre,
+      String(m.amount),
+      formatPriceAmount(Number(m.amount), (m.currency ?? "COP") as PriceCurrency),
+      m.entry_amount != null ? String(m.entry_amount) : "",
+      m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : "",
+    ].join(" ");
+  };
+
+  const buscado = codigo.trim().toLowerCase();
   const porCodigo =
-    codigoBuscado === ""
-      ? filas
-      : filas.filter((f) => {
-          const suyo = f.clase === "movimiento" ? f.m.transaction_code : f.v.transaction_code;
-          return (suyo ?? "").toUpperCase().includes(codigoBuscado);
-        });
+    buscado === "" ? filas : filas.filter((f) => textoDeLaFila(f).toLowerCase().includes(buscado));
 
   const porTipo =
     tipo === "todos"

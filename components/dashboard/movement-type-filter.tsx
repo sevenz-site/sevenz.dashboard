@@ -267,12 +267,14 @@ export function FiltrosDelHistorial({
         <Input
           value={codigo}
           onChange={(e) => setCodigo(e.target.value)}
-          placeholder="Buscar por código"
-          aria-label="Buscar por código de transacción"
-          // `uppercase` SOLO EN LA PANTALLA: el valor se compara sin
-          // distinguir mayúsculas, así que esto es para que lo tecleado se
-          // parezca al código impreso, no una transformación del dato.
-          className="h-10 pl-9 uppercase placeholder:normal-case"
+          placeholder="Buscar por código, monto o producto"
+          aria-label="Buscar por código de transacción, monto o producto"
+          // SIN `uppercase` DESDE EL 2026-10-23, cuando esto dejó de buscar
+          // solo códigos: con nombres de producto y montos en la misma caja,
+          // poner en mayúsculas lo que se teclea haría que «Agua» se viera
+          // «AGUA» mientras la fila dice «Agua». La comparación ya ignora
+          // mayúsculas, así que no hacía falta ni para los códigos.
+          className="h-10 pl-9"
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -380,11 +382,15 @@ export function tituloDeListaVacia({
           : "transacciones";
 
   const partes = [`No hay ${sustantivo}`];
-  // EL CÓDIGO VA PRIMERO, igual que en la cadena de filtros: es el más
-  // estrecho, y cuando está puesto suele ser el único culpable de que la
-  // lista esté vacía. Entre comillas y tal cual se buscó, para que se vea si
+  // LO BUSCADO VA PRIMERO, igual que en la cadena de filtros: es el filtro
+  // más estrecho, y cuando está puesto suele ser el único culpable de que la
+  // lista esté vacía. Tal cual se tecleó y entre comillas, para que se vea si
   // sobra una letra.
-  if (codigo.trim() !== "") partes.push(`con el código «${codigo.trim().toUpperCase()}»`);
+  //
+  // «que digan» Y NO «con el código», desde que esto busca también montos y
+  // productos: decirle «no hay transacciones con el código "agua"» a quien
+  // buscó un producto es contarle un fallo que no cometió.
+  if (codigo.trim() !== "") partes.push(`que digan «${codigo.trim()}»`);
   if (moneda !== "todas") partes.push(`en ${nombreDeMoneda(moneda).toLowerCase()}`);
   if (estado !== "todos") {
     const etiqueta = ESTADOS.find((e) => e.value === estado)?.label ?? estado;

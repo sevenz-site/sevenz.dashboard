@@ -1,7 +1,6 @@
 "use client";
 
-import { Copy } from "lucide-react";
-import { toast } from "sonner";
+import { BotonCopiarCodigo } from "@/components/dashboard/boton-copiar-codigo";
 
 // THE TRANSACTION CODE, UNDER THE TITLE OF EVERY DETAIL SCREEN.
 //
@@ -34,23 +33,7 @@ export function CodigoDeTransaccion({ codigo }: { codigo: string | null }) {
       <p className="text-sm font-medium text-primary tabular-nums">
         Código de transacción: {codigo}
       </p>
-      <button
-        type="button"
-        aria-label={`Copiar el código ${codigo}`}
-        className="-m-1 shrink-0 rounded p-1 text-muted-foreground transition-colors active:bg-muted"
-        onClick={() => {
-          // SIN `await` Y SIN BLOQUEAR NADA: copiar es una comodidad, y si el
-          // navegador no deja —sin permiso, sin contexto seguro— lo que no
-          // puede pasar es que el toque parezca haber hecho algo. Por eso el
-          // aviso va en cada rama y no solo en la buena.
-          void navigator.clipboard
-            ?.writeText(codigo)
-            .then(() => toast.success("Código copiado"))
-            .catch(() => toast.error("No pudimos copiar el código"));
-        }}
-      >
-        <Copy className="size-4" aria-hidden="true" />
-      </button>
+      <BotonCopiarCodigo codigo={codigo} />
     </div>
   );
 }

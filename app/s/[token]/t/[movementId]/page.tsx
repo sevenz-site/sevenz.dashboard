@@ -65,6 +65,10 @@ type SharedMovement = {
 // tarjeta tiene que ser la misma que ve el dueño o los dos lados de la misma
 // deuda no coinciden.
 type FiadoAbonadoJson = {
+  // El código de su transacción — migración `151`. Opcional porque durante un
+  // despliegue el código y la base no coinciden; sin él la tarjeta sale sin
+  // pie, que es como salía hasta hoy.
+  transaction_code?: string | null;
   movement_id: string;
   sale_id: string | null;
   fecha: string;
@@ -230,6 +234,9 @@ export default async function DetalleDelClientePage({
         pending: Number(f.pending),
         plazoDias: f.plazo_dias,
         cuotas: f.cuotas,
+        // Su código — migración `151`. Sin ella la tarjeta sale sin pie aquí
+        // y con pie en la del tendero, que es la misma divergencia de siempre.
+        transactionCode: f.transaction_code ?? null,
         // Sin nombres de producto, que conserva la decisión de la migración
         // `122`: el inventario del negocio no viaja a esta pantalla. La
         // tarjeta cae en la descripción del fiado, que es justo lo que el

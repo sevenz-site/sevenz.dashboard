@@ -1,6 +1,7 @@
 "use client";
 
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { BotonCopiarCodigo } from "@/components/dashboard/boton-copiar-codigo";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { AbonoAcciones } from "@/components/dashboard/abono-acciones";
@@ -207,9 +208,15 @@ export function TarjetaDeAbono({
     ) : (
       <div className="w-full overflow-hidden rounded-[10px] border [&>div:first-child]:rounded-none [&>div:first-child]:border-0 [&>a>div]:rounded-none [&>a>div]:border-0">
         {conEnlace(cuerpo)}
-        <div className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Código de transacción:{" "}
-          <span className="font-medium text-primary tabular-nums">{codigo}</span>
+        <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Código de transacción:{" "}
+            <span className="font-medium text-primary tabular-nums">{codigo}</span>
+          </span>
+          {/* ALINEADO A LA DERECHA DEL PIE, pedido del dueño el 2026-10-23.
+              Vive dentro del `<Link>` de la tarjeta, así que frena el evento
+              — ver `BotonCopiarCodigo`. */}
+          <BotonCopiarCodigo codigo={codigo} />
         </div>
       </div>
     );
