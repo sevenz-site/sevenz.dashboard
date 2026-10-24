@@ -159,7 +159,12 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
       <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
       <div className="rounded-lg border bg-muted/30 px-3 py-2">
         <Fila nombre="Nombre">{pedido.customer_name}</Fila>
-        <Fila nombre="Documento">{formatDocumentId(pedido.customer_document)}</Fila>
+        {/* CON SU LETRA desde la migración `155`, que añadió la columna y el
+            selector al formulario público. `null` en los pedidos anteriores:
+            a esos clientes nunca se les preguntó. */}
+        <Fila nombre="Documento">
+          {formatDocumentId(pedido.customer_document, pedido.customer_document_type)}
+        </Fila>
         {/* THE RAW ONE, NOT THE NORMALISED ONE: it is what the person
             typed, and what the shopkeeper needs in order to judge whether it
             is right. The normalised one is the key the database stores it

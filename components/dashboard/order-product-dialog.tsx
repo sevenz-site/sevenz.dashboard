@@ -223,9 +223,11 @@ export function OrderProductDialog({
             </span>
           </div>
           <div className="flex min-w-0 flex-1 flex-col items-end justify-center gap-0.5">
+            {/* LA BANDERA AL BORDE DERECHO: esta columna es `items-end`. Ver
+                `DESIGN-SYSTEM.md`, regla del dueño del 2026-10-24. */}
             <span className="flex items-center gap-1 text-sm tabular-nums">
-              <CurrencyFlagIcon currency={moneda} />
               {formatPriceAmount(totalLinea, moneda)}
+              <CurrencyFlagIcon currency={moneda} />
             </span>
             {enBolivares != null ? (
               <span className="w-full text-right text-xs text-muted-foreground tabular-nums">

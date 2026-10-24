@@ -100,6 +100,7 @@ export function findDocumentDuplicates(
         id: c.id,
         name: c.name,
         document_id: c.document_id,
+        document_type: c.document_type ?? null,
         whatsapp: c.whatsapp,
         balance: c.balance,
         balance_usd: c.balance_usd,

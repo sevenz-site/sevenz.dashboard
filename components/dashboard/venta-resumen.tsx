@@ -134,7 +134,7 @@ export function VentaResumen({
             acción que el tendero tiene delante es compartir el PNG, que ya lo
             lleva escrito. */}
         {codigo ? (
-          <p className="-mt-2 text-center text-sm font-medium text-primary tabular-nums">
+          <p className="-mt-2 text-center text-sm font-medium text-muted-foreground tabular-nums">
             Código de transacción: {codigo}
           </p>
         ) : null}

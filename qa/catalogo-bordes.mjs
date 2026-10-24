@@ -99,6 +99,11 @@ async function pedir(items, extra = {}) {
     p_token: token,
     p_customer_name: `${MARCA} comprador`,
     p_customer_document: "V-99999999",
+    // LA LETRA, desde la migración `155`. Sin ella la llamada no encuentra la
+    // función: Postgres resuelve por firma, y la de siete argumentos ya no
+    // existe. Va aquí y no en cada caso porque es parte del sobre, no de lo que
+    // cada prueba quiere medir.
+    p_customer_document_type: "V",
     p_customer_whatsapp: "04149999999",
     p_wants_notices: false,
     p_consent_text: null,

@@ -104,6 +104,7 @@ export function ClientAccountSheet({
                   <ClientCardBody
                     name={fila.name}
                     documentId={fila.document_id}
+                    documentType={fila.document_type}
                     status={status}
                     overdueCount={overdueCount}
                     monedaDelEstado={currency}

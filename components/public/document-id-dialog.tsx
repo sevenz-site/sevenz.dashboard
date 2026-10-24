@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import { defaultDocumentType, type DocumentType } from "@/lib/document-id";
 import { submitDocumentId } from "@/app/s/[token]/actions";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { required } from "@/lib/form-validation";
@@ -37,6 +38,11 @@ export function DocumentIdDialog({
   const router = useRouter();
   const [submitted, setSubmitted] = useState(hasDocumentId);
   const [value, setValue] = useState("");
+  // LA LETRA, con la primera del país puesta — 'V' en Venezuela, 'CC' en
+  // Colombia—, igual que en el alta del tendero y en el pedido del catálogo.
+  // `null` sin país conocido: el campo no dibuja selector y no se guarda nada,
+  // porque elegir a ciegas pondría una «V» en la cédula de un colombiano.
+  const [tipo, setTipo] = useState<DocumentType | null>(() => defaultDocumentType(ownerCountry));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formRef, setFormRef] = useFormRef();
@@ -48,7 +54,7 @@ export function DocumentIdDialog({
     e.preventDefault();
     if (!validate(e.currentTarget)) return;
     setPending(true);
-    const result = await submitDocumentId(token, value);
+    const result = await submitDocumentId(token, value, tipo);
     setPending(false);
     if (result.error) {
       setError(result.error);
@@ -80,12 +86,22 @@ export function DocumentIdDialog({
         <form ref={setFormRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
             <Label htmlFor="shared_document_id">Número de cédula</Label>
+            {/* YA SIN `sinTipo`: desde la migración `156` el servidor guarda
+                la letra. Esa bandera estaba aquí precisamente porque no lo
+                hacía, y un selector cuya elección nadie escribe es el fallo
+                que `CLAUDE.md` describe — el formulario envía, el servidor
+                acepta, la fila se guarda sin el campo y nadie se entera.
+
+                Y ES EL DATO MÁS FIABLE QUE VAMOS A TENER: aquí teclea la
+                persona su PROPIO documento, no el tendero copiándolo de
+                memoria. */}
             <DocumentIdInput
-          sinTipo
               id="shared_document_id"
               country={ownerCountry}
               required
               value={value}
+              type={tipo}
+              onTypeChange={setTipo}
               onChange={(next) => {
                 setValue(next);
                 recheck("document_id", formRef.current);

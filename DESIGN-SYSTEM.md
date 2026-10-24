@@ -1972,6 +1972,66 @@ Tres reglas que salen de ahí y conviene no redescubrir:
   movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
   no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
 
+## Y va del lado del BORDE: la bandera mira hacia donde empuja el contenedor
+
+**Si el importe está alineado a la IZQUIERDA de su contenedor, la bandera va
+delante. Si está alineado a la DERECHA, la bandera va detrás.** Regla del
+dueño el 2026-10-24: *«las banderas que acompañan los saldos estarán alineadas
+del lado izquierdo del label si el label está alineado a la izquierda de su
+contenedor, y del lado derecho del label si el label está al lado derecho»*.
+
+Dicho de otra forma: **la bandera siempre queda en el borde exterior**, tocando
+el lado por el que la cifra está empujada. Lo que decide es la alineación del
+contenedor, **no** qué clase de dato es ni en qué pantalla está.
+
+| Lo que hace el contenedor | La bandera |
+|---|---|
+| `items-start`, o una columna a la izquierda | **Delante** del importe |
+| `items-end`, `justify-end`, o el lado derecho de un `justify-between` | **Detrás** del importe |
+| `items-center` sin empuje a ningún lado | Delante, que es el orden de lectura |
+
+Los frames `1548:11049`, `1548:11062` y `1548:11075` —las tres filas del
+historial— lo dibujan así: importe a la derecha, bandera después.
+
+### Dos tarjetas de la MISMA pantalla pueden llevarla a lados distintos
+
+Y eso no es una incoherencia, es la regla funcionando. En el paso 3/4 de una
+venta conviven las dos:
+
+- **«Total en Bolívares»** es un `justify-between`: el rótulo a la izquierda y
+  la cifra a la derecha, así que su bandera va **detrás**.
+- **«Total en Dólares»**, justo debajo, pone rótulo y cifra en una columna
+  alineada a la **izquierda**, así que su bandera va **delante**.
+
+Si al leer dos tarjetas seguidas parecen contradecirse, mira hacia qué borde
+empuja cada una antes de «arreglar» ninguna.
+
+### Esto NO se comprueba a ojo: se mide
+
+Hay 86 banderas en 38 ficheros. Recorrerlas leyendo JSX es cómo se cuela la
+que está mal, y además una lista de pantallas nunca está completa. Lo que sí
+lo está es preguntárselo al DOM — pégalo en la consola de cualquier pantalla:
+
+```js
+[...document.querySelectorAll('img[alt^="Bandera"]')].map((f) => {
+  const g = f.parentElement, p = g?.parentElement;
+  if (!g || !p) return null;
+  const hijos = [...g.children], i = hijos.indexOf(f);
+  const gr = g.getBoundingClientRect(), pr = p.getBoundingClientRect();
+  const izq = gr.left - pr.left, der = pr.right - gr.right;
+  const al = Math.abs(izq - der) < 4 ? 'centro' : der < izq ? 'derecha' : 'izquierda';
+  // Solo las banderas que acompañan un IMPORTE: un chip de moneda suelto
+  // («USD», «EUR») no es un saldo y esta regla no lo gobierna.
+  if (!/\d/.test((g.textContent || ''))) return null;
+  const mal = (al === 'derecha' && i !== hijos.length - 1) || (al === 'izquierda' && i !== 0);
+  return mal ? { al, texto: g.textContent.trim() } : null;
+}).filter(Boolean)
+```
+
+**Array vacío = esa pantalla cumple.** Filtra a propósito las banderas sin
+cifra al lado: un chip de moneda no es un saldo, y contarlo dispara quince
+falsos positivos solo en Inicio.
+
 ## La bandera va en el MONTO, no en su equivalencia
 
 **Una cifra lleva bandera cuando es la que el tendero va a decir en voz alta.
@@ -2181,6 +2241,60 @@ nació de que «A favor en Dólares · −$158.50» decía la dirección dos vec
 se contradecía una**. Aquí no hay contradicción —las dos dicen lo mismo— y esa
 es la diferencia que hace que la excepción no rompa la regla. Si algún día se
 revierte, esto es lo que hay que volver a mirar.
+
+## Toda pantalla de transacción registrada lleva la barra de navegación
+
+**Las tres —abono, fiado y venta— con barra abajo.** Son
+`/abonos/[movementId]`, `/ventas/[saleId]` y lo que venga detrás. Regla del
+dueño el 2026-10-24: *«Todas las pantallas de registros exitosos de
+transacciones (abono, fiado y venta) deben tener el navbar»*.
+
+**La lleva `mobile-nav.tsx`, no la pantalla**, así que una pantalla de éxito
+nueva la hereda sin hacer nada — y lo que hay que vigilar es justo lo
+contrario de lo habitual: que nadie la **excluya** ahí por arreglar otra cosa.
+
+### Lo que esto cuesta, medido, para que nadie lo redescubra
+
+La barra ocupa **723-812 a 375px**, y en estas pantallas las acciones caen
+dentro. En reposo —sin desplazar— esto es lo que pasa:
+
+| Pantalla | Botón | En reposo |
+|---|---|---|
+| Abono registrado | «Compartir» 722-762 | tapado |
+| Abono registrado | «Ver cuenta de…» 778-818 | tapado |
+| Venta de contado | «Ver ‹nombre›» 723-763 | tapado |
+
+**Y «tapado» aquí no es estético: `elementFromPoint` en el centro de esos
+botones devuelve un icono de la barra, o sea que no se pueden pulsar.**
+
+**Lo que lo hace vivible, y hay que conservarlo**: `app-main.tsx` les reserva
+**5,5rem** abajo, así que **desplazadas hasta el final las acciones quedan
+despejadas**. Si alguien quita ese aire «porque sobra espacio», los botones
+dejan de ser alcanzables también al final del scroll, y entonces no hay
+salida. El aire es parte de la regla, no decoración.
+
+**Y la salida nunca puede faltar**: las tres pantallas llevan cabecera con
+«Abrir menú». Importa sobre todo en la **venta de mostrador**, que no tiene
+cliente y por tanto tampoco botón «Ver ‹nombre›»: sin menú, el tendero se
+quedaría sin ninguna forma de salir.
+
+### Las dos decisiones, porque la de hoy desplaza a la de esta mañana
+
+El **2026-10-24 por la mañana** la barra se quitó de estas pantallas, con esa
+medición delante — tres botones muertos en reposo. **Por la tarde el dueño
+pidió devolverla**, y esa es la que vale.
+
+La razón de la primera no era mala y por eso se anota: un botón que no se
+puede pulsar se ve desde fuera como «le di y no hizo nada», que es un síntoma
+que no se parece en nada a su causa. Lo que pesa más para el dueño es que
+estas pantallas **no son un flujo a medias, son el final**, y de ellas el
+tendero sale a otro sitio: quitarle la navegación justo ahí lo deja mirando
+un resumen sin puertas.
+
+**El botón flotante «Registrar» NO vuelve.** Lo quitó él el mismo día por la
+misma medición, y lo que pidió por la tarde fue la barra, no el botón. Son
+dos cosas fijas sobre el mismo borde y se decidieron por separado — que es
+precisamente lo que hizo falta medir una por una para verlas.
 
 ## Contrast floor
 

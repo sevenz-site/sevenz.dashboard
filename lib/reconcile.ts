@@ -49,6 +49,9 @@ export type ReconcileClient = {
   balance_usd: number;
   balance_eur: number;
   document_id: string | null;
+  // Su letra — V/E/J o CC/CE/NIT. Viaja hasta la hoja de emparejar para que
+  // la ficha del candidato diga «V-32.256.369».
+  document_type: string | null;
   // El que el cliente YA tiene guardado. No lo usa la reconciliación de saldos:
   // existe para que `agruparPorCliente` no pida un teléfono que ya está.
   whatsapp: string | null;
@@ -336,6 +339,10 @@ export type CandidatoDuplicado = {
   id: string;
   name: string;
   document_id: string | null;
+  // Su letra, para que la hoja de emparejar diga «V-32.256.369». El documento
+  // que viene de la FOTO no tiene — nadie la teclea al leer una libreta — así
+  // que ahí se enseña el número solo, que es lo que la cámara leyó.
+  document_type: string | null;
   whatsapp: string | null;
   balance: number;
   balance_usd: number;
@@ -458,6 +465,7 @@ export function agruparPorCliente(
         id: c.id,
         name: c.name,
         document_id: c.document_id,
+        document_type: c.document_type ?? null,
         whatsapp: c.whatsapp,
         balance: c.balance,
         balance_usd: c.balance_usd,

@@ -90,7 +90,21 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
   // quedaba sin forma de hacer lo que la otra puerta sí permitía, que es la
   // definición de dos puertas que se separan.
   const confirmado = formData.get("confirm_duplicate") === "true";
-  const duplicado = await buscarDocumentoDuplicado(supabase, user.id, documentId);
+  // EL TIPO VIAJA CON EL NÚMERO desde el 2026-10-24: sin él, V-070707 y
+  // J-070707 se leían como el mismo documento. Se manda ya validado contra el
+  // país, igual que al guardar unas líneas más abajo.
+  const tipoDelDocumento = isDocumentTypeFor(
+    documentCountry as "VE" | "CO" | null,
+    documentTypeRaw,
+  )
+    ? documentTypeRaw
+    : null;
+  const duplicado = await buscarDocumentoDuplicado(
+    supabase,
+    user.id,
+    documentId,
+    tipoDelDocumento,
+  );
   if (duplicado && !confirmado) {
     return {
       ok: false,

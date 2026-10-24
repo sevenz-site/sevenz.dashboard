@@ -175,6 +175,7 @@ export function ClientTable({
                     <ClientCardBody
                       name={row.name}
                       documentId={row.document_id}
+                      documentType={row.document_type}
                       status={status}
                       overdueCount={overdueCount}
                       monedaDelEstado={currency}
@@ -292,7 +293,7 @@ export function ClientTable({
                             ) : null}
                           </div>
                           <div className="text-xs font-normal text-muted-foreground">
-                            {formatDocumentId(row.document_id)}
+                            {formatDocumentId(row.document_id, row.document_type)}
                           </div>
                         </TableCell>
                         {rateContext ? (

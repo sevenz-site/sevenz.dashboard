@@ -398,9 +398,11 @@ export function AbonoMonto({
       <div className="flex items-center justify-between gap-4 rounded-[10px] border px-4 py-3">
         <span className="text-xs text-muted-foreground">Fiado seleccionado</span>
         <span className="flex flex-col items-end">
+          {/* LA BANDERA AL BORDE DERECHO: esta columna es `items-end`. Ver
+              `DESIGN-SYSTEM.md`, regla del dueño del 2026-10-24. */}
           <span className="flex items-center gap-1.5 text-base font-semibold tabular-nums">
-            {llevaDivisas ? <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" /> : null}
             {formatPriceAmount(pendiente, moneda)}
+            {llevaDivisas ? <CurrencyFlagIcon currency={libro} className="size-4 shrink-0" /> : null}
           </span>
           {/* LA EQUIVALENCIA, SIEMPRE Y DEBAJO — frame `1564:11409`, y encargo
               del dueño el 2026-10-23: *«en la card "Fiado seleccionado"

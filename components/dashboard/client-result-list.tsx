@@ -15,7 +15,14 @@ import { formatDocumentId } from "@/lib/format";
 // solo no distingue a ninguna, y equivocarse aquí significa apuntarle un fiado
 // a quien no es.
 
-export type ClientResult = { id: string; name: string; documentId: string | null };
+export type ClientResult = {
+  id: string;
+  name: string;
+  documentId: string | null;
+  // Su letra. Sin valor por defecto: las dos pantallas que arman esta lista
+  // —el buscador de Cartera y el de la venta— tienen que mandarla.
+  documentType: string | null;
+};
 
 // Ocho. Es lo que el diálogo lleva usando desde siempre y lo que cabe en un
 // teléfono sin tapar la pantalla entera; con más, el dueño afina la búsqueda
@@ -52,7 +59,7 @@ export function ClientResultList({
             <span className="truncate font-medium">{c.name}</span>
             {c.documentId ? (
               <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                {formatDocumentId(c.documentId)}
+                {formatDocumentId(c.documentId, c.documentType)}
               </span>
             ) : null}
           </button>

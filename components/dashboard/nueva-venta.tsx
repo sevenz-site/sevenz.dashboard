@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { formatBs } from "@/lib/exchange-rate/format";
 import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
@@ -1267,11 +1268,20 @@ function PasoPago({
       {totalEnBolivares != null ? (
         <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
           <span className="text-sm">Total en Bolívares</span>
+          {/* LA BANDERA, DESPUÉS DEL IMPORTE. Esta fila es un
+              `justify-between`: el rótulo queda pegado a la izquierda y la
+              cifra a la derecha, así que la bandera va al borde derecho.
+              Regla del dueño del 2026-10-24, en `DESIGN-SYSTEM.md`.
+
+              LA TARJETA DE DEBAJO NO CAMBIA y no es una incoherencia: allí el
+              rótulo y la cifra viven en una columna alineada a la IZQUIERDA,
+              así que su bandera va delante. La regla mira hacia qué borde
+              empuja el contenedor, no qué tipo de dato es. */}
           <span className="flex items-center gap-1">
-            <CurrencyFlagIcon currency="VES" className="size-4" />
             <span className="text-base font-semibold tabular-nums">
               {formatPriceAmount(totalEnBolivares, "VES")}
             </span>
+            <CurrencyFlagIcon currency="VES" className="size-4" />
           </span>
         </div>
       ) : null}
@@ -1348,16 +1358,66 @@ function PasoPago({
                 la cuenta y la segunda es un abono a una deuda que sigue viva,
                 y el tendero necesita saber cuál de las dos acaba de registrar. */}
             {c.cobrado > 0 ? (
-              <div className="flex items-center justify-end gap-1 border-t py-3">
-                <span className="text-xs">
-                  {debeEstaVenta > 0.005
-                    ? `Abonó en ${NOMBRE[c.currency] ?? c.currency}`
-                    : "Pago de contado"}
-                </span>
-                <span className="flex-1 text-right text-xs tabular-nums">
-                  {formatPriceAmount(c.cobrado, c.currency)}
-                </span>
-              </div>
+              (() => {
+                // ── LOS BOLÍVARES QUE TECLEÓ, SI LOS TECLEÓ ─────────────
+                //
+                // `entryAmount` solo vale cuando pagó en bolívares; en
+                // cualquier otro caso el billete y el libro son lo mismo y no
+                // hay nada que enseñar dos veces.
+                const tecleadoBs =
+                  c.registro?.entryCurrency === "VES" && c.registro.entryAmount != null
+                    ? c.registro.entryAmount
+                    : null;
+                const esAbono = debeEstaVenta > 0.005;
+                return (
+                  <div className="flex items-start justify-between gap-1 border-t py-2">
+                    {/* «Abonó» A SECAS, SIN LA MONEDA — frames `1606:11312` y
+                        `1606:11432`. Hasta hoy decía «Abonó en Dólares»; la
+                        moneda la dice ahora la bandera pegada al importe, que
+                        es la regla de `DESIGN-SYSTEM.md`: la bandera va en el
+                        monto. Repetirla en el rótulo sobra justo cuando lo
+                        grande es una cifra en bolívares y lo de al lado es su
+                        equivalencia — ahí «en Dólares» contradecía al número.
+
+                        «Pago de contado» NO CAMBIA: los dos frames dibujan el
+                        caso fiado, y el encargo del dueño era ese. Una venta
+                        saldada no deja nada debiendo y su fila ya se lee bien. */}
+                    <span className="flex-1 text-xs">
+                      {esAbono ? "Abonó" : "Pago de contado"}
+                    </span>
+                    {esAbono ? (
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        {/* MANDA LO QUE TECLEÓ, en 16px y con su bandera. Es la
+                            misma regla que ya gobierna el historial y la ficha
+                            del abono: Bs. 100.000 escritos no pueden volver
+                            como Bs. 100.001,87. */}
+                        <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                          {tecleadoBs != null
+                            ? formatBs(tecleadoBs)
+                            : formatPriceAmount(c.cobrado, c.currency)}
+                          <CurrencyFlagIcon
+                            currency={tecleadoBs != null ? "VES" : c.currency}
+                            className="size-4 shrink-0"
+                          />
+                        </span>
+                        {/* LA EQUIVALENCIA, SOLO CUANDO PAGÓ EN BOLÍVARES. El
+                            frame del abono en divisa (`1606:11432`) no dibuja
+                            segunda línea: ahí el billete y el libro son la
+                            misma cifra, y repetirla parecería otra cosa. */}
+                        {tecleadoBs != null ? (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {formatPriceAmount(c.cobrado, c.currency)}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-xs tabular-nums">
+                        {formatPriceAmount(c.cobrado, c.currency)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()
             ) : null}
 
             {/* ── LO QUE QUEDA DEBIENDO ──────────────────────────────── */}
@@ -1622,7 +1682,12 @@ function PasoCliente({
         <ClientResultList
           results={encontrados
             .filter((c) => c.client_id !== cliente.id)
-            .map((c) => ({ id: c.client_id, name: c.name, documentId: c.document_id }))}
+            .map((c) => ({
+              id: c.client_id,
+              name: c.name,
+              documentId: c.document_id,
+              documentType: c.document_type ?? null,
+            }))}
           onSelect={(id) => {
             const c = encontrados.find((x) => x.client_id === id);
             if (!c) return;
@@ -1641,6 +1706,7 @@ function PasoCliente({
                 <ClientCardBody
                   name={fila.name}
                   documentId={fila.document_id}
+                    documentType={fila.document_type}
                   status={status}
                   overdueCount={overdueCount}
                   monedaDelEstado={currency}
@@ -1752,6 +1818,7 @@ function PasoCliente({
           id: c.client_id,
           name: c.name,
           documentId: c.document_id,
+          documentType: c.document_type ?? null,
         }))}
         onSelect={(id) => {
           const c = encontrados.find((x) => x.client_id === id);

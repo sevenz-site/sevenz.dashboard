@@ -96,7 +96,7 @@ export function ClientDetailHeader({
   const { collapsed, collapsibleRef } = useCollapseOnScroll(false);
 
   const rows = [
-    { label: "Cédula", value: formatDocumentId(client.document_id) },
+    { label: "Cédula", value: formatDocumentId(client.document_id, client.document_type) },
     { label: "Teléfono", value: client.whatsapp || "—" },
     { label: "Dirección", value: client.address || "—" },
   ];

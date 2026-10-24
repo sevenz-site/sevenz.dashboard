@@ -98,7 +98,13 @@ import {
 
 const initialState: MovementFormState = { error: null, clientId: null };
 
-type ClientOption = { id: string; name: string; document_id: string | null };
+type ClientOption = {
+  id: string;
+  name: string;
+  document_id: string | null;
+  // Su letra, para que el resultado diga «V-32.256.369» como el resto.
+  document_type: string | null;
+};
 
 export function ClientSearchDialog({
   clients,
@@ -590,7 +596,12 @@ function ClientSearchDialogBody({
 
         {results.length > 0 ? (
           <ClientResultList
-            results={results.map((c) => ({ id: c.id, name: c.name, documentId: c.document_id }))}
+            results={results.map((c) => ({
+              id: c.id,
+              name: c.name,
+              documentId: c.document_id,
+              documentType: c.document_type ?? null,
+            }))}
             onSelect={selectExisting}
           />
         ) : query.trim() ? (

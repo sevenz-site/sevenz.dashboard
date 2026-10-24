@@ -1162,7 +1162,7 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
       // ‹nombre›» del resumen. Sale de aquí y no del navegador: la página ya
       // comprobó que la venta es del dueño de la sesión, así que este id es el
       // del cliente de ESA venta y no uno que alguien pueda cambiar en la URL.
-      .select("id, name, document_id, whatsapp, is_walk_in")
+      .select("id, name, document_id, document_type, whatsapp, is_walk_in")
       .eq("id", venta.client_id)
       .maybeSingle(),
     contextoDeVenta(supabase, user.id),
@@ -1277,7 +1277,10 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
         : {
             id: cliente.id as string,
             nombre: cliente.name as string,
-            documento: formatDocumentId((cliente.document_id as string | null) ?? null),
+            documento: formatDocumentId(
+              (cliente.document_id as string | null) ?? null,
+              (cliente.document_type as string | null) ?? null,
+            ),
             telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp as string) : "—",
           },
     bloques,

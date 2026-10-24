@@ -81,6 +81,7 @@ export const CLIENT_CARD_ROW = "flex items-center gap-1.5 px-4 py-2";
 export function ClientCardBody({
   name,
   documentId,
+  documentType,
   status,
   overdueCount,
   hasPendingReview = false,
@@ -95,6 +96,10 @@ export function ClientCardBody({
 }: {
   name: string;
   documentId: string | null;
+  // LA LETRA DEL DOCUMENTO, sin valor por defecto a propósito: las tres
+  // pantallas que dibujan esta tarjeta tienen que mandarla, y sin un valor
+  // por defecto el compilador las señala. `null` enseña el número solo.
+  documentType: string | null;
   status: ClientStatus;
   // CUÁNTOS FIADOS VENCIDOS, para el contador del chip — migración `134`.
   //
@@ -166,7 +171,7 @@ export function ClientCardBody({
             rather than balancing it. */}
         <span className="truncate text-lg font-medium text-foreground">{name}</span>
         <span className="truncate text-[13px] text-muted-foreground">
-          {formatDocumentId(documentId)}
+          {formatDocumentId(documentId, documentType)}
         </span>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
