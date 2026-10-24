@@ -111,6 +111,11 @@ export type DatosDeLaOrden = {
   // sabe qué juego de letras corresponde.
   tipoDeDocumento: string | null;
   whatsapp: string;
+  // WHERE TO TAKE IT. Optional, and the one field in this form the shop does
+  // not strictly need to answer: a customer who would rather not give it still
+  // gets to order. Added 2026-10-24, migration `157`, because the shopkeeper's
+  // order card shows «Dirección:» and nothing could fill it.
+  direccion: string;
   quiereAvisos: boolean;
   textoDelPermiso: string | null;
 };
@@ -168,6 +173,12 @@ export async function crearOrden(
       p_customer_whatsapp: datos.whatsapp,
       p_wants_notices: datos.quiereAvisos,
       p_consent_text: datos.textoDelPermiso,
+      // EL NOVENO ARGUMENTO, que la función acepta desde la `157` con
+      // `default null`. Mandarlo siempre —aunque vaya vacío— y no solo cuando
+      // hay algo: PostgREST resuelve por los nombres que recibe, y una llamada
+      // que a veces lleva ocho y a veces nueve son dos resoluciones distintas
+      // que probar. La función ya limpia el vacío a `null`.
+      p_customer_address: datos.direccion,
       p_items: items,
     });
 

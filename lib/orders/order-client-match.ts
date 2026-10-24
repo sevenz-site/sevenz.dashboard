@@ -63,6 +63,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // with a name and a document in front of him, and can decline. Being wrong by
 // DEFAULT makes him register for a second time somebody he already had, and
 // that splits a person's history into two fichas that never join again.
+//
+// ───────────────────────────────────────────────────────────────────────
+// THREE ANSWERS AND NOT TWO, SINCE 2026-10-24
+//
+// The first version returned a client or null, and «several share these
+// digits» had to fall into null — the amber «no lo encontré» — which was
+// honest and useless: the shopkeeper could see no way forward.
+//
+// The owner designed the third state that same day (frame `1634:30094`): a
+// GREEN card saying «El cliente ya existe en varias cuentas de Sevenz» with a
+// «Ver clientes» button. So the answer this function gives has three shapes,
+// and the screen draws one card per shape.
 export type OrderClient = {
   id: string;
   name: string;
@@ -71,6 +83,15 @@ export type OrderClient = {
   whatsapp: string | null;
   address: string | null;
 };
+
+export type OrderClientMatch =
+  // Exactly one ficha. The ordinary case, and the only one from which the
+  // registration flow can carry on without asking anything.
+  | { kind: "uno"; cliente: OrderClient }
+  // Several fichas share these digits and nothing in the order tells them
+  // apart. Picking one would be a coin flip on whose debt this becomes.
+  | { kind: "varios"; clientes: OrderClient[] }
+  | { kind: "ninguno" };
 
 // DIGITS ONLY. The order holds what the visitor typed and the client holds
 // what the shopkeeper typed: «V-12.345.678» and «12345678» are the same
@@ -84,12 +105,12 @@ export async function findOrderClient(
   ownerId: string,
   document: string | null,
   documentType: string | null,
-): Promise<OrderClient | null> {
+): Promise<OrderClientMatch> {
   const digits = digitsOf(document);
   // NO DOCUMENT, NO SEARCH. An order without one cannot be matched to
   // anybody, and returning the first client that happens to fit on some other
   // field would be inventing the answer this function exists to give.
-  if (digits === "") return null;
+  if (digits === "") return { kind: "ninguno" };
 
   // `.eq("owner_id")` EXPLICITLY even though RLS already filters: it is
   // `CLAUDE.md`'s rule for any query whose identifier comes from the browser.
@@ -107,19 +128,21 @@ export async function findOrderClient(
     // Taking his order screen down because we could not tell him whether the
     // client exists trades a missing fact for a page that does not open.
     console.error("[orders] findOrderClient:", error.message);
-    return null;
+    return { kind: "ninguno" };
   }
 
   const candidates = (data ?? []) as OrderClient[];
   const sameDigits = candidates.filter((c) => digitsOf(c.document_id) === digits);
-  if (sameDigits.length === 0) return null;
+  if (sameDigits.length === 0) return { kind: "ninguno" };
 
   const orderLetter = (documentType ?? "").trim().toUpperCase();
 
   if (orderLetter === "") {
     // No letter in the order, so only the digits can decide — and if several
-    // people share them, nothing can. See the header.
-    return sameDigits.length === 1 ? sameDigits[0] : null;
+    // people share them, the shopkeeper decides. See the header.
+    return sameDigits.length === 1
+      ? { kind: "uno", cliente: sameDigits[0] }
+      : { kind: "varios", clientes: sameDigits };
   }
 
   // THE LETTER DECIDES FIRST, and an exact hit is unambiguous by definition:
@@ -128,11 +151,17 @@ export async function findOrderClient(
   const exact = sameDigits.find(
     (c) => (c.document_type ?? "").trim().toUpperCase() === orderLetter,
   );
-  if (exact) return exact;
+  if (exact) return { kind: "uno", cliente: exact };
 
-  // The order DOES carry a letter and no ficha matches it. One WITHOUT a
-  // letter is still a candidate — nobody ever asked that client — but only if
-  // it is the only one.
+  // The order DOES carry a letter and no ficha matches it. The ones WITHOUT a
+  // letter are still candidates — nobody ever asked those clients.
+  //
+  // AND THE ONES WITH A DIFFERENT LETTER ARE NOT. `V-21054832` and
+  // `E-21054832` are two people as far as this product is concerned, and
+  // offering one when the order says the other is the «confidently wrong»
+  // this whole function avoids.
   const sinLetra = sameDigits.filter((c) => (c.document_type ?? "").trim() === "");
-  return sinLetra.length === 1 ? sinLetra[0] : null;
+  if (sinLetra.length === 1) return { kind: "uno", cliente: sinLetra[0] };
+  if (sinLetra.length > 1) return { kind: "varios", clientes: sinLetra };
+  return { kind: "ninguno" };
 }

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { CircleUserRound, UserRoundSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDocumentId } from "@/lib/format";
-import type { OrderClient } from "@/lib/orders/order-client-match";
+import type { OrderClientMatch } from "@/lib/orders/order-client-match";
+import { OrderClientPickerSheet } from "@/components/dashboard/order-client-picker-sheet";
 
 // WHO ORDERED, AND WHETHER THE SHOP ALREADY HAS THEM — frames `1518:10879`
 // (found) and `1514:10294` (not found).
@@ -26,17 +27,33 @@ import type { OrderClient } from "@/lib/orders/order-client-match";
 // ordering is the ordinary case and the good news for a shop. Red would read
 // as «this order has a problem».
 //
-// AND THE BUTTON ONLY EXISTS IN THE GREEN STATE. There is nowhere to send
+// AND THE BUTTON ONLY EXISTS IN THE GREEN STATES. There is nowhere to send
 // anybody when the client does not exist yet — the alta happens inside the
 // registration flow, with the order's data already in hand, and a button here
 // would open a second door into the same place from a screen the shopkeeper
 // has not finished reading.
+//
+// ═══════════════════════════════════════════════════════════════════════
+// AND A THIRD STATE: VARIAS FICHAS CON LOS MISMOS DÍGITOS
+//
+// Frame `1634:30094`, the owner's own on 2026-10-24. It is GREEN and not
+// amber, and that is the right call: the client DOES exist, the shop just has
+// more than one ficha that could be them. Amber would have read as «this
+// order has a problem» when the problem is older than the order.
+//
+// It happens because migration `033`'s unique index normalises with
+// `[^a-z0-9]`, which keeps the letter: `V-21054832` and `E-21054832` are two
+// valid keys. Dev holds three such groups today, one of them three deep.
+//
+// «Ver clientes» OPENS A SHEET WITH THE MATCHES instead of guessing one. What
+// the shopkeeper does from there — read them and decide — is the only thing
+// that can tell them apart, because the order carries nothing that does.
 export function OrderClientCard({
   nombreDelPedido,
   documentoDelPedido,
   tipoDeDocumento,
   telefono,
-  cliente,
+  coincidencia,
 }: {
   // As the CUSTOMER typed it in the cart, never the ficha's. The two can
   // differ and seeing both is what lets the shopkeeper judge the match.
@@ -44,10 +61,11 @@ export function OrderClientCard({
   documentoDelPedido: string;
   tipoDeDocumento: string | null;
   telefono: string;
-  // The matching ficha, or null. See `findOrderClient` for why it is matched
-  // by document and nothing else.
-  cliente: OrderClient | null;
+  // One ficha, several, or none. See `findOrderClient` for why it is matched
+  // by document and nothing else, and why «several» is its own answer.
+  coincidencia: OrderClientMatch;
 }) {
+  const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
   // THE ADDRESS COMES FROM THE FICHA, NOT FROM THE ORDER. The owner's
   // decision, 2026-10-24: *«la sacamos de la ficha del cliente ya existente y
   // la dejamos vacía cuando no existe»*. The ficha's is the one he maintains;
@@ -94,14 +112,25 @@ export function OrderClientCard({
         </div>
       </div>
 
-      {cliente ? (
+      {coincidencia.kind !== "ninguno" ? (
         <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
           <CircleUserRound className="mt-px size-4 shrink-0" aria-hidden="true" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">El cliente ya existe en tu cuenta de Sevenz.</p>
+            <p className="font-semibold">
+              {coincidencia.kind === "varios"
+                ? "El cliente ya existe en varias cuentas de Sevenz."
+                : "El cliente ya existe en tu cuenta de Sevenz."}
+            </p>
+            {/* LA SEGUNDA LÍNEA CAMBIA DE SUJETO A PROPÓSITO. Con una sola
+                ficha nombra LA FICHA, que es lo que deja comparar con el
+                nombre de arriba —el que escribió el cliente— y cazar un
+                emparejamiento malo. Con varias no hay una que nombrar, así que
+                repite el documento del pedido, que es lo único común a todas.
+                El frame `1634:30094` lo dibuja así. */}
             <p>
-              {cliente.name} con cédula{" "}
-              {formatDocumentId(cliente.document_id ?? "", cliente.document_type)}
+              {cliente
+                ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
+                : `${nombreDelPedido} con cédula ${formatDocumentId(documentoDelPedido, tipoDeDocumento)}`}
             </p>
           </div>
         </div>
@@ -125,6 +154,10 @@ export function OrderClientCard({
               the name that will be at the other end. */}
           <Link href={`/clients/${cliente.id}`}>Ver {cliente.name}</Link>
         </Button>
+      ) : null}
+
+      {coincidencia.kind === "varios" ? (
+        <OrderClientPickerSheet clientes={coincidencia.clientes} />
       ) : null}
     </div>
   );

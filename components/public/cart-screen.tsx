@@ -506,6 +506,7 @@ function FormularioDeLaOrden({
     defaultDocumentType(ownerCountry as OwnerCountry | null),
   );
   const [whatsapp, setWhatsapp] = useState("");
+  const [direccion, setDireccion] = useState("");
   // DESMARCADA, aunque el frame la dibuje marcada. El porqué está en
   // `lib/cart/mensaje.ts`, junto al texto: Meta exige consentimiento
   // afirmativo, y una premarcada no es una elección.
@@ -529,6 +530,7 @@ function FormularioDeLaOrden({
           documento,
           tipoDeDocumento,
           whatsapp,
+          direccion,
           quiereAvisos,
           textoDelPermiso: quiereAvisos ? TEXTO_PERMISO_ORDEN : null,
         },
@@ -720,6 +722,38 @@ function FormularioDeLaOrden({
               name="orden_whatsapp"
               preferredDialCode={prefijo}
               onValueChange={setWhatsapp}
+              disabled={enviando}
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {/* ── LA DIRECCIÓN, Y ES LA ÚNICA OPCIONAL DE ESTE FORMULARIO ────
+                Decisión del dueño el 2026-10-24: *«pidámosla en el carrito»*.
+                La tarjeta del pedido que él lee enseña «Dirección:» y hasta
+                hoy no había nada en la base que pudiera llenarla.
+
+                «(opcional)» EN EL RÓTULO Y NO EN UN AVISO DEBAJO: este
+                formulario está entre el cliente y su pedido, así que un campo
+                más es una razón más para abandonarlo. Que se pueda saltar
+                tiene que leerse ANTES de empezar a escribirlo, no después.
+
+                Es el mismo rótulo que el alta de cliente del tendero
+                —«Dirección (opcional)»— a propósito: cuando él dé de alta a
+                esta persona desde el pedido, va a ver el mismo campo con el
+                mismo nombre y su valor ya puesto.
+
+                200 CARACTERES, que es lo que admite la columna de la `157`.
+                El tope está aquí y no solo en la base porque una dirección
+                recortada al guardar se descubre leyéndola, cuando ya no se
+                puede preguntar. */}
+            <Label htmlFor="orden_direccion">Dirección (opcional)</Label>
+            <Input
+              id="orden_direccion"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+              placeholder="Dónde llevarlo"
+              maxLength={200}
+              autoComplete="street-address"
               disabled={enviando}
             />
           </div>

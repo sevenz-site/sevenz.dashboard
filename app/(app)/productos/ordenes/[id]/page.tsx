@@ -179,7 +179,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         documentoDelPedido={pedido.customer_document}
         tipoDeDocumento={pedido.customer_document_type}
         telefono={pedido.customer_whatsapp_raw || ""}
-        cliente={clienteDelPedido}
+        coincidencia={clienteDelPedido}
       />
 
       {/* LAS DOS FILAS QUE NO SON DEL CLIENTE SINO DEL PEDIDO, y por eso
