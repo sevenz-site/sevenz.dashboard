@@ -20,10 +20,11 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
+import { OrderProductSheet } from "@/components/dashboard/order-product-sheet";
 import {
-  OrderProductSheet,
+  OrderProductCard,
   OrderProductRowButton,
-} from "@/components/dashboard/order-product-sheet";
+} from "@/components/dashboard/order-product-card";
 import type { BolivarRates, PriceTier } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
@@ -254,30 +255,44 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
             // vivía aquí debajo y podía ser un párrafo entero: con la fila
             // ahora tocable, un bloque de texto dentro del botón convierte
             // una lista de dos renglones en una pared.
-            <OrderProductSheet
-              key={item.id}
-              nombreEnElPedido={item.product_name}
-              cantidad={Number(item.quantity)}
-              precioUnitario={Number(item.unit_price)}
-              moneda={item.currency as PriceCurrency}
-              escalon={item.tier as PriceTier}
-              comentario={item.comment}
-              producto={item.product_id ? (productosPorId.get(item.product_id) ?? null) : null}
-              rates={rates}
-            >
-              <OrderProductRowButton
-                nombre={item.product_name}
-                cantidad={Number(item.quantity)}
-                precioUnitario={Number(item.unit_price)}
-                moneda={item.currency as PriceCurrency}
-                escalon={item.tier as PriceTier}
-                fotoPath={
-                  item.product_id
-                    ? (productosPorId.get(item.product_id)?.photo_path ?? null)
-                    : null
-                }
-              />
-            </OrderProductSheet>
+            (() => {
+              // EL PRODUCTO SE RESUELVE UNA VEZ Y LO LEEN LAS TRES PIEZAS.
+              // `product_id` es `on delete set null`, así que una línea puede
+              // quedarse sin producto; y `readOrderProducts` devuelve un mapa
+              // vacío cuando la lectura FALLA, que no es lo mismo que
+              // «borrado» -- por eso el mapa se consulta una vez y no tres.
+              const producto = item.product_id
+                ? (productosPorId.get(item.product_id) ?? null)
+                : null;
+              return (
+                <OrderProductCard
+                  key={item.id}
+                  cantidad={Number(item.quantity)}
+                  precioUnitario={Number(item.unit_price)}
+                  moneda={item.currency as PriceCurrency}
+                  escalon={item.tier as PriceTier}
+                  productoBorrado={producto == null}
+                  hrefEditar={producto ? `/productos/${producto.id}` : null}
+                  rates={rates}
+                >
+                  <OrderProductSheet
+                    nombreEnElPedido={item.product_name}
+                    cantidad={Number(item.quantity)}
+                    precioUnitario={Number(item.unit_price)}
+                    moneda={item.currency as PriceCurrency}
+                    escalon={item.tier as PriceTier}
+                    comentario={item.comment}
+                    producto={producto}
+                    rates={rates}
+                  >
+                    <OrderProductRowButton
+                      nombre={item.product_name}
+                      fotoPath={producto?.photo_path ?? null}
+                    />
+                  </OrderProductSheet>
+                </OrderProductCard>
+              );
+            })()
           ))
         )}
       </div>
