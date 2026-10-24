@@ -82,6 +82,11 @@ type SharedMovement = {
   description: string | null;
   running_balance: number;
   needs_review: boolean;
+  // El código de la transacción — migración 148. Opcional porque el enlace
+  // lo sirve una función de Postgres: si alguna vez se despliega el código
+  // antes que la migración, la pantalla se queda sin buscador en vez de
+  // romperse.
+  transaction_code?: string | null;
   plazo_dias: number | null;
   // Arrives through migration `121`. It is null for everything stored before
   // 2026-10-16, and the card only draws the table when it is not.

@@ -644,7 +644,7 @@ async function MovementHistory({
   // directas no están apareciendo en el historial de movimiento del cliente».
   const { data: ventasCrudas } = await supabase
     .from("sales")
-    .select("id, created_at")
+    .select("id, created_at, transaction_code")
     .eq("client_id", clientId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });

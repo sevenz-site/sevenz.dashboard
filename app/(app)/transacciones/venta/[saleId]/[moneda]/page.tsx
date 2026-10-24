@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { redirect, notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -70,7 +71,7 @@ export default async function VentaDeContadoPage({
   // directo --la `124` lo decidió así-- y aun así se compara aquí.
   const { data: venta } = await supabase
     .from("sales")
-    .select("id, owner_id, created_at, client_id, clients!inner(id, name)")
+    .select("id, owner_id, created_at, client_id, transaction_code, clients!inner(id, name)")
     .eq("id", saleId)
     .maybeSingle();
 
@@ -183,6 +184,7 @@ export default async function VentaDeContadoPage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={(venta.transaction_code as string | null) ?? null} />
 
       <dl className="flex flex-col gap-4">
         <Grupo>

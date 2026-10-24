@@ -52,7 +52,7 @@ export default async function AbonoRegistradoPage({
   const { data: abono } = await supabase
     .from("movements")
     .select(
-      "id, client_id, type, amount, currency, created_at, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, clients!inner(id, name, document_id, whatsapp, owner_id)",
+      "id, client_id, type, amount, currency, created_at, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, transaction_code, clients!inner(id, name, document_id, whatsapp, owner_id)",
     )
     .eq("id", movementId)
     .is("deleted_at", null)
@@ -281,6 +281,15 @@ export default async function AbonoRegistradoPage({
             se lean igual. `-mt-2` porque el contenedor ya pone `gap-4` y la
             fecha pertenece al título, no es un bloque aparte. */}
         <p className="-mt-2 text-center text-sm text-muted-foreground">{cuando}</p>
+        {/* EL CÓDIGO TAMBIÉN AQUÍ, porque esta pantalla es el gemelo en vivo
+            del comprobante que se comparte: si el PNG lo lleva y la pantalla
+            no, el tendero que compara los dos cree que falta algo. Centrado
+            con la fecha, que es la otra etiqueta de la transacción entera. */}
+        {abono.transaction_code ? (
+          <p className="-mt-2 text-center text-sm font-medium text-primary tabular-nums">
+            Código de transacción: {abono.transaction_code as string}
+          </p>
+        ) : null}
       </div>
 
       <section className="flex flex-col rounded-[10px] border p-4">
@@ -531,6 +540,9 @@ export default async function AbonoRegistradoPage({
           telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp) : "—",
         }}
         abono={{
+          // EL CÓDIGO DE ESTA TRANSACCIÓN. Es el mismo en las tres líneas de
+          // un reparto, así que da igual por cuál se haya entrado aquí.
+          codigo: (abono.transaction_code as string | null) ?? null,
           // Los bolívares TECLEADOS, no una conversión de hoy. Misma razón que
           // la fila «Entregó» de arriba.
           billeteBs: billeteEnBs,

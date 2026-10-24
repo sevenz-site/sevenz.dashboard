@@ -74,6 +74,11 @@ export type AbonoDelResumen = {
   //
   // Tecleados y no convertidos, por la misma razón que la fila del historial:
   // escribió 900 y leer 899,09 no se explica, aunque sea cierto.
+  // EL CÓDIGO DE LA TRANSACCIÓN — migración 147. Va en el comprobante porque
+  // es el papel que se queda en el chat del cliente: es desde ahí desde donde
+  // alguien lo va a leer para buscarlo, no desde una pantalla que ya tiene
+  // delante.
+  codigo: string | null;
   billeteBs: number | null;
   // Igual que arriba pero para el caso de un solo libro: la línea «Entregó»
   // de siempre, dentro de la tarjeta.
@@ -464,6 +469,21 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     const altoFicha = fy - inicioFicha + 8 * ESCALA;
     if (ctx) tarjeta(ctx, inicioFicha, altoFicha);
     y = inicioFicha + altoFicha + 16 * ESCALA;
+  }
+
+  // ── EL CÓDIGO, ENCIMA DE TODO LO DEL ABONO ───────────────────────────
+  //
+  // Sin tarjeta y sin borde: es una etiqueta de la transacción entera, no un
+  // dato más de una de sus partes. Metido en la primera tarjeta se leería
+  // como si fuera de ese libro, que es exactamente el fallo que el billete
+  // en bolívares tenía antes de salir de ahí.
+  if (datos.abono?.codigo) {
+    if (ctx) {
+      ctx.font = fuente(12, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText(`Código de transacción: ${datos.abono.codigo}`, MARGEN, y + 12 * ESCALA);
+    }
+    y += 26 * ESCALA;
   }
 
   // ── EL BILLETE EN BOLÍVARES, SI SE REPARTIÓ ENTRE VARIOS LIBROS ──────

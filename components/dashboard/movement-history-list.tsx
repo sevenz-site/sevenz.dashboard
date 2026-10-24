@@ -130,6 +130,11 @@ export function MovementHistoryList({
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
   const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
 
+  // EL CÓDIGO TECLEADO. Cadena vacía es «sin filtrar», no «ningún código»:
+  // un buscador que no deja ver nada mientras está vacío sería un filtro
+  // puesto que nadie pidió.
+  const [codigo, setCodigo] = useState("");
+
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ─────────────────────
   //
   // Un movimiento y una venta de contado no comparten tabla ni forma, así que
@@ -315,10 +320,34 @@ export function MovementHistoryList({
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // ── EL FILTRO POR CÓDIGO ──────────────────────────────────────────
+  //
+  // Va EL PRIMERO de la cadena y eso importa: es el más estrecho de los
+  // cuatro —deja las filas de UNA transacción— así que lo que sobrevive a él
+  // es lo poco que los demás tienen que recorrer, y el orden en que el
+  // tendero los lee es el mismo en que se aplican.
+  //
+  // `includes` Y NO `===`: el código se lee de una captura o se escucha por
+  // teléfono, así que media palabra tiene que servir mientras se teclea el
+  // resto. Sin distinguir mayúsculas, porque el campo las pinta en
+  // mayúsculas pero no transforma lo escrito.
+  //
+  // UNA FILA SIN CÓDIGO NO CASA NUNCA, y es correcto: es anterior a la
+  // migración 147 y no hay código por el que buscarla. Hoy no existe
+  // ninguna, ni en dev ni en producción.
+  const codigoBuscado = codigo.trim().toUpperCase();
+  const porCodigo =
+    codigoBuscado === ""
+      ? filas
+      : filas.filter((f) => {
+          const suyo = f.clase === "movimiento" ? f.m.transaction_code : f.v.transactionCode;
+          return (suyo ?? "").toUpperCase().includes(codigoBuscado);
+        });
+
   const porTipo =
     tipo === "todos"
-      ? filas
-      : filas.filter((f) =>
+      ? porCodigo
+      : porCodigo.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
@@ -381,6 +410,11 @@ export function MovementHistoryList({
     setPage(1);
   }
 
+  function cambiarCodigo(c: string) {
+    setCodigo(c);
+    setPage(1);
+  }
+
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
   // delante el único control que sirve para deshacerlo.
@@ -400,6 +434,8 @@ export function MovementHistoryList({
           moneda={moneda}
           setMoneda={cambiarMoneda}
           monedas={monedasDelNegocio}
+          codigo={codigo}
+          setCodigo={cambiarCodigo}
         />
       ) : null}
     </div>
@@ -438,7 +474,7 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo })} />
       </div>
     );
   }

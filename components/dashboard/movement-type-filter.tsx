@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -219,6 +221,8 @@ export function FiltrosDelHistorial({
   moneda,
   setMoneda,
   monedas,
+  codigo,
+  setCodigo,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
@@ -230,18 +234,54 @@ export function FiltrosDelHistorial({
   // solo: ahí el filtro no se dibuja, y no por estar vacío —ver el comentario
   // de los estados— sino porque elegir entre una cosa no es elegir.
   monedas: readonly PriceCurrency[];
+  // ── EL BUSCADOR POR CÓDIGO ──────────────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-23: *«en el historial de transacciones
+  // agregarás un filtro tipo search para escribir el código y buscar las
+  // transacciones con ese código»*.
+  //
+  // PARA QUÉ SIRVE DE VERDAD, que no es «encontrar una transacción»: un pago
+  // repartido entre tres fiados deja TRES filas que no se parecen entre sí
+  // —monedas distintas, importes distintos— y nada en la lista dice que
+  // fueron el mismo billete. Escribir su código las deja a las tres en
+  // pantalla y a nada más. Es la única herramienta que vuelve a juntarlas.
+  codigo: string;
+  setCodigo: (v: string) => void;
 }) {
   return (
     // SIN EL RÓTULO «Filtrar por», que se fue el 2026-10-23 por instrucción
     // del dueño. Con un solo chip explicaba para qué servía; con tres, los
     // chips se explican entre ellos y el rótulo solo gastaba ancho en la
     // única fila que tiene que caber a 375px.
-    <div className="flex flex-wrap items-center gap-2">
-      <MovementTypeFilter tipo={tipo} setTipo={setTipo} />
-      <MovementStatusFilter estado={estado} setEstado={setEstado} />
-      {monedas.length > 1 ? (
-        <MovementCurrencyFilter moneda={moneda} setMoneda={setMoneda} monedas={monedas} />
-      ) : null}
+    <div className="flex flex-col gap-2">
+      {/* EL BUSCADOR EN SU PROPIA LÍNEA, y no como un cuarto chip: a 375px
+          la fila ya lleva tres y un campo de escribir necesita ancho para
+          enseñar lo que se teclea. Arriba porque es el filtro más estrecho
+          de todos —deja en pantalla una transacción— y leerlo primero evita
+          combinarlo sin querer con un chip puesto antes. */}
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          placeholder="Buscar por código"
+          aria-label="Buscar por código de transacción"
+          // `uppercase` SOLO EN LA PANTALLA: el valor se compara sin
+          // distinguir mayúsculas, así que esto es para que lo tecleado se
+          // parezca al código impreso, no una transformación del dato.
+          className="h-10 pl-9 uppercase placeholder:normal-case"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <MovementTypeFilter tipo={tipo} setTipo={setTipo} />
+        <MovementStatusFilter estado={estado} setEstado={setEstado} />
+        {monedas.length > 1 ? (
+          <MovementCurrencyFilter moneda={moneda} setMoneda={setMoneda} monedas={monedas} />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -321,10 +361,14 @@ export function tituloDeListaVacia({
   tipo,
   estado,
   moneda,
+  codigo = "",
 }: {
   tipo: TipoFiltro;
   estado: EstadoFiltro;
   moneda: MonedaFiltro;
+  // El código tecleado, si lo hay. Por defecto vacío para que una pantalla
+  // que todavía no tenga buscador siga llamando a esto igual.
+  codigo?: string;
 }): string {
   const sustantivo =
     tipo === "charge"
@@ -336,6 +380,11 @@ export function tituloDeListaVacia({
           : "transacciones";
 
   const partes = [`No hay ${sustantivo}`];
+  // EL CÓDIGO VA PRIMERO, igual que en la cadena de filtros: es el más
+  // estrecho, y cuando está puesto suele ser el único culpable de que la
+  // lista esté vacía. Entre comillas y tal cual se buscó, para que se vea si
+  // sobra una letra.
+  if (codigo.trim() !== "") partes.push(`con el código «${codigo.trim().toUpperCase()}»`);
   if (moneda !== "todas") partes.push(`en ${nombreDeMoneda(moneda).toLowerCase()}`);
   if (estado !== "todos") {
     const etiqueta = ESTADOS.find((e) => e.value === estado)?.label ?? estado;

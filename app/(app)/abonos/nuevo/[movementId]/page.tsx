@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -78,7 +79,7 @@ export default async function ConfirmarFiadoPage({
   const { data: mov } = await supabase
     .from("movements")
     .select(
-      "id, client_id, type, amount, currency, description, plazo_dias, cuotas, created_at, sale_id, photo_path, entry_currency, entry_amount, exchange_rate_used, clients!inner(id, name, owner_id)",
+      "id, client_id, type, amount, currency, description, plazo_dias, cuotas, created_at, sale_id, photo_path, entry_currency, entry_amount, exchange_rate_used, transaction_code, clients!inner(id, name, owner_id)",
     )
     .eq("id", movementId)
     .is("deleted_at", null)
@@ -155,6 +156,7 @@ export default async function ConfirmarFiadoPage({
 
       <div className="flex flex-col gap-2">
         <ScreenTitle>Detalle de transacción</ScreenTitle>
+        <CodigoDeTransaccion codigo={(mov.transaction_code as string | null) ?? null} />
         <p className="text-sm text-muted-foreground">2/2 Confirma transacción a abonar</p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full w-full rounded-full bg-foreground transition-all" />

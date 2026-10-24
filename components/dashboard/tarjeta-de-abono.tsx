@@ -40,6 +40,15 @@ export type AbonoDirigido = {
   // convertiría ese respaldo en mentira.
   entryCurrency?: "VES" | PriceCurrency | null;
   entryAmount?: number | null;
+  // EL CÓDIGO DE SU TRANSACCIÓN — migración 147, encargo del dueño el
+  // 2026-10-23: *«Para los abonos asociados a fiados dentro de fiados
+  // aparecerán en el footer de la card dentro del fiado»*.
+  //
+  // Es el de la TRANSACCIÓN, no el del abono: un pago repartido entre tres
+  // fiados deja tres tarjetas como esta, en tres fichas distintas, y las tres
+  // llevan el mismo código. Buscarlo es lo que las vuelve a juntar, que es
+  // justo para lo que este código existe.
+  transactionCode?: string | null;
   // Lo máximo que admite su fiado contando este abono, para el tope del
   // diálogo. `null` en un abono sin dirigir.
 };
@@ -133,7 +142,33 @@ export function TarjetaDeAbono({
   const enBs =
     abono.tasaSellada != null ? abono.amount * abono.tasaSellada : null;
 
-  return (
+  const codigo = abono.transactionCode ?? null;
+
+  // ── EL PIE CON EL CÓDIGO ────────────────────────────────────────────
+  //
+  // SE ENVUELVE LA TARJETA, NO SE COPIAN SUS CLASES. `CLASE_TARJETA` trae su
+  // propio borde y su redondeo; con pie, el borde lo pone el envoltorio y la
+  // tarjeta de dentro los suelta. Es el mismo patrón que la fila de «Así se
+  // reparte el pago» en `abono-reparto.tsx`, y existe porque dos bordes
+  // anidados se leen como dos tarjetas.
+  //
+  // SIN CÓDIGO NO HAY ENVOLTORIO y la tarjeta sale como siempre: `null` es
+  // una fila anterior a la migración 147, y un pie que dijera «Código: —»
+  // prometería algo que ninguna búsqueda va a encontrar.
+  const conPie = (cuerpo: React.ReactNode) =>
+    codigo == null ? (
+      cuerpo
+    ) : (
+      <div className="w-full overflow-hidden rounded-[10px] border [&>div:first-child]:rounded-none [&>div:first-child]:border-0">
+        {cuerpo}
+        <div className="border-t px-4 py-2 text-xs text-muted-foreground">
+          Código de transacción:{" "}
+          <span className="font-medium text-primary tabular-nums">{codigo}</span>
+        </div>
+      </div>
+    );
+
+  return conPie(
     // ── ESTA TARJETA NO SE TOCA: NO LLEVA ENLACE ───────────────────────
     //
     // Reportado por el dueño el 2026-10-21: *«al seleccionar un abono me abre
@@ -268,6 +303,6 @@ export function TarjetaDeAbono({
         monedaDelLibro={abono.currency}
       />
       )}
-    </div>
+    </div>,
   );
 }

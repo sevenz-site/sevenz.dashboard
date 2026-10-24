@@ -111,6 +111,9 @@ function textoDelAbono(nombre: string, a: AbonoDelResumen, fecha: string | null)
   // comparte cuando el dibujo falla, y dejarlo sin fecha haría que el recibo
   // dijera una cosa u otra según cómo se compartiera.
   if (fecha) lineas.push(fecha);
+  // EL CÓDIGO, igual que en la imagen y en el mismo sitio: es por donde
+  // alguien vuelve a encontrar esta transacción.
+  if (a.codigo) lineas.push(`Código de transacción: ${a.codigo}`);
   // EL BILLETE PRIMERO, igual que la imagen. Solo cuando se repartió entre
   // varios libros; con uno, la línea «Entregó» de más abajo ya lo dice.
   if (a.billeteBs != null) lineas.push(`Abonó: ${formatBs(a.billeteBs)}`);

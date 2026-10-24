@@ -35,6 +35,8 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
+  // El código de su transacción — migración 148, para el buscador.
+  transaction_code?: string | null;
   amount: number;
   currency: LedgerCurrency | null;
   description: string | null;
@@ -72,6 +74,9 @@ type SharedMovement = {
 export type SharedVentaDeContado = {
   sale_id: string;
   created_at: string;
+  // El código de la transacción — migración 148. Una venta pagada entera no
+  // escribe movimiento, así que el suyo vive en `sales` y llega por aquí.
+  transaction_code?: string | null;
   currency: LedgerCurrency | null;
   amount: number;
   lineas: { name: string; quantity: number; unit_price: number }[];
@@ -140,6 +145,11 @@ export function MovementHistoryList({
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
   const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
+
+  // EL CÓDIGO TECLEADO. Cadena vacía es «sin filtrar», no «ningún código»:
+  // un buscador que no deja ver nada mientras está vacío sería un filtro
+  // puesto que nadie pidió.
+  const [codigo, setCodigo] = useState("");
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ────────────────────────
   //
@@ -239,10 +249,34 @@ export function MovementHistoryList({
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // ── EL FILTRO POR CÓDIGO ──────────────────────────────────────────
+  //
+  // Va EL PRIMERO de la cadena y eso importa: es el más estrecho de los
+  // cuatro —deja las filas de UNA transacción— así que lo que sobrevive a él
+  // es lo poco que los demás tienen que recorrer, y el orden en que el
+  // tendero los lee es el mismo en que se aplican.
+  //
+  // `includes` Y NO `===`: el código se lee de una captura o se escucha por
+  // teléfono, así que media palabra tiene que servir mientras se teclea el
+  // resto. Sin distinguir mayúsculas, porque el campo las pinta en
+  // mayúsculas pero no transforma lo escrito.
+  //
+  // UNA FILA SIN CÓDIGO NO CASA NUNCA, y es correcto: es anterior a la
+  // migración 147 y no hay código por el que buscarla. Hoy no existe
+  // ninguna, ni en dev ni en producción.
+  const codigoBuscado = codigo.trim().toUpperCase();
+  const porCodigo =
+    codigoBuscado === ""
+      ? filas
+      : filas.filter((f) => {
+          const suyo = f.clase === "movimiento" ? f.m.transaction_code : f.v.transaction_code;
+          return (suyo ?? "").toUpperCase().includes(codigoBuscado);
+        });
+
   const porTipo =
     tipo === "todos"
-      ? filas
-      : filas.filter((f) =>
+      ? porCodigo
+      : porCodigo.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
@@ -291,6 +325,11 @@ export function MovementHistoryList({
             setPage(1);
           }}
           monedas={monedasDelNegocio}
+          codigo={codigo}
+          setCodigo={(c) => {
+            setCodigo(c);
+            setPage(1);
+          }}
         />
       ) : null}
     </div>
@@ -316,7 +355,7 @@ export function MovementHistoryList({
         {/* El mismo título que en la lista del tendero, del mismo sitio:
             las dos pantallas tienen que decir lo mismo ante los mismos
             filtros. Ver `tituloDeListaVacia`. */}
-        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo })} />
       </div>
     );
   }

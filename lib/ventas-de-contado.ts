@@ -62,6 +62,10 @@ export type VentaDeContado = {
   // `null` en un negocio colombiano y en lo anterior al sellado; entonces la
   // fila no dibuja esa línea en vez de inventarse una conversión.
   tasaSellada: number | null;
+  // El código de la transacción, para el buscador del historial y para la
+  // ficha. Una venta pagada entera no escribe movimiento, así que su código
+  // vive en `sales` y este es el único sitio por el que llega a la pantalla.
+  transactionCode: string | null;
   lineas: SaleLineRow[];
 };
 
@@ -71,6 +75,10 @@ export type VentaDeContado = {
 export type VentaCruda = {
   id: string;
   created_at: string;
+  // El código de la transacción — migración 147. Opcional porque las pruebas
+  // de esta función construyen ventas a mano y no tienen por qué inventarse
+  // uno; en la app siempre viene.
+  transaction_code?: string | null;
 };
 export type PagoCrudo = {
   sale_id: string;
@@ -180,6 +188,7 @@ export function filasDeContado(
       // Dos decimales, el mismo redondeo que el resto del código de dinero.
       amount: Math.round(amount * 100) / 100,
       tasaSellada: tasas.get(clave) ?? null,
+      transactionCode: venta.transaction_code ?? null,
       lineas: lineasPorVentaYLibro.get(clave) ?? [],
     });
   }

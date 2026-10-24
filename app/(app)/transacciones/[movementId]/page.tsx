@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -247,7 +248,7 @@ export default async function TransaccionPage({
     // últimamente», y el último abono es el que se viene a comprobar.
     const { data: pagos } = await supabase
       .from("movements")
-      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount")
+      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
       .eq("client_id", cliente.id)
       .eq("applies_to_movement_id", m.id)
       .eq("type", "payment")
@@ -260,6 +261,9 @@ export default async function TransaccionPage({
       currency: p.currency as AbonoDirigido["currency"],
       // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
       tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
+      // El código de su transacción, para el pie de la tarjeta. Ver
+      // `transactionCode` en `tarjeta-de-abono.tsx`.
+      transactionCode: (p.transaction_code as string | null) ?? null,
       // En qué moneda se tecleó y cuánto. El diálogo de editar que los pedía
       // se quitó el 2026-10-23, pero siguen haciendo falta: el menú del «⋮»
       // los usa para decir «la deuda vuelve a subir Bs. 900» en la moneda en
@@ -319,6 +323,7 @@ export default async function TransaccionPage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={(m.transaction_code as string | null) ?? null} />
 
       <DetalleDeTransaccion
         type={m.type}
