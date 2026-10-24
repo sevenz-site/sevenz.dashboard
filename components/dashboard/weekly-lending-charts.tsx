@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { WeeklyLendingPoint } from "@/lib/lending-charts";
+import type { PriceCurrency } from "@/lib/products/price";
 
 // The charting library is 368 KB — the second largest thing the app ships — so
 // it is loaded on demand here too, even though on `/reportes` it is wanted
@@ -50,9 +51,9 @@ export function WeeklyLendingCharts({
   usd: WeeklyLendingPoint[];
   eur: WeeklyLendingPoint[];
 }) {
-  const row = (data: WeeklyLendingPoint[], title: string) => (
+  const row = (data: WeeklyLendingPoint[], title: string, currency: PriceCurrency) => (
     <div className="flex w-full min-w-0 lg:flex-1">
-      <WeeklyLendingChart data={data} title={title} />
+      <WeeklyLendingChart data={data} title={title} currency={currency} />
     </div>
   );
 
@@ -60,11 +61,11 @@ export function WeeklyLendingCharts({
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {perCurrency ? (
         <>
-          {row(usd, "Fiado vs. Abono (USD)")}
-          {row(eur, "Fiado vs. Abono (EUR)")}
+          {row(usd, "Fiado vs. Abono (USD)", "USD")}
+          {row(eur, "Fiado vs. Abono (EUR)", "EUR")}
         </>
       ) : (
-        row(cop, "Fiado vs. Abono de la semana")
+        row(cop, "Fiado vs. Abono de la semana", "COP")
       )}
     </div>
   );

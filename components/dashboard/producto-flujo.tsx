@@ -1752,6 +1752,21 @@ function PriceRows({
                   ? `Precio fijado en ${CURRENCY_LABEL[currency] ?? currency}`
                   : `Precio ${CURRENCY_LABEL[currency] ?? currency}`
             }
+            // LA FILA CALCULADA SE ESCRIBE COMO LA QUE SE TECLEA.
+            //
+            // Reportado por el dueño el 2026-10-24: la fila del euro decía
+            // «€2,230,987.52» mientras la de al lado, editable, decía
+            // «2.500.000». Dos formas de escribir dinero en dos campos
+            // pegados, dentro del mismo control.
+            //
+            // Y lo que lo delataba estaba aquí mismo: romper el vínculo de esa
+            // fila la pasa a `formatAmountForInput(calculado, { miles: true })`
+            // —ver el `onToggle` de más abajo—, o sea que pulsar el candado
+            // cambiaba el formato del MISMO número. Usar el mismo escritor en
+            // los dos estados quita la diferencia de raíz.
+            //
+            // La moneda no se pierde al quitar el símbolo: la fila la nombra
+            // en su rótulo («Precio Euro») y la repite su bandera.
             value={
               esBase
                 ? price
@@ -1759,7 +1774,7 @@ function PriceRows({
                   ? (fixed[currency] ?? "")
                   : calculado == null
                     ? "—"
-                    : formatPriceAmount(calculado, currency)
+                    : formatAmountForInput(calculado, { miles: true })
             }
             readOnly={!esBase && !manual}
             disabled={disabled}

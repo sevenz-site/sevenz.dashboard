@@ -43,6 +43,13 @@ import {
   PHONE_ID_CLIENTS,
 } from "./plantillas-esperadas.mjs";
 
+// EL FORMATO DE LOS IMPORTES CAMBIÓ EL 2026-10-24, y por eso estas cadenas
+// llevan coma decimal: el dólar y el euro pasaron de «$20.00» a «$20,00»
+// cuando el punto de miles se volvió el estándar de toda la app (decisión del
+// dueño, ver `DESIGN-SYSTEM.md`). Esta suite fue una de las dos que lo
+// cazaron, que es justo lo que tenía que pasar — compara el texto que de
+// verdad sale a pantalla, no el que alguien recuerda.
+
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -191,7 +198,7 @@ try {
     .flatMap((c) => c.parameters.map((p) => p.text));
   check(
     "4c. y sus valores son los del movimiento, no inventados",
-    valores[0] === "QA Recibo" && valores[1] === "$20.00" && valores[3] === "$30.00",
+    valores[0] === "QA Recibo" && valores[1] === "$20,00" && valores[3] === "$30,00",
     JSON.stringify(valores),
   );
 
@@ -293,7 +300,7 @@ try {
       .flatMap((x) => x.parameters.map((p) => p.text));
     check(
       "7b. y dice el TOTAL del reparto, no el de una línea",
-      vals[1] === "$34.00",
+      vals[1] === "$34,00",
       `${vals[1]} — las líneas son 4 y 30, ninguna es 34`,
     );
 
@@ -350,9 +357,9 @@ try {
     );
     check(
       "8b. cada uno dice el total de SU libro, no la suma de los dos",
-      importes.includes("$7.00") &&
-        importes.includes("€11.00") &&
-        !importes.some((v) => v === "$18.00" || v === "€18.00"),
+      importes.includes("$7,00") &&
+        importes.includes("€11,00") &&
+        !importes.some((v) => v === "$18,00" || v === "€18,00"),
       `${importes.join(" · ")} — la suma sería 18, que es falsa en las dos monedas`,
     );
 

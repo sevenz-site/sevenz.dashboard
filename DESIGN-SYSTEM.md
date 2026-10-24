@@ -2393,6 +2393,84 @@ de una línea de producto pasó de `w-20` a `w-24`, y el saldo de apertura de
 `w-32` a `w-36` —con signo, «-1.234.567,89» no cabía—. A 375px, comprobado sin
 desbordar ni el campo ni la página.
 
+## `1.000` ES EL ESTÁNDAR DE TODA LA APP, en pantalla y al teclear
+
+**Punto de miles, coma decimal. En cualquier moneda, en cualquier pantalla, en
+el PNG que se comparte y en el mensaje de WhatsApp.** Decisión del dueño el
+2026-10-24: *«ese formato de miles 1.000 será el estándar para toda el app»*.
+
+```
+$1.234.567,89     €1.234.567,89     Bs. 1.234.567,89     $ 1.234.567,89 (COP)
+```
+
+**No es una convención nueva: es la que ya tenían dos de las tres monedas.** El
+peso se formateaba en `es-CO` y el bolívar en `es-VE` desde el primer día — los
+dos con punto. El dólar y el euro eran la excepción, en `en-US`, así que la
+tarjeta del Inicio decía **«$11,283.19»** y justo debajo **«Bs. 9.999.468,75»**:
+dos formas de escribir dinero a dos renglones de distancia.
+
+### Un sitio, y solo uno
+
+| Moneda | Función | Dónde |
+|---|---|---|
+| USD y EUR | `formatDisplayCurrency` | `lib/exchange-rate/format.ts` |
+| VES | `formatBs` / `formatBsAmount` | `lib/exchange-rate/format.ts` |
+| COP | `formatCurrency` | `lib/format.ts` |
+| Cualquiera, por su código | `formatPriceAmount` | `lib/products/price.ts` |
+| Dentro de un campo | `formatAmountForInput(x, { miles: true })` | `lib/products/price.ts` |
+
+**Nunca se escribe un importe con `toFixed`, con `toLocaleString` suelto ni con
+un `Intl.NumberFormat` nuevo.** Un formateador de más es la forma exacta de que
+media app vuelva a las comas sin que nadie lo note.
+
+### Y NO se hace con `style: "currency"`. Medido, no supuesto
+
+Ningún locale da «$1.234.567,89» con el símbolo pegado delante. El 2026-10-24,
+sobre el ICU de este Node:
+
+| Locale | USD |
+|---|---|
+| `es-VE` | `USD 1.234.567,89` |
+| `es-CO` | `US$ 1.234.567,89` |
+| `de-DE` | `1.234.567,89 $` |
+| `es-ES` | `1.234.567,89 US$` |
+
+Todos cambian el símbolo, lo mueven al final, o las dos cosas. Así que se hace
+con un **formateador de número** (`es-VE`, dos decimales) y el **símbolo
+literal delante** — que es el patrón que `formatBs` lleva documentado desde el
+primer día, por esta misma razón. La ventaja práctica: lo único que cambia
+respecto a lo que había son los separadores; el símbolo y su posición se quedan
+donde estaban, así que ninguna maquetación se mueve.
+
+**El signo menos va DELANTE del símbolo**: `-$1.234,56`, nunca `$-1.234,56`.
+Eso lo hacía solo `style: "currency"` y a mano hay que escribirlo. Es una red
+de seguridad, no el camino normal: un saldo a favor se enseña con `Math.abs` y
+el chip «A favor» (regla de `CLAUDE.md`, 2026-10-23).
+
+### Un campo de solo lectura se escribe como el que se teclea
+
+Si dos campos están pegados dentro del mismo control, uno editable y otro
+calculado, **los dos usan el mismo escritor**. La fila del euro de un producto
+decía `€2,230,987.52` mientras la de al lado decía `2.500.000`, y lo que lo
+delataba estaba en el propio control: **romper el vínculo de esa fila la pasaba
+a `formatAmountForInput(..., { miles: true })`**, o sea que pulsar el candado
+cambiaba el formato del mismo número. La moneda no se pierde al quitar el
+símbolo — la fila la nombra en su rótulo y la repite su bandera.
+
+### Lo que este cambio NO toca, y por qué se puede desplegar sin miedo
+
+**Nada guardado cambia.** Es formato de salida: no hay migración, no hay
+columna, y **ningún lector del repo vuelve a leer una cadena ya formateada**
+(comprobado con `grep` el 2026-10-24; si algún día lo hubiera, sería el único
+sitio por donde esto podría romper un saldo). Los importes se guardan como
+números y se escriben al dibujar.
+
+**El peor escenario no es el cambio: es hacerlo a medias.** Hoy la app es
+consistente dentro de cada moneda; si esto se aplicara a unas pantallas y a
+otras no, el tendero vería dos convenciones para la MISMA moneda, que es peor
+que la incoherencia que esto viene a quitar. Por eso vive en una función y no
+en las pantallas.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

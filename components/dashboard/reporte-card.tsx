@@ -7,6 +7,7 @@ import { useHiddenBalances } from "@/hooks/use-hidden-balances";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { WeeklyLendingPoint } from "@/lib/lending-charts";
 import type { LedgerCurrency } from "@/lib/types";
+import type { PriceCurrency } from "@/lib/products/price";
 
 // `ssr: false` keeps recharts off the server render, where `ResponsiveContainer`
 // has no width to measure and draws nothing anyway. The placeholder mirrors the
@@ -86,7 +87,12 @@ export function ReporteCard({
         </button>
       </div>
 
-      <WeeklyLendingChart data={chartData} title={chartTitle} bare />
+      <WeeklyLendingChart
+        data={chartData}
+        title={chartTitle}
+        bare
+        currency={(currency ?? "COP") as PriceCurrency}
+      />
     </div>
   );
 }

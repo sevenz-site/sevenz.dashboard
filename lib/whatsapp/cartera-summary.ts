@@ -77,14 +77,14 @@ type Destinatario = {
 
 // Lo que el dueño lee como "Por cobrar". Un negocio VE lleva dos libros
 // independientes —USD y EUR— y sumarlos sería inventar un número, así que
-// cuando debe en las dos se mandan las dos: "$50.00 y €20.00".
+// cuando debe en las dos se mandan las dos: "$50,00 y €20,00".
 function porCobrar(d: Destinatario): string {
   if (d.country !== "VE") return formatCurrency(Number(d.balance_cop));
 
   const partes: string[] = [];
   if (Number(d.balance_usd) > 0) partes.push(formatDisplayCurrency(Number(d.balance_usd), "USD"));
   if (Number(d.balance_eur) > 0) partes.push(formatDisplayCurrency(Number(d.balance_eur), "EUR"));
-  // Sin deuda en ninguna de las dos, "$0.00" dice la verdad y es mejor que una
+  // Sin deuda en ninguna de las dos, "$0,00" dice la verdad y es mejor que una
   // cadena vacía: Meta rechaza un parámetro vacío.
   if (partes.length === 0) return formatDisplayCurrency(0, "USD");
   return partes.join(" y ");
