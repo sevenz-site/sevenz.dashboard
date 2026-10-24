@@ -1103,6 +1103,66 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
 
+## SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO
+
+**Regla crítica, pedida por el dueño el 2026-10-24 después de ver Bs. 100.001,87
+donde él había escrito Bs. 100.000**: *«siempre deben mandar los montos
+tecleados en toda la app»*. Sus palabras sobre el fallo: *«Eso es crítico y
+escandalosamente mal»*.
+
+**La cifra que el tendero escribió se guarda tal cual y se vuelve a enseñar tal
+cual. Nunca se recalcula.** Si hace falta la misma cantidad en otra moneda, esa
+conversión va DEBAJO y en pequeño, nunca en lugar de la suya.
+
+### Por qué una reconversión no devuelve lo mismo
+
+No es un fallo de redondeo que se pueda apretar: es aritmética.
+
+```
+Bs. 100.000 ÷ 886,2271 = $112,8381…   → el libro guarda céntimos → $112,84
+$112,84 × 886,2271      = Bs. 100.001,87
+```
+
+Los 0,0019 $ que el redondeo añade valen 1,87 Bs. **Da igual cuántos decimales
+se guarden**: mientras el libro tenga una precisión finita, la vuelta cae en
+otro sitio. Por eso la única forma de que la pantalla repita la cifra del
+tendero es **guardarla**, no recalcularla.
+
+### Lo que costó, medido en dev el 2026-10-24
+
+- Un reparto de **Bs. 200.000** entre dos libros guardaba 100.004,00 +
+  100.001,87 = **Bs. 200.005,87**. Casi seis bolívares salidos de la nada.
+- De **13** abonos tecleados en bolívares, **7 enseñaban una cifra distinta**
+  en la fila del historial y en la tarjeta dentro del fiado. El peor, Bs. 3,48.
+- **Nada de esto rompe nada.** No hay error, no hay rojo, el saldo del fiado es
+  correcto. Lo único que pasa es que la app le enseña al tendero —y al cliente,
+  con el teléfono en la mano— una cifra que nadie escribió.
+
+### Qué hay que hacer, en concreto
+
+1. **Guardar lo tecleado junto a lo convertido.** `movements.entry_currency` y
+   `entry_amount` existen para eso. Un reparto necesita además la cifra POR
+   LÍNEA: `aManoBs` en `lib/abonos/borrador.ts` es el precedente.
+2. **Cuando un billete se reparte, las partes SUMAN el billete.** Se reparten
+   proporcionalmente y **la última absorbe el resto**. Nunca se convierte cada
+   parte por su cuenta: las conversiones no suman.
+3. **Una parada dura donde se guarda**, no solo en la pantalla. En
+   `registrarAbonoRepartido` hay una: si las partes no suman lo tecleado, se
+   rechaza. Un descuadre de céntimos en dinero de gente no puede volver a pasar
+   en silencio durante un día entero.
+4. **Y la trampa que esto ya pisó**: cuando dos pantallas escriben el mismo
+   borrador, la que no es dueña de un campo **tiene que arrastrarlo**. La
+   pantalla del reparto guarda el borrador entero en cada render y borraba el
+   `aManoBs` que la del monto acababa de escribir. La cifra se guardaba bien y
+   se perdía un instante después.
+
+### Dónde aplica, que es en todas partes
+
+Abonos, ventas, fiados, el comprobante PNG, el mensaje de WhatsApp, el enlace
+del cliente. **Si una pantalla enseña un importe, la pregunta es siempre la
+misma: ¿esto es lo que alguien escribió, o lo que yo calculé a partir de lo que
+escribió?** Si es lo segundo y existe lo primero, está mal.
+
 ## Toda plantilla de WhatsApp lleva el pie antifraude
 
 ```
