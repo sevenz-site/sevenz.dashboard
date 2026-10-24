@@ -4,13 +4,11 @@ import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
 import { ClientSearchFieldRow } from "@/components/dashboard/client-search-sheet";
 import { ImportarCartera } from "@/components/dashboard/importar-cartera";
-import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { RegisterButton } from "@/components/dashboard/register-button";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { getMonedaHabitual } from "@/lib/moneda-habitual";
-import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function ClientsPage() {
@@ -19,26 +17,14 @@ export default async function ClientsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
+  const [{ data: summaries }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
       .eq("owner_id", user!.id)
       .order("days_since_payment", { ascending: false }),
-    // Feeds the "add a movement" search. Hidden clients are excluded outright
-    // (decision O2): the way back to one is Papelera → Restaurar, so that the
-    // word "oculto" means the same thing on every screen.
-    supabase
-      .from("clients")
-      .select("id, name, document_id, document_type")
-      .eq("owner_id", user!.id)
-      .is("trashed_at", null)
-      .is("deleted_at", null)
-      .order("name"),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
-    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
-    getMonedaHabitual(supabase, user!.id),
   ]);
 
   // Mismo criterio que Cartera: no saber el país no es saber que es CO. Esta
@@ -52,14 +38,11 @@ export default async function ClientsPage() {
   const ownerCountry =
     (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
   if (!ownerCountry) return <OwnerUnavailableDialog />;
-  const rateContext: MovementRateContext | null = ownerRate
-    ? {
-        rateMode: ownerRate.rateMode,
-        effectiveRate: ownerRate.effectiveRate,
-        officialRateUsd: ownerRate.officialRate.usd,
-        prevista: ownerRate.prevista,
-      }
-    : null;
+  // LO QUE ESTA PANTALLA YA NO PIDE A LA BASE. Hasta el 2026-10-24 leía además
+  // la lista de clientes, la tasa derivada y la moneda habitual, y las tres
+  // existían SOLO para alimentar el diálogo viejo de «Agregar movimiento». Al
+  // sustituirlo por `RegisterButton` —que no necesita nada— se van con él: dos
+  // consultas menos por carga de página.
 
   // Same rows Cartera shows: a flagged client already has its own screen
   // (Malas pagas), so it stays out of this list too rather than appearing
@@ -85,19 +68,18 @@ export default async function ClientsPage() {
           filters={<ClientFilterChipsRow tone="dark" />}
         />
 
-        {/* Solo escritorio: en teléfono esta acción vive en el botón flotante
-            de la barra de abajo. Sale de la fila del título, donde estaba,
-            porque esa fila ahora vive dentro de la cabecera oscura y el spec
-            solo pone "Subir libreta" ahí. */}
+        {/* EL MISMO BOTÓN QUE INICIO, Y EL MISMO COMPONENTE.
+            Instrucción del dueño el 2026-10-24: *«ese botón debe ser el
+            mismo que el del home "Registrar" (…) usa el mismo componente
+            en todas las pantallas»*. Aquí había el disparador de
+            `ClientSearchDialog` —«Agregar movimiento»— que abría el
+            diálogo viejo «Agregar transacción», o sea el flujo jubilado.
+
+            Solo escritorio: en teléfono esta acción vive en el botón
+            flotante de la barra de abajo, y sin `hidden md:block`
+            saldrían los dos. */}
         <div className="hidden md:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+          <RegisterButton />
         </div>
 
         {/* El rótulo vuelve, decisión del dueño el 2026-10-04. El comentario

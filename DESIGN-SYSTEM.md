@@ -2471,6 +2471,54 @@ otras no, el tendero vería dos convenciones para la MISMA moneda, que es peor
 que la incoherencia que esto viene a quitar. Por eso vive en una función y no
 en las pantallas.
 
+## «Registrar» ES UN COMPONENTE, y toda pantalla monta el mismo
+
+**`RegisterButton` en escritorio, el flotante de `MobileNav` en teléfono. Nadie
+dibuja su propio botón de registrar.** Instrucción del dueño el 2026-10-24, con
+las capturas de `/clients` y `/malas-pagas` rodeadas en rojo: *«usa el mismo
+componente en todas las pantallas para que en un futuro al cambiar el botón en
+una pantalla se cambie a todas»*.
+
+```tsx
+{/* Solo escritorio: en teléfono esta acción vive en el botón flotante. */}
+<div className="hidden md:block">
+  <RegisterButton />
+</div>
+```
+
+**El envoltorio `hidden md:block` no es decoración**: sin él, en un teléfono
+salen DOS «Registrar», el flotante de la barra y éste.
+
+### Lo que estaba pasando, y por qué no se vio durante semanas
+
+Inicio abrió la hoja de tres opciones desde el 2026-10-18. `/clients` y
+`/malas-pagas` siguieron dibujando el **disparador de `ClientSearchDialog`** —un
+botón «Agregar movimiento» que abría el diálogo viejo «Agregar transacción»—
+porque ese botón no lo pone la página: **lo pone el diálogo**, cuando se monta
+sin `hideTrigger`. Quien cambió Inicio no tenía ninguna razón para abrir esas
+dos pantallas.
+
+Es el mismo patrón que la cabecera de `app-header.tsx`, unas secciones más
+arriba: **un elemento que una pantalla hereda sin pedirlo es el que nadie
+revisa.** La defensa es la misma — un componente con nombre, montado a
+propósito, en vez de algo que aparece solo.
+
+### El nombre del componente dice lo que hace
+
+Se llamaba `NewSaleButton`, de cuando abría el asistente de venta. Abre
+`RegisterSheet`, que ofrece tres cosas y solo una es una venta. Con un botón
+que vive en tres pantallas, **un nombre que miente es lo que hace que el
+siguiente escriba otro botón** en vez de montar éste.
+
+### La hoja navega a rutas absolutas, así que da igual desde dónde se abra
+
+«Nuevo cliente» va a `/clients/nuevo`, «Fiado o venta» a `/ventas/nueva` y
+«Abono» a `/dashboard?nuevo=abono`. Esa última es la única que necesita algo al
+otro lado —el buscador de clientes de Inicio— y por eso Inicio monta
+`ClientSearchDialog` con `hideTrigger`: **sin disparador visible, solo para
+contestar al marcador**. Una pantalla que monta `RegisterButton` no necesita
+montar nada más.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
