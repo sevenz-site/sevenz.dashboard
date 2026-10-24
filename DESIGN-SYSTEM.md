@@ -2519,6 +2519,52 @@ otro lado —el buscador de clientes de Inicio— y por eso Inicio monta
 contestar al marcador**. Una pantalla que monta `RegisterButton` no necesita
 montar nada más.
 
+## El diálogo «Agregar transacción» ya no existe. No se reescribe
+
+**Borrado el 2026-10-24 por orden del dueño**, después de que él encontrara su
+botón todavía vivo en `/clients` y `/malas-pagas`: *«está mal, ese flujo ya no
+debe existir»*.
+
+Era un formulario que preguntaba **cuánto** y nada más. Las tres cosas que un
+tendero registra pasaron a preguntar algo antes:
+
+| Lo que se registra | Dónde vive hoy | Qué pregunta primero |
+|---|---|---|
+| Un cliente nuevo | `/clients/nuevo` | Sus datos. Sin movimiento |
+| Un fiado o una venta | `/ventas/nueva` | Qué se llevó |
+| Un abono | `/abonos/nuevo` | Qué fiado paga |
+
+**Por qué no basta con «dejarlo por si acaso»**, que es la tentación: las tres
+pantallas nuevas guardan cosas que aquél no sabía guardar — el fiado al que
+apunta un abono, las líneas de producto de una venta, los bolívares tecleados
+por línea de un reparto. Una puerta vieja que escribe movimientos sin nada de
+eso no es una alternativa más: **es una forma de meter en la base filas que el
+resto de la app ya no sabe explicar.**
+
+### Lo que se fue con él
+
+`add-movement-dialog.tsx` entero, el paso de alta de `client-search-dialog.tsx`
+y las acciones `addMovement` y `createClientWithMovement`. Unas 2.400 líneas.
+
+### Y lo que se quedó, que es lo que hay que saber antes de tocarlo
+
+- **El buscador de cliente del abono.** `?nuevo=abono` lo abre, se elige a
+  alguien y se aterriza en `/abonos/nuevo?cliente=<id>`. Su carcasa de abrir y
+  cerrar tiene **tres fallos reales resueltos dentro** —el marcador que no se
+  limpiaba, el `replace` que cancelaba el `push`, el campo de teléfono que
+  sobrevivía a un cierre— y cada uno está explicado donde ocurre. Reescribirla
+  «limpia» es volver a pisarlos.
+- **Los dos botones de la ficha del cliente**, que ahora son
+  `ClientActionsRow`: dos enlaces y nada más. Los dibujaba el diálogo, que
+  llevaba meses montándose entero para eso.
+
+### La señal de que esto va a volver a pasar
+
+Un botón que **no lo dibuja la pantalla sino un componente que ella monta** es
+el que nadie revisa. Pasó aquí —seis días con dos flujos vivos— y pasa con la
+cabecera de `app-header.tsx`, unas secciones más arriba. Cuando quites una
+puerta, busca quién más la dibujaba, no solo quién la abría.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

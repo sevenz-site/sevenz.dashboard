@@ -17,9 +17,14 @@ import { DOCUMENT_SOURCE } from "@/lib/types";
 // ===========================================================================
 // ESTO NO EXISTÍA, Y ES EL CAMBIO DE FONDO DE LA PANTALLA
 //
-// Hasta hoy la única forma de crear un cliente era `createClientWithMovement`:
-// nacía **con su primer fiado**, con monto, plazo y cuotas. Tenía sentido
-// mientras Sevenz fuera un libro de deudas — un cliente sin deuda no era nada.
+// Hasta el 2026-10-18 la única forma de crear un cliente era
+// `createClientWithMovement`: nacía **con su primer fiado**, con monto, plazo
+// y cuotas. Tenía sentido mientras Sevenz fuera un libro de deudas — un cliente
+// sin deuda no era nada.
+//
+// ESA FUNCIÓN YA NO EXISTE: se borró el 2026-10-24 con el resto del diálogo
+// viejo. Lo que sigue la nombra para contar de dónde viene esta pantalla, no
+// para mandar a nadie a leerla.
 //
 // Con la venta dentro ya no: el frame no tiene ni un campo de dinero, y
 // termina en dos botones —«Registrar y finalizar» y «Continuar con venta»—

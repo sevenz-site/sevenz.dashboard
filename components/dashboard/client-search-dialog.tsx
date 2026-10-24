@@ -1,44 +1,24 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  WhatsappConsentDialog,
-  WhatsappConsentField,
-} from "@/components/dashboard/whatsapp-consent-field";
-import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
-import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
-import { consentPhoneKey } from "@/lib/phone";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 // ── UNA HOJA Y NO UN DIÁLOGO ─────────────────────────────────────────────
 //
 // Encargo del dueño el 2026-10-22: *«El popup para buscar cliente debe ser un
 // sheet»*, con el frame `1535:10874` al lado.
 //
 // NO ES SOLO LA ANIMACIÓN. Un diálogo se centra en la pantalla, así que al
-// subir el teclado --y este flujo pide nombre, cédula y teléfono-- el navegador
-// tiene que decidir dónde ponerlo y acaba empujando el título fuera por arriba.
-// Una hoja nace pegada abajo: el teclado la recorta por el sitio por el que ya
-// crecía, que es el mismo motivo por el que el resto de este flujo ya usa
-// hojas.
-//
-// `@/components/ui/dialog` DEJA DE IMPORTARSE ENTERO. Escribí primero que
-// seguía haciendo falta para los dos `AlertDialog` de dentro --descartar el
-// registro, y la cuenta separada--; el lint lo desmintió en el acto: esos
-// vienen de `ui/alert-dialog`, que es otro módulo. Queda anotado porque es la
-// clase de frase que nadie vuelve a comprobar, y porque los dos AlertDialog
-// SÍ se quedan centrados a propósito: son preguntas de sí o no.
+// subir el teclado el navegador tiene que decidir dónde ponerlo y acaba
+// empujando el título fuera por arriba. Una hoja nace pegada abajo: el teclado
+// la recorta por el sitio por el que ya crecía, que es el mismo motivo por el
+// que el resto de este flujo ya usa hojas.
 import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -49,55 +29,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { createClientWithMovement, type MovementFormState } from "@/app/(app)/dashboard/actions";
-import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
-import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
-import { CuotasSelect } from "@/components/dashboard/cuotas-select";
-import { MovementProductsField } from "@/components/dashboard/movement-products-field";
-import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
-import { formatCurrency } from "@/lib/format";
-import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
 import {
-  MontoCard,
-  MonedaTecleadaButtons,
-  MontoARegistrarRow,
-  ResumenMonto,
-  montoConvertido,
-  BsAmountPreview,
-  PrevistaCheckbox,
-} from "@/components/dashboard/movement-currency-field";
-import { WhatsappInput } from "@/components/whatsapp-input";
-import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
-import { useTour } from "@/components/dashboard/tour-context";
-import {
-  DEFAULT_PLAZO_PAGO,
-  DEFAULT_LEDGER_CURRENCY,
-  type LedgerCurrency,
-  type OwnerCountry,
-  type MonedaTecleada,
-} from "@/lib/types";
-import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
-import type { MovementRateContext } from "@/lib/exchange-rate/convert";
-import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
-import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
-import type { MonedaHabitual } from "@/lib/moneda-habitual";
-import { required, amount as amountRule } from "@/lib/form-validation";
-import {
-  useErrorDeCuentaPausada,
   useGuardiaAlAbrir,
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
-import { DocumentIdInput } from "@/components/dashboard/document-id-input";
-import { parseTypedAmount } from "@/lib/products/price";
 import {
   ClientResultList,
   CLIENT_RESULT_LIMIT,
 } from "@/components/dashboard/client-result-list";
-
-const initialState: MovementFormState = { error: null, clientId: null };
 
 type ClientOption = {
   id: string;
@@ -107,60 +47,34 @@ type ClientOption = {
   document_type: string | null;
 };
 
+// ═══════════════════════════════════════════════════════════════════════
+// EL BUSCADOR DE CLIENTE DEL ABONO, Y YA NO MÁS QUE ESO
+//
+// Hasta el 2026-10-24 este archivo tenía DOS pasos: este buscador y un
+// formulario de alta —cliente nuevo + su primer movimiento— que escribía con
+// `createClientWithMovement`. Ese segundo paso era la mitad del diálogo viejo
+// que el dueño mandó borrar ese día; el alta vive en `/clients/nuevo` desde el
+// 2026-10-18 y la hoja de «Registrar» lleva allí.
+//
+// LO QUE SE QUEDA, Y POR QUÉ ESTE ARCHIVO NO SE REESCRIBIÓ DE CERO: la
+// carcasa de abrir y cerrar que viene abajo tiene tres fallos reales
+// resueltos dentro —el marcador que no se limpiaba, el `replace` que
+// cancelaba el `push`, y el campo de teléfono que sobrevivía a un cierre— y
+// cada uno está explicado donde ocurre. Reescribirla «limpia» es volver a
+// pisarlos.
+//
+// CÓMO SE ABRE: nadie la dispara con un botón. La abre `?nuevo=abono`, el
+// marcador que pone la opción «Abono» de la hoja de «Registrar».
 export function ClientSearchDialog({
   clients,
-  ownerId,
-  businessName,
-  ownerCountry,
   autoOpen,
-  hideTrigger = false,
-  showTourTarget = true,
-  rateContext,
-  monedaHabitual,
-  pasoInicial = "search",
-  movimientoAlElegir,
 }: {
   clients: ClientOption[];
-  ownerId: string;
-  businessName: string;
-  // Defaults the phone country picker to the shop's own country. Without it
-  // a Venezuelan owner silently saves every client under +57.
-  ownerCountry: OwnerCountry;
-  // True when the mobile bar navigated here asking for the dialog.
+  // True cuando la navegación trae el marcador pidiendo esta hoja.
   autoOpen?: boolean;
-  // Mounts the dialog WITHOUT its button. Inicio uses it on a phone since
-  // delivery 3 of the redesign: the floating "Agregar" took over as the
-  // trigger, but something still has to host the dialog that `?nuevo=1` opens,
-  // and that is this instance. Dropping the component instead of its button
-  // would leave the floating button navigating to a screen with nothing to
-  // open.
-  hideTrigger?: boolean;
-  // Cartera renders this trigger twice — beside the section title on
-  // desktop, below the rate card on a phone — because the two sit in
-  // different places in the document and CSS alone cannot move an element
-  // between parents. Only the desktop one carries the tour marker: the tour
-  // finds its target with querySelector, which returns whichever matches
-  // first in the DOM, and that would be the hidden one.
-  showTourTarget?: boolean;
-  // Only present for a country='VE' owner with a rate already fetched —
-  // null means "behave exactly like today's COP flow", no currency select.
-  rateContext: MovementRateContext | null;
-  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
-  monedaHabitual: MonedaHabitual | null;
-  // EN QUE PASO ABRE. La hoja de «Registrar» (frame `1389:11227`, 2026-10-18)
-  // tiene una opcion que es literalmente «Nuevo cliente», y llevarla al
-  // buscador para que el tendero pulse otro boton que dice lo mismo seria un
-  // paso de mas en el unico sitio donde ya dijo lo que queria.
-  pasoInicial?: "search" | "new";
-  // QUE DIALOGO ABRIR EN LA FICHA DEL CLIENTE QUE SE ELIJA. La opcion «Abono»
-  // de esa misma hoja necesita saber de quien es el abono antes de poder
-  // registrarlo, asi que pasa por el buscador y el proposito viaja con el:
-  // `/clients/<id>?movimiento=abono` es el marcador que esa pagina ya lee.
-  movimientoAlElegir?: "abono" | "fiado";
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const tour = useTour();
   const [open, setOpen] = useState(false);
   // Bumped every time the dialog fully closes, and used as the body's `key`
   // below. Remounting is what actually guarantees a clean form next open —
@@ -234,10 +148,6 @@ export function ClientSearchDialog({
     setInstanceKey((k) => k + 1);
   }, []);
 
-  const handleDirtyChange = useCallback((dirty: boolean) => {
-    dirtyRef.current = dirty;
-  }, []);
-
   return (
     <>
       <Sheet
@@ -258,21 +168,10 @@ export function ClientSearchDialog({
           closeAndReset();
         }}
       >
-        {hideTrigger ? null : (
-          <SheetTrigger asChild>
-            <Button
-              size="sm"
-              className="w-full sm:w-auto"
-              data-tour={showTourTarget ? "new-client-button" : undefined}
-              onClick={() => {
-                if (tour.step === 1) tour.advance();
-              }}
-            >
-              <Plus className="size-4" />
-              Agregar movimiento
-            </Button>
-          </SheetTrigger>
-        )}
+        {/* SIN DISPARADOR PROPIO. Lo tuvo hasta el 2026-10-24 —un botón
+            «Agregar movimiento»— y era el último sitio desde donde se abría
+            el diálogo viejo. Hoy esta hoja la abre un marcador en la
+            dirección, `?nuevo=abono`, que pone la hoja de «Registrar». */}
         {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
           del navegador estuviera escondida— así que en un teléfono con la barra
           a la vista el 90% de esa medida es más alto que la pantalla, y el
@@ -281,19 +180,7 @@ export function ClientSearchDialog({
           viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
           100vh que CLAUDE.md ya nombra para iPhone. */}
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-xl">
-          <ClientSearchDialogBody
-            key={instanceKey}
-            pasoInicial={pasoInicial}
-            movimientoAlElegir={movimientoAlElegir}
-            clients={clients}
-            ownerId={ownerId}
-            businessName={businessName}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-            onDirtyChange={handleDirtyChange}
-            onDone={closeAndReset}
-          />
+          <ClientSearchDialogBody key={instanceKey} clients={clients} onDone={closeAndReset} />
         </SheetContent>
       </Sheet>
 
@@ -330,271 +217,61 @@ export function ClientSearchDialog({
 // in the parent.
 function ClientSearchDialogBody({
   clients,
-  ownerId,
-  businessName,
-  ownerCountry,
-  rateContext,
-  monedaHabitual,
-  pasoInicial,
-  movimientoAlElegir,
-  onDirtyChange,
   onDone,
 }: {
   clients: ClientOption[];
-  ownerId: string;
-  businessName: string;
-  ownerCountry: OwnerCountry;
-  rateContext: MovementRateContext | null;
-  // La moneda que este negocio uso la ultima vez. Ver lib/moneda-habitual.ts.
-  monedaHabitual: MonedaHabitual | null;
-  pasoInicial: "search" | "new";
-  movimientoAlElegir?: "abono" | "fiado";
-  onDirtyChange: (dirty: boolean) => void;
-  // Called once this instance is done with the dialog — a client was
-  // created, an existing one was picked, or the owner confirmed abandoning
-  // the registration. The parent closes and remounts a fresh instance.
-  // `true` means "I am navigating to a client page" — see closeAndReset.
+  // Cierra la hoja. `true` le dice al efecto del marcador que se esté quieto:
+  // estamos cerrando PARA navegar, y su `replace` aterrizaría después del
+  // `push` y lo cancelaría. Ese fallo está contado entero arriba.
   onDone: (navigating?: boolean) => void;
 }) {
   const router = useRouter();
-  const [formRef, setFormRef] = useFormRef();
-  // El valor inicial y no un efecto: el cuerpo se REMONTA con `instanceKey`
-  // cada vez que el dialogo se cierra del todo, asi que un estado sembrado
-  // aqui ya es «otra vez el que toca» en la siguiente apertura.
-  const [step, setStep] = useState<"search" | "new">(pasoInicial);
   const [query, setQuery] = useState("");
-  const [nameValue, setNameValue] = useState("");
 
-  // EL PERMISO DE WHATSAPP (MS-34), en el alta de cliente nuevo.
-  //
-  // Aqui SIEMPRE se pregunta: un cliente que acaba de nacer no puede haber
-  // sido preguntado antes, asi que no hay equivalente del `consentAsked` del
-  // alta de movimiento.
-  const [consent, setConsent] = useState(false);
-  // SI EL NÚMERO QUE SE ESTÁ TECLEANDO YA ACEPTÓ. `WhatsappConsentField` sabe
-  // esconder la casilla desde el 2026-10-10 con `yaTienePermiso`, pero esta
-  // puerta nunca se lo pasaba: de sus cuatro usuarios solo dos lo hacían, y
-  // las dos que faltaban son altas, que es justo donde el tendero cree estar
-  // decidiendo algo. Reportado desde producción el 2026-10-21.
-  const [consentDialog, setConsentDialog] = useState(false);
-  // El numero, solo para poder decir "falta registrar el WhatsApp". WhatsappInput
-  // no es controlado desde aqui, asi que se escucha su onValueChange.
-  const [whatsappValue, setWhatsappValue] = useState("");
-  const permisoDelNuevo = usePermisoDelNumero(whatsappValue);
-
-  // UNA REF Y NO ESTADO, y la diferencia importa. El envio del camino de
-  // duplicados no pasa por <form onSubmit>: `confirmDuplicateAndSubmit` llama
-  // a formAction() directamente. Al reintentarlo desde el dialogo del permiso
-  // esa funcion se lee desde el closure del render ANTERIOR, donde un useState
-  // seguiria valiendo false y volveria a abrir el dialogo, en bucle. Una ref
-  // la leen todos los closures igual.
-  const consentResuelto = useRef(false);
-  // Que hacer cuando el dialogo del permiso se cierre: reenviar el formulario
-  // normal, o rehacer el camino de duplicados que lo abrio.
-  const trasPermiso = useRef<"form" | "duplicado">("form");
-  const [documentIdValue, setDocumentIdValue] = useState("");
-  const [addressValue, setAddressValue] = useState("");
-  const [plazoPago, setPlazoPago] = useState(DEFAULT_PLAZO_PAGO);
-  // "1" = pago único, which the server stores as null. Same default as the
-  // other form -- this one was missing the field entirely until 2026-10-16,
-  // even though `createClientWithMovement` has always read `cuotas` from the
-  // form, so a new client's first fiado silently could not be split.
-  const [cuotas, setCuotas] = useState("1");
-  const [currency, setCurrency] = useState<LedgerCurrency>(monedaHabitual?.libro ?? DEFAULT_LEDGER_CURRENCY);
-  const [amountStr, setAmountStr] = useState("");
-  // QUÉ SE LLEVÓ. Entra por ESTA puerta también y no solo por la otra: las dos
-  // mandan a la misma acción del servidor, y el 2026-10-16 el campo de cuotas
-  // se puso en una sola -- un cliente nuevo a crédito se guardaba siempre sin
-  // cuotas, en silencio. Es la regla de CLAUDE.md sobre entrar por todas las
-  // puertas de una acción.
-  const [productos, setProductos] = useState<LineaDeProducto[]>([]);
-  // Controlled like every other field in this form now — it used to be the
-  // one plain uncontrolled input, which is exactly the field a resubmit
-  // after the duplicate-document warning could silently blank out.
-  const [descriptionValue, setDescriptionValue] = useState("");
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
-  const [usarPrevista, setUsarPrevista] = useState(false);
-  // En que moneda escribe, que no es lo mismo que el libro donde entra la
-  // deuda. Arranca en la moneda del libro para que quien siempre teclea dolares
-  // no note ningun cambio.
-  // Arranca en la que uso la ultima vez. Aqui no hay choque posible con la
-  // deuda como en el abono: un cliente nuevo no debe nada todavia, y esto
-  // siempre es un fiado.
-  const [monedaTecleada, setMonedaTecleada] = useState<MonedaTecleada>(monedaHabitual?.tecleada ?? "USD");
-  const [state, formAction, pending] = useActionState(createClientWithMovement, initialState);
-  const { errors, validate, recheck } = useFieldErrors({
-    new_client_name: required,
-    document_id: required,
-    amount: amountRule(),
-  });
-
-  // EL `recheck` DEL MONTO VA EN UN EFECTO Y NO EN EL `onChange` DEL CAMPO.
-  //
-  // Desde el 2026-10-24 el campo agrupa los miles, así que durante el
-  // `onChange` el FormData todavía lleva lo que puso el NAVEGADOR —teclear un
-  // dígito sobre «1.000.000» deja «1.000.0000», que se lee como mil—. Desde
-  // aquí lee lo que de verdad hay en pantalla. Misma razón y misma forma que
-  // en `add-movement-dialog`; si se toca una, se toca la otra.
-  useEffect(() => {
-    recheck("amount", formRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amountStr]);
-
-  // SIN ESCRIBIR NADA, EN EL CAMINO DEL ABONO, SE ENSEÑA LA LISTA — frame
-  // `1525:10827`, que la dibuja llena antes de teclear.
-  //
-  // Es por lo que cuesta cada camino. A «Venta o fiado» y a «Nuevo cliente» se
-  // llega sabiendo a quién se le vende y, si no está, se le da de alta ahí
-  // mismo: el campo vacío es la invitación a escribir. Al abono se llega
-  // sabiendo que ALGUIEN pagó, y esa puerta no tiene salida de alta —un
-  // cliente recién creado no tiene fiado que pagar— así que un cuadro vacío
-  // solo le pide al tendero que recuerde cómo escribió un nombre que ya está
-  // en la lista.
+  // SIN ESCRIBIR NADA SE ENSEÑA LA LISTA — frame `1525:10827`, que la dibuja
+  // llena antes de teclear. Al abono se llega sabiendo que ALGUIEN pagó, así
+  // que la lista es la pregunta; en el camino de alta el campo vacío era la
+  // invitación a escribir, y ese camino ya no pasa por aquí.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) {
-      return movimientoAlElegir === "abono" ? clients.slice(0, CLIENT_RESULT_LIMIT) : [];
-    }
+    if (!q) return clients.slice(0, CLIENT_RESULT_LIMIT);
     return clients
       .filter((c) => c.name.toLowerCase().includes(q) || c.document_id?.toLowerCase().includes(q))
       .slice(0, CLIENT_RESULT_LIMIT);
-  }, [clients, query, movimientoAlElegir]);
-
-  // There is something to lose once the owner has actually typed something
-  // into the registration form — not merely reached that step, since
-  // "Nuevo cliente" with an empty search query lands here with nothing
-  // filled in yet.
-  const isDirty =
-    step === "new" &&
-    Boolean(
-      nameValue.trim() ||
-        documentIdValue.trim() ||
-        addressValue.trim() ||
-        amountStr.trim() ||
-        descriptionValue.trim() ||
-        photoPath,
-    );
-  useEffect(() => {
-    onDirtyChange(isDirty);
-  }, [isDirty, onDirtyChange]);
-
-  // Adjusting local state during render is the sanctioned React pattern for
-  // "react to a changed prop", and setHandledState stays here because it only
-  // touches this component. onDone does not: it is the parent's closeAndReset,
-  // so calling it here updated ClientSearchDialog while ClientSearchDialogBody
-  // was still rendering — React's "Cannot update a component while rendering a
-  // different component" error, logged on every successful client creation.
-  // It reads as harmless because the client is still created, but the reset it
-  // triggers is no longer guaranteed to land in that pass.
-  //
-  // This line used to be setOpen(false) — local, and therefore legal. It became
-  // cross-component when the close was lifted into the parent so the form could
-  // be cleared on close, and the render-phase call came along unnoticed.
-  const [handledState, setHandledState] = useState(state);
-  if (state !== handledState && state.clientId) {
-    setHandledState(state);
-  }
-  useEffect(() => {
-    if (handledState.clientId) onDone(true);
-  }, [handledState, onDone]);
-
-  // Cuenta pausada: lo dice el dialogo, no un parrafo rojo aqui debajo.
-  const errorPausada = useErrorDeCuentaPausada(state.error);
-
-  useEffect(() => {
-    if (state === initialState || pending || state.error) return;
-    if (state.clientId) {
-      toast.success("Cliente registrado");
-      // "Client Created" is tracked server-side in createClientWithMovement —
-      // tracking it here too would double-count for every owner whose browser
-      // isn't blocking Mixpanel, skewing the numbers unevenly.
-      router.push(`/clients/${state.clientId}`);
-    }
-  }, [state, pending, router]);
+  }, [clients, query]);
 
   function selectExisting(id: string) {
     onDone(true);
-    // ── «ABONO» ENTRA EN SU PROPIO FLUJO, NO EN LA FICHA ────────────────
+    // EL ABONO ENTRA EN SU PROPIO FLUJO. `/abonos/nuevo?cliente=<id>` es su
+    // paso 1/3 —elegir qué fiado paga— y es el mismo sitio al que lleva
+    // «Agregar abono» de la ficha del cliente desde el 2026-10-19.
     //
-    // Hasta el 2026-10-20 iba a `/clients/<id>?movimiento=abono`, que abre el
-    // diálogo «Agregar transacción» de siempre. O sea que elegir a alguien en
-    // el buscador desembocaba en el flujo ANTERIOR, con su selector de tipo
-    // —Cargo o Abono— ya resuelto pero todo lo demás igual que antes.
-    //
-    // Lo reportó el dueño ese día: *«al seleccionarlo abre el primer paso del
-    // flujo "Registrar abono: 1/3 Seleccionar fiado / crédito", toda la
-    // transacción se asignará al cliente seleccionado»*.
-    //
-    // `/abonos/nuevo?cliente=<id>` ES ESE PASO 1/3, y ya existía: lo usa el
-    // botón «Agregar abono» de la ficha del cliente desde el 2026-10-19. Lo
-    // único que faltaba era que esta puerta llevara allí.
-    //
-    // `fiado` SE QUEDA COMO ESTABA: su flujo propio es `/ventas/nueva`, que no
-    // admite un cliente por la dirección, así que mandarlo a la ficha sigue
-    // siendo lo correcto hasta que eso cambie.
-    if (movimientoAlElegir === "abono") {
-      router.push(`/abonos/nuevo?cliente=${id}`);
-      return;
-    }
-    // El proposito viaja con la navegacion: sin el, «Abono» dejaria al tendero
-    // en la ficha del cliente teniendo que buscar el boton que acaba de pedir.
-    router.push(movimientoAlElegir ? `/clients/${id}?movimiento=${movimientoAlElegir}` : `/clients/${id}`);
+    // Hasta el 2026-10-20 esto iba a `/clients/<id>?movimiento=abono`, que
+    // abría el diálogo «Agregar transacción». Ese diálogo se borró el
+    // 2026-10-24 por orden del dueño, y con él la última rama que quedaba
+    // aquí para mandar a alguien a la ficha con un marcador.
+    router.push(`/abonos/nuevo?cliente=${id}`);
   }
 
-  // Every field the form needs is React-controlled now, so the live DOM
-  // always matches current state — reading it fresh here (rather than a
-  // FormData snapshot captured back when the duplicate warning first
-  // appeared) is what makes a resubmit pick up anything edited since.
-  function confirmDuplicateAndSubmit() {
-    if (!formRef.current) return;
-    if (!validate(formRef.current)) return;
-    // Este camino NO pasa por <form onSubmit>, asi que la pregunta del permiso
-    // se repite aqui. Sin esto, crear un cliente duplicado se saltaria la
-    // unica vez que se iba a preguntar por el.
-    if (!consent && !consentResuelto.current) {
-      trasPermiso.current = "duplicado";
-      setConsentDialog(true);
-      return;
-    }
-    const data = new FormData(formRef.current);
-    data.set("confirm_duplicate", "true");
-    formAction(data);
-  }
-
-  return step === "search" ? (
+  return (
     <>
-      {/* ── LA CABECERA DEL ABONO ES MÁS CORTA, Y SALE DEL FRAME ─────────
-          Frame `1471:21576`: para el abono la modal lleva SOLO el título, la
-          ✕ y el campo. Ni la línea del negocio ni «+ Nuevo cliente».
-          Confirmado con el dueño el 2026-10-20 al enseñarle la diferencia.
+      {/* LA CABECERA DEL ABONO ES MÁS CORTA, Y SALE DEL FRAME `1471:21576`:
+          solo el título, la ✕ y el campo. Ni la línea del negocio ni
+          «+ Nuevo cliente». Confirmado con el dueño el 2026-10-20.
 
           Y «+ Nuevo cliente» no es solo que el frame no lo dibuje: un cliente
           recién creado no tiene ningún fiado que pagar, así que ese botón
-          lleva a un callejón sin salida en este camino concreto. En el de
-          «Venta o fiado» es justo al revés --dar de alta y venderle en el
-          mismo gesto es lo corriente-- y por eso la diferencia es por camino
-          y no por pantalla. */}
+          llevaba a un callejón sin salida en este camino. Hoy el alta vive en
+          `/clients/nuevo`, a la que lleva la hoja de «Registrar». */}
       <SheetHeader>
         <SheetTitle>Buscar cliente</SheetTitle>
-        {/* EN EL ABONO, «Selecciona un cliente» — el subtítulo del frame
-            `1525:10827`. En los demás caminos sigue el de siempre, que dice
-            de qué negocio es la lista y por qué se puede buscar; aquí sobra
-            porque debajo ya está la lista entera. */}
-        {movimientoAlElegir === "abono" ? (
-          <SheetDescription>Selecciona un cliente</SheetDescription>
-        ) : (
-          <SheetDescription>Negocio: {businessName} · busca por nombre o cédula.</SheetDescription>
-        )}
+        <SheetDescription>Selecciona un cliente</SheetDescription>
       </SheetHeader>
       {/* ── LOS 16px DE LOS LADOS, QUE AQUÍ FALTABAN ───────────────────────
           `SheetHeader` trae su propio `p-4`; `SheetContent` NO trae ninguno.
           Así que el título iba indentado y el buscador con la lista pegados a
           los dos bordes — reportado por el dueño el 2026-10-23 con la captura
           y los dos lados señalados en rojo.
-
-          SE LEÍA COMO DOS COLUMNAS DISTINTAS en la misma hoja, que es lo que
-          la regla de `DESIGN-SYSTEM.md` evita: 16px a los lados, todas las
-          pantallas. El `pb-6` es el aire de abajo que la hoja tampoco tenía.
 
           VA AQUÍ Y NO EN `SheetContent`: ese componente lo usan todas las
           hojas de la app, varias de las cuales ponen su propio relleno
@@ -620,386 +297,7 @@ function ClientSearchDialogBody({
         ) : query.trim() ? (
           <p className="text-sm text-muted-foreground">Sin resultados para &quot;{query}&quot;.</p>
         ) : null}
-
-        {movimientoAlElegir === "abono" ? null : (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setNameValue(query);
-              setStep("new");
-            }}
-          >
-            <Plus className="size-4" />
-            {query.trim() ? `Nuevo cliente: "${query.trim()}"` : "Nuevo cliente"}
-          </Button>
-        )}
       </div>
-    </>
-  ) : (
-    <>
-      <SheetHeader>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={() => setStep("search")}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <SheetTitle>Registrar cliente nuevo</SheetTitle>
-        </div>
-        <SheetDescription>
-          Negocio: {businessName} · queda con el primer movimiento registrado.
-        </SheetDescription>
-      </SheetHeader>
-      <form
-        ref={setFormRef}
-        action={formAction}
-        onSubmit={(e) => {
-          if (!validate(e.currentTarget)) {
-            e.preventDefault();
-            return;
-          }
-          if (!consent && !consentResuelto.current) {
-            e.preventDefault();
-            trasPermiso.current = "form";
-            setConsentDialog(true);
-          }
-        }}
-        // Los mismos 16px del cuerpo de arriba: el alta de cliente es la
-        // segunda cara de esta hoja y tenía el mismo borde a borde.
-        className="flex flex-col gap-4 px-4 pb-6"
-      >
-        <input type="hidden" name="confirm_duplicate" defaultValue="false" />
-        {/* Viaja siempre: en el alta de cliente la casilla se ensena siempre,
-            asi que el cliente nuevo nace con `whatsapp_consent_asked_at`
-            puesto y el alta de movimiento ya no vuelve a preguntar. */}
-        <input type="hidden" name={CONSENT_SHOWN_FIELD} value="1" />
-        {consent ? <input type="hidden" name={CONSENT_FIELD} value="1" /> : null}
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="new_client_name">Nombre del cliente</Label>
-          <Input
-            id="new_client_name"
-            name="new_client_name"
-            value={nameValue}
-            onChange={(e) => {
-              setNameValue(e.target.value);
-              recheck("new_client_name", formRef.current);
-            }}
-            required
-            aria-invalid={Boolean(errors.new_client_name)}
-          />
-          {errors.new_client_name ? (
-            <p className="text-xs text-destructive">{errors.new_client_name}</p>
-          ) : null}
-        </div>
-        {/* Orden: nombre -> documento -> WhatsApp. Los dos obligatorios van
-            juntos y el opcional detrás, así el dueño con prisa llena de
-            corrido lo que no puede saltarse y decide una sola vez si sigue.
-            Con el WhatsApp en medio, el formulario pedía obligatorio,
-            opcional, obligatorio. */}
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="document_id">Cédula</Label>
-          <DocumentIdInput
-            id="document_id"
-            country={ownerCountry}
-            value={documentIdValue}
-            onChange={(next) => {
-              setDocumentIdValue(next);
-              recheck("document_id", formRef.current);
-            }}
-            required
-            invalid={Boolean(errors.document_id)}
-          />
-          {errors.document_id ? (
-            <p className="text-xs text-destructive">{errors.document_id}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
-          <WhatsappInput
-            id="whatsapp"
-            name="whatsapp"
-            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[ownerCountry]}
-            invalid={Boolean(errors.whatsapp)}
-            onValueChange={(v) => {
-              setWhatsappValue(v ?? "");
-              recheck("whatsapp", formRef.current);
-            }}
-          />
-          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="address">Dirección (opcional)</Label>
-          <Input
-            id="address"
-            name="address"
-            value={addressValue}
-            onChange={(e) => setAddressValue(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label>Tipo</Label>
-          <input type="hidden" name="type" value="charge" />
-          <p className="text-sm text-muted-foreground">
-            Cargo (fía) — un cliente nuevo siempre empieza debiendo. Para registrar un
-            abono, hazlo después desde el detalle del cliente.
-          </p>
-        </div>
-
-        {/* This form always registers a charge (the hidden `type` above), so
-            there is no `type === "charge"` guard here as there is in
-            add-movement-dialog -- a new client always starts owing. */}
-        <PlazoPagoSelect
-          value={plazoPago}
-          onValueChange={(v) => {
-            setPlazoPago(v);
-            // Losing the plazo sends cuotas back to "pago único", same as the
-            // other form: otherwise the field hides holding a "4", the fiado
-            // saves with no cuotas because the server ignores them without a
-            // plazo, and re-picking a plazo brings back a number nobody just
-            // chose.
-            if (v === "" || v === "sin_especificar") setCuotas("1");
-          }}
-        />
-        <CuotasSelect
-          value={cuotas}
-          onValueChange={setCuotas}
-          plazoDias={
-            plazoPago && plazoPago !== "sin_especificar" && Number.isFinite(Number(plazoPago))
-              ? Number(plazoPago)
-              : null
-          }
-        />
-        {/* Este formulario SIEMPRE registra un cargo --el `type` oculto de
-            arriba-- así que no lleva la guarda de "solo fiados" que sí tiene
-            el otro: un cliente nuevo siempre empieza debiendo. */}
-        <MovementProductsField
-          value={productos}
-          onValueChange={(lineas) => {
-            setProductos(lineas);
-            const total = totalDeLineas(lineas);
-            if (lineas.length > 0) setAmountStr(String(total));
-          }}
-          moneda={(n) =>
-            ownerCountry === "VE" ? formatDisplayCurrency(n, currency) : formatCurrency(n)
-          }
-        />
-
-        {/* Por país, no por tasa: ver la nota larga en add-movement-dialog.
-            Un dueño venezolano lleva dólares y euros aunque el BCV no
-            responda, y sin este selector el formulario no manda moneda. */}
-        {ownerCountry === "VE" ? (
-          <MonedaTecleadaButtons
-            value={monedaTecleada}
-            onValueChange={(v) => {
-              setMonedaTecleada(v);
-              if (v !== "VES") setCurrency(v);
-            }}
-          />
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="amount">Monto</Label>
-          <MontoCard
-            id="amount"
-            name="amount"
-            value={amountStr}
-            onChange={setAmountStr}
-            moneda={ownerCountry === "VE" ? monedaTecleada : null}
-            invalid={Boolean(errors.amount)}
-          />
-          {ownerCountry === "VE" && monedaTecleada === "VES" && rateContext ? (
-            <MontoARegistrarRow
-              bolivares={amountStr}
-              destino={currency}
-              onDestinoChange={setCurrency}
-              rateContext={rateContext}
-              usarPrevista={usarPrevista}
-              type="charge"
-            />
-          ) : null}
-          {rateContext ? (
-            <>
-              {monedaTecleada === "VES" ? null : (
-              <BsAmountPreview
-                amount={amountStr}
-                currency={currency}
-                rateContext={rateContext}
-                usarPrevista={usarPrevista}
-              />
-              )}
-              <PrevistaCheckbox
-                rateContext={rateContext}
-                checked={usarPrevista}
-                onCheckedChange={setUsarPrevista}
-              />
-            </>
-          ) : null}
-          {errors.amount ? <p className="text-xs text-destructive">{errors.amount}</p> : null}
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="description">Descripción (opcional)</Label>
-          <Input
-            id="description"
-            name="description"
-            value={descriptionValue}
-            onChange={(e) => setDescriptionValue(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label>Foto (opcional)</Label>
-          <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
-          <input type="hidden" name="photo_path" value={photoPath ?? ""} />
-        </div>
-
-        {/* El resumen, justo antes del boton. Repite la cifra que se va a
-            anotar y no se toca: es lo último que el dueño lee antes de
-            pulsar, no otro sitio donde cambiar algo.
-
-            Tecleando dólares o euros repite lo escrito, que parece redundante
-            y no lo es: con el monto arriba y la foto en medio, en un teléfono
-            el número ya no se ve cuando el dedo llega al botón. */}
-        {/* Siempre un fiado: el primer movimiento de un cliente nuevo no puede
-            ser un abono, porque todavía no debe nada. */}
-        {/* `parseTypedAmount` Y NO `Number(...)`. El campo agrupa los miles
-        desde el 2026-10-24, así que aquí llega «1.000.000» y `Number` lo lee
-        como NaN — el `|| null` que había lo convertía en nada, y este
-        recuadro, que existe para que el tendero confirme lo que escribió, se
-        quedaba VACÍO con un millón bien tecleado.
-
-        Es el caso exacto que avisaba `CT-132`, y se escapó en el primer
-        barrido de `CT-133`: el lector no vive en el componente del campo,
-        vive aquí. */}
-        <ResumenMonto
-          type="charge"
-          monto={
-            monedaTecleada === "VES" && rateContext
-              ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
-              : parseTypedAmount(amountStr)
-          }
-          moneda={ownerCountry === "VE" ? currency : null}
-          rateContext={rateContext}
-          usarPrevista={usarPrevista}
-          bolivaresTecleados={monedaTecleada === "VES" ? amountStr : null}
-        />
-        {/* El libro donde entra la deuda. Antes lo mandaba el radio de moneda;
-            ahora sale de los botones o del desplegable, así que viaja aquí. */}
-        {ownerCountry === "VE" ? <input type="hidden" name="movement_currency" value={currency} /> : null}
-
-        {state.error && !errorPausada ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-destructive">{state.error}</p>
-            {state.duplicate ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => selectExisting(state.duplicate!.id)}
-              >
-                Ver cuenta de {state.duplicate.name}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Mismo botón "Guardar fiado" que el alta de movimiento, y el mismo
-            problema: aquí el formulario es aún más largo —nombre, cédula,
-            WhatsApp, tipo, plazo, monto— así que con el teclado abierto el
-            campo que falta está casi siempre fuera de la pantalla. */}
-        <FaltaPorCompletar
-          errors={errors}
-          etiquetas={{
-            new_client_name: "Nombre",
-            document_id: "Cédula",
-            whatsapp: "WhatsApp",
-            amount: "Monto",
-          }}
-        />
-
-        {/* Encima de "Guardar fiado", donde el dueño está mirando cuando
-            decide. El cliente todavía no existe, así que el nombre sale del
-            campo que se está tecleando y la frase se arma con él.
-
-            EL AVISO ES EL DE UN ALTA, Y NO EL DEL CAMPO. Esto se hacía con
-            `WhatsappConsentField` y su propia frase de «ya tiene permiso», que
-            está escrita para un cliente que YA EXISTE. Cuando el número acepta
-            pero la ficha es de OTRA bodega no hay nombre que poner, y la frase
-            caía en «Este cliente ya tiene activadas las notificaciones» — sobre
-            un cliente que todavía no existe, y atribuyéndole a él un permiso
-            que es del número. Visto en pantalla el 2026-10-21.
-
-            `AvisoNumeroYaAcepta` es el que ya usan las otras dos altas y dice
-            las dos cosas bien: con nombre cuando la ficha es del propio
-            tendero, y «este número» cuando no lo es. */}
-        {permisoDelNuevo?.granted === true ? (
-          <AvisoNumeroYaAcepta clientName={permisoDelNuevo.clientName} />
-        ) : (
-          <WhatsappConsentField
-            clientName={nameValue}
-            hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
-            yaTienePermiso={false}
-            checked={consent}
-            onCheckedChange={setConsent}
-            disabled={pending}
-          />
-        )}
-
-        <SheetFooter>
-          {state.duplicate ? (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button type="button">Crear cuenta separada</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>¿Crear una cuenta separada?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Ya existe un cliente con esta cédula ({state.duplicate.name}). Solo
-                    continúa si esto es a propósito — por ejemplo, cuentas separadas para lo
-                    personal y el negocio de un mismo cliente.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmDuplicateAndSubmit}>
-                    Sí, crear cuenta separada
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          ) : (
-            <Button type="submit" disabled={pending}>
-              {pending ? "Guardando fiado..." : "Guardar fiado"}
-            </Button>
-          )}
-        </SheetFooter>
-      </form>
-
-      <WhatsappConsentDialog
-        open={consentDialog}
-        onOpenChange={setConsentDialog}
-        clientName={nameValue}
-        hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
-        checked={consent}
-        onCheckedChange={setConsent}
-        onContinue={() => {
-          consentResuelto.current = true;
-          setConsentDialog(false);
-          // El siguiente frame, para que el <input> oculto del permiso ya este
-          // en el DOM cuando se lea el FormData.
-          requestAnimationFrame(() => {
-            if (trasPermiso.current === "duplicado") confirmDuplicateAndSubmit();
-            else formRef.current?.requestSubmit();
-          });
-        }}
-      />
     </>
   );
 }

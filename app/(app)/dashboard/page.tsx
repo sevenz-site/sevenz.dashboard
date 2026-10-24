@@ -20,7 +20,6 @@ import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { HomeHeader } from "@/components/dashboard/home-header";
@@ -63,7 +62,6 @@ export default async function DashboardPage({
     { data: clients },
     { data: owner },
     ownerRate,
-    monedaHabitual,
     ordenesSinAtender,
   ] = await Promise.all([
     supabase
@@ -88,8 +86,6 @@ export default async function DashboardPage({
       .eq("id", user!.id)
       .single(),
     getOwnerRateContext(supabase, user!.id),
-    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
-    getMonedaHabitual(supabase, user!.id),
     // The red number on the Pedidos card. In the same batch and not after it:
     // it is a `head: true` count, and waiting for it in series would hold the
     // whole screen for a figure that decorates one line.
@@ -404,16 +400,7 @@ export default async function DashboardPage({
           <div>
             <ClientSearchDialog
               clients={clients ?? []}
-              ownerId={user!.id}
-              businessName={owner?.business_name || user!.email || "tu negocio"}
-              ownerCountry={ownerCountry}
-              autoOpen={nuevo === "1" || nuevo === "cliente" || nuevo === "abono"}
-              pasoInicial={nuevo === "cliente" ? "new" : "search"}
-              movimientoAlElegir={nuevo === "abono" ? "abono" : undefined}
-              hideTrigger
-              showTourTarget={false}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
+              autoOpen={nuevo === "abono"}
             />
           </div>
         </HideWhileResults>

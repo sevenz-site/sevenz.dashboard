@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AddMovementDialog } from "@/components/dashboard/add-movement-dialog";
+import { ClientActionsRow } from "@/components/dashboard/client-actions-row";
 import { ClientDetailHeader } from "@/components/dashboard/client-detail-header";
 import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
@@ -26,7 +26,6 @@ import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
@@ -49,17 +48,16 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ movimiento?: string; from?: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
-  // Which action the mobile bar asked for while this client is on screen. The
-  // bar carries "Agregar fiado" / "Agregar abono" on this route, so it marks
-  // the URL rather than navigating. Passed to the mobile AddMovementDialog
-  // only — the sm+ layout below renders a second instance, and both opening
-  // would stack two dialogs.
-  const { movimiento, from } = await searchParams;
-  const autoOpenType =
-    movimiento === "abono" ? ("payment" as const) : movimiento === "fiado" ? ("charge" as const) : undefined;
+  // `?movimiento=` YA NO EXISTE Y POR ESO NO SE LEE. Lo ponía la barra del
+  // teléfono cuando llevaba «Agregar fiado» / «Agregar abono» en esta ruta, y
+  // abría el diálogo «Agregar transacción». La barra dejó de llevarlos —la
+  // propia barra explica por qué: el navegador del teléfono tapaba esa tira—
+  // y el diálogo se borró el 2026-10-24. Leer un marcador que nadie pone era
+  // lo único que quedaba de ese camino.
+  const { from } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -71,7 +69,6 @@ export default async function ClientDetailPage({
     ownerRate,
     { data: ownerRow },
     { count: movementCount },
-    monedaHabitual,
     { data: aceptaAvisos },
     { data: cargosAbiertos, error: cargosError },
   ] =
@@ -106,9 +103,6 @@ export default async function ClientDetailPage({
         .select("id", { count: "exact", head: true })
         .eq("client_id", id)
         .is("deleted_at", null),
-      // En que moneda escribio la ultima vez, para que el formulario abra ahi.
-      // Va la ultima: el orden de este array es el de la linea de arriba.
-      getMonedaHabitual(supabase, user!.id),
       supabase.rpc("client_accepts_whatsapp", { p_client_id: id }),
       // LOS FIADOS ABIERTOS, para el chip de cada tarjeta de «Por cobrar».
       //
@@ -292,29 +286,18 @@ export default async function ClientDetailPage({
         // peor que no ofrecerlo. El aviso de abajo dice cómo recuperarlo.
         acciones={
           client.trashed_at ? null : (
-            <AddMovementDialog
-              clientId={client.id}
-              clientName={client.name}
-              clientWhatsapp={client.whatsapp}
-              ownerId={user!.id}
-              ownerCountry={ownerCountry}
-              currentDebtCop={balance}
-              currentDebtUsd={balanceUsd}
-              currentDebtEur={balanceEur}
-              isFlagged={client.is_flagged}
-              consentAsked={
-                // Migración 093, llega por el select("*") de arriba. Mientras
-                // la migración no esté corrida vale undefined, que cae del lado
-                // seguro: la casilla se enseña.
-                Boolean(client.whatsapp_consent_asked_at)
-              }
-              consentGranted={aceptaAvisos === true}
-              triggerClassName="w-full"
-              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
+            // LOS DOS BOTONES, Y YA NO UN DIÁLOGO DETRÁS. Hasta el
+            // 2026-10-24 esto montaba `AddMovementDialog` entero —formulario,
+            // acción de servidor y todo— solo para que dibujara sus dos
+            // enlaces: hacía meses que ninguno de los dos lo abría. El dueño
+            // mandó borrar ese diálogo ese día.
+            <ClientActionsRow
               hrefAbono={`/abonos/nuevo?cliente=${client.id}&desde=cliente`}
-              autoOpen={autoOpenType}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
+              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
+              puedeAbonar={
+                ownerCountry === "VE" ? balanceUsd > 0 || balanceEur > 0 : balance > 0
+              }
+              className="w-full"
             />
           )
         }
