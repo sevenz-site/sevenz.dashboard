@@ -120,6 +120,17 @@ export type DatosDelResumen = {
   // `null` no dibuja la línea: una imagen sin fecha es peor que una con una
   // fecha inventada, pero mucho mejor que una con la fecha equivocada.
   fecha?: string | null;
+  // EL CÓDIGO CORTO DE LA TRANSACCIÓN — migración `147`.
+  //
+  // Encargo del dueño el 2026-10-24: *«Ni en las pantallas de ¡Transacción
+  // registrada con éxito! ni en los png que se comparten incluiste los códigos
+  // de transacción»*. El recibo del abono ya lo llevaba —lo trae dentro de
+  // `abono`— y el de una venta no, ni fiada ni de contado.
+  //
+  // VIVE ARRIBA Y NO DENTRO DE `abono` porque es de la transacción, sea cual
+  // sea. `abono.codigo` se queda donde está para no tocar a quien ya lo manda,
+  // y el dibujo acepta los dos: ver `codigoDeLaTransaccion`, más abajo.
+  codigo?: string | null;
   // `null` en una venta de mostrador: ahi no hay a quien nombrar, asi que la
   // tarjeta no se dibuja. Ver el comentario de la pantalla.
   comprador: { nombre: string; documento: string; telefono: string } | null;
@@ -417,6 +428,42 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     }
   }
 
+  // ── EL CÓDIGO DE LA TRANSACCIÓN ──────────────────────────────────────
+  //
+  // DEBAJO DE LA FECHA Y CENTRADO, exactamente donde lo ponen las dos
+  // pantallas de éxito. La fecha ya se colocó así por esa misma razón —«para
+  // que la imagen y la pantalla se lean igual»— y el código merece el mismo
+  // trato: el tendero tiene la pantalla delante y el cliente la imagen en el
+  // chat, y es el mismo papel visto dos veces.
+  //
+  // Hasta el 2026-10-24 salía debajo de la ficha del comprador, en el recibo
+  // del abono —el único que lo llevaba— y alineado a la izquierda. Se sube al
+  // añadirlo también al recibo de una venta: con cuatro superficies, que cada
+  // una lo ponga donde le toque es cómo acaban pareciendo recibos de negocios
+  // distintos.
+  //
+  // SIN TARJETA Y SIN BORDE, que sí era deliberado y se conserva: es una
+  // etiqueta de la transacción entera. Dentro de la primera tarjeta se leería
+  // como si fuera de ese libro, que es el fallo que el billete en bolívares
+  // tenía antes de salir de ahí.
+  //
+  // LA ALTURA SE SUMA FUERA DEL `if (ctx)`: `recorrer` mide y dibuja con la
+  // misma función, y sumarla solo al dibujar recortaría la imagen por abajo
+  // exactamente esta altura.
+  //
+  // ACEPTA LOS DOS SITIOS —`datos.codigo` y `datos.abono.codigo`— porque el
+  // recibo del abono ya lo mandaba dentro de su propio objeto y moverlo de
+  // allí no compra nada.
+  const codigoDeLaTransaccion = datos.codigo ?? datos.abono?.codigo ?? null;
+  if (codigoDeLaTransaccion) {
+    y += 20 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(13, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText(`Código de transacción: ${codigoDeLaTransaccion}`, centro, y);
+    }
+  }
+
   if (ctx) ctx.textAlign = "left";
   y += 24 * ESCALA;
 
@@ -469,21 +516,6 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     const altoFicha = fy - inicioFicha + 8 * ESCALA;
     if (ctx) tarjeta(ctx, inicioFicha, altoFicha);
     y = inicioFicha + altoFicha + 16 * ESCALA;
-  }
-
-  // ── EL CÓDIGO, ENCIMA DE TODO LO DEL ABONO ───────────────────────────
-  //
-  // Sin tarjeta y sin borde: es una etiqueta de la transacción entera, no un
-  // dato más de una de sus partes. Metido en la primera tarjeta se leería
-  // como si fuera de ese libro, que es exactamente el fallo que el billete
-  // en bolívares tenía antes de salir de ahí.
-  if (datos.abono?.codigo) {
-    if (ctx) {
-      ctx.font = fuente(12, "600");
-      ctx.fillStyle = TINTA;
-      ctx.fillText(`Código de transacción: ${datos.abono.codigo}`, MARGEN, y + 12 * ESCALA);
-    }
-    y += 26 * ESCALA;
   }
 
   // ── EL BILLETE EN BOLÍVARES, SI SE REPARTIÓ ENTRE VARIOS LIBROS ──────

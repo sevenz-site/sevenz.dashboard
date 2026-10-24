@@ -44,6 +44,7 @@ export default async function ResumenDeVentaPage({
       bloques={resumen.bloques}
       rates={resumen.rates}
       fecha={resumen.fecha}
+      codigo={resumen.codigo}
     />
   );
 }

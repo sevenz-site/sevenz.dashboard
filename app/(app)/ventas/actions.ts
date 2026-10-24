@@ -1096,6 +1096,18 @@ export type ResumenDeVenta =
       // Cuándo se hizo, ya formateada y en la zona del negocio. Ver dónde se
       // calcula, al final de `resumenDeVenta`.
       fecha: string;
+      // EL CÓDIGO CORTO DE ESTA TRANSACCIÓN — migración `147`.
+      //
+      // Encargo del dueño el 2026-10-24, con dos capturas: *«Ni en las
+      // pantallas de ¡Transacción registrada con éxito! ni en los png que se
+      // comparten incluiste los códigos de transacción»*. El flujo del abono
+      // ya lo llevaba desde el día anterior; el de una venta no, ni fiada ni
+      // de contado, porque las dos terminan en esta misma pantalla.
+      //
+      // `null` CUANDO LA FILA ES ANTERIOR A LA MIGRACIÓN y nadie la rellenó.
+      // La pantalla no dibuja nada en ese caso, igual que `CodigoDeTransaccion`:
+      // un «Código: —» promete algo que buscar que ninguna búsqueda encuentra.
+      codigo: string | null;
       comprador: CompradorDelResumen | null;
       bloques: BloqueDelResumen[];
       rates: BolivarRates | null;
@@ -1129,7 +1141,12 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   // negocio, con sus productos y su deuda.
   const { data: venta } = await supabase
     .from("sales")
-    .select("id, client_id, created_at")
+    // `transaction_code` SALE DE AQUI, de la venta, y no de sus movimientos.
+    // Es lo unico que funciona en una venta de contado: pagada entera no
+    // escribe ni un movimiento (migracion `124`), asi que su codigo solo vive
+    // en esta fila. Es la razon por la que la migracion `147` puso la columna
+    // en `sales` ademas de en `movements`.
+    .select("id, client_id, created_at, transaction_code")
     .eq("id", saleId)
     .eq("owner_id", user.id)
     .is("deleted_at", null)
@@ -1246,6 +1263,7 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     ok: true,
     saleId: venta.id,
     fecha: formatReceiptDateTime(venta.created_at as string, esColombiano ? "CO" : "VE"),
+    codigo: (venta.transaction_code as string | null) ?? null,
     // SE FORMATEA AQUÍ Y NO EN CADA PANTALLA. Esto lo leen dos sitios —la
     // pantalla y el canvas de la imagen— y un documento con puntos en una y
     // sin ellos en la otra es la misma venta contando dos cosas distintas.
