@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ordenarHistorial } from "@/lib/orden-del-historial";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -225,7 +226,12 @@ export default async function SharedBalancePage({
   }
 
   const shared = data as SharedBalance;
-  const movements = [...shared.movements].reverse();
+  // EL MISMO ORDEN QUE LA PANTALLA DEL DUEÑO. La RPC los devuelve ascendentes
+  // y esto los da la vuelta, como siempre — lo que añade es el desempate por
+  // id, porque las líneas de un reparto comparten `created_at` al microsegundo
+  // y sin él las dos pantallas las enseñaban en distinto orden. Ver
+  // `lib/orden-del-historial.ts`.
+  const movements = ordenarHistorial(shared.movements);
 
   // CUÁNTAS FILAS SE ENSEÑAN Y CUÁNTAS HAY, contando las dos clases. Ver el
   // comentario del pie de la lista, más abajo.

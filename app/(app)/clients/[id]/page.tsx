@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ordenarHistorial } from "@/lib/orden-del-historial";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
@@ -621,7 +622,11 @@ async function MovementHistory({
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  const movementRows = (movements ?? []) as Movement[];
+  // EL MISMO ORDEN QUE EL ENLACE DEL CLIENTE, y por eso sale de una función
+  // compartida: las líneas de un reparto empatan en `created_at` y sin
+  // desempate cada pantalla las ordenaba a su manera. Ver
+  // `lib/orden-del-historial.ts`.
+  const movementRows = ordenarHistorial((movements ?? []) as Movement[]);
 
   // AQUÍ SE LEÍA EL SALDO DE CADA LIBRO, para que la fila del abono suelto
   // tuviera pie. Se fue el 2026-10-23: desde ese día el pie de TODAS las
