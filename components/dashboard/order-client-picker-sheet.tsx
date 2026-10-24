@@ -14,32 +14,32 @@ import {
 import { ClientResultList } from "@/components/dashboard/client-result-list";
 import type { OrderClient } from "@/lib/orders/order-client-match";
 
-// «VER CLIENTES»: LAS FICHAS QUE COMPARTEN LOS DÍGITOS DE ESTE DOCUMENTO.
+// «VER CLIENTES»: THE FICHAS THAT SHARE THIS DOCUMENT'S DIGITS.
 //
-// Instrucción del dueño el 2026-10-24, junto al frame `1634:30094`: *«al
+// The owner's instruction on 2026-10-24, alongside frame `1634:30094`: *«al
 // seleccionar "Ver clientes" abre componente sheet con los clientes que
 // coincide»*.
 //
 // ═══════════════════════════════════════════════════════════════════════
-// POR QUÉ ESTA PANTALLA EXISTE, QUE NO ES OBVIO
+// WHY THIS SCREEN EXISTS, WHICH IS NOT OBVIOUS
 //
-// El índice único de la migración `033` normaliza el documento con
-// `[^a-z0-9]`, y eso CONSERVA la letra. Así que `V-21054832` y `E-21054832`
-// son dos claves distintas y las dos caben en la misma cuenta. En dev hay tres
-// grupos así ahora mismo, uno de tres personas.
+// Migration `033`'s unique index normalises the document with `[^a-z0-9]`,
+// and that KEEPS the letter. So `V-21054832` and `E-21054832` are two
+// different keys and both fit in the same account. Dev holds three such
+// groups right now, one of them three people deep.
 //
-// Cuando el pedido no trae letra —todos los anteriores a la `155`— no hay
-// nada en él que distinga a una de otra. Elegir por la app sería cara o cruz
-// sobre de quién va a ser la deuda; esta hoja le pasa la pregunta a quien
-// tiene la respuesta.
+// When the order carries no letter — every order older than `155` — nothing
+// in it tells one from another. Choosing for the shopkeeper would be a coin
+// flip on whose debt this becomes; this sheet hands the question to whoever
+// has the answer.
 //
 // ───────────────────────────────────────────────────────────────────────
-// SE REUSA `ClientResultList`, QUE YA ES LA LISTA DE ELEGIR UN CLIENTE
+// IT REUSES `ClientResultList`, WHICH ALREADY IS THE PICK-A-CLIENT LIST
 //
-// Es la misma del buscador del abono: nombre, documento con su letra, y una
-// fila tocable. Escribir otra lista aquí sería la copia que `StickyActions`
-// enseñó a no hacer — y además esta ya resuelve el `onMouseDown` que hace
-// falta cuando cuelga de un campo con foco.
+// The same one the payment's search uses: name, document with its letter, and
+// a tappable row. Writing another list here would be the copy `StickyActions`
+// taught us not to make — and this one already handles the `onMouseDown` that
+// is needed when it hangs off a focused field.
 export function OrderClientPickerSheet({ clientes }: { clientes: OrderClient[] }) {
   const router = useRouter();
   const [abierta, setAbierta] = useState(false);
@@ -54,17 +54,19 @@ export function OrderClientPickerSheet({ clientes }: { clientes: OrderClient[] }
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-xl">
         <SheetHeader>
           <SheetTitle>Clientes con ese documento</SheetTitle>
-          {/* SE DICE CUÁNTOS Y POR QUÉ. «Varias cuentas» en la tarjeta no
-              explica qué tienen en común; aquí hay sitio para decirlo, y es lo
-              que el tendero necesita para saber qué está comparando. */}
+          {/* IT SAYS HOW MANY AND WHY. «Varias cuentas» on the card does not
+              explain what they have in common; there is room for it here, and
+              it is what the shopkeeper needs in order to know what he is
+              comparing. */}
           <SheetDescription>
             {clientes.length} fichas de tu cuenta comparten los números de este documento. Ábrelas
             para ver cuál es.
           </SheetDescription>
         </SheetHeader>
-        {/* LOS 16px DE LOS LADOS: `SheetHeader` trae su propio `p-4` y
-            `SheetContent` no trae ninguno. Sin esto la lista queda pegada a
-            los dos bordes — pasó con el detalle del producto el mismo día. */}
+        {/* THE 16px GUTTERS: `SheetHeader` brings its own `p-4` and
+            `SheetContent` brings none. Without this the list sits flush
+            against both edges — it happened to the product detail the same
+            day. */}
         <div className="px-4 pb-6">
           <ClientResultList
             results={clientes.map((c) => ({
@@ -73,10 +75,10 @@ export function OrderClientPickerSheet({ clientes }: { clientes: OrderClient[] }
               documentId: c.document_id,
               documentType: c.document_type ?? null,
             }))}
-            // ABRE LA FICHA, que es lo mismo que hace «Ver Pedro Pérez» en el
-            // caso de una sola. El tendero mira el historial y decide quién
-            // es; elegir «este pedido es de esta persona» todavía no existe,
-            // porque el flujo de registro no está construido.
+            // IT OPENS THE FICHA, which is what «Ver Pedro Pérez» does in
+            // the single-match case. The shopkeeper reads the history and
+            // decides who it is; choosing «this order belongs to this person»
+            // does not exist yet, because the registration flow is not built.
             onSelect={(id) => {
               setAbierta(false);
               router.push(`/clients/${id}`);

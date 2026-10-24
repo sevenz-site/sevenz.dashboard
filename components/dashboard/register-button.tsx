@@ -10,21 +10,21 @@ import { useTour } from "@/components/dashboard/tour-context";
 // el tendero puede anotar — frame `1389:11227`, 2026-10-18.
 //
 // ===========================================================================
-// ES EL ÚNICO. TODA PANTALLA QUE OFREZCA REGISTRAR ALGO MONTA ESTE COMPONENTE
+// THIS IS THE ONLY ONE. EVERY SCREEN THAT OFFERS TO REGISTER MOUNTS IT
 //
-// Instrucción del dueño el 2026-10-24, con las capturas de `/clients` y
-// `/malas-pagas` rodeadas en rojo: *«usa el mismo componente en todas las
+// The owner's instruction on 2026-10-24, with the screenshots of `/clients`
+// and `/malas-pagas` circled in red: *«usa el mismo componente en todas las
 // pantallas para que en un futuro al cambiar el botón en una pantalla se
-// cambie a todas»*. Esas dos seguían dibujando el disparador de
-// `ClientSearchDialog` —un botón «Agregar movimiento» que abría el diálogo
-// viejo «Agregar transacción»— mientras Inicio ya abría la hoja. Tres
-// pantallas, dos flujos, y el de ellas era el que se había jubilado.
+// cambie a todas»*. Those two were still drawing `ClientSearchDialog`'s own
+// trigger — an «Agregar movimiento» button that opened the old «Agregar
+// transacción» dialog — while Inicio already opened the sheet. Three screens,
+// two flows, and theirs was the retired one.
 //
-// Se llamaba `NewSaleButton` hasta ese día. El nombre venía de cuando abría el
-// asistente de venta y ya describía mal lo que hace: abre la hoja de
-// `RegisterSheet`, que ofrece tres cosas y solo una es una venta. Con el botón
-// montándose en tres sitios, un nombre que miente es lo que hace que el
-// siguiente escriba otro.
+// It was called `NewSaleButton` until that day. The name came from when it
+// opened the sale wizard and already described the wrong thing: it opens
+// `RegisterSheet`, which offers three things and only one of them is a sale.
+// With the button mounting in three places, a name that lies is what makes
+// the next person write another one.
 //
 // Se llamó «Agregar» hasta ese día y abrió tres cosas distintas en tres
 // semanas: el diálogo de movimientos, luego el asistente de venta, y ahora la
@@ -33,9 +33,10 @@ import { useTour } from "@/components/dashboard/tour-context";
 // tendero viene a hacer.
 //
 // En teléfono esta puerta es el botón flotante de `MobileNav`; de `md:` en
-// adelante no hay barra abajo y la puerta es ésta. POR ESO QUIEN LO MONTA LO
-// ENVUELVE EN `hidden md:block`: sin eso, en un teléfono saldrían dos
-// «Registrar», el flotante y éste.
+// adelante no hay barra abajo y la puerta es ésta.
+//
+// WHICH IS WHY WHOEVER MOUNTS IT WRAPS IT IN `hidden md:block`: without that,
+// a phone would show two «Registrar», the floating one and this one.
 //
 // ===========================================================================
 // POR QUÉ ES UN COMPONENTE Y NO UN BOTÓN DENTRO DE LA PÁGINA

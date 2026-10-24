@@ -12,9 +12,9 @@ import { formatAmountWhileTyping } from "@/lib/products/price";
  *
  * ── WHY THIS IS A HOOK AND NOT THREE COPIES ─────────────────────────────
  *
- * There were three fields doing this by hand before this hook existed
- * (`abono-monto`, `abono-reparto`, `nueva-venta`), each with its own ref, its
- * own `useLayoutEffect` and its own caret bookkeeping — identical code, so
+ * Three fields did this by hand before this hook existed (`abono-monto`,
+ * `abono-reparto`, `nueva-venta`), each with its own ref, its own
+ * `useLayoutEffect` and its own caret bookkeeping — identical code, so
  * identical that a diff between them showed nothing. That is the exact shape
  * of the `StickyActions` failure written down in CLAUDE.md: a screen whose
  * classes had been copied instead of mounting the component, invisible to the
