@@ -427,6 +427,18 @@ function ClientSearchDialogBody({
     amount: amountRule(),
   });
 
+  // EL `recheck` DEL MONTO VA EN UN EFECTO Y NO EN EL `onChange` DEL CAMPO.
+  //
+  // Desde el 2026-10-24 el campo agrupa los miles, así que durante el
+  // `onChange` el FormData todavía lleva lo que puso el NAVEGADOR —teclear un
+  // dígito sobre «1.000.000» deja «1.000.0000», que se lee como mil—. Desde
+  // aquí lee lo que de verdad hay en pantalla. Misma razón y misma forma que
+  // en `add-movement-dialog`; si se toca una, se toca la otra.
+  useEffect(() => {
+    recheck("amount", formRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountStr]);
+
   // SIN ESCRIBIR NADA, EN EL CAMINO DEL ABONO, SE ENSEÑA LA LISTA — frame
   // `1525:10827`, que la dibuja llena antes de teclear.
   //
@@ -796,10 +808,7 @@ function ClientSearchDialogBody({
             id="amount"
             name="amount"
             value={amountStr}
-            onChange={(e) => {
-              setAmountStr(e.target.value);
-              recheck("amount", formRef.current);
-            }}
+            onChange={setAmountStr}
             moneda={ownerCountry === "VE" ? monedaTecleada : null}
             invalid={Boolean(errors.amount)}
           />

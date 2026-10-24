@@ -879,6 +879,7 @@ no escribe nada.
 | Zona que toca el diff | Suites |
 |---|---|
 | Tasas y bolívares | `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
+| **Cualquier campo donde se teclee dinero** | **`qa:agrupado`** |
 | Papelera y restaurar | `qa:papelera` |
 | Libreta por foto | `qa:import`, `qa:reconcile` |
 | WhatsApp, más allá de las plantillas | `qa:puerta`, `qa:recibo`, `qa:recordatorio`, `qa:mensaje`, `qa:consent`, `qa:telefono` |
@@ -886,6 +887,38 @@ no escribe nada.
 | Documento del cliente | `qa:document-id` |
 | `/admin` y métricas | `qa:multi-owner` |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
+
+### Un campo de dinero que se toca se mira TECLEÁNDOLO, no leyéndolo
+
+Desde el 2026-10-24, cuando todos los campos de dinero de la app pasaron a
+agrupar los miles mientras se teclean (`useGroupedAmount`).
+
+**`npm run qa:agrupado`** es la parada barata: segundos, sin base de datos,
+y vigila las dos mitades a la vez — lo que queda en pantalla al teclear, y el
+número que sale de ese texto. Se corre **siempre que el diff toque un campo
+donde se escriba un importe**, aunque el cambio parezca de maquetación.
+
+**Por qué no basta con mirar la pantalla.** Agrupar cambia el TEXTO del campo,
+y de ese texto sale lo que se guarda. Si el formateador y el lector se separan,
+la pantalla se ve perfecta y el número es otro — la única clase de fallo que
+este producto ya pagó dos veces con dinero de gente. El caso medido: `Number`
+lee «1.000.000» como `NaN`, y `parseAmount` lee «1,234» como MIL DOSCIENTOS
+TREINTA Y CUATRO.
+
+**Y después, en el navegador, tecleando de verdad**, porque un campo controlado
+puede verse bien y tener el cursor saltando al final en cada millar:
+
+- escribir `1000000` tecla a tecla y confirmar que se lee `1.000.000`;
+- corregir **un dígito del medio** y confirmar que el cursor se queda donde
+  estaba;
+- comprobar la cifra que la pantalla calcula de ese campo —la equivalencia en
+  bolívares, el total, el resumen— y que **coincide con lo escrito**;
+- a 375px, que ni el campo ni la página desbordan.
+
+**Los campos, a 2026-10-24**: el monto del fiado/abono (`MontoCard`), el abono
+dirigido (1/2 y 2/2), el «Abonó» de la venta, el precio y el alta rápida dentro
+de un fiado, el costo y los precios del producto, el precio del alta rápida de
+la venta, el monto de un movimiento de libreta y el saldo de apertura.
 
 **`qa:currency` lleva un fallo conocido y hay que decidirlo, no ignorarlo.**
 Desde el 2026-10-21 falla dos controles por dos movimientos sin autor de un

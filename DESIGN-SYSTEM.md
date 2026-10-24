@@ -2296,6 +2296,103 @@ misma medición, y lo que pidió por la tarde fue la barra, no el botón. Son
 dos cosas fijas sobre el mismo borde y se decidieron por separado — que es
 precisamente lo que hizo falta medir una por una para verlas.
 
+## Todo campo de DINERO agrupa los miles mientras se teclea
+
+**El tendero escribe `1000000` y tiene que leer `1.000.000`.** Pedido por el
+dueño el 2026-10-24 para toda la app: *«moneda debería ser con lo último que
+definimos para todo el app, es decir, al digitar se debe ver "1.000.000" y no
+"1000000"»*.
+
+**Se monta `useGroupedAmount`** (`hooks/use-grouped-amount.ts`), nunca una copia
+de sus clases ni de su lógica:
+
+```tsx
+const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(monto, setMonto);
+
+<Input type="text" inputMode="decimal" value={monto}
+       ref={refMonto} onChange={alTeclearMonto} />
+```
+
+El hook nació de tres copias idénticas a mano —`abono-monto`, `abono-reparto`
+y `nueva-venta`—, tan idénticas que un diff entre ellas no enseñaba nada. Es
+la misma lección que `StickyActions`, unas secciones más arriba.
+
+### `type="number"` es INCOMPATIBLE, y no es una preferencia
+
+Un campo numérico **se niega a sostener «1.000.000»**: el navegador lo
+considera un valor inválido y deja el campo vacío. Así que agrupar obliga a
+`type="text"` con `inputMode="decimal"`, que mantiene el teclado numérico del
+teléfono — lo único que `number` aportaba aquí.
+
+Con él se van `min`, `max` y `step`. **No se pierde validación**: el tope lo
+comprueba `amountRule` con su mensaje en español —el del navegador salía en
+inglés, que es por lo que estos formularios llevan `noValidate`— y el servidor
+lo vuelve a comprobar.
+
+### QUIÉN LEE EL CAMPO IMPORTA MÁS QUE EL FORMATO, y es donde está el dinero
+
+**El orden es al revés de lo que parece: primero se arregla el lector, después
+se agrupa.** Agrupar cambia el TEXTO que queda en el campo, y de ese texto sale
+el número que se guarda. Hay tres lectores y cada uno tiene su sitio:
+
+| Lector | Cuándo | Qué hace |
+|---|---|---|
+| `parseTypedAmount` | El texto salió de un campo agrupado | Los puntos son miles, la coma es el decimal. Sin adivinar |
+| `parseMoneyInput` | El texto cruzó la red, un borrador, otra pantalla | Decide por la forma: con coma, convención de campo; sin ella, `parseAmount` |
+| `parseAmount` | Texto libre, un pegado | Adivina. Es su trabajo y está documentado |
+
+**`Number(...)` no es ninguno de los tres.** `Number("1.000.000")` es `NaN`, y
+lo que el `NaN` produce depende de quién lo reciba: un `|| 0` lo convierte en
+CERO —el monto se vacía solo al pasar de tres cifras—, un guarda lo descarta
+—el botón deja de hacer nada, en silencio— y una validación contesta «El monto
+solo puede tener números» sobre un campo con un millón bien escrito.
+
+**Y `parseAmount` tampoco vale sobre un campo agrupado**, que es el que más
+cuesta de ver. Su regla para texto libre es «un separador solo con tres dígitos
+detrás son miles» —cierta para «12.000»— y en un campo agrupado lee **«1,234»
+como MIL DOSCIENTOS TREINTA Y CUATRO**. Mil veces el importe acordado, sin un
+error, sin un rojo, sin nada que mirar. Medido el 2026-10-24, no razonado; la
+suite `npm run qa:agrupado` lo vigila.
+
+### Un campo cuyo estado es un NÚMERO necesita un espejo de texto
+
+Un número no recuerda cómo se escribió: repintado desde él, «1.500» vuelve a
+ser «1500» en la siguiente tecla y la agrupación se pierde sola. Así que el
+componente guarda el TEXTO aparte y escribe el número al leerlo
+(`editar-movimiento.tsx`, `movement-products-field.tsx`).
+
+**Y si el espejo está indexado por posición, se BORRA al añadir o quitar una
+fila.** Al quitar una, las de debajo se corren: sin el borrado, el texto de la
+fila 3 se pinta sobre la 2 — un precio que el tendero no escribió, encima de un
+producto que no es el suyo. Vaciarlo no pierde nada, cada campo vuelve a
+formatear su propio número.
+
+### El signo menos se conserva, y hay un campo que lo necesita
+
+El saldo de apertura de una libreta acepta un importe **negativo** a propósito:
+una página puede arrancar con el negocio debiéndole al cliente. El filtro de
+caracteres del formateador se comía el menos hasta el 2026-10-24 — con la
+agrupación puesta y sin eso, esa libreta habría pasado a ser imposible de
+escribir.
+
+### Qué NO agrupa
+
+Cantidades (unidades en el carrito, inventario, cantidad mínima al mayor), la
+tasa de cambio, cédulas, teléfonos, plazos en días y los filtros numéricos. No
+son dinero, y un par de ellos llevan guardas que cuentan dígitos y chocarían
+con los puntos.
+
+**`/admin` se queda fuera a propósito**: sus campos siguen con `type="number"`,
+solo los ve el dueño de Sevenz, y el navegador ya le impide escribir un
+separador.
+
+### El ancho hay que mirarlo
+
+Agrupar alarga el texto. Dos campos se quedaron cortos y se midieron: el precio
+de una línea de producto pasó de `w-20` a `w-24`, y el saldo de apertura de
+`w-32` a `w-36` —con signo, «-1.234.567,89» no cabía—. A 375px, comprobado sin
+desbordar ni el campo ni la página.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

@@ -283,10 +283,18 @@ export function AddMovementDialog({
   // topeTecleado y no currentDebt: el tope ya no es solo la deuda, también
   // cambia al cambiar de moneda tecleada o al marcar la tasa prevista, y esos
   // dos movimientos tienen que revalidar lo que ya esté escrito.
+  //
+  // Y `amountStr` ENTRÓ EN LA LISTA EL 2026-10-24, al agrupar los miles. El
+  // `recheck` vivía en el `onChange` del campo, donde lee el FormData — o sea
+  // el valor que el NAVEGADOR acaba de poner, todavía sin agrupar: teclear un
+  // dígito sobre «1.000.000» deja ahí «1.000.0000», que se lee como mil. Solo
+  // podía borrar un error de más (este `recheck` nunca pinta uno nuevo) y el
+  // `validate` del envío lo volvía a sacar, así que era un mensaje rancio y no
+  // una cifra mala. Desde el efecto, lee lo que de verdad hay en pantalla.
   useEffect(() => {
     recheck("amount", formRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, topeTecleado]);
+  }, [type, topeTecleado, amountStr]);
 
   // Whether "Agregar abono" should even be clickable — checked against
   // whichever currency actually has debt, not just the one currently
@@ -653,12 +661,8 @@ export function AddMovementDialog({
               id="amount"
               name="amount"
               value={amountStr}
-              onChange={(e) => {
-                setAmountStr(e.target.value);
-                recheck("amount", formRef.current);
-              }}
+              onChange={setAmountStr}
               moneda={llevaDivisas ? monedaTecleada : null}
-              max={type === "payment" && topeTecleado != null ? topeTecleado : undefined}
               invalid={Boolean(errors.amount)}
               // Un solo renglón debajo de la cifra, no dos. El tope en gris
               // mientras va bien, y el error en rojo EN SU LUGAR cuando se

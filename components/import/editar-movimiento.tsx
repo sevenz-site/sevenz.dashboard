@@ -18,6 +18,8 @@ import { TriangleAlert } from "lucide-react";
 // Las fechas viven en `lib/` porque deciden `created_at`, y eso decide el saldo
 // corrido y la mora. Ahí sí se pueden probar — ver qa/bordes-subir-libreta.mjs.
 import { valorDeInputFecha } from "@/lib/fecha-de-libreta";
+import { formatAmountForInput, parseTypedAmount } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type { ExtractedMovement, LedgerCurrency } from "@/lib/types";
 import type { ReviewRow } from "@/lib/reconcile";
 
@@ -70,6 +72,26 @@ export function EditarMovimiento({
 
   const cambiar = (patch: Partial<typeof borrador>) =>
     setBorrador((prev) => ({ ...prev, ...patch }));
+
+  // ── EL MONTO, AGRUPADO MIENTRAS SE TECLEA ──────────────────────────────
+  //
+  // Pedido por el dueño el 2026-10-24 para toda la app. Hace falta un texto
+  // aparte porque `borrador.amount` es un NÚMERO, y un número no recuerda cómo
+  // se escribió: repintado desde él, «1.500» volvería a ser «1500» en la
+  // siguiente tecla y la agrupación se perdería sola.
+  //
+  // Nace del número y no necesita efecto que lo sincronice: el componente se
+  // monta con `key={rowId}`, como dice la nota de arriba.
+  const [textoMonto, setTextoMonto] = useState(() =>
+    formatAmountForInput(fila.amount, { miles: true }),
+  );
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(textoMonto, (t) => {
+    setTextoMonto(t);
+    // `parseTypedAmount` y no `Number(...)`: `Number("1.500")` es NaN, y el
+    // `|| 0` que había aquí lo convertía en CERO — el monto de un movimiento
+    // de la libreta se vaciaba al pasar de tres cifras, sin decir nada.
+    cambiar({ amount: parseTypedAmount(t) ?? 0 });
+  });
 
   function confirmar() {
     onUpdate(fila.rowId, borrador);
@@ -153,15 +175,18 @@ export function EditarMovimiento({
           <div className="flex flex-col gap-2">
             <Label htmlFor="editar-monto">Monto</Label>
             <div className="flex items-center gap-2">
+              {/* `type="text"` y no `type="number"`: un campo numérico se
+                  niega a sostener «1.500.000» y lo deja vacío, así que agrupar
+                  los miles y `type="number"` son incompatibles. `inputMode`
+                  conserva el teclado numérico del teléfono. */}
               <Input
                 id="editar-monto"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
                 inputMode="decimal"
                 className="flex-1"
-                value={borrador.amount}
-                onChange={(e) => cambiar({ amount: Number(e.target.value) || 0 })}
+                value={textoMonto}
+                ref={refMonto}
+                onChange={alTeclearMonto}
               />
               {/* La moneda pegada al monto, como en el alta de movimiento: es
                   una propiedad de ese número, no un campo aparte. */}

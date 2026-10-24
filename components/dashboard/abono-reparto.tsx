@@ -2,7 +2,6 @@
 
 import { useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,7 +43,6 @@ import {
 } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
-  formatAmountWhileTyping,
   formatPriceAmount,
   parseAmount,
   priceIn,
@@ -52,6 +50,7 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 
 // PASO 1/2 DEL ABONO REPARTIDO — frame `1526:11182`.
 //
@@ -193,22 +192,17 @@ export function AbonoReparto({
   // que aparece lo empuja y corregir un dígito del medio es imposible. Va en
   // un `useLayoutEffect` porque cuando el `onChange` corre, el valor nuevo
   // todavía no está en el DOM.
-  const campoMonto = useRef<HTMLInputElement>(null);
-  const cursorPendiente = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    const destino = cursorPendiente.current;
-    if (destino == null || campoMonto.current == null) return;
-    cursorPendiente.current = null;
-    campoMonto.current.setSelectionRange(destino, destino);
-  });
-
 
   const libro =
     libroEditado !== undefined
       ? libroEditado
       : ((borrador?.libro as LedgerCurrency | null | undefined) ?? libros[0] ?? null);
   const monto = montoEditado ?? borrador?.monto ?? "";
+  // Todo eso lo hace `useGroupedAmount`, que nació el 2026-10-24 al llevar la
+  // agrupación a los campos de dinero que faltaban: estas líneas estaban
+  // copiadas en tres pantallas, idénticas, y un diff entre ellas no enseñaba
+  // nada. Es la lección de `StickyActions` escrita en CLAUDE.md.
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(monto, setMonto);
   const enBolivares = enBolivaresEditado ?? borrador?.enBolivares ?? false;
   // `SIN_AJUSTES` y no `{}`: un objeto nuevo en cada render haría que el
   // `useMemo` del reparto y el efecto que guarda el borrador se dispararan
@@ -1161,19 +1155,11 @@ export function AbonoReparto({
                 id="monto"
                 inputMode="decimal"
                 value={monto}
-                ref={campoMonto}
-                onChange={(e) => {
-                  // El filtro de caracteres que había aquí lo hace ya
-                  // `formatAmountWhileTyping`, que además agrupa y acota los
-                  // decimales a cuatro.
-                  const { texto, cursor } = formatAmountWhileTyping(
-                    e.target.value,
-                    monto,
-                    e.target.selectionStart ?? e.target.value.length,
-                  );
-                  cursorPendiente.current = cursor;
-                  setMonto(texto);
-                }}
+                ref={refMonto}
+                // El filtro de caracteres que había aquí lo hace ya
+                // `formatAmountWhileTyping`, dentro del hook, que además
+                // agrupa y acota los decimales a cuatro.
+                onChange={alTeclearMonto}
                 placeholder="00"
                 className="h-10 flex-1 text-lg"
               />

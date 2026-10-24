@@ -18,6 +18,7 @@ import { isDocumentTypeFor } from "@/lib/document-id";
 import { buscarDocumentoDuplicado, mensajeDeDuplicado } from "@/lib/clients/duplicate-document";
 import { DOCUMENT_SOURCE, type LedgerCurrency } from "@/lib/types";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { parseMoneyInput } from "@/lib/products/price";
 import type { LineaDeProducto } from "@/lib/sale-lines";
 
 export type MovementFormState = {
@@ -267,8 +268,17 @@ function parseMovementFields(formData: FormData): ParsedMovement {
   if (type !== "charge" && type !== "payment") {
     return { error: "Selecciona el tipo de transacción." };
   }
-  const amount = Number(amountRaw);
-  if (!Number.isFinite(amount) || amount <= 0) {
+  // `parseMoneyInput` and never `Number(...)`. The amount field groups
+  // thousands as it is typed since 2026-10-24, so what arrives here is
+  // "1.000.000", and `Number` reads that as NaN — the shopkeeper would have
+  // got «Ingresa un monto válido» holding a million. This reader is also the
+  // one that keeps answering a browser with the previous bundle loaded, which
+  // still posts "1250.50"; see its own comment for why the shape has to decide.
+  //
+  // THIS IS THE SHARED READER OF BOTH DOORS — `addMovement` and
+  // `createClientWithMovement` — which is why there is one fix and not two.
+  const amount = parseMoneyInput(amountRaw);
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) {
     return { error: "Ingresa un monto válido." };
   }
   const currency = ALLOWED_CURRENCIES.includes(currencyRaw as LedgerCurrency)

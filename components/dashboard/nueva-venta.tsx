@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -83,7 +82,6 @@ import {
 } from "@/lib/products/public-pricing";
 import {
   formatAmountForInput,
-  formatAmountWhileTyping,
   formatPriceAmount,
   parseAmount,
   type BolivarRates,
@@ -107,6 +105,7 @@ import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
@@ -2188,15 +2187,15 @@ function PagoSheet({
   // Va en un `useLayoutEffect` y no en el propio `onChange` porque el valor
   // nuevo todavía no está en el DOM cuando el manejador corre: colocarlo allí
   // lo pone sobre el texto viejo y React lo pisa al repintar.
-  const campoMonto = useRef<HTMLInputElement>(null);
-  const cursorPendiente = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    const destino = cursorPendiente.current;
-    if (destino == null || campoMonto.current == null) return;
-    cursorPendiente.current = null;
-    campoMonto.current.setSelectionRange(destino, destino);
-  });
+  // Todo eso lo hace `useGroupedAmount`, que nació el 2026-10-24 al llevar la
+  // agrupación a los campos de dinero que faltaban: estas líneas estaban
+  // copiadas en tres pantallas, idénticas, y un diff entre ellas no enseñaba
+  // nada. Es la lección de `StickyActions` escrita en CLAUDE.md.
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(
+    monto,
+    setMonto,
+    COMO_SE_ESCRIBE.maxDecimales,
+  );
 
   const [usarPrevista, setUsarPrevista] = useState(inicial?.usarPrevista ?? false);
   const [photoPath, setPhotoPath] = useState<string | null>(inicial?.photoPath ?? null);
@@ -2400,26 +2399,17 @@ function PagoSheet({
                   <div className="relative min-w-0 flex-1">
                     <Input
                       id="pago-monto"
-                      ref={campoMonto}
+                      ref={refMonto}
                       className={monto ? "pr-9" : undefined}
                       inputMode="decimal"
                       value={monto}
-                      onChange={(e) => {
-                        // SE AGRUPA MIENTRAS SE TECLEA, a petición del dueño
-                        // el 2026-10-23. `formatAmountWhileTyping` necesita el
-                        // valor ANTERIOR además del nuevo, y no es un capricho
-                        // de su firma: tecleando `12345`, al llegar el `5` el
-                        // texto crudo es `1.2345`, que leído solo no se
-                        // distingue de «uno coma dos tres cuatro cinco».
-                        const { texto, cursor } = formatAmountWhileTyping(
-                          e.target.value,
-                          monto,
-                          e.target.selectionStart ?? e.target.value.length,
-                          COMO_SE_ESCRIBE.maxDecimales,
-                        );
-                        cursorPendiente.current = cursor;
-                        setMonto(texto);
-                      }}
+                      // SE AGRUPA MIENTRAS SE TECLEA, a petición del dueño el
+                      // 2026-10-23. El hook le pasa el valor ANTERIOR además
+                      // del nuevo, y no es un capricho de la firma: tecleando
+                      // `12345`, al llegar el `5` el texto crudo es `1.2345`,
+                      // que leído solo no se distingue de «uno coma dos tres
+                      // cuatro cinco».
+                      onChange={alTeclearMonto}
                       placeholder="00"
                     />
                     {monto ? (

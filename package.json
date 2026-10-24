@@ -61,6 +61,7 @@
     "qa:reparto": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reparto.mjs",
     "qa:saldos": "node qa/saldos-cuadran.mjs",
     "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs",
+    "qa:agrupado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-agrupado.mjs",
     "qa:bolivares": "node --experimental-strip-types qa/monto-bolivares.mjs",
     "qa:documento-cliente": "node qa/documento-del-cliente.mjs",
     "qa:orden-letra": "node qa/orden-con-letra.mjs",

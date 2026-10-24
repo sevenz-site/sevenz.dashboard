@@ -17,7 +17,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { createProduct } from "@/app/(app)/productos/actions";
-import { currencyName, formatPriceAmount, parseAmount, type PriceCurrency } from "@/lib/products/price";
+import {
+  currencyName,
+  formatPriceAmount,
+  parseTypedAmount,
+  type PriceCurrency,
+} from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 
 // REGISTRAR UN PRODUCTO SIN SALIR DE LA VENTA — frame `1389:9169`, 2026-10-18.
 //
@@ -84,7 +90,14 @@ export function QuickProductSheet({
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
 
-  const unitario = parseAmount(precio) ?? 0;
+  // `parseTypedAmount` y no `parseAmount` desde el 2026-10-24, que es cuando
+  // este campo pasó a agrupar los miles: en un campo agrupado la convención
+  // ya está decidida, y la adivinanza de `parseAmount` lee «1,234» como mil
+  // doscientos treinta y cuatro. De este número sale el total que el tendero
+  // confirma, así que el que manda es el que él escribió.
+  const unitario = parseTypedAmount(precio) ?? 0;
+  // LOS MILES, MIENTRAS SE TECLEA.
+  const { ref: refPrecio, onChange: alTeclearPrecio } = useGroupedAmount(precio, setPrecio);
   // La coma como separador decimal, igual que en la ficha pública: un tendero
   // venezolano escribe «2,5» antes que «2.5».
   const unidades = Number(cantidad.replace(",", ".")) || 0;
@@ -191,7 +204,8 @@ export function QuickProductSheet({
                 className="min-w-0 flex-1"
                 inputMode="decimal"
                 value={precio}
-                onChange={(e) => setPrecio(e.target.value)}
+                ref={refPrecio}
+                onChange={alTeclearPrecio}
                 placeholder="00"
               />
               {/* EL DESPLEGABLE DE LA APP, NO EL DEL SISTEMA.

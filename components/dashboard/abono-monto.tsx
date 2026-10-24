@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  useLayoutEffect,
-  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -37,11 +35,11 @@ import {
 import { formatBs } from "@/lib/exchange-rate/format";
 import { toBs } from "@/lib/exchange-rate/convert";
 import {
-  formatAmountWhileTyping,
   formatPriceAmount,
   parseAmount,
   type PriceCurrency,
 } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
@@ -146,15 +144,11 @@ export function AbonoMonto({
   // que aparece lo empuja y corregir un dígito del medio es imposible. Va en
   // un `useLayoutEffect` porque cuando el `onChange` corre, el valor nuevo
   // todavía no está en el DOM.
-  const campoMonto = useRef<HTMLInputElement>(null);
-  const cursorPendiente = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    const destino = cursorPendiente.current;
-    if (destino == null || campoMonto.current == null) return;
-    cursorPendiente.current = null;
-    campoMonto.current.setSelectionRange(destino, destino);
-  });
+  // Todo eso lo hace `useGroupedAmount`, que nació el 2026-10-24 al llevar la
+  // agrupación a los campos de dinero que faltaban: estas líneas estaban
+  // copiadas en tres pantallas, idénticas, y un diff entre ellas no enseñaba
+  // nada. Es la lección de `StickyActions` escrita en CLAUDE.md.
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(monto, setMonto);
 
   const [usarPrevista, setUsarPrevista] = useState(false);
   const [descripcion, setDescripcion] = useState("");
@@ -462,16 +456,8 @@ export function AbonoMonto({
             name="monto"
             inputMode="decimal"
             value={monto}
-            ref={campoMonto}
-            onChange={(e) => {
-              const { texto, cursor } = formatAmountWhileTyping(
-                e.target.value,
-                monto,
-                e.target.selectionStart ?? e.target.value.length,
-              );
-              cursorPendiente.current = cursor;
-              setMonto(texto);
-            }}
+            ref={refMonto}
+            onChange={alTeclearMonto}
             placeholder="00"
             aria-invalid={deMas || undefined}
             className="h-10 flex-1 text-lg"

@@ -30,20 +30,22 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  priceIn,
-  formatPriceAmount,
+  formatAmountForInput,
   formatPercent,
+  formatPriceAmount,
+  isSaleCurrencyLocked,
   marginFromPrice,
   parseAmount,
-  formatAmountForInput,
+  parseTypedAmount,
   priceFromCost,
+  priceIn,
   type BolivarRates,
-  isSaleCurrencyLocked,
-  withoutLockedSaleCurrencies,
   type CostCurrency,
   type PriceCurrency,
   type PriceTier,
+  withoutLockedSaleCurrencies,
 } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -250,7 +252,7 @@ export function ProductoFlujo({
     setStock(valor);
   };
 
-  const [cost, setCost] = useState(formatAmountForInput(product?.cost));
+  const [cost, setCost] = useState(formatAmountForInput(product?.cost, { miles: true }));
 
   // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
   const [supplier, setSupplier] = useState(product?.supplier ?? "");
@@ -319,9 +321,11 @@ export function ProductoFlujo({
   // un producto puede escribir su detal en dólares y su mayor en euros.
   const baseDe = (tier: PriceTier) => currencies[tier][0] ?? defaultCurrency;
 
-  const [priceRetail, setPriceRetail] = useState(formatAmountForInput(product?.price_retail));
+  const [priceRetail, setPriceRetail] = useState(
+    formatAmountForInput(product?.price_retail, { miles: true }),
+  );
   const [priceWholesale, setPriceWholesale] = useState(
-    formatAmountForInput(product?.price_wholesale),
+    formatAmountForInput(product?.price_wholesale, { miles: true }),
   );
   // EL MARGEN GUARDADO MANDA SOBRE EL VALOR POR DEFECTO al abrir una ficha que
   // ya existe. Si no, corregir el costo de un producto con 20 % de margen se
@@ -365,10 +369,10 @@ export function ProductoFlujo({
 
   const [fixed, setFixed] = useState<Record<PriceTier, Partial<Record<PriceCurrency, string>>>>({
     retail: Object.fromEntries(
-      Object.entries(overrides.retail).map(([c, v]) => [c, formatAmountForInput(v)]),
+      Object.entries(overrides.retail).map(([c, v]) => [c, formatAmountForInput(v, { miles: true })]),
     ),
     wholesale: Object.fromEntries(
-      Object.entries(overrides.wholesale).map(([c, v]) => [c, formatAmountForInput(v)]),
+      Object.entries(overrides.wholesale).map(([c, v]) => [c, formatAmountForInput(v, { miles: true })]),
     ),
   });
 
@@ -387,8 +391,18 @@ export function ProductoFlujo({
   const [photoPath, setPhotoPath] = useState<string | null>(product?.photo_path ?? null);
   const [description, setDescription] = useState(product?.description ?? "");
 
+  // `parseTypedAmount` Y NO `parseAmount` en todo lo que lee un campo de
+  // DINERO de esta pantalla, desde el 2026-10-24, que es cuando el costo y los
+  // precios pasaron a agruparse mientras se teclean.
+  //
+  // `parseAmount` tiene que adivinar porque lee texto libre, y su regla es «un
+  // separador solo con tres dígitos detrás son miles». En un campo agrupado la
+  // convención ya está decidida —los puntos son nuestros, la coma es el
+  // decimal— y esa adivinanza lee «1,234» como MIL DOSCIENTOS TREINTA Y
+  // CUATRO. Un precio con tres decimales es raro; un precio mil veces mayor
+  // puesto en el catálogo sin que nada chille, no se descubre mirando.
   const toNum = (v: string) => {
-    const n = parseAmount(v);
+    const n = parseTypedAmount(v);
     return n != null && n > 0 ? n : null;
   };
   const costNumber = toNum(cost);
@@ -425,6 +439,13 @@ export function ProductoFlujo({
     // acaba de tocar tampoco sería mejor.
   }
 
+  // LOS MILES, MIENTRAS SE TECLEA — pedido por el dueño el 2026-10-24 para
+  // toda la app. Va sobre `handleCost` y no sobre `setCost` porque teclear el
+  // costo recalcula los dos precios: el formateo tiene que ocurrir ANTES de
+  // que `recalcularDesdeCosto` lea el texto, o leería lo que el navegador puso
+  // y no lo que queda en pantalla.
+  const { ref: refCosto, onChange: alTeclearCosto } = useGroupedAmount(cost, handleCost);
+
   function handleCost(next: string) {
     setCost(next);
     if (next.trim() !== "") setCostoFaltante(false);
@@ -432,7 +453,7 @@ export function ProductoFlujo({
   }
 
   function recalcularDesdeCosto(texto: string, moneda: CostCurrency) {
-    const c = parseAmount(texto);
+    const c = parseTypedAmount(texto);
     if (c == null || c <= 0 || moneda === "OTHER" || !rates) return;
 
     // RECALCULA SIEMPRE, no solo los precios vacíos. Lo pidió el dueño el
@@ -466,7 +487,7 @@ export function ProductoFlujo({
       );
       if (hayFijos) return;
       const p = priceFromCost(c, moneda, Number(margen), suBase, rates);
-      if (p != null) set(formatAmountForInput(p));
+      if (p != null) set(formatAmountForInput(p, { miles: true }));
     };
     recalcular("retail", marginRetail, fixed.retail, setPriceRetail);
     recalcular("wholesale", marginWholesale, fixed.wholesale, setPriceWholesale);
@@ -525,12 +546,12 @@ export function ProductoFlujo({
       const fijado = (fixed[tier][nuevaBase] ?? "").trim();
       let trasladado = fijado;
       if (trasladado === "") {
-        const n = parseAmount(precio);
+        const n = parseTypedAmount(precio);
         const conv =
           n == null || !rates
             ? null
             : priceIn(nuevaBase, { amount: n, currency: baseActual }, rates).amount;
-        trasladado = conv == null ? "" : formatAmountForInput(conv);
+        trasladado = conv == null ? "" : formatAmountForInput(conv, { miles: true });
       }
       if (tier === "retail") setPriceRetail(trasladado);
       else setPriceWholesale(trasladado);
@@ -777,7 +798,8 @@ export function ProductoFlujo({
                   id="producto_costo"
                   inputMode="decimal"
                   value={cost}
-                  onChange={(e) => handleCost(e.target.value)}
+                  ref={refCosto}
+                  onChange={alTeclearCosto}
                   placeholder="00"
                   aria-invalid={costoFaltante}
                   className={costoFaltante ? "border-destructive" : undefined}
@@ -1438,7 +1460,7 @@ function TierSection({
 }) {
   const base = currencies[0];
   const priceNumber = (() => {
-    const n = parseAmount(price);
+    const n = parseTypedAmount(price);
     return n != null && n > 0 ? n : null;
   })();
 
@@ -1553,7 +1575,7 @@ function TierSection({
             }
             if (!rates) return;
             const siguiente = priceFromCost(cost, costCurrency, Number(v), base, rates);
-            if (siguiente != null) onPriceChange(formatAmountForInput(siguiente));
+            if (siguiente != null) onPriceChange(formatAmountForInput(siguiente, { miles: true }));
           }}
         >
           <SelectTrigger id={`margen_${tier}`} className="w-full">
@@ -1642,7 +1664,7 @@ function mostradoDe(
   rates: BolivarRates | null,
 ): number | null {
   return estaDesvinculada(fijos, currency)
-    ? parseAmount(fijos[currency] ?? "")
+    ? parseTypedAmount(fijos[currency] ?? "")
     : calculadoDe(currency, base, precioBase, rates);
 }
 
@@ -1716,7 +1738,7 @@ function PriceRows({
         // texto vacío no guarda ninguna fila. No hacía falta tocarlo.
         const manual = estaDesvinculada(fixed, currency);
         const calculado = calculadoDe(currency, base, basePrice, rates);
-        const mostrado = manual ? parseAmount(fixed[currency] ?? "") : calculado;
+        const mostrado = manual ? parseTypedAmount(fixed[currency] ?? "") : calculado;
         const bs = enBolivares(mostrado, currency);
 
         return (
@@ -1785,7 +1807,7 @@ function PriceRows({
                         onFixedChange({
                           ...fixed,
                           [currency]:
-                            calculado == null ? "" : formatAmountForInput(calculado),
+                            calculado == null ? "" : formatAmountForInput(calculado, { miles: true }),
                         });
                       }
                     },
@@ -1875,6 +1897,17 @@ function PriceRow({
   onRemove?: (() => void) | null;
   bolivares?: string | null;
 }) {
+  // LOS MILES, MIENTRAS SE TECLEA. Una fila, un componente, un hook: este
+  // componente se pinta dentro de un `.map` sobre las monedas del escalón, y
+  // un hook no puede vivir dentro de ese `.map` —React exige el mismo orden de
+  // hooks en cada pintado y quitar una moneda lo rompería—. Por eso la fila ya
+  // era un componente y aquí solo se le añade el hook.
+  //
+  // En una fila CALCULADA (`readOnly`) el `onChange` no se dispara nunca, así
+  // que el hook no hace nada: lo que la deja agrupada es que quien calcula su
+  // valor ya lo escribe con `formatAmountForInput(..., { miles: true })`.
+  const { ref: refPrecio, onChange: alTeclearPrecio } = useGroupedAmount(value, (t) => onChange?.(t));
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
@@ -1896,7 +1929,8 @@ function PriceRow({
               value={value}
               readOnly={readOnly}
               disabled={disabled}
-              onChange={(e) => onChange?.(e.target.value)}
+              ref={refPrecio}
+              onChange={alTeclearPrecio}
               placeholder="00.00"
               className={`h-10 w-32 text-right tabular-nums ${link ? "pr-9" : ""} ${
                 readOnly ? "bg-muted/50" : ""
@@ -2118,7 +2152,7 @@ function FilaDeControl({ marcado, etiqueta }: { marcado: boolean; etiqueta: stri
 // of nine, so the last thing he saw before deciding was a third of what he was
 // deciding about. This screen gives that glance back.
 function valorDelCosto(cost: string, costCurrency: string): string {
-  const n = parseAmount(cost);
+  const n = parseTypedAmount(cost);
   if (n == null) return SIN_DATO;
   return costCurrency === "OTHER"
     ? cost.trim()
@@ -2258,7 +2292,7 @@ function Verifica({
           margen={margenRetail}
           monedas={currencies.retail}
           base={currencies.retail[0]}
-          precioBase={parseAmount(priceRetail)}
+          precioBase={parseTypedAmount(priceRetail)}
           fijos={fixed.retail}
           rates={rates}
         />
@@ -2275,7 +2309,7 @@ function Verifica({
           margen={margenWholesale}
           monedas={currencies.wholesale}
           base={currencies.wholesale[0]}
-          precioBase={parseAmount(priceWholesale)}
+          precioBase={parseTypedAmount(priceWholesale)}
           fijos={fixed.wholesale}
           rates={rates}
           minimo={minQty.trim() || undefined}

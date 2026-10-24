@@ -328,6 +328,87 @@ export function parseAmount(value: string | null | undefined): number | null {
 }
 
 /**
+ * The reader for a field wired to `formatAmountWhileTyping` — and the reason
+ * it cannot be `parseAmount`.
+ *
+ * `parseAmount` has to GUESS, because it reads whatever anybody typed or
+ * pasted, and "12.000" is genuinely ambiguous out of context. Its guess is
+ * «a lone separator with exactly 3 digits behind it is a thousands group».
+ * That guess is right for free text and WRONG for a grouped field, where the
+ * convention is fixed and known: the dots are ours, the comma is the decimal.
+ *
+ * Measured against the real pair on 2026-10-24, not reasoned:
+ *
+ *   typed "1,234" → on screen "1,234" → parseAmount → 1234   ← a 1000x error
+ *                                     → this        → 1.234
+ *
+ * So every field this product groups while typing reads its value through
+ * here. The 3-decimal case is rare in money, which is exactly what makes it
+ * dangerous: nothing about the screen looks wrong, and the amount is a
+ * thousand times the one the shopkeeper agreed to.
+ *
+ * `formatAmountForInput` already defends the other direction — it pads a
+ * 3-decimal number to 4 digits so `parseAmount` cannot misread what the app
+ * itself wrote. `formatAmountWhileTyping` deliberately does NOT pad, because
+ * rewriting digits mid-keystroke is how these fields end up feeling broken.
+ * This function is that defence, moved to the reading side where it belongs.
+ */
+export function parseTypedAmount(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (raw === "") return null;
+
+  // Thousands marks are this field's own, so they just go. The comma is the
+  // decimal, whatever is behind it.
+  const normalised = raw.replace(/\./g, "").replace(",", ".");
+  // A trailing separator (`5760,`) survives on screen on purpose, and
+  // `Number("5760.")` is 5760 — which is what the shopkeeper has typed so far.
+  const n = Number(normalised);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The reader for an amount whose convention CANNOT BE ASSUMED: a `FormData`
+ * that crossed the network, a saved draft, a value another screen wrote.
+ *
+ * A server action keeps answering a browser that has the PREVIOUS bundle
+ * loaded: a shopkeeper with the app open in a tab, or an installed PWA, goes
+ * on posting what the old field produced for hours after a deploy. Before
+ * 2026-10-24 the amount field was a `type="number"`, which the browser will
+ * not let hold a thousands mark, so an old post is always canonical —
+ * "1250.50". After it, the field is grouped text — "1.250,50".
+ *
+ * Reading both with one fixed convention gets one of them wrong by 100x, and
+ * silently, which is the worst failure this file can produce. So the shape
+ * decides, and there is exactly one tell:
+ *
+ *   · a comma → it came from a grouped field (a `type="number"` could never
+ *     have produced one), so the dots are thousands and the comma is the
+ *     decimal;
+ *   · no comma → `parseAmount`, which already reads "1.000.000" as a million
+ *     and "1250.50" as twelve hundred and fifty.
+ *
+ * The one case left over is a canonical value with exactly 3 decimals
+ * ("0.001"), which `parseAmount` reads as 1. The old field carried
+ * `step="0.01"` and the ledger stores two decimals, so that value cannot be a
+ * real amount here — stated rather than left to be discovered.
+ *
+ * ── AND WHY `parseAmount` IS NOT JUST FIXED INSTEAD ─────────────────────
+ *
+ * Because its comma behaviour is deliberate and documented: it reads free
+ * text, where "12,000" is twelve thousand in the English convention, and its
+ * own table says so. Teaching it that a comma is always a decimal would make
+ * that case wrong. Two readers with one reason each beat one reader with a
+ * flag.
+ */
+export function parseMoneyInput(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (raw === "") return null;
+  return raw.includes(",") ? parseTypedAmount(raw) : parseAmount(raw);
+}
+
+/**
  * A stored number put back into a text field, written the way this product
  * writes numbers everywhere else.
  *
@@ -436,8 +517,23 @@ export function formatAmountWhileTyping(
   cursor: number,
   maxDecimales = 4,
 ): { texto: string; cursor: number } {
+  // ── EL SIGNO MENOS, QUE SE QUEDA ───────────────────────────────────────
+  //
+  // Añadido el 2026-10-24, al llevar la agrupación al campo del saldo de
+  // apertura de una libreta. Ese campo acepta un importe NEGATIVO a propósito
+  // —una página puede arrancar con el negocio debiéndole al cliente, por un
+  // adelanto o una devolución, y su propio texto lo dice— y el filtro de
+  // caracteres de aquí se comía el menos: con la agrupación puesta y sin esto,
+  // esa libreta habría pasado a ser imposible de escribir.
+  //
+  // Solo cuenta un menos AL PRINCIPIO: uno en medio de la cifra no es un signo
+  // sino una tecla que sobra, y se descarta como cualquier otra letra.
+  const negativo = bruto.startsWith("-");
   const limpio = bruto.replace(/[^\d.,]/g, "");
-  if (limpio === "") return { texto: "", cursor: 0 };
+  // Un menos recién teclado y nada más. Sin esta salida se devolvería la
+  // cadena vacía, o sea borrar la tecla que el tendero acaba de pulsar — que
+  // es lo que esta función tiene prohibido hacer.
+  if (limpio === "") return { texto: negativo ? "-" : "", cursor: negativo ? 1 : 0 };
 
   const cambio = bruto.length - anterior.length;
 
@@ -491,13 +587,16 @@ export function formatAmountWhileTyping(
     // Un pegado, o un reemplazo entero. Aquí no hay pulsación que interpretar,
     // así que decide quien ya sabe leer las dos convenciones.
     const n = parseAmount(digitos);
-    const texto = n == null ? "" : formatAmountForInput(n, { miles: true, maxDecimales });
+    const sinSigno = n == null ? "" : formatAmountForInput(n, { miles: true, maxDecimales });
+    const texto = negativo && sinSigno !== "" ? `-${sinSigno}` : sinSigno;
     return { texto, cursor: texto.length };
   }
 
   const sinCerosDeMas = enteros.replace(/^0+(?=\d)/, "");
   const agrupados = sinCerosDeMas.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const texto = decimales === null ? agrupados : `${agrupados},${decimales}`;
+  const signo = negativo ? "-" : "";
+  const texto =
+    decimales === null ? `${signo}${agrupados}` : `${signo}${agrupados},${decimales}`;
 
   // ── EL CURSOR, DE VUELTA ───────────────────────────────────────────────
   //
@@ -508,7 +607,10 @@ export function formatAmountWhileTyping(
   // `12.5`, que salía `125,`.
   const pasoElSeparador = separadorEn !== -1 && separadorEn < cursor;
   let vistos = 0;
-  let destino = 0;
+  // Arranca DETRÁS del signo: no es un dígito, así que el recorrido de abajo
+  // no lo consumiría y el cursor acabaría una posición a su izquierda, delante
+  // del menos — donde la siguiente tecla lo dejaría en medio de la cifra.
+  let destino = negativo ? 1 : 0;
   while (destino < texto.length && vistos < digitosAntes) {
     // DÍGITOS, no «todo lo que no sea punto»: contando la coma, cada decimal
     // nuevo aterrizaba pegado a ella y los dígitos salían del revés —
