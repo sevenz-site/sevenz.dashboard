@@ -8,11 +8,9 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
-import { getBolivarRates } from "@/lib/products/catalog";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import type { BolivarRates } from "@/lib/products/price";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -185,7 +183,6 @@ export default async function DetalleDelClientePage({
         : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur }
       : null;
   const ledger: LedgerDisplay | null = effectiveRate ? { rate: effectiveRate } : null;
-  const rates: BolivarRates | null = effectiveRate ? await getBolivarRates(effectiveRate) : null;
 
   // ── LA FOTO ──────────────────────────────────────────────────────────
   //
@@ -352,13 +349,11 @@ export default async function DetalleDelClientePage({
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
         abonoInicial={Number(m.abono_inicial ?? 0)}
-        rates={rates}
         // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el
         // 2026-10-21 con una captura de esta pantalla enseñando «Editar abono» y
         // «Eliminar abono». Las acciones le habrían contestado «Sesión expirada»
         // —piden sesión y comprueban el dueño— así que no era una fuga; era
         // ofrecerle una puerta que no abre.
-        conAcciones={false}
       />
     </div>
   );

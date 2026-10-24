@@ -10,13 +10,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import { getBolivarRates } from "@/lib/products/catalog";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import type { BolivarRates } from "@/lib/products/price";
 import type { LedgerCurrency, Movement } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -113,7 +111,6 @@ export default async function TransaccionPage({
   const resultado = await getOwnerRateContextResult(supabase, user.id);
   const ledger: LedgerDisplay | null =
     resultado.kind === "ve" ? { rate: resultado.context.effectiveRate } : null;
-  const rates: BolivarRates | null = ledger ? await getBolivarRates(ledger.rate) : null;
 
   // ── LA FOTO, FIRMADA ─────────────────────────────────────────────────
   let photoUrl: string | null = null;
@@ -359,10 +356,8 @@ export default async function TransaccionPage({
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
         abonoInicial={abonoInicial}
-        rates={rates}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con
         // «Editar abono» y «Eliminar abono». La del cliente pasa `false`.
-        conAcciones
       />
 
       {/* LOS BOTONES DEL FRAME, FUERA DEL «⋮» Y REPETIDOS A PROPÓSITO.
