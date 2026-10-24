@@ -134,5 +134,17 @@ function textoDelAbono(nombre: string, a: AbonoDelResumen, fecha: string | null)
         : `Sin deuda en ${moneda}`,
     );
   }
+  // ── Y LOS LIBROS QUE NO SE TOCARON Y SIGUEN DEBIENDO ────────────────
+  //
+  // LA MISMA LISTA QUE LA IMAGEN, por la misma razón que la fecha: este es el
+  // camino por el que se comparte cuando el dibujo falla, y dejarlo sin esto
+  // haría que el recibo dijera una cosa u otra según cómo se compartiera.
+  //
+  // Decisión del dueño el 2026-10-24 (`CT-135`): el cliente también tiene que
+  // ver lo que debe en el otro libro.
+  for (const o of a.otrosLibros ?? []) {
+    const moneda = NOMBRE[o.currency] ?? o.currency;
+    lineas.push(`Deuda total en ${moneda}: ${formatPriceAmount(o.deuda, o.currency)}`);
+  }
   return lineas.join("\n");
 }

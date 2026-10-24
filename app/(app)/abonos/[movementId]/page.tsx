@@ -237,6 +237,19 @@ export default async function AbonoRegistradoPage({
   // veces seguidas, y la pantalla de un abono corriente no cambia.
   const billeteEnBs = librosDelAbono.length > 1 ? entregadoEnBs : null;
 
+  // ── LOS LIBROS QUE DEBEN Y NO RECIBIERON NADA EN ESTE ABONO ───────────
+  //
+  // UNA SOLA LISTA para las tres superficies: la segunda tarjeta de la
+  // pantalla, la imagen que se comparte y su respaldo en texto. Estaba escrita
+  // solo dentro del JSX de la tarjeta hasta el 2026-10-24, que es por lo que
+  // el recibo del cliente no la llevaba: no había nada que pasarle. Si las
+  // tres volvieran a calcularla por su cuenta, la pantalla y el chat del
+  // cliente podrían contar cuentas distintas — que es justo lo que este
+  // comprobante existe para evitar.
+  const otrosLibrosConDeuda = pendientePorMoneda.filter(
+    (p) => !abonadoPorMoneda.some((a) => (a.currency ?? null) === (p.currency ?? null)),
+  );
+
   // ── CUÁNDO PASÓ ──────────────────────────────────────────────────────
   //
   // Encargo del dueño el 2026-10-22: esta pantalla no llevaba fecha, ni ella
@@ -471,9 +484,7 @@ export default async function AbonoRegistradoPage({
           esta pantalla, y uno a FAVOR tampoco: la tarjeta se titula «Deuda
           total» y poner ahí un saldo a favor sería llamar deuda a lo
           contrario. `pendientePorMoneda` ya filtra los dos casos. */}
-      {pendientePorMoneda
-        .filter((p) => !abonadoPorMoneda.some((a) => (a.currency ?? null) === (p.currency ?? null)))
-        .map((p) => {
+      {otrosLibrosConDeuda.map((p) => {
           const cur = (p.currency ?? "COP") as PriceCurrency;
           const enBs = rates
             ? priceIn("VES", { amount: p.pending, currency: cur }, rates)?.amount
@@ -568,6 +579,22 @@ export default async function AbonoRegistradoPage({
             deuda:
               pendientePorMoneda.find((p) => (p.currency ?? null) === (a.currency ?? null))
                 ?.pending ?? 0,
+          })),
+          // ── Y LOS LIBROS QUE NO SE TOCARON Y SIGUEN DEBIENDO ──────────
+          //
+          // EL MISMO FILTRO QUE DIBUJA LA SEGUNDA TARJETA DE ARRIBA, escrito
+          // una sola vez y leído por las dos: si se separaran, la pantalla y
+          // el recibo contarían cuentas distintas, que es exactamente lo que
+          // este comprobante existe para que no pase.
+          //
+          // Decisión del dueño el 2026-10-24 (`CT-135`): *«sí, el PNG que
+          // recibe el cliente también lleva la deuda del otro libro igual que
+          // la pantalla»*. Hasta ese día el cliente recibía solo el libro al
+          // que se le abonó, así que una deuda suya en otra moneda no
+          // aparecía en nada de lo que él tenía en la mano.
+          otrosLibros: otrosLibrosConDeuda.map((p) => ({
+            currency: (p.currency ?? "COP") as PriceCurrency,
+            deuda: p.pending,
           })),
         }}
         rates={rates}
