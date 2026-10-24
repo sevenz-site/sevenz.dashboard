@@ -193,6 +193,10 @@ export type ClientSummary = {
   name: string;
   whatsapp: string | null;
   document_id: string | null;
+  // La letra del documento. Llega desde la migración `154`: la vista no la
+  // seleccionaba, así que las tarjetas enseñaban el número sin prefijo sin
+  // que nada fallara. `null` en las fichas que nunca tuvieron tipo.
+  document_type: string | null;
   client_created_at: string;
   // The COP ledger (country='CO'). A VE owner's debt lives in the two
   // per-currency balances below instead.

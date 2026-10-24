@@ -52,6 +52,7 @@ export type NotificationItem =
       occurredAt: string;
       clientName: string;
       documentId: string | null;
+      documentType: string | null;
     }
   | {
       id: string;
@@ -282,12 +283,18 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   // leave every one of these rows saying "Cliente".
   const clientById = new Map<
     string,
-    { name: string; document_id: string | null; trashed_at: string | null; deleted_at: string | null }
+    {
+      name: string;
+      document_id: string | null;
+      document_type: string | null;
+      trashed_at: string | null;
+      deleted_at: string | null;
+    }
   >();
   if (clientIds.length > 0) {
     const { data: clients, error: clientsError } = await supabase
       .from("clients")
-      .select("id, name, document_id, trashed_at, deleted_at")
+      .select("id, name, document_id, document_type, trashed_at, deleted_at")
       .in("id", clientIds);
     if (clientsError) console.error("getNotifications: clients query failed", clientsError);
     for (const c of clients ?? []) clientById.set(c.id, c);
@@ -348,6 +355,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         occurredAt: r.opened_at,
         clientName: client?.name ?? "Cliente",
         documentId: client?.document_id ?? null,
+        documentType: client?.document_type ?? null,
       };
     }),
     ...importRows.map(

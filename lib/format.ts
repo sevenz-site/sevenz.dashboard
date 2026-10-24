@@ -103,10 +103,47 @@ export function formatCadaCuantosDias(plazoDias: number, cuotas: number): string
 // Cédula-style grouping (23.845.083) — only applied to purely numeric
 // documents; a document with letters (e.g. a foreigner ID prefix) is shown
 // exactly as stored rather than guessed at.
-export function formatDocumentId(documentId: string | null): string {
+// EL DOCUMENTO, COMO SE LEE EN LA CÉDULA: «V-32.256.369».
+//
+// Encargo del dueño el 2026-10-24: *«En todos los lugares donde se maquete el
+// documento del cliente debe incluir el prefijo»*.
+//
+// ===========================================================================
+// POR QUÉ EL TIPO ES OBLIGATORIO Y NO TIENE VALOR POR DEFECTO
+//
+// Esto se dibuja en DOCE sitios. Con un valor por defecto, cualquiera que no
+// se actualizara seguiría enseñando media cédula y nadie se enteraría: no es
+// un error, es un dato correcto al que le falta un trozo. Sin él, TypeScript
+// señala las doce puertas de una vez. Es la misma razón por la que
+// `buscarDocumentoDuplicado` tampoco lo tiene.
+//
+// ===========================================================================
+// `null` NO INVENTA UNA LETRA, Y ESO ES LO CORRECTO
+//
+// Hay fichas sin tipo y seguirá habiéndolas: las anteriores a la migración
+// `125`, las importadas de una libreta, aquellas cuyo tipo no correspondía al
+// país y se descartó al guardar, y los pedidos del catálogo —`catalog_orders`
+// no tiene columna de tipo, porque el formulario público nunca lo pregunta—.
+// Ahí se enseña el número a secas, como hasta hoy.
+//
+// Poner una «V» por defecto sería peor que no poner nada: en Venezuela V y J
+// distinguen a una persona de una empresa, así que adivinarla es afirmar algo
+// que nadie tecleó sobre la identidad de alguien.
+//
+// Sirve para los dos países sin saber cuál es: 'V'/'E'/'J' y 'CC'/'CE'/'NIT'
+// se anteponen igual, y la lista de qué vale en cada sitio ya la guarda
+// `lib/document-id.ts`.
+export function formatDocumentId(
+  documentId: string | null,
+  documentType: string | null,
+): string {
   if (!documentId) return "—";
-  if (!/^\d+$/.test(documentId)) return documentId;
-  return documentId.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const prefijo = documentType?.trim() ? `${documentType.trim()}-` : "";
+  // UN DOCUMENTO QUE NO ES SOLO DÍGITOS SE DEVUELVE TAL CUAL —hay fichas
+  // antiguas con letras dentro— pero SÍ lleva su prefijo si lo tiene: lo que
+  // no se toca es el formato del número, no la identidad de quien lo porta.
+  if (!/^\d+$/.test(documentId)) return `${prefijo}${documentId}`;
+  return `${prefijo}${documentId.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 }
 
 // Strips punctuation/spacing so "555.111.222" and "555 111 222" compare equal

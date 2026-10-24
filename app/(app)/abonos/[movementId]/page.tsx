@@ -52,7 +52,7 @@ export default async function AbonoRegistradoPage({
   const { data: abono } = await supabase
     .from("movements")
     .select(
-      "id, client_id, type, amount, currency, created_at, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, transaction_code, clients!inner(id, name, document_id, whatsapp, owner_id)",
+      "id, client_id, type, amount, currency, created_at, entry_currency, entry_amount, applies_to_movement_id, payment_group_id, transaction_code, clients!inner(id, name, document_id, document_type, whatsapp, owner_id)",
     )
     .eq("id", movementId)
     .is("deleted_at", null)
@@ -62,6 +62,9 @@ export default async function AbonoRegistradoPage({
     id: string;
     name: string;
     document_id: string | null;
+    // La letra del documento — V/E/J o CC/CE/NIT. Viaja desde el 2026-10-24
+    // para que la ficha del comprador diga «V-32.256.369» y no el número solo.
+    document_type: string | null;
     whatsapp: string | null;
     owner_id: string;
   } | null;
@@ -301,7 +304,7 @@ export default async function AbonoRegistradoPage({
             `DESIGN-SYSTEM.md`: un dato ausente que desaparece no se distingue
             de uno que nunca se pidió. */}
         <Dato etiqueta="Nombre y apellido" valor={cliente.name} />
-        <Dato etiqueta="Documento" valor={formatDocumentId(cliente.document_id)} />
+        <Dato etiqueta="Documento" valor={formatDocumentId(cliente.document_id, cliente.document_type)} />
         <Dato
           etiqueta="Teléfono"
           valor={cliente.whatsapp ? telefonoLegible(cliente.whatsapp) : "—"}
@@ -536,7 +539,7 @@ export default async function AbonoRegistradoPage({
       <AbonoCompartir
         comprador={{
           nombre: cliente.name,
-          documento: formatDocumentId(cliente.document_id),
+          documento: formatDocumentId(cliente.document_id, cliente.document_type),
           telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp) : "—",
         }}
         abono={{

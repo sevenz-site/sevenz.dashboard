@@ -98,7 +98,11 @@ export function FichaDeCliente({
           ) : null}
         </span>
         <span className="text-xs text-muted-foreground">
-          Cédula: {documento ? formatDocumentId(documento) : "—"}
+          {/* EL DOCUMENTO DE LA FOTO NO LLEVA LETRA, y no es un olvido: lo
+              leyó una cámara de una libreta escrita a mano, donde nadie
+              eligió V, E ni J. Inventar una aquí sería afirmar si quien está
+              en esa página es una persona o una empresa. */}
+          Cédula: {documento ? formatDocumentId(documento, null) : "—"}
         </span>
         <span className="text-xs text-muted-foreground">WhatsApp: {whatsapp?.trim() || "—"}</span>
         <span className="pt-1 text-xs font-medium">Debe: {debe}</span>
@@ -172,7 +176,7 @@ export function AvisoDeDuplicado({
             <>
               Ya tienes un &ldquo;{uno?.name}&rdquo; en tu cartera.
               <span className="mt-1 block text-muted-foreground">
-                Cédula: {uno?.document_id ? formatDocumentId(uno.document_id) : "—"}. Debe{" "}
+                Cédula: {uno?.document_id ? formatDocumentId(uno.document_id, uno.document_type) : "—"}. Debe{" "}
                 {uno ? loQueDebe(uno) : "—"}.
               </span>
             </>
@@ -261,8 +265,8 @@ export function AvisoDeDocumentoRepetido({
         <UserRoundSearch className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
         <span>
           {varios
-            ? `La cédula ${formatDocumentId(documento)} ya es de ${candidatos.length} clientes tuyos.`
-            : `La cédula ${formatDocumentId(documento)} ya es de “${candidatos[0]?.name}”.`}
+            ? `La cédula ${formatDocumentId(documento, null)} ya es de ${candidatos.length} clientes tuyos.`
+            : `La cédula ${formatDocumentId(documento, null)} ya es de “${candidatos[0]?.name}”.`}
           <span className="mt-1 block text-muted-foreground">
             Dinos de cuál es, o ábrele una cuenta aparte con la misma cédula.
           </span>

@@ -175,6 +175,7 @@ export function PapeleraTable({
                 <ClientCardBody
                   name={row.name}
                   documentId={row.document_id}
+                  documentType={row.document_type}
                   status={status}
                   overdueCount={overdueCount}
                   monedaDelEstado={currency}

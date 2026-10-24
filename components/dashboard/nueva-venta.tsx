@@ -1673,7 +1673,12 @@ function PasoCliente({
         <ClientResultList
           results={encontrados
             .filter((c) => c.client_id !== cliente.id)
-            .map((c) => ({ id: c.client_id, name: c.name, documentId: c.document_id }))}
+            .map((c) => ({
+              id: c.client_id,
+              name: c.name,
+              documentId: c.document_id,
+              documentType: c.document_type ?? null,
+            }))}
           onSelect={(id) => {
             const c = encontrados.find((x) => x.client_id === id);
             if (!c) return;
@@ -1692,6 +1697,7 @@ function PasoCliente({
                 <ClientCardBody
                   name={fila.name}
                   documentId={fila.document_id}
+                    documentType={fila.document_type}
                   status={status}
                   overdueCount={overdueCount}
                   monedaDelEstado={currency}
@@ -1803,6 +1809,7 @@ function PasoCliente({
           id: c.client_id,
           name: c.name,
           documentId: c.document_id,
+          documentType: c.document_type ?? null,
         }))}
         onSelect={(id) => {
           const c = encontrados.find((x) => x.client_id === id);

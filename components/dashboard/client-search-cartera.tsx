@@ -87,6 +87,7 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
     id: row.client_id,
     name: row.name,
     documentId: row.document_id,
+    documentType: row.document_type,
   }));
 
   return (

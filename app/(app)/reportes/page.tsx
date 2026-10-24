@@ -58,7 +58,7 @@ export default async function ReportesPage({
   const [{ data: clients }, { data: summaries }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, document_id")
+      .select("id, name, document_id, document_type")
       .eq("owner_id", user!.id)
       .is("trashed_at", null)
       .is("deleted_at", null)

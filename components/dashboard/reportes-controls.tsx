@@ -84,7 +84,7 @@ export function ReportesClientSearch({
   clients,
   selectedName,
 }: {
-  clients: { id: string; name: string; document_id: string | null }[];
+  clients: { id: string; name: string; document_id: string | null; document_type: string | null }[];
   // Null when no client is picked. When it is set the field stops being a
   // search box and becomes a label with a way out — typing again would suggest
   // you can stack two clients, and you cannot.
@@ -101,7 +101,12 @@ export function ReportesClientSearch({
       : clients
           .filter((c) => c.name.toLowerCase().includes(q) || (c.document_id ?? "").includes(q))
           .slice(0, CLIENT_RESULT_LIMIT)
-          .map((c) => ({ id: c.id, name: c.name, documentId: c.document_id }));
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            documentId: c.document_id,
+            documentType: c.document_type ?? null,
+          }));
 
   if (selectedName) {
     return (

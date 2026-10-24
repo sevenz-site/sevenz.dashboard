@@ -75,7 +75,7 @@ export function NotificationList({
                   <div className="min-w-0">
                     <p className="font-medium">{n.clientName} abrió su saldo</p>
                     <p className="text-xs text-muted-foreground">
-                      Cédula: {formatDocumentId(n.documentId)} · {formatDateTime(n.occurredAt)}
+                      Cédula: {formatDocumentId(n.documentId, n.documentType)} · {formatDateTime(n.occurredAt)}
                     </p>
                   </div>
                 </>
