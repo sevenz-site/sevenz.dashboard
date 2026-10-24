@@ -130,7 +130,15 @@ create unique index if not exists catalog_orders_sale_id_unico
 -- rename never happened and the `revoke` two lines down asked for the result.
 --
 -- The mistake was guessing that function's output format instead of checking
--- it. `to_regprocedure` needs no guess: it takes the signature as written and
+-- it. MEASURED AGAINST A REAL DATABASE AFTERWARDS, it returns the parameter
+-- NAMES as well as the types:
+--
+--   p_token text, p_customer_name text, p_customer_document text, ...
+--
+-- which never equals `'text, text, text, ...'`. The predicate was false about
+-- a function sitting right there.
+--
+-- `to_regprocedure` needs no guess: it takes the signature as written and
 -- returns NULL -- not an error -- when nothing matches. It is the primitive
 -- for exactly this question.
 --
