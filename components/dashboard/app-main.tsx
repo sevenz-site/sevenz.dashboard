@@ -114,7 +114,48 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // (`/transacciones/venta/<id>/<moneda>`) no monta esos botones, así que
     // quitarle el aire la dejaría pegada al filo sin nada que lo ocupe.
     /^\/transacciones\/[^/]+$/.test(pathname);
-  const enFlujoDeRegistrar = pathname.startsWith("/ventas/") && !conBarraDeBotones;
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAS PANTALLAS DE «SALIÓ BIEN» QUE ADEMÁS LLEVAN EL BOTÓN FLOTANTE
+  //
+  // Son las que terminan un flujo con sus acciones al final del contenido y
+  // el flotante encima. Necesitan el aire grande de abajo, o el botón se les
+  // sienta en la última acción.
+  //
+  // `/abonos/[id]` SE AÑADE EL 2026-10-22, reportado por el dueño con una
+  // captura: el flotante encima de «Ver cuenta de…». Medido antes de tocarlo,
+  // a 375px: el flotante ocupaba 652-708 y ese botón 628-668, o sea 16px
+  // montados. La del resumen de venta ya estaba aquí desde el 2026-10-18 y por
+  // eso no fallaba; esta nació después y nadie la apuntó.
+  //
+  // `(?!nuevo$)` NO SOBRA: `/abonos/nuevo` encaja en `[^/]+` y es el paso 1/2
+  // del flujo, que lleva su propia barra pegada abajo y ya sale de aquí por
+  // `conBarraDeBotones`. Darle además este `pb` le pondría 88px de hueco
+  // muerto bajo su propia barra.
+  //
+  // SE MIDIERON LAS CINCO el mismo día antes de cambiar nada, y solo esta
+  // estaba rota: venta (botones a 746, libre), `/transacciones` y el detalle
+  // de un pedido (no dibujan flotante) y el catálogo (su última fila cae muy
+  // por debajo). Lo que se arregla es una, no un patrón.
+  const enFlujoDeRegistrar =
+    (pathname.startsWith("/ventas/") || /^\/abonos\/(?!nuevo$)[^/]+$/.test(pathname)) &&
+    !conBarraDeBotones;
+
+  // EL CATÁLOGO NECESITA EL MISMO AIRE QUE EL RESUMEN, y este comentario es la
+  // continuación del de abajo, que dejó escrito «si algún día estorba allí
+  // también, la cuenta está aquí». Llegó ese día: un dueño lo reportó desde
+  // producción el 2026-10-21, con la captura y el círculo en rojo.
+  //
+  // LO QUE CAMBIA NO ES EL SOLAPE SINO LO QUE HAY DEBAJO. En una lista normal
+  // el flotante muerde la última fila, que es texto, y se leía igual. En el
+  // catálogo la última tarjeta lleva el interruptor «Publicar», o sea un
+  // control que se toca — y uno que decide si ese producto lo ven los clientes
+  // del negocio. Tapar texto molesta; tapar ese interruptor impide usarlo, y
+  // además con el dedo encima no se ve si quedó encendido o apagado.
+  //
+  // `/productos` A SECAS, sin sus hijos: `/productos/nuevo` y `/productos/
+  // <id>/editar` ya entran por `enAsistenteDeVenta` y llevan su propia barra
+  // pegada abajo, así que sumarles esto les daría 5,5rem de aire muerto.
+  const conFilaQueSeToca = pathname === "/productos";
 
   return (
     <main
@@ -143,8 +184,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
         // observador y su reflow, para 2,75px que no tapan ni el texto ni el
         // area tocable del boton. Si alguna vez un tendero reporta que no
         // puede darle a «Compartir», el numero a subir es este 5.5rem.
-        hasBar && enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
-        hasBar && !enFlujoDeRegistrar && "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
+        hasBar && (enFlujoDeRegistrar || conFilaQueSeToca) &&
+          "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
+        hasBar && !enFlujoDeRegistrar && !conFilaQueSeToca &&
+          "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
         // CON BARRA DE BOTONES, NI UN PIXEL DE MAS. Solo el area segura del
         // iPhone, porque la barra se pega al borde y su propio `pb` ya pone

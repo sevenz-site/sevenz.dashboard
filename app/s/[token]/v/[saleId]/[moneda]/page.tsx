@@ -161,31 +161,27 @@ export default async function VentaDeContadoDelClientePage({
             <ProductosDelMovimiento productos={lineas} formatearMonto={formatear} />
           ) : null}
 
+          {/* ── «PAGÓ», UNA FILA — frame `1580:11620` ──────────────────
+              La misma que la pantalla del tendero, y por eso se cambia aquí
+              también: es LA MISMA VENTA mirada por el cliente. Dejarla con las
+              dos filas viejas haría que el enlace que él recibe no se pareciera
+              a lo que el tendero tiene delante, que es justo lo que este
+              producto promete. */}
           <div className="border-t pt-1.5">
             <Fila nombre="Pagó">
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                {monedaTecleada === "VES" ? formatBs(entregado) : formatear(entregado)}
-                {monedaTecleada ? (
-                  <CurrencyFlagIcon currency={monedaTecleada} className="size-4" />
+              <span className="inline-flex flex-col items-end">
+                <span className="inline-flex items-center gap-1 text-base font-semibold tabular-nums text-money-in">
+                  +{formatear(total)}
+                  {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4" /> : null}
+                </span>
+                {monedaTecleada === "VES" ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatBs(entregado)} al día del pago
+                  </span>
                 ) : null}
               </span>
             </Fila>
           </div>
-
-          {/* La equivalencia solo si se pagó en otra moneda: con un pago en la
-              moneda del libro, «Pagó» y «Equivalencia» serían la misma cifra
-              dos veces. */}
-          {monedaTecleada === "VES" && moneda ? (
-            <Fila nombre="Equivalencia">
-              <span className="inline-flex flex-col items-end">
-                <span className="inline-flex items-center gap-1.5 tabular-nums">
-                  {formatear(total)}
-                  <CurrencyFlagIcon currency={moneda} className="size-4" />
-                </span>
-                <span className="text-xs text-muted-foreground">Al día de pago</span>
-              </span>
-            </Fila>
-          ) : null}
 
           {/* «Total» y no «Total por cobrar»: aquí no queda nada por cobrar, y
               es la diferencia que más importa de esta pantalla para quien la

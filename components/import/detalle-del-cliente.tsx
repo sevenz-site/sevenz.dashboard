@@ -331,7 +331,16 @@ function FilaMovimiento({
           esCargo ? "text-destructive" : "text-money-in",
         )}
       >
-        {esCargo ? "+" : "-"}
+        {/* ── EL SIGNO ESTABA AL REVÉS ────────────────────────────────
+            Decía «+» en un fiado y «−» en un abono, justo lo contrario que el
+            historial y que todas las tarjetas. El COLOR sí estaba bien —rojo
+            el fiado, verde el abono— que es lo que hacía que no saltara a la
+            vista: la fila se leía correcta de un vistazo y mentía al leerla.
+
+            Encontrado el 2026-10-23 revisando los signos de toda la app a
+            petición del dueño. Él había visto el de «Registrar abono»; este
+            no lo había visto nadie. */}
+        {esCargo ? "-" : "+"}
         {importeDe(fila.amount, fila.currency)}
         {fila.currency ? <CurrencyFlagIcon currency={fila.currency} className="size-4" /> : null}
       </span>

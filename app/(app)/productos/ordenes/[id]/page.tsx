@@ -5,7 +5,7 @@ import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
-import { formatDocumentId } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import {
   ORDER_COLUMNS,
@@ -113,18 +113,10 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   const totales = totalsByCurrency(items);
 
   // The owner's zone, never the server's: this page renders on Vercel, which
-  // runs in UTC.
-  const zona = country === "VE" ? "America/Caracas" : "America/Bogota";
-  const fecha = (iso: string) =>
-    new Intl.DateTimeFormat("es-VE", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: zona,
-    }).format(new Date(iso));
+  // runs in UTC. It lived here as its own `Intl.DateTimeFormat` until
+  // 2026-10-22, when the receipts of the other flows needed the same clock;
+  // it now comes from `formatReceiptDateTime`, so there is one of them.
+  const fecha = (iso: string) => formatReceiptDateTime(iso, country);
 
   const cuando = fecha(pedido.created_at);
 

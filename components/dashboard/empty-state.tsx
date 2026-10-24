@@ -36,6 +36,18 @@ import { cn } from "@/lib/utils";
 // Del frame. El salto importa: con los dos en 14 --como estaban varios-- el
 // bloque se lee como un párrafo y no como «un titular y su explicación»,
 // que es lo que hace que alguien lo lea de un vistazo en vez de leerlo entero.
+// ===========================================================================
+// EL TÍTULO ES OPCIONAL DESDE EL 2026-10-23
+//
+// *«El empty state muestra el mensaje con el texto del subtítulo, no del
+// título»* — dueño, hablando de la lista que un filtro deja vacía. Y tiene
+// sentido donde lo pidió: ahí el mensaje no es un titular que anuncia una
+// pantalla nueva —«Todavía no hay transacciones»— sino una explicación de por
+// qué no se ve nada ahora mismo, con los chips que lo causaron justo encima.
+// En 16 semibold se lee como un error; en 12 gris, como lo que es.
+//
+// El de verdad vacío —el cliente sin una sola transacción— conserva su título
+// y su subtítulo, que es para lo que nació este componente.
 export function EmptyState({
   title,
   subtitle,
@@ -45,7 +57,7 @@ export function EmptyState({
   children,
   className,
 }: {
-  title: React.ReactNode;
+  title?: React.ReactNode;
   subtitle?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
@@ -58,7 +70,7 @@ export function EmptyState({
       )}
     >
       <div className="flex w-full flex-col items-center gap-1">
-        <p className="text-center text-base leading-6 font-semibold">{title}</p>
+        {title ? <p className="text-center text-base leading-6 font-semibold">{title}</p> : null}
         {subtitle ? (
           <p className="text-center text-xs leading-4 text-muted-foreground">{subtitle}</p>
         ) : null}

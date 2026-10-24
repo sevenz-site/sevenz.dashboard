@@ -17,7 +17,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
-// PASO 2/3 DEL ABONO DIRIGIDO — frame `1457:16568`.
+// PASO 2/2 DEL ABONO REPARTIDO — frames `1457:16568` y `1536:11006`.
 //
 // Es el detalle del fiado que el tendero acaba de elegir, para que confirme que
 // es ese antes de escribir el monto. Un abono mal dirigido no se nota: el saldo
@@ -32,17 +32,40 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 // Compartir / Eliminar / Pagar y sus dos botones al pie. Dentro del flujo del
 // abono lleva barra de progreso, NO lleva `more` —decisión del dueño el
 // 2026-10-19: a mitad de registrar un pago, «eliminar transacción» no tiene
-// sentido— y su único botón dice «Confirmar».
+// sentido— y su único botón dice «Continuar».
 //
 // Hoy existe esta mitad. La suelta llega con el paso 3 del plan.
+//
+// ===========================================================================
+// ERA 2/3 Y PASÓ A 2/2 EL 2026-10-22, y «Confirmar» pasó a «Continuar»
+//
+// Frame `1536:11006`. El flujo cambió de forma: ya no se elige UN fiado y se
+// paga, sino que se escribe cuánto pagaron y se reparte. Esta pantalla dejó
+// de ser el segundo de tres pasos hacia un pago para ser el segundo de dos
+// hacia FIJAR lo que le toca a un fiado.
+//
+// Y «Continuar» en vez de «Confirmar» por lo mismo: lo que viene detrás ya no
+// es el final. Con `?reparto=1` ni esta pantalla ni la del monto escriben
+// nada; lo único que guarda en este flujo es «Pagar y finalizar».
+//
+// LA FILA «Moneda de pago» DEL FRAME NO SE DIBUJA, y es a conciencia: se
+// retiró el 2026-10-19 por decisión del dueño —«es redundante, ya abajo
+// especifica la moneda en la que abonó y la equivalencia»— y además estaba
+// mal. Ver la nota larga más abajo, donde estaba.
 export default async function ConfirmarFiadoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ movementId: string }>;
+  // `?reparto=1` LO PONE EL BOTÓN «Pagar» DE 1/2. Cambia a dónde vuelve y a
+  // dónde lleva, para que el monto sepa que no debe guardar.
+  searchParams: Promise<{ reparto?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
+  const { reparto } = await searchParams;
+  const enReparto = reparto === "1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -132,9 +155,9 @@ export default async function ConfirmarFiadoPage({
 
       <div className="flex flex-col gap-2">
         <ScreenTitle>Detalle de transacción</ScreenTitle>
-        <p className="text-sm text-muted-foreground">2/3 Confirma transacción a abonar</p>
+        <p className="text-sm text-muted-foreground">2/2 Confirma transacción a abonar</p>
         <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-2/3 rounded-full bg-foreground transition-all" />
+          <div className="h-full w-full rounded-full bg-foreground transition-all" />
         </div>
       </div>
 
@@ -266,7 +289,9 @@ export default async function ConfirmarFiadoPage({
           elimina. */}
       <div className="sticky bottom-0 -mx-4 mt-auto border-t bg-background px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
         <Button asChild className="h-10 w-full">
-          <Link href={`/abonos/nuevo/${mov.id}/monto`}>Confirmar</Link>
+          <Link href={`/abonos/nuevo/${mov.id}/monto${enReparto ? "?reparto=1" : ""}`}>
+            Continuar
+          </Link>
         </Button>
       </div>
     </div>

@@ -31,7 +31,8 @@ import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
-import { getClientStatus, type ClientSummaryAll } from "@/lib/types";
+import { type ClientSummaryAll } from "@/lib/types";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { track } from "@/lib/mixpanel";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useSharedClientFilters } from "@/components/dashboard/client-filter-context";
@@ -131,12 +132,15 @@ export function PapeleraTable({
           const judgementBalance = rateContext
             ? combinedBalanceUsd(balanceUsd, balanceEur, rateContext.effectiveRate)
             : balance;
-          const status = getClientStatus({
-            balance: judgementBalance,
-            daysSincePayment: row.days_since_payment,
-            worstChargeAt: row.worst_unpaid_charge_at ?? null,
-            worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
-            worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+          // `CT-137`, un libro a la vez. Los saldos que entran son los
+          // CONGELADOS del párrafo de arriba, no los de hoy — por eso esta
+          // pantalla no puede usar el `estadoDe` del hook compartido, que lee
+          // los vivos, y monta la llamada ella misma.
+          const { status, currency, overdueCount } = estadoDeCliente({
+            fila: row,
+            saldos: { cop: balance, usd: balanceUsd, eur: balanceEur },
+            saldoCombinado: judgementBalance,
+            dosLibros: rateContext !== null,
           });
           const busy = busyId === row.client_id;
           return (
@@ -172,7 +176,8 @@ export function PapeleraTable({
                   name={row.name}
                   documentId={row.document_id}
                   status={status}
-                  overdueCount={row.overdue_charge_count ?? null}
+                  overdueCount={overdueCount}
+                  monedaDelEstado={currency}
                   hasPendingReview={row.has_pending_review}
                   isFlagged={row.is_flagged}
                   balance={balance}

@@ -50,6 +50,7 @@ export function WhatsappConsentField({
   // discrepando, y la discrepancia seria mensajes a quien no acepto, o
   // silencio hacia quien si.
   yaTienePermiso?: boolean;
+  // EN UN ALTA, EL NOMBRE DE LA FICHA QUE YA LLEVA ESE NÚMERO — y solo si es
   // Si el cliente no tiene número guardado. NO esconde la casilla: la deja
   // marcable y explica qué falta. Esconderla perdería el único momento en que
   // el tendero está pensando en esto -- propuesta del dueño el 2026-10-10,
@@ -67,10 +68,22 @@ export function WhatsappConsentField({
   // pintar nada. Quitarlo se hace desde la ficha del cliente (MS-35), no desde
   // aqui: este formulario es para registrar dinero, no para administrar
   // permisos.
+  //
+  // UNA SOLA FRASE, Y ESTÁ ESCRITA PARA UN CLIENTE QUE YA EXISTE. El
+  // 2026-10-21 tuvo una segunda, para el alta —«Ya tienes este número
+  // registrado como X»— y se quitó el mismo día, al verla en pantalla: cuando
+  // el número acepta pero la ficha es de OTRA bodega no hay nombre que poner,
+  // así que caía aquí y le decía a un tendero «Este cliente ya tiene activadas
+  // las notificaciones» sobre alguien que todavía no existe, atribuyéndole un
+  // permiso que es del NÚMERO.
+  //
+  // Las altas usan `AvisoNumeroYaAcepta`, que tiene las dos frases de ese
+  // caso. Una situación, un componente: meter las dos aquí fue lo que permitió
+  // que una se usara donde tocaba la otra.
   if (yaTienePermiso) {
     return (
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {clientName.trim() || "Este cliente"} ya tiene activada las notificaciones vía WhatsApp
+        {clientName.trim() || "Este cliente"} ya tiene activadas las notificaciones vía WhatsApp
       </p>
     );
   }

@@ -394,10 +394,13 @@ export function ProductoFlujo({
   const costNumber = toNum(cost);
   const costUsable = costNumber != null && costCurrency !== "OTHER";
 
-  const marginOf = (price: string): number | null => {
+  // EL MARGEN SE MIDE DENTRO DE UNA MONEDA, y por eso hay que decirle cuál.
+  // Cada escalón tiene su propia base desde la `114`, así que el precio que
+  // se le pasa está en la moneda de SU escalón y no en una común.
+  const marginOf = (price: string, tier: PriceTier): number | null => {
     const p = toNum(price);
     if (p == null) return null;
-    return marginFromPrice(costNumber, p);
+    return marginFromPrice(costNumber, costCurrency, p, baseDe(tier), rates);
   };
 
   // ELEGIR UN MARGEN SIN COSTO NO SE IGNORA: SE EXPLICA.
@@ -562,8 +565,14 @@ export function ProductoFlujo({
     costCurrency: cost.trim() === "" ? null : costCurrency,
     // Nada lo escribe desde el 2026-10-10. Ver la migración 089.
     costCurrencyOther: null,
-    marginRetailPct: ventaRetail ? (marginOf(priceRetail)?.toString() ?? null) : null,
-    marginWholesalePct: ventaWholesale ? (marginOf(priceWholesale)?.toString() ?? null) : null,
+    // ESTOS DOS SE GUARDAN EN LA BASE, así que el fallo de monedas cruzadas
+    // del 2026-10-22 no solo se veía: se escribía. Un producto con el costo en
+    // dólares y el precio al detal en euros quedaba con un `margin_retail_pct`
+    // que no era su margen, y de ahí sale el informe de ganancia.
+    marginRetailPct: ventaRetail ? (marginOf(priceRetail, "retail")?.toString() ?? null) : null,
+    marginWholesalePct: ventaWholesale
+      ? (marginOf(priceWholesale, "wholesale")?.toString() ?? null)
+      : null,
     stockOpening: stock || null,
     supplier: supplier || null,
     wholesaleMinQuantity: minQty || null,
@@ -979,8 +988,8 @@ export function ProductoFlujo({
           // typed price still implies a real margin against the cost, and it
           // is that one the review has to show — it is what the owner will be
           // earning, not what he picked from a list.
-          margenRetail={ventaRetail ? marginOf(priceRetail) : null}
-          margenWholesale={ventaWholesale ? marginOf(priceWholesale) : null}
+          margenRetail={ventaRetail ? marginOf(priceRetail, "retail") : null}
+          margenWholesale={ventaWholesale ? marginOf(priceWholesale, "wholesale") : null}
           minQty={minQty}
           rates={rates}
         />
@@ -1433,7 +1442,16 @@ function TierSection({
     return n != null && n > 0 ? n : null;
   })();
 
-  const derived = priceNumber != null ? marginFromPrice(cost, priceNumber) : null;
+  // EL COSTO SE CONVIERTE A LA BASE DE ESTE ESCALÓN ANTES DE DIVIDIR.
+  //
+  // Es el fallo que reportó el dueño el 2026-10-22: con el costo en dólares y
+  // la base del escalón en euros, esto restaba euros menos dólares. El
+  // porcentaje que salía no coincidía con ningún preajuste, así que el
+  // desplegable se quedaba donde estaba mientras el precio SÍ cambiaba --que
+  // es justo lo que él vio--. La conversión vive dentro de `marginFromPrice`,
+  // que desde entonces exige las monedas en su firma.
+  const derived =
+    priceNumber != null ? marginFromPrice(cost, costCurrency, priceNumber, base, rates) : null;
 
   // O HAY MARGEN, O HAY PRECIOS FIJOS POR MONEDA. Basta con que UNA moneda que
   // no sea la base lleve importe a mano para que el margen deje de mandar. La
@@ -1452,13 +1470,37 @@ function TierSection({
   // El desplegable sigue sin apagarse por falta de costo: el dueño pidió que
   // al intentar elegir se señale el costo en rojo, y un control apagado no
   // dice qué falta.
+  // ── QUÉ PREAJUSTE SE ENSEÑA: EL QUE REPRODUCE ESTE PRECIO ───────────
+  //
+  // Se preguntaba al revés --calcular el margen del precio y buscarlo en la
+  // lista-- y eso no sobrevive al redondeo. El precio se guarda a dos
+  // decimales, así que un 30 % sobre un costo convertido vuelve como 30,03 y
+  // `includes(30.03)` es falso: el desplegable decía «Otro» sobre un precio
+  // que ÉL mismo acababa de calcular.
+  //
+  // SE VIO AL ESCRIBIR LA PRUEBA del fallo de monedas cruzadas el 2026-10-22,
+  // no en la pantalla: con un costo de $10 al 30 % en euros, la ida da 11,56
+  // y la vuelta 30,03. Arreglar solo la conversión habría dejado el
+  // desplegable igual de quieto por otro motivo.
+  //
+  // PREGUNTANDO AL REVÉS NO HAY TOLERANCIA QUE INVENTAR: se compara el precio
+  // con el que cada preajuste ESCRIBIRÍA, con la misma función y el mismo
+  // redondeo, así que o cuadra al céntimo o no es ese.
+  const presetQueCuadra =
+    priceNumber != null && costUsable && cost != null && rates != null
+      ? (MARGIN_PRESETS as readonly number[]).find((m) => {
+          const p = priceFromCost(cost, costCurrency, m, base, rates);
+          return p != null && Math.abs(p - priceNumber) < 0.005;
+        })
+      : undefined;
+
   const selectValue = !costUsable
     ? "otro"
-    : derived != null
-      ? (MARGIN_PRESETS as readonly number[]).includes(derived)
-        ? String(derived)
-        : "otro"
-      : margin;
+    : presetQueCuadra != null
+      ? String(presetQueCuadra)
+      : derived != null
+        ? "otro"
+        : margin;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">

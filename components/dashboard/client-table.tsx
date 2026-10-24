@@ -48,7 +48,6 @@ import {
   CLIENT_STATUS_LABEL,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
-  getClientStatus,
   type ClientSummary,
   type OwnerCountry,
 } from "@/lib/types";
@@ -97,7 +96,7 @@ export function ClientTable({
   // dice otra.
   const sharedFilters = useSharedClientFilters();
   const filters = sharedFilters ?? ownFilters;
-  const { sortedRows, judgementBalance } = filters;
+  const { sortedRows, estadoDe } = filters;
 
   // El reinicio de página del estado propio llega por `onFilterChange`, que el
   // proveedor compartido no puede pasar: lo crea antes de que esta tabla
@@ -155,13 +154,10 @@ export function ClientTable({
                 repeated here — on mobile the tour only runs step 1. */}
             <div className="flex flex-col gap-3 md:hidden">
               {pagedRows.map((row) => {
-                const status = getClientStatus({
-                  balance: judgementBalance(row),
-                  daysSincePayment: row.days_since_payment,
-                  worstChargeAt: row.worst_unpaid_charge_at ?? null,
-                  worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
-                  worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
-                });
+                // `CT-137`: el estado, su moneda y sus vencidos salen juntos
+                // del mismo sitio, para que el chip y la cifra de al lado no
+                // puedan hablar de libros distintos.
+                const { status, currency, overdueCount } = estadoDe(row);
                 return (
                   <button
                     key={row.client_id}
@@ -180,7 +176,8 @@ export function ClientTable({
                       name={row.name}
                       documentId={row.document_id}
                       status={status}
-                      overdueCount={row.overdue_charge_count ?? null}
+                      overdueCount={overdueCount}
+                      monedaDelEstado={currency}
                       hasPendingReview={row.has_pending_review}
                       isFlagged={row.is_flagged}
                       balance={row.balance}
@@ -274,13 +271,7 @@ export function ClientTable({
                     </>
                   ) : null}
                   {pagedRows.map((row) => {
-                    const status = getClientStatus({
-                      balance: judgementBalance(row),
-                      daysSincePayment: row.days_since_payment,
-                      worstChargeAt: row.worst_unpaid_charge_at ?? null,
-                      worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
-                      worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
-                    });
+                    const { status, overdueCount } = estadoDe(row);
                     const score = scores?.[row.client_id];
                     return (
                       <TableRow
@@ -331,7 +322,7 @@ export function ClientTable({
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-                              {clientStatusLabel(status, row.overdue_charge_count ?? null)}
+                              {clientStatusLabel(status, overdueCount)}
                             </Badge>
                             {row.is_flagged ? (
                               <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>

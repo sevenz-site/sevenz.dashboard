@@ -160,10 +160,38 @@ export function splitForInput(
 // DOS COPIAS DE UNA REGLA ACABAN DISCREPANDO, así que `qa:consent` compara
 // esta función con la de Postgres sobre una lista de casos. Si alguien cambia
 // una y no la otra, esa prueba lo dice.
+// Y DISCREPARON, el 2026-10-21. La migración `136` hizo que la de Postgres
+// CANONIZARA —un número nacional suelto cuya forma solo puede ser venezolana
+// o colombiana sale con su indicativo delante, para que «04149900094» y
+// «+584149900094» dejen de ser dos claves distintas— y esta se quedó atrás.
+// `qa:consent` lo dijo en la primera corrida, que es para lo que estaba.
+//
+// Las ramas de abajo son la misma regla, en el mismo orden. Si una cambia,
+// cambia la otra: la lista de casos de esa prueba es el único sitio donde se
+// comparan, y lo hace sobre valores concretos y no sobre el parecido del
+// código.
 export function consentPhoneKey(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
-  return digits.length >= 10 && digits.length <= 15 ? digits : null;
+  const d = raw.replace(/\D/g, "").replace(/^0+/, "");
+
+  // Ya canónico: uno de los dos indicativos y diez dígitos nacionales. Va
+  // primero para que canonizar lo ya canónico no le pegue otro indicativo.
+  if (d.length === 12 && (d.startsWith("58") || d.startsWith("57"))) return d;
+
+  // Venezuela: los cinco prefijos móviles, uno a uno, o un fijo que abre por
+  // 2. Listados y no «empieza por 4» porque 404 y 415 son indicativos reales
+  // de EE. UU. y la regla ancha archivaría uno de allí como venezolano.
+  if (d.length === 10 && (["412", "414", "416", "424", "426"].includes(d.slice(0, 3)) || d.startsWith("2"))) {
+    return `58${d}`;
+  }
+
+  // Colombia: cualquier móvil 3xx, o un fijo 60x.
+  if (d.length === 10 && (d.startsWith("3") || d.startsWith("60"))) return `57${d}`;
+
+  // Y lo que no se puede situar se queda exactamente como estaba, que es el
+  // contrato de siempre: adivinar mal fusiona a dos personas en una clave y
+  // no adivinar solo repite lo de ayer.
+  return d.length >= 10 && d.length <= 15 ? d : null;
 }
 
 // EL TELÉFONO SE LEE, NO SE DESCIFRA.

@@ -284,6 +284,19 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   //
   // `=== "/productos/nuevo"` y no `startsWith("/productos")`: el catálogo SÍ
   // lleva barra, y es la pantalla de la que se entra.
+  // ESTA ES LA TERCERA LISTA, Y ES LA QUE DE VERDAD TAPA EL BOTÓN. Una
+  // pantalla con barra pegada abajo hay que apuntarla en tres sitios: dos en
+  // `app-main.tsx` --que le dan su aire-- y esta, que es la única que decide
+  // si la barra de navegación se dibuja ENCIMA.
+  //
+  // Medido el 2026-10-21 en una pantalla que faltaba aquí: su botón ocupaba
+  // 732-772 y esta barra 723-812, así que `elementFromPoint` en el centro del
+  // botón devolvía un icono de la barra. No era un botón mal colocado: era un
+  // botón que NO SE PODÍA PULSAR, y desde fuera eso se ve como «le di y no
+  // hizo nada», que es lo último que a alguien se le ocurre mirar aquí.
+  //
+  // Esa pantalla ya no existe --era una propuesta y se retiró-- pero la
+  // lección no depende de ella: el síntoma no se parece en nada a la causa.
   const enAsistenteDeVenta =
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
@@ -413,6 +426,34 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // `startsWith` y no igualdad, porque cubre la ficha `/productos/ordenes/[id]`
   // con la misma línea.
   const enPedidos = pathname.startsWith("/productos/ordenes");
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EL ABONO REGISTRADO NO DIBUJA EL FLOTANTE. LA BARRA SÍ
+  //
+  // Decisión del dueño el 2026-10-22, elegida entre tres con el coste
+  // delante. Lo reportó con una captura: «Registrar» sentado encima de «Ver
+  // cuenta de…».
+  //
+  // MEDIDO a 375px antes de decidirlo: el flotante ocupa 652-708 y ese botón
+  // 628-668. Dieciséis píxeles montados, y en reposo —sin desplazar— que es
+  // donde el tendero lo encuentra.
+  //
+  // POR QUÉ NO SE ARREGLÓ CON MAQUETACIÓN, que fue lo primero que se intentó:
+  // el flotante es fijo y el contenido de esta pantalla TERMINA dentro de su
+  // banda. Un `pb` por debajo no sube contenido ya colocado, y un `mt-auto` no
+  // reparte un espacio que no sobra. Las dos cosas se probaron y se midieron
+  // el mismo día; están escritas en la propia pantalla.
+  //
+  // EL RESUMEN DE UNA VENTA SÍ LO CONSERVA, y eso NO es un descuido: ahí no
+  // hay solape —sus botones caen en 746, muy por debajo de la banda, porque su
+  // contenido es más largo— y el flotante en esa pantalla es una petición
+  // suya del 2026-10-18 hecha sobre ESA pantalla. Se quita donde estorba, no
+  // donde se pidió.
+  //
+  // `(?!nuevo)` NO SOBRA: `/abonos/nuevo` es el paso 1/2 del flujo y ya sale
+  // por `enAsistenteDeVenta`, pero encaja en `[^/]+` y dejarlo fuera aquí
+  // también hace la intención legible sin ir a buscar la otra bandera.
+  const enAbonoRegistrado = /^\/abonos\/(?!nuevo$)[^/]+$/.test(pathname);
 
   // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
   //
@@ -544,7 +585,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

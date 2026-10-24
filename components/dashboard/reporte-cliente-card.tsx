@@ -11,7 +11,8 @@ import { track } from "@/lib/mixpanel";
 import { clientHref } from "@/lib/client-origin";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { cn } from "@/lib/utils";
-import { getClientStatus, type ClientSummary } from "@/lib/types";
+import { type ClientSummary } from "@/lib/types";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 
@@ -44,12 +45,18 @@ export function ReporteClienteCard({
     ? combinedBalanceUsd(Number(row.balance_usd), Number(row.balance_eur), rateContext.effectiveRate)
     : Number(row.balance);
 
-  const status = getClientStatus({
-    balance: judgement,
-    daysSincePayment: row.days_since_payment,
-    worstChargeAt: row.worst_unpaid_charge_at ?? null,
-    worstChargePlazoDias: row.worst_unpaid_charge_plazo_dias ?? null,
-    worstChargeDueAt: row.worst_unpaid_charge_due_at ?? null,
+  // `CT-137`, un libro a la vez. `judgement` se queda: sigue siendo la cifra
+  // combinada que esta pantalla usa para lo demás, y es el respaldo de la
+  // degradación cuando la `146` no está corrida.
+  const { status, currency, overdueCount } = estadoDeCliente({
+    fila: row,
+    saldos: {
+      cop: Number(row.balance),
+      usd: Number(row.balance_usd),
+      eur: Number(row.balance_eur),
+    },
+    saldoCombinado: judgement,
+    dosLibros: rateContext !== null,
   });
 
   return (
@@ -66,7 +73,8 @@ export function ReporteClienteCard({
           name={row.name}
           documentId={row.document_id}
           status={status}
-          overdueCount={row.overdue_charge_count ?? null}
+          overdueCount={overdueCount}
+          monedaDelEstado={currency}
           hasPendingReview={row.has_pending_review}
           isFlagged={row.is_flagged}
           balance={Number(row.balance)}

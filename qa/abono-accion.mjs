@@ -301,6 +301,249 @@ try {
     r6.ok === false,
     r6.ok ? "SE GUARDÓ" : r6.error,
   );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 7. EL REPARTO NO PUEDE PASARSE DE LO QUE EL TENDERO TECLEÓ
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // `aMano` llega del NAVEGADOR. `qa:reparto` ya comprueba que `repartir()`
+  // lo topa, pero esa es aritmética en memoria: lo que esta fila mira es que
+  // la acción del servidor use ese resultado y no el que le mandan.
+  //
+  // Es un fallo que no rompe nada visible --suma, se guarda, la pantalla dice
+  // que todo bien-- y por eso necesita un control que mire la base. Llegó a
+  // pantalla el 2026-10-22: tecleando $1 y fijando $7 a mano, la 1/2 enseñaba
+  // el campo en «1» y el botón en «$7.00», y se guardaban 7.
+  const accionReparto = await idDeLaAccion(
+    BASE,
+    "registrarAbonoRepartido",
+    cookie,
+    `/abonos/nuevo?cliente=${cliente.id}`,
+  );
+  check(
+    "7. el id de `registrarAbonoRepartido` se descubre en los chunks",
+    accionReparto != null,
+    accionReparto ? `${accionReparto.slice(0, 10)}…` : "NO ENCONTRADO",
+  );
+
+  if (accionReparto) {
+    const res = await fetch(`${BASE}/abonos/nuevo?cliente=${cliente.id}`, {
+      method: "POST",
+      headers: {
+        "Next-Action": accionReparto,
+        "Content-Type": "text/plain;charset=UTF-8",
+        Cookie: cookie,
+      },
+      body: JSON.stringify([
+        {
+          clienteId: cliente.id,
+          libro: "USD",
+          montoTecleado: 10,
+          monedaTecleada: "USD",
+          // 999 sobre un fiado que debe mucho menos Y sobre un abono de 10.
+          aMano: { [viejo]: 999 },
+        },
+      ]),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} llamando al reparto en ${BASE}`);
+    const texto = await res.text();
+    const i = texto.indexOf('{"ok":');
+    const r7 = i >= 0 ? JSON.parse(texto.slice(i, texto.indexOf("}", i) + 1)) : null;
+
+    check(
+      "7a. se acepta el reparto con una línea a mano desorbitada",
+      r7?.ok === true,
+      r7?.ok ? `grupo ${String(r7.groupId).slice(0, 8)}…` : (r7?.error ?? texto.slice(0, 120)),
+    );
+
+    if (r7?.ok) {
+      // LA BASE, NO LA RESPUESTA. Lo que la acción devuelve lo calcula ella
+      // misma; lo que se guardó son filas.
+      const { data: lineas } = await admin
+        .from("movements")
+        .select("amount")
+        .eq("payment_group_id", r7.groupId);
+      const total = (lineas ?? []).reduce((s, l) => s + Number(l.amount), 0);
+      check(
+        "7b. lo guardado son los 10 tecleados, no los 999 que mandó el navegador",
+        Math.abs(total - 10) < 0.005,
+        `${lineas?.length ?? 0} línea(s), total ${total}`,
+      );
+    }
+  }
+
+  // ── 8. EL REPARTO QUE CRUZA LIBROS, DE PUNTA A PUNTA ──────────────────
+  //
+  // Migración `141` + `repartirEnBolivares` + la bandera `cruzaLibros`. Lo de
+  // `qa:reparto` es aritmética en memoria; esto es lo que de verdad escribe.
+  //
+  // SE MIRA LA BASE Y NO LA RESPUESTA, como la fila 7b y por lo mismo: lo que
+  // la acción devuelve lo calcula ella; lo que se guardó son filas.
+  if (accionReparto) {
+    // Un cliente nuevo con un fiado en CADA libro. El de euros nace más
+    // vencido, así que la gravedad lo pone primero — y ese es justo el caso
+    // que antes era imposible: el billete entra por el otro libro.
+    const { data: dos } = await admin
+      .from("clients")
+      .insert({ owner_id: ve.id, name: `${MARCA} dos libros` })
+      .select("id")
+      .single();
+    creados.clientes.push(dos.id);
+
+    const cargoEn = async (monto, moneda, dias) => {
+      const { data } = await admin
+        .from("movements")
+        .insert({
+          client_id: dos.id,
+          created_by: ve.id,
+          type: "charge",
+          amount: monto,
+          currency: moneda,
+          plazo_dias: 15,
+          created_at: hace(dias),
+        })
+        .select("id")
+        .single();
+      return data.id;
+    };
+
+    const enEuros = await cargoEn(20, "EUR", 60);
+    const enDolares = await cargoEn(20, "USD", 2);
+
+    // LAS TASAS DEL SELLO, leídas de la base ANTES de llamar: lo que se espera
+    // tiene que salir de la misma tasa que la acción va a usar, no de una
+    // copiada a mano que envejece el día que alguien cambie la del BCV.
+    const { data: tasa } = await admin
+      .from("bcv_exchange_rate_fetches")
+      .select("usd, eur")
+      .order("fetched_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const llamar = async (cuerpo) => {
+      const res = await fetch(`${BASE}/abonos/nuevo?cliente=${dos.id}`, {
+        method: "POST",
+        headers: {
+          "Next-Action": accionReparto,
+          "Content-Type": "text/plain;charset=UTF-8",
+          Cookie: cookie,
+        },
+        body: JSON.stringify([cuerpo]),
+      });
+      const texto = await res.text();
+      const i = texto.indexOf('{"ok":');
+      return i >= 0 ? JSON.parse(texto.slice(i, texto.indexOf("}", i) + 1)) : { crudo: texto };
+    };
+
+    // ── 8a. TECLEANDO DÓLARES NO SE PUEDE CRUZAR ───────────────────────
+    //
+    // Y no es una restricción arbitraria: unos dólares en la mano no se meten
+    // en un fiado en euros sin una tasa euro/dólar que nadie acordó. Es la
+    // parte de la decisión del 2026-10-22 que la del 2026-10-23 NO cambia.
+    {
+      const r = await llamar({
+        clienteId: dos.id,
+        libro: "USD",
+        cruzaLibros: true,
+        montoTecleado: 10,
+        monedaTecleada: "USD",
+      });
+      check(
+        "8a. cruzar libros tecleando DÓLARES se rechaza, no se convierte a ojo",
+        r?.ok === false && /bol[íi]vares/i.test(r?.error ?? ""),
+        r?.ok ? "LO ACEPTÓ" : (r?.error ?? JSON.stringify(r).slice(0, 100)),
+      );
+    }
+
+    const bsDelEuro = tasa ? 20 * Number(tasa.eur) : null;
+    const bsDelDolar = tasa ? 20 * Number(tasa.usd) : null;
+
+    // ── 8b. EL TOPE, TAMBIÉN EN BOLÍVARES ──────────────────────────────
+    //
+    // VA ANTES DEL REPARTO DE VERDAD, y la primera versión de esta suite lo
+    // puso después: el reparto de abajo salda los dos fiados, así que al
+    // llegar aquí no quedaba ninguno abierto y la acción contestaba «este
+    // cliente no tiene fiados abiertos». La fila salía roja midiendo el orden
+    // de la prueba en vez del tope.
+    if (bsDelEuro != null) {
+      const r = await llamar({
+        clienteId: dos.id,
+        libro: "EUR",
+        cruzaLibros: true,
+        montoTecleado: Math.round((bsDelEuro + bsDelDolar) * 100) / 100 + 100000,
+        monedaTecleada: "VES",
+      });
+      check(
+        "8b. no deja teclear más bolívares de los que el cliente debe en total",
+        r?.ok === false && /debe/i.test(r?.error ?? ""),
+        r?.ok ? "LO ACEPTÓ" : (r?.error ?? "").slice(0, 90),
+      );
+    }
+
+    // ── 8c. EL REPARTO MIXTO DE VERDAD ─────────────────────────────────
+    //
+    // Bolívares suficientes para saldar el fiado en euros y que sobre para el
+    // de dólares: el billete tiene que CRUZAR.
+    if (bsDelEuro == null || bsDelDolar == null) {
+      check("8c. hay tasa con la que probar el reparto mixto", false, "no hay tasa en dev");
+    } else {
+      const r = await llamar({
+        clienteId: dos.id,
+        libro: "EUR",
+        cruzaLibros: true,
+        // Todo lo que debe en los dos libros, en bolívares.
+        montoTecleado: Math.round((bsDelEuro + bsDelDolar) * 100) / 100,
+        monedaTecleada: "VES",
+      });
+      check(
+        "8c. un reparto en bolívares cruza los dos libros y se guarda",
+        r?.ok === true,
+        r?.ok ? `grupo ${String(r.groupId).slice(0, 8)}…` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+      );
+
+      if (r?.ok) {
+        const { data: filas } = await admin
+          .from("movements")
+          .select("amount, currency, applies_to_movement_id, entry_currency, entry_amount, exchange_rate_used")
+          .eq("payment_group_id", r.groupId);
+
+        const porFiado = new Map((filas ?? []).map((f) => [f.applies_to_movement_id, f]));
+        const eur = porFiado.get(enEuros);
+        const usd = porFiado.get(enDolares);
+
+        check(
+          "8d. cada línea queda en la moneda de SU fiado, saldando los dos",
+          eur?.currency === "EUR" &&
+            usd?.currency === "USD" &&
+            Math.abs(Number(eur?.amount) - 20) < 0.02 &&
+            Math.abs(Number(usd?.amount) - 20) < 0.02,
+          `euros ${eur?.amount} ${eur?.currency} · dólares ${usd?.amount} ${usd?.currency}`,
+        );
+
+        // CADA LÍNEA CON LA TASA DE SU LIBRO, que es la mitad del encargo que
+        // no se ve en pantalla y la que haría la cuenta falsa si se copiara.
+        check(
+          "8e. y con la tasa de SU libro, no una común para las dos",
+          Math.abs(Number(eur?.exchange_rate_used) - Number(tasa.eur)) < 0.0001 &&
+            Math.abs(Number(usd?.exchange_rate_used) - Number(tasa.usd)) < 0.0001 &&
+            Number(eur?.exchange_rate_used) !== Number(usd?.exchange_rate_used),
+          `euro ${eur?.exchange_rate_used} · dólar ${usd?.exchange_rate_used}`,
+        );
+
+        // LOS BOLÍVARES DE CADA LÍNEA SUMAN EL BILLETE. Sin esto, un reparto
+        // que guarda los importes correctos puede seguir mintiendo sobre lo
+        // que el cliente entregó.
+        const sumaBs = (filas ?? []).reduce((s, f) => s + Number(f.entry_amount ?? 0), 0);
+        check(
+          "8f. los bolívares de las líneas suman lo que el tendero tecleó",
+          (filas ?? []).every((f) => f.entry_currency === "VES") &&
+            Math.abs(sumaBs - (bsDelEuro + bsDelDolar)) < 0.05,
+          `suma ${sumaBs} · tecleado ${Math.round((bsDelEuro + bsDelDolar) * 100) / 100}`,
+        );
+      }
+    }
+
+  }
 } catch (e) {
   check("ERROR: la corrida se detuvo", false, e instanceof Error ? e.message : String(e));
 } finally {

@@ -73,12 +73,17 @@ async function lineasDe(
 
 export default async function TransaccionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ movementId: string }>;
+  // `?abono=<id>` — cuál de las tarjetas de abono se vino a ver. Lo manda la
+  // fila del historial desde el 2026-10-22, porque esa fila abre el FIADO.
+  searchParams: Promise<{ abono?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
+  const { abono: abonoResaltado } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -204,12 +209,28 @@ export default async function TransaccionPage({
       // POR MONEDA TAMBIÉN, por lo mismo que las líneas: en la venta mixta
       // del 2026-10-20 esto sumaba los 40 dólares de contado al «Abonó» del
       // fiado en euros y lo enseñaba como «€40,00».
+      //
+      // NORMALIZANDO LOS DOS LADOS, y eso no es cosmética. Hasta el 2026-10-22
+      // la comparación era `(p.currency ?? null) === m.currency`, que para un
+      // negocio COLOMBIANO compara `'COP'` contra `null` y no casa nunca:
+      // `sale_payments` escribe el libro colombiano como 'COP' y `movements`
+      // lo escribe NULL. Resultado medido en dev: un fiado de 16.000 con
+      // 8.000 entregados al comprar enseñaba «Abonó $0» al tendero, mientras
+      // su cliente veía los 8.000 en el enlace compartido. Dinero real
+      // contradiciéndose entre las dos pantallas del mismo fiado.
+      //
+      // `?? "COP"` es la misma normalización que usa `get_shared_balance`
+      // para las líneas de la venta (migración 139) y que `qa:currency`
+      // vigila desde el 2026-09-11. Y conserva intacto el arreglo del
+      // 2026-10-20: en Venezuela 'USD' y 'EUR' siguen sin casar entre sí.
+      //
+      // Lo vigila `qa:colombia`, filas 5 y 6.
       const { data: pagos } = await supabase
         .from("sale_payments")
         .select("amount, currency")
         .eq("sale_id", m.sale_id);
       abonoInicial = (pagos ?? [])
-        .filter((p) => (p.currency ?? null) === m.currency)
+        .filter((p) => (p.currency ?? "COP") === (m.currency ?? "COP"))
         .reduce((suma, p) => suma + Number(p.amount), 0);
     }
 
@@ -239,14 +260,12 @@ export default async function TransaccionPage({
       currency: p.currency as AbonoDirigido["currency"],
       // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
       tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
-      // En qué moneda se tecleó y cuánto, para el diálogo de editar: se edita
-      // en la misma moneda que se usó, no en la del libro.
+      // En qué moneda se tecleó y cuánto. El diálogo de editar que los pedía
+      // se quitó el 2026-10-23, pero siguen haciendo falta: el menú del «⋮»
+      // los usa para decir «la deuda vuelve a subir Bs. 900» en la moneda en
+      // que el tendero escribió, no en la del libro.
       entryCurrency: (p.entry_currency ?? null) as AbonoDirigido["entryCurrency"],
       entryAmount: p.entry_amount == null ? null : Number(p.entry_amount),
-      // EL TOPE DE LA EDICIÓN: lo que el fiado debe MÁS lo que este abono vale
-      // hoy. `pending` ya lo descuenta, así que sin ese `+` subir un abono de
-      // 10 a 11 en un fiado saldado se rechazaría aunque sobre sitio.
-      techo: pendienteDelFiado == null ? null : pendienteDelFiado + Number(p.amount),
       amount: Number(p.amount),
       descripcion: (p.description as string | null) ?? null,
     }));
@@ -291,6 +310,11 @@ export default async function TransaccionPage({
           clientId={cliente.id}
           compartir={compartir}
           puedePagar={puedePagar}
+          // CUÁNTOS ABONOS COLGARÍAN DE ESTE FIADO AL BORRARLO. Decide si el
+          // diálogo de confirmación pregunta qué hacer con ellos. Ya está
+          // calculado arriba para la propia ficha, así que no cuesta otra
+          // consulta; `?? []` cubre el caso de un abono, donde no se pide.
+          abonosDirigidos={(abonosRecibidos ?? []).length}
         />
       </div>
 
@@ -313,8 +337,13 @@ export default async function TransaccionPage({
         exchangeRateUsed={m.exchange_rate_used == null ? null : Number(m.exchange_rate_used)}
         ledger={ledger}
         fiadoAplicado={fiadoAplicado}
+        // APUNTABA A UNO Y NO SE ENCONTRÓ = se borró. La consulta de arriba
+        // filtra por `deleted_at is null`, así que «no está» y «está borrado»
+        // son lo mismo aquí.
+        fiadoBorrado={m.type === "payment" && m.applies_to_movement_id != null && fiadoAplicado == null}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={abonoInicial}
         rates={rates}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con

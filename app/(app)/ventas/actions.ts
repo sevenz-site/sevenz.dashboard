@@ -11,7 +11,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
-import { formatDocumentId } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
@@ -988,16 +988,31 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         type: "charge",
         amount: resto.amount,
         currency: sello.currency,
-        // LO QUE EL CLIENTE VA A LEER EN SU SALDO: lo que el tendero escribió
-        // al pactar el fiado, si escribió algo; si no, qué se llevó. No dice
-        // «venta» en ningún caso — el detalle está en las líneas.
-        description: (credito.description?.trim()
-          ? credito.description.trim()
-          : lineasResueltas
-              .filter((l) => l.currency === resto.currency)
-              .map((l) => l.name)
-              .join(", ")
-        ).slice(0, 500),
+        // ── LA DESCRIPCIÓN ES LO QUE EL TENDERO ESCRIBIÓ. SOLO ESO ─────
+        //
+        // Caía en los nombres de los productos cuando él no escribía nada, y
+        // el dueño lo mandó quitar el 2026-10-22: *«en la descripción estás
+        // poniendo los productos; si no escribió descripción déjala vacía con
+        // un "-", si escribió agrégala allí pero si no, no»*.
+        //
+        // POR QUÉ ESTABA: era la única forma de que la fila del historial
+        // dijera «Fiado · Casco» en vez de «Fiado» a secas. Pero rellenar un
+        // campo del tendero con un dato que él no puso tiene un precio: la
+        // ficha enseña «Descripción: Casco» como si lo hubiera escrito, y no
+        // hay forma de distinguirlo de una descripción de verdad.
+        //
+        // LOS NOMBRES SIGUEN SALIENDO EN LA FILA, pero de donde viven: de
+        // `sale_lines`. Las dos listas los resuelven desde ahí desde el mismo
+        // día.
+        //
+        // LO YA GUARDADO NO SE TOCA. Un fiado anterior tiene el nombre del
+        // producto metido en su `description` y ahí se queda: borrarlo
+        // exigiría distinguir cuál fue escrito por el tendero y cuál copiado
+        // de la venta, y esa diferencia no está guardada en ningún sitio. Así
+        // que durante un tiempo convivirán fichas con descripción heredada y
+        // fichas con «—». Es el precio de no borrar lo que no se puede
+        // distinguir.
+        description: credito.description?.trim() ? credito.description.trim().slice(0, 500) : null,
         photo_path: credito.photoPath ?? null,
         source: "manual",
         plazo_dias: credito.plazoDias,
@@ -1078,6 +1093,9 @@ export type ResumenDeVenta =
   | {
       ok: true;
       saleId: string;
+      // Cuándo se hizo, ya formateada y en la zona del negocio. Ver dónde se
+      // calcula, al final de `resumenDeVenta`.
+      fecha: string;
       comprador: CompradorDelResumen | null;
       bloques: BloqueDelResumen[];
       rates: BolivarRates | null;
@@ -1207,9 +1225,27 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     };
   });
 
+  // ── CUÁNDO SE HIZO LA VENTA ──────────────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-22: la pantalla de éxito y el PNG que se
+  // comparte desde ella no llevaban fecha.
+  //
+  // SE FORMATEA AQUÍ, EN EL SERVIDOR, Y EN LA ZONA DEL NEGOCIO, por la misma
+  // razón que el documento dos líneas más abajo —lo leen la pantalla y el
+  // canvas— y por una más que solo aplica a una fecha: `Intl` sin zona usa la
+  // de quien ejecuta. En el servidor eso es UTC, así que una venta de las
+  // nueve de la noche en Caracas saldría fechada al día siguiente.
+  //
+  // EL PAÍS SALE DE `monedasDelLibro` y no de otra consulta: un negocio
+  // colombiano tiene un solo libro y es COP. `contextoDeVenta` ya resolvió el
+  // país para saberlo, y volver a preguntarlo sería una lectura más para un
+  // dato que ya está aquí.
+  const esColombiano = contexto.ok && contexto.monedasDelLibro[0] === "COP";
+
   return {
     ok: true,
     saleId: venta.id,
+    fecha: formatReceiptDateTime(venta.created_at as string, esColombiano ? "CO" : "VE"),
     // SE FORMATEA AQUÍ Y NO EN CADA PANTALLA. Esto lo leen dos sitios —la
     // pantalla y el canvas de la imagen— y un documento con puntos en una y
     // sin ellos en la otra es la misma venta contando dos cosas distintas.

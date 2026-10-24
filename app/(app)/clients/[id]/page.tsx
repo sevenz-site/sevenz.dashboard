@@ -9,7 +9,13 @@ import { ClientFlagControl } from "@/components/dashboard/client-flag-control";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
-import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import {
+  estadoDeCliente,
+  estadoPorLibro,
+  libroDe,
+  type CargoAbierto,
+  type LibroJuzgado,
+} from "@/lib/estado-del-plazo";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -20,7 +26,7 @@ import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
 import { formatDateTime } from "@/lib/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getMonedaHabitual } from "@/lib/moneda-habitual";
-import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
+import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import {
@@ -28,9 +34,9 @@ import {
   clientStatusLabel,
   CREDIT_SCORE_TIER_BADGE_CLASS,
   MALA_PAGA_BADGE_CLASS,
-  getClientStatus,
   type Client,
   type ClientFlag,
+  type ClientStatus,
   type ClientSummary,
   type Movement,
   type OwnerCountry,
@@ -66,6 +72,7 @@ export default async function ClientDetailPage({
     { count: movementCount },
     monedaHabitual,
     { data: aceptaAvisos },
+    { data: cargosAbiertos, error: cargosError },
   ] =
     await Promise.all([
       supabase.from("clients").select("*").eq("id", id).eq("owner_id", user!.id).maybeSingle(),
@@ -102,6 +109,14 @@ export default async function ClientDetailPage({
       // Va la ultima: el orden de este array es el de la linea de arriba.
       getMonedaHabitual(supabase, user!.id),
       supabase.rpc("client_accepts_whatsapp", { p_client_id: id }),
+      // LOS FIADOS ABIERTOS, para el chip de cada tarjeta de «Por cobrar».
+      //
+      // `MovementHistory`, más abajo, pide esta misma función por su cuenta, y
+      // la duplicación es deliberada: ese bloque vive dentro de un `Suspense`
+      // y se dibuja cuando puede. Hacerle esperar aquí para ahorrar una
+      // llamada le quitaría el streaming a la mitad más lenta de la pantalla,
+      // y esta llamada va en paralelo con las otras seis.
+      supabase.rpc("get_open_charges_for_client", { p_client_id: id }),
     ]);
 
   if (!client) notFound();
@@ -161,12 +176,82 @@ export default async function ClientDetailPage({
   const balanceText = formatBalanceSummary(balance, balanceUsd, balanceEur, ledger);
 
   const judgementBalance = ownerRate ? combinedBalanceUsd(balanceUsd, balanceEur, ownerRate.effectiveRate) : balance;
-  const status = getClientStatus({
-    balance: judgementBalance,
-    daysSincePayment: clientSummary?.days_since_payment ?? 0,
-    worstChargeAt: clientSummary?.worst_unpaid_charge_at ?? null,
-    worstChargePlazoDias: clientSummary?.worst_unpaid_charge_plazo_dias ?? null,
-    worstChargeDueAt: clientSummary?.worst_unpaid_charge_due_at ?? null,
+
+  // UN ESTADO POR LIBRO, Y EL GENERAL ES EL PEOR DE ELLOS (2026-10-23).
+  //
+  // Antes esto era un solo `getClientStatus` sobre `judgementBalance`, el
+  // saldo de los dos libros convertido a dólares. Con eso, una clienta con
+  // 158,50 $ a favor y 3,50 € en deuda salía «A favor» y la deuda en euros
+  // no se veía en ninguna parte. El porqué largo está en `estadoPorLibro`.
+  //
+  // `judgementBalance` SE QUEDA, y no es un resto: el puntaje de crédito es
+  // deliberadamente un juicio único y combinado por cliente, decisión que no
+  // se toca aquí. Lo que deja de ser combinado es el chip.
+  //
+  // UNA LECTURA FALLIDA NO ES UNA LISTA VACÍA. Vacía significa «este cliente
+  // no tiene ningún fiado abierto», y con eso un saldo en deuda saldría «Sin
+  // plazo»: un chip inventado con cara de correcto. Si la lectura falla, las
+  // tarjetas se quedan sin chip y el badge de la sección vuelve al juicio
+  // combinado de siempre — la pantalla de ayer, que al menos no miente.
+  const abiertos: CargoAbierto[] | null = cargosError
+    ? null
+    : ((cargosAbiertos ?? []) as {
+        charge_at: string;
+        currency: string | null;
+        amount: number;
+        pending: number;
+        plazo_dias: number | null;
+        cuotas: number | null;
+      }[]).map((c) => ({
+        createdAt: c.charge_at,
+        currency: c.currency,
+        amount: Number(c.amount),
+        pendiente: Number(c.pending),
+        plazoDias: c.plazo_dias,
+        cuotas: c.cuotas,
+      }));
+
+  const estadosDeLibro: Partial<Record<string, LibroJuzgado>> = abiertos
+    ? estadoPorLibro({
+        saldos: rateContext ? { USD: balanceUsd, EUR: balanceEur } : { COP: balance },
+        abiertos,
+        daysSincePayment: clientSummary?.days_since_payment ?? 0,
+      })
+    : {};
+  // EL CHIP DE LA SECCIÓN SALE DE DONDE SALE EL DE LA LISTA, no de los
+  // fiados abiertos de aquí arriba. Encontrado verificando `CT-137`: la ficha
+  // decía «Crítico (2)» y la fila de la misma clienta en Clientes decía
+  // «Crítico» a secas, porque el contador de la ficha sumaba los vencidos de
+  // los DOS libros mientras el chip hablaba de uno. Son la misma clienta en
+  // dos pantallas, y era justo lo que esta ficha estaba arreglando.
+  //
+  // LAS TARJETAS DE ABAJO SIGUEN CON `estadoPorLibro`, que lee los fiados
+  // abiertos: esa necesita un estado POR libro y `estadoDeCliente` devuelve
+  // solo el que gana. Las dos comparten quien juzga —`getClientStatus`— y el
+  // orden de gravedad, así que no pueden discrepar sobre cuál es el peor.
+  const { status, overdueCount } = estadoDeCliente({
+    fila: {
+      days_since_payment: clientSummary?.days_since_payment ?? 0,
+      worst_unpaid_charge_at: clientSummary?.worst_unpaid_charge_at,
+      worst_unpaid_charge_plazo_dias: clientSummary?.worst_unpaid_charge_plazo_dias,
+      worst_unpaid_charge_due_at: clientSummary?.worst_unpaid_charge_due_at,
+      overdue_charge_count: clientSummary?.overdue_charge_count,
+      worst_unpaid_charge_at_cop: clientSummary?.worst_unpaid_charge_at_cop,
+      worst_unpaid_charge_plazo_dias_cop: clientSummary?.worst_unpaid_charge_plazo_dias_cop,
+      worst_unpaid_charge_due_at_cop: clientSummary?.worst_unpaid_charge_due_at_cop,
+      overdue_charge_count_cop: clientSummary?.overdue_charge_count_cop,
+      worst_unpaid_charge_at_usd: clientSummary?.worst_unpaid_charge_at_usd,
+      worst_unpaid_charge_plazo_dias_usd: clientSummary?.worst_unpaid_charge_plazo_dias_usd,
+      worst_unpaid_charge_due_at_usd: clientSummary?.worst_unpaid_charge_due_at_usd,
+      overdue_charge_count_usd: clientSummary?.overdue_charge_count_usd,
+      worst_unpaid_charge_at_eur: clientSummary?.worst_unpaid_charge_at_eur,
+      worst_unpaid_charge_plazo_dias_eur: clientSummary?.worst_unpaid_charge_plazo_dias_eur,
+      worst_unpaid_charge_due_at_eur: clientSummary?.worst_unpaid_charge_due_at_eur,
+      overdue_charge_count_eur: clientSummary?.overdue_charge_count_eur,
+    },
+    saldos: { cop: balance, usd: balanceUsd, eur: balanceEur },
+    saldoCombinado: judgementBalance,
+    dosLibros: rateContext !== null,
   });
 
   return (
@@ -254,7 +339,7 @@ export default async function ClientDetailPage({
         <h2 className="text-xl font-semibold">Por cobrar</h2>
         <div className="flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[status]}>
-            {clientStatusLabel(status, clientSummary?.overdue_charge_count ?? null)}
+            {clientStatusLabel(status, overdueCount)}
           </Badge>
           {clientSummary?.has_pending_review ? <Badge variant="outline">transacciones por revisar</Badge> : null}
           {client.is_flagged ? (
@@ -265,18 +350,34 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
+      {/* CADA TARJETA LLEVA SU PROPIO CHIP, y su cifra va en absoluto.
+          Encargo del dueño el 2026-10-23: un saldo a favor salía con un menos
+          delante —«-$158,50», y su equivalencia también— y el único chip de
+          la pantalla juzgaba los dos libros juntos. Ahora el signo lo dice el
+          chip, que es lo que la lista de movimientos ya hacía desde el mismo
+          día, y cada libro responde por el suyo. */}
       {rateContext ? (
         <>
-          <BalanceRowCard label="Por cobrar Dólares" currency="USD">
-            <ExchangeRateBalanceDisplay balance={balanceUsd} currency="USD" ledger={ledger} align="end" />
+          <BalanceRowCard label="Por cobrar Dólares" currency="USD" libro={estadosDeLibro[libroDe("USD")]}>
+            <ExchangeRateBalanceDisplay
+              balance={Math.abs(balanceUsd)}
+              currency="USD"
+              ledger={ledger}
+              align="end"
+            />
           </BalanceRowCard>
-          <BalanceRowCard label="Por cobrar Euros" currency="EUR">
-            <ExchangeRateBalanceDisplay balance={balanceEur} currency="EUR" ledger={ledger} align="end" />
+          <BalanceRowCard label="Por cobrar Euros" currency="EUR" libro={estadosDeLibro[libroDe("EUR")]}>
+            <ExchangeRateBalanceDisplay
+              balance={Math.abs(balanceEur)}
+              currency="EUR"
+              ledger={ledger}
+              align="end"
+            />
           </BalanceRowCard>
         </>
       ) : (
-        <BalanceRowCard label="Por cobrar">
-          <ExchangeRateBalanceDisplay balance={balance} currency={null} ledger={null} align="end" />
+        <BalanceRowCard label="Por cobrar" libro={estadosDeLibro[libroDe(null)]}>
+          <ExchangeRateBalanceDisplay balance={Math.abs(balance)} currency={null} ledger={null} align="end" />
         </BalanceRowCard>
       )}
 
@@ -292,8 +393,11 @@ export default async function ClientDetailPage({
       <Suspense fallback={<CreditScoreSkeleton />}>
         <CreditScoreSection
           clientId={id}
+          // SOLO PARA EL RÓTULO «Estado actual» de esa tarjeta. El puntaje
+          // sigue saliendo de `judgementBalance`, el saldo combinado, que es
+          // una decisión vieja y a propósito.
+          statusParaMostrar={status}
           balance={judgementBalance}
-          effectiveRate={ownerRate?.effectiveRate ?? null}
           daysSincePayment={clientSummary?.days_since_payment ?? 0}
           worstChargeAt={clientSummary?.worst_unpaid_charge_at ?? null}
           worstChargePlazoDias={clientSummary?.worst_unpaid_charge_plazo_dias ?? null}
@@ -303,7 +407,14 @@ export default async function ClientDetailPage({
       </Suspense>
 
       <Suspense fallback={<MovementsSkeleton />}>
-        <MovementHistory clientId={id} ledger={ledger} />
+        <MovementHistory
+          clientId={id}
+          ledger={ledger}
+          // PARA QUE LA FILA PUEDA DECIR «Crítico». Es un dato del CLIENTE
+          // —cuántos días lleva sin abonar nada—, así que no cabe en una
+          // consulta de movimientos: baja de aquí, donde ya está leído.
+          diasSinPagar={clientSummary?.days_since_payment ?? 0}
+        />
       </Suspense>
 
       <Suspense fallback={null}>
@@ -330,11 +441,23 @@ export default async function ClientDetailPage({
 function BalanceRowCard({
   label,
   currency,
+  libro,
   children,
 }: {
   label: string;
   // null para un negocio colombiano: allí no hay dos libros que distinguir.
   currency?: PriceCurrency | null;
+  // EL JUICIO DE ESTE LIBRO: su estado y cuántos fiados suyos están vencidos.
+  //
+  // El chip va debajo de la equivalencia y no al lado del rótulo: ahí es donde
+  // el dueño lo pidió, y es donde ya está el chip de las filas del historial,
+  // así que las dos pantallas se leen igual.
+  //
+  // Y LLEVA SU PROPIO CONTADOR, por encargo del dueño el 2026-10-23: *«las
+  // cards por cobrar por cada moneda debería contar los plazos vencidos por
+  // cada moneda»*. El chip de arriba, el del cliente entero, cuenta los de
+  // todos los libros — son dos preguntas distintas y cada una tiene su sitio.
+  libro?: LibroJuzgado;
   children: React.ReactNode;
 }) {
   return (
@@ -346,6 +469,13 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
+      {libro ? (
+        <div className="flex justify-end pt-1">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[libro.status]}>
+            {clientStatusLabel(libro.status, libro.vencidos, true)}
+          </Badge>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -372,8 +502,8 @@ function CreditScoreSkeleton() {
 
 async function CreditScoreSection({
   clientId,
+  statusParaMostrar,
   balance,
-  effectiveRate,
   daysSincePayment,
   worstChargeAt,
   worstChargePlazoDias,
@@ -381,12 +511,17 @@ async function CreditScoreSection({
   isFlagged,
 }: {
   clientId: string;
+  // SOLO el rótulo «Estado actual» de la tarjeta. Ver el comentario de este
+  // campo en `computeCreditScore`: el puntaje sigue saliendo del saldo
+  // combinado de abajo, a propósito.
+  statusParaMostrar: ClientStatus;
+  // Ya convertido a dólares por quien llama, cuando el dueño es venezolano.
+  //
+  // ESTE COMPONENTE YA NO RECIBE LA TASA, desde `CT-124` (2026-10-23): estaba
+  // aquí para convertir los movimientos antes de repartir los abonos, y ese
+  // reparto ahora lleva un libro por moneda —igual que la base— así que cada
+  // uno se mide en su propio dinero y no hay nada que convertir.
   balance: number;
-  // Only present for a VE owner — needed to convert USD/EUR movements into
-  // one comparable unit before the score's FIFO payment-matching runs.
-  // Without this, a EUR payment could appear to close a USD charge just
-  // because it's the oldest unpaid one, which is wrong.
-  effectiveRate: EffectiveRate | null;
   daysSincePayment: number;
   // Migración `134`: el fiado MÁS VENCIDO, no el más antiguo.
   worstChargeAt: string | null;
@@ -400,7 +535,7 @@ async function CreditScoreSection({
   const [{ data: movements }, { data: lastUnflag }] = await Promise.all([
     supabase
       .from("movements")
-      .select("type, amount, currency, created_at, plazo_dias")
+      .select("id, type, amount, currency, created_at, plazo_dias, applies_to_movement_id")
       .eq("client_id", clientId)
       .is("deleted_at", null),
     supabase
@@ -413,16 +548,21 @@ async function CreditScoreSection({
       .maybeSingle(),
   ]);
 
+  // SIN CONVERTIR A DÓLARES, desde `CT-124` (2026-10-23). `buildChargeLedger`
+  // lleva ahora un libro por moneda, igual que `get_open_charges_for_client`,
+  // así que cada uno se mide en su propio dinero. La conversión que había aquí
+  // no separaba los libros —solo igualaba las cifras— y metía decimales que la
+  // base no guarda: un fiado de 3 € pagado con tres abonos de 1 € se quedaba
+  // en 0,01 y no cerraba nunca. `balance`, más arriba, sí sigue convertido:
+  // ahí la pregunta es «cuánto debe en total», que es otra.
   const movementRows = (movements ?? []) as Pick<
     Movement,
-    "type" | "amount" | "currency" | "created_at" | "plazo_dias"
+    "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
   >[];
-  const scoreMovements = effectiveRate
-    ? movementRows.map((m) => ({ ...m, amount: toCombinedUsd(m.amount, m.currency, effectiveRate) }))
-    : movementRows;
 
   const result = computeCreditScore({
-    movements: scoreMovements,
+    movements: movementRows,
+    statusParaMostrar,
     balance,
     daysSincePayment,
     worstChargeAt,
@@ -466,9 +606,11 @@ async function CreditScoreSection({
 async function MovementHistory({
   clientId,
   ledger,
+  diasSinPagar,
 }: {
   clientId: string;
   ledger: LedgerDisplay | null;
+  diasSinPagar: number;
 }) {
   const supabase = await createClient();
 
@@ -480,6 +622,11 @@ async function MovementHistory({
     .order("created_at", { ascending: false });
 
   const movementRows = (movements ?? []) as Movement[];
+
+  // AQUÍ SE LEÍA EL SALDO DE CADA LIBRO, para que la fila del abono suelto
+  // tuviera pie. Se fue el 2026-10-23: desde ese día el pie de TODAS las
+  // filas es `running_balance`, que ya viaja en el propio movimiento, así
+  // que esta consulta se quedó sin lector.
 
   // ── LAS VENTAS PAGADAS ENTERAS ──────────────────────────────────
   //
@@ -512,6 +659,14 @@ async function MovementHistory({
   }
 
   let ventasDeContado: VentaDeContado[] = [];
+  // CÓMO SE LLAMA CADA FILA DEL HISTORIAL: `sale_id` → nombres de productos.
+  //
+  // Hasta el 2026-10-22 el nombre salía de `description`, porque el guardado
+  // copiaba ahí los productos cuando el tendero no escribía nada. El dueño
+  // mandó quitar esa copia ese día, así que los nombres se resuelven aquí,
+  // desde donde viven. NO CUESTA UNA LECTURA MÁS: `sale_lines` ya se consulta
+  // justo debajo para las ventas de contado.
+  const productosPorVenta: Record<string, string[]> = {};
   const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
   if (idsDeVenta.length > 0) {
     const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
@@ -520,6 +675,10 @@ async function MovementHistory({
       supabase.from("sale_payments").select("sale_id, currency, amount, rate_used").in("sale_id", idsDeVenta),
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
+    for (const l of lineasDeVenta ?? []) {
+      const id = l.sale_id as string;
+      (productosPorVenta[id] ??= []).push(l.name as string);
+    }
     ventasDeContado = filasDeContado(
       (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),
       pagos ?? [],
@@ -540,7 +699,11 @@ async function MovementHistory({
   // dato: es la respuesta. Por eso el bucle recorre los MOVIMIENTOS y busca
   // en el mapa, y no al revés -- recorrer los abiertos dejaría a los pagados
   // sin chip, que es justo el caso que se quería enseñar.
-  const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
+  // AQUÍ SE CALCULABA TAMBIÉN `estadosDeFiado`, el estado de cada fiado. Se
+  // fue el 2026-10-23: la lista lo calcula ella sola desde que vuelve a
+  // dibujar ese chip, porque lo único que le faltaba era el pendiente y ese
+  // ya baja por `pendientePorFiado`. Tenerlo aquí era un segundo sitio donde
+  // mantenerlo, y las otras dos pantallas que montan esa lista no lo pasaban.
   const pendientePorFiadoMapa: Record<string, number> = {};
   const hayFiados = movementRows.some((m) => m.type === "charge");
   if (hayFiados) {
@@ -555,13 +718,6 @@ async function MovementHistory({
       if (m.type !== "charge") continue;
       const pendiente = pendientePorFiado.get(m.id) ?? 0;
       pendientePorFiadoMapa[m.id] = pendiente;
-      estadosDeFiado[m.id] = estadoDelFiado({
-        createdAt: m.created_at,
-        plazoDias: m.plazo_dias,
-        cuotas: m.cuotas,
-        amount: Number(m.amount),
-        pendiente,
-      });
     }
   }
 
@@ -576,6 +732,8 @@ async function MovementHistory({
         ledger={ledger}
         ventasDeContado={ventasDeContado}
         pendientePorFiado={pendientePorFiadoMapa}
+        diasSinPagar={diasSinPagar}
+        productosPorVenta={productosPorVenta}
       />
     </div>
   );

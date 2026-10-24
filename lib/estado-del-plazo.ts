@@ -1,4 +1,5 @@
 import { calcularCuotas } from "@/lib/cuotas";
+import { getClientStatus, type ClientStatus } from "@/lib/types";
 
 // LOS TRES ESTADOS DE UN PLAZO, y a qué cuota pertenece cada abono.
 //
@@ -204,4 +205,419 @@ export function estadoDelFiado({
 
   const vence = new Date(createdAt).getTime() + plazoDias * 24 * 60 * 60 * 1000;
   return ahora.getTime() > vence ? "vencido" : "dentro";
+}
+
+// ===========================================================================
+// EL ORDEN POR GRAVEDAD, Y POR QUÉ VIVE AQUÍ
+//
+// Encargo del dueño el 2026-10-22, para el reparto de un abono: *«Sevenz
+// asigna los otros 10 restantes al siguiente abono disponible por gravedad de
+// estado»*. El dinero cae por el fiado más grave primero.
+//
+// Las tres claves son LAS MISMAS de la migración `134`, que es la que decide
+// el chip de estado del cliente, y eso no es casualidad ni copia: si la
+// pantalla repartiera con un orden y el chip señalara otro, el tendero vería
+// marcado «Crítico» un fiado al que el reparto no le puso nada.
+//
+// Lo que NO se repite es el cálculo del vencimiento con cuotas: eso se lo
+// pregunta a `estadosDelFiado`, que ya lo resuelve y es de donde salen los
+// estados de la tabla de cuotas. Una segunda forma de calcular cuándo vence
+// la cuota 3 de 5 es exactamente lo que `CT-124` costó en su día.
+
+/**
+ * Cuándo vence DE VERDAD un fiado, que con cuotas no es su fecha final.
+ *
+ * Un fiado de 5 cuotas a 90 días no vence a los 90: vence por partes, y lo que
+ * decide su gravedad hoy es la primera cuota que todavía no está cubierta.
+ * Pedirle la fecha final sería tratar como «dentro del plazo» un fiado con
+ * tres cuotas vencidas.
+ *
+ * `null` cuando no hay plazo: no hay nada que vencer, y el orden de abajo lo
+ * trata aparte en vez de inventarle una fecha.
+ */
+export function vencimientoEfectivo({
+  createdAt,
+  plazoDias,
+  cuotas,
+  amount,
+  pendiente,
+  ahora = new Date(),
+}: {
+  createdAt: string;
+  plazoDias: number | null;
+  cuotas: number | null;
+  amount: number;
+  pendiente: number;
+  ahora?: Date;
+}): Date | null {
+  if (plazoDias == null) return null;
+
+  if (cuotas != null && cuotas > 1) {
+    const { cuotas: filas } = estadosDelFiado({
+      createdAt,
+      plazoDias,
+      cuotas,
+      amount,
+      abonoInicial: Math.max(0, Math.round((amount - pendiente) * 100) / 100),
+      ahora,
+    });
+    const siguiente = filas.find((c) => c.estado !== "pagado");
+    // Todas cubiertas y aún queda pendiente: no puede pasar con los umbrales
+    // de `estadosDelFiado`, pero si pasara, la última fecha es la respuesta
+    // menos sorprendente --y desde luego mejor que `null`, que lo mandaría al
+    // final del orden como si no tuviera plazo--.
+    return siguiente ? siguiente.fecha : (filas.at(-1)?.fecha ?? null);
+  }
+
+  return new Date(new Date(createdAt).getTime() + plazoDias * 24 * 60 * 60 * 1000);
+}
+
+export type FiadoOrdenable = {
+  createdAt: string;
+  plazoDias: number | null;
+  cuotas: number | null;
+  amount: number;
+  pendiente: number;
+};
+
+/**
+ * El comparador del reparto: el más grave primero.
+ *
+ * Tres claves, en este orden y con esta razón cada una:
+ *
+ *   1. **Vencido antes que al día.** Lo que ya se pasó de fecha es lo que hay
+ *      que ir a cobrar; lo que está dentro de plazo todavía no es un problema.
+ *   2. **Entre los vencidos, el que TENÍA plazo antes que el que no.** «Plazo
+ *      vencido» dice que había una fecha y se pasó —algo acordado que se
+ *      incumplió—; «sin plazo» dice que nunca se puso ninguna, que es otra
+ *      cosa y no necesariamente peor. Decisión del dueño del 2026-10-21.
+ *   3. **El más vencido primero**, por su vencimiento efectivo.
+ *
+ * `ahora` entra como argumento y no se lee dentro: el orden y los rótulos que
+ * la pantalla pinta al lado tienen que salir del MISMO instante, o la lista
+ * puede ordenarse de una forma y rotularse de otra sin que nada falle.
+ */
+export function porGravedad(ahora: Date) {
+  const t = ahora.getTime();
+
+  // SIN PLAZO, LA FECHA DEL PROPIO FIADO. Es el `coalesce(vence, charge_at)`
+  // de la `134`, copiado a conciencia: un fiado al que nunca se le puso fecha
+  // no es «no vencido», es uno que lleva ahí desde que se tomó. Mandarlo al
+  // final del orden —lo que hacía este comparador antes de que `qa:reparto` lo
+  // cazara— dejaría sin cobrar el más viejo de la lista por no haberle puesto
+  // plazo, que es justo al revés de lo que el tendero espera.
+  const efectivo = (f: FiadoOrdenable): number =>
+    (vencimientoEfectivo({ ...f, ahora }) ?? new Date(f.createdAt)).getTime();
+
+  return (a: FiadoOrdenable, b: FiadoOrdenable): number => {
+    const ea = efectivo(a);
+    const eb = efectivo(b);
+
+    const venA = ea < t;
+    const venB = eb < t;
+    if (venA !== venB) return venA ? -1 : 1;
+
+    // Entre los vencidos, el que tiene plazo manda. Fuera de los vencidos la
+    // distinción no aplica: un fiado sin plazo no está «dentro» de nada.
+    if (venA && (a.plazoDias == null) !== (b.plazoDias == null)) {
+      return a.plazoDias == null ? 1 : -1;
+    }
+
+    return ea - eb;
+  };
+}
+
+// ===========================================================================
+// UN ESTADO POR LIBRO, Y EL PEOR DE ELLOS
+//
+// Requested by the owner on 2026-10-23: *«cada card de total por cobrar lleva
+// su propio chip y prela el más grave sobre el estado general del cliente»*.
+//
+// WHY THE CLIENT-WIDE STATUS COULD NOT ANSWER THIS, which is the part worth
+// keeping: `client_summary` carries ONE `worst_unpaid_charge_*` across both
+// ledgers, and the page fed `getClientStatus` a balance converted to dollars.
+// So a client $158.50 in credit and €3.50 in debt came out as a single
+// «A favor» — the exact screen the owner reported, with the euro debt
+// invisible behind a green chip. The two ledgers are never summed anywhere
+// else in the app; the status was the last place that still did.
+//
+// SAME DERIVATION FOR BOTH VIEWS, on purpose. The shopkeeper's page and the
+// client's `/s/[token]` both call this with the same shape, so the chip the
+// client sees cannot disagree with the one the owner sees. Two derivations of
+// one figure is how the $89.72-vs-$68.59 row happened on 2026-10-21.
+export type CargoAbierto = FiadoOrdenable & {
+  // `null` is a Colombian business's ledger, not «no currency» — the same
+  // distinction `get_open_charges_for_client` keeps in SQL.
+  currency: string | null;
+};
+
+// The key a ledger goes under. `COP` for a Colombian business, matching the
+// `saldoPorMoneda` convention the two history lists already use.
+export function libroDe(currency: string | null): string {
+  return currency ?? "COP";
+}
+
+export type LibroJuzgado = {
+  status: ClientStatus;
+  // CUÁNTOS FIADOS VENCIDOS TIENE ESTE LIBRO, para el «(2)» de su chip.
+  // Encargo del dueño el 2026-10-23: *«las cards por cobrar por cada moneda
+  // debería contar los plazos vencidos por cada moneda»* —mientras que el
+  // chip del cliente entero cuenta los de todos sus libros—. Sale del mismo
+  // recorrido que el estado, así que no pueden contradecirse.
+  vencidos: number;
+};
+
+export function estadoPorLibro({
+  saldos,
+  abiertos,
+  daysSincePayment,
+  ahora = new Date(),
+}: {
+  // One entry per ledger the screen draws a card for, keyed by `libroDe`.
+  // A ledger absent from here gets no status, and one present with a zero
+  // balance gets «Sin deuda» — which is the answer, not a missing one.
+  saldos: Partial<Record<string, number>>;
+  abiertos: CargoAbierto[];
+  // Client-wide, from `client_summary`, and deliberately so: «has not paid
+  // anything in N days» is a fact about the client, not about one ledger.
+  // It only decides «Crítico».
+  //
+  // BOTH SCREENS PASS A REAL NUMBER since migration `145`. For one day they
+  // did not: the client's view had no such figure and passed zero, so it
+  // could never reach «Crítico», and the owner deleting a payment put
+  // «Crítico» on his screen against «Sin plazo» on the client's. He chose to
+  // level them — *«la propuesta de valor del producto es "Cuentas claras"»* —
+  // so the client now reads the same verdict, harsh word included. The zero
+  // survives only as the fallback for a database without `145`.
+  daysSincePayment: number;
+  ahora?: Date;
+}): Record<string, LibroJuzgado> {
+  const porLibro: Record<string, CargoAbierto[]> = {};
+  for (const c of abiertos) {
+    if (c.pendiente <= HOLGURA) continue;
+    const libro = libroDe(c.currency);
+    (porLibro[libro] ??= []).push(c);
+  }
+
+  const estados: Record<string, LibroJuzgado> = {};
+  for (const [libro, saldo] of Object.entries(saldos)) {
+    if (saldo == null) continue;
+
+    // Los vencidos de ESTE libro, por la misma regla que usa el orden: sin
+    // fecha propia, un fiado cuenta como vencido desde el día que se tomó.
+    const vencidos = (porLibro[libro] ?? []).filter(
+      (c) => (vencimientoEfectivo({ ...c, ahora }) ?? new Date(c.createdAt)) < ahora,
+    ).length;
+
+    // THE WORST OPEN CHARGE OF THIS LEDGER, by the same rule
+    // `client_summary` applies to the whole client: the one whose own due
+    // date sits furthest back, or, with none overdue, the one that falls due
+    // first. That is exactly what `porGravedad` orders, so the rule lives in
+    // one comparator instead of being restated here.
+    const peor = [...(porLibro[libro] ?? [])].sort(porGravedad(ahora))[0] ?? null;
+
+    // HALF A CENT IS NOT A DEBT. `getClientStatus` compares the balance to
+    // zero exactly, so a ledger left at 0,004 by rounding would be judged as
+    // owing money while its card prints $0,00 — a chip contradicting the
+    // figure right next to it.
+    const neto = Math.abs(saldo) <= HOLGURA ? 0 : saldo;
+
+    estados[libro] = {
+      vencidos,
+      status: getClientStatus({
+      balance: neto,
+      daysSincePayment,
+      worstChargeAt: peor?.createdAt ?? null,
+      worstChargePlazoDias: peor?.plazoDias ?? null,
+      // The database's `worst_unpaid_charge_due_at` for one fiado, computed
+      // here because this list has what it takes: with cuotas it is the next
+      // unpaid instalment's date, without them the end of the plazo.
+      worstChargeDueAt: peor
+        ? (vencimientoEfectivo({ ...peor, ahora })?.toISOString() ?? null)
+        : null,
+      }),
+    };
+  }
+  return estados;
+}
+
+// EL ORDEN DE GRAVEDAD, del peor al que no es problema. The two at the bottom
+// are not problems at all and their order only decides which of them a client
+// with nothing pending shows: «A favor» says more than «Sin deuda», so it
+// wins.
+const GRAVEDAD_DEL_ESTADO: Record<ClientStatus, number> = {
+  critico: 5,
+  plazo_vencido: 4,
+  sin_plazo: 3,
+  dentro_del_plazo: 2,
+  a_favor: 1,
+  sin_deuda: 0,
+};
+
+/** El estado general del cliente: el más grave de sus libros. */
+export function peorEstado(estados: ClientStatus[]): ClientStatus {
+  let peor: ClientStatus = "sin_deuda";
+  for (const e of estados) {
+    if (GRAVEDAD_DEL_ESTADO[e] > GRAVEDAD_DEL_ESTADO[peor]) peor = e;
+  }
+  return peor;
+}
+
+// ===========================================================================
+// EL ESTADO DE UN CLIENTE EN UNA LISTA, Y DE QUÉ LIBRO ES
+//
+// `CT-137`, encargo del dueño el 2026-10-23: *«debería prelar el estado más
+// crítico con su moneda respectiva, sin cruzar estado con moneda»*.
+//
+// QUÉ SE CRUZABA. La fila de la lista sacaba la CIFRA del libro más grande y
+// el CHIP de los dos saldos convertidos a dólares y sumados. Con 158,50 $ a
+// favor contra 3,50 € de deuda, la suma salía verde: **«Mariangel Mendoza ·
+// A favor · €3.50»**, el chip diciendo una cosa y el número de al lado otra.
+//
+// POR QUÉ NO LO RESUELVE `estadoPorLibro`, que está justo arriba y contesta
+// la misma pregunta: esa necesita los fiados abiertos, y pedirlos cuesta una
+// consulta por cliente. La ficha abre uno; esta lista pinta quince por página
+// y lee el negocio entero de una vez. Así que aquí los datos llegan ya
+// masticados por la `146`, en la fila del resumen, y lo único que se comparte
+// —a propósito— es quien juzga: `getClientStatus` y el orden de `peorEstado`.
+export type FilaDeResumen = {
+  days_since_payment: number;
+  worst_unpaid_charge_at?: string | null;
+  worst_unpaid_charge_plazo_dias?: number | null;
+  worst_unpaid_charge_due_at?: string | null;
+  overdue_charge_count?: number | null;
+  worst_unpaid_charge_at_cop?: string | null;
+  worst_unpaid_charge_plazo_dias_cop?: number | null;
+  worst_unpaid_charge_due_at_cop?: string | null;
+  overdue_charge_count_cop?: number | null;
+  worst_unpaid_charge_at_usd?: string | null;
+  worst_unpaid_charge_plazo_dias_usd?: number | null;
+  worst_unpaid_charge_due_at_usd?: string | null;
+  overdue_charge_count_usd?: number | null;
+  worst_unpaid_charge_at_eur?: string | null;
+  worst_unpaid_charge_plazo_dias_eur?: number | null;
+  worst_unpaid_charge_due_at_eur?: string | null;
+  overdue_charge_count_eur?: number | null;
+};
+
+export type EstadoDeCliente = {
+  status: ClientStatus;
+  // El libro al que pertenece ese estado, para que la cifra de al lado sea la
+  // suya. `null` es el libro de un negocio colombiano — y también lo que
+  // devuelve la degradación, donde no hay un libro que señalar.
+  currency: "USD" | "EUR" | null;
+  // LOS VENCIDOS DEL CLIENTE ENTERO, no los del libro que ganó.
+  //
+  // Estuvo siendo el del libro durante unas horas del 2026-10-23 y el dueño lo
+  // corrigió el mismo día, con Camilo delante: su chip decía «Plazo vencido
+  // (2)» y en el historial se le veían TRES, dos en euros y uno en dólares.
+  // *«Debería contar los totales»*. Y tiene razón por lo que el chip es: una
+  // respuesta sobre el CLIENTE —cuántos fiados suyos hay que ir a cobrar—, no
+  // sobre un libro. Los de cada libro los cuenta su propia tarjeta, con
+  // `estadoPorLibro`.
+  overdueCount: number | null;
+};
+
+export function estadoDeCliente({
+  fila,
+  saldos,
+  saldoCombinado,
+  dosLibros,
+}: {
+  fila: FilaDeResumen;
+  // En la moneda de cada libro, sin convertir. La papelera pasa los saldos
+  // congelados en vez de los vivos, que es justo por lo que entran como
+  // argumento y no se leen de `fila`.
+  saldos: { cop: number; usd: number; eur: number };
+  // Los dos saldos convertidos y sumados, como se hacía en todas partes hasta
+  // hoy. SOLO se usa en la degradación de abajo; que siga entrando es lo que
+  // permite que una base sin la `146` enseñe exactamente la pantalla de ayer.
+  saldoCombinado: number;
+  // `true` para un negocio venezolano, que lleva dos libros independientes.
+  dosLibros: boolean;
+}): EstadoDeCliente {
+  // LA CLAVE AUSENTE ES LA SEÑAL, y no un `null`: una vista sin la `146` no
+  // manda estas columnas, mientras que un libro sin nada abierto sí las manda
+  // en nulo. Distinguirlo es lo que separa «todavía no sé juzgar por libro»
+  // de «este libro no debe nada».
+  if (fila.worst_unpaid_charge_at_usd === undefined) {
+    return {
+      status: getClientStatus({
+        balance: saldoCombinado,
+        daysSincePayment: fila.days_since_payment,
+        worstChargeAt: fila.worst_unpaid_charge_at ?? null,
+        worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
+        worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+      }),
+      currency: null,
+      overdueCount: fila.overdue_charge_count ?? null,
+    };
+  }
+
+  const libros = dosLibros
+    ? ([
+        {
+          currency: "USD" as const,
+          saldo: saldos.usd,
+          at: fila.worst_unpaid_charge_at_usd ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_usd ?? null,
+          due: fila.worst_unpaid_charge_due_at_usd ?? null,
+          count: fila.overdue_charge_count_usd ?? null,
+        },
+        {
+          currency: "EUR" as const,
+          saldo: saldos.eur,
+          at: fila.worst_unpaid_charge_at_eur ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_eur ?? null,
+          due: fila.worst_unpaid_charge_due_at_eur ?? null,
+          count: fila.overdue_charge_count_eur ?? null,
+        },
+      ])
+    : ([
+        {
+          currency: null,
+          saldo: saldos.cop,
+          at: fila.worst_unpaid_charge_at_cop ?? null,
+          plazo: fila.worst_unpaid_charge_plazo_dias_cop ?? null,
+          due: fila.worst_unpaid_charge_due_at_cop ?? null,
+          count: fila.overdue_charge_count_cop ?? null,
+        },
+      ]);
+
+  let elegido: EstadoDeCliente | null = null;
+  let saldoDelElegido = 0;
+
+  for (const libro of libros) {
+    // Medio céntimo no es una deuda — mismo umbral y misma razón que
+    // `estadoPorLibro`: `getClientStatus` compara con cero exacto.
+    const neto = Math.abs(libro.saldo) <= HOLGURA ? 0 : libro.saldo;
+    const status = getClientStatus({
+      balance: neto,
+      daysSincePayment: fila.days_since_payment,
+      worstChargeAt: libro.at,
+      worstChargePlazoDias: libro.plazo,
+      worstChargeDueAt: libro.due,
+    });
+
+    if (elegido !== null) {
+      // El que ya estaba es más grave: este libro no manda.
+      if (peorEstado([status, elegido.status]) !== status) continue;
+      // A IGUALDAD DE GRAVEDAD MANDA EL SALDO MÁS GRANDE, que es la regla que
+      // la tarjeta ya usaba para elegir qué cifra enseñar. Así, en el caso
+      // normal —los dos libros en el mismo estado— la fila sigue enseñando
+      // exactamente lo que enseñaba, y lo único que cambia es el caso que el
+      // dueño reportó.
+      if (status === elegido.status && neto <= saldoDelElegido) continue;
+    }
+
+    elegido = {
+      status,
+      currency: libro.currency,
+      overdueCount: fila.overdue_charge_count ?? null,
+    };
+    saldoDelElegido = neto;
+  }
+
+  // `libros` nunca está vacío, pero el tipo no lo sabe.
+  return elegido ?? { status: "sin_deuda", currency: null, overdueCount: null };
 }

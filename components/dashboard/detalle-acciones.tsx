@@ -23,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { deleteMovement, getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { mensajeDeSaldo, type DatosParaCompartir } from "@/lib/share-balance";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -101,15 +102,31 @@ export function DetalleAcciones({
   // el flujo lo rechazaría con «ese fiado ya está saldado», que es mandar al
   // tendero a un callejón sin salida.
   puedePagar,
+  abonosDirigidos = 0,
 }: {
   movementId: string;
   clientId: string;
   compartir: DatosParaCompartir | null;
   puedePagar: boolean;
+  // CUÁNTOS ABONOS APUNTAN A ESTE FIADO. Cero en un abono y en un fiado al que
+  // nadie ha pagado nada, y entonces el diálogo no pregunta nada: una casilla
+  // sobre «sus abonos» cuando no hay ninguno es una pregunta sin respuesta.
+  abonosDirigidos?: number;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  // ── ¿SE VAN TAMBIÉN SUS ABONOS? ────────────────────────────────────
+  //
+  // APAGADA POR DEFECTO, y es la decisión que importa de esta casilla. Lo que
+  // el cliente entregó pasó de verdad; lo que puede estar mal anotado es el
+  // fiado. Marcada por defecto, un toque de más le borraría al cliente un pago
+  // que sí hizo — y eso no se ve hasta que alguien discute el saldo.
+  //
+  // SE REARMA EN LOS DOS SITIOS —al cerrar el diálogo y al abrirlo desde el
+  // menú— porque uno solo no basta. El porqué, y lo que se midió, está en el
+  // `onOpenChange` del diálogo.
+  const [tambienAbonos, setTambienAbonos] = useState(false);
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
 
@@ -118,7 +135,9 @@ export function DetalleAcciones({
   async function handleDelete() {
     if (guardia()) return;
     setBorrando(true);
-    const result = await deleteMovement(movementId);
+    const result = await deleteMovement(movementId, {
+      conAbonos: abonosDirigidos > 0 && tambienAbonos,
+    });
     setBorrando(false);
     if (result.error) {
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
@@ -169,6 +188,9 @@ export function DetalleAcciones({
               // Sin esto el menú se cierra ANTES de que el estado cambie y la
               // confirmación se abre sobre algo que se está desmontando.
               e.preventDefault();
+              // LA CASILLA SE REARMA AQUÍ, que es donde de verdad se abre.
+              // Ver el porqué en el `onOpenChange` del diálogo.
+              setTambienAbonos(false);
               setConfirmando(true);
             }}
           >
@@ -180,7 +202,26 @@ export function DetalleAcciones({
 
       {/* CONTROLADA Y FUERA DEL MENÚ, por lo mismo: dentro, su disparador se
           desmonta en el gesto que debería abrirla. */}
-      <AlertDialog open={confirmando} onOpenChange={setConfirmando}>
+      <AlertDialog
+        open={confirmando}
+        onOpenChange={(abierto) => {
+          // SE REARMA AL CERRAR, Y TAMBIÉN AL ABRIR DESDE EL MENÚ.
+          //
+          // HACEN FALTA LAS DOS, y esto estuvo mal escrito hasta que se probó.
+          // `onOpenChange` es de Radix y solo se dispara cuando el DIÁLOGO
+          // pide el cambio —Cancelar, Escape, tocar fuera—, no cuando el menú
+          // pone `setConfirmando(true)` a mano. Con el rearme solo aquí y solo
+          // «al abrir», marcar la casilla, cancelar y volver a entrar la
+          // encontraba MARCADA: medido en dev el 2026-10-23, con el comentario
+          // de al lado afirmando lo contrario.
+          //
+          // POR QUÉ IMPORTA: la segunda vez el tendero cree que borra el fiado
+          // y borra también el pago que su cliente sí hizo. No falla nada y no
+          // se ve hasta que alguien discute el saldo.
+          setTambienAbonos(false);
+          setConfirmando(abierto);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
@@ -189,6 +230,38 @@ export function DetalleAcciones({
               después desde Notificaciones.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {/* QUÉ PASA CON LO QUE YA LE ABONARON — encargo del dueño el
+              2026-10-23. El porqué de preguntarlo en vez de decidirlo está en
+              `deleteMovement`.
+
+              EL AVISO DICE LO QUE PASA SI NO SE MARCA, no lo que pasa si se
+              marca: lo segundo es obvio —se borra— y lo primero es justo lo
+              que sorprende, porque un abono sin su fiado sigue descontando del
+              saldo y no se ve en ninguna parte hasta que alguien suma. */}
+          {abonosDirigidos > 0 ? (
+            <div className="flex flex-col gap-2 rounded-[10px] border p-3">
+              <label className="flex items-start gap-2.5 text-sm leading-5">
+                <Checkbox
+                  checked={tambienAbonos}
+                  onCheckedChange={(v) => setTambienAbonos(v === true)}
+                  disabled={borrando}
+                  className="mt-0.5"
+                />
+                <span>
+                  Eliminar también {abonosDirigidos === 1 ? "su abono" : `sus ${abonosDirigidos} abonos`}
+                </span>
+              </label>
+              <p className="text-xs leading-4 text-muted-foreground">
+                {tambienAbonos
+                  ? "Se eliminarán con el fiado. Podrás restaurar cada uno por separado desde Notificaciones."
+                  : abonosDirigidos === 1
+                    ? "Si no lo eliminas, ese abono se queda y se seguirá descontando del saldo del cliente."
+                    : "Si no los eliminas, esos abonos se quedan y se seguirán descontando del saldo del cliente."}
+              </p>
+            </div>
+          ) : null}
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={borrando}>

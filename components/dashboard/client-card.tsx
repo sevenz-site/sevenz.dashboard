@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDocumentId } from "@/lib/format";
+import type { PriceCurrency } from "@/lib/products/price";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   clientStatusLabel,
@@ -84,6 +85,7 @@ export function ClientCardBody({
   overdueCount,
   hasPendingReview = false,
   isFlagged,
+  monedaDelEstado,
   balance,
   balanceUsd,
   balanceEur,
@@ -104,6 +106,14 @@ export function ClientCardBody({
   overdueCount: number | null;
   hasPendingReview?: boolean;
   isFlagged: boolean;
+  // EL LIBRO AL QUE PERTENECE EL CHIP, y por tanto la cifra que se enseña.
+  // `CT-137`, encargo del dueño el 2026-10-23: *«debería prelar el estado más
+  // crítico con su moneda respectiva, sin cruzar estado con moneda»*.
+  //
+  // Sin él la tarjeta cae en «el saldo más grande», que es lo que hacía desde
+  // el 2026-10-04 — y sigue haciendo en las pantallas que no lo pasan, y en
+  // una base sin la `146` corrida.
+  monedaDelEstado?: PriceCurrency | null;
   // A CO owner's debt is `balance` (COP); a VE owner's is the two independent
   // per-currency balances, which are never summed. `ledger` non-null is what
   // says which of the two this owner is.
@@ -133,7 +143,17 @@ export function ClientCardBody({
   // changes then is which one goes first, never what is shown — both carry
   // their code and the mark says the other exists.
   const twoLedgers = ledger !== null && balanceUsd > 0 && balanceEur > 0;
-  const bigger = ledger === null ? null : balanceUsd >= balanceEur ? "USD" : "EUR";
+  // LA MONEDA DEL CHIP MANDA SOBRE «LA MÁS GRANDE», desde `CT-137`. Lo que
+  // esto arregla, con el caso que lo motivó: la fila decía «A favor · €3.50»
+  // —el chip de los dos libros sumados, la cifra del libro mayor— y su propia
+  // ficha decía «Crítico». Ahora las dos mitades hablan del mismo libro.
+  //
+  // El respaldo se queda y no es un resto: lo usan las pantallas que no pasan
+  // `monedaDelEstado` y cualquier base donde la `146` no esté corrida.
+  const bigger =
+    ledger === null
+      ? null
+      : (monedaDelEstado ?? (balanceUsd >= balanceEur ? "USD" : "EUR"));
   const amount = ledger === null ? cop : bigger === "USD" ? usd : eur;
 
   return (

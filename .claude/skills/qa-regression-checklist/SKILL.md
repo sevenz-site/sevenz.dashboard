@@ -16,6 +16,49 @@ wait for their explicit confirmation before merging to `main` or touching
 production. This skill never approves a launch on its own — it only
 informs the user's decision. See CLAUDE.md's "dev-only by default" rule.
 
+## 0. Cinco trampas que cuestan tiempo o decisiones falsas
+
+Nada de esto es una comprobación: son las formas de equivocarse que ya han
+pasado, puestas antes de la lista porque todas se pagan en mitad de un
+despliegue. Las cinco salieron del lanzamiento del 2026-10-21.
+
+**1. Varias suites necesitan `npm run dev` corriendo.** `qa:venta-accion`,
+`qa:abono-accion`, `qa:venta-resumen` y `qa:colombia` llaman a acciones de
+servidor por HTTP. Sin servidor fallan con «1/2 pasan», que **no se parece a
+un problema de entorno**: parece que el código está roto. Pasó dos veces el
+mismo día, la segunda después de haber parado el servidor para compilar.
+
+**2. Las claves del ledger se comparan como TEXTO.** `key >= '122'` incluye
+`2026-10-12_limpiar_whatsapp_inservibles`, porque `'2' > '1'`. Las claves con
+fecha ordenan **detrás** de todas las numeradas. Esto costó dos errores el
+mismo día: una ficha entera inventada (`DM-6`, que decía que producción tenía
+apuntes que dev no, cuando los tres estaban en los dos lados) y una
+verificación final que dio 16 donde debían ser 13. **Para contar un lote, usa
+un patrón y no un rango**: `where key ~ '^1(2[2-9]|3[0-4])_'`.
+
+**3. El editor de Supabase avisa de RLS en falso.** Si el `alter table …
+enable row level security` va unas líneas más abajo que el `create table`
+—que es como se escriben las migraciones de este repo— el analizador no lo ve
+y ofrece «Run without RLS» / «Run and enable RLS». **La respuesta es «Run
+without RLS»**: significa «no me añadas RLS tú», o sea ejecutar el SQL tal
+como está, que ya la activa. Y después se verifica con `relrowsecurity`, sin
+fiarse del botón. También marca como «destructivas» los `drop policy if
+exists` que la propia migración necesita para poder re-ejecutarse.
+
+**4. Lee TODAS las migraciones del lote antes de correr la primera.** Una
+puede anular a otra. La `124` borra `movement_products`, la tabla que la `122`
+crea dos migraciones antes, y su cabecera decía que en producción esa tabla
+«nunca llegó a existir». Pasarlas de una en una según se van leyendo es cómo
+se ejecuta algo que el propio lote deshace después.
+
+**5. Verificar una página en vivo pide quitar las etiquetas primero.** Un
+`grep` sobre el HTML crudo da falsos negativos: el JSX parte las frases entre
+líneas y `grep` va línea a línea. Quita los tags, normaliza los espacios y
+busca entonces. Y mide **los dos sitios por separado**: `npx wrangler deploy`
+actualiza el worker al instante y **no publica el dominio** — eso lo hace el
+push a `main`, y el 2026-10-21 tardó varios minutos, no los 45 segundos que
+estaban escritos.
+
 ## 1. Scope the change
 
 - `git diff origin/main origin/dev --name-only` (or equivalent) — what
@@ -47,6 +90,35 @@ path in both, in production (`CT-35`).
 - Add a charge to an existing client. Running balance increases correctly.
 - Add a payment (abono). Running balance decreases correctly; payment
   can't exceed current debt.
+- **Y el abono AHORA SE DIRIGE a un fiado concreto** — migración `126`, desde
+  el 2026-10-19. La línea de arriba sigue siendo verdad y dejó de bastar:
+  registrar un abono empieza por elegir qué fiado paga, y esa elección se
+  guarda. Tres casos, y ninguno lo cubren los seis puntos de esta lista:
+  - un abono dirigido baja **SU** fiado y no el más antiguo;
+  - un abono dirigido a un fiado **borrado** cae en el reparto viejo, porque
+    un fiado borrado no entra en la cola — el dinero va al más antiguo
+    abierto en vez de desaparecer;
+  - y al **restaurar** ese fiado, el abono vuelve a aterrizar donde el
+    tendero dijo, sin que nada se reescriba.
+
+  **`npm run qa:abono-dirigido`** cubre los tres y **`npm run qa:abono-accion`**
+  los rechazos de la acción (monto cero o negativo, fiado ya saldado, fiado de
+  otro dueño, dirigir un abono a otro abono). La segunda **necesita el
+  servidor corriendo**.
+
+  **Y `npm run qa:puntaje`**, que mira la otra mitad de la misma ficha: que el
+  puntaje de crédito reparta cada abono entre los fiados **igual que la base**.
+  No escribe nada salvo su propio caso de prueba, que borra.
+
+  Hace falta porque la ficha enseña dos cosas calculadas en dos sitios: el
+  saldo y el chip los hace Postgres (`get_open_charges_for_client`), y la
+  «Puntualidad histórica» la hace TypeScript (`buildChargeLedger`). Estuvieron
+  separadas desde la migración `126` hasta el 2026-10-23 —`CT-124`, ya
+  cerrado—: la base respetaba el fiado que el tendero elegía y el puntaje
+  pagaba el más viejo, así que le acreditaba pagos puntuales a fiados que nadie
+  había pagado. **Si esta suite se pone roja, las dos mitades volvieron a
+  separarse**, y eso no es cosmético: el puntaje existe para avisar de quién no
+  paga.
 - Delete a movement, then restore it. Balance recalculates correctly both
   times (`recalc_client_running_balance`).
 - Mala paga flag/unflag cycle still works and affects status correctly.
@@ -94,6 +166,67 @@ and that answer is read by the badge, by the owner's weekly WhatsApp and by the
 client's reminder, each through a different function. They already drifted apart
 once, on 2026-10-16, between `118` and the two WhatsApp functions; migration
 `119` is that fix, and `qa:cuotas` check 10 is what would catch it next time.
+
+## 2b. LA VENTA — la mitad del dinero que esta lista no conocía
+
+Desde el lanzamiento del 2026-10-21 (migración `124`). **Toda la sección 2
+verifica saldos mirando `movements`, y una venta pagada entera no escribe
+nada ahí** — a propósito, para que el contado no toque el saldo, el puntaje
+ni las gráficas. O sea que una venta de contado rota pasaría invisible por
+los seis puntos de arriba.
+
+Corre **`npm run qa:venta`** (el esquema: grants, políticas, cascadas, y que
+un negocio no pueda tener dos mostradores), **`npm run qa:venta-accion`** (la
+acción de servidor, con sus rechazos) y **`npm run qa:venta-resumen`** (la
+pantalla del resumen). **Las dos últimas necesitan el servidor corriendo.**
+
+Y después, en el navegador, **nombrando el viewport en el informe**:
+
+- **Una venta de CONTADO entera.** Producto → carrito → pago → resumen. En la
+  base tiene que quedar la venta con sus `sale_lines` y `sale_payments`, y
+  **cero filas en `movements`**. Esa última es la comprobación: si aparece un
+  movimiento, el contado ha entrado en el saldo del cliente.
+- **Una venta A CRÉDITO.** El cargo se escribe por **lo que queda**, nunca por
+  el total. Una compra de 10 con 5 abonados deja un fiado de 5 — si deja uno
+  de 10, el cliente debe el doble de lo acordado.
+- **Una venta MIXTA, en dos monedas.** Dólares cobrados y euros fiados en la
+  misma venta: tiene que salir fila de contado en la moneda cobrada y cargo en
+  la fiada. Excluir la venta entera fue un fallo real el 2026-10-20 — los diez
+  dólares cobrados no aparecían en ninguna parte.
+- **Borrar una venta.** Se lleva sus líneas, sus pagos y los movimientos que
+  nacieron de ella, y el saldo del cliente vuelve a lo que era. **Ninguna
+  suite cubre esto todavía** (`CT-123`): hay que montarlo a mano, y es la
+  acción que ya tuvo un fallo de dinero silencioso (`CT-122`).
+- **El MOSTRADOR no puede quedar fiado.** Es el cliente que la app crea sola
+  para una venta sin cliente; si pudiera deber, habría una deuda a nombre de
+  nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
+  «Mostrador» aparece ahí (`CT-125`), con saldo siempre cero.
+
+**COLOMBIA TIENE SU PROPIA FIXTURE Y NO ES OPCIONAL.** `sale_payments` y
+`sale_lines` escriben el libro colombiano como `'COP'` y `movements` lo
+escribe como `NULL`. Cruzar esas dos columnas en bruto no casa nunca, no
+excluye nada, y **le da a cada fiado colombiano con abono inicial una fila
+fantasma de contado en la pantalla de su propio cliente** — su deuda listada
+dos veces, una como debida y otra como ya pagada. Casi sale así el
+2026-10-20, y **ninguna prueba de dev lo habría cazado**, porque no había ni
+una venta de un negocio colombiano. Por eso existe **`npm run qa:colombia`**.
+
+## 2c. El chip de estado del cliente
+
+Desde la migración `134`. **`npm run qa:estado`**, trece controles.
+
+Lo que hay que entender para leer sus resultados: el chip sale del fiado **más
+vencido**, no del más antiguo, y entre vencidos manda uno **con** plazo si lo
+hay. Antes salía del más antiguo, y un fiado pequeño todavía en plazo apagaba
+la alarma de uno grande vencido hacía meses — medido con control, un cliente
+de 100 días que nunca abonó, con $50 al día y $400 vencidos hacía 73, salía
+«Dentro del plazo».
+
+**La mitad de los controles de esa suite SON controles**, y esa es la parte
+que no se puede quitar: que un fiado al día siga siendo «Dentro del plazo»,
+que si ningún vencido tiene plazo la etiqueta siga siendo «Sin plazo», y que
+un fiado al día no se cuele por delante de uno vencido. Sin ellos, «arreglar»
+el chip poniendo a todo el mundo en rojo pasaría la prueba.
 
 ## 3. Per-currency (VE owner) flows
 
@@ -207,32 +340,86 @@ from the templates Meta has approved. When a new template ships, add its row
 there — the script's job is to notice when the code and the approved template
 drift apart, which it cannot do for a template it has never heard of.
 
-## 3c. El catálogo y las órdenes — cuatro suites, y una es de seguridad
+## 3c. El catálogo, el carrito del cliente y el pedido — el recorrido entero
 
-Solo cuando el diff toca `app/c/`, `components/public/`, `lib/products/`,
-`lib/cart/` o una migración de `products`, `catalog_*` u `orders`.
+Solo cuando el diff toca `app/c/`, `app/s/`, `components/public/`,
+`lib/products/`, `lib/cart/`, `lib/orders/` o una migración de `products`,
+`catalog_*` u `orders`.
+
+**ESTO ES UN RECORRIDO DE UNA PERSONA, NO CUATRO SUITES SUELTAS.** El cliente
+abre un enlace, mira productos, llena un carrito, manda un pedido, y el
+tendero lo recibe en su pantalla. Cada tramo tiene su suite y además hay que
+andarlo entero una vez: las suites prueban las reglas, el recorrido prueba que
+los tramos se enganchan.
+
+### Las suites, y qué cubre cada una
 
 - **`npm run qa:orden`** — **la importante, y es de seguridad, no de
   producto.** `create_catalog_order` es la ÚNICA escritura de Sevenz que no
   tiene detrás ni una sesión ni una fila que ya existiera: la llama un
-  visitante anónimo por un enlace hecho para circular. La suite le intenta
-  colar productos de otro dueño, sin publicar y de la papelera; comprueba que
-  el precio salga de la ficha y no de quien llama; que una línea mala deshaga
-  la orden entera; y que el tope por minuto frene. Escribe en dev y limpia.
+  visitante anónimo por un enlace hecho para circular. Le intenta colar
+  productos de otro dueño, sin publicar y de la papelera; comprueba que el
+  precio salga de la ficha y no de quien llama; que un pedido sin nombre o sin
+  documento no entre; que una línea mala deshaga la orden entera; y que el
+  tope por minuto frene.
 - **`npm run qa:carrito`** — lógica pura. El caso que no existe en ninguna
   otra pantalla: fusionar dos veces el mismo producto **cambia su precio**,
-  porque el escalón depende de la cantidad total.
+  porque el escalón depende de la cantidad total. También que quitar una línea
+  deje la otra y que el contador sume cantidades y no líneas.
 - **`npm run qa:precio-publico`** — qué precio ve el cliente según cuánto
   pide. Lógica pura.
-- **`npm run qa:catalogo`** y **`npm run qa:productos`** — el catálogo
-  público, el enlace único y los candados de precio. Escriben en dev.
+- **`npm run qa:catalogo-enlace`** — qué entra en el enlace y qué no: el
+  publicado al detal, el publicado solo al mayor, el no publicado, el de la
+  papelera, y el tope de 8 de la franja.
+- **`npm run qa:catalogo`** y **`npm run qa:productos`** — el catálogo, el
+  enlace único por negocio y los candados de precio.
+- **`npm run qa:catalogo-regresion`** y **`npm run qa:catalogo-bordes`** — los
+  bordes del catálogo público.
+- **`npm run qa:pedidos`** — el lado del TENDERO: el contador de sin atender,
+  que atender marque una sola fila, que atender dos veces no baje el contador
+  dos veces, y que el pedido de un negocio no salga filtrando por otro dueño.
+  **Lee como el DUEÑO, con su sesión**, que es lo que le faltaba a la `108` y
+  costó la pantalla entera (ver más abajo).
 
-**Por qué `qa:orden` merece su propia línea en esta lista**: sus fallos no se
-ven desde ninguna pantalla. Una orden con un precio manipulado le llega al
-tendero con la misma pinta que una buena, y la comprobación de que la regla
-del escalón de la base y la de TypeScript coinciden es lo único que caza una
-divergencia que, si ocurre, enseña un precio al cliente y guarda otro **sin un
-solo error en ninguna parte**.
+### El recorrido, en el navegador y a 375px
+
+Una vez por lanzamiento que toque esta zona, de punta a punta:
+
+1. **El enlace del catálogo** (`/c/[token]`): salen los productos publicados y
+   solo esos, con el precio del escalón que corresponde.
+2. **Un producto**, con su foto y su precio.
+3. **El carrito**: añadir, cambiar cantidad **escribiéndola con el teclado**,
+   quitar una línea. Si el producto tiene escalón, la cantidad cambia el
+   precio y eso tiene que verse.
+4. **Mandar el pedido**: nombre, documento y WhatsApp. Sin nombre o sin
+   documento no entra.
+5. **La franja «Productos» del enlace de saldo** (`/s/[token]`): tocar una
+   tarjeta abre el catálogo del mismo negocio. Los dos enlaces llevan **tokens
+   distintos** —uno del cliente, otro del negocio— y el puente lo resuelve el
+   servidor; si se rompe, el cliente se queda sin forma de llegar.
+6. **La pantalla de Pedidos del tendero**: el pedido llegó, el contador lo
+   cuenta, se abre el detalle con sus líneas y el total, y «Marcar como
+   atendido» baja el contador.
+
+### Dos cosas que ya fallaron aquí y conviene no redescubrir
+
+**Una política correcta sin grant no se consulta siquiera.** La `108` creó
+`catalog_orders` con RLS y una política perfecta y sin conceder nada a
+`authenticated`: cada lectura del tendero murió con `42501`, la pantalla de
+Pedidos decía «todavía no te ha llegado ningún pedido» con tres pedidos
+dentro, y `qa:pedidos` pasaba 14 de 14 en ese mismo momento, porque corría con
+la clave de servicio. Lo arregló la `116`. Por eso esa suite **lee como el
+dueño** y por eso los grants se escriben al lado de la política.
+
+**Y los fallos de `qa:orden` no se ven desde ninguna pantalla.** Una orden con
+un precio manipulado le llega al tendero con la misma pinta que una buena. La
+comprobación de que la regla del escalón de la base y la de TypeScript
+coinciden es lo único que caza una divergencia que enseñaría un precio al
+cliente y guardaría otro **sin un solo error en ninguna parte**.
+
+**El botón «Registrar pedido» NO está en la pantalla** desde el 2026-10-21, y
+no es un olvido: lo que haría es `CT-70`, que no está construido. Si reaparece
+en una captura, es una regresión.
 
 ## 4. Public, unauthenticated surfaces
 
@@ -241,6 +428,42 @@ solo error en ninguna parte**.
   client, and that `get_shared_balance()`'s returned shape actually
   matches what the page destructures (a function signature change here is
   a silent breakage, not a build error).
+
+**`npm run qa:parity` comprueba ese contrato en segundos**, para un cliente CO
+y uno VE, y además que la página no filtre documento ni detalles de pago.
+**`npm run qa:grants`** comprueba que `anon` siga sin poder leer las tablas
+por su cuenta.
+
+### Y desde el lanzamiento del 2026-10-21 esa pantalla enseña cuatro cosas más
+
+Ya no basta con «sigue dibujándose». El cliente ve ahora lo mismo que el
+dueño, y cada pieza llega por `get_shared_balance`, que es `security definer`
+y arma su JSON campo a campo: **un valor que esa función no nombre no existe
+para el cliente**. Por eso cada una de estas costó su propia migración, y por
+eso un fallo aquí se ve como «falta un dato», nunca como un error.
+
+- **Sus ventas de CONTADO** (migración `131`). Antes el cliente pagaba entero,
+  se llevaba la mercancía, abría su enlace y su compra no estaba — mientras el
+  tendero sí la veía. Dos personas mirando la misma cuenta y leyendo cosas
+  distintas es justo lo que Sevenz existe para evitar.
+- **Los abonos de cada fiado y lo que ese fiado todavía debe** (`128`). Se
+  resuelven contra la tabla entera y no contra los 50 movimientos que viajan:
+  una lista incompleta de los pagos de alguien no es un detalle que falta, es
+  una acusación.
+- **Lo abonado al comprar** (`129`), que vale **cero** cuando no hubo abono y
+  el cero se dibuja.
+- **La tasa sellada de cada abono** (`133`): «Bs. … al día del abono», la del
+  día en que ese dinero cambió de manos y nunca la de hoy.
+
+Comprueba también que **el cliente NO vea acciones de dueño**: ni el menú de
+tres puntos, ni «Editar abono», ni «Eliminar abono». Y que el historial del
+cliente enseñe lo mismo que el del dueño — sin abonos sueltos, con el «Por
+cobrar» de cada fiado.
+
+**EL CASO COLOMBIANO SE MIRA APARTE, SIEMPRE**: ver la sección 2b. El cruce de
+`'COP'` contra `NULL` daba una fila fantasma de contado por cada fiado con
+abono inicial, en la pantalla del propio cliente, y ninguna prueba de dev lo
+habría visto.
 
 ## 4b. What this change makes false elsewhere
 
@@ -272,6 +495,92 @@ an unrelated FAQ entry — not by any check. That is the gap this section closes
 
 If a surface needs an edit, say so in the report and remember it is a **second
 merge**: a dashboard release does not publish the website.
+
+## 4c. El saldo es la suma de los movimientos — en los DOS entornos
+
+**Parada dura. Si esto no cuadra, no se lanza.**
+
+`client_summary` es una VISTA que lee el `running_balance` de la ÚLTIMA fila
+viva de cada moneda. O sea que el saldo no se calcula al mirarlo: se arrastra
+fila a fila desde la primera que se escribió. Cualquier escritura que rompa esa
+cadena deja un número **plausible y falso** en la ficha del cliente, en Cartera
+y en el enlace que el cliente abre — y nada falla, nada se pone rojo, nadie se
+entera hasta que un cliente discute su cuenta.
+
+**En dev**, desde `dashboard/`:
+
+```sh
+npm run qa:saldos
+```
+
+Recorre todos los clientes, suma sus movimientos vivos y lo compara con lo que
+la app enseña. No escribe nada. Si falla, dice qué clientes y si tienen
+repartos, que es la pista de por dónde empezar.
+
+**En producción** (`rabmiyqodnvnrwiartuj`), con esta consulta de SOLO LECTURA:
+
+```sql
+with suma as (
+  select m.client_id,
+         coalesce(m.currency, 'COP') as libro,
+         sum(case when m.type = 'charge' then m.amount else -m.amount end) as real_sum
+  from public.movements m
+  where m.deleted_at is null
+  group by m.client_id, coalesce(m.currency, 'COP')
+),
+ensenado as (
+  select client_id, 'COP' as libro, balance     as valor from public.client_summary_all
+  union all
+  select client_id, 'USD',          balance_usd       from public.client_summary_all
+  union all
+  select client_id, 'EUR',          balance_eur       from public.client_summary_all
+)
+select c.name,
+       e.libro,
+       e.valor                              as ensena,
+       coalesce(s.real_sum, 0)              as suma_real,
+       round(e.valor - coalesce(s.real_sum, 0), 2) as diferencia
+from ensenado e
+join public.clients c on c.id = e.client_id
+left join suma s on s.client_id = e.client_id and s.libro = e.libro
+where abs(e.valor - coalesce(s.real_sum, 0)) > 0.005
+order by abs(e.valor - coalesce(s.real_sum, 0)) desc;
+```
+
+**Cero filas = todo cuadra.** Cualquier fila es un cliente al que la app le
+está enseñando un saldo que no es.
+
+**Si aparece alguna**, la reparación es recalcular la cadena de ese cliente.
+Eso SÍ escribe, así que va con el permiso explícito del dueño y cliente a
+cliente, nunca en bloque a ciegas:
+
+```sql
+select public.recalc_client_running_balance('<client_id>');
+```
+
+### De dónde salió esta sección, que es lo que explica su dureza
+
+Añadida el 2026-10-23. El dueño preguntó si un cambio de SIGNO —el «+» de un
+fiado pasando a «−»— podía alterar las cuentas. No podía: son dos caracteres
+literales en JSX. Pero la comprobación que lo demostraba encontró **un saldo
+real descuadrado en dev**: un cliente sumaba 0,00 en dólares y la app enseñaba
+1,14.
+
+La causa fue `registrar_abono_repartido` escribiendo varias líneas en una
+transacción sin recalcular: dentro de una transacción `now()` es el instante de
+la TRANSACCIÓN, así que todas las líneas comparten `created_at` y el desempate
+del disparador cae en un uuid aleatorio. La migración `142` lo arregla.
+
+**La lección que generaliza, y por eso esto es una parada y no un consejo:** el
+fallo no era del reparto, era de **quien escribe varios movimientos en una
+transacción y no llama a `recalc_client_running_balance`**. Hoy los escritores
+así son dos —`import_libreta`, que sí recalcula desde la `075`, y el reparto,
+que no lo hacía— y mañana habrá un tercero. Una comprobación del reparto habría
+cazado ESTE caso; esta comprobación caza la REGLA.
+
+Y se mira en producción **aunque el diff no toque nada de esto**: el síntoma no
+es un error, es un número creíble, así que la única forma de saber que no está
+pasando es preguntarlo.
 
 ## 5. Security checklist
 
@@ -402,7 +711,15 @@ them directly.
 
 - **Hard blocking check — ledger parity.** Ask the user to run
   `select key from public.schema_migrations order by key;` in both the dev
-  branch's SQL editor and production's, and paste both results. Diff the
+  branch's SQL editor and production's, and paste both results.
+
+  **DOS AVISOS, Y LOS DOS COSTARON ERRORES EL 2026-10-21.** Primero: el editor
+  de Supabase **corta a 100 filas** por defecto, y las claves con fecha
+  ordenan detrás de todas las numeradas, así que son las primeras en caerse
+  del corte — comparar contra una lista truncada fue lo que hizo inventar una
+  ficha entera que afirmaba que producción tenía apuntes que dev no. Segundo:
+  **no cuentes un lote con `key >= '1xx'`**, que es comparación de texto y
+  mete las fechadas; usa un patrón, `where key ~ '^1(2[2-9]|3[0-4])_'`. Diff the
   key sets. If dev has any key production doesn't, **stop — do not approve
   the launch**: tell the user exactly which key(s) are missing and that
   those SQL statements need to be run against production first (see
@@ -419,6 +736,34 @@ them directly.
 - Every migration and every ad hoc SQL fix run against dev ends with an
   insert into `public.schema_migrations` recording it (see CLAUDE.md) — if
   a diff shows raw SQL without that insert, flag it before proceeding.
+
+## 6b. El resto de suites, por lo que vigilan
+
+Las secciones de arriba nombran las que se corren por su flujo. Estas existen
+y no tienen sección propia, así que viven aquí: **cuando el diff toca su
+zona, se corren.** Un barrido completo del lote son unos minutos y la mayoría
+no escribe nada.
+
+| Zona que toca el diff | Suites |
+|---|---|
+| Tasas y bolívares | `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
+| Papelera y restaurar | `qa:papelera` |
+| Libreta por foto | `qa:import`, `qa:reconcile` |
+| WhatsApp, más allá de las plantillas | `qa:puerta`, `qa:recibo`, `qa:recordatorio`, `qa:mensaje`, `qa:consent`, `qa:telefono` |
+| Productos y precios | `qa:precio`, `qa:proveedor`, `qa:producto-rapido` |
+| Documento del cliente | `qa:document-id` |
+| `/admin` y métricas | `qa:multi-owner` |
+| Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
+
+**`qa:currency` lleva un fallo conocido y hay que decidirlo, no ignorarlo.**
+Desde el 2026-10-21 falla dos controles por dos movimientos sin autor de un
+**dueño de fixture** en dev, escritos con la clave de servicio, donde
+`auth.uid()` es null por definición. El código escribe autor; lo que falla es
+basura de dev. Pero una alarma que suena siempre deja de leerse —la misma
+razón por la que las migraciones de un solo entorno se registran como no-op en
+el otro—, así que o se limpian esas dos filas o la suite las excluye
+explícitamente. Mientras siga así, **esa suite en rojo no es señal de nada**,
+que es exactamente el problema.
 
 ## 7. Final report format
 

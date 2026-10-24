@@ -42,10 +42,15 @@ export function VentaResumen({
   comprador,
   bloques,
   rates,
+  fecha,
 }: {
   comprador: CompradorDelResumen | null;
   bloques: BloqueDelResumen[];
   rates: BolivarRates | null;
+  // CUÁNDO SE HIZO, YA FORMATEADA EN EL SERVIDOR y en la zona del negocio.
+  // No se formatea aquí aunque fuera fácil: esto corre en el teléfono del
+  // tendero y `Intl` sin zona usaría la suya.
+  fecha: string;
 }) {
   // SIN UN SOLO `await` ANTES DE `navigator.share`, y es deliberado: iOS
   // bloquea la hoja cuando la llamada no viene de un gesto, y un `await`
@@ -62,7 +67,7 @@ export function VentaResumen({
   //   3. El texto -> si el dibujo falla. Un canvas puede no estar disponible,
   //      y quedarse sin compartir nada por eso sería peor que compartir texto.
   function compartir() {
-    const blob = dibujarResumenDeVenta({ comprador, bloques, rates });
+    const blob = dibujarResumenDeVenta({ comprador, bloques, rates, fecha });
 
     if (blob != null) {
       const fichero = new File([blob], "venta-sevenz.png", { type: "image/png" });
@@ -104,6 +109,11 @@ export function VentaResumen({
         <h1 className="text-center text-xl leading-7 font-normal">
           ¡Transacción registrada con éxito!
         </h1>
+        {/* LA FECHA, DEBAJO DEL TÍTULO Y EN TENUE — misma posición que en el
+            PNG que se comparte desde aquí, para que la imagen y la pantalla se
+            lean igual. `-mt-2` porque el contenedor ya pone `gap-3.5` y la
+            fecha pertenece al título, no es un bloque aparte. */}
+        <p className="-mt-2 text-center text-sm text-muted-foreground">{fecha}</p>
       </div>
 
       {/* NI `p-4` NI `py-4`: los 16px laterales y los 40 de abajo los pone

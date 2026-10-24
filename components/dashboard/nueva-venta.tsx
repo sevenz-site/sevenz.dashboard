@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -9,12 +17,20 @@ import {
   ChevronRight,
   ImageOff,
   Minus,
+  ChevronDown,
   Percent,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { estadoDeCliente } from "@/lib/estado-del-plazo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +47,8 @@ import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
+import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import {
   CONSENT_FIELD,
@@ -64,6 +82,7 @@ import {
 } from "@/lib/products/public-pricing";
 import {
   formatAmountForInput,
+  formatAmountWhileTyping,
   formatPriceAmount,
   parseAmount,
   type BolivarRates,
@@ -73,7 +92,6 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import { formatDate } from "@/lib/format";
 import {
   DEFAULT_PLAZO_PAGO,
-  getClientStatus,
   type ClientSummary,
   type OwnerCountry,
 } from "@/lib/types";
@@ -1220,10 +1238,12 @@ function PasoPago({
   ownerId: string;
 }) {
   const [cobrando, setCobrando] = useState<PriceCurrency | null>(null);
-  // El aviso de «te falta registrar…». Se limpia solo al registrar algo, en el
-  // `onGuardar` de la hoja: dejarlo puesto después de arreglar lo que señalaba
-  // convierte un aviso útil en ruido que se aprende a ignorar.
-  const [faltan, setFaltan] = useState<string | null>(null);
+
+  // ¿ESTÁ TODO REGISTRADO? Una sola condición, y de ella cuelga lo único que
+  // puede hacer avanzar esta pantalla. Antes había dos —la que dibujaba el
+  // aviso al pulsar y la que dejaba guardar— y dos condiciones para la misma
+  // pregunta es como acaban diciendo cosas distintas.
+  const todoRegistrado = sinRegistrar.length === 0;
 
   // EL TOTAL EN BOLÍVARES es la primera tarjeta del frame, y SOLO existe
   // teniendo tasa — o sea, en un negocio venezolano.
@@ -1314,7 +1334,6 @@ function PasoPago({
               ) : (
                 <Button
                   type="button"
-                  variant="outline"
                   className="h-10 shrink-0"
                   onClick={() => setCobrando(c.currency)}
                 >
@@ -1401,32 +1420,51 @@ function PasoPago({
           Lo decide `conCliente`, que es por dónde se ENTRÓ, y no si hay
           cliente ahora mismo: en el paso 4 se elige uno, y con la otra regla
           el botón cambiaría de palabra a mitad del recorrido. */}
-      {/* EL AVISO VA PEGADO AL BOTÓN, debajo, que es donde el tendero está
-          mirando cuando lo pulsa. Arriba del todo se lo perdería: a 375px las
-          tarjetas ya ocupan la pantalla. */}
-      {faltan ? <p className="text-sm text-destructive">{faltan}</p> : null}
+      {/* ── EL BOTÓN NO ESTÁ HASTA QUE TODO ESTÉ REGISTRADO ──────────────
+          Regla del dueño, 2026-10-23: *«el botón "Finalizar" estará oculto
+          hasta que todos los totales estén pagos. Cuando los totales estén
+          pagos (de contado o fiado/crédito) el botón "Finalizar" se hará
+          visible»*. Vale igual para «Continuar», que es el mismo botón cuando
+          se entró sin cliente: no se puede pasar al paso 4 dejando una moneda
+          sin decidir.
 
-      {/* NO SE DESHABILITA, SE EXPLICA. Un botón apagado significa que
+          ESTO DESPLAZA UNA DECISIÓN ESCRITA AQUÍ MISMO, y las dos quedan.
+          Decía: «NO SE DESHABILITA, SE EXPLICA. Un botón apagado significa que
           pulsarlo no hace nada, y lo que hace falta aquí es que DIGA por qué
-          no se puede — es el mismo criterio que `TipoButtons` ya aplica al
-          abono imposible en el diálogo de movimientos. */}
+          no se puede.» La razón seguía siendo buena — y es justamente la que
+          obliga a lo de abajo.
+
+          POR ESO EL AVISO SE QUEDA, Y AHORA SE VE SIN PULSAR NADA. Ocultar el
+          botón se lleva por delante el único sitio donde la pantalla contaba
+          qué falta: el tendero termina su venta, no ve ningún botón, y nada le
+          dice por qué. Con el cliente delante. Así que el mismo texto que
+          antes salía AL PULSAR sale ahora MIENTRAS FALTE, en el hueco del
+          botón — la pantalla nunca se queda muda.
+
+          Y va dentro de `StickyActions`, no fuera: es lo que ocupa el borde de
+          abajo mientras el botón no está, y lo de ahí abajo se esconde con el
+          teclado arriba como todo lo demás. */}
       <StickyActions>
-        <Button
-          type="button"
-          className="h-10 w-full"
-          disabled={guardando}
-          onClick={() => {
-            if (sinRegistrar.length > 0) {
-              setFaltan(textoFaltaRegistrar(sinRegistrar));
-              return;
-            }
-            setFaltan(null);
-            if (conCliente) void guardar();
-            else onContinuar();
-          }}
-        >
-          {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
-        </Button>
+        {todoRegistrado ? (
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={guardando}
+            onClick={() => {
+              if (conCliente) void guardar();
+              else onContinuar();
+            }}
+          >
+            {guardando ? "Guardando…" : conCliente ? "Finalizar" : "Continuar"}
+          </Button>
+        ) : (
+          // EN GRIS Y NO EN ROJO: no hay nada mal, solo queda trabajo por
+          // hacer. El rojo de antes tenía sentido como respuesta a un intento
+          // fallido; permanente, sería una pantalla que riñe desde que se abre.
+          <p className="text-center text-sm text-muted-foreground">
+            {textoFaltaRegistrar(sinRegistrar)}
+          </p>
+        )}
       </StickyActions>
 
       {cobrando ? (
@@ -1442,7 +1480,6 @@ function PasoPago({
           inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
-            setFaltan(null);
             setCobrando(null);
           }}
         />
@@ -1515,6 +1552,12 @@ function PasoCliente({
   const [nombre, setNombre] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [acepta, setAcepta] = useState(false);
+  // EL NÚMERO QUE YA TIENE PERMISO. La misma comprobación que la tarjeta del
+  // cliente ya elegido hace más arriba con `aceptaAvisos` — aquí no se puede
+  // preguntar por ficha porque todavía no existe, así que se pregunta por el
+  // teléfono que se está tecleando.
+  const [whatsappAlta, setWhatsappAlta] = useState("");
+  const permisoAlta = usePermisoDelNumero(whatsappAlta);
   // EL CLIENTE QUE YA LLEVA ESA CÉDULA, cuando el servidor lo rechaza. Lo
   // devuelve `registrarCliente` con el error, así que no hace falta una
   // consulta propia: la misma comprobación que para el alta es la que avisa.
@@ -1545,15 +1588,20 @@ function PasoCliente({
   // antes cómo se deshace.
   if (cliente) {
     const fila = clientes.find((c) => c.client_id === cliente.id) ?? null;
-    const status = fila
-      ? getClientStatus({
-          balance: fila.balance,
-          daysSincePayment: fila.days_since_payment,
-          worstChargeAt: fila.worst_unpaid_charge_at ?? null,
-          worstChargePlazoDias: fila.worst_unpaid_charge_plazo_dias ?? null,
-          worstChargeDueAt: fila.worst_unpaid_charge_due_at ?? null,
+    // `CT-137`, un libro a la vez, igual que la lista de la que sale este
+    // cliente. Es la tarjeta que el tendero tiene delante justo antes de
+    // fiarle, así que es el último sitio donde conviene un chip más suave que
+    // el de su ficha.
+    const { status, currency, overdueCount } = fila
+      ? estadoDeCliente({
+          fila,
+          saldos: { cop: fila.balance, usd: fila.balance_usd, eur: fila.balance_eur },
+          // Como antes de `CT-137`: esta pantalla juzgaba por `fila.balance`,
+          // y eso es lo que sigue haciendo si la `146` no está corrida.
+          saldoCombinado: fila.balance,
+          dosLibros: ledger !== null,
         })
-      : "sin_deuda";
+      : { status: "sin_deuda" as const, currency: null, overdueCount: null };
 
     return (
       <div className="flex flex-1 flex-col gap-4">
@@ -1594,7 +1642,8 @@ function PasoCliente({
                   name={fila.name}
                   documentId={fila.document_id}
                   status={status}
-                  overdueCount={fila?.overdue_charge_count ?? null}
+                  overdueCount={overdueCount}
+                  monedaDelEstado={currency}
                   isFlagged={fila.is_flagged}
                   balance={fila.balance}
                   balanceUsd={fila.balance_usd}
@@ -1770,6 +1819,7 @@ function PasoCliente({
             id="venta-whatsapp"
             name="whatsapp"
             preferredDialCode={ownerCountry ? OWNER_COUNTRY_DIAL_CODE[ownerCountry] : undefined}
+            onValueChange={setWhatsappAlta}
           />
         </div>
 
@@ -1788,14 +1838,18 @@ function PasoCliente({
             guarda: esa cadena es la evidencia ante Meta, y dos textos distintos
             —uno en pantalla y otro en la base— la convertirían en una
             reconstrucción en vez de una prueba. */}
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-          <Checkbox
-            checked={acepta}
-            onCheckedChange={(v) => setAcepta(v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
-        </label>
+        {permisoAlta?.granted ? (
+          <AvisoNumeroYaAcepta clientName={permisoAlta.clientName} />
+        ) : (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
+            <Checkbox
+              checked={acepta}
+              onCheckedChange={(v) => setAcepta(v === true)}
+              className="mt-0.5"
+            />
+            <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
+          </label>
+        )}
       </form>
 
       {/* EL ERROR Y SU ENLACE, en una línea, del mockup del dueño del
@@ -2029,15 +2083,54 @@ function PagoSheet({
   // input de monto se pone el monto total de pago» (el dueño, 2026-10-18). Le
   // pagan todo en la mayoría de las ventas, así que el caso corriente es cero
   // teclas.
+  // CÓMO SE ESCRIBE EN EL CAMPO: con separador de miles y 4 decimales como
+  // mucho. Petición del dueño el 2026-10-23, al ver que la hoja se abría
+  // enseñando `5760,4761499999` — el total de la venta multiplicado por la
+  // tasa, con toda la cola que deja la multiplicación.
+  //
+  // NO ES SOLO FEO: una cifra de catorce dígitos en el campo donde el tendero
+  // escribe lo que le acaban de poner en la mano no se lee como «el total», se
+  // lee como que la app calculó algo raro. Y cobrar es el momento en que menos
+  // margen hay para dudar.
+  //
+  // CUATRO DECIMALES ES LA PRECISIÓN DE LA BASE, no un recorte a ojo:
+  // `unit_price` y los precios de producto son `numeric(14, 4)`. El quinto
+  // dígito no se iba a guardar de ninguna forma. En bolívares, además, un
+  // diezmilésimo no existe.
+  const COMO_SE_ESCRIBE = { miles: true, maxDecimales: 4 } as const;
+
   const enEntrega = (enElLibro: number) =>
-    formatAmountForInput(entregaInicial === "VES" && tasa ? enElLibro * tasa : enElLibro);
+    formatAmountForInput(
+      entregaInicial === "VES" && tasa ? enElLibro * tasa : enElLibro,
+      COMO_SE_ESCRIBE,
+    );
 
   const [monedaEntrega, setMonedaEntrega] = useState<"VES" | PriceCurrency>(entregaInicial);
   const [monto, setMonto] = useState(() =>
     inicial?.entryAmount != null
-      ? formatAmountForInput(inicial.entryAmount)
+      ? formatAmountForInput(inicial.entryAmount, COMO_SE_ESCRIBE)
       : enEntrega(inicial?.amount ?? total),
   );
+  // ── EL CURSOR, QUE HAY QUE DEVOLVER A MANO ────────────────────────────
+  //
+  // El campo es controlado: React vuelve a pintar su `value` en cada tecla y
+  // deja el cursor AL FINAL. Mientras el texto no cambiaba de forma eso no se
+  // notaba; agrupando, cada millar que aparece lo empujaría y corregir un
+  // dígito del medio sería imposible.
+  //
+  // Va en un `useLayoutEffect` y no en el propio `onChange` porque el valor
+  // nuevo todavía no está en el DOM cuando el manejador corre: colocarlo allí
+  // lo pone sobre el texto viejo y React lo pisa al repintar.
+  const campoMonto = useRef<HTMLInputElement>(null);
+  const cursorPendiente = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const destino = cursorPendiente.current;
+    if (destino == null || campoMonto.current == null) return;
+    cursorPendiente.current = null;
+    campoMonto.current.setSelectionRange(destino, destino);
+  });
+
   const [usarPrevista, setUsarPrevista] = useState(inicial?.usarPrevista ?? false);
   const [photoPath, setPhotoPath] = useState<string | null>(inicial?.photoPath ?? null);
   const [plazo, setPlazo] = useState(inicial?.plazo ?? DEFAULT_PLAZO_PAGO);
@@ -2240,10 +2333,26 @@ function PagoSheet({
                   <div className="relative min-w-0 flex-1">
                     <Input
                       id="pago-monto"
+                      ref={campoMonto}
                       className={monto ? "pr-9" : undefined}
                       inputMode="decimal"
                       value={monto}
-                      onChange={(e) => setMonto(e.target.value)}
+                      onChange={(e) => {
+                        // SE AGRUPA MIENTRAS SE TECLEA, a petición del dueño
+                        // el 2026-10-23. `formatAmountWhileTyping` necesita el
+                        // valor ANTERIOR además del nuevo, y no es un capricho
+                        // de su firma: tecleando `12345`, al llegar el `5` el
+                        // texto crudo es `1.2345`, que leído solo no se
+                        // distingue de «uno coma dos tres cuatro cinco».
+                        const { texto, cursor } = formatAmountWhileTyping(
+                          e.target.value,
+                          monto,
+                          e.target.selectionStart ?? e.target.value.length,
+                          COMO_SE_ESCRIBE.maxDecimales,
+                        );
+                        cursorPendiente.current = cursor;
+                        setMonto(texto);
+                      }}
                       placeholder="00"
                     />
                     {monto ? (
@@ -2265,36 +2374,75 @@ function PagoSheet({
                       frames lo dibujan igual: un fiado pactado en bolívares es
                       tan posible como un cobro en bolívares, y la deuda se
                       guarda convertida al libro exactamente igual. */}
+                  {/* EL DESPLEGABLE DEL DESIGN SYSTEM, NO EL NATIVO.
+                      Instrucción del dueño el 2026-10-23 con la captura: un
+                      `<select>` abre la rueda gris del sistema operativo —otra
+                      tipografía, otros colores, otro radio— en medio de una
+                      pantalla que es toda de la app.
+
+                      ES EL MISMO MONTAJE QUE `abono-monto.tsx`, a propósito y
+                      no por copiar: botón `outline` de 40px con la bandera, el
+                      nombre y el chevron, y los ítems con su bandera. Los dos
+                      campos preguntan lo mismo —«¿en qué moneda te lo
+                      entregan?»— en dos flujos distintos, así que tienen que
+                      verse iguales. Si a uno hay que cambiarle algo, al otro
+                      también. */}
                   {tasa ? (
-                    <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
-                      <CurrencyFlagIcon
-                        currency={monedaEntrega === "VES" ? "VES" : moneda}
-                        className="size-4"
-                      />
-                      <select
-                        aria-label="Moneda que te entrega"
-                        value={monedaEntrega}
-                        onChange={(e) => {
-                          const siguiente = e.target.value as "VES" | PriceCurrency;
-                          if (siguiente === monedaEntrega || !tasa) return;
-                          // SE REEXPRESA LA CIFRA AL CAMBIAR. Dejar 5.756,66
-                          // rotulado «Dólares» no sería un fallo silencioso
-                          // —el tope de la venta lo frena— pero sí un susto, y
-                          // obliga a reteclear lo que la app ya sabe convertir.
-                          const actual = parseAmount(monto) ?? 0;
-                          setMonto(
-                            formatAmountForInput(
-                              siguiente === "VES" ? actual * tasa : actual / tasa,
-                            ),
-                          );
-                          setMonedaEntrega(siguiente);
-                        }}
-                        className="bg-transparent text-base outline-none"
-                      >
-                        <option value={moneda}>{NOMBRE[moneda] ?? moneda}</option>
-                        <option value="VES">Bolívares</option>
-                      </select>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 shrink-0 gap-2"
+                          aria-label="Moneda que te entrega"
+                        >
+                          <CurrencyFlagIcon
+                            currency={monedaEntrega === "VES" ? "VES" : moneda}
+                            className="size-4 shrink-0"
+                          />
+                          <span className="text-xs">
+                            {monedaEntrega === "VES" ? "Bolívares" : (NOMBRE[moneda] ?? moneda)}
+                          </span>
+                          <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {([moneda, "VES"] as const).map((opcion) => (
+                          <DropdownMenuItem
+                            key={opcion}
+                            onSelect={() => {
+                              const siguiente = opcion as "VES" | PriceCurrency;
+                              if (siguiente === monedaEntrega || !tasa) return;
+                              // SE REEXPRESA LA CIFRA AL CAMBIAR. Dejar
+                              // 5.756,66 rotulado «Dólares» no sería un fallo
+                              // silencioso —el tope de la venta lo frena— pero
+                              // sí un susto, y obliga a reteclear lo que la
+                              // app ya sabe convertir.
+                              // LA SEGUNDA PUERTA AL MISMO CAMPO, y la que más
+                              // decimales suelta: dividir entre la tasa deja
+                              // cola casi siempre. Si esta se quedara sin
+                              // `COMO_SE_ESCRIBE`, el campo se vería bien al
+                              // abrir y se ensuciaría al tocar el desplegable
+                              // — que es peor que verse mal desde el principio.
+                              const actual = parseAmount(monto) ?? 0;
+                              setMonto(
+                                formatAmountForInput(
+                                  siguiente === "VES" ? actual * tasa : actual / tasa,
+                                  COMO_SE_ESCRIBE,
+                                ),
+                              );
+                              setMonedaEntrega(siguiente);
+                            }}
+                          >
+                            <CurrencyFlagIcon
+                              currency={opcion === "VES" ? "VES" : moneda}
+                              className="size-4 shrink-0"
+                            />
+                            {opcion === "VES" ? "Bolívares" : (NOMBRE[moneda] ?? moneda)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   ) : null}
                 </div>
               </div>

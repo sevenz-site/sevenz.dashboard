@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Minus, Plus } from "lucide-react";
+import { ChevronDown, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -188,28 +194,48 @@ export function QuickProductSheet({
                 onChange={(e) => setPrecio(e.target.value)}
                 placeholder="00"
               />
-              {/* UN `select` NATIVO Y NO UNA LISTA PROPIA: en un teléfono abre
-                  la rueda del sistema, que se usa con una mano y no hay que
-                  construirla. Es lo mismo que hace el carrito con su
-                  «Cambiar».
+              {/* EL DESPLEGABLE DE LA APP, NO EL DEL SISTEMA.
+                  Instrucción del dueño el 2026-10-23.
 
-                  `text-base` Y NO MENOS: por debajo de 16px, Safari en iPhone
-                  hace zoom al enfocar y deja la pantalla corrida. */}
-              <div className="flex h-9 shrink-0 items-center gap-2 rounded-md border px-2">
-                <CurrencyFlagIcon currency={moneda} className="size-4" />
-                <select
-                  aria-label="Moneda del precio"
-                  value={moneda}
-                  onChange={(e) => setMoneda(e.target.value as PriceCurrency)}
-                  className="bg-transparent text-base outline-none"
-                >
+                  AQUÍ HUBO UN `select` NATIVO Y NO ERA UN DESCUIDO: se eligió
+                  porque en un teléfono abre la rueda del sistema, que se usa
+                  con una mano y no hay que construirla, y porque —decía el
+                  comentario— «es lo mismo que hace el carrito con su
+                  “Cambiar”». Esa razón se quedó sin la mitad que la sostenía
+                  el día anterior, cuando el desplegable de la pantalla de
+                  pago pasó a ser el de la app: desde entonces el mismo flujo
+                  de venta preguntaba la misma cosa de dos formas distintas en
+                  dos pasos seguidos, que es peor que cualquiera de las dos
+                  opciones coherentes.
+
+                  La razón vieja queda escrita porque sigue siendo verdad: se
+                  pierde la rueda de una mano. Lo que se gana es que la app se
+                  vea como una sola app.
+
+                  MISMO MONTAJE QUE `abono-monto.tsx` Y `nueva-venta.tsx`: si
+                  a uno hay que cambiarle algo, a los tres. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0 gap-2"
+                    aria-label="Moneda del precio"
+                  >
+                    <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
+                    <span className="text-xs">{currencyName(moneda)}</span>
+                    <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
                   {monedas.map((c) => (
-                    <option key={c} value={c}>
+                    <DropdownMenuItem key={c} onSelect={() => setMoneda(c)}>
+                      <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
                       {currencyName(c)}
-                    </option>
+                    </DropdownMenuItem>
                   ))}
-                </select>
-              </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 

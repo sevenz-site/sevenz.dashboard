@@ -62,6 +62,14 @@ export type DatosDelRecibo = {
   comprador: { nombre: string; documento: string; telefono: string };
   resumen: Bloque[];
   rates: BolivarRates | null;
+  // CUÁNDO SE PIDIÓ, YA FORMATEADA POR QUIEN LLAMA y en la zona del NEGOCIO.
+  //
+  // Encargo del dueño el 2026-10-22. Aquí no se formatea nada por la misma
+  // razón de siempre --dos formateadores para la misma cifra separan la imagen
+  // de lo que la pantalla enseña-- y por una propia de este fichero: lo
+  // ejecuta el teléfono de QUIEN COMPRA, que puede estar en otro país. La
+  // fecha de un pedido es la del negocio que lo recibe.
+  fecha?: string | null;
 };
 
 const NOMBRE_MONEDA: Record<string, string> = {
@@ -92,8 +100,53 @@ const VERDE = "#059669";
 const FONDO = "#ffffff";
 const TARJETA = "#ffffff";
 
-const FUENTE = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-const fuente = (px: number, peso = "400") => `${peso} ${px * ESCALA}px ${FUENTE}`;
+// ── LA MISMA GEIST DEL RESTO DE LA APP, NO LA DEL SISTEMA ───────────────
+//
+// Hasta el 2026-10-23 esto era `system-ui`, así que la imagen que el tendero
+// comparte salía en la tipografía del teléfono de quien la generó —San
+// Francisco en un iPhone, Roboto en un Android, Segoe en Windows— mientras la
+// app entera se ve en Geist. Lo reportó el dueño con dos capturas: lo
+// compartido no se parecía a lo que él tenía en pantalla.
+//
+// LA FAMILIA SE RESUELVE DEL DOM Y NO SE ESCRIBE A MANO: `next/font` le pone
+// un nombre generado en cada compilación, y lo deja en `--font-geist-sans`.
+// Escribir «Geist» aquí funcionaría solo si el navegador la tuviera instalada.
+//
+// SE RESUELVE TARDE Y SE CACHEA, no al importar: este módulo puede cargarse
+// antes de que la variable esté aplicada en `:root`, y entonces quedaría
+// congelada la del sistema para siempre.
+let familiaCache: string | null = null;
+function familiaDeGeist(): string {
+  if (typeof document === "undefined") return "";
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue("--font-geist-sans")
+    .trim();
+  return v;
+}
+function familia(): string {
+  if (familiaCache != null) return familiaCache;
+  const geist = familiaDeGeist();
+  familiaCache = geist
+    ? `${geist}, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`
+    : `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  return familiaCache;
+}
+
+// Y SE PRECARGA AL IMPORTAR, por la misma razón que las imágenes de abajo:
+// esto se dibuja SIN un solo `await`, y `canvas` no dispara la carga de una
+// fuente — si no está lista, cae a la del sistema en silencio y nadie se
+// entera hasta ver la imagen compartida. Cuando el tendero llegue a pulsar
+// «Compartir» han pasado segundos.
+if (typeof document !== "undefined" && document.fonts) {
+  const geist = familiaDeGeist();
+  if (geist) {
+    for (const peso of ["400", "500", "600"]) {
+      void document.fonts.load(`${peso} 16px ${geist}`).catch(() => {});
+    }
+  }
+}
+
+const fuente = (px: number, peso = "400") => `${peso} ${px * ESCALA}px ${familia()}`;
 
 // LAS IMÁGENES SE PRECARGAN AL IMPORTAR, NO AL DIBUJAR.
 //
@@ -273,6 +326,21 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
       ctx.fillText(datos.businessName, centro, y);
     }
   }
+
+  // CUÁNDO, DEBAJO DEL NEGOCIO. Ese orden y no al revés: quien recibe la
+  // imagen en un chat lee primero de quién es el pedido y después cuándo se
+  // hizo. La altura se suma aunque no haya `ctx` porque esta función mide y
+  // dibuja con el mismo código, y sumarla solo al dibujar recortaría la
+  // imagen por abajo justo la altura de esta línea.
+  if (datos.fecha) {
+    y += 14 * ESCALA;
+    medidor.font = fuente(12);
+    if (ctx) {
+      ctx.fillStyle = TENUE;
+      ctx.fillText(datos.fecha, centro, y);
+    }
+  }
+
   if (ctx) ctx.textAlign = "left";
   y += 22 * ESCALA;
 

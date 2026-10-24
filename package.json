@@ -20,7 +20,6 @@
     "qa:multi-owner": "node qa/admin-multi-owner.mjs",
     "qa:currency": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/movement-currency.mjs",
     "qa:prevista": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/tasa-prevista.mjs",
-    "qa:bolivares": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/monto-bolivares.mjs",
     "qa:habitual": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/moneda-habitual.mjs",
     "qa:document-id": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/document-id.mjs",
     "qa:pausados": "node qa/whatsapp-pausados.mjs",
@@ -54,8 +53,14 @@
     "qa:abono-accion": "node qa/abono-accion.mjs",
     "qa:producto-rapido": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/producto-rapido.mjs",
     "qa:venta-resumen": "node qa/venta-resumen.mjs",
-    "qa:colombia": "node qa/fixtures-venta-colombia.mjs",
-    "qa:estado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/estado-del-cliente.mts"
+    "qa:colombia": "node qa/fiado-colombiano.mjs",
+    "qa:estado": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/estado-del-cliente.mts",
+    "qa:permiso-numero": "node qa/permiso-del-numero.mjs",
+    "qa:clave-numero": "node qa/clave-del-numero.mjs",
+    "qa:abono-repartido": "node qa/abono-repartido.mjs",
+    "qa:reparto": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reparto.mjs",
+    "qa:saldos": "node qa/saldos-cuadran.mjs",
+    "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

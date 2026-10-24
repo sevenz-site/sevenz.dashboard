@@ -30,8 +30,10 @@ import {
   priceIn,
   suggestedPrice,
   marginFromPrice,
+  priceFromCost,
   parseAmount,
   formatAmountForInput,
+  formatAmountWhileTyping,
   SALE_CURRENCIES_LOCKED,
   isSaleCurrencyLocked,
   withoutLockedSaleCurrencies,
@@ -131,12 +133,69 @@ check("6b. costo 12 con 0 % sugiere 12", suggestedPrice(12, 0) === 12);
 check("6c. sin costo no se sugiere nada", suggestedPrice(0, 30) === null);
 check(
   "6d. el margen es SOBRE EL COSTO: de 10 a 13 son 30 %, no 23 %",
-  marginFromPrice(10, 13) === 30,
-  String(marginFromPrice(10, 13)),
+  marginFromPrice(10, "USD", 13, "USD", TASAS) === 30,
+  String(marginFromPrice(10, "USD", 13, "USD", TASAS)),
 );
 check(
   "6e. sin costo no hay margen — el caso de todo producto nacido en un fiado",
-  marginFromPrice(null, 13) === null,
+  marginFromPrice(null, "USD", 13, "USD", TASAS) === null,
+);
+
+// ── 6f-6i. EL MARGEN CRUZANDO MONEDAS ────────────────────────────────
+//
+// Reportado por el dueño el 2026-10-22: *«seteo precio en dólares e intentó
+// agregar margen en euros, el dropdown no cambió el valor del porcentaje
+// seleccionado pero sí lo aplicó al precio en euros»*.
+//
+// POR QUÉ NO SE VEÍA. `priceFromCost` --la que ESCRIBE el precio-- convierte el
+// costo a la moneda destino; `marginFromPrice` --la que LEE el margen de
+// vuelta-- no recibía monedas y dividía euros entre dólares. El precio salía
+// bien y el porcentaje no coincidía con ningún preajuste, así que el
+// desplegable se quedaba en lo de antes.
+//
+// Y NO ERA SOLO LA PANTALLA: ese mismo número se guarda en
+// `margin_retail_pct`, de donde sale el informe de ganancia.
+//
+// Con las tasas de arriba --Bs/USD 160, Bs/EUR 180-- un costo de $10 son
+// 1.600 Bs, que son €8,89. Un 30 % sobre 8,89 da 11,56.
+check(
+  "6f. cruzando monedas, el margen de vuelta es 30 y no un número sin sentido",
+  (() => {
+    const precioEur = priceFromCost(10, "USD", 30, "EUR", TASAS);
+    const vuelta = marginFromPrice(10, "USD", precioEur, "EUR", TASAS);
+    // 30,03 Y NO 30 EXACTO, y está bien: el precio se redondea a dos
+    // decimales antes de leerlo de vuelta. Lo que importa es que caiga JUNTO a
+    // 30 y no en el 16 % que salía antes de convertir.
+    return precioEur === 11.56 && Math.abs(vuelta - 30) < 0.1;
+  })(),
+  `precio ${priceFromCost(10, "USD", 30, "EUR", TASAS)} · margen ${marginFromPrice(10, "USD", priceFromCost(10, "USD", 30, "EUR", TASAS), "EUR", TASAS)}`,
+);
+check(
+  "6f2. y por eso el desplegable pregunta AL REVÉS: qué preajuste da este precio",
+  (() => {
+    // Lo mismo que hace `TierSection`: en vez de calcular el margen y buscarlo
+    // en la lista --que con 30,03 falla-- se compara el precio con el que cada
+    // preajuste escribiría. Esa comparación SÍ es exacta.
+    const precioEur = priceFromCost(10, "USD", 30, "EUR", TASAS);
+    const cuadra = [10, 15, 20, 30, 40, 50].find(
+      (m) => Math.abs(priceFromCost(10, "USD", m, "EUR", TASAS) - precioEur) < 0.005,
+    );
+    return cuadra === 30;
+  })(),
+  "si esto falla, el desplegable vuelve a decir «Otro» sobre un precio que él calculó",
+);
+check(
+  "6g. y el fallo que se arregló: dividir sin convertir daría otro número",
+  Math.round(((11.56 - 10) / 10) * 100) === 16,
+  "16 % es lo que salía antes, con euros divididos entre dólares",
+);
+check(
+  "6h. un costo en «Otro» no tiene margen: no hay tasa con que convertirlo",
+  marginFromPrice(10, "OTHER", 13, "USD", TASAS) === null,
+);
+check(
+  "6i. sin tasas, cruzar monedas devuelve null en vez de un número inventado",
+  marginFromPrice(10, "USD", 13, "EUR", null) === null,
 );
 
 // ── 7. El parser de cantidades, que ya rompió el dinero una vez ──────────
@@ -185,6 +244,158 @@ for (const n of IDA_Y_VUELTA) {
   check(
     `8d. ${n} → "${formatAmountForInput(n)}" → ${parseAmount(formatAmountForInput(n))}`,
     parseAmount(formatAmountForInput(n)) === n,
+  );
+}
+
+// ── 8e. EL CAMPO «MONTO» DE LA HOJA DE COBRO ──────────────────────────────
+//
+// `formatAmountForInput` con `{ miles: true, maxDecimales: 4 }`. Lo pidió el
+// dueño el 2026-10-23: la hoja se abría enseñando `5760,4761499999` — el total
+// de la venta por la tasa, con toda la cola de la multiplicación.
+//
+// LO QUE DE VERDAD SE VIGILA AQUÍ ES LA IDA Y VUELTA, no el aspecto. Ese campo
+// se vuelve a leer con `parseAmount` para calcular lo que se guarda, así que un
+// formato que esta función no sepa releer no se vería mal: se guardaría MAL. Y
+// la trampa está servida, porque el separador de miles es el punto y el decimal
+// es la coma, o sea los dos caracteres que `parseAmount` tiene que desambiguar.
+//
+// El caso que lo resume: 1125 se escribe «1.125» y 1,125 se escribe «1,1250».
+// Si alguien quitara el cero de más del formateador, el segundo pasaría a
+// «1,125» y volvería como MIL CIENTO VEINTICINCO.
+const MILES = { miles: true, maxDecimales: 4 };
+
+check(
+  `8e. el caso del dueño: 5760,4761499999 → "${formatAmountForInput(5760.4761499999, MILES)}"`,
+  formatAmountForInput(5760.4761499999, MILES) === "5.760,4761",
+);
+check(
+  "8e. un entero se agrupa y no gana decimales",
+  formatAmountForInput(1234567, MILES) === "1.234.567",
+);
+check("8e. por debajo de mil no se agrupa nada", formatAmountForInput(999, MILES) === "999");
+check(
+  "8e. el quinto decimal se redondea, no se corta",
+  formatAmountForInput(0.00006, MILES) === "0,0001",
+);
+check(
+  "8e. SIN opciones, el formulario de productos se escribe igual que ayer",
+  formatAmountForInput(1234.5) === "1234,5" && formatAmountForInput(1.125) === "1,1250",
+);
+
+const IDA_Y_VUELTA_MILES = [5760.4761, 1234567, 999, 12000, 1125, 1.125, 0.5, 11.5, 1234.56];
+for (const n of IDA_Y_VUELTA_MILES) {
+  const escrito = formatAmountForInput(n, MILES);
+  check(`8e. ${n} → "${escrito}" → ${parseAmount(escrito)}`, parseAmount(escrito) === n);
+}
+
+// ── 8f. AGRUPAR MIENTRAS SE TECLEA ────────────────────────────────────────
+//
+// `formatAmountWhileTyping`, pedida por el dueño el 2026-10-23.
+//
+// SE PRUEBA PULSACIÓN A PULSACIÓN y no con el texto final, porque el fallo de
+// esta clase de campo no está en el resultado: está en la tecla 5 de 5. Al
+// teclear `12345`, tras el cuarto dígito el campo ya dice `1.234`, y el valor
+// crudo que llega al insertar el `5` es `1.2345` — que leído «el último
+// separador manda» es UNO COMA DOS TRES CUATRO CINCO. Una prueba que solo
+// mirara el final no distingue las dos lecturas.
+//
+// Y SE COMPRUEBA EL CURSOR, que es la otra mitad. Un campo que agrupa bien y
+// deja el cursor donde no es se vuelve inservible en cuanto hay que corregir
+// un dígito del medio — que es justo lo que se hace con un monto.
+const teclear = (teclas, desde = { texto: "", cursor: 0 }) => {
+  let estado = desde;
+  for (const t of teclas) {
+    const bruto = estado.texto.slice(0, estado.cursor) + t + estado.texto.slice(estado.cursor);
+    estado = formatAmountWhileTyping(bruto, estado.texto, estado.cursor + 1);
+  }
+  return estado;
+};
+
+const retroceso = (estado) => {
+  if (estado.cursor === 0) return estado;
+  const bruto = estado.texto.slice(0, estado.cursor - 1) + estado.texto.slice(estado.cursor);
+  return formatAmountWhileTyping(bruto, estado.texto, estado.cursor - 1);
+};
+
+check(`8f. tecleando 12345 → "${teclear("12345").texto}"`, teclear("12345").texto === "12.345");
+check(
+  `8f. tecleando 1234567 → "${teclear("1234567").texto}"`,
+  teclear("1234567").texto === "1.234.567",
+);
+check(`8f. por debajo de mil no agrupa → "${teclear("999").texto}"`, teclear("999").texto === "999");
+
+// La coma, tecleada, abre los decimales y SE QUEDA aunque todavía no haya nada
+// detrás: quitarla deshace la tecla que el tendero acaba de pulsar.
+check(`8f. "5760," se queda con su coma → "${teclear("5760,").texto}"`, teclear("5760,").texto === "5.760,");
+check(
+  `8f. y los decimales entran detrás → "${teclear("5760,4761").texto}"`,
+  teclear("5760,4761").texto === "5.760,4761",
+);
+check(
+  `8f. el quinto decimal no entra → "${teclear("5760,47614").texto}"`,
+  teclear("5760,47614").texto === "5.760,4761",
+);
+check(`8f. un cero final sobrevive → "${teclear("5,10").texto}"`, teclear("5,10").texto === "5,10");
+
+// El punto tecleado TAMBIÉN abre decimales: un teclado Android lo ofrece
+// aunque el teléfono esté en español, y este campo lo aceptaba antes.
+check(`8f. el punto tecleado es decimal → "${teclear("12.5").texto}"`, teclear("12.5").texto === "12,5");
+
+// Y la trampa al revés: un punto tecleado DESPUÉS de que ya agrupemos.
+check(
+  `8f. 1234 y luego punto y 5 → "${teclear("1234.5").texto}"`,
+  teclear("1234.5").texto === "1.234,5",
+);
+
+check("8f. campo vacío", formatAmountWhileTyping("", "", 0).texto === "");
+check(`8f. un cero a la izquierda se va → "${teclear("05").texto}"`, teclear("05").texto === "5");
+check(`8f. pero 0, sigue siendo 0, → "${teclear("0,5").texto}"`, teclear("0,5").texto === "0,5");
+
+// ── EL CURSOR ──────────────────────────────────────────────────────────
+const tras12345 = teclear("12345");
+check(
+  `8f. el cursor queda al final tras teclear → ${tras12345.cursor} de ${tras12345.texto.length}`,
+  tras12345.cursor === tras12345.texto.length,
+);
+
+// Corregir un dígito del MEDIO: el caso que de verdad usa el cursor.
+// Insertar «9» en «1.234» con el cursor tras el «2» deja el crudo «1.2934» y
+// el cursor en 4 --detras del 9 recien puesto--, no en 3.
+const enMedio = formatAmountWhileTyping("1.2934", "1.234", 4);
+check(
+  `8f. meter un 9 en medio de 1.234 → "${enMedio.texto}" cursor ${enMedio.cursor}`,
+  enMedio.texto === "12.934" && enMedio.cursor === 4,
+);
+
+// ── EL RETROCESO SOBRE UN PUNTO ────────────────────────────────────────
+//
+// Sin trato especial, borrar el punto de «1.234» no hace nada: se quita y se
+// vuelve a poner. Aquí se borra además el dígito de su izquierda, que es lo
+// que el tendero quería.
+const borrandoElPunto = retroceso({ texto: "1.234", cursor: 2 });
+check(
+  `8f. retroceso sobre el punto de 1.234 → "${borrandoElPunto.texto}"`,
+  borrandoElPunto.texto === "234",
+);
+const borrandoUnDigito = retroceso({ texto: "12.345", cursor: 6 });
+check(
+  `8f. retroceso normal sobre un dígito → "${borrandoUnDigito.texto}"`,
+  borrandoUnDigito.texto === "1.234",
+);
+
+// ── PEGAR ──────────────────────────────────────────────────────────────
+const pegado = formatAmountWhileTyping("5760.4761499999", "", 15);
+check(
+  `8f. pegar 5760.4761499999 → "${pegado.texto}"`,
+  pegado.texto === "5.760,4761",
+);
+
+// ── Y LA IDA Y VUELTA, que es lo que decide lo que se GUARDA ───────────
+for (const teclas of ["12345", "5760,4761", "1234.5", "999", "0,5", "1125"]) {
+  const { texto } = teclear(teclas);
+  check(
+    `8f. tecleando "${teclas}" → "${texto}" → ${parseAmount(texto)}`,
+    parseAmount(texto) === parseAmount(teclas.replace(".", ",")),
   );
 }
 

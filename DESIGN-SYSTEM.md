@@ -39,6 +39,59 @@ distinct thing — "Malas pagas" names the screen, "Clientes" names the list on
 it. Skipping it because there is only one section is how screens end up
 inconsistent with each other.
 
+### 16px A LOS LADOS. TODAS LAS PANTALLAS, SIEMPRE
+
+**Regla del dueño, 2026-10-22: «todos los paddings laterales de las pantallas
+deben ser de 16px».** Lo reportó tres veces sobre el mismo flujo antes de que
+se midiera.
+
+**Lo pone `AppMain`, y SOLO él.** Su `p-4` son esos 16px y cubre todas las
+pantallas de la app. Una pantalla que añade su propio `p-4` no se queda en 16:
+suma 32, y eso es exactamente lo que el dueño veía al pasar de una pantalla a
+otra dentro del mismo flujo.
+
+```tsx
+// MAL — 32px: el de AppMain más el suyo
+<div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
+
+// BIEN — 16px, los de AppMain
+<div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4">
+```
+
+**Y arrastra una segunda cosa que no se ve venir.** `StickyActions` usa `-mx-4`
+para cancelar el padding de `AppMain` y quedar de borde a borde. Con el padding
+duplicado solo cancela uno de los dos, así que la barra de abajo sale metida
+16px por cada lado en vez de a ras — medido el 2026-10-22: empezaba en 16 y no
+en 0.
+
+**Cómo se comprueba, porque a ojo no se distingue 16 de 32:**
+
+```js
+Math.round(document.querySelector('h1').getBoundingClientRect().left)  // → 16
+```
+
+**La excepción son los títulos centrados**, que miden más porque su caja se
+encoge al contenido. Ahí se mide el contenedor, no el `h1`.
+
+### El `h1` va en semibold AUNQUE LOS FRAMES LO DIBUJEN EN REGULAR
+
+**Diferencia conocida, decidida por el dueño el 2026-10-22. No es un frame sin
+replicar: es una regla de la casa que gana a propósito.**
+
+Los frames del sitemap escriben el título de pantalla en `Geist:Regular` (400)
+a 24px — se comprobó en `1465:18349` (detalle de transacción), `1524:10439` y
+`1526:11184` (el flujo de abono). `ScreenTitle` lo pinta en `font-semibold`.
+
+**Por qué se queda como está.** Ese componente lo usan 21 pantallas, así que no
+es una diferencia del flujo donde se encontró: cambiarlo es cambiarlas todas.
+Se le plantearon las tres salidas —cambiar las 21, cambiar solo el abono, o
+dejarlo— y eligió dejarlo. La del medio era la peor: dos pesos de título
+conviviendo y este documento describiendo algo que ya no es cierto.
+
+**Se escribe aquí para que no se vuelva a abrir.** Quien compare el código con
+un frame va a encontrar esto otra vez; sin esta nota, lo normal es tratarlo
+como un descuido y «arreglarlo».
+
 **Content inside a section goes in an outlined card.**
 
 ```tsx
@@ -1918,6 +1971,216 @@ Tres reglas que salen de ahí y conviene no redescubrir:
 - **La fila no se abre.** `MovementDetailPopover` está escrito sobre un
   movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
   no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
+
+## La bandera va en el MONTO, no en su equivalencia
+
+**Una cifra lleva bandera cuando es la que el tendero va a decir en voz alta.
+La línea gris de debajo, que traduce esa misma cifra a otra moneda, no.**
+
+Decisión del dueño el 2026-10-23, confirmada al día siguiente de pedir lo
+contrario: *«en la equivalencia en Bolívares no agregues la bandera, solo en
+el monto principal en dólares o euros»*.
+
+**Las dos peticiones quedan anotadas, porque la primera no era un capricho.**
+El 2026-10-23 por la mañana pidió justamente añadirla, y la razón sigue siendo
+cierta: en una bodega venezolana la deuda en dólares y la de euros se escriben
+con cifras parecidas, una encima de la otra, y el símbolo de un carácter al
+principio es lo único que las separa. Lo que cambió es que, aplicada también a
+las equivalencias, la bandera de Venezuela salía tres o cuatro veces por
+pantalla y dejaba de distinguir nada: cuando todo lleva marca, la marca no
+marca.
+
+**Dónde está la frontera, que es lo que hay que saber para aplicarla:**
+
+- ✅ **Monto principal** — «Debe $21,50», «+€100,00», «Total en Bolívares
+  Bs. 4.431,13». Lleva bandera. La de bolívares también, cuando los bolívares
+  son LA cifra y no la traducción de otra.
+- ❌ **Equivalencia** — «Bs. 19.053,88 hoy» debajo de «$21,50», o «≈ Bs. …»
+  debajo del campo. Sin bandera: la moneda ya la dice el «Bs.» y la cifra de
+  arriba ya dijo cuál es la principal.
+
+**Y ESTO DESPLAZA A UN FRAME, que es la razón de escribirlo aquí.** El
+`1564:11586` —dentro del bloque `1564:11567` que el dueño pasó ese mismo día—
+**sí dibuja** la bandera junto a «Bs. 000.000.000 hoy». Se le señaló y
+confirmó omitirla. Sin esta nota, el siguiente que abra ese frame la va a
+volver a poner, con toda la razón del mundo y sin forma de saber que ya se
+decidió.
+
+## Dos filtros, debajo del título, y solo uno nombra su campo
+
+**2026-10-23**: *«el filtro "Filtrar por" agreguemos un filtro por estado,
+también en la vista del cliente. Bajemos los filtros para abajo del título de
+la sección "Historial de transacciones"»*.
+
+**Van debajo y no al lado.** El de tipo iba a la derecha del título, en la
+misma línea. Con dos chips ahí ya no caben a 375px sin partir el título en dos
+renglones, así que bajan los dos juntos, en una fila con un solo «Filtrar por».
+
+**Los dos salen de `FiltrosDelHistorial`**, un componente y no dos sueltos en
+cada lista: es el único sitio donde consta que el rótulo se escribe una vez y
+que el orden es tipo y luego estado. Las dos pantallas que lo montan no pueden
+ordenarlos distinto ni duplicar el rótulo.
+
+### Sin rótulo «Filtrar por»
+
+Se fue el 2026-10-23. Con un solo chip explicaba para qué servía; con tres,
+los chips se explican entre ellos y el rótulo solo gastaba ancho en la única
+fila que tiene que caber a 375px.
+
+### El chip sin filtro: «Todas» en uno, «Estado» y «Moneda» en los otros
+
+La regla del 2026-10-16 es que **el chip nombra su VALOR y no su campo** —
+«Todas» contesta «qué estoy mirando» en vez de «para qué sirve esto». Vale con
+un chip. Con dos, los dos decían «Todas» y no había forma de saber cuál era
+cuál; se vio en pantalla al montarlos.
+
+Así que el de tipo se queda como estaba y **el de estado nombra su campo
+mientras no filtre nada**. En cuanto se elige algo vuelve a nombrar su valor:
+«Plazo vencido», nunca «Estado: Plazo vencido». La regla sigue valiendo donde
+importa, que es cuando hay un filtro puesto y hay que poder leerlo de un
+vistazo.
+
+### Un filtro ofrece solo lo que esa lista tiene
+
+Igual que `conAbono` en el de tipo, y por lo mismo: ofrecer «Pagado» a un
+cliente que no tiene ninguno saldado da una lista vacía por un filtro que no
+podía dar otra cosa. Los estados disponibles se cuentan **sobre las filas del
+tipo ya elegido**, así que con «Fiado» puesto desaparece «A favor», que solo
+llevan los abonos.
+
+**Y el filtro mira el MISMO chip que se dibuja**, no una regla paralela: los
+dos salen de `pieDeLaFila`. Si el filtro juzgara por su cuenta, elegir «Plazo
+vencido» devolvería filas que no llevan ese chip — peor que no filtrar.
+
+## El contador del chip: el del cliente arriba, el de cada libro en su tarjeta
+
+**2026-10-23, corrigiendo lo que se había hecho esa misma mañana.** El chip de
+la sección «Por cobrar» cuenta los fiados vencidos **del cliente entero**; el
+de cada tarjeta de moneda, **los de ese libro**.
+
+Durante unas horas el de arriba contó solo los del libro que ganaba, y el dueño
+lo cazó con Camilo delante: decía «Plazo vencido (2)» y en el historial se le
+veían tres, dos en euros y uno en dólares. *«Debería contar los totales»*.
+
+**La razón, que es la que hay que recordar**: son dos preguntas distintas. El
+chip de arriba responde sobre el CLIENTE —cuántos fiados suyos hay que ir a
+cobrar—; el de la tarjeta, sobre ese libro. Un contador que mezcla las dos no
+contesta ninguna.
+
+## La fila del historial lleva UN chip, y dice en qué va ese fiado
+
+**Encargo del dueño el 2026-10-23**, con la captura de un fiado «Dentro del
+plazo» cuya fila no lo decía: *«los estados de las cuotas también deberían
+mostrarse en el mismo lugar que "Pagado" o "A favor", eso permitirá al tendero
+tener ese cue visual sin tener que entrar a cada fiado para ver cuál es el más
+crítico»*.
+
+**Un chip por fila, nunca dos, y siempre en el mismo sitio**: debajo de la
+equivalencia en bolívares del pie «Por cobrar».
+
+**Y en las tarjetas de «Por cobrar» de cada moneda el contador empieza en
+UNO**, no en dos como en las listas. Lo reclamó el dueño al verlas sin número:
+su cliente tenía UN vencido en cada libro y las dos tarjetas salían sin cifra,
+que desde fuera se lee como que el contador no se puso. En una lista un «(1)»
+le pondría número a casi todas las filas y dejaría de destacar al que tiene
+cinco; entre dos tarjetas es información.
+
+| Fila | Chip |
+|---|---|
+| Fiado con plazo, con deuda | «Dentro del plazo» o «Plazo vencido» |
+| Fiado **sin** plazo, con deuda | **«Sin plazo»** — decisión del dueño el mismo día |
+| Fiado saldado | «Pagado» |
+| Abono con el saldo del libro a favor | «A favor» |
+| Abono normal · venta de contado | ninguno |
+
+**«Sin plazo» no es un estado del plazo** —no hay fecha que comparar, y
+`estadoDelFiado` devuelve `null`— pero la fila tiene que decir algo: si el chip
+existe para ver de un vistazo cuál es el fiado más crítico, uno sin fecha es
+justo el que hay que ir a arreglar, y dejarlo en blanco lo escondía. Toma
+etiqueta y color de `ClientStatus.sin_plazo`, el mismo ámbar que «Plazo
+vencido».
+
+### Esto DEVUELVE algo que se había quitado, y las dos decisiones valen
+
+El chip estuvo en esta fila el 2026-10-20 y **se retiró el 2026-10-21** al
+reescribirla contra el frame `1512:10061`, que no lo dibuja. La razón vieja era
+buena y se deja escrita.
+
+**Lo que cambió es para qué sirve la fila.** Entre una fecha y otra el
+historial ganó el pie «Por cobrar» en todas sus filas, así que dejó de ser un
+registro de lo que pasó y pasó a ser desde dónde se decide a quién cobrar. Con
+eso, el estado de cada fiado deja de ser decoración: es trabajo que antes
+obligaba a abrir fiado por fiado.
+
+**Y por eso no se vuelve a poner mirando el frame**: si alguien abre el
+`1512:10061` dentro de seis meses va a ver una fila sin chip y va a tener razón
+sobre el dibujo. Esta nota es la que dice que la pantalla ya no es esa.
+
+### Se calcula en la lista, no se pasa como prop
+
+Lo único que `estadoDelFiado` necesita y la fila no tuviera ya es el pendiente
+del fiado, y ese llega por `pendientePorFiado`. Calcularlo dentro del
+componente hace que **las tres pantallas que lo montan** —la ficha del tendero,
+el enlace del cliente y «Ver cuenta de…»— lo hereden sin que nadie tenga que
+acordarse de pasar nada. La ficha lo calculaba por su cuenta y ese cálculo se
+borró: era un segundo sitio donde mantenerlo.
+
+## Un saldo a favor no lleva menos, y cada libro responde por el suyo
+
+**Dos reglas que salieron del mismo encargo** (2026-10-23) y que se rompen
+juntas, así que van juntas.
+
+**1. La cifra va en absoluto; el signo lo dice el chip.** Un saldo a favor
+salía `-$158,50` en verde, y su equivalencia `Bs. -140.467,00`. Dos menos
+para decir lo que una palabra dice mejor. Donde el rótulo ya lo dice —«A
+favor en Dólares», en la vista del cliente— el `Math.abs` ya estaba desde el
+2026-10-21; lo que faltaba era el resto de la app, donde el rótulo es neutro
+(«Por cobrar») y el chip es quien tiene que decirlo.
+
+La regla NO es «sin negativos»: es **«no dos veces»**. Donde no haya ni
+rótulo ni chip que marquen la dirección, el menos es lo único que la dice y
+se queda.
+
+**2. Una pantalla con un libro por moneda lleva un chip POR LIBRO**, y el
+estado general del cliente es **el peor de ellos**, nunca el de la suma.
+
+Lo pidió el dueño con el caso delante: *«puede tener un saldo a favor en
+dólares pero un plazo vencido en euros»*. Antes había un solo chip calculado
+sobre los dos saldos convertidos a dólares, y una clienta con 158,50 $ a
+favor y 3,50 € en deuda salía **«A favor»**, con la deuda en euros invisible
+en toda la pantalla. Los dos libros no se suman en ningún otro sitio de la
+app; el chip era el último que todavía lo hacía.
+
+**Cómo se monta**, y es lo que impide que las dos pantallas se separen:
+`estadoPorLibro()` en `lib/estado-del-plazo.ts` es la ÚNICA derivación, y la
+llaman tanto la ficha del dueño como `/s/[token]`. El chip que ve el cliente
+no puede contradecir al que ve su bodeguero, porque sale de la misma función
+con la misma forma de datos.
+
+**Y una lectura fallida NO es una lista vacía.** Es la trampa de esto y cabe
+en una línea: sin fiados abiertos, un saldo en deuda sale «Sin plazo» —un
+chip inventado con cara de correcto—. Las dos pantallas pasan `null` cuando
+la consulta falla y entonces **no dibujan chip**, que es la pantalla de ayer
+y no miente.
+
+### La excepción a «no dos veces»: la tarjeta del cliente repite, y es a propósito
+
+En `/s/[token]` el rótulo no es neutro —lo pone `getBalanceLabel`— así que un
+saldo a favor sale **«A favor en Dólares»** y el chip debajo dice **«A favor»**
+otra vez. Lo mismo con «Sin deuda». Es la misma palabra dos veces en la misma
+tarjeta, o sea justo lo que la regla de arriba prohíbe.
+
+**Decisión del dueño el 2026-10-23**, preguntado con la captura delante y con
+las tres salidas sobre la mesa —quitar el chip cuando no aporte, volver el
+rótulo neutro como en la pantalla del tendero, o dejarlo—: **se deja**. Cada
+tarjeta lleva su chip sin excepción, que es lo que él pidió, y la repetición
+se asume como refuerzo.
+
+**La razón vieja queda escrita porque sigue siendo buena**: «no dos veces»
+nació de que «A favor en Dólares · −$158.50» decía la dirección dos veces **y
+se contradecía una**. Aquí no hay contradicción —las dos dicen lo mismo— y esa
+es la diferencia que hace que la excepción no rompa la regla. Si algún día se
+revierte, esto es lo que hay que volver a mirar.
 
 ## Contrast floor
 

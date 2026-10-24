@@ -17,12 +17,24 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { getBalanceLabel } from "@/lib/types";
+import {
+  getBalanceLabel,
+  CLIENT_STATUS_BADGE_CLASS,
+  clientStatusLabel,
+} from "@/lib/types";
 import type {
   ExchangeRateMode,
   LedgerCurrency,
   MovementCurrencyCode,
 } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import {
+  estadoPorLibro,
+  libroDe,
+  peorEstado,
+  type CargoAbierto,
+  type LibroJuzgado,
+} from "@/lib/estado-del-plazo";
 import {
   type LedgerDisplay,
 } from "@/lib/exchange-rate/movement-display";
@@ -147,10 +159,15 @@ type SharedBalance = {
 function BalanceRowCard({
   label,
   currency,
+  libro,
   children,
 }: {
   label: string;
   currency?: PriceCurrency | null;
+  // El juicio de ESTE libro, debajo de la equivalencia. Mismo sitio, mismo
+  // vocabulario y mismo contador que en la pantalla del dueño: un cliente que
+  // le pregunta por WhatsApp tiene que estar mirando lo mismo que él.
+  libro?: LibroJuzgado;
   children: React.ReactNode;
 }) {
   return (
@@ -162,6 +179,13 @@ function BalanceRowCard({
         </p>
         {children}
       </div>
+      {libro ? (
+        <div className="flex justify-end pt-1.5">
+          <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[libro.status]}>
+            {clientStatusLabel(libro.status, libro.vencidos, true)}
+          </Badge>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -265,6 +289,66 @@ export default async function SharedBalancePage({
     }
   })();
 
+  // EL ESTADO DE CADA LIBRO, para el chip de su tarjeta (2026-10-23).
+  //
+  // Se pide aparte y no se saca de `shared.movements` porque esa lista llega
+  // recortada a los 50 últimos: el estado saldría bien en un historial corto
+  // y mal en uno largo, y mal hacia el lado tranquilizador — la lista va del
+  // más nuevo al más viejo, así que el fiado vencido más antiguo es justo el
+  // que se cae de ella. La migración `144` lo cuenta entero.
+  //
+  // FALLA HACIA NO PINTAR CHIP, como el consentimiento de arriba: si la
+  // migración no está corrida en este entorno, el cliente ve sus tarjetas sin
+  // chip, que es la pantalla de ayer. Un chip adivinado sería peor.
+  //
+  // Y «no pintar chip» ES `null`, NO UNA LISTA VACÍA. Es la primera versión de
+  // esto y el error cabe en una línea: una lista vacía es una respuesta —«este
+  // cliente no tiene ningún fiado abierto»—, así que un saldo en deuda saldría
+  // «Sin plazo», un chip inventado con cara de correcto. Vacío y no leído no
+  // son lo mismo, y aquí la diferencia la ve el cliente.
+  const abiertos: CargoAbierto[] | null = await (async () => {
+    const { data, error: abiertosError } = await supabase.rpc("get_shared_open_charges", {
+      p_token: token,
+    });
+    if (abiertosError) {
+      console.error("[sharedBalance] open charges failed:", abiertosError.message);
+      return null;
+    }
+    return ((data ?? []) as {
+      charge_at: string;
+      currency: string | null;
+      amount: number;
+      pending: number;
+      plazo_dias: number | null;
+      cuotas: number | null;
+    }[]).map((c) => ({
+      createdAt: c.charge_at,
+      currency: c.currency,
+      amount: Number(c.amount),
+      pendiente: Number(c.pending),
+      plazoDias: c.plazo_dias,
+      cuotas: c.cuotas,
+    }));
+  })();
+
+  // LOS DÍAS SIN PAGAR, lo único que le faltaba a esta pantalla para juzgar
+  // igual que la del tendero. Migración `145`.
+  //
+  // FALLA HACIA EL ESTADO MÁS SUAVE, como todo lo demás de esta pantalla: si
+  // la migración no está corrida, o la lectura falla, se queda en `null` y el
+  // chip vuelve a tocar techo en «Plazo vencido». Un «Crítico» adivinado
+  // sobre un cliente que sí paga sería mucho peor que uno que falta.
+  const diasSinPagar = await (async () => {
+    const { data, error: diasError } = await supabase.rpc("get_shared_days_since_payment", {
+      p_token: token,
+    });
+    if (diasError) {
+      console.error("[sharedBalance] days since payment failed:", diasError.message);
+      return null;
+    }
+    return typeof data === "number" ? data : null;
+  })();
+
   const ownerWhatsappDigits = shared.owner_whatsapp?.replace(/\D/g, "");
   const logoUrl = shared.owner_logo_path
     ? getPublicLogoUrl(shared.owner_logo_path)
@@ -294,6 +378,42 @@ export default async function SharedBalancePage({
   const ledger: LedgerDisplay | null = rateContext
     ? { rate: rateContext.effectiveRate }
     : null;
+
+  // LA MISMA FUNCIÓN QUE USA LA PANTALLA DEL TENDERO, a propósito: el chip que
+  // el cliente ve no puede contradecir al que ve el dueño sobre la misma
+  // cuenta.
+  //
+  // `diasSinPagar` LLEGA POR LA `145` Y ES LA MITAD QUE FALTABA. Hasta el
+  // 2026-10-23 aquí iba un cero fijo, y con un cero `getClientStatus` no
+  // puede llegar nunca a «Crítico»: el dueño borró un abono, su pantalla
+  // volvió a «Crítico» y este enlace se quedó en «Sin plazo». Decisión suya
+  // ese mismo día, preguntada con las dos pantallas delante: se igualan,
+  // *«la propuesta de valor del producto es "Cuentas claras"»*, el adjetivo
+  // duro incluido.
+  //
+  // EL `?? 0` NO ES UN DESCUIDO: si la `145` no está corrida en este entorno
+  // el cero vuelve, y con él la pantalla de ayer — un estado más suave, nunca
+  // uno inventado.
+  const estadosDeLibro: Partial<Record<string, LibroJuzgado>> = abiertos
+    ? estadoPorLibro({
+        saldos: rateContext
+          ? { USD: shared.balance_usd, EUR: shared.balance_eur }
+          : { COP: shared.balance },
+        abiertos,
+        daysSincePayment: diasSinPagar ?? 0,
+      })
+    : {};
+
+  // EL RESUMEN DE LA CUENTA, para el chip que va junto a «Pendiente»: el peor
+  // estado de sus libros y la suma de sus vencidos. Mismas dos reglas que la
+  // ficha del dueño — el chip de arriba habla del CLIENTE, el de cada tarjeta
+  // de su libro.
+  const librosJuzgados = Object.values(estadosDeLibro).filter(
+    (l): l is LibroJuzgado => l != null,
+  );
+  const estadoDeLaCuenta = peorEstado(librosJuzgados.map((l) => l.status));
+  const vencidosEnTotal = librosJuzgados.reduce((n, l) => n + l.vencidos, 0);
+
 
   // El mismo mensaje que manda el dueño desde su lado, para que el cliente que
   // reenvia un movimiento mande exactamente lo que habria mandado el.
@@ -431,7 +551,30 @@ export default async function SharedBalancePage({
           El `mt-1` no es decoración: con el `gap-4` de esta columna produce
           los 20px sobre cada título que el documento mide. «Pendiente» gana
           esos 4px al unificarlos, que es lo único que cambia de él. */}
-        <h2 className="mt-1 text-xl font-semibold">Pendiente</h2>
+        {/* EL ESTADO DE LA CUENTA, JUNTO AL TÍTULO, igual que en la ficha del
+          dueño. Pedido por él el 2026-10-23 al auditar las dos pantallas: el
+          cliente tenía un chip por moneda pero ninguno que resumiera la
+          cuenta, que es lo primero que mira quien abre su enlace.
+
+          EL PEOR DE SUS LIBROS, y el contador suma los vencidos de TODOS —las
+          dos mitades de la regla del mismo día, aquí sin `client_summary`:
+          `estadoPorLibro` ya devuelve los vencidos de cada libro, así que
+          sumarlos da el total del cliente sin pedir nada más.
+
+          SIN CHIP SI NO HAY DATO: cuando la lectura de los fiados abiertos
+          falla —o falta la migración `144`— `estadosDeLibro` llega vacío y
+          aquí no se dibuja nada, que es la pantalla de antes. */}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold">Pendiente</h2>
+          {librosJuzgados.length > 0 ? (
+            <Badge
+              variant="outline"
+              className={CLIENT_STATUS_BADGE_CLASS[estadoDeLaCuenta]}
+            >
+              {clientStatusLabel(estadoDeLaCuenta, vencidosEnTotal)}
+            </Badge>
+          ) : null}
+        </div>
 
         {/* One card per currency, label left and figure right. The label is
           getBalanceLabel's, not a fixed "Deuda": a client who has overpaid
@@ -455,6 +598,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_usd)} en Dólares`}
               currency="USD"
+              libro={estadosDeLibro[libroDe("USD")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_usd)}
@@ -467,6 +611,7 @@ export default async function SharedBalancePage({
             <BalanceRowCard
               label={`${getBalanceLabel(shared.balance_eur)} en Euros`}
               currency="EUR"
+              libro={estadosDeLibro[libroDe("EUR")]}
             >
               <ExchangeRateBalanceDisplay
                 balance={Math.abs(shared.balance_eur)}
@@ -478,7 +623,7 @@ export default async function SharedBalancePage({
             </BalanceRowCard>
           </>
         ) : (
-          <BalanceRowCard label={getBalanceLabel(shared.balance)}>
+          <BalanceRowCard label={getBalanceLabel(shared.balance)} libro={estadosDeLibro[libroDe(null)]}>
             <ExchangeRateBalanceDisplay
               balance={Math.abs(shared.balance)}
               currency={null}
@@ -548,6 +693,7 @@ export default async function SharedBalancePage({
           {/* El rótulo viaja DENTRO de la lista para que el filtro por tipo
             pueda ir a su derecha, en la misma fila. */}
           <MovementHistoryList
+            diasSinPagar={diasSinPagar ?? 0}
             titulo={
               <h2 className="mt-1 text-xl font-semibold">Historial</h2>
             }

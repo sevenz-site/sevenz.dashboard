@@ -5,6 +5,7 @@ import {
   WhatsappConsentDialog,
   WhatsappConsentField,
 } from "@/components/dashboard/whatsapp-consent-field";
+import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { consentPhoneKey } from "@/lib/phone";
 import { usePathname, useRouter } from "next/navigation";
@@ -12,15 +13,33 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+// ── UNA HOJA Y NO UN DIÁLOGO ─────────────────────────────────────────────
+//
+// Encargo del dueño el 2026-10-22: *«El popup para buscar cliente debe ser un
+// sheet»*, con el frame `1535:10874` al lado.
+//
+// NO ES SOLO LA ANIMACIÓN. Un diálogo se centra en la pantalla, así que al
+// subir el teclado --y este flujo pide nombre, cédula y teléfono-- el navegador
+// tiene que decidir dónde ponerlo y acaba empujando el título fuera por arriba.
+// Una hoja nace pegada abajo: el teclado la recorta por el sitio por el que ya
+// crecía, que es el mismo motivo por el que el resto de este flujo ya usa
+// hojas.
+//
+// `@/components/ui/dialog` DEJA DE IMPORTARSE ENTERO. Escribí primero que
+// seguía haciendo falta para los dos `AlertDialog` de dentro --descartar el
+// registro, y la cuenta separada--; el lint lo desmintió en el acto: esos
+// vienen de `ui/alert-dialog`, que es otro módulo. Queda anotado porque es la
+// clase de frase que nadie vuelve a comprobar, y porque los dos AlertDialog
+// SÍ se quedan centrados a propósito: son preguntas de sí o no.
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +70,7 @@ import {
   PrevistaCheckbox,
 } from "@/components/dashboard/movement-currency-field";
 import { WhatsappInput } from "@/components/whatsapp-input";
+import { usePermisoDelNumero } from "@/hooks/use-permiso-del-numero";
 import { useTour } from "@/components/dashboard/tour-context";
 import {
   DEFAULT_PLAZO_PAGO,
@@ -213,7 +233,7 @@ export function ClientSearchDialog({
 
   return (
     <>
-      <Dialog
+      <Sheet
         open={open}
         onOpenChange={(next) => {
           if (next) {
@@ -232,7 +252,7 @@ export function ClientSearchDialog({
         }}
       >
         {hideTrigger ? null : (
-          <DialogTrigger asChild>
+          <SheetTrigger asChild>
             <Button
               size="sm"
               className="w-full sm:w-auto"
@@ -244,7 +264,7 @@ export function ClientSearchDialog({
               <Plus className="size-4" />
               Agregar movimiento
             </Button>
-          </DialogTrigger>
+          </SheetTrigger>
         )}
         {/* svh y no vh. `vh` mide el viewport GRANDE —el que habría si la barra
           del navegador estuviera escondida— así que en un teléfono con la barra
@@ -253,7 +273,7 @@ export function ClientSearchDialog({
           encima del borde y no hay forma de subir hasta él. `svh` mide el
           viewport PEQUEÑO, el que de verdad se ve. Es el mismo problema del
           100vh que CLAUDE.md ya nombra para iPhone. */}
-      <DialogContent className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-xl">
           <ClientSearchDialogBody
             key={instanceKey}
             pasoInicial={pasoInicial}
@@ -267,8 +287,8 @@ export function ClientSearchDialog({
             onDirtyChange={handleDirtyChange}
             onDone={closeAndReset}
           />
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
         <AlertDialogContent>
@@ -344,10 +364,16 @@ function ClientSearchDialogBody({
   // sido preguntado antes, asi que no hay equivalente del `consentAsked` del
   // alta de movimiento.
   const [consent, setConsent] = useState(false);
+  // SI EL NÚMERO QUE SE ESTÁ TECLEANDO YA ACEPTÓ. `WhatsappConsentField` sabe
+  // esconder la casilla desde el 2026-10-10 con `yaTienePermiso`, pero esta
+  // puerta nunca se lo pasaba: de sus cuatro usuarios solo dos lo hacían, y
+  // las dos que faltaban son altas, que es justo donde el tendero cree estar
+  // decidiendo algo. Reportado desde producción el 2026-10-21.
   const [consentDialog, setConsentDialog] = useState(false);
   // El numero, solo para poder decir "falta registrar el WhatsApp". WhatsappInput
   // no es controlado desde aqui, asi que se escucha su onValueChange.
   const [whatsappValue, setWhatsappValue] = useState("");
+  const permisoDelNuevo = usePermisoDelNumero(whatsappValue);
 
   // UNA REF Y NO ESTADO, y la diferencia importa. El envio del camino de
   // duplicados no pasa por <form onSubmit>: `confirmDuplicateAndSubmit` llama
@@ -395,13 +421,25 @@ function ClientSearchDialogBody({
     amount: amountRule(),
   });
 
+  // SIN ESCRIBIR NADA, EN EL CAMINO DEL ABONO, SE ENSEÑA LA LISTA — frame
+  // `1525:10827`, que la dibuja llena antes de teclear.
+  //
+  // Es por lo que cuesta cada camino. A «Venta o fiado» y a «Nuevo cliente» se
+  // llega sabiendo a quién se le vende y, si no está, se le da de alta ahí
+  // mismo: el campo vacío es la invitación a escribir. Al abono se llega
+  // sabiendo que ALGUIEN pagó, y esa puerta no tiene salida de alta —un
+  // cliente recién creado no tiene fiado que pagar— así que un cuadro vacío
+  // solo le pide al tendero que recuerde cómo escribió un nombre que ya está
+  // en la lista.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
+    if (!q) {
+      return movimientoAlElegir === "abono" ? clients.slice(0, CLIENT_RESULT_LIMIT) : [];
+    }
     return clients
       .filter((c) => c.name.toLowerCase().includes(q) || c.document_id?.toLowerCase().includes(q))
       .slice(0, CLIENT_RESULT_LIMIT);
-  }, [clients, query]);
+  }, [clients, query, movimientoAlElegir]);
 
   // There is something to lose once the owner has actually typed something
   // into the registration form — not merely reached that step, since
@@ -517,13 +555,32 @@ function ClientSearchDialogBody({
           «Venta o fiado» es justo al revés --dar de alta y venderle en el
           mismo gesto es lo corriente-- y por eso la diferencia es por camino
           y no por pantalla. */}
-      <DialogHeader>
-        <DialogTitle>Buscar cliente</DialogTitle>
-        {movimientoAlElegir === "abono" ? null : (
-          <DialogDescription>Negocio: {businessName} · busca por nombre o cédula.</DialogDescription>
+      <SheetHeader>
+        <SheetTitle>Buscar cliente</SheetTitle>
+        {/* EN EL ABONO, «Selecciona un cliente» — el subtítulo del frame
+            `1525:10827`. En los demás caminos sigue el de siempre, que dice
+            de qué negocio es la lista y por qué se puede buscar; aquí sobra
+            porque debajo ya está la lista entera. */}
+        {movimientoAlElegir === "abono" ? (
+          <SheetDescription>Selecciona un cliente</SheetDescription>
+        ) : (
+          <SheetDescription>Negocio: {businessName} · busca por nombre o cédula.</SheetDescription>
         )}
-      </DialogHeader>
-      <div className="flex flex-col gap-3">
+      </SheetHeader>
+      {/* ── LOS 16px DE LOS LADOS, QUE AQUÍ FALTABAN ───────────────────────
+          `SheetHeader` trae su propio `p-4`; `SheetContent` NO trae ninguno.
+          Así que el título iba indentado y el buscador con la lista pegados a
+          los dos bordes — reportado por el dueño el 2026-10-23 con la captura
+          y los dos lados señalados en rojo.
+
+          SE LEÍA COMO DOS COLUMNAS DISTINTAS en la misma hoja, que es lo que
+          la regla de `DESIGN-SYSTEM.md` evita: 16px a los lados, todas las
+          pantallas. El `pb-6` es el aire de abajo que la hoja tampoco tenía.
+
+          VA AQUÍ Y NO EN `SheetContent`: ese componente lo usan todas las
+          hojas de la app, varias de las cuales ponen su propio relleno
+          dentro. Cambiarlo allí sumaría dos rellenos en todas ellas. */}
+      <div className="flex flex-col gap-3 px-4 pb-6">
         <Input
           autoFocus
           placeholder="Nombre o cédula del cliente"
@@ -557,7 +614,7 @@ function ClientSearchDialogBody({
     </>
   ) : (
     <>
-      <DialogHeader>
+      <SheetHeader>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -568,12 +625,12 @@ function ClientSearchDialogBody({
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <DialogTitle>Registrar cliente nuevo</DialogTitle>
+          <SheetTitle>Registrar cliente nuevo</SheetTitle>
         </div>
-        <DialogDescription>
+        <SheetDescription>
           Negocio: {businessName} · queda con el primer movimiento registrado.
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
       <form
         ref={setFormRef}
         action={formAction}
@@ -588,7 +645,9 @@ function ClientSearchDialogBody({
             setConsentDialog(true);
           }
         }}
-        className="flex flex-col gap-4"
+        // Los mismos 16px del cuerpo de arriba: el alta de cliente es la
+        // segunda cara de esta hoja y tenía el mismo borde a borde.
+        className="flex flex-col gap-4 px-4 pb-6"
       >
         <input type="hidden" name="confirm_duplicate" defaultValue="false" />
         {/* Viaja siempre: en el alta de cliente la casilla se ensena siempre,
@@ -836,16 +895,33 @@ function ClientSearchDialogBody({
 
         {/* Encima de "Guardar fiado", donde el dueño está mirando cuando
             decide. El cliente todavía no existe, así que el nombre sale del
-            campo que se está tecleando y la frase se arma con él. */}
-        <WhatsappConsentField
-          clientName={nameValue}
-          hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
-          checked={consent}
-          onCheckedChange={setConsent}
-          disabled={pending}
-        />
+            campo que se está tecleando y la frase se arma con él.
 
-        <DialogFooter>
+            EL AVISO ES EL DE UN ALTA, Y NO EL DEL CAMPO. Esto se hacía con
+            `WhatsappConsentField` y su propia frase de «ya tiene permiso», que
+            está escrita para un cliente que YA EXISTE. Cuando el número acepta
+            pero la ficha es de OTRA bodega no hay nombre que poner, y la frase
+            caía en «Este cliente ya tiene activadas las notificaciones» — sobre
+            un cliente que todavía no existe, y atribuyéndole a él un permiso
+            que es del número. Visto en pantalla el 2026-10-21.
+
+            `AvisoNumeroYaAcepta` es el que ya usan las otras dos altas y dice
+            las dos cosas bien: con nombre cuando la ficha es del propio
+            tendero, y «este número» cuando no lo es. */}
+        {permisoDelNuevo?.granted === true ? (
+          <AvisoNumeroYaAcepta clientName={permisoDelNuevo.clientName} />
+        ) : (
+          <WhatsappConsentField
+            clientName={nameValue}
+            hasWhatsapp={consentPhoneKey(whatsappValue) !== null}
+            yaTienePermiso={false}
+            checked={consent}
+            onCheckedChange={setConsent}
+            disabled={pending}
+          />
+        )}
+
+        <SheetFooter>
           {state.duplicate ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -873,7 +949,7 @@ function ClientSearchDialogBody({
               {pending ? "Guardando fiado..." : "Guardar fiado"}
             </Button>
           )}
-        </DialogFooter>
+        </SheetFooter>
       </form>
 
       <WhatsappConsentDialog

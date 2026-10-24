@@ -1,5 +1,6 @@
 "use client";
 
+import { parseAmount } from "@/lib/products/price";
 import type React from "react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,9 @@ export function BsAmountPreview({
   rateContext: MovementRateContext;
   usarPrevista?: boolean;
 }) {
-  const parsed = Number(amount);
+  // Mismo caso que `montoConvertido`: con `Number` una cifra con coma o con
+  // separador de miles valía `NaN` y la tarjeta de equivalencia desaparecía.
+  const parsed = parseAmount(amount) ?? Number.NaN;
   const hasAmount = Number.isFinite(parsed) && parsed > 0;
   // La misma tasa que el servidor va a sellar, no una copia calculada aparte:
   // el objeto viene del servidor y la casilla solo elige cuál de las dos usar.
@@ -183,8 +186,13 @@ export function montoConvertido(
   rateContext: MovementRateContext,
   usarPrevista: boolean,
 ): number | null {
-  const bs = Number(bolivares);
-  if (!Number.isFinite(bs) || bs <= 0) return null;
+  // `parseAmount` Y NO `Number(...)`: `Number("1.234,50")` es `NaN`, y antes
+  // eso devolvía `null` --la equivalencia simplemente no se dibujaba-- con el
+  // campo lleno y el tendero sin saber por qué. El lector de dinero del repo
+  // entiende los miles y las dos convenciones de decimal. Arreglado el
+  // 2026-10-23; era un defecto anterior al formateo de ese día.
+  const bs = parseAmount(bolivares);
+  if (bs == null || !Number.isFinite(bs) || bs <= 0) return null;
   const prevista = rateContext.prevista;
   const tasa = usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext.effectiveRate;
   const porUnidad = destino === "USD" ? tasa.usd : tasa.eur;
@@ -303,7 +311,13 @@ export function ResumenMonto({
   const tasa =
     usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext?.effectiveRate;
   // Lo tecleado gana siempre sobre lo calculado.
-  const tecleados = Number(bolivaresTecleados);
+  //
+  // `parseAmount` Y NO `Number(...)`: esta tarjeta la dibuja la pantalla del
+  // abono, cuyo campo agrupa los miles desde el 2026-10-23. `Number("20.000")`
+  // es VEINTE, así que el recuadro que existe para que el tendero confirme lo
+  // que escribió le habría enseñado `Bs. 20,00` con `20.000` en el campo —
+  // justo el error que esta tarjeta está aquí para evitar.
+  const tecleados = parseAmount(bolivaresTecleados) ?? Number.NaN;
   const bs =
     bolivaresTecleados && Number.isFinite(tecleados) && tecleados > 0
       ? tecleados

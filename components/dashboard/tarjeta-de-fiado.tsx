@@ -55,6 +55,7 @@ export function TarjetaDeFiado({
   href,
   onClick,
   mostrarPendiente = true,
+  conChevron,
 }: {
   fiado: FiadoAbierto;
   rates: BolivarRates | null;
@@ -70,6 +71,23 @@ export function TarjetaDeFiado({
   // está mirando sin moverse de sitio.
   href?: string;
   onClick?: () => void;
+  // ── ¿HAY «›»? ──────────────────────────────────────────────────────
+  //
+  // Se dibujaba SIEMPRE, incluso donde la tarjeta no abría nada: en la lista
+  // de «Así se reparte el pago» y en la hoja de «Repartir abono» no llevaba
+  // ni `href` ni `onClick`, así que la flecha prometía una pantalla que no
+  // existía. El dueño lo reportó el 2026-10-23 señalando la de la hoja.
+  //
+  // OBLIGATORIA Y SIN VALOR POR DEFECTO, igual que `conAcciones` en
+  // `tarjeta-de-abono.tsx` y por lo que allí costó: un `= true` devolvería la
+  // flecha en silencio el día que alguien monte esta tarjeta en un sitio
+  // nuevo y no se acuerde de pasarla. Así no compila.
+  //
+  // NO SE DEDUCE DE `href`, y se probó: en la hoja la tarjeta SÍ navega —al
+  // detalle de la transacción— y aun así va sin flecha, porque la fila ya
+  // lleva un botón «Pagar» al lado. Dos señales de «aquí se toca» en la misma
+  // fila, apuntando a sitios distintos, es justo lo que confunde.
+  conChevron: boolean;
 }) {
   // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Fiado · lo que se llevó». Si la
   // venta trae productos van ellos; si no, lo que el tendero escribió; y si no
@@ -124,13 +142,33 @@ export function TarjetaDeFiado({
             {fiado.currency ? (
               <CurrencyFlagIcon currency={fiado.currency} className="size-3.5 shrink-0" />
             ) : null}
-            +{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
+            {/* ── «−» PORQUE ES UN FIADO ───────────────────────────────────
+                Regla del dueño del 2026-10-22, repetida el 2026-10-23 al ver
+                esta misma tarjeta: *«en el historial los fiados se ven con
+                signo negativo pero en registrar abono se ven con saldo
+                positivo, revisa que en todo el app sea consistente: abonos y
+                de contados con "+", fiados con "-"»*.
+
+                EL SIGNO ES EL DEL DINERO DEL TENDERO, no el de la deuda del
+                cliente: un fiado es mercancía que sale sin cobrar, un abono es
+                dinero que entra. Por eso el fiado va en rojo Y con menos, y
+                esta tarjeta llevaba el color bien y el signo al revés.
+
+                DESPLAZA UNA DECISIÓN TOMADA DESDE UN FRAME. `tarjeta-de-abono`
+                documenta que el frame `1465:18552` dibuja «+» en rojo también
+                en la tarjeta del fiado, y por eso esta la llevaba. La regla de
+                consistencia gana: un mismo fiado no puede salir con «+» en una
+                pantalla y con «−» en otra, que es exactamente lo que el dueño
+                vio. */}
+            -{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
           </span>
           {enBs != null ? (
             <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
           ) : null}
         </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {conChevron ? (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : null}
       </div>
     </>
   );

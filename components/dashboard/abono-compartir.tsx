@@ -32,13 +32,23 @@ export function AbonoCompartir({
   comprador,
   abono,
   rates,
+  fecha,
 }: {
   comprador: { nombre: string; documento: string; telefono: string };
   abono: AbonoDelResumen;
   rates: BolivarRates | null;
+  // CUÁNDO PASÓ, YA FORMATEADO EN EL SERVIDOR y en la zona del negocio.
+  //
+  // No se formatea aquí aunque este componente tenga el ISO a mano: esto corre
+  // en el teléfono del tendero, y `Intl` sin zona usaría la suya. Normalmente
+  // coincide; de viaje, o con el móvil mal puesto, no. Un recibo con la fecha
+  // de otro país es peor que uno sin fecha.
+  fecha: string | null;
+  // Para que la pantalla que lo monta pueda anclarlo al fondo. Ver allí por
+  // qué hace falta y por qué el `pb` de `app-main` no bastaba.
 }) {
   function compartir() {
-    const blob = dibujarResumenDeAbono({ comprador, abono, rates });
+    const blob = dibujarResumenDeAbono({ comprador, abono, rates, fecha });
 
     if (blob != null) {
       const fichero = new File([blob], "abono-sevenz.png", { type: "image/png" });
@@ -59,7 +69,7 @@ export function AbonoCompartir({
       return;
     }
 
-    const texto = textoDelAbono(comprador.nombre, abono);
+    const texto = textoDelAbono(comprador.nombre, abono, fecha);
     if (navigator.share) {
       void navigator.share({ text: texto }).catch(() => {});
       return;
@@ -85,11 +95,13 @@ export function AbonoCompartir({
 
 // El respaldo en texto. Dice lo mismo que la imagen y en el mismo orden, para
 // que quien lo reciba por este camino no lea una cuenta distinta.
-function textoDelAbono(nombre: string, a: AbonoDelResumen): string {
-  const lineas = [
-    `Abono de ${nombre}`,
-    `Abonó: ${formatPriceAmount(a.abonado, a.currency)}`,
-  ];
+function textoDelAbono(nombre: string, a: AbonoDelResumen, fecha: string | null): string {
+  const lineas = [`Abono de ${nombre}`];
+  // LA FECHA TAMBIÉN EN EL RESPALDO DE TEXTO. Es el camino por el que se
+  // comparte cuando el dibujo falla, y dejarlo sin fecha haría que el recibo
+  // dijera una cosa u otra según cómo se compartiera.
+  if (fecha) lineas.push(fecha);
+  lineas.push(`Abonó: ${formatPriceAmount(a.abonado, a.currency)}`);
   if (a.entregadoBs != null) lineas.push(`Entregó: ${formatBs(a.entregadoBs)}`);
   lineas.push(
     a.deuda > 0.005 ? `Deuda total: ${formatPriceAmount(a.deuda, a.currency)}` : "Sin deuda",

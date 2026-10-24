@@ -809,7 +809,40 @@ export async function getOrCreateShareLink(clientId: string): Promise<{ token: s
 // Soft-deletes a movement the owner registered by mistake. The row stays in
 // place (deleted_at set) so it can be restored later from a notification;
 // every movement after it gets its running_balance rewritten to match.
-export async function deleteMovement(movementId: string): Promise<{ error: string | null }> {
+//
+// ===========================================================================
+// `conAbonos`: QUÉ PASA CON LO QUE YA SE LE ABONÓ A ESTE FIADO
+//
+// Encargo del dueño el 2026-10-23: *«al eliminar el fiado pregunta en la modal
+// de confirmación si quiere eliminar también el abono o solo el fiado»*.
+//
+// POR QUÉ HACÍA FALTA PREGUNTAR Y NO DECIDIRLO AQUÍ: las dos respuestas son
+// correctas y describen dos cosas distintas que pasan en un mostrador.
+//
+//   * «Me equivoqué al anotar el fiado» — el fiado no existió, pero el
+//     cliente SÍ le dio ese dinero. El abono se queda y sigue descontando del
+//     saldo. Es el valor por defecto porque es el caso que no pierde dinero
+//     de nadie.
+//   * «Esto nunca pasó» — se anuló la venta entera. Entonces el abono tampoco
+//     existió y se va con el fiado.
+//
+// Borrar siempre los abonos le quitaría al cliente un pago que hizo de verdad.
+// No borrarlos nunca deja un abono suelto descontando de un saldo que ya no
+// tiene a qué aplicarse. Por eso lo decide quien estaba en el mostrador.
+//
+// SOLO LOS DIRIGIDOS A ESTE FIADO (`applies_to_movement_id`). Un abono que la
+// cola FIFO repartió sobre el saldo total no es «de» este fiado y no se toca:
+// no hay forma de saber qué parte le correspondía.
+//
+// LOS DOS SE PUEDEN RESTAURAR: cada fila borrada entra en `movement_deletions`
+// por separado, así que en Notificaciones salen como dos avisos. Restaurar el
+// fiado NO devuelve sus abonos solo, y eso es a propósito: devolverlos juntos
+// exigiría recordar que se borraron juntos, que es un dato que esta tabla no
+// guarda. Dos avisos dicen la verdad; uno que restaura dos cosas, no.
+export async function deleteMovement(
+  movementId: string,
+  opciones?: { conAbonos?: boolean },
+): Promise<{ error: string | null }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -844,9 +877,37 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     return { error: "No encontramos esa transacción." };
   }
 
+  const borradoEn = new Date().toISOString();
+
+  // LOS ABONOS PRIMERO, y el fiado después. Si el borrado de los abonos falla,
+  // el fiado sigue vivo y la pantalla no ha cambiado: el tendero vuelve a
+  // intentarlo. Al revés —fiado primero— un fallo dejaría exactamente lo que
+  // este encargo existe para evitar: un abono apuntando a un fiado que ya no
+  // está, que es el 404 que el dueño reportó el 2026-10-23.
+  //
+  // `.eq("client_id", movement.client_id)` NO SOBRA aunque ya sepamos de quién
+  // es el fiado: `applies_to_movement_id` es una FK suelta a `movements (id)`
+  // y nada obliga a que apunte dentro del mismo cliente. Es la misma cautela
+  // que ya lleva la consulta de abonos de `transacciones/[movementId]`.
+  let abonosBorrados: string[] = [];
+  if (opciones?.conAbonos) {
+    const { data: abonos, error: abonosError } = await supabase
+      .from("movements")
+      .update({ deleted_at: borradoEn })
+      .eq("applies_to_movement_id", movementId)
+      .eq("client_id", movement.client_id)
+      .eq("type", "payment")
+      .is("deleted_at", null)
+      .select("id");
+    if (abonosError) {
+      return { error: mensajeDeError("eliminar los abonos", abonosError, "deleteMovement") };
+    }
+    abonosBorrados = (abonos ?? []).map((a) => a.id as string);
+  }
+
   const { error: deleteError } = await supabase
     .from("movements")
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: borradoEn })
     .eq("id", movementId);
 
   if (deleteError) {
@@ -860,11 +921,16 @@ export async function deleteMovement(movementId: string): Promise<{ error: strin
     return { error: mensajeDeError("recalcular el saldo", recalcError, "recalc") };
   }
 
-  const { error: notifyError } = await supabase.from("movement_deletions").insert({
-    movement_id: movementId,
-    owner_id: user.id,
-    client_id: movement.client_id,
-  });
+  // UNA FILA POR MOVIMIENTO BORRADO. Ver la cabecera: dos avisos separados en
+  // Notificaciones, porque restaurar los dos juntos exigiría guardar que se
+  // borraron juntos y esta tabla no lo guarda.
+  const { error: notifyError } = await supabase.from("movement_deletions").insert(
+    [movementId, ...abonosBorrados].map((id) => ({
+      movement_id: id,
+      owner_id: user.id,
+      client_id: movement.client_id,
+    })),
+  );
   if (notifyError) {
     console.error("deleteMovement: failed to record notification", notifyError);
   }

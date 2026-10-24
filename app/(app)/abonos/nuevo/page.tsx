@@ -4,8 +4,10 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
-import { AbonoSeleccionarFiado, type FiadoAbierto } from "@/components/dashboard/abono-seleccionar-fiado";
+import { AbonoReparto } from "@/components/dashboard/abono-reparto";
+import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import type { LedgerCurrency } from "@/lib/types";
 
 export const metadata = { title: "Registrar abono — Sevenz" };
 
@@ -44,7 +46,7 @@ export default async function NuevoAbonoPage({
   // regla de `CLAUDE.md`: la política es el respaldo, esto es el candado.
   const { data: cliente } = await supabase
     .from("clients")
-    .select("id, name")
+    .select("id, name, whatsapp")
     .eq("id", clienteId)
     .eq("owner_id", user.id)
     .is("trashed_at", null)
@@ -130,12 +132,31 @@ export default async function NuevoAbonoPage({
     descripcion: f.description,
   }));
 
+  // ── EL PERMISO DE WHATSAPP ───────────────────────────────────────────
+  //
+  // De `client_accepts_whatsapp`, la MISMA función que decide si el recibo
+  // sale. Una consulta propia aquí serían dos definiciones de «acepta», y la
+  // que decide si se manda un mensaje no puede discrepar de la que decide si
+  // se pregunta.
+  const { data: acepta } = await supabase.rpc("client_accepts_whatsapp", {
+    p_client_id: cliente.id,
+  });
+
+  // LOS LIBROS EN LOS QUE ESTE CLIENTE DEBE ALGO. Casi siempre uno; una bodega
+  // venezolana puede tener un cliente con un fiado en dólares y otro en euros,
+  // y un reparto no mezcla monedas --decisión del dueño del 2026-10-22--.
+  const libros = [...new Set(filas.map((f) => f.currency ?? null))];
+
   return (
-    <AbonoSeleccionarFiado
+    <AbonoReparto
       clienteId={cliente.id}
       clienteNombre={cliente.name as string}
+      clienteTieneWhatsapp={Boolean((cliente.whatsapp as string | null)?.trim())}
+      yaAceptaAvisos={acepta === true}
       fiados={fiados}
+      libros={libros as (LedgerCurrency | null)[]}
       rates={rates}
+      paisVE={resultado.kind === "ve"}
     />
   );
 }

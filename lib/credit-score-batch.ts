@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { computeCreditScore, type CreditScoreResult } from "@/lib/credit-score";
-import { combinedBalanceUsd, toCombinedUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
+import { combinedBalanceUsd, type EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, Movement } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -10,10 +10,20 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 // queries instead of one per client, grouped in JS and fed through the same
 // pure computeCreditScore() the client detail page uses for a single client.
 //
-// effectiveRate is only present for a VE owner. Movements are converted to
-// USD before scoring — computeCreditScore's FIFO payment-matching assumes
-// every movement is one comparable unit, and a EUR payment could otherwise
-// appear to close a USD charge just because it's the oldest unpaid one.
+// effectiveRate is only present for a VE owner, and it is used for the BALANCE
+// only.
+//
+// MOVEMENTS ARE NO LONGER CONVERTED, and that is the fix for `CT-124`'s second
+// half. The conversion was here to stop a EUR payment closing a USD charge --
+// but it never did that: converting makes the amounts comparable, it does not
+// separate the ledgers, and the walk was still one queue for both currencies.
+// `buildChargeLedger` now keeps one ledger per currency, exactly like
+// `get_open_charges_for_client`, so each is measured in its own money.
+//
+// It also removes a bug the conversion caused: converted amounts carry
+// decimals the database never stores, the walk rounds at every step, and a
+// 3 EUR fiado paid with three 1 EUR payments ended at 0.01 and never closed --
+// then counted as paid late.
 export async function computeCreditScoresForClients(
   supabase: SupabaseServerClient,
   rows: ClientSummary[],
@@ -25,7 +35,7 @@ export async function computeCreditScoresForClients(
   const [{ data: movements }, { data: flags }] = await Promise.all([
     supabase
       .from("movements")
-      .select("client_id, type, amount, currency, created_at, plazo_dias")
+      .select("id, client_id, type, amount, currency, created_at, plazo_dias, applies_to_movement_id")
       .in("client_id", clientIds)
       .is("deleted_at", null),
     supabase
@@ -38,13 +48,14 @@ export async function computeCreditScoresForClients(
 
   const movementsByClient = new Map<
     string,
-    Pick<Movement, "type" | "amount" | "created_at" | "plazo_dias">[]
+    Pick<
+      Movement,
+      "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
+    >[]
   >();
   for (const m of movements ?? []) {
     const list = movementsByClient.get(m.client_id) ?? [];
-    list.push(
-      effectiveRate ? { ...m, amount: toCombinedUsd(m.amount, m.currency, effectiveRate) } : m,
-    );
+    list.push(m);
     movementsByClient.set(m.client_id, list);
   }
 

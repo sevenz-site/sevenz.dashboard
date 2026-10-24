@@ -1,5 +1,9 @@
 import { ETIQUETA_DEL_ESTADO, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
-import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
+import {
+  CLIENT_STATUS_BADGE_CLASS,
+  CLIENT_STATUS_LABEL,
+  type ClientStatus,
+} from "@/lib/types";
 
 // EL CHIP DE «Dentro del plazo» / «Plazo vencido» / «Pagado».
 //
@@ -49,12 +53,62 @@ const ESTILO: Record<EstadoDelPlazo, string> = {
 // Quien lo monte tiene que darle sitio. Es la regla al revés de lo normal --
 // aquí NO cede el chip, cede la columna de al lado-- y es deliberada: el
 // estado es la respuesta de esa fila.
-export function ChipDeEstado({ estado }: { estado: EstadoDelPlazo }) {
+// ── «A FAVOR» ENTRA AQUÍ, Y NO ES UN ESTADO DEL PLAZO ──────────────────
+//
+// Lo pidió el dueño el 2026-10-23, viendo un «Total por cobrar» en verde con
+// un signo menos: *«si el motivo es porque el cliente tiene saldo a favor
+// entonces pongámosle el chip "A favor"»*.
+//
+// NO SE AÑADE A `EstadoDelPlazo`, que describe cómo va un FIADO respecto de su
+// plazo. Que un cliente tenga saldo a favor no es eso: es un estado de su
+// CUENTA, y ya vive en `ClientStatus` con su etiqueta y su color.
+//
+// Y ENTRA EN ESTE COMPONENTE EN VEZ DE EN UNO NUEVO porque la pastilla —su
+// forma, su borde, su `whitespace-nowrap`— ya está resuelta aquí, con las
+// razones escritas arriba. Un segundo chip con las clases copiadas es
+// exactamente cómo nació la discrepancia de colores que esta cabecera cuenta.
+// ── Y «CRÍTICO» TAMBIÉN, desde el 2026-10-23 ───────────────────────────
+//
+// Lo pidió el dueño al no encontrar en el historial el fiado que ponía
+// «Crítico» a su tarjeta de euros: *«Mariangel tiene estado crítico en su
+// cuenta por cobrar en Euros (…) pero al buscar esa transacción en estado
+// crítico en historial no logré encontrarla»*. No podía: ningún fiado podía
+// estarlo, porque «Crítico» no era un estado del plazo sino de la CUENTA —
+// debe, y lleva más de 30 días sin abonar nada.
+//
+// Se le ofrecieron las dos salidas y eligió que la fila hable el mismo
+// idioma que la tarjeta. Así el filtro lleva al fiado culpable en vez de
+// dejar al tendero buscando una palabra que el historial no decía nunca.
+//
+// LO QUE CUESTA, dicho al elegirlo: un fiado pasa de «Sin plazo» a
+// «Crítico» sin que nadie lo toque, solo porque corren los días.
+//
+// ===========================================================================
+// POR QUÉ EL TIPO ES LA UNIÓN DE LOS DOS VOCABULARIOS
+//
+// `EstadoDelPlazo` tiene tres valores —`dentro`, `vencido`, `pagado`— y
+// `ClientStatus` seis, con dos que significan lo mismo escritos distinto
+// (`dentro_del_plazo`, `plazo_vencido`). No se fusionan: el primero describe
+// un FIADO contra su plazo y el segundo una CUENTA, y hay sitios que siguen
+// hablando solo el primero —la tabla de cuotas, los abonos dentro de un
+// fiado—. Este chip los pinta a los dos y resuelve cada uno por su tabla.
+export type EstadoDelChip = EstadoDelPlazo | ClientStatus;
+
+const DEL_PLAZO = new Set<string>(["dentro", "vencido", "pagado"]);
+
+export function ChipDeEstado({ estado }: { estado: EstadoDelChip }) {
+  const delPlazo = DEL_PLAZO.has(estado);
+  const clase = delPlazo
+    ? ESTILO[estado as EstadoDelPlazo]
+    : CLIENT_STATUS_BADGE_CLASS[estado as ClientStatus];
+  const texto = delPlazo
+    ? ETIQUETA_DEL_ESTADO[estado as EstadoDelPlazo]
+    : CLIENT_STATUS_LABEL[estado as ClientStatus];
   return (
     <span
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${ESTILO[estado]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${clase}`}
     >
-      {ETIQUETA_DEL_ESTADO[estado]}
+      {texto}
     </span>
   );
 }

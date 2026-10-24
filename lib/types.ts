@@ -231,6 +231,28 @@ export type ClientSummary = {
   // cliente no debe nada: la función no devuelve fila y el left join deja
   // todo en nulo.
   overdue_charge_count?: number | null;
+  // ── LO MISMO, UN JUEGO POR LIBRO — migración `146`, `CT-137` ────────
+  //
+  // El cuarteto de arriba es del cliente ENTERO, así que un chip calculado
+  // con él mezcla los dos libros. Con 158,50 $ a favor y 3,50 € de deuda la
+  // lista decía «A favor» con la deuda impresa al lado. Estos doce campos son
+  // los que dejan juzgar cada libro por separado.
+  //
+  // OPCIONALES, y el `undefined` significa algo: la clave AUSENTE es una base
+  // sin la `146` corrida, y ahí `estadoDeCliente` vuelve al juicio combinado
+  // de siempre. `null` es otra cosa — es un libro sin nada abierto.
+  worst_unpaid_charge_at_cop?: string | null;
+  worst_unpaid_charge_plazo_dias_cop?: number | null;
+  worst_unpaid_charge_due_at_cop?: string | null;
+  overdue_charge_count_cop?: number | null;
+  worst_unpaid_charge_at_usd?: string | null;
+  worst_unpaid_charge_plazo_dias_usd?: number | null;
+  worst_unpaid_charge_due_at_usd?: string | null;
+  overdue_charge_count_usd?: number | null;
+  worst_unpaid_charge_at_eur?: string | null;
+  worst_unpaid_charge_plazo_dias_eur?: number | null;
+  worst_unpaid_charge_due_at_eur?: string | null;
+  overdue_charge_count_eur?: number | null;
 };
 
 // client_summary_all — the same view without the "hide the hidden" filter.
@@ -363,11 +385,26 @@ export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
 // contador es cero por definición, y en «Sin deuda» o «A favor» no hay nada
 // que contar. `critico` lo lleva a petición del dueño: es un plazo vencido
 // agravado por los 30 días sin abonar, así que el número significa lo mismo.
-export function clientStatusLabel(status: ClientStatus, overdueCount: number | null): string {
+export function clientStatusLabel(
+  status: ClientStatus,
+  overdueCount: number | null,
+  // DESDE UNO, en las tarjetas de «Por cobrar» de cada moneda. El dueño las
+  // pidió con contador el 2026-10-23 y volvió a reclamarlo al verlas sin
+  // número: su cliente tenía UN vencido en cada libro, y con el umbral de dos
+  // —el de las listas— las dos salían sin cifra, que desde fuera se lee como
+  // que el contador no se puso.
+  //
+  // Las LISTAS conservan el umbral, y la razón sigue en pie: ahí un «(1)»
+  // le pondría número a casi todas las filas y dejaría de destacar al cliente
+  // con cinco. En una tarjeta de libro no hay filas que comparar — hay dos
+  // tarjetas— así que el número es información y no ruido.
+  desdeUno = false,
+): string {
   const base = CLIENT_STATUS_LABEL[status];
   const count = overdueCount ?? 0;
-  const showsCount =
-    (status === "plazo_vencido" || status === "sin_plazo" || status === "critico") && count > 1;
+  const llevaContador =
+    status === "plazo_vencido" || status === "sin_plazo" || status === "critico";
+  const showsCount = llevaContador && count > (desdeUno ? 0 : 1);
   return showsCount ? `${base} (${count})` : base;
 }
 

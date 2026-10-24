@@ -42,7 +42,6 @@ export type AbonoDirigido = {
   entryAmount?: number | null;
   // Lo máximo que admite su fiado contando este abono, para el tope del
   // diálogo. `null` en un abono sin dirigir.
-  techo?: number | null;
 };
 
 export function TarjetaDeAbono({
@@ -51,8 +50,21 @@ export function TarjetaDeAbono({
   inicial = false,
   pendienteTras = null,
   conAcciones,
+  resaltado = false,
 }: {
   abono: AbonoDirigido;
+  // ── EL ABONO POR EL QUE SE ENTRÓ, MARCADO ───────────────────────────
+  //
+  // Frame `1489:10231`, encargo del dueño el 2026-10-22: *«El abono que se
+  // abre desde el historial debe verse resaltado en el detalle del fiado
+  // (background Accent y border primary), para que el usuario tenga el cue
+  // visual de cuál fue el abono que seleccionó para abrir»*.
+  //
+  // POR QUÉ HACE FALTA: desde el 2026-10-22 la fila de un abono en el
+  // historial abre el FIADO, no el abono. El tendero toca «Abono · Casco, 20
+  // de oct» y aterriza en una ficha con tres tarjetas de abono casi iguales,
+  // sin ninguna pista de cuál era la suya. Esto se la da.
+  resaltado?: boolean;
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
   // de «elegir uno» dentro de un flujo, así que no necesita `onClick`.
   // EL ESTADO DE LA CUOTA QUE ESTE ABONO CUBRIÓ — frame `1489:10209`, y es la
@@ -95,10 +107,11 @@ export function TarjetaDeAbono({
   // de editar y eliminar el abono, está mal»*. Tiene razón, y además son
   // acciones que no son suyas.
   //
-  // QUÉ PASABA DE VERDAD SI LAS TOCABA: nada. `deleteMovement` y
-  // `editarAbonoDirigido` piden sesión y comprueban que el cliente sea del
-  // dueño que llama, así que le habrían contestado «Sesión expirada, vuelve a
-  // entrar». No era una fuga; era ofrecerle una puerta que no abre.
+  // QUÉ PASABA DE VERDAD SI LAS TOCABA: nada. `deleteMovement` pide sesión y
+  // comprueba que el cliente sea del dueño que llama, así que le habría
+  // contestado «Sesión expirada, vuelve a entrar». No era una fuga; era
+  // ofrecerle una puerta que no abre. (Hasta el 2026-10-23 el menú traía
+  // además «Editar abono» y valía lo mismo para su acción.)
   //
   // OBLIGATORIA Y SIN VALOR POR DEFECTO, igual que `conAbono` en
   // `movement-type-filter.tsx` y por lo que allí costó: un `= true` devolvería
@@ -138,7 +151,16 @@ export function TarjetaDeAbono({
     // puede hacer con un abono es editarlo o borrarlo, y las dos están en el
     // «⋮». Un toque en cualquier otro punto se lo llevaba de la ficha del
     // fiado que estaba leyendo, sin haber pedido nada.
-    <div className={`${CLASE_TARJETA} gap-2`}>
+    // `bg-accent border-primary` SON LOS TOKENS DEL FRAME, no un gris
+    // cualquiera: el mismo relleno que usa el resto de la app para «esto está
+    // seleccionado», y un borde del color del texto, que es lo único que se
+    // distingue sin depender del color.
+    <div
+      className={`${CLASE_TARJETA} gap-2 ${resaltado ? "border-primary bg-accent" : ""}`}
+      // Para que un lector de pantalla no se pierda la única señal que esta
+      // tarjeta tiene de ser la que se vino a ver.
+      aria-current={resaltado ? "true" : undefined}
+    >
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
       {/* LA FECHA ARRIBA Y EL CHIP DEBAJO, sin título — frame `1489:10209`,
           nodos `1489:10233` y el `chip_info` de al lado.
@@ -243,7 +265,6 @@ export function TarjetaDeAbono({
         movementId={abono.movementId}
         montoTecleado={abono.entryAmount ?? abono.amount}
         monedaTecleada={abono.entryCurrency ?? abono.currency}
-        techo={abono.techo ?? null}
         monedaDelLibro={abono.currency}
       />
       )}

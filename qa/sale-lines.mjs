@@ -430,6 +430,115 @@ try {
     lineasHuerfanas === 0 && pagosHuerfanos === 0,
     `${lineasHuerfanas} líneas · ${pagosHuerfanos} pagos sobrevivieron`,
   );
+  // ── 10. LO QUE RECIBE EL CLIENTE, LEÍDO COMO ANON ────────────────
+  //
+  // Migration 139 added `productos` to `get_shared_balance`. This reads it the
+  // way the client's page does -- with the anon key and a token, no session --
+  // because that is the only caller there will ever be, and the service role
+  // would answer this question for a reader that does not exist.
+  const { data: enlace } = await admin
+    .from("share_links")
+    .insert({ client_id: cliente.id })
+    .select("token")
+    .single();
+
+  // A SECOND LINE IN ANOTHER BOOK, on the same sale as the USD charge. This is
+  // the 2026-10-20 bug made into a check: a mixed sale used to travel whole,
+  // so the screen added ten dollars to what was paid in euros.
+  await admin.from("sale_lines").insert({
+    sale_id: ventaCredito.id,
+    product_id: null,
+    name: `${MARCA} en euros`,
+    quantity: 1,
+    unit_price: 7,
+    currency: "EUR",
+  });
+
+  // AND A PAYMENT IN THAT OTHER BOOK, so the sale is paid in two currencies.
+  // Migration 140 is what makes the client's `abono_inicial` ignore it: until
+  // then `get_shared_balance` summed every payment of the sale with no filter,
+  // so a real fiado of 40,69 EUR whose sale also took 10 USD told the customer
+  // he had paid 50,45 EUR — more than the debt, in a book he never paid into.
+  //
+  // DEV HAD EXACTLY ONE SALE LIKE THIS, which is why it went unnoticed for two
+  // days. That is the reason this row builds its own instead of looking for
+  // one: a check that depends on a single fixture row existing stops checking
+  // the day somebody cleans it up, and says nothing when it does.
+  await admin.from("sale_payments").insert({
+    sale_id: ventaCredito.id,
+    currency: "EUR",
+    amount: 7,
+  });
+
+  // A CHARGE WITH NO SALE BEHIND IT -- everything from before 2026-10-17 and
+  // everything the libreta imports. `productos` has to arrive as `[]`, not
+  // null: the page maps over it without asking first.
+  const { data: sinVenta } = await admin
+    .from("movements")
+    .insert({
+      client_id: cliente.id,
+      type: "charge",
+      amount: 3,
+      currency: "USD",
+      description: `${MARCA} sin venta`,
+    })
+    .select("id")
+    .single();
+  movimientos.push(sinVenta.id);
+
+  const anonCliente = createClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  const r10 = await anonCliente.rpc("get_shared_balance", { p_token: enlace.token });
+  const movs = r10.data?.movements ?? [];
+  const elCargo = movs.find((m) => m.id === cargo.id);
+  const elSuelto = movs.find((m) => m.id === sinVenta.id);
+
+  check(
+    "10. el CLIENTE ve lo que se llevó — nombre, cantidad y precio, sin sesión",
+    elCargo != null &&
+      Array.isArray(elCargo.productos) &&
+      elCargo.productos.length === 1 &&
+      elCargo.productos[0].name === `${MARCA} producto` &&
+      Number(elCargo.productos[0].quantity) === 1 &&
+      Number(elCargo.productos[0].unit_price) === 10,
+    r10.error
+      ? r10.error.message
+      : elCargo == null
+        ? "EL CARGO NO VIAJÓ — la comprobación no mide nada"
+        : JSON.stringify(elCargo.productos),
+  );
+
+  check(
+    "10b. y SOLO las de su moneda — la línea en euros no entra en el fiado en dólares",
+    elCargo != null &&
+      Array.isArray(elCargo.productos) &&
+      !elCargo.productos.some((p) => /en euros/.test(p.name)),
+    elCargo == null ? "EL CARGO NO VIAJÓ" : JSON.stringify(elCargo.productos),
+  );
+
+  check(
+    "10c. un cargo sin venta detrás llega con `[]`, no con null — la página lo recorre sin preguntar",
+    elSuelto != null && Array.isArray(elSuelto.productos) && elSuelto.productos.length === 0,
+    elSuelto == null
+      ? "EL CARGO SUELTO NO VIAJÓ"
+      : `productos = ${JSON.stringify(elSuelto.productos)}`,
+  );
+
+  // THE AMOUNT, NOT JUST THE NAMES. Rows 10 and 10b watch which products
+  // travel; this one watches the figure printed next to them. They broke
+  // separately and were fixed separately — the products by migration 139, the
+  // down payment by 140 — so one row cannot stand in for the other.
+  check(
+    "10d. el abono inicial cuenta SOLO los pagos de su libro — el de euros no entra en el fiado en dólares",
+    elCargo != null && Math.abs(Number(elCargo.abono_inicial) - 5) < 0.005,
+    elCargo == null
+      ? "EL CARGO NO VIAJÓ"
+      : `abono_inicial = ${elCargo.abono_inicial} · la venta cobró 5 USD + 7 EUR, así que lo correcto es 5`,
+  );
+
 } catch (e) {
   check("la suite llegó al final", false, e instanceof Error ? e.message : String(e));
 } finally {

@@ -42,6 +42,7 @@ import {
 } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { telefonoLegible } from "@/lib/phone";
+import { formatReceiptDateTime } from "@/lib/format";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
@@ -94,6 +95,11 @@ type Estado =
       fase: "enviado";
       mensaje: string;
       comprador: { nombre: string; documento: string; telefono: string };
+      // CUÁNDO SE MANDÓ, ya formateada y en la zona del negocio. Viaja en el
+      // estado en vez de leerse del reloj al pintar, por la misma razón que el
+      // resumen: esta pantalla puede quedarse abierta, y entonces «ahora» deja
+      // de ser «cuando se pidió».
+      fecha: string;
       // LOS IDS DE LO COMPRADO, por la MISMA razón que el resumen: esta
       // pantalla se pinta después de vaciar el carrito, así que leerlos de él
       // daría una lista vacía y el carrusel de abajo volvería a ofrecer lo que
@@ -163,6 +169,7 @@ export function CartScreen({
         mensaje={estado.mensaje}
         businessName={businessName}
         comprador={estado.comprador}
+        fecha={estado.fecha}
         resumen={estado.resumen}
         rates={estado.rates}
         relacionados={relacionados}
@@ -426,7 +433,7 @@ export function CartScreen({
         lineas={lineas}
         productos={productos}
         rates={rates}
-        onEnviada={(mensaje, comprador) => {
+        onEnviada={(mensaje, comprador, fecha) => {
           // LA FOTO SE TOMA ANTES DE VACIAR, y el orden importa: `vaciar()`
           // borra las líneas, así que calcular el resumen después daría una
           // pantalla en blanco.
@@ -434,6 +441,7 @@ export function CartScreen({
             fase: "enviado",
             mensaje,
             comprador,
+            fecha,
             resumen: resumenPorMoneda(lineas, productos, rates),
             comprados: lineas.map((l) => l.productId),
             rates,
@@ -480,6 +488,9 @@ function FormularioDeLaOrden({
   onEnviada: (
     mensaje: string,
     comprador: { nombre: string; documento: string; telefono: string },
+    // Cuándo se mandó, ya formateada en la zona del NEGOCIO. Sellada una vez
+    // al guardar: ver el comentario donde se calcula.
+    fecha: string,
   ) => void;
 }) {
   const [nombre, setNombre] = useState("");
@@ -531,6 +542,27 @@ function FormularioDeLaOrden({
         rates,
       );
 
+      // ── CUÁNDO SE HIZO EL PEDIDO ──────────────────────────────────────
+      //
+      // Encargo del dueño el 2026-10-22: el recibo que se comparte no llevaba
+      // fecha, ni la pantalla de «pedido enviado».
+      //
+      // EN LA ZONA DEL NEGOCIO Y NO EN LA DEL COMPRADOR. Esto corre en el
+      // teléfono de QUIEN COMPRA, que puede estar en otro país --y el recibo
+      // acaba en el WhatsApp del tendero--. La fecha de un pedido es el día
+      // del negocio que lo recibe, no el de quien lo manda.
+      //
+      // SE SELLA UNA SOLA VEZ, AQUÍ, y baja a la pantalla siguiente. Volver a
+      // leer el reloj dentro del botón «Compartir» daría la hora de cuando se
+      // comparte, que no es cuando se pidió: el comprador puede dejar esa
+      // pantalla abierta y volver a ella.
+      //
+      // DEL RELOJ Y NO DE LA FILA GUARDADA: `crearPedido` no devuelve su
+      // `created_at`. La diferencia son los milisegundos de la escritura que
+      // acaba de terminar, así que pedirlo costaría una lectura más para
+      // cambiar nada de lo que se lee.
+      const fechaDelPedido = formatReceiptDateTime(new Date().toISOString(), ownerCountry);
+
       // «ENVIAR PEDIDO» MANDA LA FOTO DEL RECIBO, NO EL TEXTO.
       //
       // Decisión del dueño el 2026-10-15 —«para evitar que se edite el texto
@@ -581,6 +613,7 @@ function FormularioDeLaOrden({
         comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
         resumen: resumenPorMoneda(lineas, productos, rates),
         rates,
+        fecha: fechaDelPedido,
       });
       const ficheroRecibo =
         recibo == null
@@ -608,7 +641,7 @@ function FormularioDeLaOrden({
       }
 
       onAbierto(false);
-      onEnviada(mensaje, { nombre, documento, telefono: whatsapp });
+      onEnviada(mensaje, { nombre, documento, telefono: whatsapp }, fechaDelPedido);
     });
   }
 
@@ -740,6 +773,7 @@ function Enviado({
   businessName,
   comprador,
   resumen,
+  fecha,
   rates,
   relacionados,
   yaComprados,
@@ -748,6 +782,10 @@ function Enviado({
   mensaje: string;
   businessName: string;
   comprador: { nombre: string; documento: string; telefono: string };
+  // Cuándo se mandó, ya formateada y en la zona del negocio. Sellada al
+  // guardar el pedido, no leída del reloj aquí: esta pantalla puede quedarse
+  // abierta y «ahora» dejaría de ser «cuando se pidió».
+  fecha: string;
   resumen: ReturnType<typeof resumenPorMoneda>;
   rates: BolivarRates | null;
   relacionados: CatalogStripProduct[];
@@ -804,6 +842,7 @@ function Enviado({
       },
       resumen,
       rates,
+      fecha,
     });
 
     if (blob != null) {
@@ -842,6 +881,10 @@ function Enviado({
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
         <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
         <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
+        {/* LA FECHA, DEBAJO DEL TÍTULO Y EN TENUE — misma posición que en el
+            PNG que se comparte desde aquí, para que la imagen y la pantalla se
+            lean igual. */}
+        <p className="-mt-1 text-sm text-muted-foreground">{fecha}</p>
       </div>
 
       <section className="flex flex-col gap-3 rounded-xl border p-4">

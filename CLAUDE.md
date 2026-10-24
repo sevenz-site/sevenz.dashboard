@@ -374,6 +374,81 @@ question before implementing. Don't guess and bake the guess into code or
 a migration — this is doubly true for anything touching real customer
 balances or money.
 
+## Todo encargo se evalúa por sus bordes antes de construirlo
+
+**Pedido por el dueño el 2026-10-22, después de que un encargo suyo llegara
+a pantalla roto por un caso que él no había nombrado**: *«todo lo que te pida
+debes evaluar los casos bordes, peores escenarios y soluciones»*.
+
+Antes de escribir una línea de cualquier encargo —suyo o salido de una
+reseña— hay que contestar tres preguntas **por escrito, en el reporte**:
+
+1. **¿Dónde se rompe?** Los bordes: cero, uno, muchos; el cliente que debe en
+   dos monedas; el abono sin dirigir; la fila sin tasa; el negocio colombiano;
+   el campo vacío. Los límites de la app ya han costado fallos reales —`CT-124`
+   con el pendiente recalculado, la venta mixta del 2026-10-20 sumando dólares
+   a euros— y todos eran bordes que nadie enumeró.
+2. **¿Cuál es el peor escenario?** No «se ve raro», sino qué pierde el tendero:
+   dinero mal anotado, un cliente al que se le cobra de más, un mensaje que no
+   sale. Y si el peor caso es silencioso, decirlo: un fallo que no avisa vale
+   más atención que uno que revienta.
+3. **¿Qué se hace con cada uno?** Cubrirlo, o decir en voz alta que se deja
+   fuera y por qué. Un borde identificado y no resuelto es una decisión; uno
+   identificado y callado es una trampa.
+
+**El ejemplo que la motivó**: se le quitó a la pantalla de abono su selector de
+libro porque el desplegable del monto lo sustituía. El desplegable ofrecía
+*el libro actual y bolívares* — suficiente con un cliente que debe en una
+moneda, y sin salida para uno que debe en dólares Y en euros, que es justo el
+caso que él tenía en pantalla. El borde existía desde el primer minuto; lo que
+faltó fue enumerarlo.
+
+**Esto no sustituye a «Ask before assuming», lo alimenta**: la lista de bordes
+es de dónde salen las preguntas que merece la pena hacer. Un borde con una
+sola lectura razonable se resuelve y se cuenta; uno con dos se pregunta.
+
+## El botón flotante no puede pisar las acciones de una pantalla
+
+**Antes de dar por terminada cualquier pantalla que acabe en botones —una
+transacción exitosa, una ficha, un resumen— hay que medir si el botón
+flotante «Registrar» cae encima de ellos.** Pedido por el dueño el
+2026-10-22 tras encontrárselo sentado sobre «Ver cuenta de…».
+
+**No se comprueba mirando: se mide.** Las dos cifras que hacen falta son el
+rectángulo del flotante y el del último botón, y la pregunta es si se
+cruzan:
+
+```js
+const fab = [...document.querySelectorAll('a,button')]
+  .find((b) => /Registrar|Crear producto/.test(b.textContent)
+    && getComputedStyle(b).position === 'fixed');
+const f = fab.getBoundingClientRect();
+const r = ultimoBoton.getBoundingClientRect();
+r.bottom > f.top && r.top < f.bottom && r.right > f.left   // ← solapa
+```
+
+**Y se mide SIN desplazar la página**, que es donde falla: el flotante es
+fijo y el contenido no. Una pantalla larga coloca sus botones fuera de la
+pantalla y, al bajar para verlos, quedan despejados; una corta los deja
+justo dentro de la banda del flotante y ahí se quedan. El caso roto es
+siempre el corto.
+
+**Un `padding` abajo NO lo arregla, y conviene saberlo antes de probarlo.**
+`app-main.tsx` reserva 5,5rem en las pantallas que terminan un flujo, y eso
+solo sirve cuando la página llega a desplazarse: un relleno por debajo
+alarga la página pero no sube contenido que ya está colocado. `mt-auto`
+tampoco, si con ese relleno ya no sobra espacio que repartir. Las dos cosas
+se probaron el 2026-10-22 y ninguna movió un píxel.
+
+**Cuando no hay arreglo de maquetación, es una decisión del producto, no
+tuya**: o el flotante no se dibuja en esa pantalla, o sube. Las dos tienen
+coste y las dos son suyas.
+
+**Por qué merece regla propia**: un botón medio tapado se ve como un
+descuido estético, y no lo es. El tendero le da a «Compartir» con el
+cliente delante y lo que se abre es la hoja de registrar otra venta. El
+síntoma —«le di y se abrió otra cosa»— no se parece en nada a la causa.
+
 ## Test every requirement before reporting it delivered
 
 Nothing is reported as done, fixed, or verified until it has been **run and
@@ -502,6 +577,151 @@ Y vale igual al revés: **una acción que empieza a leer un campo nuevo tiene qu
 decir qué formularios se lo van a mandar**, porque los que no lo hagan van a
 guardar `null` sin quejarse.
 
+## Quien escribe varios movimientos de golpe, recalcula el saldo
+
+**Toda función que inserte MÁS DE UN movimiento en la misma transacción tiene
+que terminar llamando a `recalc_client_running_balance(client_id)`.** No es una
+buena práctica: sin eso, el saldo que la app enseña queda mal.
+
+`movements.running_balance` lo pone un disparador BEFORE INSERT que busca la
+fila anterior con `order by created_at desc, id desc`. Dentro de una
+transacción, `now()` es el instante de la TRANSACCIÓN — así que todas las filas
+que se inserten ahí comparten `created_at` y el desempate cae en `id`, que es
+un uuid aleatorio. **De la tercera fila en adelante, cada una encadena desde
+una hermana cualquiera** en vez de desde la que de verdad le precede.
+
+**Y no se queda en una fila rara.** `client_summary` es una VISTA que lee el
+`running_balance` de la ÚLTIMA fila viva de cada moneda: una cadena rota es un
+SALDO roto, en la ficha del cliente, en Cartera y en el enlace que el cliente
+abre. No falla nada, no se pone nada en rojo — sale un número creíble y falso.
+
+**Qué costó, el 2026-10-23**: `registrar_abono_repartido` (migración `137`)
+escribía sus N líneas sin recalcular. Un cliente con cuatro repartos sumaba
+0,00 en dólares y la app enseñaba 1,14. Lo arregla la `142`, y no llegó a
+producción de milagro: el reparto entero seguía en `dev`.
+
+**La otra mitad de la regla: también hay que recalcular si se inserta con fecha
+HACIA ATRÁS.** El disparador toma como anterior la fila más nueva, así que un
+movimiento con `created_at` viejo nace con el saldo equivocado y deja sin
+actualizar todos los que van después. `import_libreta` lo hace bien desde la
+`075` y es el ejemplo a copiar.
+
+**Cómo se comprueba, y está en el `qa-regression-checklist` como parada dura**:
+`npm run qa:saldos` en dev recorre todos los clientes y compara el saldo que la
+app enseña con la suma de sus movimientos. Para producción hay una consulta de
+solo lectura en la sección 4c del checklist. **Se mira aunque el diff no toque
+nada de esto**: el síntoma no es un error, es un número creíble, así que la
+única forma de saber que no está pasando es preguntarlo.
+
+## Toda fila del historial lleva su pie «Por cobrar», menos «De contado»
+
+**En los DOS historiales: el del dueño y el del cliente.** Pedido por el dueño
+el 2026-10-23, y ampliado por él mismo esa misma tarde: *«toda transacción en
+el historial de transacciones tanto en el dueño como en el cliente debe tener
+ese pie "Por cobrar" a excepción de transacciones "De contado"»*.
+
+Son dos componentes distintos y es justo lo que hace que esto se rompa:
+`components/dashboard/movement-history-list.tsx` y
+`components/public/movement-history-list.tsx`. **Lo que se toque en uno se
+toca en el otro en la misma sesión**, o la pantalla que el cliente abre deja
+de parecerse a la que el tendero tiene delante — que es lo único que este
+producto promete.
+
+**«De contado» es la única excepción**, y no por capricho: una venta pagada
+entera no deja nada debiendo, así que su pie diría siempre cero.
+
+### Qué cifra va ahí: el saldo del libro DESPUÉS de esa transacción
+
+**Es `movements.running_balance`**, y la regla la fijó el dueño el 2026-10-23:
+*«"Por cobrar" en el pie de cada card es el monto por cobrar total del libro
+de esa moneda, no del fiado ni de otra transacción (…) es para que le diga al
+cliente y dueño en cuánto le queda la deuda DESPUÉS DE ESA TRANSACCIÓN»*.
+
+Y el criterio con el que lo cerró, que es el que vale como prueba: *«si el
+cliente debe 100 y abonó 50, "Por cobrar" es 50 en la card principal de la
+moneda y en la card de la última transacción. **Deben coincidir**»*.
+
+**Esa invariante se cumple por construcción**, y conviene saber por qué:
+`client_summary.balance_eur` ES el `running_balance` del último movimiento
+vivo en euros. Así que la fila más nueva de un libro y la tarjeta de arriba no
+pueden discrepar — no hay nada que sincronizar.
+
+#### Esto DESPLAZA la regla del 2026-10-21, y las dos quedan escritas
+
+`running_balance` estuvo en este pie y **se quitó** ese día porque, con los
+abonos escondidos por el filtro, la fila de arriba decía «Por cobrar $89.72»
+mientras la tarjeta del mismo cliente decía $68.59, y nada decía cuál cobrar.
+**El peor caso es el que la condenó: el tendero le cobra 89,72 a quien debe
+68,59.**
+
+Lo que cambió entre una fecha y otra es la fila: el pie lo llevan **todas**,
+así que las cifras se leen como una serie que baja y termina en la de la
+tarjeta, en vez de como dos números sueltos que se contradicen.
+
+**Lo que sigue costando, dicho para que nadie lo redescubra**: con un filtro
+puesto —«Fiado», por ejemplo— la fila más nueva que quede en pantalla puede
+ser vieja, y entonces su cifra NO es la de la tarjeta. Es inherente a enseñar
+un dato histórico, y el dueño lo eligió avisado de ese caso por su nombre.
+
+#### El chip de al lado habla de otra cosa
+
+No confundirlos: el chip dice cómo va **ese fiado** —su propio plazo, su
+propio pendiente— y el pie dice qué debía **el libro** después de esa fila. Un
+fiado puede salir «Pagado» con un pie de €55,95: el fiado está saldado y el
+libro sigue debiendo.
+
+### Un saldo A FAVOR no se escribe con un menos
+
+Un cliente que pagó de más tiene saldo negativo en la base. Escrito tal cual
+bajo un rótulo que dice «por cobrar», sale **«Por cobrar −$178.00»** — que no
+se lee como «te sobran 178» sino como un error de la app, o peor, como una
+deuda con el signo al revés. Lo reportó el dueño el 2026-10-23 con la captura
+de un abono antiguo.
+
+**La cifra va en valor absoluto y lo que explica el signo es el chip «A
+favor»**, debajo de la equivalencia en bolívares. El verde se queda: con el
+chip al lado dice lo mismo que él, en vez de contradecir al rótulo.
+
+Vale en los dos historiales **y en la ficha de la transacción**, que es donde
+se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
+`Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
+
+## Todo encargo del app del dueño se pregunta para la vista del cliente
+
+**Pedido por el dueño el 2026-10-23**: *«todo requerimiento que te solicite
+dentro del app del dueño debes preguntar si algo de ello se debe implementar
+en la vista del cliente, si se implementa tal cual o si debe haber alguna
+variante»*.
+
+Son **tres** respuestas posibles, no dos, y por eso se pregunta en vez de
+decidirlo solo:
+
+1. **Igual** — el chip «A favor» y el pie «Por cobrar» del historial.
+2. **Con variante** — la misma idea, distinta por lo que cada lado sabe o
+   puede. El chip por libro va en las dos, pero la vista del cliente no recibe
+   `days_since_payment`, así que nunca dice «Crítico».
+3. **No aplica** — la pantalla no existe ahí. Registrar una venta, repartir un
+   abono o elegir la moneda de un producto son cosas del tendero; el cliente
+   no registra nada.
+
+**Se contesta en el reporte, por escrito y antes de construir**, aunque la
+respuesta sea «no aplica» en los cuatro puntos. Decirlo cuesta una línea y es
+lo que deja constancia de que se miró.
+
+**Por qué merece regla propia.** Las dos pantallas son dos componentes
+distintos —`components/dashboard/movement-history-list.tsx` y
+`components/public/movement-history-list.tsx`— así que lo que se arregla en
+uno NO llega al otro, y nada avisa. El tendero mira su pantalla, la da por
+buena, y la contradicción solo aparece cuando un cliente abre su enlace con él
+delante. Eso no se lee como un detalle sin terminar: se lee como que la app le
+está diciendo a su cliente otra cosa de la que le dice a él, que es lo único
+que este producto promete no hacer.
+
+Y el caso de arriba enseña la otra mitad: el chip de estado por libro **sí**
+tenía que ir en la vista del cliente, pero su payload llega recortado a 50
+movimientos, así que replicarlo «tal cual» habría dado un estado falso en
+cualquier historial largo. La pregunta no es solo «¿va?», es «¿va igual?».
+
 ## Report QA and verification work as a table
 
 Whenever a round of testing or verification wraps up — a security audit, a
@@ -570,6 +790,32 @@ frames y enumerarlo.
 con la misma seguridad que lo que sí está en el frame, así que quien lo recibe no
 puede distinguirlos sin abrir Figma él mismo. Eso convierte cada entrega en algo
 que hay que auditar entero.
+
+### ACCEDER a Figma no es leer el enlace. Y si no se puede, se dice
+
+**Pedido por el dueño el 2026-10-23**: *«siempre que te entregue un frame debes
+acceder al figma, no solo leerlo. Si no puedes acceder al figma debes
+mencionarlo»*.
+
+**Acceder** quiere decir una llamada a `get_design_context` sobre ese nodo, que
+devuelve la estructura con los textos exactos, los tamaños y los `data-node-id`.
+No cuenta nada de esto:
+
+- deducir la pantalla del nombre del frame o de lo que diga el mensaje;
+- mirar solo `get_screenshot`, que da la imagen pero no los rótulos;
+- reutilizar lo que se leyó de un frame parecido en otra sesión.
+
+**Y si no se puede acceder, se dice en la respuesta, antes de construir nada.**
+No se construye «con lo que se entiende del enlace» y se avisa después: quien
+recibe la entrega no puede distinguir lo replicado de lo inventado sin abrir
+Figma él mismo, que es justo lo que esta sección entera existe para evitar.
+
+**Los servidores de Figma de este proyecto fallan por separado**, así que
+«no responde» casi nunca es «no hay acceso»: el 2026-10-23 el servidor `figma`
+devolvía `ECONNREFUSED` durante toda la sesión mientras
+`mcp__plugin_figma_figma__*` contestaba a los mismos nodos sin un fallo. Se
+prueban los otros antes de decir que no se puede — y solo si ninguno responde
+se dice, nombrando el error.
 
 **La regla práctica, entonces:**
 
