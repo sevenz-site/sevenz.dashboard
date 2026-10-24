@@ -458,7 +458,19 @@ export async function createClientWithMovement(
   // dos veces, con la mitad de lo que debe en cada ficha. El comportamiento es
   // idéntico al de antes, incluidos los ocultos y la comparación normalizada.
   const confirmDuplicate = formData.get("confirm_duplicate") === "true";
-  const duplicate = await buscarDocumentoDuplicado(supabase, user.id, documentId);
+  // EL TIPO VIAJA CON EL NÚMERO desde el 2026-10-24, por la misma razón que
+  // en la pantalla de cliente nuevo: el prefijo vive en `document_type` y sin
+  // él V-070707 y J-070707 se leían como el mismo documento.
+  const tipoDelDocumento =
+    documentId && isDocumentTypeFor(documentCountry as "VE" | "CO" | null, documentTypeRaw)
+      ? documentTypeRaw
+      : null;
+  const duplicate = await buscarDocumentoDuplicado(
+    supabase,
+    user.id,
+    documentId,
+    tipoDelDocumento,
+  );
   if (duplicate && !confirmDuplicate) {
     return {
       error: mensajeDeDuplicado(duplicate),

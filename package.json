@@ -62,6 +62,7 @@
     "qa:saldos": "node qa/saldos-cuadran.mjs",
     "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs",
     "qa:bolivares": "node --experimental-strip-types qa/monto-bolivares.mjs",
+    "qa:documento": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/documento-duplicado.mjs",
     "qa:guiones": "node qa/guiones-con-entrada.mjs",
     "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",

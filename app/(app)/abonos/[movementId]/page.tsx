@@ -286,7 +286,7 @@ export default async function AbonoRegistradoPage({
             no, el tendero que compara los dos cree que falta algo. Centrado
             con la fecha, que es la otra etiqueta de la transacción entera. */}
         {abono.transaction_code ? (
-          <p className="-mt-2 text-center text-sm font-medium text-primary tabular-nums">
+          <p className="-mt-2 text-center text-sm font-medium text-muted-foreground tabular-nums">
             Código de transacción: {abono.transaction_code as string}
           </p>
         ) : null}
