@@ -67,7 +67,6 @@ export default async function AbonoRegistradoPage({
   } | null;
   if (!abono || !cliente || cliente.owner_id !== user.id || abono.type !== "payment") notFound();
 
-  const moneda = (abono.currency ?? "COP") as PriceCurrency;
 
   // ── SI ESTE ABONO ES PARTE DE UN REPARTO, EL RESUMEN ES DEL BILLETE ──
   //
@@ -82,7 +81,6 @@ export default async function AbonoRegistradoPage({
   // `security definer` y está concedida solo a `service_role`, para el emisor
   // del recibo. Aquí hay sesión del dueño y RLS encima, que es la vía normal.
   const grupo = (abono as { payment_group_id?: string | null }).payment_group_id ?? null;
-  let totalAbonado = Number(abono.amount);
   let lineasDelGrupo = 1;
   // Una entrada por libro tocado. Con un solo libro tiene una sola, y todo lo
   // de abajo se dibuja igual que siempre.
@@ -93,6 +91,13 @@ export default async function AbonoRegistradoPage({
     abono.entry_currency === "VES" && abono.entry_amount != null
       ? Number(abono.entry_amount)
       : null;
+  // Los bolívares que le tocaron a cada libro. Vacío cuando no se pagó en
+  // bolívares. Ver dónde se llena, más abajo.
+  let bsPorMoneda = new Map<string | null, number>(
+    abono.entry_currency === "VES" && abono.entry_amount != null
+      ? [[(abono.currency as string | null) ?? null, Number(abono.entry_amount)]]
+      : [],
+  );
 
   if (grupo) {
     const { data: lineas } = await supabase
@@ -125,8 +130,6 @@ export default async function AbonoRegistradoPage({
         currency: currency as LedgerCurrency | null,
         total,
       }));
-      totalAbonado = abonadoPorMoneda.find((a) => a.currency === (abono.currency ?? null))?.total ??
-        Number(abono.amount);
       // LOS BOLÍVARES TAMBIÉN SE SUMAN, por la misma razón: el tendero tecleó
       // UNA cifra y la repartió el servidor. Enseñar la parte de una línea
       // sería enseñarle un trozo de lo que él escribió.
@@ -134,6 +137,27 @@ export default async function AbonoRegistradoPage({
         .filter((l) => l.entry_currency === "VES" && l.entry_amount != null)
         .reduce((s, l) => s + Number(l.entry_amount), 0);
       entregadoEnBs = bs > 0 ? Math.round(bs * 100) / 100 : null;
+
+      // ── Y ADEMÁS, CUÁNTOS DE ESOS BOLÍVARES FUE A CADA LIBRO ────────
+      //
+      // Es la cifra que faltaba y la que hacía confusa esta pantalla. Hasta
+      // hoy el billete entero salía como «Entregó» DENTRO de la tarjeta de
+      // dólares, así que un reparto de Bs. 5.000 entre dos libros se leía
+      // como si los 5.000 hubieran ido a dólares — y la tarjeta de euros no
+      // mencionaba bolívares en absoluto.
+      //
+      // `entry_amount` ya viene por línea, así que esto no calcula nada: lo
+      // agrupa. Y por eso son los bolívares TECLEADOS y no una conversión de
+      // hoy — las partes suman exactamente el billete que el tendero escribió.
+      const sumaBs = new Map<string | null, number>();
+      for (const l of lineas) {
+        if (l.entry_currency !== "VES" || l.entry_amount == null) continue;
+        const k = (l.currency as string | null) ?? null;
+        sumaBs.set(k, (sumaBs.get(k) ?? 0) + Number(l.entry_amount));
+      }
+      bsPorMoneda = new Map(
+        [...sumaBs.entries()].map(([k, v]) => [k, Math.round(v * 100) / 100]),
+      );
     }
   }
 
@@ -166,12 +190,49 @@ export default async function AbonoRegistradoPage({
       .map(([currency, pending]) => ({ currency: currency as LedgerCurrency | null, pending }))
       .filter((x) => x.pending > 0.005);
   })();
-  const deudaTotal = pendientePorMoneda
-    .filter((c) => c.currency === (abono.currency ?? null))
-    .reduce((suma, c) => suma + c.pending, 0);
 
   const resultado = await getOwnerRateContextResult(supabase, user.id);
   const rates = resultado.kind === "ve" ? await getBolivarRates(resultado.context.effectiveRate) : null;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LOS LIBROS DEL ABONO, EN EL ORDEN EN QUE SE LEEN
+  //
+  // Se arma UNA vez y la usan las tres superficies: las tarjetas de abajo, la
+  // imagen que se comparte y su respaldo en texto. Separarlas es cómo el
+  // recibo acaba contando una cuenta distinta de la que el tendero tiene
+  // delante.
+  //
+  // EL ORDEN LO PIDIÓ EL DUEÑO el 2026-10-23: *«la moneda que más se le abonó
+  // arriba y la menor abajo»*. Hasta hoy era el orden en que salían de la
+  // consulta, que en la práctica era dólares y luego euros, siempre.
+  //
+  // «MÁS ABONADO» SE COMPARA EN BOLÍVARES, y no es un detalle: $1,00 y €4,14
+  // no se pueden ordenar por su número, que es comparar dos cosas distintas.
+  // Con la tasa del día, $1,00 son Bs. 886 y €4,14 son Bs. 4.114 — el euro va
+  // arriba, y por el número suelto habría salido igual por casualidad. Una
+  // casualidad que se rompe en cuanto las cifras se acercan.
+  //
+  // Y SE COMPARA CON LOS BOLÍVARES TECLEADOS cuando los hay, que es el caso
+  // que motivó esto: son exactamente lo que el tendero repartió. Sin ellos se
+  // convierte a la tasa de hoy, y sin tasa queda el importe a secas — que
+  // basta, porque sin bolívares el reparto no cruza libros y solo hay uno.
+  const enBolivaresPara = (currency: LedgerCurrency | null, importe: number) => {
+    const tecleados = bsPorMoneda.get(currency ?? null);
+    if (tecleados != null) return tecleados;
+    if (!rates) return importe;
+    return (
+      priceIn("VES", { amount: importe, currency: (currency ?? "COP") as PriceCurrency }, rates)
+        ?.amount ?? importe
+    );
+  };
+  const librosDelAbono = [...abonadoPorMoneda].sort(
+    (a, b) => enBolivaresPara(b.currency, b.total) - enBolivaresPara(a.currency, a.total),
+  );
+  // EL BILLETE, UNA SOLA VEZ Y ARRIBA DEL TODO — frame `1588:11262`. Solo
+  // cuando se pagó en bolívares Y el reparto tocó más de un libro: con un
+  // libro, «Abonó Bs. X» y la línea de la tarjeta dirían el mismo número dos
+  // veces seguidas, y la pantalla de un abono corriente no cambia.
+  const billeteEnBs = librosDelAbono.length > 1 ? entregadoEnBs : null;
 
   // ── CUÁNDO PASÓ ──────────────────────────────────────────────────────
   //
@@ -258,8 +319,42 @@ export default async function AbonoRegistradoPage({
           porque es lo único que dice de qué libro habla. Es la regla de
           `DESIGN-SYSTEM.md` —la bandera va donde identifica— aplicada a dos
           casos distintos. */}
-      {abonadoPorMoneda.map((a, i) => {
+      {/* ── EL BILLETE, UNA SOLA VEZ — frame `1588:11262` ────────────────
+          «Abonó  Bs. 5.000,00» con la bandera de Venezuela. Es lo que el
+          cliente puso en la mano, antes de que nada se reparta.
+
+          POR QUÉ ESTO ARREGLA LA CONFUSIÓN, que es lo que el dueño reportó:
+          esa cifra estaba DENTRO de la tarjeta de dólares, bajo el rótulo
+          «Entregó». Leída ahí, Bs. 5.000 parecían los bolívares que fueron a
+          dólares — y la tarjeta de euros no hablaba de bolívares, así que no
+          había forma de ver que también le habían tocado. Sacándola arriba
+          deja de pertenecer a un libro: es el billete, y debajo cada libro
+          dice su parte. */}
+      {billeteEnBs != null ? (
+        <section className="flex items-center justify-between rounded-[10px] border px-4 py-2">
+          <span className="text-sm">Abonó</span>
+          <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+            {formatBs(billeteEnBs)}
+            <CurrencyFlagIcon currency="VES" className="size-4 shrink-0" aria-hidden="true" />
+          </span>
+        </section>
+      ) : null}
+
+      {/* VA CON EL BILLETE Y NO DENTRO DE UN LIBRO, por lo mismo: cuenta
+          cuántos fiados cubrió ESE billete, no cuántos de este libro. No está
+          en el frame y se deja a propósito — es la única línea que dice que
+          detrás de dos tarjetas hay varios fiados. */}
+      {billeteEnBs != null && lineasDelGrupo > 1 ? (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Repartido entre {lineasDelGrupo} fiados.
+        </p>
+      ) : null}
+
+      {librosDelAbono.map((a, i) => {
         const cur = (a.currency ?? "COP") as PriceCurrency;
+        // Los bolívares de ESTE libro, y solo cuando el billete se repartió
+        // entre varios: con uno solo la cifra ya la dice «Entregó».
+        const bsDeEste = billeteEnBs != null ? (bsPorMoneda.get(a.currency ?? null) ?? null) : null;
         const pendienteDeEste =
           pendientePorMoneda.find((p) => (p.currency ?? null) === (a.currency ?? null))?.pending ??
           0;
@@ -281,25 +376,50 @@ export default async function AbonoRegistradoPage({
               <CurrencyFlagIcon currency={cur} className="size-6 shrink-0" aria-hidden="true" />
             </div>
 
-            <div className="flex items-center justify-between py-3">
-              <span className="text-xs">Abonó en {nombreDeMoneda(cur)}</span>
-              <span className="text-xs tabular-nums">{formatPriceAmount(a.total, cur)}</span>
+            {/* ── LO QUE ENTRÓ EN ESTE LIBRO — frames `1588:11177` y
+                `1588:11284` ────────────────────────────────────────────
+                Dos formas, y la que sale depende de en qué se pagó:
+
+                · REPARTIENDO UN BILLETE EN BOLÍVARES entre varios libros,
+                  manda el bolívar: arriba «Bs. 4.114,00» con su bandera y
+                  debajo, en pequeño, «€4.14». Es el orden del frame, y es el
+                  orden en que el tendero lo vive — entregó bolívares y quiere
+                  saber cuántos fueron a cada cuenta.
+
+                · EN CUALQUIER OTRO CASO sale como siempre, «Abonó en Dólares
+                  $1.00». Un abono que no cruza libros no tiene nada que
+                  repartir, y meterle una conversión a bolívares sería añadir
+                  una cifra donde no había pregunta. */}
+            <div className="flex items-start justify-between gap-1 py-3">
+              <span className="text-sm">
+                {bsDeEste != null ? "Abonó a esta cuenta" : `Abonó en ${nombreDeMoneda(cur)}`}
+              </span>
+              {bsDeEste != null ? (
+                <div className="flex flex-col items-end gap-1">
+                  <span className="flex items-center gap-1 text-sm tabular-nums">
+                    {formatBs(bsDeEste)}
+                    <CurrencyFlagIcon currency="VES" className="size-4 shrink-0" aria-hidden="true" />
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatPriceAmount(a.total, cur)}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-sm tabular-nums">{formatPriceAmount(a.total, cur)}</span>
+              )}
             </div>
 
-            {/* ── LAS DOS LÍNEAS QUE NO DIBUJA EL FRAME, Y VAN UNA SOLA VEZ ──
-                «Entregó» son los bolívares que el tendero TECLEÓ y «Repartido
-                entre N fiados» cuenta que ese billete cubrió varios. Las dos
-                describen EL BILLETE, que es uno solo aunque haya tocado dos
-                libros — así que se escriben en la primera tarjeta y no se
-                repiten en la segunda. Repetirlas sería contar dos veces lo
-                que el cliente entregó una. */}
-            {i === 0 && entregadoEnBs != null ? (
+            {/* «Entregó» VIVÍA AQUÍ y se fue arriba, a su propia tarjeta,
+                el 2026-10-23: dentro de un libro, el billete entero se lee
+                como si fuera de ese libro. Queda la versión de un solo libro,
+                donde no hay nada que repartir y la cifra sí es suya. */}
+            {i === 0 && billeteEnBs == null && entregadoEnBs != null ? (
               <div className="flex items-center justify-between py-2">
                 <span className="text-xs text-muted-foreground">Entregó</span>
                 <span className="text-sm tabular-nums">{formatBs(entregadoEnBs)}</span>
               </div>
             ) : null}
-            {i === 0 && lineasDelGrupo > 1 ? (
+            {i === 0 && billeteEnBs == null && lineasDelGrupo > 1 ? (
               <p className="pt-1 pb-2 text-xs text-muted-foreground">
                 Repartido entre {lineasDelGrupo} fiados.
               </p>
@@ -411,12 +531,24 @@ export default async function AbonoRegistradoPage({
           telefono: cliente.whatsapp ? telefonoLegible(cliente.whatsapp) : "—",
         }}
         abono={{
-          currency: moneda,
-          abonado: totalAbonado,
           // Los bolívares TECLEADOS, no una conversión de hoy. Misma razón que
           // la fila «Entregó» de arriba.
-          entregadoBs: entregadoEnBs,
-          deuda: deudaTotal,
+          billeteBs: billeteEnBs,
+          // La línea «Entregó» solo existe en el caso de un libro, igual que
+          // en la pantalla: con varios, el billete tiene su propia tarjeta.
+          entregadoBs: billeteEnBs == null ? entregadoEnBs : null,
+          // EL MISMO ARRAY QUE DIBUJA LA PANTALLA, ya ordenado. La imagen no
+          // lo vuelve a ordenar: el recibo que se queda en el chat del cliente
+          // tiene que contar la cuenta en el mismo orden que el tendero acaba
+          // de leerle en voz alta.
+          libros: librosDelAbono.map((a) => ({
+            currency: (a.currency ?? "COP") as PriceCurrency,
+            abonado: a.total,
+            abonadoBs: billeteEnBs != null ? (bsPorMoneda.get(a.currency ?? null) ?? null) : null,
+            deuda:
+              pendientePorMoneda.find((p) => (p.currency ?? null) === (a.currency ?? null))
+                ?.pending ?? 0,
+          })),
         }}
         rates={rates}
         fecha={cuando}
