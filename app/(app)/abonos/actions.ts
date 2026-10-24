@@ -751,6 +751,27 @@ export async function registrarAbonoRepartido(
   // céntimo menos que lo tecleado y dejan al tendero buscando un bolívar que
   // nunca faltó. Repartirlos proporcionalmente es lo único honesto que se
   // puede hacer con una cifra que él escribió UNA vez.
+  // ── Y ANTES QUE NADA, LO QUE TECLEÓ EN CADA FIADO ────────────────────
+  //
+  // `aManoBs` trae, por fiado, la cifra EXACTA que el tendero escribió en la
+  // pantalla del monto cuando la escribió en bolívares. Llega del navegador,
+  // así que se limpia aquí igual que el borrador limpia lo suyo.
+  //
+  // POR QUÉ ESTE CAMINO LA NECESITA, aunque el abono no cruce libros: la
+  // moneda tecleada viajaba UNA SOLA para todo el abono, y la pone la
+  // pantalla del reparto. Fijando un fiado en bolívares dentro de un reparto
+  // que va en dólares, el servidor guardaba `entry_currency: 'USD'` y los
+  // bolívares no se convertían mal: DESAPARECÍAN. La fila del historial salía
+  // sin su línea de bolívares, como si el tendero nunca hubiera escrito una.
+  //
+  // Encontrado el 2026-10-24 probando el arreglo del reparto que sí cruza
+  // libros, y es el mismo fallo visto desde el otro lado: allí la cifra
+  // volvía cambiada, aquí no vuelve.
+  const suyosPorFiado: Record<string, number> = {};
+  for (const [k, v] of Object.entries(entrada.aManoBs ?? {})) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) suyosPorFiado[k] = v;
+  }
+
   const bsPorLinea: number[] = [];
   if (tecleadoEnBs != null) {
     let acumulado = 0;
@@ -765,14 +786,36 @@ export async function registrarAbonoRepartido(
     });
   }
 
+    // Su cifra solo vale mientras la línea abone exactamente lo que él fijó.
+    const sigueEnteraLaSuya = (l: { movementId: string; asignado: number }) =>
+      suyosPorFiado[l.movementId] != null &&
+      Math.abs((entrada.aMano?.[l.movementId] ?? 0) - l.asignado) <= HOLGURA;
+
     lineasRpc = lineas.map((l, i) => ({
       fiado_id: l.movementId,
       amount: l.asignado,
       rate_mode_used: sello.rateModeUsed,
       exchange_rate_used: sello.exchangeRateUsed,
       official_bcv_rate_at_time: sello.officialBcvRateAtTime,
-      entry_currency: entryCurrency,
-      entry_amount: tecleadoEnBs != null ? bsPorLinea[i] : entryCurrency ? l.asignado : null,
+      // ── EN QUÉ SE TECLEÓ ESTA LÍNEA, Y CUÁNTO ────────────────────
+      //
+      // SU CIFRA MANDA SOBRE LA DEL ABONO. Si fijó ESTE fiado escribiendo
+      // bolívares, la línea se guarda en bolívares con la cantidad que
+      // escribió, aunque el resto del abono vaya en la moneda del libro.
+      //
+      // Y SOLO SI LA LÍNEA SIGUE VALIENDO LO QUE ÉL PUSO: en cuanto el
+      // reparto la recorta —porque el billete no llega— su cifra deja de
+      // describir lo que esta línea abona, y entonces manda lo del abono.
+      // Guardar los Bs. 100.000 de una línea recortada a la mitad sería
+      // escribir un recibo por el doble de lo que bajó del fiado.
+      entry_currency: sigueEnteraLaSuya(l) ? "VES" : entryCurrency,
+      entry_amount: sigueEnteraLaSuya(l)
+        ? suyosPorFiado[l.movementId]
+        : tecleadoEnBs != null
+          ? bsPorLinea[i]
+          : entryCurrency
+            ? l.asignado
+            : null,
       rate_usd_at_time: sello.rateUsdAtTime,
       rate_eur_at_time: sello.rateEurAtTime,
     }));
