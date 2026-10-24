@@ -91,6 +91,7 @@ import {
   useGuardiaDeCuentaPausada,
 } from "@/components/dashboard/cuenta-pausada";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
+import { parseTypedAmount } from "@/lib/products/price";
 import {
   ClientResultList,
   CLIENT_RESULT_LIMIT,
@@ -867,12 +868,21 @@ function ClientSearchDialogBody({
             el número ya no se ve cuando el dedo llega al botón. */}
         {/* Siempre un fiado: el primer movimiento de un cliente nuevo no puede
             ser un abono, porque todavía no debe nada. */}
+        {/* `parseTypedAmount` Y NO `Number(...)`. El campo agrupa los miles
+        desde el 2026-10-24, así que aquí llega «1.000.000» y `Number` lo lee
+        como NaN — el `|| null` que había lo convertía en nada, y este
+        recuadro, que existe para que el tendero confirme lo que escribió, se
+        quedaba VACÍO con un millón bien tecleado.
+
+        Es el caso exacto que avisaba `CT-132`, y se escapó en el primer
+        barrido de `CT-133`: el lector no vive en el componente del campo,
+        vive aquí. */}
         <ResumenMonto
           type="charge"
           monto={
             monedaTecleada === "VES" && rateContext
               ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
-              : Number(amountStr) || null
+              : parseTypedAmount(amountStr)
           }
           moneda={ownerCountry === "VE" ? currency : null}
           rateContext={rateContext}

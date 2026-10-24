@@ -68,6 +68,7 @@ import { libroParaAbono, type MonedaHabitual } from "@/lib/moneda-habitual";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { FaltaPorCompletar } from "@/components/dashboard/falta-por-completar";
 import { amount as amountRule } from "@/lib/form-validation";
+import { parseTypedAmount } from "@/lib/products/price";
 import {
   useErrorDeCuentaPausada,
   useGuardiaAlAbrir,
@@ -729,12 +730,21 @@ export function AddMovementDialog({
               Tecleando dólares o euros repite lo escrito, que parece redundante
               y no lo es: con el monto arriba y la foto en medio, en un teléfono
               el número ya no se ve cuando el dedo llega al botón. */}
+          {/* `parseTypedAmount` Y NO `Number(...)`. El campo agrupa los miles
+          desde el 2026-10-24, así que aquí llega «1.000.000» y `Number` lo lee
+          como NaN — el `|| null` que había lo convertía en nada, y este
+          recuadro, que existe para que el tendero confirme lo que escribió, se
+          quedaba VACÍO con un millón bien tecleado.
+
+          Es el caso exacto que avisaba `CT-132`, y se escapó en el primer
+          barrido de `CT-133`: el lector no vive en el componente del campo,
+          vive aquí. */}
           <ResumenMonto
             type={type}
             monto={
               monedaTecleada === "VES" && rateContext
                 ? montoConvertido(amountStr, currency, rateContext, usarPrevista)
-                : Number(amountStr) || null
+                : parseTypedAmount(amountStr)
             }
             moneda={llevaDivisas ? currency : null}
             rateContext={rateContext}
