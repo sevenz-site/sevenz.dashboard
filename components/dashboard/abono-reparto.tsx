@@ -1,6 +1,6 @@
 "use client";
 
-import {
+import { useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -223,6 +223,17 @@ export function AbonoReparto({
   // tocar la pantalla, no del borrador, y mezclar las dos daría bolívares de
   // una cifra que ya cambió.
   const aManoBs = aManoEditado ? SIN_AJUSTES : (borrador?.aManoBs ?? SIN_AJUSTES);
+
+  // Ver `soloDeFiadosVivos` en el guardado del borrador, más abajo.
+  const idsVivos = useMemo(() => new Set(fiados.map((f) => f.movementId)), [fiados]);
+  const soloDeFiadosVivos = useCallback(
+    (m: Record<string, number>) => {
+      const limpio: Record<string, number> = {};
+      for (const [id, v] of Object.entries(m)) if (idsVivos.has(id)) limpio[id] = v;
+      return limpio;
+    },
+    [idsVivos],
+  );
 
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -450,7 +461,22 @@ export function AbonoReparto({
       // teclear nada, y allí se encontraba «Ya repartiste todo el abono» con
       // el campo vacío y ningún abono repartido. Medido en dev el 2026-10-23.
       totalEnLibro: monto.trim() === "" ? null : enElLibro,
-      aMano,
+      // ── SOLO LO FIJADO A FIADOS QUE SIGUEN ABIERTOS ──────────────────
+      //
+      // El borrador vive en el navegador y sobrevive a lo que pase en la
+      // base: un fiado que se saldó por otro camino —o que se borró— deja su
+      // cifra aquí dentro para siempre. Y esa cifra se RESTA del tope que la
+      // pantalla del monto enseña, así que un fiado fantasma de $1,02 hace
+      // que un abono de $1,13 diga «del abono quedan $0.11» con un fiado de
+      // $320 delante.
+      //
+      // ESTA PANTALLA ES LA ÚNICA QUE PUEDE LIMPIARLO: es la que recibe la
+      // lista de fiados abiertos. La del monto solo ve el borrador, así que
+      // desde allí un id fantasma es indistinguible de uno bueno.
+      //
+      // Se limpia al guardar y no al leer, a propósito: así la corrección
+      // queda escrita y no hay que repetirla en cada pantalla que lo lea.
+      aMano: soloDeFiadosVivos(aMano),
       // ── Y LOS BOLÍVARES TECLEADOS, QUE ESTA PANTALLA NO TOCA ─────────
       //
       // SE REESCRIBEN TAL CUAL, y omitirlos no era neutral: este efecto
@@ -463,9 +489,9 @@ export function AbonoReparto({
       //
       // La lección, para la próxima: cuando dos pantallas escriben el mismo
       // borrador, la que no es dueña de un campo tiene que arrastrarlo.
-      aManoBs,
+      aManoBs: soloDeFiadosVivos(aManoBs),
     });
-  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs]);
+  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs, soloDeFiadosVivos]);
 
   // ── LO QUE APAGA «REPARTIR MANUALMENTE» ────────────────────────────
   //
@@ -508,6 +534,40 @@ export function AbonoReparto({
       (l as { asignadoBs?: number }).asignadoBs ?? null,
     ]),
   );
+  // ── EL TROZO DEL BILLETE QUE LE TOCA A CADA LÍNEA ──────────────────
+  //
+  // Solo cuando el tendero tecleó bolívares y no fijó esta línea a mano. Es
+  // la misma cuenta que hace el servidor al guardar —proporcional a lo que
+  // cada línea consume, y la última absorbe el resto— para que la tarjeta y
+  // la fila guardada digan lo mismo.
+  //
+  // `null` cuando no aplica: sin bolívares tecleados no hay billete que
+  // trocear, y entonces manda la conversión de siempre.
+  const trozoDelBillete = (movementId: string): number | null => {
+    if (!enBolivares || montoNum <= 0) return null;
+    const conImporte = reparto.lineas.filter((l) => l.asignado > 0.005);
+    const i = conImporte.findIndex((l) => l.movementId === movementId);
+    if (i < 0) return null;
+    // EL PESO DE CADA LÍNEA. Cruzando libros son sus bolívares, que es lo
+    // único comparable entre monedas distintas. En un solo libro no hay
+    // `asignadoBs` —ese reparto trabaja en la moneda del libro— y el peso es
+    // el propio importe, que con una sola tasa da exactamente lo mismo.
+    const pesoDe = (id: string) =>
+      asignadoBs.get(id) ?? conImporte.find((l) => l.movementId === id)?.asignado ?? 0;
+    const peso = conImporte.reduce((acc, l) => acc + pesoDe(l.movementId), 0);
+    if (!(peso > 0)) return null;
+    let repartido = 0;
+    for (let j = 0; j < conImporte.length; j += 1) {
+      if (j === conImporte.length - 1) {
+        return Math.round((montoNum - repartido) * 100) / 100;
+      }
+      const v = Math.round(montoNum * (pesoDe(conImporte[j].movementId) / peso) * 100) / 100;
+      if (j === i) return v;
+      repartido = Math.round((repartido + v) * 100) / 100;
+    }
+    return null;
+  };
+
   // En el orden del reparto, no en el de la consulta: es el que explica por
   // qué al primero le tocó todo.
   const enOrden = reparto.lineas
@@ -827,9 +887,22 @@ export function AbonoReparto({
     // le toca.
     const suyos = aManoBs[f.movementId];
     const sigueEntero = suyos != null && Math.abs((aMano[f.movementId] ?? 0) - toca) <= 0.005;
+    // ── Y SI NO LA FIJÓ A MANO, SU TROZO DEL BILLETE ──────────────────
+    //
+    // Tecleando Bs. 1.000 sobre un fiado que debe de sobra, la tarjeta decía
+    // «Bs. 1.001,44»: `asignadoBs` es la reconversión del importe del libro
+    // —$1,13 × 886,2271— y no el billete. Reportado por el dueño el
+    // 2026-10-24, y es el mismo fallo que ya se arregló para las líneas
+    // fijadas a mano, en el rincón que faltaba.
+    //
+    // SE REPARTE COMO LO REPARTE EL SERVIDOR, proporcionalmente a lo que cada
+    // línea consume del billete; con una sola línea, el billete entero. Que
+    // las dos cuentas sean la misma no es elegancia: la tarjeta tiene que
+    // decir lo que se va a guardar.
+    const delBillete = trozoDelBillete(f.movementId);
     const bs = sigueEntero
       ? suyos
-      : (asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency));
+      : (delBillete ?? asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency));
     // `shrink-0`: ver la otra fila, unas líneas más arriba.
     return (
       <li key={f.movementId} className="shrink-0 rounded-[10px] border">
