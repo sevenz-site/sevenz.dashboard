@@ -199,6 +199,25 @@ run from. `npm run metrics` reads whichever project `.env.local` points at, so
 "run this" without naming the environment can silently report dev's numbers as
 if they were the business's.
 
+### Y la consulta tiene que PODER correr donde dice que corre
+
+Nombrar el entorno no basta si lo que se manda no existe allí. El 2026-10-24
+se entregó una consulta «para producción» que pedía `movements.transaction_code`,
+una columna que crea la migración `147` y que solo existía en la rama dev. En
+producción habría fallado con `column does not exist`; se corrió en dev, que
+contestó tranquilamente **sobre los datos de dev**, y el resultado se leyó como
+si fuera de producción durante dos mensajes.
+
+**Lo que lo delató no fue la consulta: fue que las cifras coincidían al dígito
+con una medición que ya se había hecho en dev un rato antes.** Sin esa
+casualidad habría pasado entero.
+
+**Antes de mandar una consulta a producción, repasa qué columnas y funciones
+toca y si alguna nació en una migración que allí no se ha corrido.** Si la
+respuesta es sí, la consulta se reescribe con lo que los dos lados tienen —un
+`id` en vez de un código nuevo— o se dice que esa pregunta todavía no se puede
+hacer en producción. Las dos salidas son honestas; mandarla igual no.
+
 ### Every code block, every time — no back-references
 
 The user is not a developer and does not track which environment a
