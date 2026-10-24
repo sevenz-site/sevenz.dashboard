@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { BotonCopiarCodigo } from "@/components/dashboard/boton-copiar-codigo";
 import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -48,16 +47,13 @@ export type FiadoAbierto = {
   cuotas: number | null;
   productos: string[];
   descripcion: string | null;
-  // EL CÓDIGO DE SU TRANSACCIÓN, y solo lo trae quien quiere el pie.
+  // EL CÓDIGO DE SU TRANSACCIÓN. **YA NO SE DIBUJA**: ver el comentario del
+  // `return`, abajo. Orden del dueño el 2026-10-24 — ninguna tarjeta lo lleva.
   //
-  // Encargo del dueño el 2026-10-23: las tarjetas RELACIONADAS —la del fiado
-  // dentro de un abono y las de los abonos dentro de un fiado— llevan el
-  // código con su botón de copiar. Las otras no: en la hoja de repartir un
-  // abono, siete caracteres por tarjeta no ayudan a elegir a cuál pagar y
-  // alargan una lista que ya se desplaza.
-  //
-  // Por eso el pie se dibuja o no según venga esto, en vez de con un `boolean`
-  // aparte: quien tiene el código es quien quiere enseñarlo.
+  // SE QUEDA EL CAMPO, no por pereza: lo mandan dos pantallas, la del tendero
+  // y la del cliente, y quitarlo obliga a tocar las dos para no ganar nada.
+  // Volver a enseñarlo —si algún día se decide— es añadir el pie aquí, sin
+  // tocar ninguna consulta.
   transactionCode?: string | null;
 };
 
@@ -209,37 +205,32 @@ export function TarjetaDeFiado({
     </>
   );
 
-  const codigo = fiado.transactionCode ?? null;
-
-  // CON PIE SE ENVUELVE, igual que en `tarjeta-de-abono.tsx`: el borde lo pone
-  // el envoltorio y la tarjeta de dentro lo suelta, porque dos bordes
-  // anidados se leen como dos tarjetas.
-  const conPie = (cuerpo: React.ReactNode) =>
-    codigo == null ? (
-      cuerpo
-    ) : (
-      <div className="w-full overflow-hidden rounded-[10px] border [&>a]:rounded-none [&>a]:border-0 [&>button]:rounded-none [&>button]:border-0">
-        {cuerpo}
-        <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
-          <span>
-            Código de transacción:{" "}
-            <span className="font-medium text-primary tabular-nums">{codigo}</span>
-          </span>
-          <BotonCopiarCodigo codigo={codigo} />
-        </div>
-      </div>
-    );
-
+  // ═══════════════════════════════════════════════════════════════════════
+  // NINGUNA TARJETA LLEVA EL CÓDIGO. ES UN PATRÓN, NO UNA PANTALLA
+  //
+  // Orden del dueño el 2026-10-24: *«TODOS LOS CARD COMO PATRÓN DE DISEÑO
+  // ELIMINA EL CÓDIGO DE LA TRANSACCIÓN DE LOS CARDS»*. Lo dijo enfadado y con
+  // razón: unas horas antes se había quitado de `TarjetaDeAbono` y aquí se
+  // había dejado, así que el mismo dato salía en unas tarjetas y en otras no
+  // — que es peor que salir en todas.
+  //
+  // DÓNDE VIVE AHORA, para que nadie lo dé por perdido: en la CABECERA de la
+  // ficha de cada transacción (`CodigoDeTransaccion`), en las dos pantallas de
+  // «¡Transacción registrada con éxito!» y en el PNG que se comparte. Una
+  // tarjeta es un índice que lleva a esa ficha; el código es de la ficha.
+  //
+  // Y EL BUSCADOR NO SE ENTERA: busca sobre el dato, no sobre lo que la
+  // tarjeta dibuja, así que teclear un código sigue encontrando sus filas.
   if (href) {
-    return conPie(
+    return (
       <Link href={href} className={clase}>
         {contenido}
-      </Link>,
+      </Link>
     );
   }
-  return conPie(
+  return (
     <button type="button" onClick={onClick} className={clase}>
       {contenido}
-    </button>,
+    </button>
   );
 }

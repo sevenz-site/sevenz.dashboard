@@ -444,16 +444,41 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // reparte un espacio que no sobra. Las dos cosas se probaron y se midieron
   // el mismo día; están escritas en la propia pantalla.
   //
-  // EL RESUMEN DE UNA VENTA SÍ LO CONSERVA, y eso NO es un descuido: ahí no
-  // hay solape —sus botones caen en 746, muy por debajo de la banda, porque su
-  // contenido es más largo— y el flotante en esa pantalla es una petición
-  // suya del 2026-10-18 hecha sobre ESA pantalla. Se quita donde estorba, no
-  // donde se pidió.
+  // EL RESUMEN DE UNA VENTA TAMPOCO LO LLEVA YA — 2026-10-24, orden del
+  // dueño: *«Elimina el flotante»*.
+  //
+  // HASTA HOY AQUÍ PONÍA QUE EN ESA PANTALLA NO HABÍA SOLAPE, «sus botones
+  // caen en 746, muy por debajo de la banda». Era verdad de la venta que se
+  // midió —una FIADA, con su tarjeta de deuda, que es la más larga— y falso
+  // de las otras. Medido a 375px, en reposo, las tres formas:
+  //
+  //   · venta fiada      → «Compartir» 731-771   · limpio
+  //   · venta mostrador  → «Compartir» 481-521   · limpio
+  //   · venta DE CONTADO con comprador → 667-707 · SOLAPA la banda 652-708
+  //
+  // Es el caso de en medio: la ficha del comprador más una tarjeta de moneda
+  // sin bloque de deuda deja los botones justo dentro. Más corto se salva y
+  // más largo también, y por eso una sola medición dio «limpio» y se escribió
+  // como si valiera para toda la pantalla.
+  //
+  // LA LECCIÓN, que vale más que el arreglo: una pantalla cuyo alto depende de
+  // los datos NO se mide una vez. Se mide en su caso corto, el medio y el
+  // largo, porque el que rompe es el que cae dentro de la banda, no el extremo.
+  //
+  // Y SE QUITA AUNQUE SU PRESENCIA FUERA PETICIÓN SUYA DEL 2026-10-18: esa
+  // petición se hizo sobre una pantalla que entonces no tapaba nada. La de hoy
+  // la sustituye, y las dos quedan escritas.
   //
   // `(?!nuevo)` NO SOBRA: `/abonos/nuevo` es el paso 1/2 del flujo y ya sale
   // por `enAsistenteDeVenta`, pero encaja en `[^/]+` y dejarlo fuera aquí
   // también hace la intención legible sin ir a buscar la otra bandera.
   const enAbonoRegistrado = /^\/abonos\/(?!nuevo$)[^/]+$/.test(pathname);
+
+  // El resumen de una venta, por lo escrito justo arriba. `(?!nueva)` por la
+  // misma razón que `(?!nuevo)` en la línea de al lado: `/ventas/nueva` ya
+  // sale por `enAsistenteDeVenta`, y excluirlo aquí deja la intención legible
+  // sin ir a buscar la otra bandera.
+  const enVentaRegistrada = /^\/ventas\/(?!nueva$)[^/]+$/.test(pathname);
 
   // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
   //
@@ -585,7 +610,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && !enVentaRegistrada && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
