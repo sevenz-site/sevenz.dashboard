@@ -84,7 +84,11 @@ export default async function TransaccionPage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
-  const { abono: abonoResaltado } = await searchParams;
+  // `?abono=` YA NO MARCA NADA: desde el 2026-10-23 la fila de un abono
+  // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
+  // sigue aceptando en la URL —hay enlaces compartidos con él— y se
+  // ignora, que es lo que hace que no rompan.
+  await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -350,7 +354,6 @@ export default async function TransaccionPage({
         fiadoBorrado={m.type === "payment" && m.applies_to_movement_id != null && fiadoAplicado == null}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
-        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={abonoInicial}
         rates={rates}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con

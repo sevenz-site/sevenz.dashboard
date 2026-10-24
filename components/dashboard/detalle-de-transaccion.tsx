@@ -110,17 +110,6 @@ export type DatosDelDetalle = {
   // abonos», que es una respuesta; `undefined` es para una superficie que no
   // puede contestar la pregunta y entonces no la plantea.
   abonosRecibidos?: AbonoDirigido[];
-  // ── CUÁL DE LOS ABONOS SE VINO A VER ────────────────────────────────
-  //
-  // Frame `1489:10231`, encargo del dueño el 2026-10-22. Llega por la URL
-  // (`?abono=<id>`) porque la fila del historial abre el FIADO desde ese
-  // mismo día, y sin esto el tendero aterriza entre tres tarjetas iguales
-  // sin saber cuál era la suya.
-  //
-  // UN ID QUE NO ESTÁ EN LA LISTA NO RESALTA NADA, que es lo correcto: viene
-  // de la barra de direcciones y puede ser cualquier cosa. No hay nada que
-  // proteger --solo decide un borde-- pero tampoco hay que fingir.
-  abonoResaltado?: string | null;
   // CÓMO SE LLEGA A LA FICHA DE UN ABONO desde esta pantalla. Lo trae quien
   // monta el componente porque las dos vistas tienen rutas distintas:
   // `/transacciones/<id>` en la del tendero y `/s/<token>/t/<id>` en la del
@@ -160,7 +149,6 @@ export function DetalleDeTransaccion({
   abonoInicial = null,
   abonosRecibidos,
   conAcciones,
-  abonoResaltado = null,
   hrefDeUnAbono = null,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
@@ -378,56 +366,6 @@ export function DetalleDeTransaccion({
             del resumen del abono se debe mostrar el card del fiado al que se le
             abonó, al seleccionar el card se debe abrir el detalle de ese
             fiado»*. Es la MISMA tarjeta de la pantalla 1/3. */}
-        {/* «Fiado relacionado» — frame `1580:11668`, nodo `1590:11353`. El
-            rótulo no estaba y la tarjeta salía suelta debajo del título de la
-            sección, así que no decía qué era: un fiado dentro de la ficha de
-            un abono se puede leer como «esto es un fiado». Añadido el
-            2026-10-23 con el frame delante. */}
-        {type === "payment" && fiadoAplicado && hrefDelFiado ? (
-          <p className="py-2 text-xs leading-4 text-muted-foreground">Fiado relacionado</p>
-        ) : null}
-
-        {type === "payment" ? (
-          fiadoAplicado && hrefDelFiado ? (
-            <TarjetaDeFiado
-              fiado={fiadoAplicado}
-              rates={rates}
-              href={hrefDelFiado}
-              mostrarPendiente={mostrarPendienteDelFiado}
-              // AQUÍ SÍ: esta tarjeta está sola, navega, y la flecha es la
-              // única señal de que se puede tocar.
-              conChevron
-              // LO QUE EL FIADO FUE, que es de lo que habla esta ficha: el
-              // detalle de un abono cuenta a qué fiado se aplicó, no cuánto
-              // le queda hoy. Lo que queda ya lo dice «Debe $X» debajo.
-              cifra="original"
-            />
-          ) : (
-            // DOS FRASES, Y DICEN COSAS DISTINTAS:
-            //
-            //   * «Repartidos al saldo total» — LOS CIENTOS QUE YA EXISTÍAN.
-            //     Decisión del dueño el 2026-10-19: no se deja en blanco, se
-            //     dice qué pasó. La cola FIFO los repartió sobre el saldo y no
-            //     hubo decisión del tendero que enseñar.
-            //   * «Un fiado que se eliminó» — este abono SÍ eligió fiado, y el
-            //     fiado ya no está. La segunda línea es la que importa: ese
-            //     dinero sigue descontando del saldo, y es justo lo que nadie
-            //     ve si no se dice aquí.
-            <Fila nombre="Abonó a">
-              {fiadoBorrado ? (
-                <span className="flex flex-col items-end gap-0.5">
-                  <span>Un fiado que se eliminó</span>
-                  <span className="text-xs text-muted-foreground">
-                    Este abono sigue descontándose del saldo
-                  </span>
-                </span>
-              ) : (
-                "Repartidos al saldo total"
-              )}
-            </Fila>
-          )
-        ) : null}
-
         {productos.length > 0 ? (
           <ProductosDelMovimiento
             productos={productos}
@@ -567,13 +505,6 @@ export function DetalleDeTransaccion({
                     pendienteTras={porAbono.get(a.movementId) ?? null}
                     conAcciones={conAcciones}
                     href={hrefDeUnAbono ? hrefDeUnAbono(a.movementId) : null}
-                    // EL RESALTADO SOBREVIVE SOLO MIENTRAS ALGUIEN LLEGUE
-                    // AQUÍ DESDE UNA FILA DE ABONO. Desde el 2026-10-23 esa
-                    // fila abre la ficha del abono, así que nadie llega
-                    // marcando una tarjeta — y el dueño pidió quitarlo en el
-                    // mismo mensaje. Se deja el prop porque el camino viejo
-                    // (`?abono=`) todavía existe en enlaces ya compartidos.
-                    resaltado={a.movementId === abonoResaltado}
                   />
                 ));
               })()}
@@ -727,6 +658,69 @@ export function DetalleDeTransaccion({
           </>
         ) : null}
       </Grupo>
+
+      {/* ── «FIADO RELACIONADO», AL FINAL Y FUERA DE LA TARJETA ──────────
+          Encargo del dueño el 2026-10-23: *«En los detalles de abonos cambia
+          la posición del fiado relacionado para el final, debajo de la
+          foto»*, con el frame delante.
+
+          POR QUÉ TIENE SENTIDO DONDE ESTÁ AHORA: lo de arriba es el abono
+          —cuánto entró, en qué moneda, qué queda por cobrar—; esto es OTRA
+          transacción, con su propia ficha a un toque. Metido entre las cifras
+          del abono, un importe en rojo de un fiado se mezcla con las del pago
+          que se está leyendo.
+
+          FUERA DEL `Grupo` DE «Resumen», que es la caja con borde: dentro, la
+          tarjeta quedaba como una cuarta fila de ese resumen. */}
+              {/* «Fiado relacionado» — frame `1580:11668`, nodo `1590:11353`. El
+          rótulo no estaba y la tarjeta salía suelta debajo del título de la
+          sección, así que no decía qué era: un fiado dentro de la ficha de
+          un abono se puede leer como «esto es un fiado». Añadido el
+          2026-10-23 con el frame delante. */}
+      {type === "payment" && fiadoAplicado && hrefDelFiado ? (
+        <p className="py-2 text-xs leading-4 text-muted-foreground">Fiado relacionado</p>
+      ) : null}
+
+      {type === "payment" ? (
+        fiadoAplicado && hrefDelFiado ? (
+          <TarjetaDeFiado
+            fiado={fiadoAplicado}
+            rates={rates}
+            href={hrefDelFiado}
+            mostrarPendiente={mostrarPendienteDelFiado}
+            // AQUÍ SÍ: esta tarjeta está sola, navega, y la flecha es la
+            // única señal de que se puede tocar.
+            conChevron
+            // LO QUE EL FIADO FUE, que es de lo que habla esta ficha: el
+            // detalle de un abono cuenta a qué fiado se aplicó, no cuánto
+            // le queda hoy. Lo que queda ya lo dice «Debe $X» debajo.
+            cifra="original"
+          />
+        ) : (
+          // DOS FRASES, Y DICEN COSAS DISTINTAS:
+          //
+          //   * «Repartidos al saldo total» — LOS CIENTOS QUE YA EXISTÍAN.
+          //     Decisión del dueño el 2026-10-19: no se deja en blanco, se
+          //     dice qué pasó. La cola FIFO los repartió sobre el saldo y no
+          //     hubo decisión del tendero que enseñar.
+          //   * «Un fiado que se eliminó» — este abono SÍ eligió fiado, y el
+          //     fiado ya no está. La segunda línea es la que importa: ese
+          //     dinero sigue descontando del saldo, y es justo lo que nadie
+          //     ve si no se dice aquí.
+          <Fila nombre="Abonó a">
+            {fiadoBorrado ? (
+              <span className="flex flex-col items-end gap-0.5">
+                <span>Un fiado que se eliminó</span>
+                <span className="text-xs text-muted-foreground">
+                  Este abono sigue descontándose del saldo
+                </span>
+              </span>
+            ) : (
+              "Repartidos al saldo total"
+            )}
+          </Fila>
+        )
+      ) : null}
     </dl>
   );
 }

@@ -62,7 +62,6 @@ export function TarjetaDeAbono({
   inicial = false,
   pendienteTras = null,
   conAcciones,
-  resaltado = false,
 }: {
   abono: AbonoDirigido;
   // ── A DÓNDE LLEVA LA TARJETA ────────────────────────────────────────
@@ -85,18 +84,14 @@ export function TarjetaDeAbono({
   // `null` deja la tarjeta como estaba: es el abono de la compra, que no es
   // un movimiento y no tiene ficha que abrir.
   href?: string | null;
-  // ── EL ABONO POR EL QUE SE ENTRÓ, MARCADO ───────────────────────────
+  // EL RESALTADO SE FUE EL 2026-10-23, y queda escrito por qué estuvo: entre
+  // el 2026-10-22 y ese día, la fila de un abono en el historial abría la
+  // ficha de su FIADO con `?abono=`, y el tendero aterrizaba entre tres
+  // tarjetas casi iguales sin saber cuál era la suya. El relleno se la decía.
   //
-  // Frame `1489:10231`, encargo del dueño el 2026-10-22: *«El abono que se
-  // abre desde el historial debe verse resaltado en el detalle del fiado
-  // (background Accent y border primary), para que el usuario tenga el cue
-  // visual de cuál fue el abono que seleccionó para abrir»*.
-  //
-  // POR QUÉ HACE FALTA: desde el 2026-10-22 la fila de un abono en el
-  // historial abre el FIADO, no el abono. El tendero toca «Abono · Casco, 20
-  // de oct» y aterriza en una ficha con tres tarjetas de abono casi iguales,
-  // sin ninguna pista de cuál era la suya. Esto se la da.
-  resaltado?: boolean;
+  // Ya no hace falta: esa fila abre la ficha del propio abono, así que nadie
+  // llega aquí buscando una tarjeta. El dueño lo pidió quitar al ver que
+  // seguían saliendo con fondo oscuro.
   // Siempre navega. A diferencia de la del fiado, esta tarjeta no tiene el uso
   // de «elegir uno» dentro de un flujo, así que no necesita `onClick`.
   // EL ESTADO DE LA CUOTA QUE ESTE ABONO CUBRIÓ — frame `1489:10209`, y es la
@@ -162,8 +157,31 @@ export function TarjetaDeAbono({
   // Sale de la tasa que el propio abono tiene guardada. Sin ella no se dibuja
   // la línea: inventar una conversión es peor que no darla, y un movimiento
   // anterior a que existiera el sellado no la tiene.
+  // ── LOS BOLÍVARES DE ESTE ABONO: LOS TECLEADOS, SI LOS HAY ──────────
+  //
+  // Decisión del dueño el 2026-10-23: *«Vamos con los bolívares tecleados,
+  // son los que deben mandar»*.
+  //
+  // QUÉ COSTABA LA OTRA FORMA, medido ese día: esta tarjeta enseñaba
+  // `amount × tasaSellada` mientras la fila del historial enseñaba lo
+  // tecleado, así que el MISMO abono salía como Bs. 4.111,39 aquí y Bs.
+  // 4.113,77 allí. Las dos eran ciertas —Bs. 4.113,77 entre 993,09 da €4,1424
+  // y el libro solo guarda céntimos, así que los 0,0024 € que sobran valen
+  // 2,38 Bs— pero quien las lee no tiene cómo saberlo. De 13 abonos tecleados
+  // en bolívares en dev, 7 discrepaban; la mayor diferencia, Bs. 3,48.
+  //
+  // Y LA RAZÓN DE FONDO PARA ELEGIR LO TECLEADO: es la cifra que el cliente
+  // entregó y la única que el tendero puede defender delante de él. La
+  // conversión describe lo que ese importe VALE, que es otra pregunta.
+  //
+  // LA CONVERSIÓN SIGUE AHÍ para el abono tecleado en divisa, donde es la
+  // única forma de dar bolívares.
   const enBs =
-    abono.tasaSellada != null ? abono.amount * abono.tasaSellada : null;
+    abono.entryCurrency === "VES" && abono.entryAmount != null
+      ? abono.entryAmount
+      : abono.tasaSellada != null
+        ? abono.amount * abono.tasaSellada
+        : null;
 
   const codigo = abono.transactionCode ?? null;
 
@@ -218,12 +236,7 @@ export function TarjetaDeAbono({
     // cualquiera: el mismo relleno que usa el resto de la app para «esto está
     // seleccionado», y un borde del color del texto, que es lo único que se
     // distingue sin depender del color.
-    <div
-      className={`${CLASE_TARJETA} gap-2 ${resaltado ? "border-primary bg-accent" : ""}`}
-      // Para que un lector de pantalla no se pierda la única señal que esta
-      // tarjeta tiene de ser la que se vino a ver.
-      aria-current={resaltado ? "true" : undefined}
-    >
+    <div className={`${CLASE_TARJETA} gap-2`}>
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
       {/* LA FECHA ARRIBA Y EL CHIP DEBAJO, sin título — frame `1489:10209`,
           nodos `1489:10233` y el `chip_info` de al lado.

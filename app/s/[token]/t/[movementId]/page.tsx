@@ -92,6 +92,12 @@ type AbonoDirigidoJson = {
   // Llega con la `148`, y opcional por lo mismo: sin ella la tarjeta sale sin
   // pie, como salía hasta hoy.
   transaction_code?: string | null;
+  // EN QUÉ SE TECLEÓ Y CUÁNTO — migración `149`. Con ellos la tarjeta enseña
+  // los bolívares que el cliente entregó; sin ellos, la conversión a la tasa
+  // sellada, que es lo que hacía que esta pantalla y la del tendero dieran
+  // dos cifras distintas del mismo abono.
+  entry_currency?: string | null;
+  entry_amount?: number | null;
 };
 
 // EL DETALLE DE UNA TRANSACCIÓN, PARA EL CLIENTE — mismos frames que la del
@@ -136,7 +142,11 @@ export default async function DetalleDelClientePage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { token, movementId } = await params;
-  const { abono: abonoResaltado } = await searchParams;
+  // `?abono=` YA NO MARCA NADA: desde el 2026-10-23 la fila de un abono
+  // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
+  // sigue aceptando en la URL —hay enlaces compartidos con él— y se
+  // ignora, que es lo que hace que no rompan.
+  await searchParams;
   const supabase = await createClient();
 
   const { data } = await supabase.rpc("get_shared_balance", { p_token: token });
@@ -253,6 +263,8 @@ export default async function DetalleDelClientePage({
           // El código de su transacción, para el pie de la tarjeta — el mismo
           // que ve el tendero en la suya.
           transactionCode: a.transaction_code ?? null,
+          entryCurrency: (a.entry_currency ?? null) as "VES" | null,
+          entryAmount: a.entry_amount == null ? null : Number(a.entry_amount),
         }))
       : undefined;
 
@@ -332,7 +344,6 @@ export default async function DetalleDelClientePage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
-        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={Number(m.abono_inicial ?? 0)}
         rates={rates}
         // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el
