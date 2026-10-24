@@ -120,18 +120,41 @@ create unique index if not exists catalog_orders_sale_id_unico
 -- eight-argument `create_catalog_order` is still there. On a second run it is
 -- not -- it is already called `_core` -- and the block does nothing instead of
 -- failing. Same for the drop of the wrapper below.
+--
+-- ── `to_regprocedure` AND NOT A STRING COMPARISON ──────────────────────
+--
+-- The first version of this file asked `pg_get_function_identity_arguments(oid)
+-- = 'text, text, ...'` and the predicate came back FALSE against a function
+-- that was right there. Run in dev on 2026-10-24 it rolled the whole file back
+-- with `42883: function create_catalog_order_core does not exist`, because the
+-- rename never happened and the `revoke` two lines down asked for the result.
+--
+-- The mistake was guessing that function's output format instead of checking
+-- it. `to_regprocedure` needs no guess: it takes the signature as written and
+-- returns NULL -- not an error -- when nothing matches. It is the primitive
+-- for exactly this question.
+--
+-- And a nine-argument function with a default does NOT answer to an
+-- eight-argument signature here: `to_regprocedure` matches declared argument
+-- types, so the second run finds nothing and skips, which is what it must do.
 do $$
 begin
-  if exists (
-    select 1 from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname = 'create_catalog_order'
-      and pg_get_function_identity_arguments(p.oid)
-          = 'text, text, text, text, text, boolean, text, jsonb'
-  ) then
+  if to_regprocedure(
+       'public.create_catalog_order(text, text, text, text, text, boolean, text, jsonb)'
+     ) is not null then
     alter function public.create_catalog_order(text, text, text, text, text, boolean, text, jsonb)
       rename to create_catalog_order_core;
+  end if;
+
+  -- A HARD STOP WITH THE REASON SAID OUT LOUD. If the core is not there after
+  -- the rename, this file cannot build its wrapper, and the previous version
+  -- discovered that four statements later with `42883` -- an error that names
+  -- a function nobody wrote and explains nothing. This names the cause.
+  if to_regprocedure(
+       'public.create_catalog_order_core(text, text, text, text, text, boolean, text, jsonb)'
+     ) is null then
+    raise exception
+      'La 157 necesita create_catalog_order de ocho argumentos (la crea la 155) y no la encuentra. Corre la 155 antes.';
   end if;
 end;
 $$;
