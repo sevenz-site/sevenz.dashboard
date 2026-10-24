@@ -65,17 +65,41 @@ export type BloqueDeResumen = {
 // acaban divergiendo el margen, el radio y la escala — y con ellos, dos recibos
 // del mismo negocio que no se parecen.
 export type AbonoDelResumen = {
-  currency: PriceCurrency;
-  // Lo que quedó anotado, en la moneda del fiado.
-  abonado: number;
-  // Los bolívares que el tendero TECLEÓ, si pagó así. `null` si no.
+  // ── EL BILLETE, CUANDO SE REPARTIÓ ENTRE VARIOS LIBROS ──────────────
+  //
+  // Los bolívares que el tendero TECLEÓ, en su propia línea arriba del todo
+  // (frame `1588:11262`). `null` cuando no se pagó en bolívares o cuando el
+  // abono tocó un solo libro: ahí lo dice la línea «Entregó» de la tarjeta,
+  // y escribirlo dos veces seguidas es lo que confunde.
   //
   // Tecleados y no convertidos, por la misma razón que la fila del historial:
   // escribió 900 y leer 899,09 no se explica, aunque sea cierto.
+  // EL CÓDIGO DE LA TRANSACCIÓN — migración 147. Va en el comprobante porque
+  // es el papel que se queda en el chat del cliente: es desde ahí desde donde
+  // alguien lo va a leer para buscarlo, no desde una pantalla que ya tiene
+  // delante.
+  codigo: string | null;
+  billeteBs: number | null;
+  // Igual que arriba pero para el caso de un solo libro: la línea «Entregó»
+  // de siempre, dentro de la tarjeta.
   entregadoBs: number | null;
-  // Lo que ese cliente sigue debiendo en esa moneda DESPUÉS del abono. Cero
-  // cuando quedó saldado, y entonces la tarjeta lo dice con palabras.
-  deuda: number;
+  // ── UNA ENTRADA POR LIBRO, YA ORDENADA ──────────────────────────────
+  //
+  // La ordena la pantalla y la imagen la respeta sin volver a pensarla: las
+  // dos tienen que contar la misma cuenta en el mismo orden, y la única forma
+  // de garantizarlo es que el orden se decida una sola vez. Ver
+  // `librosDelAbono` en `app/(app)/abonos/[movementId]/page.tsx`.
+  libros: {
+    currency: PriceCurrency;
+    // Lo que quedó anotado, en la moneda del fiado.
+    abonado: number;
+    // Los bolívares de ESTE libro, cuando el billete se repartió. `null` si
+    // no aplica, y entonces la tarjeta enseña «Abonó en X» como siempre.
+    abonadoBs: number | null;
+    // Lo que ese cliente sigue debiendo en esa moneda DESPUÉS del abono. Cero
+    // cuando quedó saldado, y entonces la tarjeta lo dice con palabras.
+    deuda: number;
+  }[];
 };
 
 export type DatosDelResumen = {
@@ -96,6 +120,17 @@ export type DatosDelResumen = {
   // `null` no dibuja la línea: una imagen sin fecha es peor que una con una
   // fecha inventada, pero mucho mejor que una con la fecha equivocada.
   fecha?: string | null;
+  // EL CÓDIGO CORTO DE LA TRANSACCIÓN — migración `147`.
+  //
+  // Encargo del dueño el 2026-10-24: *«Ni en las pantallas de ¡Transacción
+  // registrada con éxito! ni en los png que se comparten incluiste los códigos
+  // de transacción»*. El recibo del abono ya lo llevaba —lo trae dentro de
+  // `abono`— y el de una venta no, ni fiada ni de contado.
+  //
+  // VIVE ARRIBA Y NO DENTRO DE `abono` porque es de la transacción, sea cual
+  // sea. `abono.codigo` se queda donde está para no tocar a quien ya lo manda,
+  // y el dibujo acepta los dos: ver `codigoDeLaTransaccion`, más abajo.
+  codigo?: string | null;
   // `null` en una venta de mostrador: ahi no hay a quien nombrar, asi que la
   // tarjeta no se dibuja. Ver el comentario de la pantalla.
   comprador: { nombre: string; documento: string; telefono: string } | null;
@@ -393,6 +428,42 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     }
   }
 
+  // ── EL CÓDIGO DE LA TRANSACCIÓN ──────────────────────────────────────
+  //
+  // DEBAJO DE LA FECHA Y CENTRADO, exactamente donde lo ponen las dos
+  // pantallas de éxito. La fecha ya se colocó así por esa misma razón —«para
+  // que la imagen y la pantalla se lean igual»— y el código merece el mismo
+  // trato: el tendero tiene la pantalla delante y el cliente la imagen en el
+  // chat, y es el mismo papel visto dos veces.
+  //
+  // Hasta el 2026-10-24 salía debajo de la ficha del comprador, en el recibo
+  // del abono —el único que lo llevaba— y alineado a la izquierda. Se sube al
+  // añadirlo también al recibo de una venta: con cuatro superficies, que cada
+  // una lo ponga donde le toque es cómo acaban pareciendo recibos de negocios
+  // distintos.
+  //
+  // SIN TARJETA Y SIN BORDE, que sí era deliberado y se conserva: es una
+  // etiqueta de la transacción entera. Dentro de la primera tarjeta se leería
+  // como si fuera de ese libro, que es el fallo que el billete en bolívares
+  // tenía antes de salir de ahí.
+  //
+  // LA ALTURA SE SUMA FUERA DEL `if (ctx)`: `recorrer` mide y dibuja con la
+  // misma función, y sumarla solo al dibujar recortaría la imagen por abajo
+  // exactamente esta altura.
+  //
+  // ACEPTA LOS DOS SITIOS —`datos.codigo` y `datos.abono.codigo`— porque el
+  // recibo del abono ya lo mandaba dentro de su propio objeto y moverlo de
+  // allí no compra nada.
+  const codigoDeLaTransaccion = datos.codigo ?? datos.abono?.codigo ?? null;
+  if (codigoDeLaTransaccion) {
+    y += 20 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(13, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText(`Código de transacción: ${codigoDeLaTransaccion}`, centro, y);
+    }
+  }
+
   if (ctx) ctx.textAlign = "left";
   y += 24 * ESCALA;
 
@@ -447,14 +518,47 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     y = inicioFicha + altoFicha + 16 * ESCALA;
   }
 
-  // ── LA TARJETA DEL ABONO, cuando esto es el recibo de un pago ─────────
+  // ── EL BILLETE EN BOLÍVARES, SI SE REPARTIÓ ENTRE VARIOS LIBROS ──────
   //
-  // Las mismas tres piezas que la pantalla de éxito, en el mismo orden:
-  // «Abonó en X», los bolívares entregados si pagó así, y en qué queda la
-  // cuenta. Y la misma regla para el cero: no se escribe «$0,00», se dice que
-  // no debe nada, que es lo que el cliente va a leer en su chat.
-  if (datos.abono) {
-    const a = datos.abono;
+  // Frame `1588:11262`, y la misma razón que en la pantalla: dentro de una
+  // tarjeta, el billete entero se lee como si fuera de ese libro.
+  if (datos.abono?.billeteBs != null) {
+    const inicio = y;
+    const by = y + 26 * ESCALA;
+    if (ctx) {
+      ctx.font = fuente(14);
+      ctx.fillStyle = TINTA;
+      ctx.fillText("Abonó", MARGEN + 16 * ESCALA, by);
+      // LA BANDERA PEGADA A LA CIFRA, como en el frame: es lo único que dice
+      // que esos números son bolívares y no la moneda del libro de al lado.
+      // Se dibuja primero el texto a la derecha dejando el hueco, y la
+      // bandera en él — `measureText` no hace falta con `textAlign` puesto.
+      const lado = 16 * ESCALA;
+      const xFin = ANCHO - MARGEN - 16 * ESCALA;
+      ctx.font = fuente(16, "600");
+      ctx.textAlign = "right";
+      ctx.fillText(formatBs(datos.abono.billeteBs), xFin - lado - 4 * ESCALA, by);
+      ctx.textAlign = "left";
+      dibujarSiLista(ctx, "VES", xFin - lado, by - lado + 2 * ESCALA, lado, lado);
+    }
+    const alto = 40 * ESCALA;
+    if (ctx) tarjeta(ctx, inicio, alto);
+    y = inicio + alto + 16 * ESCALA;
+  }
+
+  // ── UNA TARJETA POR LIBRO, cuando esto es el recibo de un pago ────────
+  //
+  // Las mismas piezas que la pantalla de éxito, en el mismo orden: lo que
+  // entró en este libro, los bolívares entregados si fue un abono de un solo
+  // libro, y en qué queda la cuenta. Y la misma regla para el cero: no se
+  // escribe «$0,00», se dice que no debe nada, que es lo que el cliente va a
+  // leer en su chat.
+  //
+  // HASTA EL 2026-10-23 LA IMAGEN PINTABA UNA SOLA, la del libro por el que
+  // se entró. Un reparto en bolívares entre dólares y euros se compartía como
+  // si solo hubiera tocado dólares — el recibo decía menos de lo que la
+  // pantalla enseñaba, y es el recibo el que se queda en el chat del cliente.
+  for (const a of datos.abono?.libros ?? []) {
     const nombre = NOMBRE_MONEDA[a.currency] ?? a.currency;
     const hayDeuda = a.deuda > 0.005;
     const deudaEnBs =
@@ -499,11 +603,36 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
       by += 16 * ESCALA;
     };
 
-    fila(`Abonó en ${nombre}`, formatPriceAmount(a.abonado, a.currency));
-    by += 18 * ESCALA;
+    // CON BOLÍVARES REPARTIDOS manda el bolívar y la moneda del libro va
+    // debajo en pequeño; sin ellos, la línea de siempre. Es el frame
+    // `1588:11177` y lo mismo que hace la pantalla.
+    if (a.abonadoBs != null) {
+      if (ctx) {
+        const ladoVe = 16 * ESCALA;
+        ctx.font = fuente(14);
+        ctx.fillStyle = TINTA;
+        ctx.fillText("Abonó a esta cuenta", xIzq, by);
+        ctx.textAlign = "right";
+        ctx.fillText(formatBs(a.abonadoBs), xDer - ladoVe - 4 * ESCALA, by);
+        ctx.textAlign = "left";
+        dibujarSiLista(ctx, "VES", xDer - ladoVe, by - ladoVe + 2 * ESCALA, ladoVe, ladoVe);
+      }
+      by += 16 * ESCALA;
+      if (ctx) {
+        ctx.font = fuente(12);
+        ctx.fillStyle = TENUE;
+        ctx.textAlign = "right";
+        ctx.fillText(formatPriceAmount(a.abonado, a.currency), xDer, by);
+        ctx.textAlign = "left";
+      }
+      by += 18 * ESCALA;
+    } else {
+      fila(`Abonó en ${nombre}`, formatPriceAmount(a.abonado, a.currency));
+      by += 18 * ESCALA;
+    }
 
-    if (a.entregadoBs != null) {
-      fila("Entregó", formatBs(a.entregadoBs));
+    if (datos.abono?.entregadoBs != null) {
+      fila("Entregó", formatBs(datos.abono.entregadoBs));
       by += 18 * ESCALA;
     }
 

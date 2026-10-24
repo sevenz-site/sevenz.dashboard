@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -7,11 +8,9 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
-import { getBolivarRates } from "@/lib/products/catalog";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import type { BolivarRates } from "@/lib/products/price";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -21,6 +20,12 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
+  // LOS BOLÍVARES TECLEADOS AL COMPRAR — migración `152`. Opcional: sin ella
+  // la tarjeta de la compra cae en la conversión, como hasta hoy.
+  abono_inicial_bs?: number | null;
+  // El código de su transacción — migración 148. Opcional: sin ella la ficha
+  // sale sin esa línea, como salía hasta hoy.
+  transaction_code?: string | null;
   amount: number;
   currency: LedgerCurrency | null;
   description: string | null;
@@ -61,6 +66,10 @@ type SharedMovement = {
 // tarjeta tiene que ser la misma que ve el dueño o los dos lados de la misma
 // deuda no coinciden.
 type FiadoAbonadoJson = {
+  // El código de su transacción — migración `151`. Opcional porque durante un
+  // despliegue el código y la base no coinciden; sin él la tarjeta sale sin
+  // pie, que es como salía hasta hoy.
+  transaction_code?: string | null;
   movement_id: string;
   sale_id: string | null;
   fecha: string;
@@ -85,6 +94,15 @@ type AbonoDirigidoJson = {
   // código y la base no coinciden; sin ella la tarjeta no dibuja su línea de
   // bolívares, que es exactamente como estaba antes.
   exchange_rate_used?: number | null;
+  // Llega con la `148`, y opcional por lo mismo: sin ella la tarjeta sale sin
+  // pie, como salía hasta hoy.
+  transaction_code?: string | null;
+  // EN QUÉ SE TECLEÓ Y CUÁNTO — migración `149`. Con ellos la tarjeta enseña
+  // los bolívares que el cliente entregó; sin ellos, la conversión a la tasa
+  // sellada, que es lo que hacía que esta pantalla y la del tendero dieran
+  // dos cifras distintas del mismo abono.
+  entry_currency?: string | null;
+  entry_amount?: number | null;
 };
 
 // EL DETALLE DE UNA TRANSACCIÓN, PARA EL CLIENTE — mismos frames que la del
@@ -129,7 +147,11 @@ export default async function DetalleDelClientePage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { token, movementId } = await params;
-  const { abono: abonoResaltado } = await searchParams;
+  // `?abono=` YA NO MARCA NADA: desde el 2026-10-23 la fila de un abono
+  // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
+  // sigue aceptando en la URL —hay enlaces compartidos con él— y se
+  // ignora, que es lo que hace que no rompan.
+  await searchParams;
   const supabase = await createClient();
 
   const { data } = await supabase.rpc("get_shared_balance", { p_token: token });
@@ -164,7 +186,6 @@ export default async function DetalleDelClientePage({
         : { usd: shared.current_bcv_usd, eur: shared.current_bcv_eur }
       : null;
   const ledger: LedgerDisplay | null = effectiveRate ? { rate: effectiveRate } : null;
-  const rates: BolivarRates | null = effectiveRate ? await getBolivarRates(effectiveRate) : null;
 
   // ── LA FOTO ──────────────────────────────────────────────────────────
   //
@@ -213,6 +234,9 @@ export default async function DetalleDelClientePage({
         pending: Number(f.pending),
         plazoDias: f.plazo_dias,
         cuotas: f.cuotas,
+        // Su código — migración `151`. Sin ella la tarjeta sale sin pie aquí
+        // y con pie en la del tendero, que es la misma divergencia de siempre.
+        transactionCode: f.transaction_code ?? null,
         // Sin nombres de producto, que conserva la decisión de la migración
         // `122`: el inventario del negocio no viaja a esta pantalla. La
         // tarjeta cae en la descripción del fiado, que es justo lo que el
@@ -243,6 +267,12 @@ export default async function DetalleDelClientePage({
           // estado en ESTA pantalla, porque esta clave no viajaba.
           tasaSellada:
             a.exchange_rate_used == null ? null : Number(a.exchange_rate_used),
+          // `transactionCode` YA NO VIAJA, igual que en la pantalla del
+          // tendero: la fila dejó de dibujarlo el 2026-10-24. La migración
+          // `148` sigue mandándolo en el payload, así que volver a ponerlo no
+          // necesita tocar la base.
+          entryCurrency: (a.entry_currency ?? null) as "VES" | null,
+          entryAmount: a.entry_amount == null ? null : Number(a.entry_amount),
         }))
       : undefined;
 
@@ -259,6 +289,7 @@ export default async function DetalleDelClientePage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={m.transaction_code ?? null} />
 
       {/* «Total por cobrar» TAMBIÉN EN LA PANTALLA DEL CLIENTE, igual que en
           la del dueño. Decisión del dueño el 2026-10-20, preguntada: los
@@ -278,6 +309,9 @@ export default async function DetalleDelClientePage({
           existiendo y la tarjeta de saldo de `/s/[token]` lo sigue usando, así
           que volver es pasar la prop otra vez. */}
       <DetalleDeTransaccion
+        // Igual que en la del tendero, con la ruta del enlace. Decisión del
+        // dueño el 2026-10-23, preguntada: la misma pantalla, sin acciones.
+        hrefDeUnAbono={(id) => `/s/${token}/t/${id}`}
         type={m.type}
         amount={Number(m.amount)}
         currency={m.currency}
@@ -318,15 +352,16 @@ export default async function DetalleDelClientePage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
-        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={Number(m.abono_inicial ?? 0)}
-        rates={rates}
+        // Los bolívares que se teclearon al comprar — migración `152`. Sin
+        // ellos la tarjeta enseñaría la reconversión, y el cliente vería una
+        // cifra distinta de la del tendero por el mismo pago.
+        abonoInicialBs={m.abono_inicial_bs == null ? null : Number(m.abono_inicial_bs)}
         // SIN «⋮»: el cliente no edita ni borra nada. Lo reportó el dueño el
         // 2026-10-21 con una captura de esta pantalla enseñando «Editar abono» y
         // «Eliminar abono». Las acciones le habrían contestado «Sesión expirada»
         // —piden sesión y comprueban el dueño— así que no era una fuga; era
         // ofrecerle una puerta que no abre.
-        conAcciones={false}
       />
     </div>
   );

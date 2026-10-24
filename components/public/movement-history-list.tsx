@@ -17,7 +17,7 @@ import {
   type MonedaFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
-import type { PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
 import { vencimientoEfectivo } from "@/lib/estado-del-plazo";
@@ -35,6 +35,8 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 type SharedMovement = {
   id: string;
   type: "charge" | "payment";
+  // El código de su transacción — migración 148, para el buscador.
+  transaction_code?: string | null;
   amount: number;
   currency: LedgerCurrency | null;
   description: string | null;
@@ -72,6 +74,9 @@ type SharedMovement = {
 export type SharedVentaDeContado = {
   sale_id: string;
   created_at: string;
+  // El código de la transacción — migración 148. Una venta pagada entera no
+  // escribe movimiento, así que el suyo vive en `sales` y llega por aquí.
+  transaction_code?: string | null;
   currency: LedgerCurrency | null;
   amount: number;
   lineas: { name: string; quantity: number; unit_price: number }[];
@@ -140,6 +145,11 @@ export function MovementHistoryList({
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
   const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
+
+  // EL CÓDIGO TECLEADO. Cadena vacía es «sin filtrar», no «ningún código»:
+  // un buscador que no deja ver nada mientras está vacío sería un filtro
+  // puesto que nadie pidió.
+  const [codigo, setCodigo] = useState("");
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ────────────────────────
   //
@@ -239,10 +249,74 @@ export function MovementHistoryList({
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // ── EL FILTRO POR CÓDIGO ──────────────────────────────────────────
+  //
+  // Va EL PRIMERO de la cadena y eso importa: es el más estrecho de los
+  // cuatro —deja las filas de UNA transacción— así que lo que sobrevive a él
+  // es lo poco que los demás tienen que recorrer, y el orden en que el
+  // tendero los lee es el mismo en que se aplican.
+  //
+  // `includes` Y NO `===`: el código se lee de una captura o se escucha por
+  // teléfono, así que media palabra tiene que servir mientras se teclea el
+  // resto. Sin distinguir mayúsculas, porque el campo las pinta en
+  // mayúsculas pero no transforma lo escrito.
+  //
+  // UNA FILA SIN CÓDIGO NO CASA NUNCA, y es correcto: es anterior a la
+  // migración 147 y no hay código por el que buscarla. Hoy no existe
+  // ninguna, ni en dev ni en producción.
+  // ── QUÉ SE BUSCA CON EL BUSCADOR ──────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-23: *«el search buscar, debe permitir buscar
+  // por código, monto o producto»*. Nació buscando solo el código.
+  //
+  // SE BUSCA LO QUE LA FILA DICE, y por eso el texto se arma con las MISMAS
+  // piezas que la fila pinta: su código, su nombre —los productos de la venta
+  // o lo que el tendero escribió— y sus importes. Un buscador que mire
+  // columnas que la pantalla no enseña devuelve filas que, a la vista, no
+  // tienen nada que ver con lo buscado.
+  //
+  // LOS IMPORTES VAN EN LAS DOS FORMAS, cruda y formateada, a propósito: el
+  // tendero teclea lo que recuerda («112.84») o lo que copia de la pantalla
+  // («Bs. 100.001,87»), y las dos tienen que encontrar la misma fila. Es más
+  // barato meter las dos cadenas que adivinar en cuál está pensando.
+  //
+  // Y LOS BOLÍVARES TECLEADOS TAMBIÉN, cuando los hay: para un abono pagado
+  // en bolívares, esa es la cifra que el cliente entregó y la que el tendero
+  // tiene en la cabeza.
+  const textoDeLaFila = (f: Fila) => {
+    if (f.clase === "contado") {
+      return [
+        f.v.transaction_code ?? "",
+        f.v.lineas.map((l) => l.name).join(" "),
+        String(f.v.amount),
+        formatPriceAmount(f.v.amount, (f.v.currency ?? "COP") as PriceCurrency),
+      ].join(" ");
+    }
+    const m = f.m;
+    const fiado = m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+    const nombre =
+      (fiado?.productos ?? []).map((l) => l.name).join(" ") ||
+      fiado?.description ||
+      m.description ||
+      "";
+    return [
+      m.transaction_code ?? "",
+      nombre,
+      String(m.amount),
+      formatPriceAmount(Number(m.amount), (m.currency ?? "COP") as PriceCurrency),
+      m.entry_amount != null ? String(m.entry_amount) : "",
+      m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : "",
+    ].join(" ");
+  };
+
+  const buscado = codigo.trim().toLowerCase();
+  const porCodigo =
+    buscado === "" ? filas : filas.filter((f) => textoDeLaFila(f).toLowerCase().includes(buscado));
+
   const porTipo =
     tipo === "todos"
-      ? filas
-      : filas.filter((f) =>
+      ? porCodigo
+      : porCodigo.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
@@ -291,6 +365,11 @@ export function MovementHistoryList({
             setPage(1);
           }}
           monedas={monedasDelNegocio}
+          codigo={codigo}
+          setCodigo={(c) => {
+            setCodigo(c);
+            setPage(1);
+          }}
         />
       ) : null}
     </div>
@@ -316,7 +395,7 @@ export function MovementHistoryList({
         {/* El mismo título que en la lista del tendero, del mismo sitio:
             las dos pantallas tienen que decir lo mismo ante los mismos
             filtros. Ver `tituloDeListaVacia`. */}
-        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo })} />
       </div>
     );
   }
@@ -428,13 +507,12 @@ export function MovementHistoryList({
                 open, so it falls back to its own page. They all predate
                 2026-10-14. */}
             <Link
-              href={`/s/${token}/t/${m.applies_to_movement_id ?? m.id}${
-                // `?abono=` highlights the card on arrival — frame
-                // `1489:10231`, asked for on 2026-10-22. Only when the row IS
-                // a directed abono: a fiado opens itself, so there is nothing
-                // to point at.
-                m.applies_to_movement_id ? `?abono=${m.id}` : ""
-              }`}
+              // CADA FILA A SU PROPIA FICHA, igual que en la pantalla del
+              // tendero desde el 2026-10-23: un abono abre el detalle del
+              // abono, no el de su fiado. El camino al fiado está dentro, en
+              // «Fiado relacionado». Decisión del dueño, preguntada ese día
+              // para esta vista: la misma pantalla, sin sus acciones.
+              href={`/s/${token}/t/${m.id}`}
               className="flex w-full flex-col gap-1.5 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
               {/* ── TIER 1: WHAT IT WAS, WHEN, AND FOR HOW MUCH ───────── */}
@@ -630,7 +708,13 @@ function FilaDeContado({
   // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
   // callar.
   const enBsSellados =
-    venta.rate_used == null ? null : formatBs(venta.amount * Number(venta.rate_used));
+    venta.entry_currency === "VES" && venta.entry_amount != null
+      ? // LOS TECLEADOS MANDAN, igual que en la pantalla del tendero. Regla
+        // crítica del 2026-10-24: la reconversión devuelve otra cifra.
+        formatBs(Number(venta.entry_amount))
+      : venta.rate_used == null
+        ? null
+        : formatBs(venta.amount * Number(venta.rate_used));
 
 
   return (

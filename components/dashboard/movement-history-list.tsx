@@ -20,7 +20,7 @@ import {
   type MonedaFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
-import type { PriceCurrency } from "@/lib/products/price";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatDate, truncateText } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -129,6 +129,11 @@ export function MovementHistoryList({
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
   const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
+
+  // EL CÓDIGO TECLEADO. Cadena vacía es «sin filtrar», no «ningún código»:
+  // un buscador que no deja ver nada mientras está vacío sería un filtro
+  // puesto que nadie pidió.
+  const [codigo, setCodigo] = useState("");
 
   // ── LAS DOS CLASES DE FILA, EN UNA SOLA LISTA ─────────────────────
   //
@@ -284,41 +289,104 @@ export function MovementHistoryList({
 
 
   // ═══════════════════════════════════════════════════════════════════════
-  // A DÓNDE VA CADA FILA, Y POR QUÉ NO SIEMPRE A SU FIADO
+  // CADA FILA ABRE SU PROPIA FICHA, INCLUIDO UN ABONO
   //
-  // Un abono dirigido abre la ficha de SU fiado, con `?abono=` para resaltar
-  // su tarjeta. Eso vale mientras el fiado exista.
+  // Encargo del dueño el 2026-10-23: *«Vamos a recuperar los detalles de los
+  // abonos, al seleccionar un abono en el historial de transacciones abrirá
+  // su propio detalle con toda la info registrada en el abono»*, con el frame
+  // `1580:11668`.
   //
-  // QUÉ PASABA SI NO EXISTE, reportado por el dueño el 2026-10-23 con una
-  // captura de una pantalla en blanco: borró un fiado que tenía un abono
-  // dentro, el abono pasó al historial —correcto, sigue siendo un pago que
-  // recibió— y tocarlo llevaba a `/transacciones/<fiado borrado>`, que llama a
-  // `notFound()`. Medido en dev: 404 con el cuerpo vacío. No es un error que
-  // se lea como error; es una pantalla en blanco.
+  // DESPLAZA LA REGLA DEL 2026-10-22, y las dos quedan escritas porque la
+  // vieja tenía su motivo: entonces un abono abría la ficha de SU fiado con
+  // `?abono=` para resaltar su tarjeta, porque la ficha del abono «no iba a
+  // existir». Ahora existe y es la del frame — con su «Fiado relacionado»
+  // dentro, que es el camino de vuelta que aquel atajo daba por la fuerza.
   //
-  // CÓMO SE SABE QUE EL FIADO NO ESTÁ: esta lista recibe los movimientos VIVOS
-  // del cliente, así que un padre que no está en `porId` es un padre borrado.
+  // Y SE LLEVA POR DELANTE EL `?abono=`: sin nadie que llegue al fiado desde
+  // una fila de abono, no hay tarjeta que resaltar. El dueño lo pidió
+  // explícitamente en el mismo mensaje.
   //
-  // Y SI EL PADRE SOLO ESTÁ FUERA DE LA VENTANA —una lista recortada, no el
-  // caso de hoy— el enlace cae igualmente en la ficha del propio abono, que
-  // existe y se dibuja entera. El modo de fallo de esta heurística es «abre
-  // una pantalla distinta de la ideal», no «abre una en blanco», y esa
-  // asimetría es la razón de resolverlo así y no con otra consulta.
-  const hrefDeLaFila = (m: Movement) => {
-    const padre = m.applies_to_movement_id;
-    if (padre != null && porId.has(padre)) return `/transacciones/${padre}?abono=${m.id}`;
-    return `/transacciones/${m.id}`;
-  };
+  // LO QUE ESTO ARREGLA DE PASO, y es el fallo que la regla vieja tenía
+  // parcheado: un abono cuyo fiado se borró llevaba a
+  // `/transacciones/<fiado borrado>` y de ahí a una pantalla en blanco (404
+  // sin cuerpo), reportado con captura el 2026-10-23. Yendo siempre a su
+  // propia ficha, ese caso desaparece en vez de necesitar la comprobación
+  // contra `porId` que había aquí.
+  const hrefDeLaFila = (m: Movement) => `/transacciones/${m.id}`;
 
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.createdAt, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // ── EL FILTRO POR CÓDIGO ──────────────────────────────────────────
+  //
+  // Va EL PRIMERO de la cadena y eso importa: es el más estrecho de los
+  // cuatro —deja las filas de UNA transacción— así que lo que sobrevive a él
+  // es lo poco que los demás tienen que recorrer, y el orden en que el
+  // tendero los lee es el mismo en que se aplican.
+  //
+  // `includes` Y NO `===`: el código se lee de una captura o se escucha por
+  // teléfono, así que media palabra tiene que servir mientras se teclea el
+  // resto. Sin distinguir mayúsculas, porque el campo las pinta en
+  // mayúsculas pero no transforma lo escrito.
+  //
+  // UNA FILA SIN CÓDIGO NO CASA NUNCA, y es correcto: es anterior a la
+  // migración 147 y no hay código por el que buscarla. Hoy no existe
+  // ninguna, ni en dev ni en producción.
+  // ── QUÉ SE BUSCA CON EL BUSCADOR ──────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-23: *«el search buscar, debe permitir buscar
+  // por código, monto o producto»*. Nació buscando solo el código.
+  //
+  // SE BUSCA LO QUE LA FILA DICE, y por eso el texto se arma con las MISMAS
+  // piezas que la fila pinta: su código, su nombre —los productos de la venta
+  // o lo que el tendero escribió— y sus importes. Un buscador que mire
+  // columnas que la pantalla no enseña devuelve filas que, a la vista, no
+  // tienen nada que ver con lo buscado.
+  //
+  // LOS IMPORTES VAN EN LAS DOS FORMAS, cruda y formateada, a propósito: el
+  // tendero teclea lo que recuerda («112.84») o lo que copia de la pantalla
+  // («Bs. 100.001,87»), y las dos tienen que encontrar la misma fila. Es más
+  // barato meter las dos cadenas que adivinar en cuál está pensando.
+  //
+  // Y LOS BOLÍVARES TECLEADOS TAMBIÉN, cuando los hay: para un abono pagado
+  // en bolívares, esa es la cifra que el cliente entregó y la que el tendero
+  // tiene en la cabeza.
+  const textoDeLaFila = (f: Fila) => {
+    if (f.clase === "contado") {
+      return [
+        f.v.transactionCode ?? "",
+        f.v.lineas.map((l) => l.name).join(" "),
+        String(f.v.amount),
+        formatPriceAmount(f.v.amount, (f.v.currency ?? "COP") as PriceCurrency),
+      ].join(" ");
+    }
+    const m = f.m;
+    const fiado = m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
+    const nombre =
+      (fiado?.sale_id ? (productosPorVenta[fiado.sale_id] ?? []) : []).join(" ") ||
+      fiado?.description ||
+      m.description ||
+      "";
+    return [
+      m.transaction_code ?? "",
+      nombre,
+      String(m.amount),
+      formatPriceAmount(Number(m.amount), (m.currency ?? "COP") as PriceCurrency),
+      m.entry_amount != null ? String(m.entry_amount) : "",
+      m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : "",
+    ].join(" ");
+  };
+
+  const buscado = codigo.trim().toLowerCase();
+  const porCodigo =
+    buscado === "" ? filas : filas.filter((f) => textoDeLaFila(f).toLowerCase().includes(buscado));
+
   const porTipo =
     tipo === "todos"
-      ? filas
-      : filas.filter((f) =>
+      ? porCodigo
+      : porCodigo.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
@@ -381,6 +449,11 @@ export function MovementHistoryList({
     setPage(1);
   }
 
+  function cambiarCodigo(c: string) {
+    setCodigo(c);
+    setPage(1);
+  }
+
   // LA CABECERA SE PINTA SIEMPRE, incluso sin un solo movimiento. Si
   // desapareciera con la lista, un filtro que no deja nada se llevaría por
   // delante el único control que sirve para deshacerlo.
@@ -400,6 +473,8 @@ export function MovementHistoryList({
           moneda={moneda}
           setMoneda={cambiarMoneda}
           monedas={monedasDelNegocio}
+          codigo={codigo}
+          setCodigo={cambiarCodigo}
         />
       ) : null}
     </div>
@@ -438,7 +513,7 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo })} />
       </div>
     );
   }
@@ -858,8 +933,15 @@ function FilaDeContado({
   // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
   // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
   // callar.
+  // LOS TECLEADOS PRIMERO, y la conversión solo si no los hay. Regla crítica
+  // del 2026-10-24: `amount × tasaSellada` devuelve una cifra que nadie
+  // escribió — Bs. 100.000 vuelven como Bs. 100.001,87. Ver CLAUDE.md.
   const enBsSellados =
-    venta.tasaSellada == null ? null : formatBs(venta.amount * Number(venta.tasaSellada));
+    venta.tecleadoEnBs != null
+      ? formatBs(venta.tecleadoEnBs)
+      : venta.tasaSellada == null
+        ? null
+        : formatBs(venta.amount * Number(venta.tasaSellada));
 
 
   return (

@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -9,13 +10,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import { getBolivarRates } from "@/lib/products/catalog";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
-import type { BolivarRates } from "@/lib/products/price";
 import type { LedgerCurrency, Movement } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -83,7 +82,11 @@ export default async function TransaccionPage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
-  const { abono: abonoResaltado } = await searchParams;
+  // `?abono=` YA NO MARCA NADA: desde el 2026-10-23 la fila de un abono
+  // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
+  // sigue aceptando en la URL —hay enlaces compartidos con él— y se
+  // ignora, que es lo que hace que no rompan.
+  await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -108,7 +111,6 @@ export default async function TransaccionPage({
   const resultado = await getOwnerRateContextResult(supabase, user.id);
   const ledger: LedgerDisplay | null =
     resultado.kind === "ve" ? { rate: resultado.context.effectiveRate } : null;
-  const rates: BolivarRates | null = ledger ? await getBolivarRates(ledger.rate) : null;
 
   // ── LA FOTO, FIRMADA ─────────────────────────────────────────────────
   let photoUrl: string | null = null;
@@ -130,7 +132,7 @@ export default async function TransaccionPage({
   if (m.type === "payment" && m.applies_to_movement_id) {
     const { data: f } = await supabase
       .from("movements")
-      .select("id, sale_id, created_at, currency, amount, plazo_dias, cuotas, description")
+      .select("id, sale_id, created_at, currency, amount, plazo_dias, cuotas, description, transaction_code")
       .eq("id", m.applies_to_movement_id)
       .eq("client_id", cliente.id)
       .is("deleted_at", null)
@@ -158,6 +160,10 @@ export default async function TransaccionPage({
         cuotas: (f.cuotas as number | null) ?? null,
         productos: lineas.map((l) => l.name),
         descripcion: (f.description as string | null) ?? null,
+        // Su código, para el pie de la tarjeta con el botón de copiar. Solo
+        // lo lleva esta tarjeta —la «relacionada»—; la de la hoja de repartir
+        // no, ver `transactionCode` en `tarjeta-de-fiado.tsx`.
+        transactionCode: (f.transaction_code as string | null) ?? null,
       };
     }
   }
@@ -168,6 +174,7 @@ export default async function TransaccionPage({
   // cargo, así que comparten el `if`.
   let puedePagar = false;
   let abonoInicial = 0;
+  let abonoInicialBs: number | null = null;
   let pendienteDelFiado: number | null = null;
   let abonosRecibidos: AbonoDirigido[] | undefined;
   if (m.type === "charge") {
@@ -227,11 +234,27 @@ export default async function TransaccionPage({
       // Lo vigila `qa:colombia`, filas 5 y 6.
       const { data: pagos } = await supabase
         .from("sale_payments")
-        .select("amount, currency")
+        // `entry_*` PARA ENSEÑAR LOS BOLÍVARES TECLEADOS. Regla crítica del
+        // 2026-10-24, en CLAUDE.md. Sin ellos esta tarjeta convertía
+        // `amount × tasa` y devolvía una cifra que nadie escribió: Bs. 1.000
+        // entregados al comprar salían como «Bs. 1.003,02».
+        .select("amount, currency, entry_currency, entry_amount")
         .eq("sale_id", m.sale_id);
-      abonoInicial = (pagos ?? [])
-        .filter((p) => (p.currency ?? "COP") === (m.currency ?? "COP"))
-        .reduce((suma, p) => suma + Number(p.amount), 0);
+      const delLibro = (pagos ?? []).filter(
+        (p) => (p.currency ?? "COP") === (m.currency ?? "COP"),
+      );
+      abonoInicial = delLibro.reduce((suma, p) => suma + Number(p.amount), 0);
+      // LOS BOLÍVARES TECLEADOS DE ESE LIBRO, y solo si TODOS sus pagos se
+      // tecletaron así: con uno en bolívares y otro en divisa no hay una cifra
+      // tecleada que describa la suma, y entonces manda la conversión, que al
+      // menos es coherente. Misma regla que la fila de contado.
+      abonoInicialBs =
+        delLibro.length > 0 &&
+        delLibro.every((p) => p.entry_currency === "VES" && p.entry_amount != null)
+          ? Math.round(
+              delLibro.reduce((suma, p) => suma + Number(p.entry_amount), 0) * 100,
+            ) / 100
+          : null;
     }
 
     // LOS ABONOS DIRIGIDOS A ESTE FIADO. Encargo del dueño el 2026-10-20.
@@ -247,7 +270,7 @@ export default async function TransaccionPage({
     // últimamente», y el último abono es el que se viene a comprobar.
     const { data: pagos } = await supabase
       .from("movements")
-      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount")
+      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
       .eq("client_id", cliente.id)
       .eq("applies_to_movement_id", m.id)
       .eq("type", "payment")
@@ -260,6 +283,9 @@ export default async function TransaccionPage({
       currency: p.currency as AbonoDirigido["currency"],
       // La tasa que ESE abono selló, para su línea «Bs. … al día del abono».
       tasaSellada: p.exchange_rate_used == null ? null : Number(p.exchange_rate_used),
+      // `transactionCode` YA NO VIAJA: la fila dejó de dibujarlo el
+      // 2026-10-24 por decisión del dueño. La consulta sigue pidiendo la
+      // columna, que cuesta lo mismo y deja la vuelta atrás en una línea.
       // En qué moneda se tecleó y cuánto. El diálogo de editar que los pedía
       // se quitó el 2026-10-23, pero siguen haciendo falta: el menú del «⋮»
       // los usa para decir «la deuda vuelve a subir Bs. 900» en la moneda en
@@ -319,8 +345,11 @@ export default async function TransaccionPage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={(m.transaction_code as string | null) ?? null} />
 
       <DetalleDeTransaccion
+        // Cada tarjeta de «Abonos relacionados» abre la ficha de ese abono.
+        hrefDeUnAbono={(id) => `/transacciones/${id}`}
         type={m.type}
         amount={Number(m.amount)}
         currency={m.currency}
@@ -343,12 +372,10 @@ export default async function TransaccionPage({
         fiadoBorrado={m.type === "payment" && m.applies_to_movement_id != null && fiadoAplicado == null}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
-        abonoResaltado={abonoResaltado ?? null}
         abonoInicial={abonoInicial}
-        rates={rates}
+        abonoInicialBs={abonoInicialBs}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con
         // «Editar abono» y «Eliminar abono». La del cliente pasa `false`.
-        conAcciones
       />
 
       {/* LOS BOTONES DEL FRAME, FUERA DEL «⋮» Y REPETIDOS A PROPÓSITO.

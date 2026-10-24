@@ -1,16 +1,17 @@
 import Image from "next/image";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { ArrowUpRight, EyeOff, ImageOff, Percent } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
-import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
+import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { BolivarRates } from "@/lib/products/price";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
@@ -79,9 +80,7 @@ export type DatosDelDetalle = {
   fiadoBorrado?: boolean;
   // A dónde lleva esa tarjeta. Cada superficie tiene su ruta.
   hrefDelFiado?: string | null;
-  rates?: BolivarRates | null;
   // Ver `mostrarPendiente` en `TarjetaDeFiado`.
-  mostrarPendienteDelFiado?: boolean;
   // EL ABONO PARCIAL QUE SE HIZO AL REGISTRAR EL FIADO, que es lo que el
   // frame llama «Abonó» en un cargo. Respuesta del dueño el 2026-10-20,
   // preguntado: *«Abonó corresponde al abono parcial que hizo al registrar el
@@ -96,6 +95,11 @@ export type DatosDelDetalle = {
   // `124` escribe el movimiento por LO QUE QUEDA, nunca por el total, así que
   // lo pagado en el momento no está en `movements` y hay que ir a buscarlo.
   abonoInicial?: number | null;
+  // LOS BOLÍVARES QUE SE TECLEARON AL COMPRAR, si se pagó así. Mandan sobre
+  // la conversión: regla crítica del 2026-10-24. `null` cuando no se tecleó
+  // en bolívares, o cuando los pagos de ese libro mezclan formas y no hay una
+  // cifra tecleada que describa la suma.
+  abonoInicialBs?: number | null;
   // LOS ABONOS DIRIGIDOS A ESTE FIADO, el reflejo de `fiadoAplicado`. Encargo
   // del dueño el 2026-10-20: *«Detalle de los fiados también deben mostrar la
   // lista de lo que se ha abonado (mismo patrón como abono muestra los
@@ -110,24 +114,21 @@ export type DatosDelDetalle = {
   // abonos», que es una respuesta; `undefined` es para una superficie que no
   // puede contestar la pregunta y entonces no la plantea.
   abonosRecibidos?: AbonoDirigido[];
-  // ── CUÁL DE LOS ABONOS SE VINO A VER ────────────────────────────────
-  //
-  // Frame `1489:10231`, encargo del dueño el 2026-10-22. Llega por la URL
-  // (`?abono=<id>`) porque la fila del historial abre el FIADO desde ese
-  // mismo día, y sin esto el tendero aterriza entre tres tarjetas iguales
-  // sin saber cuál era la suya.
-  //
-  // UN ID QUE NO ESTÁ EN LA LISTA NO RESALTA NADA, que es lo correcto: viene
-  // de la barra de direcciones y puede ser cualquier cosa. No hay nada que
-  // proteger --solo decide un borde-- pero tampoco hay que fingir.
-  abonoResaltado?: string | null;
+  // CÓMO SE LLEGA A LA FICHA DE UN ABONO desde esta pantalla. Lo trae quien
+  // monta el componente porque las dos vistas tienen rutas distintas:
+  // `/transacciones/<id>` en la del tendero y `/s/<token>/t/<id>` en la del
+  // cliente. `null` deja las tarjetas sin enlace, como estaban.
+  hrefDeUnAbono?: ((movementId: string) => string) | null;
   // ── ¿ESTA PANTALLA PUEDE EDITAR? ────────────────────────────────────
   //
   // `false` en la del CLIENTE. Lo reportó el dueño el 2026-10-21: sus
   // tarjetas de abono enseñaban el «⋮» con «Editar abono» y «Eliminar
   // abono». El detalle entero está en `tarjeta-de-abono.tsx`, incluido por
   // qué es obligatoria y no tiene valor por defecto.
-  conAcciones: boolean;
+  // `conAcciones` SE FUE EL 2026-10-24: lo único que encendía era el «⋮» de
+  // las filas de abono, y esas filas ya no lo llevan — sus acciones viven en
+  // la ficha del propio abono. La vista del cliente deja de tener que
+  // acordarse de apagar nada, porque no hay nada que apagar.
 };
 
 export function DetalleDeTransaccion({
@@ -150,12 +151,10 @@ export function DetalleDeTransaccion({
   fiadoAplicado = null,
   fiadoBorrado = false,
   hrefDelFiado = null,
-  rates = null,
-  mostrarPendienteDelFiado = true,
   abonoInicial = null,
+  abonoInicialBs = null,
   abonosRecibidos,
-  conAcciones,
-  abonoResaltado = null,
+  hrefDeUnAbono = null,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
 // ── UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS ────────────────────
@@ -181,61 +180,55 @@ export function DetalleDeTransaccion({
   // responder una pregunta que nadie se hace.
   const monedaRegistrada: MovementCurrencyCode | null = currency ? (entryCurrency ?? currency) : null;
 
-  // LO QUE SE TECLEÓ, no lo que se guardó. Son la misma cifra salvo cuando se
-  // escribió en bolívares, y ahí la diferencia importa: un fiado tecleado como
-  // Bs. 900 se guarda como $1,08, y $1,08 valen 899,09 porque los céntimos no
-  // dan para más. Esos 91 céntimos son redondeo, pero sin ver el 900 al lado
-  // parecen un error de la app.
-  const monto =
-    monedaRegistrada === "VES" && entryAmount != null ? formatBs(entryAmount) : ledgerAmount.primary;
+  // `monto`, `monedaDelMonto` y `equivalente` se fueron el 2026-10-24 con el
+  // rediseño del resumen (frame `1580:11677`): la fila «Abonó» pasó a enseñar
+  // la cifra del LIBRO arriba y los bolívares debajo, que es justo al revés
+  // de lo que esas tres variables servían. Lo que las sustituye —y por qué
+  // invertirlo solo se pudo hacer hoy— está en `bolivaresDelAbono`.
 
-  // LA BANDERA QUE ACOMPAÑA A ESA CIFRA, pedida por el dueño el 2026-10-20:
-  // *«El valor del campo "Abonó" le falta la bandera»*. Importa más desde que
-  // se fue la fila «Moneda registrada», que era la otra forma de saberlo.
-  //
-  // SE CALCULA CON LA MISMA CONDICIÓN QUE `monto` Y NO CON `monedaRegistrada`,
-  // que es lo que parece a primera vista y falla en un caso real: un
-  // movimiento tecleado en bolívares ANTES de que existiera `entry_amount`
-  // tiene `monedaRegistrada === "VES"` y `entryAmount === null`, así que la
-  // cifra que se enseña es la del libro —dólares— y una bandera de Venezuela
-  // al lado estaría nombrando una moneda que no es la del número.
-  //
-  // `null` en un negocio colombiano, y entonces no se dibuja ninguna, igual
-  // que en el resto de la app.
-  const monedaDelMonto: MovementCurrencyCode | null =
-    monedaRegistrada === "VES" && entryAmount != null ? "VES" : currency;
+  // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Fiado · lo que se llevó».
+  // Los productos de su venta si los trae, lo que el tendero escribió si no,
+  // y «Fiado» a secas cuando no hay ninguno de los dos — que sigue siendo
+  // cierto.
+  const tituloDelFiado = (() => {
+    if (!fiadoAplicado) return "Fiado";
+    const detalle =
+      fiadoAplicado.productos.length > 0
+        ? fiadoAplicado.productos.join(", ")
+        : (fiadoAplicado.descripcion ?? "");
+    return detalle ? `Fiado · ${detalle}` : "Fiado";
+  })();
 
-  // ===========================================================================
-  // «EQUIVALENCIA» VUELVE, Y SOLO EN UN ABONO
+  // ── LOS BOLÍVARES DE ESTE ABONO: LOS TECLEADOS, SI LOS HAY ──────────
   //
-  // El 2026-10-21 se retiró de las DOS fichas por una instrucción que iba
-  // sobre UNA: *«el campo equivalencia se elimina»*, dicha sobre el frame
-  // `1510:9784`, que es el del FIADO. El frame del abono --`1465:18349`, nodo
-  // `1465:18374`-- la dibuja, y al quitarla de ahí también se llevó por
-  // delante el único sitio donde el abono decía cuánto valía.
+  // Regla crítica del 2026-10-24 («siempre manda el monto que tecleó el
+  // tendero»): si pagó en bolívares, esa es su cifra y se repite tal cual.
+  // Solo cuando no la hay se convierte con la tasa que el abono selló — que
+  // es la única forma de dar bolívares de un abono tecleado en divisa.
+  const bolivaresDelAbono =
+    monedaRegistrada === "VES" && entryAmount != null
+      ? formatBs(entryAmount)
+      : exchangeRateUsed != null && currency
+        ? formatBs(amount * exchangeRateUsed)
+        : null;
+
+  // ── CÓMO LLEGÓ ESTE ABONO: DENTRO DEL PLAZO O PASADO ────────────────
   //
-  // QUÉ COSTÓ, medido en dev el 2026-10-22: un abono tecleado como Bs. 1.000
-  // enseñaba «Abonó Bs. 1.000,00» y nada más. Ese pago bajó la deuda en
-  // $1,13, y esa cifra no estaba en ninguna parte de su propia pantalla --ni
-  // la tasa con que se convirtió--. El cliente abre su recibo y no puede
-  // saber cuánto le bajó la deuda, que es lo único que viene a mirar.
+  // Del fiado que pagó y con la MISMA función que pinta los chips de la lista
+  // de arriba, para que el mismo abono no salga «Dentro del plazo» en una
+  // pantalla y «Plazo vencido» en la otra.
   //
-  // EN UN FIADO SIGUE FUERA, que es lo que él pidió: allí la fila decía los
-  // bolívares del fiado ENTERO pegada debajo de «Abonó», y se leía como la
-  // otra cara de esa cifra sin serlo. En un abono sí lo es: «Abonó» es lo
-  // tecleado y esto es lo mismo en la otra moneda.
-  //
-  // SIN TASA NO HAY FILA. `exchangeRateUsed` es nulo en todo lo de un negocio
-  // colombiano --donde además no hay dos monedas que equiparar-- y en lo
-  // anterior a que se sellara la tasa.
-  const equivalente =
-    type === "payment" && currency && exchangeRateUsed != null
-      ? monedaRegistrada === "VES"
-        ? // Tecleado en bolívares: la equivalencia es lo que quedó en el libro.
-          { texto: ledgerAmount.primary, moneda: currency as MovementCurrencyCode }
-        : // Tecleado en divisa: la equivalencia son los bolívares de ese día,
-          // a la tasa que ESE abono selló y no a la de hoy.
-          { texto: formatBs(amount * exchangeRateUsed), moneda: "VES" as MovementCurrencyCode }
+  // Se le pasa este abono como único de la lista: lo que se juzga es su
+  // fecha contra el plazo del fiado, y los demás abonos no cambian eso.
+  const estadoDeEsteAbono =
+    type === "payment" && fiadoAplicado && fiadoAplicado.plazoDias != null
+      ? (estadosDelFiado({
+          createdAt: fiadoAplicado.fecha,
+          plazoDias: fiadoAplicado.plazoDias,
+          cuotas: fiadoAplicado.cuotas ?? 1,
+          amount: fiadoAplicado.amount,
+          abonos: [{ fecha: createdAt, amount }],
+        }).abonos[0] ?? null)
       : null;
 
   // EL ACUERDO: de un fiado, el suyo; de un abono dirigido, el del fiado que
@@ -363,52 +356,19 @@ export function DetalleDeTransaccion({
           es un fiado. */}
       <div className="flex flex-col gap-1.5 rounded-[10px] border p-2.5">
         <p className="py-2 text-sm leading-5">
-          {type === "payment"
-            ? "Resumen de abono"
-            : `Resumen de compra${currency ? ` en ${NOMBRE_DE_MONEDA[currency]}` : ""}`}
+          {/* LOS DOS NOMBRAN SU LIBRO desde el 2026-10-24 — frame
+              `1580:11677` dice «Resumen de abono en Dólares». Con dos libros
+              abiertos, «Resumen de abono» a secas no dice de cuál habla, y es
+              lo primero que hay que saber para leer las cifras de debajo. */}
+          {`Resumen de ${type === "payment" ? "abono" : "compra"}${
+            currency ? ` en ${NOMBRE_DE_MONEDA[currency]}` : ""
+          }`}
         </p>
 
         {/* A QUÉ FIADO FUE ESTE ABONO. Pedido del dueño el 2026-10-19: *«dentro
             del resumen del abono se debe mostrar el card del fiado al que se le
             abonó, al seleccionar el card se debe abrir el detalle de ese
             fiado»*. Es la MISMA tarjeta de la pantalla 1/3. */}
-        {type === "payment" ? (
-          fiadoAplicado && hrefDelFiado ? (
-            <TarjetaDeFiado
-              fiado={fiadoAplicado}
-              rates={rates}
-              href={hrefDelFiado}
-              mostrarPendiente={mostrarPendienteDelFiado}
-              // AQUÍ SÍ: esta tarjeta está sola, navega, y la flecha es la
-              // única señal de que se puede tocar.
-              conChevron
-            />
-          ) : (
-            // DOS FRASES, Y DICEN COSAS DISTINTAS:
-            //
-            //   * «Repartidos al saldo total» — LOS CIENTOS QUE YA EXISTÍAN.
-            //     Decisión del dueño el 2026-10-19: no se deja en blanco, se
-            //     dice qué pasó. La cola FIFO los repartió sobre el saldo y no
-            //     hubo decisión del tendero que enseñar.
-            //   * «Un fiado que se eliminó» — este abono SÍ eligió fiado, y el
-            //     fiado ya no está. La segunda línea es la que importa: ese
-            //     dinero sigue descontando del saldo, y es justo lo que nadie
-            //     ve si no se dice aquí.
-            <Fila nombre="Abonó a">
-              {fiadoBorrado ? (
-                <span className="flex flex-col items-end gap-0.5">
-                  <span>Un fiado que se eliminó</span>
-                  <span className="text-xs text-muted-foreground">
-                    Este abono sigue descontándose del saldo
-                  </span>
-                </span>
-              ) : (
-                "Repartidos al saldo total"
-              )}
-            </Fila>
-          )
-        ) : null}
-
         {productos.length > 0 ? (
           <ProductosDelMovimiento
             productos={productos}
@@ -449,13 +409,21 @@ export function DetalleDeTransaccion({
             fila se queda sin trabajo y desaparece. */}
         {type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
-            {/* «Abonos», EN PLURAL Y EN 14 REGULAR — frame `1489:10209`, nodo
-                `1489:10230`. Decía «Abonó» hasta el 2026-10-20, que es el
-                rótulo de la FILA de un fiado sin abonos dirigidos: la de
-                arriba, con una sola cifra. Son dos cosas distintas y el frame
-                las llama distinto. */}
-            <dt className="py-1 text-sm leading-5">Abonos</dt>
-            <dd className="flex flex-col gap-2">
+            {/* «Abonos relacionados», EN 14 REGULAR — frame `1510:9784`, nodo
+                `1510:9786`. Encargo del dueño el 2026-10-23, y el nombre no
+                es cosmético: desde ese día cada tarjeta ABRE la ficha de su
+                abono, así que la sección dejó de ser una lista de cifras y
+                pasó a ser un índice de transacciones relacionadas — igual que
+                «Fiado relacionado» en la ficha de un abono, que es su espejo.
+
+                Antes decía «Abonos», y antes de eso «Abonó», que es el rótulo
+                de la FILA de un fiado sin abonos dirigidos. Las tres son
+                cosas distintas y conviene que se llamen distinto. */}
+            <dt className="py-1 text-sm leading-5">Abonos relacionados</dt>
+            {/* SIN `gap`: las filas se separan con su propia línea de arriba
+                —frame `1599:11697`— y un hueco además dejaría la línea
+                flotando en medio de la nada. */}
+            <dd className="flex flex-col">
               {/* LA PRIMERA ES LA DE LA COMPRA, y va siempre. Su «movimiento»
                   no existe —ese pago vive en `sale_payments`, por la `124`—
                   así que lleva el id del propio fiado como clave y no ofrece
@@ -494,6 +462,19 @@ export function DetalleDeTransaccion({
                       : currency != null
                         ? 0
                         : null,
+                  // ── LOS BOLÍVARES QUE TECLEÓ AL COMPRAR ──────────────
+                  //
+                  // Mandan sobre `tasaSellada`, que es una reconversión. Sin
+                  // esto, Bs. 1.000 entregados al registrar la venta salían
+                  // aquí como «Bs. 1.003,02» — €1,01 × 993,088.
+                  //
+                  // Lo reportó el dueño el 2026-10-24, el mismo día que pidió
+                  // la regla, y sobre un camino que la auditoría de esa regla
+                  // no había mirado: se revisó el reparto, el historial y la
+                  // fila de contado, y NO el pago del momento de la compra,
+                  // que vive en `sale_payments` y se dibuja aquí.
+                  entryCurrency: abonoInicialBs != null ? "VES" : null,
+                  entryAmount: abonoInicialBs,
                 }}
                 // LO QUE QUEDÓ TRAS EL PAGO DE LA COMPRA, que es `amount` tal
                 // cual: la migración `124` escribe el movimiento por lo que
@@ -503,8 +484,6 @@ export function DetalleDeTransaccion({
                 //
                 // Con cero abonado dice lo mismo que el fiado entero, y es
                 // correcto: no entregó nada, así que quedó debiendo todo.
-                pendienteTras={amount ?? 0}
-                conAcciones={conAcciones}
               />
               {/* ── LO QUE QUEDABA TRAS CADA ABONO, EN ORDEN ────────────
                   La lista llega del más NUEVO al más viejo, así que se recorre
@@ -540,43 +519,102 @@ export function DetalleDeTransaccion({
                     key={a.movementId}
                     abono={a}
                     estado={estadoDeCadaAbono[i]}
-                    pendienteTras={porAbono.get(a.movementId) ?? null}
-                    conAcciones={conAcciones}
-                    resaltado={a.movementId === abonoResaltado}
+                    href={hrefDeUnAbono ? hrefDeUnAbono(a.movementId) : null}
                   />
                 ));
               })()}
             </dd>
           </div>
         ) : (
-          /* ── «ABONÓ», UNA SOLA FILA — frame `1580:11687` ──────────────
-             Encargo del dueño el 2026-10-23. Eran DOS filas —«Abonó» con la
-             cifra y «Equivalencia» debajo con la otra moneda— y el frame las
-             funde en una: arriba lo que entró, en verde y con su bandera; en
-             gris debajo, lo mismo en la otra moneda con «al día del abono».
+          /* ── «ABONÓ», CON SU CHIP Y SU CIFRA — frame `1580:11677` ─────
+             Rediseñada el 2026-10-24. La fila va entre dos líneas y con más
+             aire (`py-4`), porque es la cifra por la que se abre esta
+             pantalla.
 
-             LAS TARJETAS SON COSA DE UN FIADO, que es el que tiene pagos que
-             listar; un abono es una cifra suelta. Por eso esto vive en la
-             rama `else`. */
-          <Fila nombre="Abonó">
-            <span className="inline-flex flex-col items-end">
+             ── LA CIFRA GRANDE ES LA DEL LIBRO, Y ESTO SE INVIRTIÓ ────────
+             Hasta hoy arriba iba lo TECLEADO —bolívares si se pagó así— y
+             debajo la moneda del libro. El frame lo pone al revés, y ahora se
+             puede hacer sin perder nada: desde el arreglo de los montos
+             tecleados, la línea de bolívares de abajo ES la que el tendero
+             escribió, no una reconversión. Invertirlo antes habría puesto
+             arriba una cifra honesta y debajo una inventada.
+
+             EL CHIP DICE CÓMO LLEGÓ ESE ABONO —dentro del plazo o pasado— y
+             sale del fiado que pagó, con la misma función que pinta los chips
+             de la lista de arriba. Sin fiado al que aplicarse, no hay plazo
+             que juzgar y no se dibuja. */
+          <div className="flex items-center justify-between gap-4 border-y py-4">
+            <span className="flex flex-col items-start gap-1">
+              <span className="text-xs leading-4 text-muted-foreground">Abonó</span>
+              {estadoDeEsteAbono ? <ChipDeEstado estado={estadoDeEsteAbono} /> : null}
+            </span>
+            <span className="inline-flex flex-col items-end gap-1">
               <span className="inline-flex items-center gap-1 text-base font-semibold tabular-nums text-money-in">
-                +{monto}
-                {monedaDelMonto ? (
-                  <CurrencyFlagIcon currency={monedaDelMonto} className="size-4" />
-                ) : null}
+                +{ledgerAmount.primary}
+                {currency ? <CurrencyFlagIcon currency={currency} className="size-4" /> : null}
               </span>
               {/* «al día del abono» PEGADO A LA CIFRA, no como rótulo suelto:
                   califica a ESTA cantidad, y lo que dice es que sale de la
                   tasa que el abono SELLÓ, no de la de hoy. */}
-              {equivalente ? (
+              {bolivaresDelAbono ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  {equivalente.texto} al día del abono
+                  {bolivaresDelAbono} al día del abono
                 </span>
               ) : null}
             </span>
-          </Fila>
+          </div>
         )}
+
+        {/* ── «ABONÓ A FIADO», UNA FILA Y NO UNA TARJETA — frame `1580:11677`
+            ───────────────────────────────────────────────────────────────
+            Vuelve DENTRO del resumen, entre la cifra y el total, y en forma
+            de fila: nombre del fiado, su fecha y un chevron.
+
+            ESTO DESPLAZA LO DE AYER y las dos quedan escritas. El 2026-10-23
+            el dueño pidió la tarjeta «al final, debajo de la foto», porque
+            metida entre las cifras del abono un importe en rojo se mezclaba
+            con las que se estaban leyendo. El frame de hoy la resuelve de
+            otra manera: sin tarjeta y sin importe, solo el nombre y la fecha,
+            no hay cifra con la que confundirse. Preguntado y confirmado por
+            él el 2026-10-24.
+
+            SIN FIADO, LAS DOS FRASES DE SIEMPRE: «Repartidos al saldo total»
+            para los cientos de abonos que la cola FIFO repartió, y «Un fiado
+            que se eliminó» cuando sí eligió uno y ese fiado ya no está — esa
+            segunda importa, porque ese dinero sigue descontando del saldo y
+            es justo lo que nadie ve si no se dice aquí. */}
+        {type === "payment" ? (
+          fiadoAplicado && hrefDelFiado ? (
+            <Link
+              href={hrefDelFiado}
+              className="flex items-center justify-between gap-3 py-2 transition-colors active:bg-muted/60"
+            >
+              <span className="text-xs leading-4 text-muted-foreground">Abonó a fiado</span>
+              <span className="flex items-center gap-2">
+                <span className="flex min-w-0 flex-col items-end">
+                  <span className="truncate text-sm">{tituloDelFiado}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(fiadoAplicado.fecha)}
+                  </span>
+                </span>
+                <ChevronRight className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </span>
+            </Link>
+          ) : (
+            <Fila nombre="Abonó a">
+              {fiadoBorrado ? (
+                <span className="flex flex-col items-end gap-0.5">
+                  <span>Un fiado que se eliminó</span>
+                  <span className="text-xs text-muted-foreground">
+                    Este abono sigue descontándose del saldo
+                  </span>
+                </span>
+              ) : (
+                "Repartidos al saldo total"
+              )}
+            </Fila>
+          )
+        ) : null}
 
         {/* «TOTAL POR COBRAR», DENTRO DE LA TARJETA Y EN GRANDE — el frame lo
             pone ahí, separado por una línea. No es un dato más del movimiento:
@@ -696,6 +734,7 @@ export function DetalleDeTransaccion({
           </>
         ) : null}
       </Grupo>
+
     </dl>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import {
+import { useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -69,21 +69,33 @@ import type { LedgerCurrency } from "@/lib/types";
 // a un fiado más de lo que debe, y esta pantalla no tendría forma de notarlo.
 //
 // ===========================================================================
-// LA MISMA TARJETA QUE EL PASO 1/3, Y ESO ES UNA DECISIÓN
+// DOS TARJETAS DISTINTAS, COMO EL FRAME, Y ESO CAMBIÓ EL 2026-10-23
 //
-// El frame dibuja DOS tarjetas distintas: la que ya tiene importe asignado
-// lleva fecha y chevron, y la que no lleva un botón «Pagar» y ni fecha ni
-// chevron. Aquí las dos son `TarjetaDeFiado`, la misma de `/abonos/nuevo` y
-// del detalle de un abono, y lo único que cambia es lo que va DEBAJO.
+// El frame `1564:11211` dibuja DOS: la que ya tiene importe asignado lleva
+// título, FECHA y su renglón «Abona» debajo (`1564:11242`); la que no lleva
+// título, la cifra en rojo debajo y un botón «Pagar» al lado, SIN fecha
+// (`1564:11286`).
 //
-// Dos razones, y la segunda es del dueño:
+// HASTA HOY LAS DOS ERAN `TarjetaDeFiado` con cosas distintas debajo, y la
+// razón escrita era buena: tres copias de la misma tarjeta en tres archivos
+// es cómo dejan de ser la misma. Lo que esa razón no cubría es que no son la
+// misma tarjeta — tienen distinto contenido y distinta disposición, y
+// forzarlas a una sola forma es lo que puso DOS cifras del mismo fiado en la
+// misma caja: «Debe €15.95» abajo a la izquierda y «−€25.00» en grande a la
+// derecha. El dueño lo reportó al tocar la segunda y encontrarse la primera:
+// *«Estoy seleccionando un abono de 25 euros pero al seleccionarlo me dice
+// que es de 15.95»*.
 //
-//   · Tres copias de la misma tarjeta en tres archivos es exactamente cómo
-//     dejan de ser la misma —lo tiene escrito `tarjeta-de-fiado.tsx`—.
-//   · El frame NO dibuja «Debe $X», que la tarjeta de producción sí tiene.
-//     Preguntado el 2026-10-22, el dueño respondió *«Sí mantén la tarjeta»*.
-//     Y es la cifra que decide el reparto: repartir sin ver cuánto falta en
-//     cada fiado es repartir a ciegas.
+// ASÍ QUE LA DE «Pagar» SE ESCRIBE AQUÍ, y la que recibe sigue siendo
+// `TarjetaDeFiado` —la misma de `/abonos/nuevo` y del detalle de un abono—
+// con `cifra="pendiente"` y sin su línea «Debe».
+//
+// Y ESTO NO DESHACE LA RESPUESTA DEL 2026-10-22. Aquel día se le preguntó si
+// mantener «Debe $X», que el frame no dibuja, y dijo *«Sí mantén la
+// tarjeta»*: lo que quería era ver cuánto falta en cada fiado, porque
+// repartir sin eso es repartir a ciegas. Esa cifra no se va — pasa a ser LA
+// cifra, la roja, en lugar de ser la segunda y la pequeña.
+//
 // Fuera del componente para que su referencia no cambie en cada render:
 // `useSyncExternalStore` vuelve a suscribirse cuando `subscribe` es otra
 // función, y `SIN_AJUSTES` tiene que ser el MISMO objeto vacío siempre.
@@ -99,6 +111,7 @@ export function AbonoReparto({
   libros,
   rates,
   paisVE,
+  desde,
 }: {
   clienteId: string;
   clienteNombre: string;
@@ -110,6 +123,23 @@ export function AbonoReparto({
   rates: BolivarRates | null;
   // Solo un negocio venezolano puede teclear en bolívares.
   paisVE: boolean;
+  // ── DE DÓNDE SE VINO ───────────────────────────────────────────────
+  //
+  // A esta pantalla se llega por DOS puertas y la flecha tiene que deshacer
+  // la que se usó. Encargo del dueño el 2026-10-23: *«si usuario entró desde
+  // perfil del cliente debe regresarlo al perfil del cliente, si entró desde
+  // buscar cliente lo debe regresar a buscar cliente»*.
+  //
+  // VA EN LA URL Y NO EN EL HISTORIAL DEL NAVEGADOR, y esa es la decisión que
+  // importa: `router.back()` habría sido una línea, pero esta pantalla se
+  // abandona y se vuelve a ella —cada «Pagar» de un fiado va a la pantalla
+  // del monto y regresa— así que el paso anterior deja de ser la puerta de
+  // entrada en cuanto el tendero reparte una vez. Un parámetro sobrevive a
+  // eso, y a recargar.
+  //
+  // Por eso `abono-monto.tsx` lo arrastra en sus dos vueltas: si se perdiera
+  // ahí, la flecha funcionaría hasta el primer reparto y luego no.
+  desde: "cliente" | "buscar";
 }) {
   const router = useRouter();
   const [guardando, empezar] = useTransition();
@@ -184,6 +214,47 @@ export function AbonoReparto({
   // `useMemo` del reparto y el efecto que guarda el borrador se dispararan
   // siempre, o sea escribir en `sessionStorage` en cada pintado.
   const aMano = aManoEditado ?? borrador?.aMano ?? SIN_AJUSTES;
+  // LOS BOLÍVARES QUE TECLEÓ EN CADA FIADO, cuando los tecleó así. Se usan
+  // para el total y viajan al servidor; sin ellos, la suma y lo guardado
+  // serían reconversiones y no la cifra del tendero. Ver `aManoBs` en
+  // `lib/abonos/borrador.ts` y lo que costó el 2026-10-24.
+  //
+  // SE IGNORA CUANDO HAY EDICIÓN EN CURSO (`aManoEditado`): esa viene de
+  // tocar la pantalla, no del borrador, y mezclar las dos daría bolívares de
+  // una cifra que ya cambió.
+  const aManoBs = aManoEditado ? SIN_AJUSTES : (borrador?.aManoBs ?? SIN_AJUSTES);
+
+  // Ver `soloDeFiadosVivos` en el guardado del borrador, más abajo.
+  const pendientePorId = useMemo(
+    () => new Map(fiados.map((f) => [f.movementId, f.pending])),
+    [fiados],
+  );
+  const soloDeFiadosVivos = useCallback(
+    (m: Record<string, number>, enBolivares = false) => {
+      const limpio: Record<string, number> = {};
+      for (const [id, v] of Object.entries(m)) {
+        const pendiente = pendientePorId.get(id);
+        // 1. FIADO QUE YA NO ESTÁ: fuera. Ver el porqué en el guardado.
+        if (pendiente == null) continue;
+        // 2. FIADO QUE AHORA DEBE MENOS: se recorta a lo que debe HOY.
+        //
+        // Es el otro medio fallo, y el que de verdad muerde: el id sigue vivo,
+        // así que limpiar por id no lo ve. El tendero fija $1,02 a un fiado,
+        // ese fiado se cobra por otro camino y pasa a deber $0,58, y la cifra
+        // vieja se queda en el borrador — restándose del tope como si todavía
+        // valiera. Un abono de $1,13 acaba diciendo «del abono quedan $0.11».
+        //
+        // LOS BOLÍVARES NO SE RECORTAN, y por eso el segundo parámetro: su
+        // tope es otro —la deuda convertida— y recortarlos contra la cifra del
+        // libro los dejaría en una cantidad que nadie tecleó, que es justo lo
+        // que la regla de los montos tecleados prohíbe. Se quedan o se van con
+        // su línea.
+        limpio[id] = enBolivares ? v : Math.min(v, pendiente);
+      }
+      return limpio;
+    },
+    [pendientePorId],
+  );
 
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -334,6 +405,13 @@ export function AbonoReparto({
         if (puesto == null) return suma;
         const topado = Math.max(0, Math.min(puesto, f.pending));
         if (!cruzaLibros) return suma + topado;
+        // SU CIFRA PRIMERO Y LA CONVERSIÓN DESPUÉS. Sumando conversiones, dos
+        // líneas de Bs. 100.000 daban un botón de Bs. 200.005,87 — ver
+        // `aManoBs`. La conversión solo entra cuando ese fiado se fijó en la
+        // moneda del libro, donde no hay bolívar tecleado que respetar.
+        const suyos = aManoBs[f.movementId];
+        if (suyos != null && Math.abs(puesto - f.pending) > 0.005) return suma + suyos;
+        if (suyos != null && puesto <= f.pending) return suma + suyos;
         return suma + (aBolivares(topado, (f.currency ?? null) as LedgerCurrency | null) ?? 0);
       }, 0);
     }
@@ -343,7 +421,7 @@ export function AbonoReparto({
     // `amount` es `number | null`: null cuando falta la tasa. Cae a 0, que
     // deja el botón apagado — mejor que convertir con una tasa inventada.
     return priceIn(libro, { amount: montoNum, currency: "VES" }, rates).amount ?? 0;
-  }, [modoSeleccion, delLibro, aMano, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
+  }, [modoSeleccion, delLibro, aMano, aManoBs, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
 
   const excede = enElLibro - deuda > 0.005;
 
@@ -404,28 +482,58 @@ export function AbonoReparto({
       // teclear nada, y allí se encontraba «Ya repartiste todo el abono» con
       // el campo vacío y ningún abono repartido. Medido en dev el 2026-10-23.
       totalEnLibro: monto.trim() === "" ? null : enElLibro,
-      aMano,
+      // ── SOLO LO FIJADO A FIADOS QUE SIGUEN ABIERTOS ──────────────────
+      //
+      // El borrador vive en el navegador y sobrevive a lo que pase en la
+      // base: un fiado que se saldó por otro camino —o que se borró— deja su
+      // cifra aquí dentro para siempre. Y esa cifra se RESTA del tope que la
+      // pantalla del monto enseña, así que un fiado fantasma de $1,02 hace
+      // que un abono de $1,13 diga «del abono quedan $0.11» con un fiado de
+      // $320 delante.
+      //
+      // ESTA PANTALLA ES LA ÚNICA QUE PUEDE LIMPIARLO: es la que recibe la
+      // lista de fiados abiertos. La del monto solo ve el borrador, así que
+      // desde allí un id fantasma es indistinguible de uno bueno.
+      //
+      // Se limpia al guardar y no al leer, a propósito: así la corrección
+      // queda escrita y no hay que repetirla en cada pantalla que lo lea.
+      aMano: soloDeFiadosVivos(aMano),
+      // ── Y LOS BOLÍVARES TECLEADOS, QUE ESTA PANTALLA NO TOCA ─────────
+      //
+      // SE REESCRIBEN TAL CUAL, y omitirlos no era neutral: este efecto
+      // guarda el borrador ENTERO en cada render, así que al volver de la
+      // pantalla del monto borraba el `aManoBs` que ella acababa de escribir.
+      // El síntoma era que la tarjeta seguía enseñando la reconversión —Bs.
+      // 100.001,87 en vez de los 100.000 tecleados— y costó media hora de
+      // mirar el sitio equivocado el 2026-10-24: la cifra se guardaba bien y
+      // se borraba un instante después.
+      //
+      // La lección, para la próxima: cuando dos pantallas escriben el mismo
+      // borrador, la que no es dueña de un campo tiene que arrastrarlo.
+      aManoBs: soloDeFiadosVivos(aManoBs, true),
     });
-  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano]);
+  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs, soloDeFiadosVivos]);
 
   // ── LO QUE APAGA «REPARTIR MANUALMENTE» ────────────────────────────
   //
-  // AQUÍ VIVÍA `unSoloFiado = delLibro.length <= 1`, y su comentario decía
-  // «lo que importa es cuántos hay EN LA LISTA que se está repartiendo». La
-  // intención era la correcta y la variable no: `delLibro` son los fiados del
-  // LIBRO, no los que la pantalla dibuja. Con dos fiados en dólares y un
-  // abono de 1 $, la lista enseña UNO —el reparto no llega al segundo— y el
-  // botón salía igual, ofreciendo repartir entre una sola tarjeta.
+  // `delLibro.length <= 1`, abajo, en el botón. Un solo fiado en el libro no
+  // se reparte entre nada.
   //
-  // Lo cazó el dueño el 2026-10-23 jugando a cambiar de moneda, que es justo
-  // lo que hace que las dos listas se separen. La condición de verdad está
-  // más abajo, en `enPantalla`, contada sobre las mismas filas que se pintan.
+  // Y AHORA ESO ES TAMBIÉN «una sola tarjeta», que es lo que de verdad se
+  // quiere decir: desde que la lista enseña TODOS los fiados del libro,
+  // reciban o no, las dos cuentas son la misma. No lo fueron durante unas
+  // horas del 2026-10-23 y costó un fallo en producción por cada lado —
+  // está contado entero en el comentario del botón.
   //
   // `deuda` ya está en la unidad del reparto —bolívares si cruza libros— así
-  // que esto compara dos cifras de la misma moneda. Comparar `montoNum` con
-  // `deuda` sería comparar bolívares con dólares en cuanto se tecleara en
+  // que `cubreTodo` compara dos cifras de la misma moneda. Comparar `montoNum`
+  // con `deuda` sería comparar bolívares con dólares en cuanto se tecleara en
   // bolívares, que es la trampa que esta pantalla ya documenta dos veces.
   const cubreTodo = enElLibro > 0.005 && deuda - enElLibro <= 0.005;
+
+  // Ver `desde` arriba. Se calcula aquí y no en la fila para que el destino y
+  // la etiqueta no puedan separarse.
+  const desdeLaFicha = desde === "cliente";
 
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
 
@@ -447,6 +555,40 @@ export function AbonoReparto({
       (l as { asignadoBs?: number }).asignadoBs ?? null,
     ]),
   );
+  // ── EL TROZO DEL BILLETE QUE LE TOCA A CADA LÍNEA ──────────────────
+  //
+  // Solo cuando el tendero tecleó bolívares y no fijó esta línea a mano. Es
+  // la misma cuenta que hace el servidor al guardar —proporcional a lo que
+  // cada línea consume, y la última absorbe el resto— para que la tarjeta y
+  // la fila guardada digan lo mismo.
+  //
+  // `null` cuando no aplica: sin bolívares tecleados no hay billete que
+  // trocear, y entonces manda la conversión de siempre.
+  const trozoDelBillete = (movementId: string): number | null => {
+    if (!enBolivares || montoNum <= 0) return null;
+    const conImporte = reparto.lineas.filter((l) => l.asignado > 0.005);
+    const i = conImporte.findIndex((l) => l.movementId === movementId);
+    if (i < 0) return null;
+    // EL PESO DE CADA LÍNEA. Cruzando libros son sus bolívares, que es lo
+    // único comparable entre monedas distintas. En un solo libro no hay
+    // `asignadoBs` —ese reparto trabaja en la moneda del libro— y el peso es
+    // el propio importe, que con una sola tasa da exactamente lo mismo.
+    const pesoDe = (id: string) =>
+      asignadoBs.get(id) ?? conImporte.find((l) => l.movementId === id)?.asignado ?? 0;
+    const peso = conImporte.reduce((acc, l) => acc + pesoDe(l.movementId), 0);
+    if (!(peso > 0)) return null;
+    let repartido = 0;
+    for (let j = 0; j < conImporte.length; j += 1) {
+      if (j === conImporte.length - 1) {
+        return Math.round((montoNum - repartido) * 100) / 100;
+      }
+      const v = Math.round(montoNum * (pesoDe(conImporte[j].movementId) / peso) * 100) / 100;
+      if (j === i) return v;
+      repartido = Math.round((repartido + v) * 100) / 100;
+    }
+    return null;
+  };
+
   // En el orden del reparto, no en el de la consulta: es el que explica por
   // qué al primero le tocó todo.
   const enOrden = reparto.lineas
@@ -466,16 +608,22 @@ export function AbonoReparto({
   }, [enOrden, buscaFiado]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // LO QUE LA PANTALLA ENSEÑA DE VERDAD, contado una sola vez
+  // LO QUE LA PANTALLA ENSEÑA: TODOS LOS FIADOS DEL LIBRO, reciban o no
   //
-  // La lista de abajo se pinta con esta misma expresión, y el botón «Repartir
-  // manualmente» se enciende con ella. No es una comodidad: tenerlas por
-  // separado es exactamente lo que falló — la lista filtraba por lo que cada
-  // fiado RECIBE y el botón contaba los del libro, así que discrepaban en
-  // cuanto el abono no alcanzaba para todos.
-  const enPantalla = (modoSeleccion ? fiadosFiltrados : enOrden).filter(
-    (f) => modoSeleccion || (asignado.get(f.movementId) ?? 0) > 0.005,
-  );
+  // `reparto.lineas` ya trae una línea por CADA fiado, con `asignado: 0` para
+  // los que el billete no alcanza (ver `lib/abonos/reparto.ts`), así que
+  // `enOrden` es la lista entera en orden de gravedad. No hay que ir a
+  // buscarla a otro sitio.
+  //
+  // HASTA EL 2026-10-23 AQUÍ SE FILTRABA por `asignado > 0.005`, y las dos
+  // mitades de ese día están contadas en el comentario de la lista, más
+  // abajo. En una línea: enseñar solo a quien recibe esconde a los demás
+  // justo cuando el abono es pequeño, que es casi siempre.
+  //
+  // EN SELECCIÓN SE FILTRA POR EL BUSCADOR y no por el reparto: la hoja es el
+  // catálogo del que el tendero escoge, así que ahí mandan las palabras que
+  // teclea.
+  const enPantalla = modoSeleccion ? fiadosFiltrados : enOrden;
 
   const equivalencia = (n: number, moneda: PriceCurrency | null) => {
     if (!rates || !moneda || n <= 0) return null;
@@ -596,6 +744,9 @@ export function AbonoReparto({
             ? "VES"
             : ((libro ?? "COP") as PriceCurrency),
         aMano,
+        // Lo tecleado en bolívares por fiado, para que el servidor guarde SU
+        // cifra y no una reconversión.
+        aManoBs,
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
       });
@@ -640,63 +791,98 @@ export function AbonoReparto({
   // al detalle del fiado (`1536:11006`), de ahí «Continuar» a la pantalla del
   // monto (`1524:10358`), y al pagar se vuelve aquí con la cifra puesta en su
   // card (`1527:11671`).
-  const filaParaElegir = (f: FiadoAbierto) => (
-    // `shrink-0` NO ES DECORACIÓN. Esta misma fila se monta dentro de la hoja
-    // «Repartir abono», cuya lista es un contenedor flex en columna con
-    // altura acotada (`max-h-[90dvh]` + `overflow-y-auto`). Un hijo de un
-    // flex encoge por defecto, así que con el teclado arriba —que es cuando
-    // esa hoja se abre, con el buscador enfocado— las tarjetas se aplastaban
-    // unas contra otras y el renglón «Debe €0.95» quedaba cortado. Lo
-    // reportó el dueño el 2026-10-23 con la captura.
-    //
-    // Va en la FILA y no en la hoja porque es la fila la que no debe ceder su
-    // altura: la hoja ya tiene su scroll, que es quien sobra cuando no caben.
-    <li key={f.movementId} className="shrink-0 overflow-hidden rounded-[10px] border">
-      <div className="flex items-center justify-between gap-3 pr-3">
-        {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace otra
-            cosa. Encargo del dueño el 2026-10-23: *«todo el card es
-            clickeable, lleva al detalle de la transacción, eliminar icono "›"
-            en la card»*.
+  const filaParaElegir = (f: FiadoAbierto) => {
+    const detalle = f.productos.length > 0 ? f.productos.join(", ") : (f.descripcion ?? "");
+    const titulo = detalle ? `Fiado · ${detalle}` : "Fiado";
+    const enBs =
+      rates && f.currency
+        ? priceIn("VES", { amount: f.pending, currency: f.currency }, rates)?.amount
+        : null;
 
-            SON DOS DESTINOS EN UNA FILA, a propósito: tocar la tarjeta es
-            «déjame ver qué fue esto» y lleva a `/transacciones/…`; tocar
-            «Pagar» es «a este le pongo yo la cifra» y entra en el flujo del
-            reparto. Por eso la flecha sobra: con dos cosas tocables al lado,
-            una flecha solo dice cuál de las dos no es. */}
-        <div className="min-w-0 flex-1 [&>*]:border-0">
-          <TarjetaDeFiado
-            fiado={f}
-            rates={rates}
-            mostrarPendiente
+    return (
+      // `shrink-0` NO ES DECORACIÓN. Esta misma fila se monta dentro de la
+      // hoja «Repartir abono», cuya lista es un contenedor flex en columna con
+      // altura acotada (`max-h-[90dvh]` + `overflow-y-auto`). Un hijo de un
+      // flex encoge por defecto, así que con el teclado arriba —que es cuando
+      // esa hoja se abre, con el buscador enfocado— las tarjetas se aplastaban
+      // unas contra otras y el renglón de la cifra quedaba cortado. Lo reportó
+      // el dueño el 2026-10-23 con la captura.
+      //
+      // Va en la FILA y no en la hoja porque es la fila la que no debe ceder
+      // su altura: la hoja ya tiene su scroll, que es quien sobra.
+      <li key={f.movementId} className="shrink-0 overflow-hidden rounded-[10px] border">
+        <div className="flex items-center justify-between gap-3 pr-4">
+          {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace
+              otra cosa. Encargo del dueño el 2026-10-23: *«todo el card es
+              clickeable, lleva al detalle de la transacción, eliminar icono
+              "›" en la card»*.
+
+              SON DOS DESTINOS EN UNA FILA, a propósito: tocar la tarjeta es
+              «déjame ver qué fue esto» y lleva a `/transacciones/…`; tocar
+              «Pagar» es «a este le pongo yo la cifra». Por eso la flecha
+              sobra: con dos cosas tocables al lado, una flecha solo dice cuál
+              de las dos no es. */}
+          <Link
             href={`/transacciones/${f.movementId}`}
-            conChevron={false}
-          />
+            className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-2 text-left transition-colors active:bg-muted/60"
+          >
+            <span className="truncate text-sm font-medium">{titulo}</span>
+            {/* UNA SOLA CIFRA, Y ES LO QUE ESTE FIADO TODAVÍA DEBE.
+                Frame `1564:11286`: título, importe en rojo debajo y su
+                equivalencia. SIN FECHA y SIN «Debe €X» — el frame no los
+                dibuja aquí, y la tarjeta de arriba (`1564:11242`), que sí
+                lleva fecha, es otra: esa explica un reparto hecho y esta
+                ofrece hacer uno.
+
+                POR QUÉ IMPORTA QUE SEA LO PENDIENTE: pulsar «Pagar» abre el
+                monto con el pendiente como tope. Enseñar aquí el importe
+                original hacía que la pantalla siguiente contradijera a la
+                tarjeta desde la que se llegó, y así lo reportó el dueño el
+                2026-10-23: *«Estoy seleccionando un abono de 25 euros pero al
+                seleccionarlo me dice que es de 15.95»*.
+
+                EL SIGNO ES «−» Y EL FRAME DIBUJA «+», a sabiendas: manda la
+                regla del dueño del 2026-10-22 —*«abonos y de contados con
+                "+", fiados con "-"»*—, que es la misma razón por la que
+                `tarjeta-de-fiado.tsx` desplaza a su propio frame. */}
+            <span className="flex items-center gap-1 text-base font-semibold tabular-nums text-destructive">
+              {f.currency ? (
+                <CurrencyFlagIcon currency={f.currency} className="size-4 shrink-0" />
+              ) : null}
+              -{formatPriceAmount(f.pending, f.currency ?? "COP")}
+            </span>
+            {enBs != null ? (
+              <span className="text-xs text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
+            ) : null}
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-10 shrink-0"
+            onClick={() => {
+              // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
+              // desmonta solo al cambiar de ruta.
+              setRepartiendo(false);
+              // DIRECTO AL MONTO, SIN EL PASO INTERMEDIO. Encargo del dueño
+              // el 2026-10-23: *«elimina el paso "Detalle de transacción 2/2
+              // confirma transacción a abonar"»*.
+              //
+              // Esa pantalla enseñaba el fiado y pedía «Continuar» — y lo que
+              // enseñaba ya está en la tarjeta desde la que se pulsa «Pagar»:
+              // el producto y lo que debe. Era un toque para confirmar lo que
+              // el tendero acababa de elegir.
+              router.push(
+                `/abonos/nuevo/${f.movementId}/monto?reparto=1${desdeLaFicha ? "&desde=cliente" : ""}`,
+              );
+            }}
+          >
+            Pagar
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-10 shrink-0"
-          onClick={() => {
-            // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
-            // desmonta solo al cambiar de ruta.
-            setRepartiendo(false);
-            // DIRECTO AL MONTO, SIN EL PASO INTERMEDIO. Encargo del dueño
-            // el 2026-10-23: *«elimina el paso "Detalle de transacción 2/2
-            // confirma transacción a abonar"»*.
-            //
-            // Esa pantalla enseñaba el fiado y pedía «Continuar» — y lo que
-            // enseñaba ya está en la tarjeta desde la que se pulsa «Pagar»:
-            // el producto, la fecha, lo que debe. Era un toque para confirmar
-            // lo que el tendero acababa de elegir.
-            router.push(`/abonos/nuevo/${f.movementId}/monto?reparto=1`);
-          }}
-        >
-          Pagar
-        </Button>
-      </div>
-    </li>
-  );
+      </li>
+    );
+  };
 
   // UNA SOLA FILA, USADA EN DOS SITIOS: la lista de «Así se reparte el pago» y
   // la hoja de «Repartir distinto». Es una función y no un componente aparte
@@ -708,7 +894,36 @@ export function AbonoReparto({
     const toca = asignado.get(f.movementId) ?? 0;
     // Del reparto cuando lo trae —cruzando libros— y reconvertida si no. Ver
     // el comentario de `asignadoBs`.
-    const bs = asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency);
+    // ── LOS BOLÍVARES DE ESTA TARJETA ────────────────────────────────
+    //
+    // SU CIFRA PRIMERO. Si el tendero fijó este fiado tecleando bolívares, la
+    // tarjeta repite ESA cifra. Lo demás son conversiones, y la vuelta no da
+    // lo mismo: Bs. 100.000 son $112,8381, al céntimo $112,84, que valen
+    // Bs. 100.001,87. Eso es lo que la tarjeta decía, y el dueño lo reportó
+    // el 2026-10-24: *«tecleo = 100.000, tu conversión = 100.001,87»*.
+    //
+    // SOLO SI LA LÍNEA SIGUE VALIENDO LO QUE ÉL PUSO: en cuanto el reparto la
+    // recorta —porque el billete no llega— su cifra deja de describir lo que
+    // esta tarjeta abona, y entonces manda la conversión de lo que de verdad
+    // le toca.
+    const suyos = aManoBs[f.movementId];
+    const sigueEntero = suyos != null && Math.abs((aMano[f.movementId] ?? 0) - toca) <= 0.005;
+    // ── Y SI NO LA FIJÓ A MANO, SU TROZO DEL BILLETE ──────────────────
+    //
+    // Tecleando Bs. 1.000 sobre un fiado que debe de sobra, la tarjeta decía
+    // «Bs. 1.001,44»: `asignadoBs` es la reconversión del importe del libro
+    // —$1,13 × 886,2271— y no el billete. Reportado por el dueño el
+    // 2026-10-24, y es el mismo fallo que ya se arregló para las líneas
+    // fijadas a mano, en el rincón que faltaba.
+    //
+    // SE REPARTE COMO LO REPARTE EL SERVIDOR, proporcionalmente a lo que cada
+    // línea consume del billete; con una sola línea, el billete entero. Que
+    // las dos cuentas sean la misma no es elegancia: la tarjeta tiene que
+    // decir lo que se va a guardar.
+    const delBillete = trozoDelBillete(f.movementId);
+    const bs = sigueEntero
+      ? suyos
+      : (delBillete ?? asignadoBs.get(f.movementId) ?? equivalencia(toca, f.currency));
     // `shrink-0`: ver la otra fila, unas líneas más arriba.
     return (
       <li key={f.movementId} className="shrink-0 rounded-[10px] border">
@@ -718,15 +933,32 @@ export function AbonoReparto({
         <div className="[&>*]:rounded-b-none [&>*]:border-0">
           {/* SIN FLECHA: esta tarjeta no abre nada. La dibujaba igual hasta el
               2026-10-23, prometiendo una pantalla que no existe desde aquí. */}
-          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente conChevron={false} />
+          {/* SIN «Debe €X» Y CON LO PENDIENTE EN ROJO. El frame
+              `1564:11242` dibuja título, fecha y UNA cifra; la línea «Debe»
+              no está ahí, y con ella la tarjeta enseñaba dos números del
+              mismo fiado que no coincidían. Encargo del dueño el 2026-10-23:
+              *«en esta pantalla los fiados no deberían tener el saldo total
+              por cobrar, solo el saldo del fiado de cada card»*. */}
+          <TarjetaDeFiado
+            fiado={f}
+            rates={rates}
+            mostrarPendiente={false}
+            conChevron={false}
+            cifra="pendiente"
+          />
         </div>
-        {/* SIEMPRE «Abona» Y SIEMPRE CON CIFRA. Hasta el 2026-10-23 esta fila
-            tenía una segunda cara —«No le toca nada» y un botón «Pagar»— para
-            los fiados que el reparto no alcanzaba. Ya no se puede llegar a
-            ella: la lista de arriba solo monta los que reciben algo, así que
-            `toca` siempre pasa de cero aquí. Lo que aquella cara ofrecía —ir a
-            un fiado que el reparto no tocó— lo da ahora «Seleccionar fiados»,
-            y desde ahí para TODOS, no solo para los que quedaron a cero. */}
+        {/* SIEMPRE «Abona» Y SIEMPRE CON CIFRA, y aquí no hay botón.
+            Hasta el 2026-10-23 esta fila tenía una segunda cara —«No le toca
+            nada» más un «Pagar»— para los fiados que el reparto no alcanzaba.
+            Sigue sin poder alcanzarse, pero por otro motivo que conviene
+            saber: la lista de arriba SÍ monta a los que reciben cero, solo que
+            esos los dibuja `filaParaElegir`, que es la tarjeta con su «Pagar».
+            O sea que el reparto a cero y el botón viven en la otra fila, y
+            aquí `toca` siempre pasa de cero.
+
+            La diferencia es a propósito: una fila con cifra explica un reparto
+            que ya ocurrió; una con botón ofrece hacer uno. Mezclarlas es lo
+            que el dueño mandó quitar el 2026-10-22. */}
         <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
           <span className="text-sm text-muted-foreground">Abona</span>
           {
@@ -822,8 +1054,8 @@ export function AbonoReparto({
           y abre directa en el buscador con el propósito «abono», que es lo
           que hace que al elegir cliente vuelva aquí. */}
       <ScreenBackRow
-        href="/dashboard?nuevo=abono"
-        label="Buscar otro cliente"
+        href={desdeLaFicha ? `/clients/${clienteId}` : "/dashboard?nuevo=abono"}
+        label={desdeLaFicha ? `Volver a ${clienteNombre}` : "Buscar otro cliente"}
         soloEnTelefono={false}
       />
 
@@ -1091,38 +1323,56 @@ export function AbonoReparto({
                 {modoSeleccion ? "Fiados" : "Así se reparte el pago"}
               </h2>
 
-              {/* SOLO LOS QUE RECIBEN ALGO — encargo del dueño el 2026-10-23:
-                  *«cuando el monto a abonar es menor al de cualquier fiado
-                  está mostrando fiado con abono y resto de fiados con botón
-                  "Pagar", cambiemos eso por solo mostrar el abono al fiado más
-                  crítico (solo un abono), no muestres más fiados»*.
+              {/* ── TODOS LOS FIADOS DEL LIBRO, RECIBAN O NO ──────────────
+                  Y LAS DOS MITADES DEL 2026-10-23, porque la regla cambió de
+                  lado ese mismo día y sin las dos no se entiende ninguna.
 
-                  QUÉ SE VEÍA: con $20 sobre fiados de $41,50 y $62, la lista
-                  enseñaba el de $20 y debajo el otro con «No le toca nada» y
-                  un botón «Pagar». Dos tarjetas para un pago, y la segunda
-                  ofreciendo otra cosa en la pantalla donde se confirma la
-                  primera.
+                  POR LA MAÑANA el dueño pidió lo contrario: *«cuando el monto
+                  a abonar es menor al de cualquier fiado está mostrando fiado
+                  con abono y resto de fiados con botón "Pagar", cambiemos eso
+                  por solo mostrar el abono al fiado más crítico (solo un
+                  abono), no muestres más fiados»*. Se filtró por «los que
+                  reciben algo» y quedó justo eso.
 
-                  LA REGLA ES «LOS QUE RECIBEN», no «el primero». Dicho así
-                  cubre los dos casos sin un segundo criterio: cuando el billete
-                  no llega al fiado más grave sale una sola tarjeta, que es su
-                  caso; cuando da para dos, salen las dos, y esas dos sí
-                  explican el reparto. Un `slice(0, 1)` enseñaría una tarjeta
-                  mientras el botón cobra por dos.
+                  POR LA TARDE reportó el efecto de ese filtro como fallo:
+                  *«Fiados se empiezan a esconder y se muestra solo uno por
+                  moneda, monto a abonar en bolívares solo muestra fiados en
+                  dólares»*.
 
-                  Y LOS QUE NO RECIBEN SIGUEN ALCANZABLES: están en la hoja de
-                  «Seleccionar fiados», que es justo para lo que él la quiere
-                  siempre a mano. */}
+                  NO SON DOS OPINIONES, ES UNA CAUSA. El reparto es cascada:
+                  paga primero al fiado más grave y solo desborda al siguiente
+                  cuando ese queda saldado. Así que €7 contra un fiado que debe
+                  €15,95 asignan a UNO, y filtrar por «los que reciben» esconde
+                  los otros tres — casi siempre, porque un abono casi nunca
+                  cubre el libro entero. En bolívares es peor y por eso se ve
+                  antes: el billete alcanza para el peor, que puede estar en
+                  dólares, y entonces el libro de euros desaparece de una
+                  pantalla que dice estar repartiendo entre los dos.
+
+                  LO QUE RECONCILIA LAS DOS: lo que estorbaba por la mañana no
+                  era la tarjeta de más, era que traía *otra acción* —«dos
+                  tarjetas para un pago, y la segunda ofreciendo otra cosa en
+                  la pantalla donde se confirma la primera»—. Puesto así, el
+                  dueño eligió la tarde CON el botón, el 2026-10-23: *«vamos
+                  con esa pero retomemos las tarjetas con el botón "Pagar"»*.
+
+                  Y EL «Pagar» DE UN FIADO A CERO NO ES UN CALLEJÓN, que era
+                  la duda razonable al devolverlo: MEDIDO el 2026-10-23 con
+                  $0,50 sobre fiados de $1 y $6,50 —todo el billete asignado al
+                  primero— la pantalla del monto abre diciendo *«Máximo $0.50 —
+                  lo que queda del abono»*. Lo repartido en automático no está
+                  comprometido: se puede mover entero al fiado que el tendero
+                  elija. */}
               <ul className="flex flex-col gap-3">
                 {enPantalla
                   .map((f) =>
-                    // EN SELECCIÓN CONVIVEN LAS DOS FILAS: la del fiado que ya
-                    // tiene su cifra —con su renglón «Abona»— y la del que
-                    // todavía no, con su botón «Pagar». Es lo que dibuja el
+                    // CONVIVEN LAS DOS FILAS, y ya no solo en selección: la
+                    // del fiado que tiene su cifra —con su renglón «Abona»— y
+                    // la del que no, con su botón «Pagar». Es lo que dibuja el
                     // frame `1564:11211`, y es lo que hace que la pantalla
                     // sirva para lo que el dueño quiere: ir pagando de uno en
                     // uno sin perder de vista lo que ya lleva puesto.
-                    modoSeleccion && (asignado.get(f.movementId) ?? 0) <= 0.005
+                    (asignado.get(f.movementId) ?? 0) <= 0.005
                       ? filaParaElegir(f)
                       : filaDeFiado(f),
                   )}
@@ -1244,20 +1494,36 @@ export function AbonoReparto({
               reparto que ajustar — lo que hay es una cifra que corregir, y
               eso lo dice la línea roja de arriba.
 
-              EL SEGUNDO SE CUENTA SOBRE `enPantalla`, las filas que esta
-              pantalla pinta de verdad, y no sobre los fiados del libro. Eso
-              cubre de una vez los dos casos que el dueño reportó el
-              2026-10-23: sin monto tecleado no recibe nadie, la lista está
-              vacía y el botón sobra; y con un abono que solo alcanza al
-              primero sale una tarjeta, y repartir entre una tarjeta no es
-              repartir.
+              EL SEGUNDO SE CUENTA SOBRE LOS FIADOS DEL LIBRO, no sobre las
+              tarjetas que se dibujan — y esto ya se equivocó una vez, así que
+              va escrito entero.
 
-              Y ESTO DESPLAZA LA DECISIÓN DEL 2026-10-23 DE ARRIBA —«que se
-              dibuje siempre, aunque no haya monto, para poder llegar al fiado
-              que el cliente nombró»—, que queda escrita en su comentario. La
-              puerta no se pierde: en cuanto hay una cifra con la que repartir,
-              el botón vuelve. */}
-          {modoSeleccion || cubreTodo || enPantalla.length <= 1 ? null : (
+              El 2026-10-23 por la mañana el dueño pidió esconderlo «cuando en
+              la lista de fiados hay solo un fiado (…) porque solo hay un fiado
+              a pagar», y se contó sobre las tarjetas pintadas. Esa tarde, con
+              producción delante, reportó lo contrario: su clienta tenía CUATRO
+              fiados vencidos y la pantalla le enseñaba uno solo, sin forma de
+              llegar a los otros tres.
+
+              Las dos peticiones son la misma confusión vista por sus dos
+              caras: la lista solo dibuja a quien RECIBE algo, así que con un
+              monto menor de lo que debe el peor fiado sale una tarjeta — y de
+              ahí se concluye «solo hay un fiado». Contándolo sobre las
+              tarjetas, el botón desaparece **justo cuando es la única puerta a
+              los demás**, que es lo que esta hoja existe para ser.
+
+              MEDIDO con los cuatro fiados de un cliente de dev el mismo día:
+              €10 sobre un libro que debe €55,95 reparte una sola tarjeta;
+              €20 reparte dos; Bs. 20.000 cruza libros y reparte tres. El
+              reparto nunca estuvo mal — lo que estaba mal era esconder la
+              puerta.
+
+              LO QUE CUESTA, y es el precio de elegir esta cara: con dos fiados
+              y un monto que solo alcanza al primero, el botón se ve aunque la
+              lista enseñe una tarjeta. Es exactamente lo que él pidió quitar
+              por la mañana. Se elige así porque la alternativa es que un
+              fiado abierto no tenga ninguna puerta. */}
+          {modoSeleccion || cubreTodo || delLibro.length <= 1 ? null : (
             <Button
               type="button"
               variant="outline"

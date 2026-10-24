@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ordenarHistorial } from "@/lib/orden-del-historial";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
@@ -310,7 +311,7 @@ export default async function ClientDetailPage({
               consentGranted={aceptaAvisos === true}
               triggerClassName="w-full"
               hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
-              hrefAbono={`/abonos/nuevo?cliente=${client.id}`}
+              hrefAbono={`/abonos/nuevo?cliente=${client.id}&desde=cliente`}
               autoOpen={autoOpenType}
               rateContext={rateContext}
               monedaHabitual={monedaHabitual}
@@ -621,7 +622,11 @@ async function MovementHistory({
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  const movementRows = (movements ?? []) as Movement[];
+  // EL MISMO ORDEN QUE EL ENLACE DEL CLIENTE, y por eso sale de una función
+  // compartida: las líneas de un reparto empatan en `created_at` y sin
+  // desempate cada pantalla las ordenaba a su manera. Ver
+  // `lib/orden-del-historial.ts`.
+  const movementRows = ordenarHistorial((movements ?? []) as Movement[]);
 
   // AQUÍ SE LEÍA EL SALDO DE CADA LIBRO, para que la fila del abono suelto
   // tuviera pie. Se fue el 2026-10-23: desde ese día el pie de TODAS las
@@ -639,7 +644,7 @@ async function MovementHistory({
   // directas no están apareciendo en el historial de movimiento del cliente».
   const { data: ventasCrudas } = await supabase
     .from("sales")
-    .select("id, created_at")
+    .select("id, created_at, transaction_code")
     .eq("client_id", clientId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
@@ -672,7 +677,12 @@ async function MovementHistory({
     const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
       // `rate_used` desde el 2026-10-21: la fila de una venta de contado enseña
       // los bolívares SELLADOS, no los de hoy (frame `1512:10061`).
-      supabase.from("sale_payments").select("sale_id, currency, amount, rate_used").in("sale_id", idsDeVenta),
+      supabase
+        .from("sale_payments")
+        // `entry_*` PARA QUE LA FILA ENSEÑE LOS BOLÍVARES TECLEADOS y no una
+        // reconversión. Regla crítica del 2026-10-24, en CLAUDE.md.
+        .select("sale_id, currency, amount, rate_used, entry_currency, entry_amount")
+        .in("sale_id", idsDeVenta),
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
     for (const l of lineasDeVenta ?? []) {

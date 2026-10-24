@@ -323,6 +323,13 @@ export type AbonoRepartidoEntrada = {
   // Lo que ajustó a mano, por fiado. Lo que no está aquí lo decide la
   // gravedad.
   aMano?: Record<string, number>;
+  // LOS BOLÍVARES QUE EL TENDERO TECLEÓ EN CADA FIADO, cuando los tecleó así.
+  //
+  // Llega del navegador y por eso se limpia abajo antes de usarse. No decide
+  // el reparto —eso lo sigue haciendo el servidor con `aMano`— sino lo que se
+  // GUARDA como `entry_amount`: su cifra exacta en vez de la reconversión que
+  // se enseñaba hasta el 2026-10-24.
+  aManoBs?: Record<string, number>;
   // La misma pareja de banderas que mandan las otras puertas: un «no» también
   // se anota, o el cliente nunca queda marcado como preguntado.
   permisoMostrado?: boolean;
@@ -503,9 +510,96 @@ async function armarRepartoCruzandoLibros(
     return { error: "No pudimos repartir todo el abono. Revisa las cantidades." };
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // LOS BOLÍVARES DE CADA LÍNEA SON UN TROZO DE LO QUE EL TENDERO TECLEÓ
+  //
+  // ESTO ERA `l.asignadoBs` Y ESTABA MAL. Reportado por el dueño el
+  // 2026-10-24 con una captura: tecleó Bs. 100.000 y la fila decía
+  // Bs. 100.001,87. Sus palabras: *«Eso es crítico y escandalosamente mal»*.
+  //
+  // DE DÓNDE SALÍAN ESOS CÉNTIMOS. El reparto convierte los bolívares a la
+  // moneda del libro y REDONDEA AL CÉNTIMO, que a veces redondea hacia
+  // arriba: Bs. 100.000 ÷ 886,2271 = $112,8381, que guardado son $112,84 — y
+  // esos $112,84 valen Bs. 100.001,87. `asignadoBs` era esa reconversión, así
+  // que cada línea enseñaba una cifra que nadie escribió y, medido en dev, un
+  // reparto de Bs. 200.000 entre dos libros guardaba 100.004,00 + 100.001,87
+  // = Bs. 200.005,87. Casi seis bolívares salidos de la nada.
+  //
+  // EL IMPORTE DEL LIBRO NO SE TOCA: $112,84 es lo que de verdad baja de ese
+  // fiado y redondear al céntimo no es opcional. Lo que se arregla es la
+  // cifra que se ENSEÑA en bolívares, que a partir de ahora es siempre un
+  // trozo del billete.
+  //
+  // MISMO PATRÓN QUE EL CAMINO DE UN SOLO LIBRO, unas líneas más abajo, y
+  // ahora por fin la misma cuenta en los dos: proporcional a lo que cada
+  // línea consumió del billete, y la ÚLTIMA ABSORBE EL RESTO para que la suma
+  // dé exactamente lo tecleado. Un céntimo repartido a la baja en tres líneas
+  // deja al tendero buscando un bolívar que nunca faltó.
+  // PRIMERO SU CIFRA, SI LA HAY. `aManoBs` trae lo que el tendero escribió
+  // para ese fiado en la pantalla del monto. Llega del navegador, así que se
+  // limpia aquí igual que el borrador limpia lo suyo.
+  const suyos: Record<string, number> = {};
+  for (const [k, v] of Object.entries(entrada.aManoBs ?? {})) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) suyos[k] = v;
+  }
+
+  const bsDeCadaLinea: number[] = [];
+  const sinCifraPropia = conImporte.filter((l) => suyos[l.movementId] == null);
+  const yaPuesto = conImporte.reduce((acc, l) => acc + (suyos[l.movementId] ?? 0), 0);
+  // Lo que queda del billete para las líneas que NO tienen cifra propia. Si
+  // las suyas ya suman el billete entero, aquí queda cero y las demás —que no
+  // las hay, porque el reparto no les dejó bolívares— tampoco piden nada.
+  const porRepartir = Math.round((montoBs - yaPuesto) * 100) / 100;
+  const pesoTotal = sinCifraPropia.reduce((acc, l) => acc + (l.asignadoBs ?? 0), 0);
+
+  let repartidoHastaAqui = 0;
+  let vistasSinCifra = 0;
+  conImporte.forEach((l) => {
+    const propia = suyos[l.movementId];
+    if (propia != null) {
+      bsDeCadaLinea.push(propia);
+      return;
+    }
+    vistasSinCifra += 1;
+    // LA ÚLTIMA DE LAS QUE NO TIENEN CIFRA PROPIA ABSORBE EL RESTO, para que
+    // la suma dé exactamente el billete. Un céntimo repartido a la baja entre
+    // tres líneas deja al tendero buscando un bolívar que nunca faltó.
+    if (vistasSinCifra === sinCifraPropia.length) {
+      bsDeCadaLinea.push(Math.round((porRepartir - repartidoHastaAqui) * 100) / 100);
+      return;
+    }
+    const v =
+      pesoTotal > 0
+        ? Math.round(porRepartir * ((l.asignadoBs ?? 0) / pesoTotal) * 100) / 100
+        : 0;
+    bsDeCadaLinea.push(v);
+    repartidoHastaAqui = Math.round((repartidoHastaAqui + v) * 100) / 100;
+  });
+
+  // ── LA PARADA DURA: LAS PARTES SUMAN EL BILLETE ─────────────────────
+  //
+  // No es defensa contra el navegador —`bsDeCadaLinea` se calcula aquí— sino
+  // contra el próximo cambio en este archivo. El fallo del 2026-10-24 no
+  // reventó nada: guardó Bs. 200.005,87 de un billete de 200.000 y la
+  // pantalla lo enseñó con total normalidad durante un día. Un descuadre de
+  // céntimos en dinero de gente no puede volver a pasar en silencio.
+  //
+  // CON LA HOLGURA DEL REPO (medio céntimo) y no con `===`: las cifras vienen
+  // de redondeos sucesivos y una igualdad exacta sobre flotantes fallaría por
+  // la aritmética, no por el reparto.
+  const sumaDeLasPartes = bsDeCadaLinea.reduce((acc, v) => acc + v, 0);
+  if (Math.abs(sumaDeLasPartes - montoBs) > HOLGURA) {
+    console.error(
+      `[abono repartido] las partes no suman el billete: ${sumaDeLasPartes} vs ${montoBs}`,
+    );
+    return { error: "No pudimos repartir todo el abono. Revisa las cantidades." };
+  }
+
   return {
-    totalBs: reparto.repartidoBs,
-    lineas: conImporte.map((l) => {
+    // LO TECLEADO, no lo repartido: son la misma cifra cuando todo cuadra, y
+    // cuando no, la que el tendero escribió es la que manda.
+    totalBs: montoBs,
+    lineas: conImporte.map((l, i) => {
       const sello = l.currency ? sellos.get(l.currency) : undefined;
       return {
         fiado_id: l.movementId,
@@ -516,13 +610,9 @@ async function armarRepartoCruzandoLibros(
         exchange_rate_used: sello?.exchangeRateUsed ?? null,
         official_bcv_rate_at_time: sello?.officialBcvRateAtTime ?? null,
         entry_currency: "VES",
-        // LOS BOLÍVARES DE ESTA LÍNEA, CALCULADOS POR EL REPARTO y no
-        // repartidos luego en proporción como en el camino de un solo libro.
-        // Allí hace falta ese reparto proporcional porque las líneas salen en
-        // la moneda del libro y los bolívares hay que volver a trocearlos;
-        // aquí el reparto ya fue EN bolívares, así que cada línea trae los
-        // suyos exactos y no hay nada que trocear ni céntimo que absorber.
-        entry_amount: l.asignadoBs,
+        // UN TROZO DEL BILLETE, nunca una reconversión. Ver el bloque de
+        // arriba y lo que costó.
+        entry_amount: bsDeCadaLinea[i],
         rate_usd_at_time: sello?.rateUsdAtTime ?? null,
         rate_eur_at_time: sello?.rateEurAtTime ?? null,
       };
@@ -661,6 +751,27 @@ export async function registrarAbonoRepartido(
   // céntimo menos que lo tecleado y dejan al tendero buscando un bolívar que
   // nunca faltó. Repartirlos proporcionalmente es lo único honesto que se
   // puede hacer con una cifra que él escribió UNA vez.
+  // ── Y ANTES QUE NADA, LO QUE TECLEÓ EN CADA FIADO ────────────────────
+  //
+  // `aManoBs` trae, por fiado, la cifra EXACTA que el tendero escribió en la
+  // pantalla del monto cuando la escribió en bolívares. Llega del navegador,
+  // así que se limpia aquí igual que el borrador limpia lo suyo.
+  //
+  // POR QUÉ ESTE CAMINO LA NECESITA, aunque el abono no cruce libros: la
+  // moneda tecleada viajaba UNA SOLA para todo el abono, y la pone la
+  // pantalla del reparto. Fijando un fiado en bolívares dentro de un reparto
+  // que va en dólares, el servidor guardaba `entry_currency: 'USD'` y los
+  // bolívares no se convertían mal: DESAPARECÍAN. La fila del historial salía
+  // sin su línea de bolívares, como si el tendero nunca hubiera escrito una.
+  //
+  // Encontrado el 2026-10-24 probando el arreglo del reparto que sí cruza
+  // libros, y es el mismo fallo visto desde el otro lado: allí la cifra
+  // volvía cambiada, aquí no vuelve.
+  const suyosPorFiado: Record<string, number> = {};
+  for (const [k, v] of Object.entries(entrada.aManoBs ?? {})) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) suyosPorFiado[k] = v;
+  }
+
   const bsPorLinea: number[] = [];
   if (tecleadoEnBs != null) {
     let acumulado = 0;
@@ -675,14 +786,36 @@ export async function registrarAbonoRepartido(
     });
   }
 
+    // Su cifra solo vale mientras la línea abone exactamente lo que él fijó.
+    const sigueEnteraLaSuya = (l: { movementId: string; asignado: number }) =>
+      suyosPorFiado[l.movementId] != null &&
+      Math.abs((entrada.aMano?.[l.movementId] ?? 0) - l.asignado) <= HOLGURA;
+
     lineasRpc = lineas.map((l, i) => ({
       fiado_id: l.movementId,
       amount: l.asignado,
       rate_mode_used: sello.rateModeUsed,
       exchange_rate_used: sello.exchangeRateUsed,
       official_bcv_rate_at_time: sello.officialBcvRateAtTime,
-      entry_currency: entryCurrency,
-      entry_amount: tecleadoEnBs != null ? bsPorLinea[i] : entryCurrency ? l.asignado : null,
+      // ── EN QUÉ SE TECLEÓ ESTA LÍNEA, Y CUÁNTO ────────────────────
+      //
+      // SU CIFRA MANDA SOBRE LA DEL ABONO. Si fijó ESTE fiado escribiendo
+      // bolívares, la línea se guarda en bolívares con la cantidad que
+      // escribió, aunque el resto del abono vaya en la moneda del libro.
+      //
+      // Y SOLO SI LA LÍNEA SIGUE VALIENDO LO QUE ÉL PUSO: en cuanto el
+      // reparto la recorta —porque el billete no llega— su cifra deja de
+      // describir lo que esta línea abona, y entonces manda lo del abono.
+      // Guardar los Bs. 100.000 de una línea recortada a la mitad sería
+      // escribir un recibo por el doble de lo que bajó del fiado.
+      entry_currency: sigueEnteraLaSuya(l) ? "VES" : entryCurrency,
+      entry_amount: sigueEnteraLaSuya(l)
+        ? suyosPorFiado[l.movementId]
+        : tecleadoEnBs != null
+          ? bsPorLinea[i]
+          : entryCurrency
+            ? l.asignado
+            : null,
       rate_usd_at_time: sello.rateUsdAtTime,
       rate_eur_at_time: sello.rateEurAtTime,
     }));

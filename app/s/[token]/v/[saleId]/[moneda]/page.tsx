@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -120,7 +121,16 @@ export default async function VentaDeContadoDelClientePage({
   // que se pagó, no el de hoy. Misma regla que la pantalla del tendero, y aquí
   // importa el doble: si las dos pantallas sellaran distinto, el cliente y el
   // comercio leerían dos cifras para el mismo pago.
-  const enBs = venta.rate_used != null ? total * Number(venta.rate_used) : null;
+  // Y LO TECLEADO MANDA SOBRE LA CONVERSIÓN — regla crítica del 2026-10-24,
+  // igual que en la pantalla del tendero. `entry_currency` es 'VES' solo
+  // cuando TODOS los pagos de ese libro se teclearon así: lo decide la RPC,
+  // que no lo rellena cuando mezclan formas.
+  const enBs =
+    venta.entry_currency === "VES" && venta.entry_amount != null
+      ? Number(venta.entry_amount)
+      : venta.rate_used != null
+        ? total * Number(venta.rate_used)
+        : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col gap-4 px-4 pb-10">
@@ -136,6 +146,7 @@ export default async function VentaDeContadoDelClientePage({
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
+      <CodigoDeTransaccion codigo={venta.transaction_code ?? null} />
 
       <dl className="flex flex-col gap-4">
         <Grupo>

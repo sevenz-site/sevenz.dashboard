@@ -199,6 +199,25 @@ run from. `npm run metrics` reads whichever project `.env.local` points at, so
 "run this" without naming the environment can silently report dev's numbers as
 if they were the business's.
 
+### Y la consulta tiene que PODER correr donde dice que corre
+
+Nombrar el entorno no basta si lo que se manda no existe allí. El 2026-10-24
+se entregó una consulta «para producción» que pedía `movements.transaction_code`,
+una columna que crea la migración `147` y que solo existía en la rama dev. En
+producción habría fallado con `column does not exist`; se corrió en dev, que
+contestó tranquilamente **sobre los datos de dev**, y el resultado se leyó como
+si fuera de producción durante dos mensajes.
+
+**Lo que lo delató no fue la consulta: fue que las cifras coincidían al dígito
+con una medición que ya se había hecho en dev un rato antes.** Sin esa
+casualidad habría pasado entero.
+
+**Antes de mandar una consulta a producción, repasa qué columnas y funciones
+toca y si alguna nació en una migración que allí no se ha corrido.** Si la
+respuesta es sí, la consulta se reescribe con lo que los dos lados tienen —un
+`id` en vez de un código nuevo— o se dice que esa pregunta todavía no se puede
+hacer en producción. Las dos salidas son honestas; mandarla igual no.
+
 ### Every code block, every time — no back-references
 
 The user is not a developer and does not track which environment a
@@ -365,6 +384,40 @@ accepted tradeoff for a narrow, authenticated audience, not a gap. The
 rule is specifically about endpoints anyone can reach with no account at
 all — e.g. `/s/[token]` and its `get_shared_balance()` RPC, or any future
 public page or webhook receiver.
+
+## Si lo pide dos veces, es una regla: dilo
+
+**Pedido por el dueño el 2026-10-24**: *«deberás identificar cuando te pida de
+manera repetida en más de una vez el mismo requerimiento y sugerirme agregarlo
+como regla»*.
+
+Su ejemplo: el día anterior pidió **tres veces** ajustar los paddings laterales
+de una pantalla a 16px. A la segunda ya debería haber salido la frase.
+
+**La regla, entera**: cuando un encargo se parece a otro que ya hizo —no
+idéntico, *de la misma clase*— se le dice en una línea, con la cita de la vez
+anterior, y se le ofrece escribirlo en este archivo. Se sigue haciendo el
+trabajo igual; esto es una línea de más en el reporte, no una pausa.
+
+> Esto ya me lo pediste el 2026-10-23 («los paddings laterales van a 16px»).
+> Van dos. ¿Lo escribo como regla en `CLAUDE.md` para que no haya una tercera?
+
+**Por qué merece una regla propia, y no es burocracia.** Un encargo repetido no
+es el dueño siendo insistente: es la prueba de que el repo no lo sabe. La
+primera vez es una petición; la segunda es un patrón que el siguiente que toque
+esa pantalla va a romper otra vez, porque no hay nada escrito que se lo impida.
+Lo que cuesta no es la repetición — es que **cada vez la tiene que cazar él**,
+mirando pantallas, en vez de que el archivo lo impida solo.
+
+**Qué cuenta como «la misma clase»**: el mismo valor de diseño (paddings,
+tamaños, colores), la misma decisión de producto (qué manda cuando dos cifras
+compiten), el mismo comportamiento (qué se esconde con el teclado, a dónde
+vuelve una flecha). No cuenta un bug reportado dos veces en sitios distintos:
+eso es una causa común sin arreglar, y lo que toca ahí es buscarla, no escribir
+una regla.
+
+**Y se ofrece, no se hace solo.** El archivo es suyo; lo que se hace sin pedir
+permiso es notarlo y decirlo.
 
 ## Ask before assuming
 
@@ -1102,6 +1155,88 @@ Real example (the `openForPayment()` currency bug, 2026-08-28):
   moments ago, it quietly flips the screen back to "register a new
   charge" instead, with zero explanation. The owner tapped a button that
   said "record a payment" and landed on "add a debt" instead.
+
+## SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO
+
+**Regla crítica, pedida por el dueño el 2026-10-24 después de ver Bs. 100.001,87
+donde él había escrito Bs. 100.000**: *«siempre deben mandar los montos
+tecleados en toda la app»*. Sus palabras sobre el fallo: *«Eso es crítico y
+escandalosamente mal»*.
+
+**La cifra que el tendero escribió se guarda tal cual y se vuelve a enseñar tal
+cual. Nunca se recalcula.** Si hace falta la misma cantidad en otra moneda, esa
+conversión va DEBAJO y en pequeño, nunca en lugar de la suya.
+
+### Por qué una reconversión no devuelve lo mismo
+
+No es un fallo de redondeo que se pueda apretar: es aritmética.
+
+```
+Bs. 100.000 ÷ 886,2271 = $112,8381…   → el libro guarda céntimos → $112,84
+$112,84 × 886,2271      = Bs. 100.001,87
+```
+
+Los 0,0019 $ que el redondeo añade valen 1,87 Bs. **Da igual cuántos decimales
+se guarden**: mientras el libro tenga una precisión finita, la vuelta cae en
+otro sitio. Por eso la única forma de que la pantalla repita la cifra del
+tendero es **guardarla**, no recalcularla.
+
+### Lo que costó, medido en dev el 2026-10-24
+
+- Un reparto de **Bs. 200.000** entre dos libros guardaba 100.004,00 +
+  100.001,87 = **Bs. 200.005,87**. Casi seis bolívares salidos de la nada.
+- De **13** abonos tecleados en bolívares, **7 enseñaban una cifra distinta**
+  en la fila del historial y en la tarjeta dentro del fiado. El peor, Bs. 3,48.
+- **Nada de esto rompe nada.** No hay error, no hay rojo, el saldo del fiado es
+  correcto. Lo único que pasa es que la app le enseña al tendero —y al cliente,
+  con el teléfono en la mano— una cifra que nadie escribió.
+
+### Qué hay que hacer, en concreto
+
+1. **Guardar lo tecleado junto a lo convertido.** `movements.entry_currency` y
+   `entry_amount` existen para eso. Un reparto necesita además la cifra POR
+   LÍNEA: `aManoBs` en `lib/abonos/borrador.ts` es el precedente.
+2. **Cuando un billete se reparte, las partes SUMAN el billete.** Se reparten
+   proporcionalmente y **la última absorbe el resto**. Nunca se convierte cada
+   parte por su cuenta: las conversiones no suman.
+3. **Una parada dura donde se guarda**, no solo en la pantalla. En
+   `registrarAbonoRepartido` hay una: si las partes no suman lo tecleado, se
+   rechaza. Un descuadre de céntimos en dinero de gente no puede volver a pasar
+   en silencio durante un día entero.
+4. **Y la trampa que esto ya pisó**: cuando dos pantallas escriben el mismo
+   borrador, la que no es dueña de un campo **tiene que arrastrarlo**. La
+   pantalla del reparto guarda el borrador entero en cada render y borraba el
+   `aManoBs` que la del monto acababa de escribir. La cifra se guardaba bien y
+   se perdía un instante después.
+
+### La auditoría se hace por TABLA, no por pantalla
+
+El 2026-10-24, el mismo día que se escribió esta regla, se auditó la app
+«entera» recorriendo pantallas: el reparto, las filas del historial, la venta
+de contado. Se arreglaron las tres. Y el dueño encontró una cuarta a la media
+hora —el abono del momento de la compra, que salía como Bs. 1.003,02 por unos
+Bs. 1.000 tecleados—, porque **no era ninguna de las pantallas de la lista**:
+ese pago no vive en `movements` sino en `sale_payments`, y se dibuja como la
+primera fila de «Abonos relacionados» dentro de la ficha de un fiado.
+
+**Una lista de pantallas nunca está completa**: la misma cifra se enseña en
+sitios que no se parecen entre sí. Una lista de columnas sí lo está.
+
+Son dos, y buscar sus lectores es un `grep`:
+
+- `movements.entry_amount`
+- `sale_payments.entry_amount`
+
+Y el patrón que delata a un lector que no las usa es `amount * tasa` o
+`* exchange_rate_used` / `* rate_used` junto a un `formatBs`. **Esa búsqueda
+es la auditoría**; recorrer pantallas de memoria no lo es.
+
+### Dónde aplica, que es en todas partes
+
+Abonos, ventas, fiados, el comprobante PNG, el mensaje de WhatsApp, el enlace
+del cliente. **Si una pantalla enseña un importe, la pregunta es siempre la
+misma: ¿esto es lo que alguien escribió, o lo que yo calculé a partir de lo que
+escribió?** Si es lo segundo y existe lo primero, está mal.
 
 ## Toda plantilla de WhatsApp lleva el pie antifraude
 

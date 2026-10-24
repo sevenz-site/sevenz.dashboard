@@ -28,11 +28,11 @@ export const metadata = { title: "Registrar abono — Sevenz" };
 export default async function NuevoAbonoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cliente?: string }>;
+  searchParams: Promise<{ cliente?: string; desde?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const { cliente: clienteId } = await searchParams;
+  const { cliente: clienteId, desde } = await searchParams;
   if (!clienteId) notFound();
 
   const supabase = await createClient();
@@ -157,6 +157,10 @@ export default async function NuevoAbonoPage({
       libros={libros as (LedgerCurrency | null)[]}
       rates={rates}
       paisVE={resultado.kind === "ve"}
+      // DE DÓNDE SE VINO, para saber a dónde devuelve la flecha. Cualquier
+      // valor que no sea `cliente` es «buscar», que es el camino por defecto
+      // y el que tenía la pantalla antes de existir este parámetro.
+      desde={desde === "cliente" ? "cliente" : "buscar"}
     />
   );
 }

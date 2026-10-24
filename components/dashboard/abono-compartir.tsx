@@ -7,6 +7,16 @@ import { dibujarResumenDeAbono, type AbonoDelResumen } from "@/lib/sales/resumen
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, type BolivarRates } from "@/lib/products/price";
 
+// Los mismos nombres que la imagen y la pantalla. Tres sitios diciendo
+// «Dólares» es menos malo que uno diciendo «USD» en el recibo del cliente.
+const NOMBRE: Record<string, string> = {
+  USD: "Dólares",
+  EUR: "Euros",
+  USDT: "USDT",
+  COP: "Pesos",
+  VES: "Bolívares",
+};
+
 // «COMPARTIR» EN LA PANTALLA DE ÉXITO DEL ABONO.
 //
 // Pedido del dueño el 2026-10-19 y elegido por él entre las dos formas
@@ -101,10 +111,28 @@ function textoDelAbono(nombre: string, a: AbonoDelResumen, fecha: string | null)
   // comparte cuando el dibujo falla, y dejarlo sin fecha haría que el recibo
   // dijera una cosa u otra según cómo se compartiera.
   if (fecha) lineas.push(fecha);
-  lineas.push(`Abonó: ${formatPriceAmount(a.abonado, a.currency)}`);
-  if (a.entregadoBs != null) lineas.push(`Entregó: ${formatBs(a.entregadoBs)}`);
-  lineas.push(
-    a.deuda > 0.005 ? `Deuda total: ${formatPriceAmount(a.deuda, a.currency)}` : "Sin deuda",
-  );
+  // EL CÓDIGO, igual que en la imagen y en el mismo sitio: es por donde
+  // alguien vuelve a encontrar esta transacción.
+  if (a.codigo) lineas.push(`Código de transacción: ${a.codigo}`);
+  // EL BILLETE PRIMERO, igual que la imagen. Solo cuando se repartió entre
+  // varios libros; con uno, la línea «Entregó» de más abajo ya lo dice.
+  if (a.billeteBs != null) lineas.push(`Abonó: ${formatBs(a.billeteBs)}`);
+  // UN BLOQUE POR LIBRO Y EN EL ORDEN QUE TRAE. Antes había UNO, el del libro
+  // por el que se entró, así que un reparto que cruzaba monedas se compartía
+  // a medias por este camino igual que por el de la imagen.
+  for (const l of a.libros) {
+    const moneda = NOMBRE[l.currency] ?? l.currency;
+    lineas.push(
+      l.abonadoBs != null
+        ? `Abonó en ${moneda}: ${formatBs(l.abonadoBs)} (${formatPriceAmount(l.abonado, l.currency)})`
+        : `Abonó en ${moneda}: ${formatPriceAmount(l.abonado, l.currency)}`,
+    );
+    if (a.entregadoBs != null) lineas.push(`Entregó: ${formatBs(a.entregadoBs)}`);
+    lineas.push(
+      l.deuda > 0.005
+        ? `Deuda total en ${moneda}: ${formatPriceAmount(l.deuda, l.currency)}`
+        : `Sin deuda en ${moneda}`,
+    );
+  }
   return lineas.join("\n");
 }

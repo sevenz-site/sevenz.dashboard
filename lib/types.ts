@@ -24,6 +24,11 @@ export type Movement = {
   owner_note: string | null;
   source: MovementSource;
   running_balance: number;
+  // EL CÓDIGO CORTO DE LA TRANSACCIÓN — migración 147. `null` solo en filas
+  // escritas antes de esa migración y que el relleno no alcanzara; hoy, en
+  // dev y en producción, no hay ninguna. Se deja opcional porque el tipo lo
+  // comparten consultas que no piden esta columna.
+  transaction_code?: string | null;
   needs_review: boolean;
   photo_path: string | null;
   plazo_dias: number | null;

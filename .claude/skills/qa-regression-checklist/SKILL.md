@@ -70,6 +70,23 @@ estaban escritos.
   (server actions, the `movements`/`client_summary` schema, RLS policies,
   auth) even if the change looks unrelated, since those are exactly the
   places a small change breaks something distant.
+- **Run `npm run qa:guiones` — un segundo, sin base de datos.** Comprueba que
+  todo guion de `qa/` se puede lanzar con un `npm run qa:*`, o bien lo importa
+  otro guion. Va **aquí**, antes de decidir qué suites corren, porque esta lista
+  se recorre leyendo `package.json`: un guion que no esté ahí no es un guion que
+  se olvide correr, es uno que **no se puede elegir** — y su ausencia se lee como
+  cobertura que nadie escribió, no como cobertura que se perdió.
+
+  Pasó el 2026-10-23: `qa/monto-bolivares.mjs` y `qa/fixtures-venta-colombia.mjs`
+  habían perdido su entrada. Los dos seguían pasando al invocarlos a mano, que es
+  justo lo que lo hace silencioso — nada estaba roto, el archivo era invisible. Y
+  el primero vigila la cuenta de bolívares a la moneda del libro, o sea la
+  aritmética entre lo que teclea el tendero y lo que se guarda.
+
+  No lleva lista de excepciones a propósito: un módulo compartido como
+  `qa/plantillas-esperadas.mjs` se salva porque alguien lo importa, y eso se lee
+  de los archivos. Una lista a mano habría que mantenerla, y una desactualizada
+  falla en silencio — el mismo fallo que este control cierra.
 
 ## 2. Core money-path flows
 
@@ -210,6 +227,31 @@ fantasma de contado en la pantalla de su propio cliente** — su deuda listada
 dos veces, una como debida y otra como ya pagada. Casi sale así el
 2026-10-20, y **ninguna prueba de dev lo habría cazado**, porque no había ni
 una venta de un negocio colombiano. Por eso existe **`npm run qa:colombia`**.
+
+### Un dato NUEVO de una transacción se comprueba en una venta DE CONTADO
+
+Añadido el 2026-10-24, después de entregarlo mal. Es la misma razón que abre
+esta sección, llevada un paso más allá: **una venta pagada entera no escribe
+ni un movimiento**, así que cualquier dato nuevo que se enseñe «de una
+transacción» tiene que vivir en `sales`, no en `movements`.
+
+Qué costó: el código de transacción se añadió a la pantalla de éxito leyéndolo
+por el camino del abono. Funcionaba en una venta fiada y devolvía vacío en una
+de contado — que es justo la mitad del dinero que esta sección existe para
+cubrir. La columna estaba bien desde el primer día (la migración `147` la puso
+en las dos tablas); lo que faltó fue probarlo en el caso sin movimiento.
+
+**La comprobación, y son tres ventas, no una:**
+
+| Caso | Qué lo hace distinto |
+|---|---|
+| Venta **fiada** | Escribe cargo. Es la que siempre se prueba |
+| Venta **de contado** | **Cero filas en `movements`**. El dato sale de `sales` o no sale |
+| Venta de **mostrador** | Sin cliente, así que sin ficha de comprador ni botón «Ver ‹nombre›» |
+
+Vale para cualquier dato, no solo el código: una fecha, una etiqueta, un
+importe. Si se enseña en la pantalla de una transacción, se abre una venta de
+contado antes de darlo por puesto.
 
 ## 2c. El chip de estado del cliente
 
@@ -581,6 +623,96 @@ cazado ESTE caso; esta comprobación caza la REGLA.
 Y se mira en producción **aunque el diff no toque nada de esto**: el síntoma no
 es un error, es un número creíble, así que la única forma de saber que no está
 pasando es preguntarlo.
+
+## 4d. Lo que el dueño ve nuevo, ¿lo ve el cliente?
+
+**Pregunta fija de todo lanzamiento que añada un dato a una pantalla del
+dueño.** Añadida el 2026-10-24 después de que el mismo fallo costara **cuatro
+migraciones en dos días**: `148`, `149`, `151` y `152`.
+
+Las cuatro son la misma historia. Se añade algo del lado del tendero —el
+código de la transacción, los bolívares que tecleó, el código del fiado
+relacionado, el abono del momento de la compra—, se prueba en su pantalla, se
+ve perfecto, y el cliente sigue viendo lo viejo.
+
+**La causa es estructural y no se va a arreglar sola.** `get_shared_balance()`
+es `security definer` y arma su JSON **campo a campo**: lo que esa función no
+nombre, para el cliente no existe. No hay error, no hay hueco en la pantalla,
+no falla ninguna suite. Simplemente dice menos — y la ficha que el cliente
+abre deja de parecerse a la que el tendero tiene delante, que es lo único que
+este producto promete.
+
+**Cómo se comprueba, y abrir las dos seguidas no es opcional:**
+
+1. Lista los campos que el diff añade a una pantalla del dueño.
+2. Por cada uno, `grep` en `supabase/` por la **última** definición de
+   `get_shared_balance` y confirma que lo nombra. Si no, falta migración.
+3. Abre **la misma ficha** en las dos vistas, una detrás de otra, y compáralas
+   cifra a cifra. `npm run qa:parity` comprueba la forma del contrato, no que
+   los campos nuevos estén dentro.
+
+**Y la respuesta no siempre es «igual».** Son tres, y es la regla de
+`CLAUDE.md` sobre la vista del cliente aplicada aquí: *igual* (el código, los
+bolívares tecleados), *con variante* (el chip de estado va en las dos, pero el
+payload del cliente llega recortado a 50 movimientos, así que replicarlo tal
+cual daría un estado falso en un historial largo) o *no aplica* (registrar una
+venta, repartir un abono). Las tres se escriben en el informe; decirlo cuesta
+una línea.
+
+## 4e. Nada fijo puede tapar el último botón
+
+**Se mide en toda pantalla que el diff toque y termine en botones.** Añadida el
+2026-10-24, y el motivo de añadirla es más importante que la comprobación: la
+regla ya existía en `CLAUDE.md` desde el 2026-10-22 y **no se corrió ni una vez
+en los dos lanzamientos siguientes**, porque este checklist no la pedía. Lo que
+se recorre es esta lista.
+
+Al correrla por fin aparecieron **cuatro botones** en dos pantallas de éxito, y
+tres de ellos no estaban tapados a medias: **no se podían pulsar**.
+
+**Son DOS elementos fijos, no uno, y ese fue el fallo.** El flotante
+«Registrar» se midió porque el dueño lo señaló con una captura; la barra de
+navegación no, porque nadie la señaló. Ocupa 723-812 a 375px y se lleva por
+delante cualquier botón que caiga ahí.
+
+**Y no basta con comparar rectángulos: hay que preguntar quién está encima.**
+Un botón puede no «solapar» por unos píxeles y aun así estar debajo de algo
+pintado:
+
+```js
+const r = ultimoBoton.getBoundingClientRect();
+const encima = document.elementFromPoint(
+  Math.round(r.left + r.width / 2),
+  Math.round(r.top + r.height / 2),
+);
+ultimoBoton.contains(encima) || encima === ultimoBoton   // ← false = botón muerto
+```
+
+**Sin desplazar la página.** Lo fijo no se mueve y el contenido sí, así que
+bajar despeja los botones y esconde el fallo. El caso roto es el de reposo, que
+es donde el tendero los encuentra.
+
+**Y una pantalla cuyo alto depende de los datos se mide TRES veces, no una.**
+Esto es lo que hizo que la medición anterior diera «limpio» y se escribiera
+como verdad general: el resumen de una venta se midió con una venta **fiada**
+—la más larga— y salió despejado, mientras la de **contado con comprador**
+caía dentro de la banda. El que rompe es el caso de en medio, no un extremo:
+
+| Forma | «Compartir» | Banda del flotante | |
+|---|---|---|---|
+| Venta fiada | 731-771 | 652-708 | limpio |
+| Venta de contado | **667-707** | 652-708 | **solapa** |
+| Venta de mostrador | 481-521 | 652-708 | limpio |
+
+**Si hay que quitar algo fijo, antes se comprueba que quede salida.** Las dos
+pantallas de éxito conservan la cabecera con «Abrir menú», así que quitarles la
+barra no encierra a nadie. Importa sobre todo en la venta de mostrador: no hay
+cliente, así que tampoco hay botón «Ver ‹nombre›», y sin menú el tendero se
+quedaría sin ninguna salida.
+
+**Por qué merece sección propia**: un botón medio tapado se lee como un
+descuido estético y uno muerto como «le di y no hizo nada». Ninguno de los dos
+síntomas se parece a la causa, y ninguna suite los ve.
 
 ## 5. Security checklist
 

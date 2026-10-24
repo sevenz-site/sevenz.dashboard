@@ -43,6 +43,7 @@ export function VentaResumen({
   bloques,
   rates,
   fecha,
+  codigo,
 }: {
   comprador: CompradorDelResumen | null;
   bloques: BloqueDelResumen[];
@@ -51,6 +52,9 @@ export function VentaResumen({
   // No se formatea aquí aunque fuera fácil: esto corre en el teléfono del
   // tendero y `Intl` sin zona usaría la suya.
   fecha: string;
+  // EL CÓDIGO DE ESTA TRANSACCIÓN. `null` en una venta anterior a la
+  // migración `147`: entonces no se dibuja nada. Ver `resumenDeVenta`.
+  codigo: string | null;
 }) {
   // SIN UN SOLO `await` ANTES DE `navigator.share`, y es deliberado: iOS
   // bloquea la hoja cuando la llamada no viene de un gesto, y un `await`
@@ -67,7 +71,7 @@ export function VentaResumen({
   //   3. El texto -> si el dibujo falla. Un canvas puede no estar disponible,
   //      y quedarse sin compartir nada por eso sería peor que compartir texto.
   function compartir() {
-    const blob = dibujarResumenDeVenta({ comprador, bloques, rates, fecha });
+    const blob = dibujarResumenDeVenta({ comprador, bloques, rates, fecha, codigo });
 
     if (blob != null) {
       const fichero = new File([blob], "venta-sevenz.png", { type: "image/png" });
@@ -88,7 +92,7 @@ export function VentaResumen({
       return;
     }
 
-    const texto = textoDelResumen(comprador, bloques);
+    const texto = textoDelResumen(comprador, bloques, codigo);
     if (navigator.share) {
       void navigator.share({ text: texto }).catch(() => {});
       return;
@@ -114,6 +118,26 @@ export function VentaResumen({
             lean igual. `-mt-2` porque el contenedor ya pone `gap-3.5` y la
             fecha pertenece al título, no es un bloque aparte. */}
         <p className="-mt-2 text-center text-sm text-muted-foreground">{fecha}</p>
+        {/* EL CÓDIGO, DEBAJO DE LA FECHA — encargo del dueño el 2026-10-24.
+            Misma posición, mismo tamaño y mismo `text-primary` que en la
+            pantalla de éxito del abono, que es su pantalla hermana: las dos
+            dicen «Transacción registrada con éxito» y el tendero las compara.
+
+            VA CON LA FECHA Y NO DENTRO DE UNA TARJETA porque es una etiqueta
+            de la transacción entera. Una venta puede dejar dos tarjetas —
+            dólares y euros— y meterlo en la primera lo leería como si fuera
+            de ese libro, que es justo el fallo que el billete en bolívares
+            tenía antes de salir de ahí.
+
+            SIN BOTÓN DE COPIAR, al contrario que en el detalle: allí el código
+            está para pegarlo en el buscador de la otra pantalla, y aquí la
+            acción que el tendero tiene delante es compartir el PNG, que ya lo
+            lleva escrito. */}
+        {codigo ? (
+          <p className="-mt-2 text-center text-sm font-medium text-primary tabular-nums">
+            Código de transacción: {codigo}
+          </p>
+        ) : null}
       </div>
 
       {/* NI `p-4` NI `py-4`: los 16px laterales y los 40 de abajo los pone
@@ -326,8 +350,12 @@ const NOMBRE_MONEDA: Record<string, string> = {
 function textoDelResumen(
   comprador: CompradorDelResumen | null,
   bloques: BloqueDelResumen[],
+  codigo: string | null,
 ): string {
   const lineas = ["Transacción registrada"];
+  // También en el respaldo de texto: es el camino que se usa cuando el canvas
+  // falla, y un recibo sin código deja al cliente sin nada que citar.
+  if (codigo) lineas.push(`Código de transacción: ${codigo}`);
   if (comprador) {
     lineas.push(
       comprador.nombre,

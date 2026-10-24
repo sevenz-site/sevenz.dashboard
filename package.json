@@ -60,7 +60,12 @@
     "qa:abono-repartido": "node qa/abono-repartido.mjs",
     "qa:reparto": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/reparto.mjs",
     "qa:saldos": "node qa/saldos-cuadran.mjs",
-    "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs"
+    "qa:puntaje": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-reparte-igual.mjs",
+    "qa:bolivares": "node --experimental-strip-types qa/monto-bolivares.mjs",
+    "qa:guiones": "node qa/guiones-con-entrada.mjs",
+    "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
+    "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",
+    "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

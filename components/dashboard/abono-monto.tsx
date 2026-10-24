@@ -93,6 +93,7 @@ export function AbonoMonto({
   yaAceptaAvisos,
   pasoUnico = false,
   enReparto = false,
+  sufijoDelOrigen = "",
 }: {
   ownerId: string;
   fiadoId: string;
@@ -111,6 +112,11 @@ export function AbonoMonto({
   // SE LLEGÓ DESDE UN REPARTO. Entonces esta pantalla NO guarda: fija lo que
   // le toca a este fiado y vuelve a «1/2 fiados». Ver `fijarYVolver`.
   enReparto?: boolean;
+  // `&desde=cliente`, o cadena vacía. Se arrastra en las DOS vueltas al paso
+  // 1/2 —la flecha y `fijarYVolver`— porque si se perdiera en una de ellas la
+  // flecha de allí funcionaría hasta el primer reparto y después no. Ver
+  // `desde` en `abono-reparto.tsx`.
+  sufijoDelOrigen?: string;
 }) {
   const router = useRouter();
   const [guardando, startTransition] = useTransition();
@@ -292,8 +298,19 @@ export function AbonoMonto({
   // medio pago en ningún sitio.
   function fijarYVolver() {
     setError(null);
-    fijarEnBorrador(clienteId, fiadoId, enElLibro, libro);
-    router.push(`/abonos/nuevo?cliente=${clienteId}`);
+    // LOS BOLÍVARES TECLEADOS VIAJAN APARTE, y no se deducen de `enElLibro`:
+    // la vuelta no da lo mismo. Bs. 100.000 son $112,8381, que al céntimo son
+    // $112,84, que valen Bs. 100.001,87 — y esa era la cifra que la fila del
+    // historial le enseñaba al tendero en vez de la suya. Reportado el
+    // 2026-10-24. Ver `aManoBs` en `lib/abonos/borrador.ts`.
+    fijarEnBorrador(
+      clienteId,
+      fiadoId,
+      enElLibro,
+      libro,
+      monedaTecleada === "VES" ? escrito : null,
+    );
+    router.push(`/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`);
   }
 
   function guardar() {
@@ -342,7 +359,7 @@ export function AbonoMonto({
           pasoUnico
             ? `/transacciones/${fiadoId}`
             : enReparto
-              ? `/abonos/nuevo?cliente=${clienteId}`
+              ? `/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`
               : `/abonos/nuevo/${fiadoId}`
         }
         label={pasoUnico ? "Volver al detalle" : clienteNombre}
