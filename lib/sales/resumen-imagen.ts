@@ -494,7 +494,19 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     y += 20 * ESCALA;
     if (ctx) {
       ctx.font = fuente(13, "600");
-      ctx.fillStyle = TINTA;
+      // ── EN GRIS, COMO LA PANTALLA ─────────────────────────────────────
+      //
+      // Reportado por el dueño el 2026-10-24 con la captura del PNG y el
+      // código rodeado en rojo: *«color de código de transacción te dije que
+      // le cambiaras el color a muted, también aplica para los png»*.
+      //
+      // La pantalla pasó a `text-muted-foreground` ese mismo día y el
+      // dibujante se quedó en tinta. Es la mitad que se olvida cada vez que un
+      // dato vive en los dos sitios: el PNG no hereda nada de la hoja de
+      // estilos, así que un color que se cambia en la app hay que cambiarlo
+      // aquí a mano o las dos vistas de la MISMA transacción dejan de
+      // parecerse — que es lo único que este comprobante promete.
+      ctx.fillStyle = TENUE;
       ctx.fillText(`Código de transacción: ${codigoDeLaTransaccion}`, centro, y);
     }
   }
