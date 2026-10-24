@@ -485,9 +485,14 @@ export default async function AbonoRegistradoPage({
             >
               <span className="text-base font-semibold">Deuda total</span>
               <div className="flex flex-col items-end gap-1">
+                {/* LA BANDERA AL BORDE DERECHO: esta columna es `items-end`.
+                    Ver `DESIGN-SYSTEM.md`, regla del dueño del 2026-10-24. El
+                    comentario de arriba decía que aquí la bandera identifica
+                    el libro porque no hay cabecera — sigue siendo cierto, y lo
+                    que cambia es de qué lado del importe se pone. */}
                 <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
-                  <CurrencyFlagIcon currency={cur} className="size-4 shrink-0" aria-hidden="true" />
                   {formatPriceAmount(p.pending, cur)}
+                  <CurrencyFlagIcon currency={cur} className="size-4 shrink-0" aria-hidden="true" />
                 </span>
                 {enBs != null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">

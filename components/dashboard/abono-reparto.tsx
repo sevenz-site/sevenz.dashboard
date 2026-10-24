@@ -964,11 +964,13 @@ export function AbonoReparto({
           {
             <div className="flex items-center gap-2">
               <div className="flex flex-col items-end">
+                {/* LA BANDERA AL BORDE DERECHO: esta columna es `items-end`.
+                    Ver `DESIGN-SYSTEM.md`, regla del dueño del 2026-10-24. */}
                 <span className="flex items-center gap-1 text-base font-semibold tabular-nums">
+                  {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
                   {f.currency ? (
                     <CurrencyFlagIcon currency={f.currency} className="size-3.5 shrink-0" />
                   ) : null}
-                  {formatPriceAmount(toca, (f.currency ?? "COP") as PriceCurrency)}
                 </span>
                 {bs != null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">

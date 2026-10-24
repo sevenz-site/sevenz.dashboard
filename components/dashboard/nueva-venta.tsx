@@ -1268,11 +1268,20 @@ function PasoPago({
       {totalEnBolivares != null ? (
         <div className="flex items-center justify-between gap-3 rounded-[10px] border px-4 py-2">
           <span className="text-sm">Total en Bolívares</span>
+          {/* LA BANDERA, DESPUÉS DEL IMPORTE. Esta fila es un
+              `justify-between`: el rótulo queda pegado a la izquierda y la
+              cifra a la derecha, así que la bandera va al borde derecho.
+              Regla del dueño del 2026-10-24, en `DESIGN-SYSTEM.md`.
+
+              LA TARJETA DE DEBAJO NO CAMBIA y no es una incoherencia: allí el
+              rótulo y la cifra viven en una columna alineada a la IZQUIERDA,
+              así que su bandera va delante. La regla mira hacia qué borde
+              empuja el contenedor, no qué tipo de dato es. */}
           <span className="flex items-center gap-1">
-            <CurrencyFlagIcon currency="VES" className="size-4" />
             <span className="text-base font-semibold tabular-nums">
               {formatPriceAmount(totalEnBolivares, "VES")}
             </span>
+            <CurrencyFlagIcon currency="VES" className="size-4" />
           </span>
         </div>
       ) : null}

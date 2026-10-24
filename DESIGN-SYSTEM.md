@@ -1972,6 +1972,66 @@ Tres reglas que salen de ahí y conviene no redescubrir:
   movimiento —su id, su saldo acumulado, su comprobante, su plazo— y una venta
   no tiene nada de eso. Es de solo lectura hasta que exista su propia ficha.
 
+## Y va del lado del BORDE: la bandera mira hacia donde empuja el contenedor
+
+**Si el importe está alineado a la IZQUIERDA de su contenedor, la bandera va
+delante. Si está alineado a la DERECHA, la bandera va detrás.** Regla del
+dueño el 2026-10-24: *«las banderas que acompañan los saldos estarán alineadas
+del lado izquierdo del label si el label está alineado a la izquierda de su
+contenedor, y del lado derecho del label si el label está al lado derecho»*.
+
+Dicho de otra forma: **la bandera siempre queda en el borde exterior**, tocando
+el lado por el que la cifra está empujada. Lo que decide es la alineación del
+contenedor, **no** qué clase de dato es ni en qué pantalla está.
+
+| Lo que hace el contenedor | La bandera |
+|---|---|
+| `items-start`, o una columna a la izquierda | **Delante** del importe |
+| `items-end`, `justify-end`, o el lado derecho de un `justify-between` | **Detrás** del importe |
+| `items-center` sin empuje a ningún lado | Delante, que es el orden de lectura |
+
+Los frames `1548:11049`, `1548:11062` y `1548:11075` —las tres filas del
+historial— lo dibujan así: importe a la derecha, bandera después.
+
+### Dos tarjetas de la MISMA pantalla pueden llevarla a lados distintos
+
+Y eso no es una incoherencia, es la regla funcionando. En el paso 3/4 de una
+venta conviven las dos:
+
+- **«Total en Bolívares»** es un `justify-between`: el rótulo a la izquierda y
+  la cifra a la derecha, así que su bandera va **detrás**.
+- **«Total en Dólares»**, justo debajo, pone rótulo y cifra en una columna
+  alineada a la **izquierda**, así que su bandera va **delante**.
+
+Si al leer dos tarjetas seguidas parecen contradecirse, mira hacia qué borde
+empuja cada una antes de «arreglar» ninguna.
+
+### Esto NO se comprueba a ojo: se mide
+
+Hay 86 banderas en 38 ficheros. Recorrerlas leyendo JSX es cómo se cuela la
+que está mal, y además una lista de pantallas nunca está completa. Lo que sí
+lo está es preguntárselo al DOM — pégalo en la consola de cualquier pantalla:
+
+```js
+[...document.querySelectorAll('img[alt^="Bandera"]')].map((f) => {
+  const g = f.parentElement, p = g?.parentElement;
+  if (!g || !p) return null;
+  const hijos = [...g.children], i = hijos.indexOf(f);
+  const gr = g.getBoundingClientRect(), pr = p.getBoundingClientRect();
+  const izq = gr.left - pr.left, der = pr.right - gr.right;
+  const al = Math.abs(izq - der) < 4 ? 'centro' : der < izq ? 'derecha' : 'izquierda';
+  // Solo las banderas que acompañan un IMPORTE: un chip de moneda suelto
+  // («USD», «EUR») no es un saldo y esta regla no lo gobierna.
+  if (!/\d/.test((g.textContent || ''))) return null;
+  const mal = (al === 'derecha' && i !== hijos.length - 1) || (al === 'izquierda' && i !== 0);
+  return mal ? { al, texto: g.textContent.trim() } : null;
+}).filter(Boolean)
+```
+
+**Array vacío = esa pantalla cumple.** Filtra a propósito las banderas sin
+cifra al lado: un chip de moneda no es un saldo, y contarlo dispara quince
+falsos positivos solo en Inicio.
+
 ## La bandera va en el MONTO, no en su equivalencia
 
 **Una cifra lleva bandera cuando es la que el tendero va a decir en voz alta.
