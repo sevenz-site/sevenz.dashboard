@@ -620,17 +620,30 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  // Las dos pantallas de éxito entran AQUÍ, en la salida temprana, y no en la
-  // condición del flotante de abajo: lo que se va es la barra Y el botón, y
-  // apagarlos en dos sitios distintos es cómo uno sobrevive al otro.
-  if (
-    onClientDetail ||
-    enAsistenteDeVenta ||
-    enTransaccion ||
-    enAbonoRegistrado ||
-    enVentaRegistrada
-  )
-    return null;
+  // ── LAS PANTALLAS DE ÉXITO VUELVEN A LLEVAR BARRA — 2026-10-24 ──────
+  //
+  // Salieron de esta salida temprana el mismo día que entraron. Orden del
+  // dueño: *«Regresa el navbar a todas las pantallas de registros exitosos de
+  // transacciones del lado del dueño»*, y con ella una regla de
+  // `DESIGN-SYSTEM.md`: abono, fiado y venta, las tres con barra.
+  //
+  // LAS DOS DECISIONES QUEDAN ESCRITAS, porque la de hoy desplaza a la de
+  // esta misma mañana y la razón de aquella no era mala. Se quitó al medir
+  // que la barra —723-812 a 375px— dejaba **tres botones sin poder pulsarse**
+  // en reposo: `elementFromPoint` en su centro devolvía un icono de la barra.
+  // Eso sigue siendo cierto y el dueño lo sabe; lo que pesa más para él es
+  // que estas pantallas no son un flujo a medias, son el final, y el tendero
+  // sale de ellas a otro sitio.
+  //
+  // LO QUE LO HACE VIVIBLE: `app-main.tsx` ya les reserva 5,5rem abajo, así
+  // que **desplazadas hasta el final las acciones quedan despejadas**. El
+  // caso incómodo es el de reposo, y la salida nunca falta — las tres llevan
+  // cabecera con «Abrir menú».
+  //
+  // EL FLOTANTE NO VUELVE, y no es un descuido: lo quitó él ayer por la misma
+  // medición, y hoy pidió la barra, no el botón. Sale por la condición de
+  // abajo.
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
 
   return (
     <>
@@ -656,7 +669,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && !enVentaRegistrada && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

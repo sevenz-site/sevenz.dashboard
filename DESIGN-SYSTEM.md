@@ -2182,6 +2182,60 @@ se contradecía una**. Aquí no hay contradicción —las dos dicen lo mismo— 
 es la diferencia que hace que la excepción no rompa la regla. Si algún día se
 revierte, esto es lo que hay que volver a mirar.
 
+## Toda pantalla de transacción registrada lleva la barra de navegación
+
+**Las tres —abono, fiado y venta— con barra abajo.** Son
+`/abonos/[movementId]`, `/ventas/[saleId]` y lo que venga detrás. Regla del
+dueño el 2026-10-24: *«Todas las pantallas de registros exitosos de
+transacciones (abono, fiado y venta) deben tener el navbar»*.
+
+**La lleva `mobile-nav.tsx`, no la pantalla**, así que una pantalla de éxito
+nueva la hereda sin hacer nada — y lo que hay que vigilar es justo lo
+contrario de lo habitual: que nadie la **excluya** ahí por arreglar otra cosa.
+
+### Lo que esto cuesta, medido, para que nadie lo redescubra
+
+La barra ocupa **723-812 a 375px**, y en estas pantallas las acciones caen
+dentro. En reposo —sin desplazar— esto es lo que pasa:
+
+| Pantalla | Botón | En reposo |
+|---|---|---|
+| Abono registrado | «Compartir» 722-762 | tapado |
+| Abono registrado | «Ver cuenta de…» 778-818 | tapado |
+| Venta de contado | «Ver ‹nombre›» 723-763 | tapado |
+
+**Y «tapado» aquí no es estético: `elementFromPoint` en el centro de esos
+botones devuelve un icono de la barra, o sea que no se pueden pulsar.**
+
+**Lo que lo hace vivible, y hay que conservarlo**: `app-main.tsx` les reserva
+**5,5rem** abajo, así que **desplazadas hasta el final las acciones quedan
+despejadas**. Si alguien quita ese aire «porque sobra espacio», los botones
+dejan de ser alcanzables también al final del scroll, y entonces no hay
+salida. El aire es parte de la regla, no decoración.
+
+**Y la salida nunca puede faltar**: las tres pantallas llevan cabecera con
+«Abrir menú». Importa sobre todo en la **venta de mostrador**, que no tiene
+cliente y por tanto tampoco botón «Ver ‹nombre›»: sin menú, el tendero se
+quedaría sin ninguna forma de salir.
+
+### Las dos decisiones, porque la de hoy desplaza a la de esta mañana
+
+El **2026-10-24 por la mañana** la barra se quitó de estas pantallas, con esa
+medición delante — tres botones muertos en reposo. **Por la tarde el dueño
+pidió devolverla**, y esa es la que vale.
+
+La razón de la primera no era mala y por eso se anota: un botón que no se
+puede pulsar se ve desde fuera como «le di y no hizo nada», que es un síntoma
+que no se parece en nada a su causa. Lo que pesa más para el dueño es que
+estas pantallas **no son un flujo a medias, son el final**, y de ellas el
+tendero sale a otro sitio: quitarle la navegación justo ahí lo deja mirando
+un resumen sin puertas.
+
+**El botón flotante «Registrar» NO vuelve.** Lo quitó él el mismo día por la
+misma medición, y lo que pidió por la tarde fue la barra, no el botón. Son
+dos cosas fijas sobre el mismo borde y se decidieron por separado — que es
+precisamente lo que hizo falta medir una por una para verlas.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

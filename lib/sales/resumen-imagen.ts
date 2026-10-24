@@ -401,11 +401,26 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     ctx.font = fuente(17);
     ctx.fillStyle = TINTA;
     ctx.textAlign = "center";
-    ctx.fillText(
-      datos.abono ? "¡Abono registrado con éxito!" : "¡Transacción registrada con éxito!",
-      centro,
-      y,
-    );
+    // ── EL MISMO TÍTULO QUE LA PANTALLA, SIEMPRE — CT-143, 2026-10-24
+    //
+    // Hasta hoy el recibo de un abono se titulaba «¡Abono registrado con
+    // éxito!» y su pantalla decía «¡Transacción registrada con éxito!». No
+    // era una decisión: la pantalla cambió el 2026-10-22 por decisión del
+    // dueño —frame `1524:10289`— y este canvas se quedó sin tocar, igual que
+    // la pantalla de éxito de una venta se quedó sin el código.
+    //
+    // POR QUÉ IMPORTA MÁS DE LO QUE PARECE: el recibo de una VENTA ya decía
+    // «Transacción», así que del mismo negocio salían dos comprobantes que
+    // llamaban distinto a lo mismo. Y lo único que este producto promete es
+    // que el tendero y su cliente lean la misma cuenta.
+    //
+    // EL ARGUMENTO EN CONTRA, que era real y por eso lo decidió el dueño y no
+    // yo: «Abono» es más claro para quien recibe el mensaje EN FRÍO, de un
+    // número que no tiene agendado. Lo que lo desempata es que el titular no
+    // carga solo con explicarlo: justo debajo van la fecha, el código, la
+    // ficha del comprador y «Abonó Bs. X». El cliente se entera de que es un
+    // pago en el renglón siguiente.
+    ctx.fillText("¡Transacción registrada con éxito!", centro, y);
   }
   y += 10 * ESCALA;
 
