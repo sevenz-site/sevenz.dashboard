@@ -2565,6 +2565,65 @@ el que nadie revisa. Pasó aquí —seis días con dos flujos vivos— y pasa co
 cabecera de `app-header.tsx`, unas secciones más arriba. Cuando quites una
 puerta, busca quién más la dibujaba, no solo quién la abría.
 
+## EL DOCUMENTO DEL CLIENTE SE ESCRIBE SIEMPRE CON SU LETRA
+
+**«V-32.256.369», nunca «32256369».** En toda la app: la del tendero, la del
+cliente, los PNG que se comparten y los mensajes de WhatsApp. Regla del dueño
+del 2026-10-23, al dar de alta dos personas con el mismo número y distinta
+letra: *«en todos los lugares donde se maquete el documento del cliente debe
+incluir el prefijo»*.
+
+**Se escribe con `formatDocumentId(documento, tipo)`**, de `lib/format.ts`.
+Nunca pegando el valor de la columna.
+
+### Esta regla ya se escapó DOS veces, y la segunda explica cómo
+
+La primera fue el 2026-10-23: dieciséis sitios dibujaban el documento y varios
+lo hacían en crudo. La defensa que se montó entonces sigue siendo la buena —
+**el segundo parámetro de `formatDocumentId` es obligatorio, sin valor por
+defecto**, así que TypeScript obliga a cada sitio a decir de dónde saca la
+letra. Eso encontró dos pantallas que el barrido a mano no vio.
+
+La segunda fue el 2026-10-24, y TypeScript no podía cazarla: la pantalla «Tu
+pedido quedó registrado» recibe el documento como **una cadena ya hecha**
+dentro de un objeto `comprador`, así que ahí no hay nada que formatear — el
+error estaba cuatrocientas líneas antes, donde ese objeto se construye.
+
+**La lección, y es la regla práctica:**
+
+> **Formatea en el ORIGEN, donde el documento y su letra están juntos. No en
+> cada sitio que lo dibuja.**
+
+De ese valor colgaban **tres** superficies —la pantalla, el PNG que el cliente
+se queda en el chat y el mensaje de WhatsApp—. Arreglar la que se ve deja las
+otras dos diciendo otra cosa, y la que se ve es la única que alguien mira.
+
+### Cómo se busca, que no es mirando pantallas
+
+Una lista de pantallas nunca está completa; una de columnas sí. Son dos
+parejas:
+
+| Columna | Su letra |
+|---|---|
+| `clients.document_id` | `clients.document_type` |
+| `catalog_orders.customer_document` | `catalog_orders.customer_document_type` |
+
+```sh
+grep -rn "document_id\|customer_document" --include=*.tsx --include=*.ts app components lib
+```
+
+Y para cada sitio que lo DIBUJA, la pregunta es si llama a `formatDocumentId`
+o si recibe una cadena que alguien formateó antes. Si es lo segundo, el sitio
+a revisar es ese alguien.
+
+### Cuando no hay letra
+
+`null` es el estado normal de todo lo anterior a las migraciones `154` y
+`155`: a esos clientes nunca se les preguntó. `formatDocumentId` lo resuelve
+—escribe los dígitos agrupados y nada más— y no se inventa una letra. Una `V`
+puesta por defecto convierte «no lo sé» en una afirmación sobre la cédula de
+alguien.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

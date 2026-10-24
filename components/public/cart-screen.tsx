@@ -45,7 +45,7 @@ import {
 } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { telefonoLegible } from "@/lib/phone";
-import { formatReceiptDateTime } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
@@ -621,9 +621,24 @@ function FormularioDeLaOrden({
       // nada esperando por delante. El pedido YA está guardado —decisión del
       // 2026-10-14— así que lo que falle aquí cuesta un toque más, no un
       // pedido.
+      // ── EL DOCUMENTO CON SU LETRA, Y SE FORMATEA UNA SOLA VEZ ─────────
+      //
+      // «V-15.715.800» y no «15715800». Regla del dueño del 2026-10-23: el
+      // documento del cliente lleva su prefijo EN TODAS PARTES. Esta pantalla
+      // se quedó fuera de aquel barrido y él lo cazó el 2026-10-24 con la
+      // captura de «Tu pedido quedó registrado».
+      //
+      // SE FORMATEA AQUÍ Y NO EN CADA SITIO QUE LO DIBUJA, que es por lo que
+      // se escapó: de este valor cuelgan TRES superficies —la pantalla de
+      // confirmación, el PNG que el cliente comparte y el mensaje de
+      // WhatsApp— y arreglar la que se ve deja las otras dos diciendo otra
+      // cosa. Formateado en el origen, las tres dicen lo mismo por
+      // construcción.
+      const documentoConLetra = formatDocumentId(documento, tipoDeDocumento);
+
       const recibo = dibujarRecibo({
         businessName,
-        comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
+        comprador: { nombre, documento: documentoConLetra, telefono: telefonoLegible(whatsapp) },
         resumen: resumenPorMoneda(lineas, productos, rates),
         rates,
         fecha: fechaDelPedido,
@@ -654,7 +669,7 @@ function FormularioDeLaOrden({
       }
 
       onAbierto(false);
-      onEnviada(mensaje, { nombre, documento, telefono: whatsapp }, fechaDelPedido);
+      onEnviada(mensaje, { nombre, documento: documentoConLetra, telefono: whatsapp }, fechaDelPedido);
     });
   }
 

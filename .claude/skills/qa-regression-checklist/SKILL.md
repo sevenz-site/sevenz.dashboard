@@ -884,7 +884,8 @@ no escribe nada.
 | Libreta por foto | `qa:import`, `qa:reconcile` |
 | WhatsApp, más allá de las plantillas | `qa:puerta`, `qa:recibo`, `qa:recordatorio`, `qa:mensaje`, `qa:consent`, `qa:telefono` |
 | Productos y precios | `qa:precio`, `qa:proveedor`, `qa:producto-rapido` |
-| Documento del cliente | `qa:document-id` |
+| Documento del cliente | `qa:document-id`, `qa:documento`, `qa:documento-cliente`, `qa:orden-letra` |
+| **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |
 | `/admin` y métricas | `qa:multi-owner` |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
 
@@ -919,6 +920,27 @@ puede verse bien y tener el cursor saltando al final en cada millar:
 dirigido (1/2 y 2/2), el «Abonó» de la venta, el precio y el alta rápida dentro
 de un fiado, el costo y los precios del producto, el precio del alta rápida de
 la venta, el monto de un movimiento de libreta y el saldo de apertura.
+
+### Un documento dibujado lleva su letra, y se comprueba en el ORIGEN
+
+Regla del dueño del 2026-10-23, escrita entera en `DESIGN-SYSTEM.md`:
+«V-32.256.369», nunca «32256369», en toda la app.
+
+**Se ha escapado dos veces y la segunda enseña dónde mirar.** La primera vez
+fueron pantallas que pegaban la columna en crudo, y las cazó hacer obligatorio
+el segundo parámetro de `formatDocumentId`. La segunda —«Tu pedido quedó
+registrado», el 2026-10-24— TypeScript no podía cazarla: esa pantalla recibe
+el documento como una cadena YA HECHA dentro de un objeto `comprador`, así que
+el fallo estaba donde ese objeto se construye, cuatrocientas líneas antes.
+
+**Así que el control no es «¿esta pantalla formatea?» sino «¿de dónde le llega
+esta cadena?».** Y de un mismo valor cuelgan varias superficies: la pantalla,
+el PNG que se queda en el chat del cliente y el mensaje de WhatsApp. Arreglar
+la que se ve deja las otras diciendo otra cosa.
+
+**Cuando el diff toque un documento, se abre UNA pantalla de cada familia y se
+mira el dato, no el código**: una ficha de cliente, un comprobante que se
+comparte (PNG incluido) y la confirmación del pedido del catálogo.
 
 **`qa:currency` lleva un fallo conocido y hay que decidirlo, no ignorarlo.**
 Desde el 2026-10-21 falla dos controles por dos movimientos sin autor de un
