@@ -310,7 +310,7 @@ export default async function ClientDetailPage({
               consentGranted={aceptaAvisos === true}
               triggerClassName="w-full"
               hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
-              hrefAbono={`/abonos/nuevo?cliente=${client.id}`}
+              hrefAbono={`/abonos/nuevo?cliente=${client.id}&desde=cliente`}
               autoOpen={autoOpenType}
               rateContext={rateContext}
               monedaHabitual={monedaHabitual}

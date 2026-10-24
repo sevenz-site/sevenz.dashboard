@@ -382,6 +382,10 @@ export function DetalleDeTransaccion({
               // AQUÍ SÍ: esta tarjeta está sola, navega, y la flecha es la
               // única señal de que se puede tocar.
               conChevron
+              // LO QUE EL FIADO FUE, que es de lo que habla esta ficha: el
+              // detalle de un abono cuenta a qué fiado se aplicó, no cuánto
+              // le queda hoy. Lo que queda ya lo dice «Debe $X» debajo.
+              cifra="original"
             />
           ) : (
             // DOS FRASES, Y DICEN COSAS DISTINTAS:

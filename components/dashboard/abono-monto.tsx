@@ -93,6 +93,7 @@ export function AbonoMonto({
   yaAceptaAvisos,
   pasoUnico = false,
   enReparto = false,
+  sufijoDelOrigen = "",
 }: {
   ownerId: string;
   fiadoId: string;
@@ -111,6 +112,11 @@ export function AbonoMonto({
   // SE LLEGÓ DESDE UN REPARTO. Entonces esta pantalla NO guarda: fija lo que
   // le toca a este fiado y vuelve a «1/2 fiados». Ver `fijarYVolver`.
   enReparto?: boolean;
+  // `&desde=cliente`, o cadena vacía. Se arrastra en las DOS vueltas al paso
+  // 1/2 —la flecha y `fijarYVolver`— porque si se perdiera en una de ellas la
+  // flecha de allí funcionaría hasta el primer reparto y después no. Ver
+  // `desde` en `abono-reparto.tsx`.
+  sufijoDelOrigen?: string;
 }) {
   const router = useRouter();
   const [guardando, startTransition] = useTransition();
@@ -293,7 +299,7 @@ export function AbonoMonto({
   function fijarYVolver() {
     setError(null);
     fijarEnBorrador(clienteId, fiadoId, enElLibro, libro);
-    router.push(`/abonos/nuevo?cliente=${clienteId}`);
+    router.push(`/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`);
   }
 
   function guardar() {
@@ -342,7 +348,7 @@ export function AbonoMonto({
           pasoUnico
             ? `/transacciones/${fiadoId}`
             : enReparto
-              ? `/abonos/nuevo?cliente=${clienteId}`
+              ? `/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`
               : `/abonos/nuevo/${fiadoId}`
         }
         label={pasoUnico ? "Volver al detalle" : clienteNombre}

@@ -69,21 +69,33 @@ import type { LedgerCurrency } from "@/lib/types";
 // a un fiado más de lo que debe, y esta pantalla no tendría forma de notarlo.
 //
 // ===========================================================================
-// LA MISMA TARJETA QUE EL PASO 1/3, Y ESO ES UNA DECISIÓN
+// DOS TARJETAS DISTINTAS, COMO EL FRAME, Y ESO CAMBIÓ EL 2026-10-23
 //
-// El frame dibuja DOS tarjetas distintas: la que ya tiene importe asignado
-// lleva fecha y chevron, y la que no lleva un botón «Pagar» y ni fecha ni
-// chevron. Aquí las dos son `TarjetaDeFiado`, la misma de `/abonos/nuevo` y
-// del detalle de un abono, y lo único que cambia es lo que va DEBAJO.
+// El frame `1564:11211` dibuja DOS: la que ya tiene importe asignado lleva
+// título, FECHA y su renglón «Abona» debajo (`1564:11242`); la que no lleva
+// título, la cifra en rojo debajo y un botón «Pagar» al lado, SIN fecha
+// (`1564:11286`).
 //
-// Dos razones, y la segunda es del dueño:
+// HASTA HOY LAS DOS ERAN `TarjetaDeFiado` con cosas distintas debajo, y la
+// razón escrita era buena: tres copias de la misma tarjeta en tres archivos
+// es cómo dejan de ser la misma. Lo que esa razón no cubría es que no son la
+// misma tarjeta — tienen distinto contenido y distinta disposición, y
+// forzarlas a una sola forma es lo que puso DOS cifras del mismo fiado en la
+// misma caja: «Debe €15.95» abajo a la izquierda y «−€25.00» en grande a la
+// derecha. El dueño lo reportó al tocar la segunda y encontrarse la primera:
+// *«Estoy seleccionando un abono de 25 euros pero al seleccionarlo me dice
+// que es de 15.95»*.
 //
-//   · Tres copias de la misma tarjeta en tres archivos es exactamente cómo
-//     dejan de ser la misma —lo tiene escrito `tarjeta-de-fiado.tsx`—.
-//   · El frame NO dibuja «Debe $X», que la tarjeta de producción sí tiene.
-//     Preguntado el 2026-10-22, el dueño respondió *«Sí mantén la tarjeta»*.
-//     Y es la cifra que decide el reparto: repartir sin ver cuánto falta en
-//     cada fiado es repartir a ciegas.
+// ASÍ QUE LA DE «Pagar» SE ESCRIBE AQUÍ, y la que recibe sigue siendo
+// `TarjetaDeFiado` —la misma de `/abonos/nuevo` y del detalle de un abono—
+// con `cifra="pendiente"` y sin su línea «Debe».
+//
+// Y ESTO NO DESHACE LA RESPUESTA DEL 2026-10-22. Aquel día se le preguntó si
+// mantener «Debe $X», que el frame no dibuja, y dijo *«Sí mantén la
+// tarjeta»*: lo que quería era ver cuánto falta en cada fiado, porque
+// repartir sin eso es repartir a ciegas. Esa cifra no se va — pasa a ser LA
+// cifra, la roja, en lugar de ser la segunda y la pequeña.
+//
 // Fuera del componente para que su referencia no cambie en cada render:
 // `useSyncExternalStore` vuelve a suscribirse cuando `subscribe` es otra
 // función, y `SIN_AJUSTES` tiene que ser el MISMO objeto vacío siempre.
@@ -99,6 +111,7 @@ export function AbonoReparto({
   libros,
   rates,
   paisVE,
+  desde,
 }: {
   clienteId: string;
   clienteNombre: string;
@@ -110,6 +123,23 @@ export function AbonoReparto({
   rates: BolivarRates | null;
   // Solo un negocio venezolano puede teclear en bolívares.
   paisVE: boolean;
+  // ── DE DÓNDE SE VINO ───────────────────────────────────────────────
+  //
+  // A esta pantalla se llega por DOS puertas y la flecha tiene que deshacer
+  // la que se usó. Encargo del dueño el 2026-10-23: *«si usuario entró desde
+  // perfil del cliente debe regresarlo al perfil del cliente, si entró desde
+  // buscar cliente lo debe regresar a buscar cliente»*.
+  //
+  // VA EN LA URL Y NO EN EL HISTORIAL DEL NAVEGADOR, y esa es la decisión que
+  // importa: `router.back()` habría sido una línea, pero esta pantalla se
+  // abandona y se vuelve a ella —cada «Pagar» de un fiado va a la pantalla
+  // del monto y regresa— así que el paso anterior deja de ser la puerta de
+  // entrada en cuanto el tendero reparte una vez. Un parámetro sobrevive a
+  // eso, y a recargar.
+  //
+  // Por eso `abono-monto.tsx` lo arrastra en sus dos vueltas: si se perdiera
+  // ahí, la flecha funcionaría hasta el primer reparto y luego no.
+  desde: "cliente" | "buscar";
 }) {
   const router = useRouter();
   const [guardando, empezar] = useTransition();
@@ -425,6 +455,10 @@ export function AbonoReparto({
   // bolívares, que es la trampa que esta pantalla ya documenta dos veces.
   const cubreTodo = enElLibro > 0.005 && deuda - enElLibro <= 0.005;
 
+  // Ver `desde` arriba. Se calcula aquí y no en la fila para que el destino y
+  // la etiqueta no puedan separarse.
+  const desdeLaFicha = desde === "cliente";
+
   const asignado = new Map(reparto.lineas.map((l) => [l.movementId, l.asignado]));
 
   // LOS BOLÍVARES DE CADA LÍNEA, TAL COMO LOS REPARTIÓ EL REPARTO.
@@ -644,63 +678,98 @@ export function AbonoReparto({
   // al detalle del fiado (`1536:11006`), de ahí «Continuar» a la pantalla del
   // monto (`1524:10358`), y al pagar se vuelve aquí con la cifra puesta en su
   // card (`1527:11671`).
-  const filaParaElegir = (f: FiadoAbierto) => (
-    // `shrink-0` NO ES DECORACIÓN. Esta misma fila se monta dentro de la hoja
-    // «Repartir abono», cuya lista es un contenedor flex en columna con
-    // altura acotada (`max-h-[90dvh]` + `overflow-y-auto`). Un hijo de un
-    // flex encoge por defecto, así que con el teclado arriba —que es cuando
-    // esa hoja se abre, con el buscador enfocado— las tarjetas se aplastaban
-    // unas contra otras y el renglón «Debe €0.95» quedaba cortado. Lo
-    // reportó el dueño el 2026-10-23 con la captura.
-    //
-    // Va en la FILA y no en la hoja porque es la fila la que no debe ceder su
-    // altura: la hoja ya tiene su scroll, que es quien sobra cuando no caben.
-    <li key={f.movementId} className="shrink-0 overflow-hidden rounded-[10px] border">
-      <div className="flex items-center justify-between gap-3 pr-3">
-        {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace otra
-            cosa. Encargo del dueño el 2026-10-23: *«todo el card es
-            clickeable, lleva al detalle de la transacción, eliminar icono "›"
-            en la card»*.
+  const filaParaElegir = (f: FiadoAbierto) => {
+    const detalle = f.productos.length > 0 ? f.productos.join(", ") : (f.descripcion ?? "");
+    const titulo = detalle ? `Fiado · ${detalle}` : "Fiado";
+    const enBs =
+      rates && f.currency
+        ? priceIn("VES", { amount: f.pending, currency: f.currency }, rates)?.amount
+        : null;
 
-            SON DOS DESTINOS EN UNA FILA, a propósito: tocar la tarjeta es
-            «déjame ver qué fue esto» y lleva a `/transacciones/…`; tocar
-            «Pagar» es «a este le pongo yo la cifra» y entra en el flujo del
-            reparto. Por eso la flecha sobra: con dos cosas tocables al lado,
-            una flecha solo dice cuál de las dos no es. */}
-        <div className="min-w-0 flex-1 [&>*]:border-0">
-          <TarjetaDeFiado
-            fiado={f}
-            rates={rates}
-            mostrarPendiente
+    return (
+      // `shrink-0` NO ES DECORACIÓN. Esta misma fila se monta dentro de la
+      // hoja «Repartir abono», cuya lista es un contenedor flex en columna con
+      // altura acotada (`max-h-[90dvh]` + `overflow-y-auto`). Un hijo de un
+      // flex encoge por defecto, así que con el teclado arriba —que es cuando
+      // esa hoja se abre, con el buscador enfocado— las tarjetas se aplastaban
+      // unas contra otras y el renglón de la cifra quedaba cortado. Lo reportó
+      // el dueño el 2026-10-23 con la captura.
+      //
+      // Va en la FILA y no en la hoja porque es la fila la que no debe ceder
+      // su altura: la hoja ya tiene su scroll, que es quien sobra.
+      <li key={f.movementId} className="shrink-0 overflow-hidden rounded-[10px] border">
+        <div className="flex items-center justify-between gap-3 pr-4">
+          {/* LA TARJETA ENTERA ABRE EL DETALLE, y el botón de al lado hace
+              otra cosa. Encargo del dueño el 2026-10-23: *«todo el card es
+              clickeable, lleva al detalle de la transacción, eliminar icono
+              "›" en la card»*.
+
+              SON DOS DESTINOS EN UNA FILA, a propósito: tocar la tarjeta es
+              «déjame ver qué fue esto» y lleva a `/transacciones/…`; tocar
+              «Pagar» es «a este le pongo yo la cifra». Por eso la flecha
+              sobra: con dos cosas tocables al lado, una flecha solo dice cuál
+              de las dos no es. */}
+          <Link
             href={`/transacciones/${f.movementId}`}
-            conChevron={false}
-          />
+            className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-2 text-left transition-colors active:bg-muted/60"
+          >
+            <span className="truncate text-sm font-medium">{titulo}</span>
+            {/* UNA SOLA CIFRA, Y ES LO QUE ESTE FIADO TODAVÍA DEBE.
+                Frame `1564:11286`: título, importe en rojo debajo y su
+                equivalencia. SIN FECHA y SIN «Debe €X» — el frame no los
+                dibuja aquí, y la tarjeta de arriba (`1564:11242`), que sí
+                lleva fecha, es otra: esa explica un reparto hecho y esta
+                ofrece hacer uno.
+
+                POR QUÉ IMPORTA QUE SEA LO PENDIENTE: pulsar «Pagar» abre el
+                monto con el pendiente como tope. Enseñar aquí el importe
+                original hacía que la pantalla siguiente contradijera a la
+                tarjeta desde la que se llegó, y así lo reportó el dueño el
+                2026-10-23: *«Estoy seleccionando un abono de 25 euros pero al
+                seleccionarlo me dice que es de 15.95»*.
+
+                EL SIGNO ES «−» Y EL FRAME DIBUJA «+», a sabiendas: manda la
+                regla del dueño del 2026-10-22 —*«abonos y de contados con
+                "+", fiados con "-"»*—, que es la misma razón por la que
+                `tarjeta-de-fiado.tsx` desplaza a su propio frame. */}
+            <span className="flex items-center gap-1 text-base font-semibold tabular-nums text-destructive">
+              {f.currency ? (
+                <CurrencyFlagIcon currency={f.currency} className="size-4 shrink-0" />
+              ) : null}
+              -{formatPriceAmount(f.pending, f.currency ?? "COP")}
+            </span>
+            {enBs != null ? (
+              <span className="text-xs text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
+            ) : null}
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-10 shrink-0"
+            onClick={() => {
+              // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
+              // desmonta solo al cambiar de ruta.
+              setRepartiendo(false);
+              // DIRECTO AL MONTO, SIN EL PASO INTERMEDIO. Encargo del dueño
+              // el 2026-10-23: *«elimina el paso "Detalle de transacción 2/2
+              // confirma transacción a abonar"»*.
+              //
+              // Esa pantalla enseñaba el fiado y pedía «Continuar» — y lo que
+              // enseñaba ya está en la tarjeta desde la que se pulsa «Pagar»:
+              // el producto y lo que debe. Era un toque para confirmar lo que
+              // el tendero acababa de elegir.
+              router.push(
+                `/abonos/nuevo/${f.movementId}/monto?reparto=1${desdeLaFicha ? "&desde=cliente" : ""}`,
+              );
+            }}
+          >
+            Pagar
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-10 shrink-0"
-          onClick={() => {
-            // SE CIERRA ANTES DE NAVEGAR: `Sheet` es un Radix Dialog y no se
-            // desmonta solo al cambiar de ruta.
-            setRepartiendo(false);
-            // DIRECTO AL MONTO, SIN EL PASO INTERMEDIO. Encargo del dueño
-            // el 2026-10-23: *«elimina el paso "Detalle de transacción 2/2
-            // confirma transacción a abonar"»*.
-            //
-            // Esa pantalla enseñaba el fiado y pedía «Continuar» — y lo que
-            // enseñaba ya está en la tarjeta desde la que se pulsa «Pagar»:
-            // el producto, la fecha, lo que debe. Era un toque para confirmar
-            // lo que el tendero acababa de elegir.
-            router.push(`/abonos/nuevo/${f.movementId}/monto?reparto=1`);
-          }}
-        >
-          Pagar
-        </Button>
-      </div>
-    </li>
-  );
+      </li>
+    );
+  };
 
   // UNA SOLA FILA, USADA EN DOS SITIOS: la lista de «Así se reparte el pago» y
   // la hoja de «Repartir distinto». Es una función y no un componente aparte
@@ -722,7 +791,19 @@ export function AbonoReparto({
         <div className="[&>*]:rounded-b-none [&>*]:border-0">
           {/* SIN FLECHA: esta tarjeta no abre nada. La dibujaba igual hasta el
               2026-10-23, prometiendo una pantalla que no existe desde aquí. */}
-          <TarjetaDeFiado fiado={f} rates={rates} mostrarPendiente conChevron={false} />
+          {/* SIN «Debe €X» Y CON LO PENDIENTE EN ROJO. El frame
+              `1564:11242` dibuja título, fecha y UNA cifra; la línea «Debe»
+              no está ahí, y con ella la tarjeta enseñaba dos números del
+              mismo fiado que no coincidían. Encargo del dueño el 2026-10-23:
+              *«en esta pantalla los fiados no deberían tener el saldo total
+              por cobrar, solo el saldo del fiado de cada card»*. */}
+          <TarjetaDeFiado
+            fiado={f}
+            rates={rates}
+            mostrarPendiente={false}
+            conChevron={false}
+            cifra="pendiente"
+          />
         </div>
         {/* SIEMPRE «Abona» Y SIEMPRE CON CIFRA, y aquí no hay botón.
             Hasta el 2026-10-23 esta fila tenía una segunda cara —«No le toca
@@ -831,8 +912,8 @@ export function AbonoReparto({
           y abre directa en el buscador con el propósito «abono», que es lo
           que hace que al elegir cliente vuelva aquí. */}
       <ScreenBackRow
-        href="/dashboard?nuevo=abono"
-        label="Buscar otro cliente"
+        href={desdeLaFicha ? `/clients/${clienteId}` : "/dashboard?nuevo=abono"}
+        label={desdeLaFicha ? `Volver a ${clienteNombre}` : "Buscar otro cliente"}
         soloEnTelefono={false}
       />
 

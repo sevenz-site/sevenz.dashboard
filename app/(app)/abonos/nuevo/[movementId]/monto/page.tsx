@@ -51,6 +51,10 @@ export default async function MontoDelAbonoPage({
   // no hace falta ninguna: el destino es la ficha de ESTE fiado, y su id ya
   // está en la ruta.
   const desdeElDetalle = desde === "detalle";
+  // `?desde=cliente` LO ARRASTRA EL REPARTO cuando el tendero entró al flujo
+  // por la ficha del cliente, para que la flecha de la 1/2 sepa volver allí al
+  // regresar de aquí. Ver `desde` en `abono-reparto.tsx`.
+  const sufijoDelOrigen = desde === "cliente" ? "&desde=cliente" : "";
   const supabase = await createClient();
   const {
     data: { user },
@@ -85,7 +89,11 @@ export default async function MontoDelAbonoPage({
   // fiados a quien llegó desde la ficha es el mismo fallo que este cambio
   // arregla, entrando por la puerta del error en vez de por la del acierto.
   if (!abierto) {
-    redirect(desdeElDetalle ? `/transacciones/${fiado.id}` : `/abonos/nuevo?cliente=${cliente.id}`);
+    redirect(
+      desdeElDetalle
+        ? `/transacciones/${fiado.id}`
+        : `/abonos/nuevo?cliente=${cliente.id}${sufijoDelOrigen}`,
+    );
   }
 
   // ── LA TASA ──────────────────────────────────────────────────────────
@@ -133,6 +141,7 @@ export default async function MontoDelAbonoPage({
       yaAceptaAvisos={acepta === true}
       pasoUnico={desdeElDetalle}
       enReparto={reparto === "1"}
+      sufijoDelOrigen={sufijoDelOrigen}
     />
   );
 }

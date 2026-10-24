@@ -56,6 +56,7 @@ export function TarjetaDeFiado({
   onClick,
   mostrarPendiente = true,
   conChevron,
+  cifra,
 }: {
   fiado: FiadoAbierto;
   rates: BolivarRates | null;
@@ -88,6 +89,24 @@ export function TarjetaDeFiado({
   // lleva un botón «Pagar» al lado. Dos señales de «aquí se toca» en la misma
   // fila, apuntando a sitios distintos, es justo lo que confunde.
   conChevron: boolean;
+  // ── QUÉ CIFRA VA EN ROJO: LO QUE FUE, O LO QUE QUEDA ───────────────
+  //
+  // `original` es `amount`, el fiado tal como nació. `pendiente` es lo que
+  // TODAVÍA debe. No son la misma pregunta y esta tarjeta se usa en sitios
+  // que hacen una u otra.
+  //
+  // POR QUÉ HIZO FALTA, el 2026-10-23: en la hoja del abono la tarjeta
+  // enseñaba las dos a la vez —«Debe €15.95» abajo a la izquierda y «−€25.00»
+  // en grande a la derecha— y al pulsar «Pagar» el flujo ofrecía 15,95. El
+  // dueño lo reportó así: *«Estoy seleccionando un abono de 25 euros pero al
+  // seleccionarlo me dice que es de 15.95»*. Dos cifras del mismo fiado en la
+  // misma tarjeta, y la grande no era la que mandaba.
+  //
+  // OBLIGATORIA Y SIN VALOR POR DEFECTO, por lo mismo que `conChevron`: un
+  // `= "original"` elegiría en silencio por quien monte esta tarjeta en un
+  // sitio nuevo, y la cifra equivocada aquí no se ve rara — se ve como otro
+  // número perfectamente creíble.
+  cifra: "original" | "pendiente";
 }) {
   // EL MISMO RÓTULO QUE LA FILA DEL HISTORIAL: «Fiado · lo que se llevó». Si la
   // venta trae productos van ellos; si no, lo que el tendero escribió; y si no
@@ -102,9 +121,14 @@ export function TarjetaDeFiado({
   // pregunta es otra —«¿cuánto me llevo hoy si me paga esto?»— y el frame lo
   // dice con esa palabra. Sin tasa, la línea no se dibuja: inventar una
   // conversión es peor que no darla.
+  // LA CIFRA EN ROJO, UNA SOLA VEZ: la convierte a bolívares y la pinta el
+  // mismo valor. Separarlas es cómo se acaba enseñando una cifra en su moneda
+  // y la equivalencia de otra debajo.
+  const enRojo = cifra === "pendiente" ? fiado.pending : fiado.amount;
+
   const enBs =
     rates && fiado.currency
-      ? priceIn("VES", { amount: fiado.amount, currency: fiado.currency }, rates)?.amount
+      ? priceIn("VES", { amount: enRojo, currency: fiado.currency }, rates)?.amount
       : null;
 
   const clase = CLASE_TARJETA;
@@ -160,7 +184,7 @@ export function TarjetaDeFiado({
                 consistencia gana: un mismo fiado no puede salir con «+» en una
                 pantalla y con «−» en otra, que es exactamente lo que el dueño
                 vio. */}
-            -{formatPriceAmount(fiado.amount, fiado.currency ?? "COP")}
+            -{formatPriceAmount(enRojo, fiado.currency ?? "COP")}
           </span>
           {enBs != null ? (
             <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
