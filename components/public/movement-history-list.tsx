@@ -467,13 +467,12 @@ export function MovementHistoryList({
                 open, so it falls back to its own page. They all predate
                 2026-10-14. */}
             <Link
-              href={`/s/${token}/t/${m.applies_to_movement_id ?? m.id}${
-                // `?abono=` highlights the card on arrival — frame
-                // `1489:10231`, asked for on 2026-10-22. Only when the row IS
-                // a directed abono: a fiado opens itself, so there is nothing
-                // to point at.
-                m.applies_to_movement_id ? `?abono=${m.id}` : ""
-              }`}
+              // CADA FILA A SU PROPIA FICHA, igual que en la pantalla del
+              // tendero desde el 2026-10-23: un abono abre el detalle del
+              // abono, no el de su fiado. El camino al fiado está dentro, en
+              // «Fiado relacionado». Decisión del dueño, preguntada ese día
+              // para esta vista: la misma pantalla, sin sus acciones.
+              href={`/s/${token}/t/${m.id}`}
               className="flex w-full flex-col gap-1.5 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             >
               {/* ── TIER 1: WHAT IT WAS, WHEN, AND FOR HOW MUCH ───────── */}

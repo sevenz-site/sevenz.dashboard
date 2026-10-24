@@ -121,6 +121,11 @@ export type DatosDelDetalle = {
   // de la barra de direcciones y puede ser cualquier cosa. No hay nada que
   // proteger --solo decide un borde-- pero tampoco hay que fingir.
   abonoResaltado?: string | null;
+  // CÓMO SE LLEGA A LA FICHA DE UN ABONO desde esta pantalla. Lo trae quien
+  // monta el componente porque las dos vistas tienen rutas distintas:
+  // `/transacciones/<id>` en la del tendero y `/s/<token>/t/<id>` en la del
+  // cliente. `null` deja las tarjetas sin enlace, como estaban.
+  hrefDeUnAbono?: ((movementId: string) => string) | null;
   // ── ¿ESTA PANTALLA PUEDE EDITAR? ────────────────────────────────────
   //
   // `false` en la del CLIENTE. Lo reportó el dueño el 2026-10-21: sus
@@ -156,6 +161,7 @@ export function DetalleDeTransaccion({
   abonosRecibidos,
   conAcciones,
   abonoResaltado = null,
+  hrefDeUnAbono = null,
 }: DatosDelDetalle) {
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
 // ── UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS ────────────────────
@@ -372,6 +378,15 @@ export function DetalleDeTransaccion({
             del resumen del abono se debe mostrar el card del fiado al que se le
             abonó, al seleccionar el card se debe abrir el detalle de ese
             fiado»*. Es la MISMA tarjeta de la pantalla 1/3. */}
+        {/* «Fiado relacionado» — frame `1580:11668`, nodo `1590:11353`. El
+            rótulo no estaba y la tarjeta salía suelta debajo del título de la
+            sección, así que no decía qué era: un fiado dentro de la ficha de
+            un abono se puede leer como «esto es un fiado». Añadido el
+            2026-10-23 con el frame delante. */}
+        {type === "payment" && fiadoAplicado && hrefDelFiado ? (
+          <p className="py-2 text-xs leading-4 text-muted-foreground">Fiado relacionado</p>
+        ) : null}
+
         {type === "payment" ? (
           fiadoAplicado && hrefDelFiado ? (
             <TarjetaDeFiado
@@ -453,12 +468,17 @@ export function DetalleDeTransaccion({
             fila se queda sin trabajo y desaparece. */}
         {type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
-            {/* «Abonos», EN PLURAL Y EN 14 REGULAR — frame `1489:10209`, nodo
-                `1489:10230`. Decía «Abonó» hasta el 2026-10-20, que es el
-                rótulo de la FILA de un fiado sin abonos dirigidos: la de
-                arriba, con una sola cifra. Son dos cosas distintas y el frame
-                las llama distinto. */}
-            <dt className="py-1 text-sm leading-5">Abonos</dt>
+            {/* «Abonos relacionados», EN 14 REGULAR — frame `1510:9784`, nodo
+                `1510:9786`. Encargo del dueño el 2026-10-23, y el nombre no
+                es cosmético: desde ese día cada tarjeta ABRE la ficha de su
+                abono, así que la sección dejó de ser una lista de cifras y
+                pasó a ser un índice de transacciones relacionadas — igual que
+                «Fiado relacionado» en la ficha de un abono, que es su espejo.
+
+                Antes decía «Abonos», y antes de eso «Abonó», que es el rótulo
+                de la FILA de un fiado sin abonos dirigidos. Las tres son
+                cosas distintas y conviene que se llamen distinto. */}
+            <dt className="py-1 text-sm leading-5">Abonos relacionados</dt>
             <dd className="flex flex-col gap-2">
               {/* LA PRIMERA ES LA DE LA COMPRA, y va siempre. Su «movimiento»
                   no existe —ese pago vive en `sale_payments`, por la `124`—
@@ -546,6 +566,13 @@ export function DetalleDeTransaccion({
                     estado={estadoDeCadaAbono[i]}
                     pendienteTras={porAbono.get(a.movementId) ?? null}
                     conAcciones={conAcciones}
+                    href={hrefDeUnAbono ? hrefDeUnAbono(a.movementId) : null}
+                    // EL RESALTADO SOBREVIVE SOLO MIENTRAS ALGUIEN LLEGUE
+                    // AQUÍ DESDE UNA FILA DE ABONO. Desde el 2026-10-23 esa
+                    // fila abre la ficha del abono, así que nadie llega
+                    // marcando una tarjeta — y el dueño pidió quitarlo en el
+                    // mismo mensaje. Se deja el prop porque el camino viejo
+                    // (`?abono=`) todavía existe en enlaces ya compartidos.
                     resaltado={a.movementId === abonoResaltado}
                   />
                 ));

@@ -289,31 +289,30 @@ export function MovementHistoryList({
 
 
   // ═══════════════════════════════════════════════════════════════════════
-  // A DÓNDE VA CADA FILA, Y POR QUÉ NO SIEMPRE A SU FIADO
+  // CADA FILA ABRE SU PROPIA FICHA, INCLUIDO UN ABONO
   //
-  // Un abono dirigido abre la ficha de SU fiado, con `?abono=` para resaltar
-  // su tarjeta. Eso vale mientras el fiado exista.
+  // Encargo del dueño el 2026-10-23: *«Vamos a recuperar los detalles de los
+  // abonos, al seleccionar un abono en el historial de transacciones abrirá
+  // su propio detalle con toda la info registrada en el abono»*, con el frame
+  // `1580:11668`.
   //
-  // QUÉ PASABA SI NO EXISTE, reportado por el dueño el 2026-10-23 con una
-  // captura de una pantalla en blanco: borró un fiado que tenía un abono
-  // dentro, el abono pasó al historial —correcto, sigue siendo un pago que
-  // recibió— y tocarlo llevaba a `/transacciones/<fiado borrado>`, que llama a
-  // `notFound()`. Medido en dev: 404 con el cuerpo vacío. No es un error que
-  // se lea como error; es una pantalla en blanco.
+  // DESPLAZA LA REGLA DEL 2026-10-22, y las dos quedan escritas porque la
+  // vieja tenía su motivo: entonces un abono abría la ficha de SU fiado con
+  // `?abono=` para resaltar su tarjeta, porque la ficha del abono «no iba a
+  // existir». Ahora existe y es la del frame — con su «Fiado relacionado»
+  // dentro, que es el camino de vuelta que aquel atajo daba por la fuerza.
   //
-  // CÓMO SE SABE QUE EL FIADO NO ESTÁ: esta lista recibe los movimientos VIVOS
-  // del cliente, así que un padre que no está en `porId` es un padre borrado.
+  // Y SE LLEVA POR DELANTE EL `?abono=`: sin nadie que llegue al fiado desde
+  // una fila de abono, no hay tarjeta que resaltar. El dueño lo pidió
+  // explícitamente en el mismo mensaje.
   //
-  // Y SI EL PADRE SOLO ESTÁ FUERA DE LA VENTANA —una lista recortada, no el
-  // caso de hoy— el enlace cae igualmente en la ficha del propio abono, que
-  // existe y se dibuja entera. El modo de fallo de esta heurística es «abre
-  // una pantalla distinta de la ideal», no «abre una en blanco», y esa
-  // asimetría es la razón de resolverlo así y no con otra consulta.
-  const hrefDeLaFila = (m: Movement) => {
-    const padre = m.applies_to_movement_id;
-    if (padre != null && porId.has(padre)) return `/transacciones/${padre}?abono=${m.id}`;
-    return `/transacciones/${m.id}`;
-  };
+  // LO QUE ESTO ARREGLA DE PASO, y es el fallo que la regla vieja tenía
+  // parcheado: un abono cuyo fiado se borró llevaba a
+  // `/transacciones/<fiado borrado>` y de ahí a una pantalla en blanco (404
+  // sin cuerpo), reportado con captura el 2026-10-23. Yendo siempre a su
+  // propia ficha, ese caso desaparece en vez de necesitar la comprobación
+  // contra `porId` que había aquí.
+  const hrefDeLaFila = (m: Movement) => `/transacciones/${m.id}`;
 
   const filas: Fila[] = [
     ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),

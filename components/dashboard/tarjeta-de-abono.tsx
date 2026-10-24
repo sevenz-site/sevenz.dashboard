@@ -1,6 +1,8 @@
 "use client";
 
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { AbonoAcciones } from "@/components/dashboard/abono-acciones";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
@@ -55,6 +57,7 @@ export type AbonoDirigido = {
 
 export function TarjetaDeAbono({
   abono,
+  href = null,
   estado,
   inicial = false,
   pendienteTras = null,
@@ -62,6 +65,26 @@ export function TarjetaDeAbono({
   resaltado = false,
 }: {
   abono: AbonoDirigido;
+  // ── A DÓNDE LLEVA LA TARJETA ────────────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-23: *«al seleccionar un abono de esa sección
+  // de abonos seleccionados redirigirá al detalle del abono»*, con el frame
+  // `1510:9784` — que dibuja un chevron a la derecha y ningún «⋮».
+  //
+  // CON `href` LA TARJETA NAVEGA Y PIERDE EL MENÚ, las dos cosas a la vez y
+  // no por separado: las acciones de un abono (editar, eliminar) se mudan a
+  // su propia ficha, que es donde el frame las pone. Dejar el «⋮» aquí
+  // además del enlace sería lo que el dueño mandó quitar el 2026-10-21 —
+  // dos cosas tocables en una fila apuntando a sitios distintos.
+  //
+  // DESPLAZA SU DECISIÓN DEL 2026-10-21 —*«la card no es clickeable, solo los
+  // botones "more"»*— y queda escrito que aquello tenía sentido entonces: el
+  // abono no iba a tener ficha propia, así que el enlace no llevaba a ningún
+  // sitio útil. Ahora la tiene.
+  //
+  // `null` deja la tarjeta como estaba: es el abono de la compra, que no es
+  // un movimiento y no tiene ficha que abrir.
+  href?: string | null;
   // ── EL ABONO POR EL QUE SE ENTRÓ, MARCADO ───────────────────────────
   //
   // Frame `1489:10231`, encargo del dueño el 2026-10-22: *«El abono que se
@@ -155,12 +178,17 @@ export function TarjetaDeAbono({
   // SIN CÓDIGO NO HAY ENVOLTORIO y la tarjeta sale como siempre: `null` es
   // una fila anterior a la migración 147, y un pie que dijera «Código: —»
   // prometería algo que ninguna búsqueda va a encontrar.
+  // LA TARJETA ENTERA ES EL ENLACE, no solo el chevron: es lo que el dueño
+  // pidió para la del fiado («todo el card es clickeable») y aquí vale igual.
+  const conEnlace = (cuerpo: React.ReactNode) =>
+    href == null ? cuerpo : <Link href={href}>{cuerpo}</Link>;
+
   const conPie = (cuerpo: React.ReactNode) =>
     codigo == null ? (
-      cuerpo
+      conEnlace(cuerpo)
     ) : (
-      <div className="w-full overflow-hidden rounded-[10px] border [&>div:first-child]:rounded-none [&>div:first-child]:border-0">
-        {cuerpo}
+      <div className="w-full overflow-hidden rounded-[10px] border [&>div:first-child]:rounded-none [&>div:first-child]:border-0 [&>a>div]:rounded-none [&>a>div]:border-0">
+        {conEnlace(cuerpo)}
         <div className="border-t px-4 py-2 text-xs text-muted-foreground">
           Código de transacción:{" "}
           <span className="font-medium text-primary tabular-nums">{codigo}</span>
@@ -295,7 +323,13 @@ export function TarjetaDeAbono({
           mismo sitio y los dos dicen «aquí hay más»; el chevron lo decía de la
           navegación, que ya la tiene el enlace de al lado, y el menú lo dice
           de las dos acciones que el dueño pidió el 2026-10-20. */}
-      {inicial || !conAcciones ? null : (
+      {/* EL CHEVRON SUSTITUYE AL «⋮» CUANDO LA TARJETA NAVEGA — frame
+          `1510:9784`, nodo `1590:11449`. Los dos dicen «aquí hay más», pero
+          uno de la ficha y el otro de un menú, y no pueden convivir. */}
+      {href ? (
+        <ChevronRight className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+      ) : null}
+      {href || inicial || !conAcciones ? null : (
       <AbonoAcciones
         movementId={abono.movementId}
         montoTecleado={abono.entryAmount ?? abono.amount}

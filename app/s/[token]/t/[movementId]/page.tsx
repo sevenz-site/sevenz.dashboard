@@ -289,6 +289,9 @@ export default async function DetalleDelClientePage({
           existiendo y la tarjeta de saldo de `/s/[token]` lo sigue usando, así
           que volver es pasar la prop otra vez. */}
       <DetalleDeTransaccion
+        // Igual que en la del tendero, con la ruta del enlace. Decisión del
+        // dueño el 2026-10-23, preguntada: la misma pantalla, sin acciones.
+        hrefDeUnAbono={(id) => `/s/${token}/t/${id}`}
         type={m.type}
         amount={Number(m.amount)}
         currency={m.currency}

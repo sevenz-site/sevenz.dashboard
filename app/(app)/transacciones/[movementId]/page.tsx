@@ -326,6 +326,8 @@ export default async function TransaccionPage({
       <CodigoDeTransaccion codigo={(m.transaction_code as string | null) ?? null} />
 
       <DetalleDeTransaccion
+        // Cada tarjeta de «Abonos relacionados» abre la ficha de ese abono.
+        hrefDeUnAbono={(id) => `/transacciones/${id}`}
         type={m.type}
         amount={Number(m.amount)}
         currency={m.currency}
