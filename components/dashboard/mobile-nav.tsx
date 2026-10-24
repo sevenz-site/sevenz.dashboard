@@ -428,7 +428,43 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   const enPedidos = pathname.startsWith("/productos/ordenes");
 
   // ══════════════════════════════════════════════════════════════════════
-  // EL ABONO REGISTRADO NO DIBUJA EL FLOTANTE. LA BARRA SÍ
+  // LAS DOS PANTALLAS DE «TRANSACCIÓN REGISTRADA»: NI BARRA NI FLOTANTE
+  //
+  // 2026-10-24, orden del dueño: *«quita la barra de esas dos pantallas»*.
+  // Hasta ese día aquí ponía «NO DIBUJA EL FLOTANTE. LA BARRA SÍ», y el
+  // flotante era lo único medido.
+  //
+  // LO QUE FALTABA MEDIR ERA LA BARRA, y es peor que un solape. A 375px ocupa
+  // 723-812 y los botones caen dentro, así que `elementFromPoint` en el centro
+  // de cada uno devuelve un icono de la barra:
+  //
+  //   · abono registrado · «Compartir» 722-762        → NO SE PUEDE PULSAR
+  //   · abono registrado · «Ver cuenta de…» 778-818   → NO SE PUEDE PULSAR
+  //   · venta de contado · «Ver ‹nombre›» 723-763     → NO SE PUEDE PULSAR
+  //
+  // POR QUÉ NADIE SE HABÍA ESTRELLADO: las dos páginas se desplazan, y al
+  // bajar los botones quedan libres. El caso roto es el de reposo, que es
+  // justo donde el tendero los encuentra al terminar de cobrar.
+  //
+  // Y POR QUÉ NO SE VIO ANTES, que es la lección: se midió el flotante porque
+  // el dueño lo señaló, y la barra no, porque nadie la señaló. Dos cosas fijas
+  // sobre el mismo borde y solo una comprobada.
+  //
+  // NO DEJA A NADIE ENCERRADO, comprobado en las dos: las dos llevan la
+  // cabecera de la app con «Abrir menú», así que hay salida a Inicio y a
+  // Clientes sin la barra. Importa sobre todo en la venta de MOSTRADOR, que no
+  // tiene cliente y por tanto tampoco botón «Ver ‹nombre›».
+  //
+  // ── LO QUE DESPLAZA, que queda escrito porque era razonado ──────────
+  //
+  // El flotante en el resumen de una venta era petición suya del 2026-10-18:
+  // «en la pantalla final de transacción exitosa se debe ver el botón flotante
+  // Registrar». Se hizo sobre una pantalla que entonces no tapaba nada. Y yo
+  // mismo lo había quitado antes razonando que «Registrar» abre OTRA venta
+  // encima del resumen de la que se acaba de hacer; el dueño lo devolvió
+  // porque en un mostrador terminar una venta es cuando llega el siguiente
+  // cliente. Las dos razones siguen siendo buenas; lo que las vence es que
+  // los botones de debajo no se podían pulsar.
   //
   // Decisión del dueño el 2026-10-22, elegida entre tres con el coste
   // delante. Lo reportó con una captura: «Registrar» sentado encima de «Ver
@@ -444,8 +480,8 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // reparte un espacio que no sobra. Las dos cosas se probaron y se midieron
   // el mismo día; están escritas en la propia pantalla.
   //
-  // EL RESUMEN DE UNA VENTA TAMPOCO LO LLEVA YA — 2026-10-24, orden del
-  // dueño: *«Elimina el flotante»*.
+  // ── LA MEDICIÓN DEL FLOTANTE, QUE VINO PRIMERO ─────────────────────
+  //
   //
   // HASTA HOY AQUÍ PONÍA QUE EN ESA PANTALLA NO HABÍA SOLAPE, «sus botones
   // caen en 746, muy por debajo de la banda». Era verdad de la venta que se
@@ -584,7 +620,17 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // comes to this screen for could be unreachable. They now live in the page
   // itself, under "Marcar como mala paga", where nothing can overlap them. The
   // screen keeps its own back chevron at the top for getting out.
-  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
+  // Las dos pantallas de éxito entran AQUÍ, en la salida temprana, y no en la
+  // condición del flotante de abajo: lo que se va es la barra Y el botón, y
+  // apagarlos en dos sitios distintos es cómo uno sobrevive al otro.
+  if (
+    onClientDetail ||
+    enAsistenteDeVenta ||
+    enTransaccion ||
+    enAbonoRegistrado ||
+    enVentaRegistrada
+  )
+    return null;
 
   return (
     <>
@@ -610,7 +656,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && !enVentaRegistrada && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
