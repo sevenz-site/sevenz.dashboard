@@ -54,12 +54,30 @@ export type PagoDeLinea = {
   description: string;
 };
 
+// WHAT «EDITAR» CHANGED ON A LINE, which is quantity and currency and
+// nothing else. The product's catalogue data is not touched from inside a
+// sale -- see `order-line-edit-form.tsx`.
+//
+// IT IS SEPARATE FROM THE PAYMENT because the two screens write it at
+// different moments and either can happen without the other: «Registrar»
+// goes straight to the payment and never edits, «Editar» edits and then goes
+// to the payment. One object with both would make each screen responsible for
+// carrying the other's half -- which is exactly how the payment split lost
+// its `aManoBs` on 2026-10-23.
+export type LineaEditada = {
+  quantity: number;
+  currency: string;
+};
+
 export type BorradorDeRegistro = {
   pedidoId: string;
   // Keyed by `catalog_order_items.id`. A line the shopkeeper has not resolved
   // yet is simply absent, which is what the order screen reads to know which
   // ones still show «Registrar».
   lineas: Record<string, PagoDeLinea>;
+  // Keyed by `catalog_order_items.id` as well. Absent = the shopkeeper did not
+  // edit that line, so what the customer ordered stands.
+  editadas?: Record<string, LineaEditada>;
   guardadoEn: number;
 };
 
@@ -117,6 +135,31 @@ export function fijarPagoDeLinea(pedidoId: string, lineaId: string, pago: PagoDe
     // Storage refused. The shopkeeper will be asked for the amount again,
     // which is the designed failure of this whole file.
   }
+}
+
+// THE SAME READ-THEN-WRITE as `fijarPagoDeLinea`, and for the same scar: a
+// screen that writes the whole draft erases what the other one just put in.
+export function fijarLineaEditada(
+  pedidoId: string,
+  lineaId: string,
+  edicion: LineaEditada,
+): void {
+  try {
+    const actual = leerBorrador(pedidoId);
+    const siguiente: BorradorDeRegistro = {
+      pedidoId,
+      lineas: actual?.lineas ?? {},
+      editadas: { ...(actual?.editadas ?? {}), [lineaId]: edicion },
+      guardadoEn: Date.now(),
+    };
+    sessionStorage.setItem(CLAVE, JSON.stringify(siguiente));
+  } catch {
+    // Storage refused; the edit is simply not remembered.
+  }
+}
+
+export function leerLineaEditada(pedidoId: string, lineaId: string): LineaEditada | null {
+  return leerBorrador(pedidoId)?.editadas?.[lineaId] ?? null;
 }
 
 export function quitarPagoDeLinea(pedidoId: string, lineaId: string): void {

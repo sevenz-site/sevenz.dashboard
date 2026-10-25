@@ -94,6 +94,8 @@ export const ETIQUETA_MONEDA: Record<string, string> = {
 };
 
 export function ProductDetail({
+  cantidadInicial,
+  monedaInicial,
   token,
   productId,
   producto,
@@ -140,6 +142,19 @@ export function ProductDetail({
   // comporta exactamente como antes. Esta pantalla la ven clientes reales, así
   // que la forma de tocarla es que lo que ya funciona no dependa de lo nuevo.
   alAgregar?: (linea: { productId: string; quantity: number; currency: PriceCurrency }) => void;
+  // ── OPENING ON A LINE THAT ALREADY EXISTS ───────────────────────────
+  //
+  // The catalogue opens this screen to CREATE a line, so it starts at the
+  // wholesale minimum and with no currency chosen. The catalogue order's
+  // «Editar» (frame `1566:13300`) opens it to CHANGE one that exists, and
+  // starting at the minimum there would silently turn an order of five into
+  // an order of one — no error, no warning, a figure the shopkeeper never
+  // typed. Added 2026-10-24 for exactly that.
+  //
+  // Both are optional and both default to the old behaviour, so the screen a
+  // real customer sees does not depend on anything new.
+  cantidadInicial?: number;
+  monedaInicial?: PriceCurrency;
   // LAS MONEDAS QUE SE PUEDEN ELEGIR, cuando quien mira no es el cliente. Va
   // junto a `alAgregar` y por el mismo motivo: el libro del tendero no admite
   // bolívares ni USDT. Sin ella, esta pantalla ofrecería una moneda que la
@@ -158,7 +173,10 @@ export function ProductDetail({
   const { agregar } = useCarrito(token);
   const router = useRouter();
   const minimo = cantidadMinima(producto);
-  const [cantidad, setCantidad] = useState(String(minimo));
+  // THE MINIMUM, UNLESS SOMEBODY IS COMING BACK TO A LINE THAT ALREADY HAS A
+  // QUANTITY. See `cantidadInicial`: the catalogue opens at the minimum, the
+  // order's «Editar» opens at what the customer asked for.
+  const [cantidad, setCantidad] = useState(String(cantidadInicial ?? minimo));
   const [comentario, setComentario] = useState("");
 
   const n = Number(cantidad.replace(",", ".")) || 0;
@@ -194,7 +212,7 @@ export function ProductDetail({
   //
   // Se guarda la PREFERENCIA y se resuelve contra lo que hay: si su moneda
   // sigue disponible, se respeta; si no, la primera del escalón nuevo.
-  const [preferida, setPreferida] = useState<PriceCurrency | null>(null);
+  const [preferida, setPreferida] = useState<PriceCurrency | null>(monedaInicial ?? null);
   const moneda =
     preferida != null && monedas.includes(preferida) ? preferida : monedas[0];
 

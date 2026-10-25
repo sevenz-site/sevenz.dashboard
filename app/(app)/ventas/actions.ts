@@ -252,6 +252,52 @@ export async function buscarProductosParaVenta(query: string): Promise<Productos
   };
 }
 
+// ONE PRODUCT, BY ITS ID, IN THE SHAPE THE CUSTOMER SEES.
+//
+// The catalogue order's «1/2 Edita producto» (frame `1566:13300`) opens the
+// product behind ONE order line, so it knows the id and has nothing to search
+// for. It goes through `armarProductos` exactly like the search above, which
+// is the point: the price the shopkeeper charges and the price his customer
+// saw in the catalogue have to come out of the same function, or the counter
+// and the catalogue start quoting different figures for the same product and
+// nobody finds out until a customer complains.
+//
+// `.eq("owner_id", user.id)` EXPLICITLY, because here the id DOES come from
+// the browser — it is in the URL of that screen.
+export async function productoParaVentaPorId(
+  id: string,
+): Promise<ProductosParaVenta> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
+
+  const contexto = await contextoDeVenta(supabase, user.id);
+  if (!contexto.ok) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
+  const { rates, monedasDelLibro, prevista } = contexto;
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(COLUMNAS_PRODUCTO)
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .is("trashed_at", null)
+    .limit(1);
+
+  if (error) {
+    console.error("productoParaVentaPorId:", error.message);
+    return { productos: [], rates, monedasDelLibro, prevista };
+  }
+
+  return {
+    rates,
+    monedasDelLibro,
+    prevista,
+    productos: await armarProductos(supabase, (data ?? []) as FilaDeProducto[]),
+  };
+}
+
 // ===========================================================================
 // EL CLIENTE MOSTRADOR, resuelto cuando el tendero lo pide
 // ===========================================================================
