@@ -40,6 +40,7 @@ export function OrderLineEditForm({
   stock,
   monedasDelLibro,
   lineasDelPedido,
+  alTerminar,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -54,6 +55,10 @@ export function OrderLineEditForm({
   // TODAS las líneas del pedido con su moneda sellada, para poder decir qué
   // bloques quedan vivos después de esta edición. Ver `alAgregar`.
   lineasDelPedido: { id: string; moneda: string }[];
+  // Lo que hay que hacer al guardar, cuando este formulario vive dentro de
+  // una hoja. Recibe la moneda NUEVA si la edición movió la línea de bloque,
+  // o `null` si se quedó donde estaba.
+  alTerminar?: (monedaNueva: string | null) => void;
   stock: number | null;
   monedasDelLibro: PriceCurrency[];
 }) {
@@ -95,9 +100,27 @@ export function OrderLineEditForm({
           ),
         );
         fijarLineaEditada(pedidoId, lineaId, { quantity, currency }, [...vivas]);
-        // DE VUELTA AL PASO 2/4 DE ESA MONEDA, que es donde el tendero
-        // estaba. Si la línea se movió, va al bloque NUEVO: seguir en el
-        // viejo enseñaría una pantalla sin la línea que se acaba de tocar.
+
+        // ── QUÉ PASA DESPUÉS, Y AQUÍ HUBO UN FALLO REAL ────────────────
+        //
+        // El dueño el 2026-10-25: *«al seleccionar "Agregar 00" desde el
+        // detalle del producto, no está realizando ninguna acción, o por lo
+        // menos no de cara al usuario»*. Tenía razón y la causa es sutil:
+        // esto hacía `router.push` al paso 2/4 **de la misma moneda**, o sea
+        // a la URL en la que ya estábamos. Next no repinta nada, la hoja no
+        // se entera, y el tendero ve el botón hundirse y nada más. La
+        // cantidad SÍ se guardaba — lo que faltaba era decirlo.
+        //
+        // TRES SALIDAS, Y SOLO UNA ES UNA NAVEGACIÓN:
+        if (alTerminar) {
+          // Dentro de la hoja: la cierra y refresca la pantalla de detrás.
+          // Si la línea cambió de moneda, el bloque donde estaba ya no la
+          // tiene, así que además hay que llevar al nuevo.
+          alTerminar(currency !== moneda ? currency : null);
+          return;
+        }
+        // Fuera de la hoja -la ruta vieja, que sigue viva para un enlace
+        // antiguo- sí se navega.
         router.push(
           `/productos/ordenes/${pedidoId}/registrar/confirmar?moneda=${currency}`,
         );

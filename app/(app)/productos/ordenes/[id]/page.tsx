@@ -207,6 +207,24 @@ export default async function OrdenPage({
           título, y a dos centímetros. */}
       <ScreenTitle>Nuevo pedido</ScreenTitle>
 
+      {/* ── «REGISTRADO: …», SOLO CUANDO YA LO ESTÁ ───────────────────
+          Pedido por el dueño el 2026-10-25. Sin él, un pedido terminado y
+          uno recién llegado se ven exactamente igual al abrirlos: el botón
+          «Registrar pedido» desaparece y nada ocupa su sitio, así que el
+          tendero se queda mirando una pantalla que no le dice por qué.
+
+          EL CHIP VA ARRIBA Y NO ABAJO, junto al título, porque contesta la
+          primera pregunta que se hace al abrir un pedido —«¿esto ya está
+          hecho?»— y no la última.
+
+          `registered_at` Y NO `status`: la fecha es lo que el chip enseña, y
+          preguntar por una y dibujar la otra es cómo acaban discrepando. */}
+      {pedido.registered_at ? (
+        <span className="w-fit rounded-full bg-money-in/10 px-2 py-0.5 text-xs text-money-in">
+          Registrado: {fecha(pedido.registered_at)}
+        </span>
+      ) : null}
+
       {/* QUIÉN PIDIÓ, Y SI YA ESTÁ EN LA CUENTA — frames `1518:10879` y
           `1514:10294`. Sustituye a la lista de filas «Nombre / Documento /
           WhatsApp» que había aquí: las mismas cuatro cosas, más la única que

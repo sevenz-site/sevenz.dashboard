@@ -480,8 +480,20 @@ export function ProductDetail({
         </div>
       )}
 
+      {/* ── LA FILA DE ABAJO SE PEGA AL FONDO, A 40px ─────────────────
+          Petición del dueño el 2026-10-25: *«input "+ 00 -" y botón "Agregar
+          $00" deben estar también a 40 px de distancia del fondo de la
+          pantalla (ajustar también en el carrito)»*. Es la misma regla que
+          `DESIGN-SYSTEM.md` recoge para los botones de abajo, aplicada aquí.
+
+          `sticky` Y NO `fixed`: esto vive dentro de una hoja que se desplaza
+          —la del carrito del cliente y la de «Editar pedido» del tendero— y
+          un `fixed` se saldría de ella para pegarse a la ventana.
+
+          SE AJUSTA EN LOS DOS SITIOS DE UNA VEZ porque es el mismo
+          componente, que es justo por lo que él pudo pedirlo en una frase. */}
       {isPreview ? null : (
-        <div className="flex items-center gap-3">
+        <div className="sticky bottom-0 -mx-4 flex items-center gap-3 bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
           <div className="flex items-center gap-2">
             <Button
               type="button"

@@ -5,6 +5,11 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { OrderTotalCard } from "@/components/dashboard/order-total-card";
+import {
+  CantidadDeLinea,
+  ImporteDeLinea,
+} from "@/components/dashboard/order-line-figures";
 import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
@@ -49,11 +54,6 @@ export default async function ConfirmarBloquePage({
     moneda,
   );
 
-  const totalEnBs =
-    rates != null
-      ? (priceIn("VES", { amount: bloque.total, currency: bloque.moneda }, rates)
-          ?.amount ?? null)
-      : null;
 
   const comentarioDe = new Map(items.map((i) => [i.id, i.comment]));
 
@@ -104,19 +104,17 @@ export default async function ConfirmarBloquePage({
       <ScreenTitle>Detalle del pedido</ScreenTitle>
       <OrderStepCounter pedidoId={pedido.id} paso={2} nombre="Confirmar pedido" />
 
-      {/* «Total a pagar», el encabezado del frame. Es el total del BLOQUE, no
-          el del pedido entero: lo que esta pantalla confirma es esta moneda. */}
-      <div className="rounded-xl border bg-card p-4">
-        <p className="text-sm text-muted-foreground">Total a pagar</p>
-        <p className="text-2xl font-semibold tabular-nums">
-          {formatPriceAmount(bloque.total, bloque.moneda)}
-        </p>
-        {totalEnBs != null ? (
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {formatBs(totalEnBs)} hoy
-          </p>
-        ) : null}
-      </div>
+      <OrderTotalCard
+        pedidoId={pedido.id}
+        lineas={bloque.lineas.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          cantidad: l.cantidadPedida,
+          precioUnitario: l.precioUnitario,
+        }))}
+        moneda={bloque.moneda}
+        rates={rates}
+      />
 
       {bloque.lineas.map((linea) => {
         const producto = linea.productId
@@ -126,13 +124,6 @@ export default async function ConfirmarBloquePage({
         // `stock_opening` ES LO QUE HAY: la columna se llama así y no `stock`.
         // El frame lo rotula «Disponible», que es lo que el tendero entiende.
         const stock = producto?.stock_opening ?? null;
-        const porPagar =
-          Math.round(linea.precioUnitario * linea.cantidad * 100) / 100;
-        const enBs =
-          rates != null
-            ? (priceIn("VES", { amount: porPagar, currency: bloque.moneda }, rates)
-                ?.amount ?? null)
-            : null;
 
         return (
           <div key={linea.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
@@ -153,29 +144,21 @@ export default async function ConfirmarBloquePage({
                     Disponible: {stock == null ? "—" : formatCantidad(stock)}
                   </p>
                 )}
-                <p className="text-sm text-muted-foreground">
-                  Cantidad del pedido: {formatCantidad(linea.cantidad)}
-                  {linea.cantidad !== linea.cantidadPedida ? (
-                    // EL DUEÑO LO PIDIÓ ASÍ el 2026-10-24: *«el resumen final
-                    // debe decir "el cliente pidió 5" y lo que se está
-                    // registrando cuando difiera»*. Solo cuando difiere.
-                    <span className="text-xs">
-                      {" "}
-                      (el cliente pidió {formatCantidad(linea.cantidadPedida)})
-                    </span>
-                  ) : null}
-                </p>
+                <CantidadDeLinea
+                  pedidoId={pedido.id}
+                  lineaId={linea.id}
+                  cantidadPedida={linea.cantidadPedida}
+                />
               </div>
-              <div className="text-right">
-                <p className="font-semibold tabular-nums">
-                  {formatPriceAmount(porPagar, bloque.moneda)}
-                </p>
-                {enBs != null ? (
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} hoy
-                  </p>
-                ) : null}
-              </div>
+              <ImporteDeLinea
+                pedidoId={pedido.id}
+                lineaId={linea.id}
+                cantidadPedida={linea.cantidadPedida}
+                precioUnitario={linea.precioUnitario}
+                moneda={bloque.moneda}
+                rates={rates}
+                hayProducto={producto != null}
+              />
             </div>
 
             {comentario ? (

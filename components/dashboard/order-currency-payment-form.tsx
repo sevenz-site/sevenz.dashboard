@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
+import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import {
   borrarBorrador,
   fijarPagoDeMoneda,
@@ -66,7 +67,7 @@ export function OrderCurrencyPaymentForm({
   pedidoId,
   moneda,
   ownerId,
-  total,
+  lineas,
   rates,
   prevista,
   hrefCliente,
@@ -76,9 +77,18 @@ export function OrderCurrencyPaymentForm({
   pedidoId: string;
   moneda: PriceCurrency;
   ownerId: string;
-  // What this currency block costs, which is the ceiling of what can be
-  // collected on it.
-  total: number;
+  // ── EL TOTAL SE CALCULA AQUÍ, NO LLEGA HECHO ──────────────────────
+  //
+  // Llegaba del servidor y por eso estaba MAL después de editar una línea:
+  // el 2026-10-25 se midió un bloque cuya tarjeta decía «€17,52» con el
+  // botón diciendo «Pagar €5,84» justo debajo. Y no era cosmético: este
+  // número es el TECHO de lo que `PagoCampos` deja cobrar, así que el
+  // tendero no habría podido cobrar una venta de 17,52.
+  //
+  // El servidor manda las líneas selladas; el borrador —que solo el
+  // navegador ve— las corrige donde «Editar pedido» tocó algo. Es la misma
+  // cuenta que `OrderTotalCard`, y por eso las dos leen lo mismo.
+  lineas: { id: string; productId: string | null; cantidad: number; precioUnitario: number }[];
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
   // La pantalla del cliente, con su ficha emparejada si la había.
@@ -89,6 +99,17 @@ export function OrderCurrencyPaymentForm({
 }) {
   const [cerrando, setCerrando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const borradorDeLineas = useBorrador(pedidoId);
+  const total =
+    Math.round(
+      lineas.reduce((suma, l) => {
+        if (l.productId == null) return suma;
+        const edicion = borradorDeLineas?.editadas?.[l.id];
+        if (edicion && String(edicion.currency) !== String(moneda)) return suma;
+        return suma + (edicion?.quantity ?? l.cantidad) * l.precioUnitario;
+      }, 0) * 100,
+    ) / 100;
   const router = useRouter();
 
   // THE DRAFT IS READ THROUGH `useSyncExternalStore`, the house pattern of

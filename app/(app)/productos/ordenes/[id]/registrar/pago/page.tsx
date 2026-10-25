@@ -3,10 +3,9 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { OrderCurrencyPaymentForm } from "@/components/dashboard/order-currency-payment-form";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { OrderTotalCard } from "@/components/dashboard/order-total-card";
 import { findOrderClient } from "@/lib/orders/order-client-match";
 import { createClient } from "@/lib/supabase/server";
-import { formatBs } from "@/lib/exchange-rate/format";
-import { formatPriceAmount, priceIn } from "@/lib/products/price";
 
 // STEP `3/4 Pago` — frame `1653:12718`, read with the desktop bridge on
 // 2026-10-25.
@@ -61,11 +60,6 @@ export default async function PagoDeBloquePage({
   );
   const ficha = coincidencia.kind === "uno" ? coincidencia.cliente.id : null;
 
-  const totalEnBs =
-    rates != null
-      ? (priceIn("VES", { amount: bloque.total, currency: bloque.moneda }, rates)
-          ?.amount ?? null)
-      : null;
 
   const hrefCliente = `/productos/ordenes/${pedido.id}/registrar/cliente?moneda=${bloque.moneda}${ficha ? `&ficha=${ficha}` : ""}`;
 
@@ -80,23 +74,28 @@ export default async function PagoDeBloquePage({
       <ScreenTitle>Registrar pago</ScreenTitle>
       <OrderStepCounter pedidoId={pedido.id} paso={3} nombre="Pago" />
 
-      <div className="rounded-xl border bg-card p-4">
-        <p className="text-sm text-muted-foreground">Total a pagar</p>
-        <p className="text-2xl font-semibold tabular-nums">
-          {formatPriceAmount(bloque.total, bloque.moneda)}
-        </p>
-        {totalEnBs != null ? (
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {formatBs(totalEnBs)} hoy
-          </p>
-        ) : null}
-      </div>
+      <OrderTotalCard
+        pedidoId={pedido.id}
+        lineas={bloque.lineas.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          cantidad: l.cantidadPedida,
+          precioUnitario: l.precioUnitario,
+        }))}
+        moneda={bloque.moneda}
+        rates={rates}
+      />
 
       <OrderCurrencyPaymentForm
         pedidoId={pedido.id}
         moneda={bloque.moneda}
         ownerId={ownerId}
-        total={bloque.total}
+        lineas={bloque.lineas.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          cantidad: l.cantidadPedida,
+          precioUnitario: l.precioUnitario,
+        }))}
         rates={rates}
         prevista={prevista}
         hrefCliente={hrefCliente}

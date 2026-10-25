@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,7 @@ export function OrderLineEditSheet({
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
 }) {
+  const router = useRouter();
   const [abierta, setAbierta] = useState(false);
 
   return (
@@ -87,10 +89,14 @@ export function OrderLineEditSheet({
             le da a su imagen. */}
         <SheetContent side="bottom" className="max-h-[92svh] overflow-y-auto p-0">
           <SheetHeader className="px-4 py-5">
-            {/* «Detalle del producto», que es lo que el frame escribe —no el
-                nombre del producto, que va dentro y más grande. */}
+            {/* «EDITAR PEDIDO», por decisión del dueño el 2026-10-25. El
+                frame `1652:13588` lo rotula «Detalle del producto» y él lo
+                cambió al verlo montado: desde el paso 2/4 esta hoja no es
+                para mirar un producto, es para cambiar cuánto se lleva. El
+                rótulo del frame y la decisión de hoy quedan los dos escritos;
+                manda la de hoy. */}
             <SheetTitle className="text-base font-medium">
-              Detalle del producto
+              Editar pedido
             </SheetTitle>
           </SheetHeader>
 
@@ -111,7 +117,12 @@ export function OrderLineEditSheet({
             )}
           </div>
 
-          <div className="flex flex-col gap-4 p-4">
+          {/* `pb-0` Y NO `p-4`: la fila de abajo de `ProductDetail` trae su
+              propio aire de 40px. Sumarle los 16 de aquí deja el botón a 56
+              del filo, que es lo que se midió antes de poner esto. Es el
+              mismo descuadre que `app-main.tsx` documenta para las pantallas
+              con `StickyActions`. */}
+          <div className="flex flex-col gap-4 px-4 pt-4 pb-0">
             <div className="flex flex-col gap-0.5">
               <h2 className="text-2xl font-normal">{nombre}</h2>
               {stock != null ? (
@@ -146,6 +157,22 @@ export function OrderLineEditSheet({
               rates={rates}
               stock={stock}
               monedasDelLibro={monedasDelLibro}
+              // CIERRA LA HOJA Y REFRESCA LO DE DETRÁS. El paso 2/4 lo pinta
+              // el servidor a partir de las líneas del pedido, así que sin
+              // `refresh()` la tarjeta de atrás seguiría con la cantidad
+              // vieja aunque el borrador ya tenga la nueva.
+              alTerminar={(monedaNueva) => {
+                setAbierta(false);
+                if (monedaNueva) {
+                  // La línea se fue a otro bloque: el de aquí ya no la tiene,
+                  // así que se lleva al tendero donde sí está.
+                  router.push(
+                    `/productos/ordenes/${pedidoId}/registrar/confirmar?moneda=${monedaNueva}`,
+                  );
+                  return;
+                }
+                router.refresh();
+              }}
             />
           </div>
         </SheetContent>
