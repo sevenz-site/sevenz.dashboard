@@ -87,6 +87,30 @@ export type LineaEditada = {
   currency: string;
 };
 
+// WHO THE SALE GOES TO, decided on the last step before the summary.
+//
+// NOTHING IS CREATED YET. `fichaId` names an existing ficha; `null` means a
+// new client has to be made at the end, out of these fields. Creating it on
+// the client screen would leave an orphan ficha behind every time somebody
+// walks back out of the flow — a person in the shopkeeper's list who never
+// bought anything.
+//
+// THE FIELDS TRAVEL EVEN WITH A FICHA MATCHED, because «Registrar a cuenta
+// separada» (frame `1542:11888`) exists: the shopkeeper can say «this is not
+// that Pedro» and open a new ficha with the order's own data.
+export type ClienteDelRegistro = {
+  fichaId: string | null;
+  name: string;
+  documentId: string;
+  documentType: string | null;
+  whatsapp: string;
+  address: string;
+  // The owner ticked «Confirmo que <nombre> autoriza recibirlas». It is the
+  // EVIDENCE of consent, so it is stored as its own fact and not inferred
+  // from the phone being present.
+  consienteWhatsapp: boolean;
+};
+
 export type BorradorDeRegistro = {
   pedidoId: string;
   // Keyed by `catalog_order_items.id`. A line the shopkeeper has not resolved
@@ -96,6 +120,7 @@ export type BorradorDeRegistro = {
   // Keyed by `catalog_order_items.id` as well. Absent = the shopkeeper did not
   // edit that line, so what the customer ordered stands.
   editadas?: Record<string, LineaEditada>;
+  cliente?: ClienteDelRegistro;
   guardadoEn: number;
 };
 
@@ -228,6 +253,28 @@ export function leerLineaEditada(
   lineaId: string,
 ): LineaEditada | null {
   return leerBorrador(pedidoId)?.editadas?.[lineaId] ?? null;
+}
+
+// THE SAME READ-THEN-WRITE as the rest of this file, for the same scar.
+export function fijarCliente(
+  pedidoId: string,
+  cliente: ClienteDelRegistro,
+): void {
+  try {
+    const actual = leerBorrador(pedidoId);
+    sessionStorage.setItem(
+      CLAVE,
+      JSON.stringify({
+        pedidoId,
+        lineas: actual?.lineas ?? {},
+        editadas: actual?.editadas ?? {},
+        cliente,
+        guardadoEn: Date.now(),
+      }),
+    );
+  } catch {
+    // Storage refused; the shopkeeper fills the form again.
+  }
 }
 
 export function quitarPagoDeLinea(pedidoId: string, lineaId: string): void {
