@@ -108,7 +108,12 @@ function leerTodo(): BorradorDeRegistro | null {
     const crudo = sessionStorage.getItem(CLAVE);
     if (!crudo) return null;
     const b = JSON.parse(crudo) as BorradorDeRegistro;
-    if (!b || typeof b.pedidoId !== "string" || typeof b.guardadoEn !== "number") return null;
+    if (
+      !b ||
+      typeof b.pedidoId !== "string" ||
+      typeof b.guardadoEn !== "number"
+    )
+      return null;
     if (Date.now() - b.guardadoEn > CADUCIDAD_MS) {
       borrarBorrador();
       return null;
@@ -128,7 +133,45 @@ export function leerBorrador(pedidoId: string): BorradorDeRegistro | null {
   return b;
 }
 
-export function leerPagoDeLinea(pedidoId: string, lineaId: string): PagoDeLinea | null {
+// A SNAPSHOT WITH A STABLE IDENTITY, for `useSyncExternalStore`.
+//
+// TWO COMPONENTS READ THIS DRAFT ON THE ORDER'S SCREEN — the per-currency
+// summary inside «Pedido» and the «Continuar» at the foot — and they sit in
+// different places in the DOM, so they cannot be one component.
+//
+// `leerBorrador` parses JSON and hands back a FRESH object every call, which
+// React compares with `Object.is` and repaints forever. Caching by the raw
+// stored string gives both of them the same object while nothing has changed,
+// and a new one the moment something has.
+let crudoEnCache: string | null = null;
+let valorEnCache: BorradorDeRegistro | null = null;
+
+export function instantanea(pedidoId: string): BorradorDeRegistro | null {
+  let crudo: string | null = null;
+  try {
+    crudo = sessionStorage.getItem(CLAVE);
+  } catch {
+    return null;
+  }
+  if (crudo !== crudoEnCache) {
+    crudoEnCache = crudo;
+    valorEnCache = leerBorrador(pedidoId);
+  }
+  return valorEnCache && valorEnCache.pedidoId === pedidoId
+    ? valorEnCache
+    : null;
+}
+
+// The server has no `sessionStorage`, so the server snapshot is always «empty»
+// and the summary appears on mount. That flicker is inherent to a draft that
+// lives in the browser; the alternative is a round trip for something that is
+// not a record yet.
+export const SIN_BORRADOR = null;
+
+export function leerPagoDeLinea(
+  pedidoId: string,
+  lineaId: string,
+): PagoDeLinea | null {
   return leerBorrador(pedidoId)?.lineas[lineaId] ?? null;
 }
 
@@ -140,7 +183,11 @@ export function leerPagoDeLinea(pedidoId: string, lineaId: string): PagoDeLinea 
 // figure was stored correctly and lost an instant later. Writing one key at a
 // time, from the current value, is what stops the same shape of bug here,
 // where each line is written by its own screen.
-export function fijarPagoDeLinea(pedidoId: string, lineaId: string, pago: PagoDeLinea): void {
+export function fijarPagoDeLinea(
+  pedidoId: string,
+  lineaId: string,
+  pago: PagoDeLinea,
+): void {
   try {
     const actual = leerBorrador(pedidoId);
     const siguiente: BorradorDeRegistro = {
@@ -176,7 +223,10 @@ export function fijarLineaEditada(
   }
 }
 
-export function leerLineaEditada(pedidoId: string, lineaId: string): LineaEditada | null {
+export function leerLineaEditada(
+  pedidoId: string,
+  lineaId: string,
+): LineaEditada | null {
   return leerBorrador(pedidoId)?.editadas?.[lineaId] ?? null;
 }
 

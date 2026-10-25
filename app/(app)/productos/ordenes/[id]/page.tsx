@@ -8,7 +8,11 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { formatReceiptDateTime } from "@/lib/format";
-import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import {
+  currencyName,
+  formatPriceAmount,
+  type PriceCurrency,
+} from "@/lib/products/price";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
@@ -21,6 +25,11 @@ import {
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { OrderProductSheet } from "@/components/dashboard/order-product-sheet";
+import {
+  OrderRegistrationSummary,
+  type LineaDelPedido,
+} from "@/components/dashboard/order-registration-summary";
+import { OrderContinueButton } from "@/components/dashboard/order-continue-button";
 import {
   OrderProductCard,
   OrderProductRowButton,
@@ -36,7 +45,13 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 // and not by client, and that decision is `CT-69` and still open. Showing them
 // already does what the shopkeeper needs today: know who to call.
 
-function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
+function Fila({
+  nombre,
+  children,
+}: {
+  nombre: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
       <span className="shrink-0 text-sm text-muted-foreground">{nombre}</span>
@@ -45,7 +60,11 @@ function Fila({ nombre, children }: { nombre: string; children: React.ReactNode 
   );
 }
 
-export default async function OrdenPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrdenPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const supabase = await createClient();
   const {
@@ -72,19 +91,25 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   if (!order) notFound();
   const pedido = order as CatalogOrderRow;
 
-  const [{ data: itemRows, error: errorItems }, country, clienteDelPedido] = await Promise.all([
-    supabase
-      .from("catalog_order_items")
-      .select(ORDER_ITEM_COLUMNS)
-      .eq("order_id", pedido.id)
-      .order("product_name", { ascending: true }),
-    readOwnerCountry(supabase, user!.id),
-    // WHETHER THIS SHOP ALREADY HAS THIS CUSTOMER. Matched by document, the
-    // owner's decision of 2026-10-24 -- see `findOrderClient` for why not by
-    // phone and not by name. It goes in the same batch and not after it: the
-    // card at the top of the screen cannot be drawn without the answer.
-    findOrderClient(supabase, user!.id, pedido.customer_document, pedido.customer_document_type),
-  ]);
+  const [{ data: itemRows, error: errorItems }, country, clienteDelPedido] =
+    await Promise.all([
+      supabase
+        .from("catalog_order_items")
+        .select(ORDER_ITEM_COLUMNS)
+        .eq("order_id", pedido.id)
+        .order("product_name", { ascending: true }),
+      readOwnerCountry(supabase, user!.id),
+      // WHETHER THIS SHOP ALREADY HAS THIS CUSTOMER. Matched by document, the
+      // owner's decision of 2026-10-24 -- see `findOrderClient` for why not by
+      // phone and not by name. It goes in the same batch and not after it: the
+      // card at the top of the screen cannot be drawn without the answer.
+      findOrderClient(
+        supabase,
+        user!.id,
+        pedido.customer_document,
+        pedido.customer_document_type,
+      ),
+    ]);
 
   if (errorItems) console.error("[orders] detail items:", errorItems.message);
 
@@ -119,6 +144,42 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   const primerNombre = pedido.customer_name.trim().split(/\s+/)[0];
   const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
   const totales = totalsByCurrency(items);
+
+  // THE LINES AS THE DRAFT SEES THEM: id, quantity, unit price and currency.
+  // The draft lives in the browser, so the per-currency roll-up is computed
+  // there; what the server owes it is the sealed half of each line.
+  const lineasParaResumen: LineaDelPedido[] = items.map((i) => ({
+    id: i.id,
+    cantidad: Number(i.quantity),
+    precioUnitario: Number(i.unit_price),
+    moneda: i.currency as PriceCurrency,
+  }));
+
+  // WHAT THIS CUSTOMER ALREADY OWED, for the «Deuda antigua» row.
+  //
+  // ONLY WHEN EXACTLY ONE FICHA MATCHED. With several, nothing in the order
+  // tells them apart — see `findOrderClient` — so showing one person's debt
+  // would be a coin flip on whose it is, printed as a fact. With none, there
+  // is no debt to show. Both cases leave this empty and the row reads zero.
+  const deudaAntigua: Partial<Record<PriceCurrency, number>> = {};
+  if (clienteDelPedido.kind === "uno") {
+    const { data: saldo } = await supabase
+      .from("client_summary")
+      .select("balance, balance_usd, balance_eur")
+      .eq("client_id", clienteDelPedido.cliente.id)
+      .eq("owner_id", user!.id)
+      .maybeSingle();
+    if (saldo) {
+      if (saldo.balance_usd != null)
+        deudaAntigua.USD = Number(saldo.balance_usd);
+      if (saldo.balance_eur != null)
+        deudaAntigua.EUR = Number(saldo.balance_eur);
+      // `balance` IS THE COLOMBIAN LEDGER, the one whose `movements.currency`
+      // is null. Filing it under COP is what the rest of the app already does
+      // when it has to name that ledger on screen.
+      if (saldo.balance != null) deudaAntigua.COP = Number(saldo.balance);
+    }
+  }
 
   // The owner's zone, never the server's: this page renders on Vercel, which
   // runs in UTC. It lived here as its own `Intl.DateTimeFormat` until
@@ -160,7 +221,11 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           Catálogo. */}
       {/* `soloEnTelefono={false}` porque esta pantalla nunca tuvo el
           `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
-      <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
+      <ScreenBackRow
+        href="/productos/ordenes"
+        label="Volver a Pedidos"
+        soloEnTelefono={false}
+      />
 
       {/* «Nuevo pedido» Y NO EL NOMBRE DEL CLIENTE — frame `1518:10873`, y
           el dueño renombró la página de Figma así el 2026-10-24.
@@ -239,14 +304,93 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </a>
       ) : null}
 
+      {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of
+          2026-10-14: there is no EUR→USD rate in this product, only BCV to
+          bolívares, so a single total would be an invented number.
+
+          A HEADING AND A CARD EACH, from frame `1371:7229`. They used to be
+          two rows inside the same box as everything else, which read as the
+          last two facts of the order rather than as its bottom line -- and
+          the bottom line is what the shopkeeper opens this screen to see. */}
+      {totales.length > 0 ? (
+        <>
+          {/* «TOTAL POR PAGAR», which is what BOTH frames write --
+              `1518:10873` and `1564:11979`. It said «Totales» until
+              2026-10-24; the difference is not cosmetic, because «Totales» is
+              a heading over a sum and this one names what the money is FOR. */}
+          <h2 className="mt-1 text-xl font-semibold">Total por pagar</h2>
+          {totales.map((t) => {
+            const moneda = t.currency as PriceCurrency;
+            // EL EQUIVALENTE EN BOLÍVARES ES EL DE HOY, y por eso no se
+            // sella: el total está cerrado, lo que vale en bolívares cambia
+            // cada día. Un negocio colombiano no tiene tasa y no lo enseña.
+            const bsPorUnidad =
+              rates == null
+                ? null
+                : moneda === "USD"
+                  ? rates.usd
+                  : moneda === "EUR"
+                    ? rates.eur
+                    : moneda === "USDT"
+                      ? rates.usdt
+                      : null;
+            return (
+              <div
+                key={t.currency}
+                className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    {/* LA MONEDA SIEMPRE NOMBRADA, aunque el pedido traiga
+                        una sola -- petición del dueño del 2026-10-16. Un
+                        «Total» a secas solo es inequívoco para quien acaba
+                        de leer las líneas de arriba. */}
+                    <span className="text-xs font-medium">
+                      Total en {currencyName(moneda)}
+                    </span>
+                    <span className="text-2xl font-semibold text-money-in tabular-nums">
+                      {formatPriceAmount(t.amount, moneda)}
+                    </span>
+                  </div>
+                  {/* CON MAYÚSCULA, como en el frame. `currencyName`
+                      devuelve minúscula porque está escrita para ir dentro de
+                      una frase --«Total en dólares»-- y aquí la palabra va
+                      sola, que en español se escribe como un rótulo. */}
+                  <span className="flex shrink-0 items-center gap-1 text-xs capitalize">
+                    {currencyName(moneda)}
+                    <CurrencyFlagIcon currency={moneda} />
+                  </span>
+                </div>
+                {bsPorUnidad != null ? (
+                  <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                    {/* «Hoy», como lo escriben los frames: el total está
+                        cerrado y su valor en bolívares no. */}
+                    {formatPriceAmount(t.amount * bsPorUnidad, "VES")} Hoy
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
+        </>
+      ) : null}
+
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
+        {/* WHAT THIS ORDER WOULD BECOME, once something has been registered.
+            It draws nothing until then, which is the difference between the
+            two frames of this screen. */}
+        <OrderRegistrationSummary
+          pedidoId={pedido.id}
+          lineas={lineasParaResumen}
+          deudaAntigua={deudaAntigua}
+          rates={rates}
+        />
         {items.length === 0 ? (
           <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             Este pedido no tiene líneas.
           </p>
         ) : (
-          items.map((item) => (
+          items.map((item) =>
             // CADA LÍNEA ABRE SU PRODUCTO. Frame `1371:7229`: miniatura,
             // nombre, cantidad por precio y escalón, el total con su bandera
             // y un chevron que dice que hay algo detrás.
@@ -297,71 +441,29 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                   </OrderProductSheet>
                 </OrderProductCard>
               );
-            })()
-          ))
+            })(),
+          )
         )}
       </div>
 
-      {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of
-          2026-10-14: there is no EUR→USD rate in this product, only BCV to
-          bolívares, so a single total would be an invented number.
+      {/* «CONTINUAR», which draws nothing until at least one line is
+          registered — the owner's rule of 2026-10-24, and the whole
+          difference between this screen's two frames.
 
-          A HEADING AND A CARD EACH, from frame `1371:7229`. They used to be
-          two rows inside the same box as everything else, which read as the
-          last two facts of the order rather than as its bottom line -- and
-          the bottom line is what the shopkeeper opens this screen to see. */}
-      {totales.length > 0 ? (
-        <>
-          <h2 className="mt-1 text-xl font-semibold">Totales</h2>
-          {totales.map((t) => {
-            const moneda = t.currency as PriceCurrency;
-            // EL EQUIVALENTE EN BOLÍVARES ES EL DE HOY, y por eso no se
-            // sella: el total está cerrado, lo que vale en bolívares cambia
-            // cada día. Un negocio colombiano no tiene tasa y no lo enseña.
-            const bsPorUnidad =
-              rates == null
-                ? null
-                : moneda === "USD"
-                  ? rates.usd
-                  : moneda === "EUR"
-                    ? rates.eur
-                    : moneda === "USDT"
-                      ? rates.usdt
-                      : null;
-            return (
-              <div key={t.currency} className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    {/* LA MONEDA SIEMPRE NOMBRADA, aunque el pedido traiga
-                        una sola -- petición del dueño del 2026-10-16. Un
-                        «Total» a secas solo es inequívoco para quien acaba
-                        de leer las líneas de arriba. */}
-                    <span className="text-xs font-medium">
-                      Total en {currencyName(moneda)}
-                    </span>
-                    <span className="text-2xl font-semibold text-money-in tabular-nums">
-                      {formatPriceAmount(t.amount, moneda)}
-                    </span>
-                  </div>
-                  {/* CON MAYÚSCULA, como en el frame. `currencyName`
-                      devuelve minúscula porque está escrita para ir dentro de
-                      una frase --«Total en dólares»-- y aquí la palabra va
-                      sola, que en español se escribe como un rótulo. */}
-                  <span className="flex shrink-0 items-center gap-1 text-xs capitalize">
-                    {currencyName(moneda)}
-                    <CurrencyFlagIcon currency={moneda} />
-                  </span>
-                </div>
-                {bsPorUnidad != null ? (
-                  <span className="text-xs font-medium text-muted-foreground tabular-nums">
-                    = {formatPriceAmount(t.amount * bsPorUnidad, "VES")}
-                  </span>
-                ) : null}
-              </div>
-            );
-          })}
-        </>
-      ) : null}
+          WHERE IT GOES DEPENDS ON THE CLIENT. One ficha matched: straight to
+          confirming it (`1614:11782`). None, or several: the client's details
+          have to be filled in (`1564:11876`). The page decides because only
+          the page knows which, and `findOrderClient` already answered it for
+          the card at the top. */}
+      <OrderContinueButton
+        pedidoId={pedido.id}
+        lineas={lineasParaResumen}
+        href={
+          clienteDelPedido.kind === "uno"
+            ? `/productos/ordenes/${pedido.id}/registrar/cliente?ficha=${clienteDelPedido.cliente.id}`
+            : `/productos/ordenes/${pedido.id}/registrar/cliente`
+        }
+      />
 
       {/* «REGISTRAR PEDIDO» IS NOT HERE, AND THAT IS THE DECISION, NOT AN
           OVERSIGHT.
