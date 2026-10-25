@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { useRef, useSyncExternalStore } from "react";
 import { PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
 import {
-  fijarPagoDeLinea,
-  leerPagoDeLinea,
-  type PagoDeLinea,
+  fijarPagoDeMoneda,
+  leerPagoDeMoneda,
+  type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
 import {
   formatPriceAmount,
@@ -14,7 +14,26 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 
-// STEP 2/2 OF REGISTERING ONE ORDER LINE — frame `1564:11028`, «2/2 Abono».
+// STEP `3/4 Pago` OF REGISTERING A CATALOGUE ORDER — frame `1653:12718`,
+// read with the desktop bridge on 2026-10-25.
+//
+// ===========================================================================
+// ONE PAYMENT FOR THE WHOLE CURRENCY, WHICH IS `CT-147`
+//
+// This screen used to be «2/2 Abono» and belonged to ONE LINE. Asking per
+// line meant asking for the term per line, and `registrarVenta`'s credit has
+// always been per currency: two dollar lines with different terms and one of
+// them was dropped on the way in. The app then kept a deadline the shopkeeper
+// never agreed to, and the status chip stopped warning about a fiado that was
+// overdue for him three weeks earlier.
+//
+// So the amount, the term and the instalments are asked ONCE, for the whole
+// block, and `total` is the block's total. There is nothing left to reconcile.
+//
+// THE CREDIT FIELDS ARE THE SALE WIZARD'S, the owner's decision of
+// 2026-10-25 asked because `3/4 Pago` only draws its «De contado» state: at
+// «Fiado o crédito» it shows *lo mismo que el asistente de venta*. It does,
+// literally — `PagoCampos` is that component.
 //
 // ===========================================================================
 // IT WRITES NOTHING. IT FILLS IN A DRAFT.
@@ -40,23 +59,26 @@ import {
 // only writer is this screen's own «Pagar», and that navigates away.
 const sinSuscripcion = () => () => {};
 
-export function OrderLinePaymentForm({
+export function OrderCurrencyPaymentForm({
   pedidoId,
-  lineaId,
   moneda,
   ownerId,
   total,
   rates,
   prevista,
+  href,
 }: {
   pedidoId: string;
-  lineaId: string;
   moneda: PriceCurrency;
   ownerId: string;
-  // What this line costs, which is the ceiling of what can be collected on it.
+  // What this currency block costs, which is the ceiling of what can be
+  // collected on it.
   total: number;
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
+  // Adónde lleva «Pagar», decidido por la página: la ficha del cliente si
+  // todavía no se ha rellenado, o el pedido si quedan monedas.
+  href: string;
 }) {
   const router = useRouter();
 
@@ -74,23 +96,24 @@ export function OrderLinePaymentForm({
   // fresh object each call, which React compares with `Object.is` and repaints
   // forever. Reading once on entry is also correct on its own terms — from
   // here on the fields own the value, and this screen is the only writer.
-  const cache = useRef<PagoDeLinea | null | undefined>(undefined);
+  const cache = useRef<PagoDeMoneda | null | undefined>(undefined);
   const inicial = useSyncExternalStore(
     sinSuscripcion,
     () => {
       if (cache.current === undefined)
-        cache.current = leerPagoDeLinea(pedidoId, lineaId);
+        cache.current = leerPagoDeMoneda(pedidoId, moneda);
       return cache.current;
     },
     () => null,
   );
 
   function guardar(r: Registro) {
-    fijarPagoDeLinea(pedidoId, lineaId, r);
-    // BACK TO THE ORDER, which is where the sitemap's arrow goes. `refresh()`
-    // so the order's screen re-reads its lines: this one now has a payment
-    // and must stop offering «Registrar».
-    router.push(`/productos/ordenes/${pedidoId}`);
+    fijarPagoDeMoneda(pedidoId, moneda, r);
+    // WHERE «Pagar» GOES IS THE ROMBO OF THE SITEMAP: «¿Hay más de una moneda
+    // en el pedido?». The page works out the answer — it is the only one that
+    // has read the order's lines — and hands it over as `href`, so this
+    // component never has to guess.
+    router.push(href);
     router.refresh();
   }
 
@@ -102,12 +125,13 @@ export function OrderLinePaymentForm({
       rates={rates}
       prevista={prevista}
       inicial={inicial}
-      // THE SEALED LINE IS ALREADY ABOVE, drawn by the page from the frame.
-      // The fields' own total card would be the same figure a second time.
+      // «Total a pagar» YA ESTÁ ARRIBA, dibujado por la página como en el
+      // frame. La tarjeta de total de los campos sería la misma cifra otra
+      // vez.
       mostrarTotal={false}
       onGuardar={guardar}
       // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
-      // It is the line's total and not what is typed into the amount field —
+      // It is the BLOCK's total and not what is typed into the amount field —
       // the frame's own caption is the ceiling, which is what the shopkeeper
       // is confirming against.
       etiquetaBoton={`Pagar ${formatPriceAmount(total, moneda)}`}

@@ -35,12 +35,17 @@ const CLAVE = "sevenz:pedido-registro";
 // session than something anybody wants back.
 const CADUCIDAD_MS = 2 * 60 * 60 * 1000;
 
-// ONE LINE'S PAYMENT, exactly as `PagoCampos` hands it over. The field names
-// are that component's `Registro` and not a translation of it: renaming them
-// here would mean a mapping in both directions, and a mapping is where a
+// ONE CURRENCY'S PAYMENT, exactly as `PagoCampos` hands it over. The field
+// names are that component's `Registro` and not a translation of it: renaming
+// them here would mean a mapping in both directions, and a mapping is where a
 // currency quietly swaps places with an amount.
-export type PagoDeLinea = {
-  // What goes into the ledger of this line's currency TODAY.
+//
+// IT USED TO BE PER LINE, UNTIL `CT-147` (2026-10-25). Two lines in dollars
+// with different terms meant one of the two terms was dropped on the way into
+// `registrarVenta`, whose credit has always been per currency. Asking once per
+// currency is what makes that impossible rather than merely unlikely.
+export type PagoDeMoneda = {
+  // What goes into this currency's ledger TODAY.
   amount: number;
   // What was actually handed over, and in what. `null` = the ledger's own
   // currency. This is the pair `CLAUDE.md` calls «el monto que tecleó el
@@ -113,10 +118,10 @@ export type ClienteDelRegistro = {
 
 export type BorradorDeRegistro = {
   pedidoId: string;
-  // Keyed by `catalog_order_items.id`. A line the shopkeeper has not resolved
-  // yet is simply absent, which is what the order screen reads to know which
-  // ones still show «Registrar».
-  lineas: Record<string, PagoDeLinea>;
+  // Keyed by CURRENCY — "USD", "EUR", "COP". A currency block the shopkeeper
+  // has not resolved yet is simply absent, which is what `1/4 Pedido` reads to
+  // know which blocks still show «Registrar».
+  monedas: Record<string, PagoDeMoneda>;
   // Keyed by `catalog_order_items.id` as well. Absent = the shopkeeper did not
   // edit that line, so what the customer ordered stands.
   editadas?: Record<string, LineaEditada>;
@@ -193,59 +198,101 @@ export function instantanea(pedidoId: string): BorradorDeRegistro | null {
 // not a record yet.
 export const SIN_BORRADOR = null;
 
-export function leerPagoDeLinea(
-  pedidoId: string,
-  lineaId: string,
-): PagoDeLinea | null {
-  return leerBorrador(pedidoId)?.lineas[lineaId] ?? null;
-}
-
-// ONE LINE'S PAYMENT, MERGED INTO WHATEVER IS ALREADY THERE.
+// ── TODA ESCRITURA PASA POR AQUÍ, Y ESO ES EL ARREGLO ─────────────────
 //
-// IT READS BEFORE IT WRITES, and that is not ceremony. `CLAUDE.md` has the
-// scar: on 2026-10-23 the payment-split screen wrote the whole draft on every
-// render and erased the `aManoBs` the amount screen had just put there — the
-// figure was stored correctly and lost an instant later. Writing one key at a
-// time, from the current value, is what stops the same shape of bug here,
-// where each line is written by its own screen.
-export function fijarPagoDeLinea(
+// `CLAUDE.md` lleva la cicatriz escrita desde el 2026-10-23: la pantalla del
+// reparto guardaba el borrador entero en cada render y borraba el `aManoBs`
+// que la del monto acababa de escribir. La cifra se guardaba bien y se perdía
+// un instante después.
+//
+// ESTE FICHERO TENÍA EL MISMO FALLO Y NADIE LO HABÍA VISTO: `fijarPagoDeLinea`
+// escribía `{pedidoId, lineas, guardadoEn}` sin arrastrar `editadas` ni
+// `cliente`, así que guardar un pago borraba la edición de una línea y los
+// datos del cliente. Encontrado el 2026-10-25 al reescribir el borrador por
+// moneda.
+//
+// LA DEFENSA NO ES ACORDARSE DE ARRASTRAR: es que no haya forma de escribir
+// sin hacerlo. Una sola función, que lee lo que hay y mezcla el cambio
+// encima; las demás no tocan `sessionStorage`.
+function escribir(
   pedidoId: string,
-  lineaId: string,
-  pago: PagoDeLinea,
+  cambio: (actual: BorradorDeRegistro | null) => Partial<BorradorDeRegistro>,
 ): void {
   try {
     const actual = leerBorrador(pedidoId);
-    const siguiente: BorradorDeRegistro = {
+    const base: BorradorDeRegistro = {
       pedidoId,
-      lineas: { ...(actual?.lineas ?? {}), [lineaId]: pago },
+      monedas: actual?.monedas ?? {},
+      editadas: actual?.editadas ?? {},
+      cliente: actual?.cliente,
       guardadoEn: Date.now(),
     };
-    sessionStorage.setItem(CLAVE, JSON.stringify(siguiente));
+    sessionStorage.setItem(
+      CLAVE,
+      JSON.stringify({ ...base, ...cambio(actual), guardadoEn: Date.now() }),
+    );
   } catch {
     // Storage refused. The shopkeeper will be asked for the amount again,
     // which is the designed failure of this whole file.
   }
 }
 
-// THE SAME READ-THEN-WRITE as `fijarPagoDeLinea`, and for the same scar: a
-// screen that writes the whole draft erases what the other one just put in.
+export function leerPagoDeMoneda(
+  pedidoId: string,
+  moneda: string,
+): PagoDeMoneda | null {
+  return leerBorrador(pedidoId)?.monedas[moneda] ?? null;
+}
+
+export function fijarPagoDeMoneda(
+  pedidoId: string,
+  moneda: string,
+  pago: PagoDeMoneda,
+): void {
+  escribir(pedidoId, (actual) => ({
+    monedas: { ...(actual?.monedas ?? {}), [moneda]: pago },
+  }));
+}
+
+export function quitarPagoDeMoneda(pedidoId: string, moneda: string): void {
+  escribir(pedidoId, (actual) => {
+    const monedas = { ...(actual?.monedas ?? {}) };
+    delete monedas[moneda];
+    return { monedas };
+  });
+}
+
+// ── «EDITAR» PUEDE DEJAR UN ABONO APUNTANDO A NADA ────────────────────
+//
+// EL BORDE QUE MÁS CUESTA DE ESTE REDISEÑO, y no falla: el tendero teclea
+// cuánto paga en dólares, vuelve atrás, y con «Editar» mueve a euros la única
+// línea que había en dólares. El bloque de dólares desaparece de la pantalla
+// y su abono sigue guardado, apuntando a una moneda que ya no tiene nada que
+// cobrar. No hay error, la venta se guarda, y el dinero queda abonado donde
+// no se debía.
+//
+// `monedasVivas` ES OBLIGATORIO, no opcional, y eso es la mitad del arreglo.
+// Un saneado en una función aparte se puede olvidar desde la pantalla que
+// edita --que es exactamente cómo el campo de cuotas se quedó fuera de uno de
+// sus dos formularios el 2026-10-16--. Pedido aquí, el compilador no deja
+// editar una línea sin decir qué monedas quedan vivas después.
 export function fijarLineaEditada(
   pedidoId: string,
   lineaId: string,
   edicion: LineaEditada,
+  monedasVivas: readonly string[],
 ): void {
-  try {
-    const actual = leerBorrador(pedidoId);
-    const siguiente: BorradorDeRegistro = {
-      pedidoId,
-      lineas: actual?.lineas ?? {},
+  const vivas = new Set(monedasVivas);
+  escribir(pedidoId, (actual) => {
+    const monedas: Record<string, PagoDeMoneda> = {};
+    for (const [m, pago] of Object.entries(actual?.monedas ?? {})) {
+      if (vivas.has(m)) monedas[m] = pago;
+    }
+    return {
+      monedas,
       editadas: { ...(actual?.editadas ?? {}), [lineaId]: edicion },
-      guardadoEn: Date.now(),
     };
-    sessionStorage.setItem(CLAVE, JSON.stringify(siguiente));
-  } catch {
-    // Storage refused; the edit is simply not remembered.
-  }
+  });
 }
 
 export function leerLineaEditada(
@@ -255,41 +302,11 @@ export function leerLineaEditada(
   return leerBorrador(pedidoId)?.editadas?.[lineaId] ?? null;
 }
 
-// THE SAME READ-THEN-WRITE as the rest of this file, for the same scar.
 export function fijarCliente(
   pedidoId: string,
   cliente: ClienteDelRegistro,
 ): void {
-  try {
-    const actual = leerBorrador(pedidoId);
-    sessionStorage.setItem(
-      CLAVE,
-      JSON.stringify({
-        pedidoId,
-        lineas: actual?.lineas ?? {},
-        editadas: actual?.editadas ?? {},
-        cliente,
-        guardadoEn: Date.now(),
-      }),
-    );
-  } catch {
-    // Storage refused; the shopkeeper fills the form again.
-  }
-}
-
-export function quitarPagoDeLinea(pedidoId: string, lineaId: string): void {
-  try {
-    const actual = leerBorrador(pedidoId);
-    if (!actual) return;
-    const lineas = { ...actual.lineas };
-    delete lineas[lineaId];
-    sessionStorage.setItem(
-      CLAVE,
-      JSON.stringify({ ...actual, lineas, guardadoEn: Date.now() }),
-    );
-  } catch {
-    // Same as above.
-  }
+  escribir(pedidoId, () => ({ cliente }));
 }
 
 export function borrarBorrador(): void {

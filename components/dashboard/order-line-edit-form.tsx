@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ProductDetail } from "@/components/public/product-detail";
-import { fijarLineaEditada } from "@/lib/orders/borrador-de-registro";
+import { fijarLineaEditada, leerBorrador } from "@/lib/orders/borrador-de-registro";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -39,6 +39,7 @@ export function OrderLineEditForm({
   rates,
   stock,
   monedasDelLibro,
+  lineasDelPedido,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -50,6 +51,9 @@ export function OrderLineEditForm({
   cantidad: number;
   moneda: PriceCurrency;
   rates: BolivarRates | null;
+  // TODAS las líneas del pedido con su moneda sellada, para poder decir qué
+  // bloques quedan vivos después de esta edición. Ver `alAgregar`.
+  lineasDelPedido: { id: string; moneda: string }[];
   stock: number | null;
   monedasDelLibro: PriceCurrency[];
 }) {
@@ -73,10 +77,30 @@ export function OrderLineEditForm({
       // sale refuses at save time.
       monedasPermitidas={monedasDelLibro}
       alAgregar={({ quantity, currency }) => {
-        fijarLineaEditada(pedidoId, lineaId, { quantity, currency });
-        // STRAIGHT ON TO 2/2, which is where the sitemap's «Agregar $00.00»
-        // arrow points — `1566:13374` to `1564:11106`.
-        router.push(`/productos/ordenes/${pedidoId}/registrar/${lineaId}/abono`);
+        // ── `monedasVivas` NO ES OPCIONAL, Y ES EL ARREGLO DE UN BORDE ───
+        //
+        // Mover esta línea a otra moneda puede dejar un bloque VACÍO, y con
+        // él un abono ya tecleado apuntando a una moneda que ya no tiene
+        // nada que cobrar. No falla, no avisa, y el dinero queda abonado
+        // donde no se debía. `fijarLineaEditada` lo limpia -- pero solo
+        // puede si le dicen qué monedas quedan, así que lo exige.
+        //
+        // SE CALCULA AQUÍ Y NO DENTRO porque el borrador no conoce las
+        // líneas del pedido: solo esta pantalla, que las recibió del
+        // servidor, sabe cuáles son.
+        const previas = leerBorrador(pedidoId)?.editadas ?? {};
+        const vivas = new Set(
+          lineasDelPedido.map((l) =>
+            l.id === lineaId ? currency : String(previas[l.id]?.currency ?? l.moneda),
+          ),
+        );
+        fijarLineaEditada(pedidoId, lineaId, { quantity, currency }, [...vivas]);
+        // DE VUELTA AL PASO 2/4 DE ESA MONEDA, que es donde el tendero
+        // estaba. Si la línea se movió, va al bloque NUEVO: seguir en el
+        // viejo enseñaría una pantalla sin la línea que se acaba de tocar.
+        router.push(
+          `/productos/ordenes/${pedidoId}/registrar/confirmar?moneda=${currency}`,
+        );
       }}
     />
   );

@@ -50,7 +50,17 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // air every ordinary screen carries underneath. A screen with
   // `StickyActions` needs both, because that bar brings its own 40px and sits
   // flush against the edge.
+  // EL FLUJO DE REGISTRAR UN PEDIDO TAMPOCO LLEVA BARRA, desde el 2026-10-25.
+  // Lo dicen los propios frames: el `Resumen V2` dibuja «Inicio · Reportes ·
+  // Catálogo · Clientes · Menú» y NINGUNA de las cuatro pantallas del flujo lo
+  // hace. Y hace falta además porque el paso 2/4 monta `StickyActions`: con la
+  // barra dibujada, esa barra de botones se queda DEBAJO de ella, que es el
+  // defecto que `CT-148` midió en otra pantalla.
+  const enRegistroDePedido = /^\/productos\/ordenes\/[^/]+\/registrar(\/|$)/.test(
+    pathname,
+  );
   const enAsistenteDeVenta =
+    enRegistroDePedido ||
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
     pathname === "/productos/nuevo" ||
@@ -99,6 +109,9 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // `StickyActions` — one instance, only the body changes — so no single step
   // behaves differently.
   const conBarraDeBotones =
+    // El paso 2/4 del registro de un pedido: su «Confirmar y continuar» va en
+    // `StickyActions`, que trae sus propios 40px.
+    /^\/productos\/ordenes\/[^/]+\/registrar\/confirmar$/.test(pathname) ||
     pathname.startsWith("/ventas/nueva") ||
     pathname === "/clients/nuevo" ||
     pathname.startsWith("/abonos/nuevo/") ||

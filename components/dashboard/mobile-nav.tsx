@@ -643,7 +643,21 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // EL FLOTANTE NO VUELVE, y no es un descuido: lo quitó él ayer por la misma
   // medición, y hoy pidió la barra, no el botón. Sale por la condición de
   // abajo.
-  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
+  // ── Y EL FLUJO DE REGISTRAR UN PEDIDO, desde el 2026-10-25 ─────────
+  //
+  // No es criterio mío: los frames del flujo nuevo (`1654:13565`) no dibujan
+  // la barra en ninguno de sus cuatro pasos, y el `Resumen V2` al que
+  // desembocan sí la dibuja. O sea que la barra vuelve justo donde el flujo
+  // termina.
+  //
+  // NO ENCIERRA A NADIE: las cuatro pantallas llevan su propia fila de volver
+  // (`ScreenBackRow` con `soloEnTelefono={false}`), y el paso 1/4 es el
+  // detalle del pedido, que sí tiene barra.
+  const enRegistroDePedido = /^\/productos\/ordenes\/[^/]+\/registrar(\/|$)/.test(
+    pathname,
+  );
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enRegistroDePedido)
+    return null;
 
   return (
     <>

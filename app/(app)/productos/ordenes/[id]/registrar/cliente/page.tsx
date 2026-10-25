@@ -8,8 +8,11 @@ import {
 } from "@/lib/orders/order-client-match";
 import {
   ORDER_COLUMNS,
+  ORDER_ITEM_COLUMNS,
+  type CatalogOrderItemRow,
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
+import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
 
 // WHO THE SALE GOES TO — the step the order's «Continuar» leads to.
 //
@@ -41,6 +44,14 @@ export default async function ClienteDelPedidoPage({
   if (error) console.error("[orders] cliente del pedido:", error.message);
   if (!order) notFound();
   const pedido = order as CatalogOrderRow;
+
+  // LAS LÍNEAS, solo para saber qué monedas tiene el pedido. Agrupadas por la
+  // moneda sellada, como en el paso 1/4: el servidor no ve el borrador.
+  const { data: filas } = await supabase
+    .from("catalog_order_items")
+    .select(ORDER_ITEM_COLUMNS)
+    .eq("order_id", pedido.id);
+  const items = (filas ?? []) as CatalogOrderItemRow[];
 
   // THE HARD STOP, repeated here like on every other step: this URL can be
   // typed or reached with the back button long after the sale was written.
@@ -74,6 +85,10 @@ export default async function ClienteDelPedidoPage({
   return (
     <OrderClientStep
       pedidoId={pedido.id}
+      // LAS MONEDAS DEL PEDIDO, en el mismo orden que el paso 1/4 las dibuja.
+      // Es lo que deja a esta pantalla contestar el rombo del sitemap --
+      // «¿Hay más de una moneda?» -- sin volver a consultar nada.
+      monedas={bloquesDeMoneda(items, undefined).map((b) => b.moneda)}
       ficha={ficha}
       delPedido={{
         name: pedido.customer_name,

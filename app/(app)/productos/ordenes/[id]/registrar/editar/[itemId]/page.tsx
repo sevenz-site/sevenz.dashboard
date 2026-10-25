@@ -58,12 +58,15 @@ export default async function EditarLineaPage({
     redirect(`/productos/ordenes/${pedido.id}`);
   }
 
-  const { data: itemRow, error: errorItem } = await supabase
+  // TODAS las líneas de una vez: hace falta la que se edita Y el resto, para
+  // poder decirle al borrador qué bloques de moneda quedan vivos después del
+  // cambio. Dos consultas serían dos verdades que se pueden separar.
+  const { data: filas, error: errorItem } = await supabase
     .from("catalog_order_items")
     .select(ORDER_ITEM_COLUMNS)
-    .eq("id", itemId)
-    .eq("order_id", pedido.id)
-    .maybeSingle();
+    .eq("order_id", pedido.id);
+  const todasLasLineas = (filas ?? []) as CatalogOrderItemRow[];
+  const itemRow = todasLasLineas.find((l) => l.id === itemId) ?? null;
 
   if (errorItem) console.error("[orders] editar linea item:", errorItem.message);
   if (!itemRow) notFound();
@@ -148,6 +151,13 @@ export default async function EditarLineaPage({
 
       <OrderLineEditForm
         pedidoId={pedido.id}
+        // TODAS las líneas con su moneda sellada: `fijarLineaEditada` las
+        // necesita para limpiar el abono de un bloque que esta edición deje
+        // vacío. Ver el comentario de `alAgregar`.
+        lineasDelPedido={todasLasLineas.map((l) => ({
+          id: l.id,
+          moneda: String(l.currency ?? ""),
+        }))}
         lineaId={linea.id}
         productId={producto.id}
         producto={producto.producto}

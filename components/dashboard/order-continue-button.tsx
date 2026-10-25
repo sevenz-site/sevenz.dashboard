@@ -13,10 +13,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import {
-  useBorrador,
-  type LineaDelPedido,
-} from "@/components/dashboard/order-registration-summary";
+  tieneAlgoQueCobrar,
+  type BloqueDeMoneda,
+} from "@/lib/orders/bloques-de-moneda";
 
 // «CONTINUAR», THE FOOT OF THE ORDER ONCE SOMETHING HAS BEEN REGISTERED —
 // frame `1564:11979`, button `1564:12579`.
@@ -47,11 +48,11 @@ import {
 // alone does not say they are dropped.
 export function OrderContinueButton({
   pedidoId,
-  lineas,
+  bloques,
   href,
 }: {
   pedidoId: string;
-  lineas: LineaDelPedido[];
+  bloques: BloqueDeMoneda[];
   // Where «Continuar» goes: the client's details, or the matched client's
   // confirmation. The page decides which, because only it knows whether the
   // order matched a ficha.
@@ -61,8 +62,19 @@ export function OrderContinueButton({
   const [preguntando, setPreguntando] = useState(false);
   const borrador = useBorrador(pedidoId);
 
-  const registradas = lineas.filter((l) => borrador?.lineas[l.id]).length;
-  const faltan = lineas.length - registradas;
+  // ── POR MONEDA DESDE `CT-147`, NO POR PRODUCTO ────────────────────
+  //
+  // La regla del dueño del 2026-10-24 no cambia —el botón sale cuando hay
+  // algo registrado, y avisa de lo que se queda fuera—; lo que cambia es qué
+  // se cuenta. Un bloque de moneda sin rellenar significa que esa moneda
+  // ENTERA no entra en la venta, que es bastante más que un producto suelto.
+  //
+  // SOLO SE CUENTAN LOS BLOQUES REGISTRABLES: uno cuyos productos ya no están
+  // en el catálogo no se puede rellenar, así que contarlo como «falta» sería
+  // pedirle al tendero algo que la pantalla no le deja hacer.
+  const registrables = bloques.filter(tieneAlgoQueCobrar);
+  const registradas = registrables.filter((b) => borrador?.monedas[b.moneda]).length;
+  const faltan = registrables.length - registradas;
 
   // NOTHING REGISTERED, NO BUTTON. See the header: this is the owner's rule,
   // not a styling choice.
@@ -82,8 +94,8 @@ export function OrderContinueButton({
           <AlertDialogHeader>
             <AlertDialogTitle>
               {faltan === 1
-                ? "Falta 1 producto por registrar"
-                : `Faltan ${faltan} productos por registrar`}
+                ? "Falta 1 moneda por registrar"
+                : `Faltan ${faltan} monedas por registrar`}
             </AlertDialogTitle>
             {/* IT NAMES THE CONSEQUENCE, not the action. «Continuar igual»
                 does not tell anybody that the products are dropped, and the
@@ -91,8 +103,8 @@ export function OrderContinueButton({
                 came up short. */}
             <AlertDialogDescription>
               {faltan === 1
-                ? "Ese producto no entrará en la venta. Puedes registrarlo antes de seguir."
-                : `Esos ${faltan} productos no entrarán en la venta. Puedes registrarlos antes de seguir.`}
+                ? "Lo de esa moneda no entrará en la venta. Puedes registrarlo antes de seguir."
+                : `Lo de esas ${faltan} monedas no entrará en la venta. Puedes registrarlo antes de seguir.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -285,7 +285,19 @@ export async function registrarPedidoComoVenta(
   // the instalments arrive already belonging to this currency, so there is
   // nothing to reconcile and nothing to lose.
   const plazoDias = entrada.pago.plazo === "" ? null : Number(entrada.pago.plazo);
-  const cuotas = entrada.pago.cuotas === "" ? null : Number(entrada.pago.cuotas);
+  // ── «PAGO ÚNICO» ES `null`, NO ES UNA CUOTA ─────────────────────────
+  //
+  // `PagoCampos` manda `"1"` cuando el tendero deja «Pago único», que es el
+  // valor POR DEFECTO del desplegable. `registrarVenta` exige que las cuotas
+  // vayan de 2 a 36 --una sola cuota no es un plan de pagos, es el fiado
+  // entero-- así que mandarle el 1 tal cual rechaza la venta con «Las cuotas
+  // van de 2 a 36» al final del flujo, cuando ya está todo tecleado.
+  //
+  // `nueva-venta.tsx` lo convierte desde el primer día; esta acción no, y se
+  // vio el 2026-10-25 probando la pantalla en el navegador. Las pruebas no lo
+  // cazaron porque mandaban la cadena vacía, que es el otro camino.
+  const cuotasCrudas = Number(entrada.pago.cuotas || "1");
+  const cuotas = cuotasCrudas > 1 ? cuotasCrudas : null;
   const credito: VentaEntrada["credito"] = [
     {
       currency: moneda as VentaEntrada["credito"][number]["currency"],

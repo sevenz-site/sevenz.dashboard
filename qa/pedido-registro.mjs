@@ -295,7 +295,7 @@ try {
     BASE,
     "registrarPedidoComoVenta",
     cookie,
-    `/productos/ordenes/${pedidoA.id}/registrar/resumen`,
+    `/productos/ordenes/${pedidoA.id}/registrar/cliente`,
   );
   check(
     `0. el id de \`registrarPedidoComoVenta\` se descubre en los chunks que sirve ${BASE}`,
@@ -311,7 +311,7 @@ try {
   // go green against an unreachable action. Nine rows did exactly that once
   // in `qa/venta-accion.mjs`, with every call answering HTTP 404.
   async function registrar(entrada, pedidoId) {
-    const res = await fetch(`${BASE}/productos/ordenes/${pedidoId}/registrar/resumen`, {
+    const res = await fetch(`${BASE}/productos/ordenes/${pedidoId}/registrar/cliente`, {
       method: "POST",
       headers: {
         "Next-Action": accion,
@@ -656,6 +656,34 @@ try {
     errorCargos == null && (cargosD ?? []).every((m) => m.currency !== "EUR"),
     errorCargos ? `la consulta falló: ${errorCargos.message}` : `cargos: ${(cargosD ?? []).map((m) => m.currency).join(", ") || "ninguno"}`,
   );
+
+  // ═══ 12c. «PAGO ÚNICO» NO ES UNA CUOTA ═══════════════════════════════
+  //
+  // La fila que faltaba, y la encontró el navegador y no esta suite: el
+  // desplegable de cuotas manda `"1"` cuando el tendero deja «Pago único»,
+  // que es su valor POR DEFECTO, y `registrarVenta` exige de 2 a 36. Las
+  // pruebas de arriba mandaban la cadena vacía --el otro camino-- así que
+  // pasaban en verde con el camino corriente roto.
+  //
+  // Se registra el tercer pedido que quedaba libre con `cuotas: "1"`: si
+  // vuelve a convertirse mal, esto se pone rojo con el mensaje de Postgres
+  // en la mano.
+  const pedidoE = await nuevoPedido("pago unico", [lineaViva]);
+  const rE = await registrar(
+    entradaDe(
+      pedidoE.id,
+      "USD",
+      pagoDeMoneda({ amount: 0, plazo: "15", cuotas: "1" }),
+      clienteNuevo("66666666"),
+    ),
+    pedidoE.id,
+  );
+  check(
+    "12c. «Pago único» (cuotas = 1) se registra; no se manda como una cuota",
+    rE.ok === true,
+    rE.ok ? rE.saleId : rE.error,
+  );
+  if (rE.ok && rE.clientId) creados.clientes.push(rE.clientId);
 
   // ═══ 13. UNA VENTA RECHAZADA NO DEJA UN CLIENTE HUÉRFANO ══════════════
   //

@@ -12,7 +12,12 @@ import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
-import { fijarCliente } from "@/lib/orders/borrador-de-registro";
+import {
+  borrarBorrador,
+  fijarCliente,
+  leerBorrador,
+} from "@/lib/orders/borrador-de-registro";
+import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
 import { formatDocumentId } from "@/lib/format";
 import type { OwnerCountry } from "@/lib/types";
 import type { OrderClient } from "@/lib/orders/order-client-match";
@@ -52,6 +57,10 @@ export function OrderClientStep({
   // matched order: same form as the unmatched case, different title, and no
   // step counter — frame `1542:11888`.
   cuentaSeparada,
+  // TODAS las monedas del pedido, en el orden en que la pantalla anterior las
+  // dibujó, y cuáles quedan sin rellenar. Las dos salen del servidor y del
+  // borrador respectivamente, y juntas contestan el rombo del sitemap.
+  monedas,
 }: {
   pedidoId: string;
   ficha: OrderClient | null;
@@ -64,23 +73,51 @@ export function OrderClientStep({
   };
   country: OwnerCountry | null;
   cuentaSeparada: boolean;
+  monedas: string[];
 }) {
   const router = useRouter();
-  const [consiente, setConsiente] = useState(false);
-  const [nombre, setNombre] = useState(delPedido.name);
-  const [documento, setDocumento] = useState(delPedido.documentId);
-  const [tipo, setTipo] = useState(delPedido.documentType);
-  const [direccion, setDireccion] = useState(delPedido.address);
-  const [whatsapp, setWhatsapp] = useState(delPedido.whatsapp);
+  // ── LA SEGUNDA PASADA NO VUELVE A PREGUNTAR LO MISMO ────────────────
+  //
+  // Con dos monedas el tendero pasa por aquí dos veces, y la nota de la
+  // flecha del sitemap dice que la segunda no debería ver esta pantalla:
+  // *«el flujo pasa a ser de 4/4 pasos a 3/3 porque la pantalla de Registrar
+  // cliente ya no se muestra porque registró el cliente en el primer
+  // pedido»*.
+  //
+  // SALTARLA DEL TODO ESTÁ PENDIENTE y queda dicho en `CT-147`. Lo que SÍ
+  // está mal de las dos formas es volver a pedir los datos EN BLANCO: el
+  // tendero acaba de escribirlos, los ve vacíos, y la lectura natural es que
+  // la app los perdió. Así que se rellenan desde el borrador, que es donde
+  // los dejó.
+  //
+  // `useState(() => …)` Y NO UN VALOR: `sessionStorage` no existe en el
+  // servidor, así que leerlo durante el render haría que la primera pintura
+  // del cliente no coincidiera con el HTML del servidor y React tirara el
+  // árbol -- con los campos dentro. El inicializador perezoso solo corre en
+  // el navegador, en el primer render, que es cuando hace falta.
+  const delBorrador = () => leerBorrador(pedidoId)?.cliente ?? null;
+  const [consiente, setConsiente] = useState(() => delBorrador()?.consienteWhatsapp ?? false);
+  const [nombre, setNombre] = useState(() => delBorrador()?.name || delPedido.name);
+  const [documento, setDocumento] = useState(
+    () => delBorrador()?.documentId || delPedido.documentId,
+  );
+  const [tipo, setTipo] = useState(() => delBorrador()?.documentType ?? delPedido.documentType);
+  const [direccion, setDireccion] = useState(() => delBorrador()?.address || delPedido.address);
+  const [whatsapp, setWhatsapp] = useState(() => delBorrador()?.whatsapp || delPedido.whatsapp);
   const [error, setError] = useState<string | null>(null);
 
   // THE FORM IS SHOWN WHENEVER THERE IS NO FICHA TO CONFIRM, or when the
   // shopkeeper has asked for a separate account.
   const conFormulario = ficha == null || cuentaSeparada;
+  const [enviando, setEnviando] = useState(false);
+  // ¿Queda algún bloque sin rellenar? Se lee del borrador, que es quien lo
+  // sabe, y decide tanto el rótulo del botón como lo que hace.
+  const borradorActual = leerBorrador(pedidoId);
+  const quedanMonedas = monedas.some((m) => borradorActual?.monedas[m] == null);
   const nombreParaElPermiso =
     (conFormulario ? nombre : ficha!.name).trim() || "tu cliente";
 
-  function finalizar() {
+  async function finalizar() {
     if (conFormulario) {
       if (nombre.trim() === "") {
         setError("Escribe el nombre del cliente.");
@@ -103,7 +140,47 @@ export function OrderClientStep({
       address: conFormulario ? direccion.trim() : (ficha!.address ?? ""),
       consienteWhatsapp: consiente,
     });
-    router.push(`/productos/ordenes/${pedidoId}/registrar/resumen`);
+    // ── Y AQUÍ SE DECIDE SI SE GUARDA O SE SIGUE RECOGIENDO ──────────
+    //
+    // Es el rombo del sitemap, «¿Hay más de una moneda en el pedido?», y la
+    // flecha lo dice con todas las letras: *«CTA es "Registrar y finalizar"
+    // porque no hay más pedidos que registrar»*. Así que el rótulo y lo que
+    // hace el botón son la misma pregunta: ¿queda algún bloque sin rellenar?
+    //
+    // SI QUEDA, esta pantalla solo guarda el cliente y devuelve al pedido;
+    // la siguiente pasada se salta este paso porque la ficha ya está en el
+    // borrador -- la nota de la flecha, *«el flujo pasa a ser de 4/4 pasos a
+    // 3/3»*.
+    if (quedanMonedas) {
+      router.push(`/productos/ordenes/${pedidoId}`);
+      router.refresh();
+      return;
+    }
+
+    setEnviando(true);
+    const borrador = leerBorrador(pedidoId);
+    if (!borrador) {
+      setEnviando(false);
+      setError(
+        "Se perdió lo que llevabas registrado. Vuelve al pedido y empieza de nuevo.",
+      );
+      return;
+    }
+    const r = await registrarTodoElPedido(pedidoId, borrador, monedas);
+    if (!r.ok) {
+      setEnviando(false);
+      setError(r.error);
+      // LA PANTALLA SE REFRESCA AUNQUE HAYA FALLADO, si algo llegó a
+      // guardarse: el pedido de detrás ya no es el mismo y dejarlo viejo es
+      // cómo el tendero registra dos veces lo que ya está escrito.
+      if (r.monedasHechas.length > 0) router.refresh();
+      return;
+    }
+    // EL BORRADOR SE BORRA SOLO DESPUÉS DE QUE LA VENTA ATERRICE. Borrarlo
+    // antes dejaría, ante un fallo de escritura, un pedido que sigue
+    // diciendo «Registrar» y nada de lo que el tendero había tecleado.
+    borrarBorrador();
+    router.push(`/ventas/${r.primeraVentaId}`);
   }
 
   return (
@@ -287,8 +364,16 @@ export function OrderClientStep({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       <div className="flex flex-col gap-4 pb-10">
-        <Button className="h-10 w-full" onClick={finalizar}>
-          Registrar y finalizar
+        {/* EL RÓTULO LO DICE LA FLECHA DEL SITEMAP, literalmente: *«CTA es
+            "Registrar y finalizar" porque no hay más pedidos que
+            registrar»*. Con monedas pendientes es «Registrar» a secas, que es
+            lo que el frame del caso de dos monedas dibuja. */}
+        <Button className="h-10 w-full" onClick={finalizar} disabled={enviando}>
+          {enviando
+            ? "Registrando…"
+            : quedanMonedas
+              ? "Registrar"
+              : "Registrar y finalizar"}
         </Button>
         {/* «REGISTRAR A CUENTA SEPARADA», only on the matched screen. The
             shopkeeper is saying «this is not that Pedro», which the document

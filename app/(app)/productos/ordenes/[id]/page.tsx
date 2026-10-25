@@ -30,6 +30,8 @@ import {
   type LineaDelPedido,
 } from "@/components/dashboard/order-registration-summary";
 import { OrderContinueButton } from "@/components/dashboard/order-continue-button";
+import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
+import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
 import {
   OrderProductCard,
   OrderProductRowButton,
@@ -154,6 +156,11 @@ export default async function OrdenPage({
     precioUnitario: Number(i.unit_price),
     moneda: i.currency as PriceCurrency,
   }));
+
+  // LOS BLOQUES DE MONEDA, que es la unidad de trabajo desde `CT-147`. Se
+  // agrupan por la moneda SELLADA porque el servidor no ve el borrador; las
+  // ediciones entran en el siguiente dibujo.
+  const bloques = bloquesDeMoneda(items, undefined);
 
   // WHAT THIS CUSTOMER ALREADY OWED, for the «Deuda antigua» row.
   //
@@ -390,59 +397,32 @@ export default async function OrdenPage({
             Este pedido no tiene líneas.
           </p>
         ) : (
-          items.map((item) =>
-            // CADA LÍNEA ABRE SU PRODUCTO. Frame `1371:7229`: miniatura,
-            // nombre, cantidad por precio y escalón, el total con su bandera
-            // y un chevron que dice que hay algo detrás.
-            //
-            // EL COMENTARIO SE QUEDA FUERA DE LA FILA y se lee dentro. Antes
-            // vivía aquí debajo y podía ser un párrafo entero: con la fila
-            // ahora tocable, un bloque de texto dentro del botón convierte
-            // una lista de dos renglones en una pared.
-            (() => {
-              // EL PRODUCTO SE RESUELVE UNA VEZ Y LO LEEN LAS TRES PIEZAS.
-              // `product_id` es `on delete set null`, así que una línea puede
-              // quedarse sin producto; y `readOrderProducts` devuelve un mapa
-              // vacío cuando la lectura FALLA, que no es lo mismo que
-              // «borrado» -- por eso el mapa se consulta una vez y no tres.
-              const producto = item.product_id
-                ? (productosPorId.get(item.product_id) ?? null)
-                : null;
-              return (
-                <OrderProductCard
-                  key={item.id}
-                  cantidad={Number(item.quantity)}
-                  precioUnitario={Number(item.unit_price)}
-                  moneda={item.currency as PriceCurrency}
-                  escalon={item.tier as PriceTier}
-                  productoBorrado={producto == null}
-                  hrefEditar={
-                    producto
-                      ? `/productos/ordenes/${pedido.id}/registrar/${item.id}/editar`
-                      : null
-                  }
-                  hrefRegistrar={`/productos/ordenes/${pedido.id}/registrar/${item.id}`}
-                  rates={rates}
-                >
-                  <OrderProductSheet
-                    nombreEnElPedido={item.product_name}
-                    cantidad={Number(item.quantity)}
-                    precioUnitario={Number(item.unit_price)}
-                    moneda={item.currency as PriceCurrency}
-                    escalon={item.tier as PriceTier}
-                    comentario={item.comment}
-                    producto={producto}
-                    rates={rates}
-                  >
-                    <OrderProductRowButton
-                      nombre={item.product_name}
-                      fotoPath={producto?.photo_path ?? null}
-                    />
-                  </OrderProductSheet>
-                </OrderProductCard>
-              );
-            })(),
-          )
+          // ── UN BLOQUE POR MONEDA, Y ESTO ES `CT-147` ──────────────────
+          //
+          // Aquí había una tarjeta POR PRODUCTO, cada una con su «Registrar».
+          // Ocho productos eran dieciséis pantallas, y dos en la misma moneda
+          // con plazos distintos hacían que uno de los dos se perdiera sin
+          // decirlo. El dueño el 2026-10-24: *«el registro/pago debería
+          // hacerse por moneda no por producto (…) no puede salir a
+          // producción así»*.
+          //
+          // El frame `1654:15548` lo dibuja así: «Resumen de pedido en
+          // Dólares» con su tabla y su «Registrar», y otro igual en euros.
+          //
+          // LAS EDICIONES DEL BORRADOR NO SE LEEN AQUÍ y es a propósito: esto
+          // es un componente de servidor y el borrador vive en el navegador.
+          // Agrupar por la moneda sellada es lo correcto para el PRIMER
+          // dibujo; mover una línea con «Editar» recarga la pantalla, que es
+          // cuando el servidor vuelve a mirar.
+          bloques.map((bloque) => (
+            <OrderCurrencyBlockCard
+              key={bloque.moneda}
+              pedidoId={pedido.id}
+              bloque={bloque}
+              rates={rates}
+              hrefRegistrar={`/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${bloque.moneda}`}
+            />
+          ))
         )}
       </div>
 
@@ -457,7 +437,7 @@ export default async function OrdenPage({
           the card at the top. */}
       <OrderContinueButton
         pedidoId={pedido.id}
-        lineas={lineasParaResumen}
+        bloques={bloques}
         href={
           clienteDelPedido.kind === "uno"
             ? `/productos/ordenes/${pedido.id}/registrar/cliente?ficha=${clienteDelPedido.cliente.id}`

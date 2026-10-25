@@ -69,19 +69,31 @@ export function resumirPorMoneda(
   >();
   if (!borrador) return porMoneda;
 
+  // ── EL ABONO ES DE LA MONEDA, NO DE LA LÍNEA — `CT-147` ─────────────
+  //
+  // Antes cada línea traía su propio abono y esto los sumaba. Desde el
+  // 2026-10-25 el tendero teclea UNA cifra por moneda, así que el total se
+  // sigue sumando línea a línea pero el abono se lee una sola vez por
+  // bloque. Sumarlo por línea ahora multiplicaría el abono por el número de
+  // productos de esa moneda -- y el tendero vería su deuda saldada con un
+  // pago que no hizo.
   for (const linea of lineas) {
-    const pago = borrador.lineas[linea.id];
-    if (!pago) continue;
     const edicion = borrador.editadas?.[linea.id];
     const moneda =
       (edicion?.currency as PriceCurrency | undefined) ?? linea.moneda;
+    // Una moneda que el tendero todavía no ha rellenado no entra: esta
+    // tarjeta dice qué va a ser la venta, y eso aún no lo es.
+    if (!borrador.monedas[moneda]) continue;
     const cantidad = edicion?.quantity ?? linea.cantidad;
     const total = Math.round(cantidad * linea.precioUnitario * 100) / 100;
 
     const acc = porMoneda.get(moneda) ?? { total: 0, abonado: 0 };
     acc.total = Math.round((acc.total + total) * 100) / 100;
-    acc.abonado = Math.round((acc.abonado + pago.amount) * 100) / 100;
     porMoneda.set(moneda, acc);
+  }
+  // Y el abono, una vez por moneda, después de haber sumado los totales.
+  for (const [moneda, acc] of porMoneda) {
+    acc.abonado = Math.round((borrador.monedas[moneda]?.amount ?? 0) * 100) / 100;
   }
   return porMoneda;
 }
