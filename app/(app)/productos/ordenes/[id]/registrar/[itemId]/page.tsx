@@ -4,20 +4,17 @@ import { notFound, redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
-import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import {
+  OrderLineSealedCard,
+  totalDeHoy,
+} from "@/components/dashboard/order-line-sealed-card";
 import { OrderProductSheet } from "@/components/dashboard/order-product-sheet";
 import { createClient } from "@/lib/supabase/server";
-import { formatBs } from "@/lib/exchange-rate/format";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import {
-  formatPriceAmount,
-  priceIn,
-  type BolivarRates,
-  type PriceCurrency,
-} from "@/lib/products/price";
+import { type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
@@ -123,14 +120,7 @@ export default async function ConfirmarProductoPage({
   // The column is plain `text` in the database; the cast is the one the
   // order's own detail already makes on the same field.
   const moneda = linea.currency as PriceCurrency;
-  // «POR PAGAR» IS THE LINE'S TOTAL, NOT THE UNIT PRICE. The quantity is
-  // already its own column to the left of it, and the label asks what is owed
-  // for this line — the same reading as the card on the order's detail.
-  const porPagar = Math.round(cantidad * precioUnitario * 100) / 100;
-  const enBs =
-    rates && moneda !== "VES"
-      ? (priceIn("VES", { amount: porPagar, currency: moneda }, rates)?.amount ?? null)
-      : null;
+  const { total: totalHoy, moneda: monedaHoy } = totalDeHoy(producto, linea.tier, cantidad);
 
   // THREE STATES AND THE THIRD IS `null` — migration 107's rule, already
   // applied by the public catalogue and the product sheet. `stock_opening` is
@@ -169,42 +159,15 @@ export default async function ConfirmarProductoPage({
         </div>
       </div>
 
-      {/* THE SEALED LINE — three columns, exactly as the frame heads them:
-          «Producto · Cantidad · Por pagar». */}
-      <div className="flex flex-col justify-center rounded-[10px] border p-2.5">
-        <div className="flex gap-1.5 text-xs leading-4">
-          <p className="w-[124px] shrink-0">Producto</p>
-          <p className="min-w-0 flex-1 text-right">Cantidad</p>
-          <p className="w-[104px] shrink-0 text-right">Por pagar</p>
-        </div>
-        <div className="flex justify-center gap-1 pt-2">
-          <p className="w-[124px] shrink-0 text-xs leading-4 text-muted-foreground">
-            {linea.product_name}
-          </p>
-          <p className="min-w-0 flex-1 text-right text-xs leading-4 text-muted-foreground tabular-nums">
-            {formatCantidad(cantidad)}
-          </p>
-          <div className="flex w-[104px] shrink-0 flex-col items-end justify-center">
-            {/* THE FLAG ON THE SIDE OF THE EDGE: this column is `items-end`,
-                so it sits to the right of the figure, as the frame draws it.
-                See `DESIGN-SYSTEM.md`, the owner's rule of 2026-10-24. */}
-            <span className="flex items-center gap-1 text-sm tabular-nums">
-              {formatPriceAmount(porPagar, moneda)}
-              <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
-            </span>
-            {/* «HOY», WHICH THE FRAME DOES NOT WRITE. The owner's decision of
-                2026-10-17, on the order's own detail: the amount is sealed and
-                its value in bolívares is not, because the rate moves daily.
-                Without the word, this figure reads as what was agreed, and the
-                shopkeeper charges today's rate for last week's deal. */}
-            {enBs != null ? (
-              <span className="text-xs leading-4 text-muted-foreground tabular-nums">
-                {formatBs(enBs)} hoy
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <OrderLineSealedCard
+        nombre={linea.product_name}
+        cantidad={cantidad}
+        precioUnitario={precioUnitario}
+        moneda={moneda}
+        totalHoy={totalHoy}
+        monedaHoy={monedaHoy}
+        rates={rates}
+      />
 
       {/* AVAILABILITY. Hidden entirely when nobody ever recorded stock — see
           `stock` above for why zero and «unknown» cannot share a chip. */}
