@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
-import { isUnattended } from "@/lib/orders/catalog-orders";
+import { isUnregistered } from "@/lib/orders/catalog-orders";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL BUSCADOR Y EL CHIP DE ESTADO DE PEDIDOS.
@@ -24,8 +24,8 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 
 const STATUS_OPTIONS = [
   { value: "todos", label: "Todos" },
-  { value: "sin-atender", label: "Sin atender" },
-  { value: "atendidos", label: "Atendido" },
+  { value: "sin-registrar", label: "Sin registrar" },
+  { value: "registrados", label: "Registrado" },
 ] as const;
 
 type StatusFilter = (typeof STATUS_OPTIONS)[number]["value"];
@@ -77,8 +77,8 @@ export function OrdersFilterProvider({
     const q = plano(query.trim());
 
     return orders.filter((o) => {
-      if (status === "sin-atender" && !isUnattended(o)) return false;
-      if (status === "atendidos" && isUnattended(o)) return false;
+      if (status === "sin-registrar" && !isUnregistered(o)) return false;
+      if (status === "registrados" && isUnregistered(o)) return false;
       if (!q) return true;
 
       // The name is what the owner asked to search by. The document goes in
@@ -165,7 +165,7 @@ export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
 
   // "NOTHING MATCHES" IS NOT "NOTHING HAS ARRIVED", and `OrdersList`'s own
   // empty state says the second one. Telling a shopkeeper who filtered by
-  // "Atendido" that no customer has ever ordered would be a lie with a
+  // "Registrado" that no customer has ever ordered would be a lie with a
   // perfectly good explanation sitting one tap away in the chip.
   if (total > 0 && visible.length === 0) {
     return (

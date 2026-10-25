@@ -2,6 +2,7 @@ import { CircleUserRound, UserRoundSearch } from "lucide-react";
 import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
+import { partirDocumento } from "@/lib/orders/order-client-match";
 import type { OrderClientMatch } from "@/lib/orders/order-client-match";
 import { OrderClientPickerSheet } from "@/components/dashboard/order-client-picker-sheet";
 
@@ -70,6 +71,14 @@ export function OrderClientCard({
   ledger: LedgerDisplay | null;
 }) {
   const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+
+  // Ver el comentario de «Cédula:» más abajo: la letra puede venir en la
+  // columna del tipo, pegada al documento, o de la ficha emparejada.
+  const { digits: digitosDelPedido, letter: letraPropia } = partirDocumento(
+    documentoDelPedido,
+    tipoDeDocumento,
+  );
+  const letraDelPedido = letraPropia ?? cliente?.document_type ?? null;
   // THE ADDRESS COMES FROM THE FICHA, NOT FROM THE ORDER. The owner's
   // decision, 2026-10-24: *«la sacamos de la ficha del cliente ya existente y
   // la dejamos vacía cuando no existe»*. The ficha's is the one he maintains;
@@ -108,8 +117,29 @@ export function OrderClientCard({
           {/* THE THREE LINES ALWAYS, EVEN EMPTY. `DESIGN-SYSTEM.md`'s rule:
               a missing fact that disappears cannot be told apart from one
               that was never asked for. */}
+          {/* ── LA LETRA, AUNQUE EL PEDIDO NO LA TRAIGA EN SU COLUMNA ──
+              El dueño lo reportó el 2026-10-25 con la captura: «Cédula:
+              21.054.832», sin la V, mientras el recuadro verde de debajo —que
+              lee la FICHA— decía «V-21.054.832» en la misma tarjeta.
+
+              POR QUÉ FALTABA: `formatDocumentId` se llamaba bien; lo que
+              llegaba nulo era el tipo. El carrito del cliente no siempre
+              guarda `customer_document_type`, así que `catalog_orders` tiene
+              filas con «V-24242424» dentro de `customer_document` y otras con
+              los dígitos pelados y el tipo vacío.
+
+              DE DÓNDE SE SACA, EN ESTE ORDEN: la columna del tipo; si no, la
+              letra que venga pegada al propio documento --eso lo resuelve
+              `partirDocumento`--; y si tampoco, la de la ficha emparejada,
+              que es lícita porque el emparejamiento se hizo por los dígitos y
+              el recuadro verde ya la está afirmando ahí mismo.
+
+              SIN LETRA NO SE INVENTA NINGUNA. Un documento sin ficha y sin
+              tipo sale con sus dígitos y nada más: poner la «V» por defecto
+              sería afirmar algo que nadie dijo, y este producto distingue a
+              dos personas por esa letra. */}
           <p className="truncate text-sm text-muted-foreground">
-            Cédula: {formatDocumentId(documentoDelPedido, tipoDeDocumento)}
+            Cédula: {formatDocumentId(digitosDelPedido, letraDelPedido)}
           </p>
           <p className="truncate text-sm text-muted-foreground">Teléfono: {telefono || "—"}</p>
           <p className="truncate text-sm text-muted-foreground">Dirección: {direccion || "—"}</p>
@@ -134,7 +164,7 @@ export function OrderClientCard({
             <p>
               {cliente
                 ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
-                : `${nombreDelPedido} con cédula ${formatDocumentId(documentoDelPedido, tipoDeDocumento)}`}
+                : `${nombreDelPedido} con cédula ${formatDocumentId(digitosDelPedido, letraDelPedido)}`}
             </p>
           </div>
         </div>
@@ -145,7 +175,7 @@ export function OrderClientCard({
             <p className="font-semibold">No hemos encontrado este cliente en tu cuenta de Sevenz.</p>
             <p>
               {nombreDelPedido} con cédula{" "}
-              {formatDocumentId(documentoDelPedido, tipoDeDocumento)}
+              {formatDocumentId(digitosDelPedido, letraDelPedido)}
             </p>
           </div>
         </div>

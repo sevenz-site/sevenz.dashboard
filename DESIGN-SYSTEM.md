@@ -2576,6 +2576,46 @@ incluir el prefijo»*.
 **Se escribe con `formatDocumentId(documento, tipo)`**, de `lib/format.ts`.
 Nunca pegando el valor de la columna.
 
+### Y SE ESCRIBE AUNQUE EL FRAME LA OMITA
+
+**Añadido por el dueño el 2026-10-25**, al encontrarla por TERCERA vez:
+*«Nuevamente hay un error al escribir el documento. Obviaste el prefijo del
+tipo de documento. No debes obviarlo así el frame lo omita»*.
+
+Esa última frase es la regla nueva, y es la que faltaba. Un frame es una
+maqueta con datos de relleno: su «00.000.000» no es una decisión de no poner
+la letra, es un hueco. **Replicar el frame al detalle —que es otra regla de
+este repo— no autoriza a borrar un dato que identifica a una persona.** Donde
+las dos reglas chocan, gana esta.
+
+**La señal de que estás a punto de romperla**: el frame enseña un documento
+sin letra y tú estás copiando ese texto. Ahí es donde hay que parar y
+preguntar de dónde sale la letra en los datos de verdad.
+
+### LA LETRA PUEDE NO ESTAR EN LA COLUMNA DEL TIPO
+
+Lo que hizo fallar la tercera vez, y no era un `formatDocumentId` olvidado:
+la llamada era correcta y **lo que llegaba nulo era el tipo**.
+
+`catalog_orders` lo guarda de dos formas, porque el carrito del cliente no
+siempre captura `customer_document_type`: hay filas con «V-24242424» metido
+dentro de `customer_document` y otras con los dígitos pelados y el tipo
+vacío. Pasarle ese par a `formatDocumentId` en crudo pierde la letra en el
+segundo caso — y en la misma tarjeta se veía «Cédula: 21.054.832» arriba y
+«V-21.054.832» en el recuadro de abajo, que lee la ficha.
+
+**Para un documento que viene de un PEDIDO, la letra se busca en este orden:**
+
+1. La columna del tipo.
+2. **La letra pegada al propio documento** — eso lo resuelve `partirDocumento`
+   de `lib/orders/order-client-match.ts`, que devuelve `{digits, letter}`.
+3. La ficha emparejada, cuando hay exactamente una. Es lícito: el
+   emparejamiento se hizo por los dígitos.
+
+**Y si no hay ninguna, no se inventa.** Salen los dígitos y nada más. Poner
+la «V» por defecto es afirmar algo que nadie dijo, y este producto distingue
+a dos personas por esa letra.
+
 ### Esta regla ya se escapó DOS veces, y la segunda explica cómo
 
 La primera fue el 2026-10-23: dieciséis sitios dibujaban el documento y varios

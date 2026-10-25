@@ -429,11 +429,12 @@ try {
   // saca un pedido de «sin atender» — y la campana y la lista de Pedidos
   // cuentan por `status`.
   //
-  // UN PEDIDO DE UNA SOLA MONEDA SALTA DE `new` A `registered` directo, sin
-  // pasar por `seen`: `registered` ya no es «sin atender», que es lo que esta
-  // fila comprueba. El escalón intermedio se ve en la fila 11b.
+  // DOS ESTADOS Y NINGUNO MÁS: recibido (`new`) y registrado. El escalón
+  // `seen` que existía para «Marcar como atendido» se eliminó con el botón, y
+  // la fila 11b bis comprueba la otra mitad: a medio registrar sigue en
+  // `new`.
   check(
-    "3b. registrar saca el pedido de «sin atender» (status deja de ser `new`)",
+    "3b. completar el registro es lo ÚNICO que saca el pedido de pendiente",
     selloA?.status !== "new",
     `status ${selloA?.status}`,
   );
@@ -596,13 +597,18 @@ try {
     selloMedio?.status !== "registered" && selloMedio?.registered_at == null,
     `status ${selloMedio?.status} · registered_at ${selloMedio?.registered_at ?? "null"}`,
   );
-  // EL ESCALÓN INTERMEDIO, que es la otra mitad de la decisión del 2026-10-25:
-  // a medio registrar el pedido ya NO cuenta como «sin atender» --el tendero
-  // está trabajándolo-- aunque todavía no esté terminado.
+  // Y SIGUE CONTANDO COMO PENDIENTE, que es la decisión del dueño del
+  // 2026-10-25: *«si presiona el botón "Registrar pedido" y no completa el
+  // registro, el pedido vuelve a su estado original»*.
+  //
+  // ESTO DESHACE UN SELLO QUE ESTA MISMA SUITE LLEGÓ A EXIGIR. Horas antes se
+  // añadió un `seen` con la primera moneda y una fila que lo comprobaba; el
+  // dueño eliminó el concepto de «atendido» entero. Un pedido a medias tiene
+  // trabajo sin terminar y la campana es justo lo que se lo recuerda.
   check(
-    "11b bis. pero SÍ deja de estar «sin atender» con la primera moneda",
-    selloMedio?.status === "seen",
-    `status ${selloMedio?.status}`,
+    "11b bis. y a medio registrar SIGUE pendiente: no hay estado intermedio",
+    selloMedio?.status === "new" && selloMedio?.seen_at == null,
+    `status ${selloMedio?.status} · seen_at ${selloMedio?.seen_at ?? "null"}`,
   );
 
   // THE SECOND PASS SENDS BACK THE FICHA THE FIRST ONE CREATED. If it did

@@ -71,17 +71,31 @@ export const ORDER_COLUMNS =
 export const ORDER_ITEM_COLUMNS =
   "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment";
 
-// AN ORDER IS UNATTENDED WHILE IT IS `new`. Not "while `seen_at` is null":
-// the two move together today, but `status` is the one the rest of the
-// product reads and the one the owner's button will set, so there is one
-// definition and it is this one.
-export function isUnattended(order: Pick<CatalogOrderRow, "status">): boolean {
-  return order.status === "new";
+// UN PEDIDO ESTÁ PENDIENTE MIENTRAS NO ESTÉ REGISTRADO.
+//
+// Decisión del dueño el 2026-10-25: *«eliminemos el concepto de pedido
+// atendido, el pedido se recibe (…) y en el app el pedido se registra (…) si
+// presiona el botón "Registrar pedido" y no completa el registro, el pedido
+// vuelve a su estado original»*.
+//
+// SE PREGUNTA POR «registered» Y NO POR «new», y esa es toda la diferencia.
+// Antes había un escalón intermedio —`seen`, que ponía «Marcar como
+// atendido»— y un pedido en él dejaba de contar como pendiente sin que nadie
+// hubiera registrado nada. Ese botón y ese sello ya no existen, pero las
+// filas viejas que quedaron en `seen` sí: preguntando por el final, vuelven a
+// contar como pendientes, que es lo que son.
+//
+// `discarded` NO CUENTA, aunque tampoco esté registrado: es el estado de un
+// pedido descartado a propósito. Hoy no lo escribe nadie; está en el `check`
+// de la migración `108` y esto es lo que impide que el día que se escriba
+// empiece a sonar en la campana.
+export function isUnregistered(order: Pick<CatalogOrderRow, "status">): boolean {
+  return order.status !== "registered" && order.status !== "discarded";
 }
 
-// The number the bell and the Catálogo link both show. A `head: true` count
+// The number the bell and the Catálogo link both show: orders NOT registered. A `head: true` count
 // so it never drags the rows across just to say how many there are.
-export async function countUnattendedOrders(
+export async function countUnregisteredOrders(
   supabase: SupabaseClient,
   ownerId: string,
 ): Promise<number> {
@@ -89,13 +103,13 @@ export async function countUnattendedOrders(
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", ownerId)
-    .eq("status", "new");
+    .not("status", "in", "(registered,discarded)");
 
   // A failure counts as zero rather than throwing: this number decorates a
   // link and a bell, and neither is worth taking a screen down for. The real
   // reason goes to the server log.
   if (error) {
-    console.error("[orders] count unattended:", error.message);
+    console.error("[orders] count sin registrar:", error.message);
     return 0;
   }
   return count ?? 0;

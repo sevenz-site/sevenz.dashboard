@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/table";
 import { formatDocumentId } from "@/lib/format";
 import { type PriceCurrency } from "@/lib/products/price";
+import { partirDocumento } from "@/lib/orders/order-client-match";
 import {
-  isUnattended,
+  isUnregistered,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
@@ -81,7 +82,7 @@ function Importes({ importes }: { importes: OrderWithItems["importes"] }) {
 }
 
 function Estado({ order }: { order: CatalogOrderRow }) {
-  if (isUnattended(order)) {
+  if (isUnregistered(order)) {
     // ── MISMO CHIP QUE UN CLIENTE EN «Crítico» ────────────────────────
     //
     // Instrucción del dueño el 2026-10-20: *«el estilo de esas chips debe ser
@@ -98,7 +99,7 @@ function Estado({ order }: { order: CatalogOrderRow }) {
     // quedaría atrás el día que ese token se afine.
     return (
       <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.critico}>
-        Sin atender
+        Sin registrar
       </Badge>
     );
   }
@@ -111,7 +112,7 @@ function Estado({ order }: { order: CatalogOrderRow }) {
   // distintas se leen como si midieran cosas distintas.
   return (
     <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS.dentro_del_plazo}>
-      Atendido
+      Registrado
     </Badge>
   );
 }
@@ -221,7 +222,20 @@ export function OrdersList({
                 </TableCell>
                 <TableCell className="tabular-nums">
                   <Link href={`/productos/ordenes/${order.id}`} className="block">
-                    {formatDocumentId(order.customer_document, order.customer_document_type)}
+                    {/* LA LETRA PUEDE VENIR PEGADA AL DOCUMENTO, no solo en
+                        su columna: `catalog_orders` tiene filas con
+                        «V-24242424» dentro de `customer_document` porque el
+                        carrito no siempre guarda el tipo aparte. `partirDocumento`
+                        las separa; pasarle el par en crudo perdía la letra.
+                        Reportado por el dueño el 2026-10-25 en la tarjeta del
+                        pedido, y esta lista la dibujaba igual. */}
+                    {(() => {
+                      const { digits, letter } = partirDocumento(
+                        order.customer_document,
+                        order.customer_document_type,
+                      );
+                      return formatDocumentId(digits, letter);
+                    })()}
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">

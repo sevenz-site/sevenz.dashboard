@@ -163,7 +163,7 @@ export async function registrarPedidoComoVenta(
   // `.eq("owner_id")` EXPLICITLY — the id comes from the browser.
   const { data: pedido, error: errorPedido } = await supabase
     .from("catalog_orders")
-    .select("id, status, seen_at")
+    .select("id")
     .eq("id", entrada.pedidoId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -414,46 +414,37 @@ export async function registrarPedidoComoVenta(
   // UN FALLO AQUÍ NO TUMBA LA VENTA, que ya está escrita. Lo que queda es un
   // pedido que sigue ofreciendo «Registrar» en una moneda ya vendida, y la
   // parada dura de `registrarVenta` lo rechaza al segundo intento.
-  // ── Y REGISTRAR ES LO QUE DA EL PEDIDO POR ATENDIDO ─────────────────
+  // ── UN PEDIDO SOLO TIENE DOS ESTADOS: RECIBIDO Y REGISTRADO ─────────
   //
-  // Decisión del dueño el 2026-10-25, al quitar «Marcar como atendido» del
-  // detalle: *«registrar lo da por atendido»*. Cierra `CT-83` por la raíz --
-  // ese aviso existía PORQUE no se podía registrar desde la app-- y deja un
-  // solo camino en vez de dos que el tendero tenía que recordar coordinar.
+  // Decisión del dueño el 2026-10-25: *«eliminemos el concepto de pedido
+  // atendido, el pedido se recibe (cuando el cliente lo registra desde el
+  // carrito) y en el app el pedido se registra (cuando el cliente completa el
+  // registro del pedido en el botón "Registrar pedido"), si presiona el botón
+  // "Registrar pedido" y no completa el registro, el pedido vuelve a su
+  // estado original como sin atender»*.
   //
-  // DOS SELLOS Y NO UNO, porque son dos cosas distintas:
+  // ESTO DESHACE UN SELLO QUE PUSE HORAS ANTES, y las dos razones quedan
+  // escritas. Ese día añadí un `seen` con la PRIMERA moneda, razonando que el
+  // tendero ya estaba trabajando el pedido y no debía seguir sonando en la
+  // campana. El dueño decidió lo contrario, y su regla es más simple: mientras
+  // el registro no esté COMPLETO, el pedido sigue pendiente. Un pedido de dos
+  // monedas con una cobrada tiene trabajo sin terminar, y la campana es justo
+  // lo que se lo recuerda.
   //
-  //   `seen`       en cuanto entra la PRIMERA moneda. El tendero ya está
-  //                trabajando el pedido, así que deja de contar como «sin
-  //                atender» en la campana y en la lista -- aunque le falte
-  //                una moneda por cobrar.
-  //   `registered` cuando no queda ninguna. Eso sí es «terminado», y es lo
-  //                que impide volver a entrar al flujo.
-  //
-  // `seen_at` SOLO SI ESTABA VACÍO: el segundo registro no mueve la fecha en
-  // que el tendero se ocupó por primera vez de este pedido.
-  //
-  // LO QUE ESTA DECISIÓN CUESTA, dicho porque el dueño lo eligió sabiéndolo:
-  // un pedido que se atiende pero NO se registra --se lo regaló, se lo llevó
-  // sin cobrar-- se queda como nuevo para siempre. No hay otra puerta.
-  const sello =
-    pendientes.length === 0
-      ? { registered_at: new Date().toISOString(), status: "registered" }
-      : pedido.status === "new"
-        ? { status: "seen", seen_at: pedido.seen_at ?? new Date().toISOString() }
-        : null;
-
-  if (sello) {
+  // ASÍ QUE AQUÍ SOLO SE SELLA EL FINAL. `seen` y `seen_at` dejan de
+  // escribirse en toda la app; las filas viejas que los tengan siguen
+  // contando como pendientes, porque `isUnregistered` pregunta por
+  // «registered» y no por «new».
+  if (pendientes.length === 0) {
     const { error: errorSello } = await supabase
       .from("catalog_orders")
-      .update(sello)
+      .update({ registered_at: new Date().toISOString(), status: "registered" })
       .eq("id", pedido.id)
       .eq("owner_id", user.id);
     if (errorSello) {
       console.error("registrarPedidoComoVenta sello:", errorSello.message, {
         pedidoId: pedido.id,
         saleId: resultado.saleId,
-        sello,
       });
     }
   }

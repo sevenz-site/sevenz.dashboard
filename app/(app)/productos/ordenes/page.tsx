@@ -205,13 +205,13 @@ export default async function OrdenesPage() {
           backHref="/productos"
           backLabel="Volver a Catálogo"
           // THE SUBTITLE COUNTS EVERYTHING, not what the filter leaves on
-          // screen. "2 sin atender" is the state of the business; the list
+          // screen. "2 sin registrar" is the state of the business; the list
           // below is a view of it. Making this follow the chip would mean the
-          // number drops to zero when the owner filters by "Atendido", which
+          // number drops to zero when the owner filters by "Registrado", which
           // reads as "there is nothing left to do".
           subtitle={
             sinAtender > 0
-              ? `${sinAtender} sin atender`
+              ? `${sinAtender} sin registrar`
               : "Lo que te piden desde tu enlace de catálogo"
           }
           search={<OrdersSearchField />}

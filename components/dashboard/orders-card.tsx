@@ -60,7 +60,7 @@ export function OrdersCard({
   // La frase es la misma en los dos sitios y es más larga que las dos que
   // sustituye, así que en Inicio hay que soltar el alto fijo de 52px: ahí
   // vivía una línea recortada con `truncate`, y la del frame ocupa dos. Con
-  // pedidos esperando, el alto fijo se queda — esa línea es «N sin atender» y
+  // pedidos esperando, el alto fijo se queda — esa línea es «N sin registrar» y
   // cabe de sobra.
   const vacia = unattended === 0;
 
@@ -92,7 +92,7 @@ export function OrdersCard({
           aria-hidden="true"
         />
         {place === "inicio" && !vacia ? (
-          <span className="truncate text-xs leading-4 text-primary">{unattended} sin atender</span>
+          <span className="truncate text-xs leading-4 text-primary">{unattended} sin registrar</span>
         ) : (
           <span className="flex min-w-0 flex-col justify-center">
             {/* EL TÍTULO NO SE REPITE EN INICIO. Allí la pantalla ya lleva un
@@ -107,7 +107,7 @@ export function OrdersCard({
                 Catálogo. Decían lo mismo con palabras distintas, y «tu enlace»
                 además obligaba a saber que el catálogo ES un enlace. */}
             <span className="text-xs leading-4 text-muted-foreground">
-              {vacia ? "Lo que tus clientes ordenan desde tu catálogo." : `${unattended} sin atender`}
+              {vacia ? "Lo que tus clientes ordenan desde tu catálogo." : `${unattended} sin registrar`}
             </span>
           </span>
         )}
