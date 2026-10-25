@@ -64,6 +64,24 @@ export type PagoDeLinea = {
 // to the payment. One object with both would make each screen responsible for
 // carrying the other's half -- which is exactly how the payment split lost
 // its `aManoBs` on 2026-10-23.
+// ===========================================================================
+// AND THE FINAL SUMMARY HAS TO SAY SO WHEN IT DIFFERS
+//
+// The owner's decision of 2026-10-24, answering the question this very edit
+// raises: *«el resumen final debe decir "el cliente pidió 5" y lo que se está
+// registrando cuando difiera»*.
+//
+// So «Resumen V2» (frame `1519:11271`) reads BOTH numbers and shows the pair
+// only where they disagree -- what the customer asked for and what is being
+// registered. That is why this type exists apart from the sealed line instead
+// of overwriting it: the moment the edit replaced `catalog_order_items`, the
+// original quantity would be gone and the summary would have nothing to
+// compare against.
+//
+// IT IS NOT BUILT YET -- the summary screen does not exist. This note is here
+// and not only in a commit message because whoever builds it will be reading
+// this file to find the edit, not searching the history for a decision they
+// do not know was taken.
 export type LineaEditada = {
   quantity: number;
   currency: string;
