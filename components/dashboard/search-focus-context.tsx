@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 // ¿Está el dueño escribiendo en el buscador de clientes?
 //
@@ -60,6 +60,58 @@ export function SearchFocusProvider({ children }: { children: React.ReactNode })
     }
     timer.current = setTimeout(() => setFocusedState(false), 180);
   }, []);
+
+  // ── EL INTERRUPTOR SE APAGA SOLO SI NADIE LO APAGA ──────────────────
+  //
+  // REPORTADO POR EL DUEÑO EL 2026-10-25, desde PRODUCCIÓN, y descrito como
+  // un fallo del catálogo: *«en ocasiones el botón flotante "Crear producto"
+  // se desaparece al igual que el navbar (…) debo salirme y volver a entrar
+  // (…) no siempre resuelve el problema a la primera»*.
+  //
+  // NO ERA DEL CATÁLOGO. Este `focused` lo encienden los buscadores de
+  // CLIENTES (Inicio y Cartera) y lo lee `mobile-nav.tsx`, que esconde la
+  // barra Y el flotante mientras se busca --decisión del 2026-10-18, para que
+  // no tapen el primer resultado--. Y este proveedor vive en
+  // `app/(app)/layout.tsx`, o sea POR ENCIMA de todas las pantallas: si se
+  // queda encendido en Inicio, el catálogo aparece sin barra y sin botón sin
+  // que nada en el catálogo tenga la culpa.
+  //
+  // POR QUÉ SE QUEDABA ENCENDIDO: sólo se apagaba en `onBlur`. **Quitar del
+  // DOM un elemento enfocado no dispara ningún evento** --ni `blur` ni
+  // `focusout`, por especificación-- así que navegar con el campo enfocado lo
+  // dejaba encendido para el resto de la sesión. Es la misma lección que
+  // `use-keyboard-open.ts` ya tenía escrita en su versión 2: «el foco
+  // sobrevive», y mirarlo a secas deja una pantalla muerta.
+  //
+  // Y POR QUÉ RECARGAR NO SIEMPRE LO ARREGLABA: salir y volver es navegación
+  // de cliente, que no desmonta este proveedor. Una recarga entera sí lo
+  // reinicia -- salvo que el navegador devuelva el foco al buscador al
+  // restaurar la página, que es cuando hay que recargar dos veces.
+  //
+  // ── POR QUÉ UN RELOJ Y NO UN `focusout` ───────────────────────────
+  //
+  // Porque el caso que falla es justo el que NO emite evento. Un oyente de
+  // `focusout` no se entera de un elemento que desaparece.
+  //
+  // Y NO PUEDE IR MÁS RÁPIDO QUE LOS 180ms DE ARRIBA. Ese retardo existe para
+  // que un toque sobre un resultado se resuelva antes de que la pantalla se
+  // recoloque; apagar esto en cuanto el foco sale del campo reintroduciría
+  // aquel fallo --abrir la ficha del cliente equivocado-- por otra puerta.
+  // 500ms está cómodamente por encima, y sólo corre mientras el interruptor
+  // está encendido, que es mientras el dueño está buscando.
+  useEffect(() => {
+    if (!focused) return;
+    const sigueEnUnCampo = (): boolean => {
+      const el = document.activeElement;
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+    };
+    const reloj = setInterval(() => {
+      if (!sigueEnUnCampo()) setFocusedState(false);
+    }, 500);
+    return () => clearInterval(reloj);
+  }, [focused]);
 
   const value = useMemo(() => ({ focused, setFocused }), [focused, setFocused]);
 

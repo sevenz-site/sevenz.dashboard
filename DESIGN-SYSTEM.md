@@ -2624,6 +2624,53 @@ a revisar es ese alguien.
 puesta por defecto convierte «no lo sé» en una afirmación sobre la cédula de
 alguien.
 
+## UN INTERRUPTOR QUE ESCONDE CHROME SE APAGA SOLO
+
+**Si un estado hace desaparecer la barra de navegación, el botón flotante o
+cualquier cosa que el tendero usa para salir, ese estado tiene que saber
+apagarse sin que nadie se lo pida.**
+
+Reportado por el dueño desde **producción** el 2026-10-25, y descrito como un
+fallo del catálogo: *«en ocasiones el botón flotante "Crear producto" se
+desaparece al igual que el navbar (…) debo salirme y volver a entrar (…) no
+siempre resuelve el problema a la primera»*.
+
+**No era del catálogo, y eso es la mitad de la lección.** El interruptor es
+`SearchFocusProvider`, que encienden los buscadores de CLIENTES de Inicio y
+Cartera, y lo lee `mobile-nav.tsx` para esconder barra y flotante mientras se
+busca. El proveedor vive en `app/(app)/layout.tsx`, **por encima de todas las
+pantallas**: encendido en Inicio, el catálogo nace sin barra y sin botón sin
+que nada del catálogo tenga la culpa. Por eso «a veces» y por eso el dueño
+miraba la pantalla equivocada.
+
+**Por qué se quedaba encendido**: sólo se apagaba en `onBlur`. **Quitar del DOM
+un elemento enfocado no dispara ningún evento** —ni `blur` ni `focusout`, por
+especificación— así que navegar con el buscador enfocado lo dejaba encendido
+para el resto de la sesión. Salir y volver es navegación de cliente y no
+desmonta el proveedor; sólo una recarga entera lo reiniciaba, y ni eso si el
+navegador devolvía el foco al campo al restaurar la página.
+
+**Las dos capas del arreglo, y las dos hacen falta:**
+
+1. **El campo apaga al desmontarse** (`useEffect(() => () => setFocused(false), […])`).
+   Es instantáneo y deja la intención escrita donde vive el campo.
+2. **El proveedor se cura solo**, con un reloj que comprueba si el foco sigue
+   en un campo de texto. Es la red para el buscador que mañana olvide el punto
+   1 — y para el caso que no emite evento, que es justo el que falla.
+
+**Y el reloj NO puede ir más rápido que el retardo de salida.** El proveedor
+espera 180ms antes de apagar para que un toque sobre un resultado se resuelva
+antes de que la pantalla se recoloque; sin eso se abre la ficha del cliente de
+arriba. Un reloj más rápido reintroduce ese fallo por la puerta de atrás. Hoy
+son 500ms contra 180.
+
+**La regla general, que es lo que se generaliza**: cualquier estado que
+esconda navegación se pregunta *«¿qué pasa si quien lo encendió desaparece sin
+avisar?»*. Si la respuesta es «se queda encendido», está roto — aunque la ruta
+que lo enciende sea otra pantalla y aunque el síntoma aparezca a tres
+pantallas de distancia. Es hermana de la lección de `use-keyboard-open.ts`:
+**el foco sobrevive al teclado, y mirarlo a secas deja una pantalla muerta.**
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI
