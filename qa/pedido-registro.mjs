@@ -78,12 +78,12 @@ const creados = { clientes: [], productos: [], pedidos: [], ventas: [] };
 
 // ── THE INPUT SHAPE, IN ONE PLACE ──────────────────────────────────────
 //
-// `CT-147` moves the term and the instalments off the line and onto the
-// currency. When it lands, these two functions are what change; nothing
-// below them does.
-function pagoDeLinea(lineaId, { amount = 0, plazo = "", cuotas = "" } = {}) {
+// `CT-147` landed on 2026-10-25 and this is what it changed: the term and
+// the instalments moved off the LINE and onto the CURRENCY, and a call now
+// registers one currency block instead of the whole order. Every assertion
+// below is untouched by that, which is what the two functions are for.
+function pagoDeMoneda({ amount = 0, plazo = "", cuotas = "" } = {}) {
   return {
-    lineaId,
     amount,
     entryCurrency: null,
     entryAmount: null,
@@ -95,8 +95,8 @@ function pagoDeLinea(lineaId, { amount = 0, plazo = "", cuotas = "" } = {}) {
   };
 }
 
-function entradaDe(pedidoId, pagos, cliente, editadas = {}) {
-  return { pedidoId, pagos, editadas, cliente };
+function entradaDe(pedidoId, moneda, pago, cliente, editadas = {}) {
+  return { pedidoId, moneda, pago, editadas, cliente };
 }
 
 function clienteNuevo(documento) {
@@ -256,7 +256,35 @@ try {
     tier: "retail",
   };
 
+  // A SECOND PRODUCT PRICED IN EUROS, for the two-currency order. Its own
+  // `base_currency` rather than converting the dollar one: a derived EUR
+  // price depends on today's rate being readable, so the suite would go red
+  // for a reason that has nothing to do with what it is testing.
+  const { data: prodEur, error: eProdEur } = await admin
+    .from("products")
+    .insert({
+      owner_id: ve.id,
+      name: `${MARCA} producto euros`,
+      base_currency: "EUR",
+      price_retail: 4,
+      published_retail: true,
+    })
+    .select("id")
+    .single();
+  if (eProdEur) throw new Error(`products EUR: ${eProdEur.message}`);
+  creados.productos.push(prodEur.id);
+
+  const lineaEuros = {
+    product_id: prodEur.id,
+    product_name: `${MARCA} producto euros`,
+    quantity: 3,
+    unit_price: 4,
+    currency: "EUR",
+    tier: "retail",
+  };
+
   const pedidoA = await nuevoPedido("contado", [lineaViva]);
+  const pedidoD = await nuevoPedido("dos monedas", [lineaViva, lineaEuros]);
   const pedidoB = await nuevoPedido("con linea muerta", [lineaViva, lineaMuerta]);
   const pedidoC = await nuevoPedido("todo muerto", [lineaMuerta]);
 
@@ -336,7 +364,8 @@ try {
   const rA = await registrar(
     entradaDe(
       pedidoA.id,
-      [pagoDeLinea(pedidoA.items[0].id, { amount: 10 })],
+      "USD",
+      pagoDeMoneda({ amount: 10 }),
       clienteNuevo("11111111"),
     ),
     pedidoA.id,
@@ -393,27 +422,24 @@ try {
   const rRepe = await registrar(
     entradaDe(
       pedidoA.id,
-      [pagoDeLinea(pedidoA.items[0].id, { amount: 10 })],
+      "USD",
+      pagoDeMoneda({ amount: 10 }),
       clienteNuevo("11111112"),
     ),
     pedidoA.id,
   );
   check(
-    "4. un pedido ya registrado se RECHAZA al segundo intento",
+    "4. una moneda ya registrada se RECHAZA al segundo intento",
     rRepe.ok === false && /ya se registró/i.test(rRepe.error ?? ""),
     rRepe.ok ? "LO REGISTRÓ OTRA VEZ" : rRepe.error,
   );
 
   // ═══ 5. LA LÍNEA SIN PRODUCTO SE EXCLUYE Y SE NOMBRA ══════════════════
-  const vivaB = pedidoB.items.find((i) => i.product_name === `${MARCA} producto`);
-  const muertaB = pedidoB.items.find((i) => i.product_name === `${MARCA} descatalogado`);
   const rB = await registrar(
     entradaDe(
       pedidoB.id,
-      [
-        pagoDeLinea(vivaB.id, { amount: 0, plazo: "15" }),
-        pagoDeLinea(muertaB.id, { amount: 0, plazo: "15" }),
-      ],
+      "USD",
+      pagoDeMoneda({ amount: 0, plazo: "15" }),
       clienteNuevo("22222222"),
     ),
     pedidoB.id,
@@ -457,7 +483,7 @@ try {
 
   // ═══ 7. SIN NINGUNA LÍNEA VIVA, SE RECHAZA ENTERO ═════════════════════
   const rC = await registrar(
-    entradaDe(pedidoC.id, [pagoDeLinea(pedidoC.items[0].id, { amount: 0 })], clienteNuevo("33333333")),
+    entradaDe(pedidoC.id, "USD", pagoDeMoneda({ amount: 0 }), clienteNuevo("33333333")),
     pedidoC.id,
   );
   check(
@@ -483,7 +509,7 @@ try {
     const ajeno = await nuevoPedido("de otro dueno", [lineaViva]);
     await admin.from("catalog_orders").update({ owner_id: otro.id }).eq("id", ajeno.id);
     rAjeno = await registrar(
-      entradaDe(ajeno.id, [pagoDeLinea(ajeno.items[0].id, { amount: 10 })], clienteNuevo("44444444")),
+      entradaDe(ajeno.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("44444444")),
       ajeno.id,
     );
   }
@@ -517,6 +543,136 @@ try {
     "9c. la dirección del pedido llega a la ficha del cliente",
     clienteA?.address === "Calle de prueba",
     `address = ${clienteA?.address ?? "null"}`,
+  );
+  // ═══ 11. DOS MONEDAS: DOS VENTAS, UN SOLO CLIENTE ════════════════════
+  //
+  // The whole of `CT-147` in one block. Before it, a two-currency order was
+  // registered line by line and one of the two terms was silently dropped;
+  // now each currency is its own pass, with its own term.
+  //
+  // The owner's decision of 2026-10-25: *«dos ventas pero el cliente se
+  // guarda al final de la primera venta y se usa para la segunda venta»*.
+  const rD1 = await registrar(
+    entradaDe(pedidoD.id, "USD", pagoDeMoneda({ amount: 0, plazo: "7" }), clienteNuevo("55555555")),
+    pedidoD.id,
+  );
+  check(
+    "11a. la primera moneda se registra y AVISA de la que queda",
+    rD1.ok === true && JSON.stringify(rD1.pendientes) === '["EUR"]',
+    rD1.ok ? `pendientes = ${JSON.stringify(rD1.pendientes)}` : rD1.error,
+  );
+  if (rD1.ok && rD1.clientId) creados.clientes.push(rD1.clientId);
+
+  const { data: selloMedio } = await admin
+    .from("catalog_orders")
+    .select("status, registered_at")
+    .eq("id", pedidoD.id)
+    .single();
+  check(
+    "11b. con una moneda sin cobrar el pedido NO se da por registrado",
+    selloMedio?.status !== "registered" && selloMedio?.registered_at == null,
+    `status ${selloMedio?.status} · registered_at ${selloMedio?.registered_at ?? "null"}`,
+  );
+
+  // THE SECOND PASS SENDS BACK THE FICHA THE FIRST ONE CREATED. If it did
+  // not, the order would end with the same person in the list twice — and
+  // the second time would fail outright on the unique document.
+  const rD2 = await registrar(
+    entradaDe(
+      pedidoD.id,
+      "EUR",
+      pagoDeMoneda({ amount: 12 }),
+      { ...clienteNuevo("55555555"), fichaId: rD1.ok ? rD1.clientId : null },
+    ),
+    pedidoD.id,
+  );
+  check(
+    "11c. la segunda moneda se registra y ya no queda ninguna",
+    rD2.ok === true && Array.isArray(rD2.pendientes) && rD2.pendientes.length === 0,
+    rD2.ok ? `pendientes = ${JSON.stringify(rD2.pendientes)}` : rD2.error,
+  );
+  check(
+    "11d. las dos ventas van al MISMO cliente, no a dos fichas",
+    rD1.ok === true && rD2.ok === true && rD1.clientId === rD2.clientId,
+    `${rD1.clientId} · ${rD2.clientId}`,
+  );
+
+  const { data: ventasD } = await admin
+    .from("sales")
+    .select("id")
+    .eq("catalog_order_id", pedidoD.id)
+    .is("deleted_at", null);
+  check(
+    "11e. el pedido queda enlazado con SUS DOS ventas por `catalog_order_id`",
+    ventasD?.length === 2,
+    `${ventasD?.length} ventas`,
+  );
+
+  const { data: selloFinal } = await admin
+    .from("catalog_orders")
+    .select("status, registered_at, sale_id")
+    .eq("id", pedidoD.id)
+    .single();
+  check(
+    "11f. con la última moneda cobrada, el pedido SÍ queda registrado",
+    selloFinal?.status === "registered" && selloFinal?.registered_at != null,
+    `status ${selloFinal?.status} · registered_at ${selloFinal?.registered_at ? "sí" : "no"}`,
+  );
+  check(
+    "11g. `sale_id` sigue apuntando a la PRIMERA venta, no la pisó la segunda",
+    rD1.ok === true && selloFinal?.sale_id === rD1.saleId,
+    `sale_id ${selloFinal?.sale_id === (rD1.ok ? rD1.saleId : null) ? "= la primera" : "= " + selloFinal?.sale_id}`,
+  );
+
+  // ═══ 12. CADA MONEDA SE QUEDA CON SU PROPIO PLAZO ═════════════════════
+  //
+  // This is the defect `CT-147` was opened for, stated as a check: dollars
+  // were agreed at 7 days and euros were paid in cash. Under the old flow a
+  // second dollar line with a longer term would have overwritten the 7 —
+  // «gana el plazo más largo», the patch the owner called a patch.
+  // `plazo_dias` Y NO `due_date`: la columna se llama así desde la migración
+  // `017`. La primera versión de esta fila preguntaba por `due_date`, la
+  // consulta fallaba entera, y el resultado era 12a en rojo con un mensaje
+  // que decía «no hay cargo» --y 12b en VERDE, porque una lista vacía cumple
+  // cualquier `every`. Una consulta rota no se parece a un dato: se parece a
+  // la respuesta que esperabas.
+  const { data: cargosD, error: errorCargos } = await admin
+    .from("movements")
+    .select("currency, amount, plazo_dias")
+    .in("sale_id", (ventasD ?? []).map((v) => v.id))
+    .eq("type", "charge");
+  const cargoUsd = (cargosD ?? []).find((m) => m.currency === "USD");
+  check(
+    "12a. el fiado en dólares conserva SU plazo de 7 días",
+    errorCargos == null && cargoUsd != null && Number(cargoUsd.plazo_dias) === 7,
+    errorCargos
+      ? `la consulta falló: ${errorCargos.message}`
+      : cargoUsd
+        ? `plazo_dias = ${cargoUsd.plazo_dias}, por $${cargoUsd.amount}`
+        : "no hay cargo en dólares",
+  );
+  check(
+    "12b. los euros se pagaron de contado, así que no dejan cargo",
+    errorCargos == null && (cargosD ?? []).every((m) => m.currency !== "EUR"),
+    errorCargos ? `la consulta falló: ${errorCargos.message}` : `cargos: ${(cargosD ?? []).map((m) => m.currency).join(", ") || "ninguno"}`,
+  );
+
+  // ═══ 13. UNA VENTA RECHAZADA NO DEJA UN CLIENTE HUÉRFANO ══════════════
+  //
+  // La fila que encontró el fallo, y lo encontró por la puerta de atrás: la
+  // limpieza del final dejaba un cliente vivo después del intento 4, el de
+  // registrar dos veces. La ficha se crea ANTES de llamar a `registrarVenta`
+  // --no hay otra forma, esa función necesita el id-- así que cualquier
+  // rechazo suyo dejaba una persona nueva en la lista del tendero que nunca
+  // compró nada. Venía de antes del rediseño.
+  const { count: huerfanos } = await admin
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .eq("document_id", "11111112");
+  check(
+    "13. el cliente del intento rechazado NO se queda en la lista del tendero",
+    (huerfanos ?? 0) === 0,
+    `${huerfanos} fichas con ese documento`,
   );
 } catch (e) {
   check("la suite llegó al final", false, e.message);

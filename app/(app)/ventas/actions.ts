@@ -801,17 +801,42 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   if (entrada.pedidoId) {
     const { data: pedido } = await supabase
       .from("catalog_orders")
-      .select("id, sale_id, registered_at")
+      .select("id")
       .eq("id", entrada.pedidoId)
       .eq("owner_id", user.id)
       .maybeSingle();
     if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
-    // LA PARADA DURA, y aquí es la que vale: las pantallas ya la tienen, pero
-    // una petición repetida --un doble toque, una pestaña vieja-- llega aquí
-    // sin pasar por ninguna, y lo que está en juego es que el cliente deba el
+    // ── LA PARADA DURA, AHORA POR MONEDA Y NO POR PEDIDO ──────────────
+    //
+    // Sigue siendo la que vale: las pantallas ya tienen la suya, pero una
+    // petición repetida --un doble toque, una pestaña vieja-- llega aquí sin
+    // pasar por ninguna, y lo que está en juego es que el cliente deba el
     // doble.
-    if (pedido.sale_id != null || pedido.registered_at != null) {
-      return { ok: false, error: "Este pedido ya se registró." };
+    //
+    // LO QUE CAMBIÓ ES QUÉ CUENTA COMO REPETIDA. Hasta la migración `158` un
+    // pedido daba UNA venta, así que `sale_id != null` bastaba. Desde la
+    // decisión del dueño del 2026-10-25 --dos monedas son dos ventas-- esa
+    // condición rechazaría la SEGUNDA moneda, que es trabajo legítimo. Lo
+    // repetido es volver a registrar una moneda que este pedido ya tiene
+    // vendida.
+    //
+    // SE PREGUNTA POR `sales.catalog_order_id` Y NO POR `catalog_orders.
+    // sale_id`: el segundo solo guarda la PRIMERA venta, así que con él la
+    // tercera moneda pasaría dos veces.
+    const { data: ventasDelPedido } = await supabase
+      .from("sales")
+      .select("id, sale_lines(currency)")
+      .eq("catalog_order_id", pedido.id)
+      .is("deleted_at", null);
+    const monedasVendidas = new Set<string>();
+    for (const v of ventasDelPedido ?? []) {
+      for (const l of (v.sale_lines ?? []) as { currency: string | null }[]) {
+        if (l.currency != null) monedasVendidas.add(String(l.currency));
+      }
+    }
+    const repetida = entrada.lineas.find((l) => monedasVendidas.has(String(l.currency)));
+    if (repetida) {
+      return { ok: false, error: "Esa parte del pedido ya se registró." };
     }
     const { data: lineasDelPedido } = await supabase
       .from("catalog_order_items")
@@ -1026,6 +1051,13 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       client_id: cliente.id,
       created_by: user.id,
       note: entrada.nota?.trim() ? entrada.nota.trim().slice(0, 500) : null,
+      // EL ENLACE CON EL PEDIDO VA EN EL INSERT, no en un `update` después.
+      // Migración `158`: varias ventas pueden compartir pedido, una por
+      // moneda, así que esta columna es la que de verdad los une. Puesta
+      // aquí, una venta nacida de un pedido no puede existir ni un instante
+      // sin decir de cuál -- que es justo el hueco por el que se pierde el
+      // rastro cuando el `update` de después falla.
+      catalog_order_id: entrada.pedidoId ?? null,
     })
     .select("id")
     .single();
@@ -1151,24 +1183,33 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     fiado.push({ currency: resto.currency, amount: resto.amount, movementId: movimiento.id });
   }
 
-  // ── EL PEDIDO QUEDA SELLADO COMO REGISTRADO ─────────────────────────
+  // ── EL PEDIDO APUNTA A SU PRIMERA VENTA ─────────────────────────────
   //
   // DESPUÉS de escribir la venta y no antes, y el orden importa: si esto
-  // fuera primero y la venta fallara, el pedido quedaría marcado como
-  // registrado sin venta detrás --imposible de registrar y sin nada que
-  // enseñar--.
+  // fuera primero y la venta fallara, el pedido apuntaría a una venta que no
+  // existe.
+  //
+  // SOLO SI ESTÁ VACÍO. Desde la `158` un pedido puede dar varias ventas y
+  // `sale_id` significa «la primera»; pisarlo con la segunda moneda borraría
+  // el único dato que dice por dónde empezó. El enlace completo ya viaja en
+  // `sales.catalog_order_id`, puesto en el insert de arriba.
+  //
+  // QUIÉN LO DA POR TERMINADO NO ES ESTA FUNCIÓN, y es deliberado: un pedido
+  // está registrado cuando TODAS sus monedas tienen venta, y cuáles son sus
+  // monedas depende de lo que «Editar» haya movido --que esta función no sabe
+  // y no tiene por qué saber--. Lo sella `registrarPedidoComoVenta`, que sí
+  // tiene delante las líneas y sus ediciones.
   //
   // UN FALLO AQUÍ NO TUMBA LA VENTA, que ya está escrita y es la que lleva el
-  // dinero. Lo que queda es un pedido que sigue ofreciendo «Registrar», y la
-  // parada dura de más arriba lo atrapa al segundo intento: `sale_id` es
-  // null, pero el cliente ya tiene su cargo. Se escribe en el log para que se
-  // pueda arreglar a mano, que es lo único peor que esto: que no se sepa.
+  // dinero. Se escribe en el log para que se pueda arreglar a mano, que es lo
+  // único peor que esto: que no se sepa.
   if (entrada.pedidoId) {
     const { error: errorSello } = await supabase
       .from("catalog_orders")
-      .update({ sale_id: venta.id, registered_at: new Date().toISOString(), status: "registered" })
+      .update({ sale_id: venta.id })
       .eq("id", entrada.pedidoId)
-      .eq("owner_id", user.id);
+      .eq("owner_id", user.id)
+      .is("sale_id", null);
     if (errorSello) {
       console.error("registrarVenta sello del pedido:", errorSello.message, {
         pedidoId: entrada.pedidoId,
