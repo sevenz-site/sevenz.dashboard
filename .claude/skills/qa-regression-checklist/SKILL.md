@@ -704,6 +704,41 @@ caía dentro de la banda. El que rompe es el caso de en medio, no un extremo:
 | Venta de contado | **667-707** | 652-708 | **solapa** |
 | Venta de mostrador | 481-521 | 652-708 | limpio |
 
+### Y SE MIDEN TODOS LOS BOTONES DE LA PANTALLA, no el último ni el señalado
+
+**La tabla de arriba solo lista «Compartir», y por eso esta sección volvió a
+dar «limpio» el 2026-10-25 mirando el botón equivocado.** La pantalla de venta
+registrada tiene DOS botones propios, y el que estaba roto era el segundo:
+
+| Botón | Rectángulo | Barra fija | |
+|---|---|---|---|
+| «Compartir» | 667-707 | 723-812 | vivo ✓ (es el que se arregló el 2026-10-24) |
+| **«Ver ‹nombre›»** | **723-763** | 723-812 | **MUERTO** |
+
+Tocarlo abre **Reportes, Catálogo o Clientes** según dónde caiga el dedo —
+medido en tres puntos del botón. Es `CT-148`.
+
+**Así que la comprobación es sobre el conjunto**, y el filtro es «propio de la
+pantalla», no «el último»:
+
+```js
+const propios = [...document.querySelector('main').querySelectorAll('a,button')]
+  .filter((b) => b.offsetParent !== null && !b.closest('nav'));
+for (const b of propios) {
+  const r = b.getBoundingClientRect();
+  const e = document.elementFromPoint(
+    Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+  console.log(b.textContent.trim(), b.contains(e) || e === b ? 'vivo' : 'MUERTO');
+}
+```
+
+**Y un botón alcanzable desplazando sigue siendo un fallo.** El documento de
+esa pantalla mide 938 con un viewport de 812, así que bajando 126px el botón
+sale de debajo de la barra y funciona. No lo salva: en reposo no se ve **ni un
+píxel** de él, la página parece terminar en el botón de arriba, y nadie se
+desplaza buscando algo que no sabe que existe. Un botón escondido donde nadie
+tiene motivo para mirar es, en la práctica, un botón que no está.
+
 **Si hay que quitar algo fijo, antes se comprueba que quede salida.** Las dos
 pantallas de éxito conservan la cabecera con «Abrir menú», así que quitarles la
 barra no encierra a nadie. Importa sobre todo en la venta de mostrador: no hay
