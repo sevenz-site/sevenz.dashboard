@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { CircleUserRound, UserRoundSearch } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
 import type { OrderClientMatch } from "@/lib/orders/order-client-match";
 import { OrderClientPickerSheet } from "@/components/dashboard/order-client-picker-sheet";
@@ -54,6 +54,7 @@ export function OrderClientCard({
   tipoDeDocumento,
   telefono,
   coincidencia,
+  ledger,
 }: {
   // As the CUSTOMER typed it in the cart, never the ficha's. The two can
   // differ and seeing both is what lets the shopkeeper judge the match.
@@ -64,6 +65,9 @@ export function OrderClientCard({
   // One ficha, several, or none. See `findOrderClient` for why it is matched
   // by document and nothing else, and why «several» is its own answer.
   coincidencia: OrderClientMatch;
+  // La tasa vigente, que la hoja de la cuenta necesita para enseñar bolívares.
+  // `null` en un negocio colombiano, que no tiene segunda línea.
+  ledger: LedgerDisplay | null;
 }) {
   const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
   // THE ADDRESS COMES FROM THE FICHA, NOT FROM THE ORDER. The owner's
@@ -148,12 +152,13 @@ export function OrderClientCard({
       )}
 
       {cliente ? (
-        <Button variant="outline" size="sm" className="h-10 w-full" asChild>
-          {/* THE FICHA'S NAME AND NOT THE ORDER'S. The button says where it
-              goes, and it goes to the client this shop has on file — which is
-              the name that will be at the other end. */}
-          <Link href={`/clients/${cliente.id}`}>Ver {cliente.name}</Link>
-        </Button>
+        // ABRE UNA HOJA, NO NAVEGA. Petición del dueño el 2026-10-25, para no
+        // salir del flujo de registrar el pedido. Ver `OrderClientSheetButton`.
+        <OrderClientSheetButton
+          clientId={cliente.id}
+          clientName={cliente.name}
+          ledger={ledger}
+        />
       ) : null}
 
       {coincidencia.kind === "varios" ? (

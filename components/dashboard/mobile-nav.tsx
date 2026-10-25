@@ -653,10 +653,17 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // NO ENCIERRA A NADIE: las cuatro pantallas llevan su propia fila de volver
   // (`ScreenBackRow` con `soloEnTelefono={false}`), y el paso 1/4 es el
   // detalle del pedido, que sí tiene barra.
-  const enRegistroDePedido = /^\/productos\/ordenes\/[^/]+\/registrar(\/|$)/.test(
-    pathname,
-  );
-  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enRegistroDePedido)
+  // EL DETALLE DE UN PEDIDO TAMBIÉN, desde el 2026-10-25. Petición del
+  // dueño con la captura y el círculo en rojo: *«botón «Marcar como
+  // atendido» y navbar no aparecen en esta pantalla de nuevo pedido»*. Y el
+  // frame le da la razón: `1655:15864` termina en «Registrar pedido», sin
+  // barra y sin segundo botón.
+  //
+  // `[^/]+` DESPUÉS DE `ordenes/` Y NO `startsWith`: la LISTA de pedidos
+  // (`/productos/ordenes` a secas) conserva su barra, porque es una lista a
+  // la que se llega desde el catálogo y de la que se sale navegando.
+  const enPedidoConcreto = /^\/productos\/ordenes\/[^/]+(\/|$)/.test(pathname);
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enPedidoConcreto)
     return null;
 
   return (

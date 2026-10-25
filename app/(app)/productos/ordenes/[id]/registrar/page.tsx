@@ -134,6 +134,8 @@ export default async function RegistrarPedidoPage({
         tipoDeDocumento={pedido.customer_document_type}
         telefono={pedido.customer_whatsapp_raw ?? pedido.customer_whatsapp ?? ""}
         coincidencia={clienteDelPedido}
+        // La tasa vigente, para la hoja de la cuenta del cliente.
+        ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
       />
 
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>

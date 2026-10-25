@@ -56,9 +56,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // hace. Y hace falta además porque el paso 2/4 monta `StickyActions`: con la
   // barra dibujada, esa barra de botones se queda DEBAJO de ella, que es el
   // defecto que `CT-148` midió en otra pantalla.
-  const enRegistroDePedido = /^\/productos\/ordenes\/[^/]+\/registrar(\/|$)/.test(
-    pathname,
-  );
+  // Y EL DETALLE DE UN PEDIDO, desde el 2026-10-25, por la misma petición
+  // del dueño: ni barra ni su altura reservada. La LISTA sí la conserva, de
+  // ahí el `[^/]+` y no un `startsWith`.
+  const enRegistroDePedido = /^\/productos\/ordenes\/[^/]+(\/|$)/.test(pathname);
   const enAsistenteDeVenta =
     enRegistroDePedido ||
     pathname.startsWith("/ventas/nueva") ||

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { formatCantidad } from "@/lib/products/cantidad";
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
-import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
 import { OrderClientCard } from "@/components/dashboard/order-client-card";
+import {
+  OrderProductSheet,
+  OrderProductRowButton,
+} from "@/components/dashboard/order-product-sheet";
 import { findOrderClient } from "@/lib/orders/order-client-match";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
@@ -19,7 +21,6 @@ import {
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
-  isUnattended,
   readOrderProducts,
   totalsByCurrency,
   type CatalogOrderRow,
@@ -27,8 +28,7 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
-import {} from "@/components/dashboard/order-product-card";
-import type { BolivarRates } from "@/lib/products/price";
+import type { BolivarRates, PriceTier } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // ONE ORDER'S PAGE. Deliverable D, reading half.
@@ -117,7 +117,7 @@ export default async function OrdenPage({
   // Las dos en el mismo viaje, y no al abrir el diálogo: el detalle ya está
   // montado, así que pedirlo al tocar pondría una espera justo donde se
   // espera una respuesta inmediata.
-  const [, rateContext] = await Promise.all([
+  const [productosPorId, rateContext] = await Promise.all([
     readOrderProducts(supabase, user!.id, items),
     getOwnerRateContext(supabase, user!.id),
   ]);
@@ -173,19 +173,6 @@ export default async function OrdenPage({
 
   const cuando = fecha(pedido.created_at);
 
-  // WHEN IT WAS ATTENDED, FORMATTED HERE AND NOT IN THE BUTTON. The button is
-  // a client component, and `Intl` with no `timeZone` there would use the
-  // phone's zone -- the owner's, usually, but not when they are travelling or
-  // their device is set to another country. This page already knows the
-  // business's zone and the line above it ("Fecha de pedido") is printed with
-  // it, so the two dates on the screen are read in the same clock.
-  //
-  // It can be null with the order already out of 'new': `registered` and
-  // `discarded` are set by buttons that do not exist yet (`CT-70`), and
-  // nothing forces them to stamp `seen_at`. The sentence then drops the date
-  // instead of printing "Invalid Date".
-  const atendidoEl = pedido.seen_at ? fecha(pedido.seen_at) : null;
-
   return (
     <div className="flex flex-col gap-4">
       {/* THE SAME BACK BAR AS NOTIFICACIONES, at the owner's request on
@@ -230,6 +217,8 @@ export default async function OrdenPage({
         tipoDeDocumento={pedido.customer_document_type}
         telefono={pedido.customer_whatsapp_raw || ""}
         coincidencia={clienteDelPedido}
+        // La tasa vigente, para la hoja de la cuenta del cliente.
+        ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
       />
 
       {/* LAS DOS FILAS QUE NO SON DEL CLIENTE SINO DEL PEDIDO, y por eso
@@ -301,50 +290,51 @@ export default async function OrdenPage({
           producto antes de los totales, y es lo que esta pantalla existe para
           contestar: qué pidió y cuánto es.
 
-          SE REPUSO EL 2026-10-25. Al separar el `1/4 Pedido` en su propia
-          pantalla se fue con él la lista de productos, y el detalle se quedó
-          enseñando totales de algo que no decía qué era. Lo cazó abrirlo en
-          el navegador, no el compilador: quitar de más no rompe nada.
+          LA FILA ES `OrderProductRowButton`, Y ESO NO ES REUTILIZAR POR
+          REUTILIZAR: el frame de la tarjeta (`1655:15893`) dibuja foto de
+          40×40, nombre en 16 semibold, «00 x $00.00 · al detal» en 12, la
+          bandera de la moneda junto al precio y un chevron. Ese componente es
+          exactamente eso, hasta el respaldo cuando no hay foto.
 
-          AQUÍ NO HAY BOTONES. Lo que escribe dinero vive en el 1/4; esta
-          pantalla se mira. */}
+          SE PERDIÓ Y SE REPUSO DOS VECES EL MISMO DÍA. Al separar el `1/4` en
+          su propia pantalla se fue con los bloques; lo repuse a mano, con una
+          fila plana sin foto, sin bandera y sin chevron, y el dueño lo
+          reportó con el frame delante. Escribir de nuevo algo que ya estaba
+          escrito es cómo una pantalla deja de parecerse a su diseño sin que
+          nadie borre nada.
+
+          EL CHEVRON ABRE LA HOJA DEL PRODUCTO, que es lo que promete: la
+          descripción, la foto grande y el stock de hoy. Aquí no hay botones
+          que escriban dinero — eso vive en el `1/4`. */}
       {items.length > 0 ? (
         <>
           <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
-          <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+          <div className="flex flex-col gap-2">
             {items.map((item) => {
-              const porPagar =
-                Math.round(
-                  Number(item.quantity) * Number(item.unit_price) * 100,
-                ) / 100;
+              const producto = item.product_id
+                ? (productosPorId.get(item.product_id) ?? null)
+                : null;
               return (
-                <div
+                <OrderProductSheet
                   key={item.id}
-                  className="flex items-start justify-between gap-3"
+                  nombreEnElPedido={item.product_name}
+                  cantidad={Number(item.quantity)}
+                  precioUnitario={Number(item.unit_price)}
+                  moneda={item.currency as PriceCurrency}
+                  escalon={item.tier as PriceTier}
+                  comentario={item.comment}
+                  producto={producto}
+                  rates={rates}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{item.product_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatCantidad(Number(item.quantity))} ×{" "}
-                      {formatPriceAmount(
-                        Number(item.unit_price),
-                        item.currency as PriceCurrency,
-                      )}{" "}
-                      · {item.tier === "wholesale" ? "al mayor" : "al detal"}
-                    </p>
-                    {item.comment ? (
-                      <p className="mt-1 text-sm whitespace-pre-line text-muted-foreground">
-                        {item.comment}
-                      </p>
-                    ) : null}
-                  </div>
-                  <p className="shrink-0 font-semibold tabular-nums">
-                    {formatPriceAmount(
-                      porPagar,
-                      item.currency as PriceCurrency,
-                    )}
-                  </p>
-                </div>
+                  <OrderProductRowButton
+                    nombre={item.product_name}
+                    cantidad={Number(item.quantity)}
+                    precioUnitario={Number(item.unit_price)}
+                    moneda={item.currency as PriceCurrency}
+                    escalon={item.tier as PriceTier}
+                    fotoPath={producto?.photo_path ?? null}
+                  />
+                </OrderProductSheet>
               );
             })}
           </div>
@@ -435,13 +425,19 @@ export default async function OrdenPage({
         </div>
       ) : null}
 
-      <div className="pt-1">
-        <OrderAttendButton
-          orderId={pedido.id}
-          atendido={!isUnattended(pedido)}
-          atendidoEl={atendidoEl}
-        />
-      </div>
+      {/* ── «MARCAR COMO ATENDIDO» SE FUE DE AQUÍ ──────────────────────
+          Petición del dueño el 2026-10-25, con la captura y el círculo en
+          rojo, junto con la barra de navegación. El frame del detalle
+          (`1655:15864`) tampoco lo dibuja: esa pantalla termina en «Registrar
+          pedido».
+
+          LO QUE ESTO DEJA ABIERTO, Y SE DIJO EN VOZ ALTA: era el ÚNICO sitio
+          de la app desde donde se podía marcar un pedido como atendido. Al
+          quitarlo, esa acción no tiene puerta. Está puesto al dueño como
+          pregunta — si registrarlo pasa a ser lo que lo da por atendido (que
+          es la premisa de `CT-83`), el botón sobra; si no, hay que darle sitio
+          en la lista de Pedidos. `OrderAttendButton` y `markOrderAttended`
+          siguen existiendo y no se tocan hasta que lo decida. */}
     </div>
   );
 }
