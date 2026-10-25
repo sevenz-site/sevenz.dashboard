@@ -167,33 +167,39 @@ try {
   if (eVe) throw new Error(`owners VE: ${eVe.message}`);
 
   const usuarios = await admin.auth.admin.listUsers({ perPage: 200 });
-  const correo = usuarios.data.users.find((u) => u.id === ve.id)?.email;
-  if (!correo) throw new Error("el dueño VE no tiene correo con el que abrir sesión");
-  const { data: link } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email: correo,
-  });
+
+  // UNA FUNCIÓN Y NO UN BLOQUE, porque hacen falta DOS sesiones: la del dueño
+  // venezolano y la del colombiano. Escribir la segunda a mano, copiada, es
+  // cómo las dos dejan de ser la misma cosa el día que una cambie.
   const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     auth: { persistSession: false },
   });
-  const { data: verificado, error: eOtp } = await anon.auth.verifyOtp({
-    type: "magiclink",
-    token_hash: link.properties.hashed_token,
-  });
-  if (eOtp) throw new Error(`verifyOtp: ${eOtp.message}`);
-
-  const nombreCookie = `sb-${ref}-auth-token`;
-  const valor =
-    "base64-" + Buffer.from(JSON.stringify(verificado.session), "utf8").toString("base64url");
-  const MAX = 3180;
-  const cookie = (
-    valor.length <= MAX
-      ? [`${nombreCookie}=${valor}`]
-      : Array.from(
-          { length: Math.ceil(valor.length / MAX) },
-          (_, i) => `${nombreCookie}.${i}=${valor.slice(i * MAX, (i + 1) * MAX)}`,
-        )
-  ).join("; ");
+  async function cookieDe(ownerId, etiqueta) {
+    const correo = usuarios.data.users.find((u) => u.id === ownerId)?.email;
+    if (!correo) throw new Error(`el dueño ${etiqueta} no tiene correo con el que abrir sesión`);
+    const { data: link } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: correo,
+    });
+    const { data: verificado, error: eOtp } = await anon.auth.verifyOtp({
+      type: "magiclink",
+      token_hash: link.properties.hashed_token,
+    });
+    if (eOtp) throw new Error(`verifyOtp ${etiqueta}: ${eOtp.message}`);
+    const nombreCookie = `sb-${ref}-auth-token`;
+    const valor =
+      "base64-" + Buffer.from(JSON.stringify(verificado.session), "utf8").toString("base64url");
+    const MAX = 3180;
+    return (
+      valor.length <= MAX
+        ? [`${nombreCookie}=${valor}`]
+        : Array.from(
+            { length: Math.ceil(valor.length / MAX) },
+            (_, i) => `${nombreCookie}.${i}=${valor.slice(i * MAX, (i + 1) * MAX)}`,
+          )
+    ).join("; ");
+  }
+  const cookie = await cookieDe(ve.id, "VE");
 
   // ── THE FIXTURES ──────────────────────────────────────────────────────
   //
@@ -310,13 +316,13 @@ try {
   // `{ok:false}`, because the rows that EXPECT a rejection would otherwise
   // go green against an unreachable action. Nine rows did exactly that once
   // in `qa/venta-accion.mjs`, with every call answering HTTP 404.
-  async function registrar(entrada, pedidoId) {
+  async function registrar(entrada, pedidoId, comoCookie = cookie) {
     const res = await fetch(`${BASE}/productos/ordenes/${pedidoId}/registrar/cliente`, {
       method: "POST",
       headers: {
         "Next-Action": accion,
         "Content-Type": "text/plain;charset=UTF-8",
-        Cookie: cookie,
+        Cookie: comoCookie,
       },
       body: JSON.stringify([entrada]),
     });
@@ -781,6 +787,148 @@ try {
     (huerfanos ?? 0) === 0,
     `${huerfanos} fichas con ese documento`,
   );
+  // ═══ 15. COLOMBIA, QUE NO ES OPCIONAL ════════════════════════════════
+  //
+  // `CLAUDE.md` lo tiene escrito para las ventas y esto PRODUCE ventas:
+  // *«COLOMBIA TIENE SU PROPIA FIXTURE Y NO ES OPCIONAL»*. Un negocio
+  // colombiano lleva UN solo libro y sus dos mitades se escriben distinto --
+  // `sale_lines.currency` dice `'COP'` y `movements.currency` dice `NULL`--,
+  // así que cruzar esas dos columnas en bruto no casa nunca. Ya costó una
+  // fila fantasma de contado en la pantalla del propio cliente el 2026-10-20,
+  // y ninguna prueba de dev lo habría cazado porque no había una sola venta
+  // de un negocio colombiano.
+  //
+  // AQUÍ LO QUE SE COMPRUEBA ES EL FLUJO DEL PEDIDO: que un bloque en COP se
+  // registre, que el fiado escriba su cargo con `currency` NULA, y que el
+  // pedido quede sellado. Sin esto, el flujo nuevo saldría a producción
+  // probado solo contra Venezuela.
+  const { data: co } = await admin
+    .from("owners")
+    .select("id, country")
+    .eq("country", "CO")
+    .order("id")
+    .limit(1)
+    .maybeSingle();
+
+  if (!co) {
+    check("15. Colombia: hay un dueño CO en dev con el que probar", false, "no hay ninguno");
+  } else {
+    const { data: prodCo } = await admin
+      .from("products")
+      .insert({
+        owner_id: co.id,
+        name: `${MARCA} producto COP`,
+        base_currency: "COP",
+        price_retail: 8000,
+        published_retail: true,
+      })
+      .select("id")
+      .single();
+    creados.productos.push(prodCo.id);
+
+    const { data: pedCo } = await admin
+      .from("catalog_orders")
+      .insert({
+        owner_id: co.id,
+        customer_name: `${MARCA} comprador CO`,
+        customer_document: "1098765",
+        customer_whatsapp: "573001112233",
+        customer_whatsapp_raw: "3001112233",
+      })
+      .select("id")
+      .single();
+    creados.pedidos.push(pedCo.id);
+    const { data: itemsCo } = await admin
+      .from("catalog_order_items")
+      .insert([
+        {
+          order_id: pedCo.id,
+          product_id: prodCo.id,
+          product_name: `${MARCA} producto COP`,
+          quantity: 2,
+          unit_price: 8000,
+          currency: "COP",
+          tier: "retail",
+        },
+      ])
+      .select("id");
+    void itemsCo;
+
+    // La acción corre con la sesión del dueño VE, así que un pedido del
+    // colombiano tiene que salir por el candado de propiedad -- que es en sí
+    // mismo lo que la fila 8 prueba, y aquí vuelve a quedar cubierto.
+    const rCoAjeno = await registrar(
+      entradaDe(pedCo.id, "COP", pagoDeMoneda({ amount: 0 }), clienteNuevo("88888888")),
+      pedCo.id,
+    );
+    check(
+      "15a. el pedido del dueño colombiano no lo puede registrar otro dueño",
+      rCoAjeno.ok === false && /No encontramos ese pedido/i.test(rCoAjeno.error ?? ""),
+      rCoAjeno.ok ? "LO REGISTRÓ" : rCoAjeno.error,
+    );
+
+    // ── Y AHORA DE VERDAD: REGISTRADO POR EL TENDERO COLOMBIANO ──────
+    //
+    // Con SU sesión, no con la del venezolano. Las dos filas anteriores de
+    // esta sección comprobaban la fixture --que la línea estuviera en COP--
+    // y eso no prueba nada del flujo: la fixture la escribe esta misma
+    // suite. Lo que hay que saber es si un tendero colombiano puede llegar
+    // al final.
+    const cookieCo = await cookieDe(co.id, "CO");
+    const rCo = await registrar(
+      entradaDe(pedCo.id, "COP", pagoDeMoneda({ amount: 0, plazo: "30" }), clienteNuevo("1098765")),
+      pedCo.id,
+      cookieCo,
+    );
+    check(
+      "15b. el tendero COLOMBIANO registra su pedido, con su propia sesión",
+      rCo.ok === true,
+      rCo.ok ? rCo.saleId : rCo.error,
+    );
+    if (rCo.ok && rCo.clientId) creados.clientes.push(rCo.clientId);
+
+    const { data: lineasCo } = await admin
+      .from("sale_lines")
+      .select("currency, unit_price, quantity")
+      .eq("sale_id", rCo.saleId ?? VACIO);
+    check(
+      "15c. la venta se escribe en COP, al precio sellado",
+      lineasCo?.length === 1 &&
+        lineasCo[0].currency === "COP" &&
+        Number(lineasCo[0].unit_price) === 8000,
+      lineasCo?.length ? `${lineasCo[0].currency} ${lineasCo[0].unit_price}` : "sin líneas",
+    );
+
+    // LA MITAD QUE NO CASA, y es la que costó la fila fantasma el 2026-10-20:
+    // `sale_lines` dice COP y `movements` dice NULL. Las dos son correctas; lo
+    // que no se puede es cruzarlas en bruto.
+    const { data: movsCo } = await admin
+      .from("movements")
+      .select("type, amount, currency, plazo_dias")
+      .eq("sale_id", rCo.saleId ?? VACIO);
+    check(
+      "15d. su cargo va al libro único: `movements.currency` es NULA, no «COP»",
+      movsCo?.length === 1 &&
+        movsCo[0].type === "charge" &&
+        movsCo[0].currency == null &&
+        Number(movsCo[0].amount) === 16000,
+      movsCo?.length
+        ? `${movsCo[0].type} ${movsCo[0].amount} currency=${movsCo[0].currency ?? "null"}`
+        : "ningún movimiento",
+    );
+
+    const { data: selloCo } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at")
+      .eq("id", pedCo.id)
+      .single();
+    check(
+      "15e. y el pedido colombiano queda registrado, como el venezolano",
+      selloCo?.status === "registered" && selloCo?.registered_at != null,
+      `status ${selloCo?.status}`,
+    );
+  }
+
 } catch (e) {
   check("la suite llegó al final", false, e.message);
 } finally {
