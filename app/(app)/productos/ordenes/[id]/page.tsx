@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
 import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
+import { OrderClientCard } from "@/components/dashboard/order-client-card";
+import { findOrderClient } from "@/lib/orders/order-client-match";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
-import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
+import { formatReceiptDateTime } from "@/lib/format";
 import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import {
   ORDER_COLUMNS,
@@ -19,9 +21,9 @@ import {
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import {
-  OrderProductDialog,
+  OrderProductSheet,
   OrderProductRowButton,
-} from "@/components/dashboard/order-product-dialog";
+} from "@/components/dashboard/order-product-sheet";
 import type { BolivarRates, PriceTier } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
@@ -69,13 +71,18 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   if (!order) notFound();
   const pedido = order as CatalogOrderRow;
 
-  const [{ data: itemRows, error: errorItems }, country] = await Promise.all([
+  const [{ data: itemRows, error: errorItems }, country, clienteDelPedido] = await Promise.all([
     supabase
       .from("catalog_order_items")
       .select(ORDER_ITEM_COLUMNS)
       .eq("order_id", pedido.id)
       .order("product_name", { ascending: true }),
     readOwnerCountry(supabase, user!.id),
+    // WHETHER THIS SHOP ALREADY HAS THIS CUSTOMER. Matched by document, the
+    // owner's decision of 2026-10-24 -- see `findOrderClient` for why not by
+    // phone and not by name. It goes in the same batch and not after it: the
+    // card at the top of the screen cannot be drawn without the answer.
+    findOrderClient(supabase, user!.id, pedido.customer_document, pedido.customer_document_type),
   ]);
 
   if (errorItems) console.error("[orders] detail items:", errorItems.message);
@@ -154,23 +161,32 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
       <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
 
-      <ScreenTitle>{pedido.customer_name}</ScreenTitle>
+      {/* «Nuevo pedido» Y NO EL NOMBRE DEL CLIENTE — frame `1518:10873`, y
+          el dueño renombró la página de Figma así el 2026-10-24.
 
-      <h2 className="mt-1 text-xl font-semibold">Datos del cliente</h2>
-      <div className="rounded-lg border bg-muted/30 px-3 py-2">
-        <Fila nombre="Nombre">{pedido.customer_name}</Fila>
-        {/* CON SU LETRA desde la migración `155`, que añadió la columna y el
-            selector al formulario público. `null` en los pedidos anteriores:
-            a esos clientes nunca se les preguntó. */}
-        <Fila nombre="Documento">
-          {formatDocumentId(pedido.customer_document, pedido.customer_document_type)}
-        </Fila>
-        {/* THE RAW ONE, NOT THE NORMALISED ONE: it is what the person
-            typed, and what the shopkeeper needs in order to judge whether it
-            is right. The normalised one is the key the database stores it
-            under, not something to show anybody. */}
-        <Fila nombre="WhatsApp">{pedido.customer_whatsapp_raw || "—"}</Fila>
-        <Fila nombre="Fecha de pedido">{cuando}</Fila>
+          QUÉ SE PIERDE Y POR QUÉ SE PUEDE PERDER: el título decía de quién
+          era el pedido. Ahora lo dice la tarjeta de debajo, con su nombre, su
+          cédula, su teléfono y su dirección — más de lo que cabía en un
+          título, y a dos centímetros. */}
+      <ScreenTitle>Nuevo pedido</ScreenTitle>
+
+      {/* QUIÉN PIDIÓ, Y SI YA ESTÁ EN LA CUENTA — frames `1518:10879` y
+          `1514:10294`. Sustituye a la lista de filas «Nombre / Documento /
+          WhatsApp» que había aquí: las mismas cuatro cosas, más la única que
+          el tendero no podía saber sin ir a buscarla. */}
+      <OrderClientCard
+        nombreDelPedido={pedido.customer_name}
+        documentoDelPedido={pedido.customer_document}
+        tipoDeDocumento={pedido.customer_document_type}
+        telefono={pedido.customer_whatsapp_raw || ""}
+        coincidencia={clienteDelPedido}
+      />
+
+      {/* LAS DOS FILAS QUE NO SON DEL CLIENTE SINO DEL PEDIDO, y por eso
+          quedan fuera de su tarjeta — frame `1518:10873`, que las dibuja
+          debajo. La fecha es cuándo pidió; el permiso es de este pedido. */}
+      <div className="flex flex-col rounded-[10px] border px-4 py-1">
+        <Fila nombre="Fecha del pedido:">{cuando}</Fila>
         {/* "Notificaciones" and not "Avisos", "Aceptada" and not "Los
             aceptó": the owner's wording, 2026-10-16. */}
         <Fila nombre="Notificaciones por WhatsApp">
@@ -238,7 +254,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
             // vivía aquí debajo y podía ser un párrafo entero: con la fila
             // ahora tocable, un bloque de texto dentro del botón convierte
             // una lista de dos renglones en una pared.
-            <OrderProductDialog
+            <OrderProductSheet
               key={item.id}
               nombreEnElPedido={item.product_name}
               cantidad={Number(item.quantity)}
@@ -261,7 +277,7 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                     : null
                 }
               />
-            </OrderProductDialog>
+            </OrderProductSheet>
           ))
         )}
       </div>

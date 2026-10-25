@@ -1,4 +1,5 @@
 import { validatePasswordComplexity } from "@/lib/password";
+import { parseMoneyInput } from "@/lib/products/price";
 
 // Blocking, field-level validation shown as red text under the input.
 //
@@ -49,8 +50,12 @@ export function amount({
   return (value) => {
     const trimmed = value.trim();
     if (!trimmed) return "Escribe el monto.";
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) return "El monto solo puede tener números.";
+    // `parseMoneyInput` and never `Number(...)`: the amount field groups
+    // thousands while it is typed, so `Number("1.000.000")` is NaN and this
+    // rule answered «El monto solo puede tener números» over a field holding
+    // a perfectly good million.
+    const parsed = parseMoneyInput(trimmed);
+    if (parsed == null || !Number.isFinite(parsed)) return "El monto solo puede tener números.";
     if (parsed <= 0) return "El monto debe ser mayor que 0.";
     if (max != null && parsed > max) {
       return maxMessage ?? "El monto es mayor de lo permitido.";

@@ -202,7 +202,7 @@ try {
     .flatMap((c) => c.parameters.map((p) => p.text));
   check(
     "4b. la fecha va en palabras y el monto con su moneda",
-    /^\d{1,2} de [a-záéíóú]+$/i.test(valores[2]) && valores[3] === "$100.00",
+    /^\d{1,2} de [a-záéíóú]+$/i.test(valores[2]) && valores[3] === "$100,00",
     JSON.stringify(valores),
   );
 

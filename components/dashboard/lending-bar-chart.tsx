@@ -1,6 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import {
   ChartContainer,
   ChartLegend,
@@ -36,6 +37,7 @@ export function WeeklyLendingChart({
   data,
   title = "Fiado vs. Abono de la semana",
   bare = false,
+  currency = "USD",
 }: {
   data: WeeklyLendingPoint[];
   title?: string;
@@ -45,6 +47,9 @@ export function WeeklyLendingChart({
   // draw a second border inside the first, and its `flex-1` would grow down the
   // card's column instead of across a row.
   bare?: boolean;
+  // EN QUÉ LIBRO ESTÁN ESTAS BARRAS. Solo la usa el tooltip, para escribir su
+  // cifra como la escribe el resto de la app.
+  currency?: PriceCurrency;
 }) {
   return (
     <div
@@ -59,7 +64,31 @@ export function WeeklyLendingChart({
         <BarChart data={data} margin={{ top: 10 }}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          {/* EL TOOLTIP FORMATEA CON EL FORMATEADOR DE LA APP, no con el
+              `toLocaleString()` por defecto de `ui/chart.tsx`.
+              
+              Ese por defecto usa el locale DEL NAVEGADOR: el mismo negocio,
+              el mismo gráfico, y «1.234,56» o «1,234.56» según el teléfono de
+              quien mire. Encontrado el 2026-10-24 al barrer la app para la
+              regla del punto de miles, y arreglado aquí —en el único sitio
+              que monta este gráfico— en vez de en el componente vendido de
+              shadcn, que se reemplaza al actualizarlo. */}
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                formatter={(valor, nombre) => (
+                  <>
+                    <span className="text-muted-foreground">
+                      {nombre === "fiado" ? "Fiado" : "Abono"}
+                    </span>
+                    <span className="ml-auto font-mono font-medium tabular-nums text-foreground">
+                      {formatPriceAmount(Number(valor), currency ?? "USD")}
+                    </span>
+                  </>
+                )}
+              />
+            }
+          />
           <ChartLegend content={<ChartLegendContent />} />
           <Bar dataKey="fiado" fill="var(--color-fiado)" radius={4} />
           <Bar dataKey="abono" fill="var(--color-abono)" radius={4} />

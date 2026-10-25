@@ -36,6 +36,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
+// EL FORMATO DE LOS IMPORTES CAMBIÓ EL 2026-10-24, y por eso estas cadenas
+// llevan coma decimal: el dólar y el euro pasaron de «$20.00» a «$20,00»
+// cuando el punto de miles se volvió el estándar de toda la app (decisión del
+// dueño, ver `DESIGN-SYSTEM.md`). Esta suite fue una de las dos que lo
+// cazaron, que es justo lo que tenía que pasar — compara el texto que de
+// verdad sale a pantalla, no el que alguien recuerda.
+
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
     .split(/\r?\n/)
@@ -299,15 +306,15 @@ try {
   const usd = r1.html.slice(iUsd, iEur >= 0 ? iEur : undefined);
   check(
     "3. el libro en dólares: total 20, abonó 5, debe 15, antigua 30, total 45",
-    usd.includes("$20.00") &&
+    usd.includes("$20,00") &&
       usd.includes("Abonó en Dólares") &&
-      usd.includes("$5.00") &&
+      usd.includes("$5,00") &&
       usd.includes("Debe (esta venta)") &&
-      usd.includes("$15.00") &&
+      usd.includes("$15,00") &&
       usd.includes("Deuda antigua") &&
-      usd.includes("$30.00") &&
+      usd.includes("$30,00") &&
       usd.includes("Deuda total") &&
-      usd.includes("$45.00"),
+      usd.includes("$45,00"),
     "ver el HTML si falla",
   );
 
@@ -339,8 +346,8 @@ try {
   );
   check(
     "4. un cargo POSTERIOR no cambia la deuda antigua del resumen",
-    usd4.includes("$30.00") && !usd4.includes("$130.00") && usd4.includes("$45.00"),
-    usd4.includes("$130.00") ? "subió a 130 — se está restando en vez de mirar la fecha" : "sigue en 30",
+    usd4.includes("$30,00") && !usd4.includes("$130,00") && usd4.includes("$45,00"),
+    usd4.includes("$130,00") ? "subió a 130 — se está restando en vez de mirar la fecha" : "sigue en 30",
   );
 
   // ── 5. EL LIBRO SALDADO DICE «PAGO DE CONTADO» ──────────────────────

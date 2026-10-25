@@ -3,13 +3,11 @@ import { ClientTable } from "@/components/dashboard/client-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
 import { ClientSearchFieldRow } from "@/components/dashboard/client-search-sheet";
-import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
+import { RegisterButton } from "@/components/dashboard/register-button";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { getMonedaHabitual } from "@/lib/moneda-habitual";
-import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function MalasPagasPage() {
@@ -18,26 +16,15 @@ export default async function MalasPagasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: clients }, { data: owner }, ownerRate, monedaHabitual] = await Promise.all([
+  const [{ data: summaries }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("client_summary")
       .select("*")
       .eq("owner_id", user!.id)
       .eq("is_flagged", true)
       .order("days_since_payment", { ascending: false }),
-    // Feeds the "add a movement" search — hidden clients excluded (O2), same
-    // as Cartera and Clientes.
-    supabase
-      .from("clients")
-      .select("id, name, document_id, document_type")
-      .eq("owner_id", user!.id)
-      .is("trashed_at", null)
-      .is("deleted_at", null)
-      .order("name"),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
-    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
-    getMonedaHabitual(supabase, user!.id),
   ]);
 
   // Mismo criterio que Cartera: no saber el país no es saber que es CO. Esta
@@ -51,14 +38,11 @@ export default async function MalasPagasPage() {
   const ownerCountry =
     (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
   if (!ownerCountry) return <OwnerUnavailableDialog />;
-  const rateContext: MovementRateContext | null = ownerRate
-    ? {
-        rateMode: ownerRate.rateMode,
-        effectiveRate: ownerRate.effectiveRate,
-        officialRateUsd: ownerRate.officialRate.usd,
-        prevista: ownerRate.prevista,
-      }
-    : null;
+  // LO QUE ESTA PANTALLA YA NO PIDE A LA BASE. Hasta el 2026-10-24 leía además
+  // la lista de clientes, la tasa derivada y la moneda habitual, y las tres
+  // existían SOLO para alimentar el diálogo viejo de «Agregar movimiento». Al
+  // sustituirlo por `RegisterButton` —que no necesita nada— se van con él: dos
+  // consultas menos por carga de página.
 
   const rows = (summaries ?? []) as ClientSummary[];
   const scores = await computeCreditScoresForClients(supabase, rows, ownerRate?.effectiveRate ?? null);
@@ -80,17 +64,18 @@ export default async function MalasPagasPage() {
           filters={<ClientFilterChipsRow tone="dark" />}
         />
 
-        {/* Solo escritorio: en teléfono esta acción vive en el botón flotante
-            de la barra de abajo. */}
+        {/* EL MISMO BOTÓN QUE INICIO, Y EL MISMO COMPONENTE.
+            Instrucción del dueño el 2026-10-24: *«ese botón debe ser el
+            mismo que el del home "Registrar" (…) usa el mismo componente
+            en todas las pantallas»*. Aquí había el disparador de
+            `ClientSearchDialog` —«Agregar movimiento»— que abría el
+            diálogo viejo «Agregar transacción», o sea el flujo jubilado.
+
+            Solo escritorio: en teléfono esta acción vive en el botón
+            flotante de la barra de abajo, y sin `hidden md:block`
+            saldrían los dos. */}
         <div className="hidden md:block">
-          <ClientSearchDialog
-            clients={clients ?? []}
-            ownerId={user!.id}
-            businessName={owner?.business_name || user!.email || "tu negocio"}
-            ownerCountry={ownerCountry}
-            rateContext={rateContext}
-            monedaHabitual={monedaHabitual}
-          />
+          <RegisterButton />
         </div>
 
         <h2 className="text-base font-semibold">Clientes</h2>

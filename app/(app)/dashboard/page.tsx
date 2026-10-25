@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
 import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
-import { NewSaleButton } from "@/components/dashboard/new-sale-button";
+import { RegisterButton } from "@/components/dashboard/register-button";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
 import { ClientSearchCartera } from "@/components/dashboard/client-search-cartera";
 import {
@@ -20,7 +20,6 @@ import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
-import { getMonedaHabitual } from "@/lib/moneda-habitual";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { HomeHeader } from "@/components/dashboard/home-header";
@@ -63,7 +62,6 @@ export default async function DashboardPage({
     { data: clients },
     { data: owner },
     ownerRate,
-    monedaHabitual,
     ordenesSinAtender,
   ] = await Promise.all([
     supabase
@@ -88,8 +86,6 @@ export default async function DashboardPage({
       .eq("id", user!.id)
       .single(),
     getOwnerRateContext(supabase, user!.id),
-    // En que moneda escribio la ultima vez, para que el formulario abra ahi.
-    getMonedaHabitual(supabase, user!.id),
     // The red number on the Pedidos card. In the same batch and not after it:
     // it is a `head: true` count, and waiting for it in series would hold the
     // whole screen for a figure that decorates one line.
@@ -293,12 +289,12 @@ export default async function DashboardPage({
 
                 El diálogo de siempre sigue montado más abajo —lo abren los
                 marcadores `?nuevo=`, que es lo que la hoja navega— pero ya no
-                tiene disparador visible en ninguna anchura. `NewSaleButton`
+                tiene disparador visible en ninguna anchura. `RegisterButton`
                 lleva el marcador del tour que el disparador del diálogo
                 llevaba. */}
             <HideWhileResults>
               <div className="hidden md:block">
-                <NewSaleButton />
+                <RegisterButton />
               </div>
             </HideWhileResults>
           </div>
@@ -392,7 +388,7 @@ export default async function DashboardPage({
 
             DEJÓ DE SER `md:hidden` EL 2026-10-18, y es la mitad que se olvida
             del cambio de «Agregar»: en escritorio ya no hay ninguna otra
-            instancia —la de arriba pasó a ser `NewSaleButton`— así que con la
+            instancia —la de arriba pasó a ser `RegisterButton`— así que con la
             clase puesta, «Registrar cliente nuevo» del paso 1/4 mandaría a
             `/dashboard?nuevo=1` y no se abriría nada. Una navegación que no
             hace nada, sin error, solo en escritorio.
@@ -404,16 +400,7 @@ export default async function DashboardPage({
           <div>
             <ClientSearchDialog
               clients={clients ?? []}
-              ownerId={user!.id}
-              businessName={owner?.business_name || user!.email || "tu negocio"}
-              ownerCountry={ownerCountry}
-              autoOpen={nuevo === "1" || nuevo === "cliente" || nuevo === "abono"}
-              pasoInicial={nuevo === "cliente" ? "new" : "search"}
-              movimientoAlElegir={nuevo === "abono" ? "abono" : undefined}
-              hideTrigger
-              showTourTarget={false}
-              rateContext={rateContext}
-              monedaHabitual={monedaHabitual}
+              autoOpen={nuevo === "abono"}
             />
           </div>
         </HideWhileResults>

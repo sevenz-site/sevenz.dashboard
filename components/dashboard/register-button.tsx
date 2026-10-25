@@ -6,8 +6,25 @@ import { Button } from "@/components/ui/button";
 import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { useTour } from "@/components/dashboard/tour-context";
 
-// EL «REGISTRAR» DE INICIO EN ESCRITORIO, que abre la hoja de las tres cosas
-// que el tendero puede anotar — frame `1389:11227`, 2026-10-18.
+// EL BOTÓN «REGISTRAR» DE ESCRITORIO, que abre la hoja de las tres cosas que
+// el tendero puede anotar — frame `1389:11227`, 2026-10-18.
+//
+// ===========================================================================
+// THIS IS THE ONLY ONE. EVERY SCREEN THAT OFFERS TO REGISTER MOUNTS IT
+//
+// The owner's instruction on 2026-10-24, with the screenshots of `/clients`
+// and `/malas-pagas` circled in red: *«usa el mismo componente en todas las
+// pantallas para que en un futuro al cambiar el botón en una pantalla se
+// cambie a todas»*. Those two were still drawing `ClientSearchDialog`'s own
+// trigger — an «Agregar movimiento» button that opened the old «Agregar
+// transacción» dialog — while Inicio already opened the sheet. Three screens,
+// two flows, and theirs was the retired one.
+//
+// It was called `NewSaleButton` until that day. The name came from when it
+// opened the sale wizard and already described the wrong thing: it opens
+// `RegisterSheet`, which offers three things and only one of them is a sale.
+// With the button mounting in three places, a name that lies is what makes
+// the next person write another one.
 //
 // Se llamó «Agregar» hasta ese día y abrió tres cosas distintas en tres
 // semanas: el diálogo de movimientos, luego el asistente de venta, y ahora la
@@ -17,6 +34,9 @@ import { useTour } from "@/components/dashboard/tour-context";
 //
 // En teléfono esta puerta es el botón flotante de `MobileNav`; de `md:` en
 // adelante no hay barra abajo y la puerta es ésta.
+//
+// WHICH IS WHY WHOEVER MOUNTS IT WRAPS IT IN `hidden md:block`: without that,
+// a phone would show two «Registrar», the floating one and this one.
 //
 // ===========================================================================
 // POR QUÉ ES UN COMPONENTE Y NO UN BOTÓN DENTRO DE LA PÁGINA
@@ -36,7 +56,7 @@ import { useTour } from "@/components/dashboard/tour-context";
 // EL MARCADOR VA SOLO AQUÍ. El tour busca su blanco con `querySelector`, que
 // devuelve el primero que coincide en el DOM: dos elementos con el mismo
 // marcador significan que puede iluminar el que no está en pantalla.
-export function NewSaleButton() {
+export function RegisterButton() {
   const tour = useTour();
   const [abierta, setAbierta] = useState(false);
 

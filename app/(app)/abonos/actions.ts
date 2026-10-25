@@ -30,6 +30,11 @@ import { formatBs } from "@/lib/exchange-rate/format";
 // que esta acción escribe y `addMovement` no es `applies_to_movement_id`: a qué
 // fiado concreto va este pago.
 //
+//
+// `addMovement` SE BORRÓ EL 2026-10-24 y lo que sigue lo menciona en pasado a
+// propósito: esta acción nació explicando en qué se diferenciaba de ella, y esa
+// comparación sigue siendo la razón por la que es una acción aparte. Lo que ya
+// no se puede hacer es ir a leerla.
 // ===========================================================================
 // POR QUÉ UNA ACCIÓN APARTE Y NO UN CAMPO MÁS EN `addMovement`
 //

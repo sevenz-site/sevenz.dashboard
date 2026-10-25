@@ -1,6 +1,7 @@
 "use client";
 
-import { parseAmount } from "@/lib/products/price";
+import { parseMoneyInput } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type React from "react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -127,7 +128,13 @@ export function BsAmountPreview({
 }) {
   // Mismo caso que `montoConvertido`: con `Number` una cifra con coma o con
   // separador de miles valía `NaN` y la tarjeta de equivalencia desaparecía.
-  const parsed = parseAmount(amount) ?? Number.NaN;
+  //
+  // `parseMoneyInput` y no `parseAmount` desde el 2026-10-24: el campo agrupa
+  // los miles mientras se teclea, y `parseAmount` lee «1,234» —tres decimales
+  // en un campo agrupado— como MIL DOSCIENTOS TREINTA Y CUATRO. Aquí solo
+  // habría pintado una equivalencia mil veces mayor, pero es la misma cadena
+  // que lee el servidor, así que el lector tiene que ser el mismo.
+  const parsed = parseMoneyInput(amount) ?? Number.NaN;
   const hasAmount = Number.isFinite(parsed) && parsed > 0;
   // La misma tasa que el servidor va a sellar, no una copia calculada aparte:
   // el objeto viene del servidor y la casilla solo elige cuál de las dos usar.
@@ -186,12 +193,15 @@ export function montoConvertido(
   rateContext: MovementRateContext,
   usarPrevista: boolean,
 ): number | null {
-  // `parseAmount` Y NO `Number(...)`: `Number("1.234,50")` es `NaN`, y antes
-  // eso devolvía `null` --la equivalencia simplemente no se dibujaba-- con el
-  // campo lleno y el tendero sin saber por qué. El lector de dinero del repo
-  // entiende los miles y las dos convenciones de decimal. Arreglado el
+  // `parseMoneyInput` Y NO `Number(...)`: `Number("1.234,50")` es `NaN`, y
+  // antes eso devolvía `null` --la equivalencia simplemente no se dibujaba--
+  // con el campo lleno y el tendero sin saber por qué. Arreglado el
   // 2026-10-23; era un defecto anterior al formateo de ese día.
-  const bs = parseAmount(bolivares);
+  //
+  // Y era `parseAmount` hasta el 2026-10-24. Esta cifra ES el billete que el
+  // tendero puso sobre el mostrador, y de ella sale lo que se guarda: leer
+  // «1,234» como 1234 en vez de 1,234 anota mil veces la deuda acordada.
+  const bs = parseMoneyInput(bolivares);
   if (bs == null || !Number.isFinite(bs) || bs <= 0) return null;
   const prevista = rateContext.prevista;
   const tasa = usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext.effectiveRate;
@@ -312,12 +322,14 @@ export function ResumenMonto({
     usarPrevista && prevista ? { usd: prevista.usd, eur: prevista.eur } : rateContext?.effectiveRate;
   // Lo tecleado gana siempre sobre lo calculado.
   //
-  // `parseAmount` Y NO `Number(...)`: esta tarjeta la dibuja la pantalla del
-  // abono, cuyo campo agrupa los miles desde el 2026-10-23. `Number("20.000")`
-  // es VEINTE, así que el recuadro que existe para que el tendero confirme lo
-  // que escribió le habría enseñado `Bs. 20,00` con `20.000` en el campo —
-  // justo el error que esta tarjeta está aquí para evitar.
-  const tecleados = parseAmount(bolivaresTecleados) ?? Number.NaN;
+  // `parseMoneyInput` Y NO `Number(...)`: esta tarjeta la dibuja la pantalla
+  // del abono, cuyo campo agrupa los miles desde el 2026-10-23.
+  // `Number("20.000")` es VEINTE, así que el recuadro que existe para que el
+  // tendero confirme lo que escribió le habría enseñado `Bs. 20,00` con
+  // `20.000` en el campo — justo el error que esta tarjeta está aquí para
+  // evitar. Era `parseAmount` hasta el 2026-10-24; ver su hueco de los tres
+  // decimales en `parseMoneyInput`.
+  const tecleados = parseMoneyInput(bolivaresTecleados) ?? Number.NaN;
   const bs =
     bolivaresTecleados && Number.isFinite(tecleados) && tecleados > 0
       ? tecleados
@@ -363,16 +375,18 @@ export function MontoCard({
   value,
   onChange,
   moneda,
-  max,
   invalid,
   ayuda = null,
 }: {
   id: string;
   name: string;
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  // EL TEXTO YA FORMATEADO, no el evento. Quien llama guarda lo que aquí se
+  // teclea, y lo que aquí se teclea lleva los miles puestos: pasar el evento
+  // dejaría que el llamador guardase `e.target.value` en bruto y el campo
+  // perdería la agrupación en la siguiente tecla.
+  onChange: (texto: string) => void;
   moneda: MonedaTecleada | null;
-  max?: number;
   invalid?: boolean;
   // El renglón de debajo de la cifra: el tope mientras va bien, el error
   // cuando no. Es UNO, no dos — quien lo llama decide cuál toca, para que no
@@ -381,6 +395,10 @@ export function MontoCard({
 }) {
   const etiqueta =
     moneda === "VES" ? "Bolívares" : moneda === "EUR" ? "Euros" : moneda === "USD" ? "Dólares" : null;
+
+  // LOS MILES, MIENTRAS SE TECLEA. Pedido por el dueño el 2026-10-24 para toda
+  // la app: *«al digitar se debe ver "1.000.000" y no "1000000"»*.
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(value, onChange);
 
   return (
     <div
@@ -393,15 +411,26 @@ export function MontoCard({
           <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
             Escriba monto:
           </Label>
+          {/* `type="text"` CON `inputMode="decimal"`, Y NO `type="number"`.
+              No es una preferencia: un campo numérico se NIEGA a sostener
+              «1.000.000» —el navegador lo considera un valor inválido y lo
+              deja vacío—, así que agrupar los miles y `type="number"` son
+              incompatibles. `inputMode` mantiene el teclado numérico del
+              teléfono, que es lo único que `number` aportaba aquí.
+
+              Con él se van `min`, `max` y `step`, que eran validación del
+              navegador. No se pierde nada: el tope lo comprueba `amountRule`
+              con su propio mensaje en español —el del navegador salía en
+              inglés y por eso estos formularios llevan `noValidate`— y el
+              servidor lo vuelve a comprobar. */}
           <Input
             id={id}
             name={name}
-            type="number"
-            min="0"
-            max={max}
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             value={value}
-            onChange={onChange}
+            ref={refMonto}
+            onChange={alTeclearMonto}
             required
             aria-invalid={invalid}
             aria-describedby={ayuda ? `${id}-ayuda` : undefined}

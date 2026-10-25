@@ -9,6 +9,8 @@ import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { valorDeInputFecha } from "@/lib/fecha-de-libreta";
 import type { AperturaDetectada } from "@/lib/saldo-de-apertura";
+import { parseTypedAmount } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type { LedgerCurrency, MovementType } from "@/lib/types";
 
 function importeDe(n: number, currency: LedgerCurrency | null): string {
@@ -138,8 +140,12 @@ export function SaldoDeApertura({
         </div>
 
         {abierto ? <CampoManual currency={currency} valor={manual} onValor={setManual} onGuardar={() => {
-          const n = Number(manual.replace(",", "."));
-          if (Number.isFinite(n) && n !== 0) onAceptar(n, fechaPorDefecto);
+          // `parseTypedAmount` y no `Number(...)`: el campo agrupa los miles
+          // desde el 2026-10-24, así que lo que llega es «1.500». `Number` lo
+          // leía como NaN y el guardado no hacía NADA — en silencio, con el
+          // botón pulsado y el saldo escrito.
+          const n = parseTypedAmount(manual);
+          if (n != null && Number.isFinite(n) && n !== 0) onAceptar(n, fechaPorDefecto);
         }} /> : null}
       </div>
     );
@@ -170,8 +176,12 @@ export function SaldoDeApertura({
         valor={manual}
         onValor={setManual}
         onGuardar={() => {
-          const n = Number(manual.replace(",", "."));
-          if (Number.isFinite(n) && n !== 0) onAceptar(n, fechaPorDefecto);
+          // `parseTypedAmount` y no `Number(...)`: el campo agrupa los miles
+          // desde el 2026-10-24, así que lo que llega es «1.500». `Number` lo
+          // leía como NaN y el guardado no hacía NADA — en silencio, con el
+          // botón pulsado y el saldo escrito.
+          const n = parseTypedAmount(manual);
+          if (n != null && Number.isFinite(n) && n !== 0) onAceptar(n, fechaPorDefecto);
         }}
       />
     </div>
@@ -189,6 +199,11 @@ function CampoManual({
   onValor: (v: string) => void;
   onGuardar: () => void;
 }) {
+  // LOS MILES, MIENTRAS SE TECLEA — y aquí el signo importa: este campo acepta
+  // un saldo NEGATIVO a propósito, y `formatAmountWhileTyping` aprendió a
+  // conservar el menos el 2026-10-24 justamente por este campo.
+  const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(valor, onValor);
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor="apertura-monto" className="text-xs">
@@ -203,8 +218,11 @@ function CampoManual({
           inputMode="decimal"
           placeholder="0,00"
           value={valor}
-          onChange={(e) => onValor(e.target.value)}
-          className="w-32"
+          ref={refMonto}
+          onChange={alTeclearMonto}
+          // `w-36` y no `w-32`: agrupado y con signo, un saldo de apertura de
+          // seis cifras («-1.234.567,89») ya no cabía en 32.
+          className="w-36"
         />
         <Button type="button" className="h-10" onClick={onGuardar} disabled={!valor.trim()}>
           Añadir

@@ -1629,6 +1629,37 @@ Esto salió de correr `new-api-risk-review` **después** de instalarla, el
 la librería fuera mala: es que la reseña sí tenía algo que decir, y saltársela
 fue decidir de antemano que no lo tendría.
 
+## Después de cada liberación: la lista de lo abierto, y la ficha cerrada sin preguntar
+
+**Pedido por el dueño el 2026-10-24**: *«luego de cada liberación debes
+presentar lista de lo que queda abierto y debes cerrar la ficha de pendientes
+con lo liberado sin preguntármelo. Si algo de lo que queda abierto va a
+pendiente yo te lo diría para que lo anotes luego»*.
+
+Son **dos obligaciones y una prohibición**, y la prohibición es la que de
+verdad cambia algo:
+
+1. **El informe de la liberación termina con lo que QUEDA ABIERTO**, nombrado.
+   No «hay algunas cosas pendientes»: qué cosas, y por qué siguen abiertas.
+2. **Las fichas de `../docs/PENDIENTES.md` se cierran EN LA MISMA SESIÓN**, con
+   su nota entera, en cuanto lo que describen está en producción.
+3. **Y eso NO se pregunta.** Cerrar una ficha de algo que acaba de salir no es
+   una decisión suya; es apuntar un hecho.
+
+**Qué decide él, entonces, y qué no.** Lo que queda abierto se le PRESENTA, y
+si alguna de esas cosas merece ficha propia, él lo dirá. Abrir fichas nuevas a
+discreción por cosas que no pidió es lo contrario de esto: llena la lista de
+ruido y la lista solo vale si se lee entera.
+
+**Por qué merece regla.** Preguntar «¿cierro las fichas?» después de un
+despliegue parece prudente y no lo es: la ficha ya está obsoleta en cuanto el
+código sale, y el hueco entre el despliegue y el cierre es exactamente donde
+la lista empieza a mentir. El 2026-10-24 se cerraron siete fichas que llevaban
+días diciendo «falta producción» cuando no faltaba, y **ninguna se cerró
+porque alguien terminara el trabajo** — se cerraron porque por fin alguien fue
+a desmentirlas. Una lista que miente deja de servir para decidir, que es lo
+único para lo que existe.
+
 ## "Merge it" is not permission to skip the checklist
 
 **"Merge", "push to prod", "go to prod", "launch it", "deploy", "ship it"

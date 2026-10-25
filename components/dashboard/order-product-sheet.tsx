@@ -4,12 +4,12 @@ import { forwardRef } from "react";
 import Image from "next/image";
 import { ChevronRight, ImageOff } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
@@ -127,7 +127,7 @@ function BloqueDePrecios({
   );
 }
 
-export function OrderProductDialog({
+export function OrderProductSheet({
   nombreEnElPedido,
   cantidad,
   precioUnitario,
@@ -180,12 +180,45 @@ export function OrderProductDialog({
       : null;
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Detalle del producto</DialogTitle>
-        </DialogHeader>
+    // ── UNA HOJA Y NO UN DIÁLOGO — frame `1519:11100` ────────────────────
+    //
+    // Instrucción del dueño el 2026-10-24: *«Detalle del producto es un
+    // componente Sheet»*, y el frame lo dibuja pegado abajo, con sus esquinas
+    // superiores redondeadas.
+    //
+    // ES LA MISMA RAZÓN QUE EL BUSCADOR DE CLIENTE del 2026-10-22, escrita en
+    // su propio archivo: un diálogo se centra en la pantalla, y en un teléfono
+    // una ficha larga —aquí son nueve filas y una foto— se centra sobre un
+    // alto que no le cabe y deja el título por encima del borde, sin forma de
+    // subir hasta él. Una hoja nace pegada abajo y crece hacia arriba, que es
+    // por donde ya crecía.
+    //
+    // `max-h-[90svh]` Y NO `85vh`: `vh` mide el viewport GRANDE —el que habría
+    // si la barra del navegador estuviera escondida— así que en un teléfono
+    // con la barra a la vista ese 85% es más alto que la pantalla. `svh` mide
+    // el que de verdad se ve. Es el mismo problema del `100vh` que CLAUDE.md
+    // ya nombra para iPhone.
+    <Sheet>
+      <SheetTrigger asChild>{children}</SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle>Detalle del producto</SheetTitle>
+        </SheetHeader>
+
+        {/* ── LOS 16px DE LOS LADOS, QUE UNA HOJA NO TRAE ──────────────────
+            `SheetHeader` trae su propio `p-4`; `SheetContent` NO trae ninguno,
+            y `DialogContent` —de donde viene este contenido— sí lo traía. Al
+            pasar a hoja el 2026-10-24, las filas quedaron pegadas a los dos
+            bordes y los valores de la derecha se salían de la pantalla.
+
+            Es el mismo arreglo, por la misma razón, que el buscador de cliente
+            lleva escrito desde el 2026-10-23, y la regla de `DESIGN-SYSTEM.md`:
+            16px a los lados, todas las pantallas.
+
+            VA AQUÍ Y NO EN `SheetContent`: ese componente lo usan todas las
+            hojas de la app y varias ponen su propio relleno dentro. Cambiarlo
+            allí sumaría dos rellenos en todas ellas. */}
+        <div className="flex flex-col gap-4 px-4 pb-6">
 
         {/* EL NOMBRE ES EL DEL PEDIDO, no el del catálogo. Si el tendero
             renombró el producto después, lo que el cliente pidió se llamaba
@@ -310,8 +343,9 @@ export function OrderProductDialog({
             />
           </>
         )}
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

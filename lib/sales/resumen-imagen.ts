@@ -100,6 +100,26 @@ export type AbonoDelResumen = {
     // cuando quedó saldado, y entonces la tarjeta lo dice con palabras.
     deuda: number;
   }[];
+  // ── LOS LIBROS QUE NO SE TOCARON Y SIGUEN DEBIENDO ──────────────────
+  //
+  // Decisión del dueño el 2026-10-24, contestando a `CT-135`: *«sí, el PNG que
+  // recibe el cliente también lleva la deuda del otro libro igual que la
+  // pantalla»*. Su razón, del día anterior: *«para que tanto dueño como
+  // cliente tengan claras sus cuentas en todas las monedas»*.
+  //
+  // HASTA ESE DÍA ESTO NO EXISTÍA y el recibo decía menos que la pantalla:
+  // Camilo paga 25 euros, el tendero ve «Deuda total €40,95» Y «Deuda total
+  // $7,50», y lo que le llegaba a Camilo al chat eran solo los euros. Los
+  // dólares no aparecían en nada de lo que él recibía.
+  //
+  // VIENE YA FILTRADO: solo los libros con deuda, y nunca uno al que se acabe
+  // de abonar —ese ya tiene su tarjeta arriba, con su «Deuda total» dentro—.
+  // La pantalla lo decide una vez y la imagen lo respeta, igual que el orden
+  // de `libros`.
+  otrosLibros: {
+    currency: PriceCurrency;
+    deuda: number;
+  }[];
 };
 
 export type DatosDelResumen = {
@@ -474,7 +494,19 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     y += 20 * ESCALA;
     if (ctx) {
       ctx.font = fuente(13, "600");
-      ctx.fillStyle = TINTA;
+      // ── EN GRIS, COMO LA PANTALLA ─────────────────────────────────────
+      //
+      // Reportado por el dueño el 2026-10-24 con la captura del PNG y el
+      // código rodeado en rojo: *«color de código de transacción te dije que
+      // le cambiaras el color a muted, también aplica para los png»*.
+      //
+      // La pantalla pasó a `text-muted-foreground` ese mismo día y el
+      // dibujante se quedó en tinta. Es la mitad que se olvida cada vez que un
+      // dato vive en los dos sitios: el PNG no hereda nada de la hoja de
+      // estilos, así que un color que se cambia en la app hay que cambiarlo
+      // aquí a mano o las dos vistas de la MISMA transacción dejan de
+      // parecerse — que es lo único que este comprobante promete.
+      ctx.fillStyle = TENUE;
       ctx.fillText(`Código de transacción: ${codigoDeLaTransaccion}`, centro, y);
     }
   }
@@ -654,6 +686,50 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
     by += 4 * ESCALA;
     separar();
     fila("Deuda total", hayDeuda ? formatPriceAmount(a.deuda, a.currency) : "Sin deuda", "600", 16);
+
+    if (deudaEnBs != null) {
+      by += 16 * ESCALA;
+      if (ctx) {
+        ctx.font = fuente(12);
+        ctx.fillStyle = TENUE;
+        ctx.textAlign = "right";
+        ctx.fillText(`${formatBs(deudaEnBs)} hoy`, xDer, by);
+        ctx.textAlign = "left";
+      }
+    }
+
+    const alto = by - inicio + 14 * ESCALA;
+    if (ctx) tarjeta(ctx, inicio, alto);
+    y = inicio + alto + 16 * ESCALA;
+  }
+
+  // ── EL LIBRO QUE NO SE TOCÓ Y TODAVÍA DEBE ────────────────────────────
+  //
+  // Sin título y con una sola fila, igual que la tarjeta de la pantalla
+  // (frame `1576:11484`). La bandera va PEGADA AL IMPORTE y no en una
+  // cabecera, porque aquí no hay cabecera: el importe es lo único que dice de
+  // qué libro habla. Es la misma decisión que la pantalla, y está escrita allí.
+  for (const o of datos.abono?.otrosLibros ?? []) {
+    const deudaEnBs =
+      datos.rates && o.currency !== "VES"
+        ? priceIn("VES", { amount: o.deuda, currency: o.currency }, datos.rates)?.amount ?? null
+        : null;
+
+    const inicio = y;
+    const xIzq = MARGEN + 16 * ESCALA;
+    const xDer = ANCHO - MARGEN - 16 * ESCALA;
+    let by = y + 30 * ESCALA;
+
+    if (ctx) {
+      ctx.font = fuente(16, "600");
+      ctx.fillStyle = TINTA;
+      ctx.fillText("Deuda total", xIzq, by);
+      const lado = 16 * ESCALA;
+      ctx.textAlign = "right";
+      ctx.fillText(formatPriceAmount(o.deuda, o.currency), xDer - lado - 4 * ESCALA, by);
+      ctx.textAlign = "left";
+      dibujarSiLista(ctx, o.currency, xDer - lado, by - lado + 2 * ESCALA, lado, lado);
+    }
 
     if (deudaEnBs != null) {
       by += 16 * ESCALA;

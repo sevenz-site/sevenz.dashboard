@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buscarProductos, type ProductoBuscado } from "@/app/(app)/productos/actions";
 import { totalDeLineas, type LineaDeProducto } from "@/lib/sale-lines";
+import { formatAmountForInput, parseTypedAmount } from "@/lib/products/price";
+import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 
 // QUÉ SE LLEVÓ EL CLIENTE, dentro del formulario de fiado. Paso 8 del orden
 // acordado, entregable `E` / `CT-51`.
@@ -83,7 +85,7 @@ export function MovementProductsField({
       copia[i] = { ...copia[i], quantity: copia[i].quantity + 1 };
       onValueChange(copia);
     } else {
-      onValueChange([
+      cambiarLineas([
         ...value,
         { productId: p.id, name: p.name, quantity: 1, unitPrice: p.priceRetail ?? 0 },
       ]);
@@ -93,17 +95,41 @@ export function MovementProductsField({
   }
 
   function añadirNuevo(nombre: string, precio: number) {
-    onValueChange([...value, { productId: null, name: nombre, quantity: 1, unitPrice: precio }]);
+    cambiarLineas([...value, { productId: null, name: nombre, quantity: 1, unitPrice: precio }]);
     setQuery("");
     setAbierto(false);
   }
 
+  // ── EL PRECIO SE TECLEA AGRUPADO, Y POR ESO HAY UN ESPEJO DE TEXTO ────
+  //
+  // Pedido por el dueño el 2026-10-24 para toda la app. Y aquí cuesta un
+  // estado de más, que conviene explicar: las líneas guardan NÚMEROS
+  // (`LineaDeProducto.unitPrice`), y un número no puede recordar cómo se
+  // escribió. `1.500` tecleado y vuelto a pintar desde el número da `1500`
+  // otra vez en la siguiente tecla, así que la agrupación se perdería sola.
+  //
+  // El espejo se BORRA ENTERO al añadir o quitar una línea. Está indexado por
+  // posición, y al quitar una fila las de debajo se corren: sin el borrado, el
+  // texto de la fila 3 pasaría a pintarse sobre la 2 — un precio que el
+  // tendero no escribió, encima de un producto que no es el suyo. Vaciarlo no
+  // pierde nada: cada campo vuelve a formatear su propio número guardado.
+  const [textosPrecio, setTextosPrecio] = useState<Record<number, string>>({});
+
   function cambiar(i: number, campo: "quantity" | "unitPrice", bruto: string) {
-    const n = Number(bruto.replace(",", "."));
-    if (!Number.isFinite(n) || n < 0) return;
+    // `parseTypedAmount` y no `Number(...)`: el campo del precio agrupa los
+    // miles, así que lo que llega es «1.500». `Number` lo lee como NaN y la
+    // guarda anterior devolvía sin tocar nada — el precio se quedaba congelado
+    // en cuanto pasaba de 999.
+    const n = campo === "unitPrice" ? parseTypedAmount(bruto) : Number(bruto.replace(",", "."));
+    if (n == null || !Number.isFinite(n) || n < 0) return;
     const copia = [...value];
     copia[i] = { ...copia[i], [campo]: n };
     onValueChange(copia);
+  }
+
+  function cambiarLineas(lineas: LineaDeProducto[]) {
+    setTextosPrecio({});
+    onValueChange(lineas);
   }
 
   const total = totalDeLineas(value);
@@ -131,20 +157,20 @@ export function MovementProductsField({
                 onChange={(e) => cambiar(i, "quantity", e.target.value)}
               />
               <span className="text-xs text-muted-foreground">×</span>
-              <Input
-                type="number"
-                inputMode="decimal"
-                aria-label={`Precio de ${l.name}`}
-                className="w-20 text-right"
-                value={String(l.unitPrice)}
-                onChange={(e) => cambiar(i, "unitPrice", e.target.value)}
+              <CampoDePrecio
+                etiqueta={`Precio de ${l.name}`}
+                texto={textosPrecio[i] ?? formatAmountForInput(l.unitPrice, { miles: true })}
+                onTexto={(t) => {
+                  setTextosPrecio((prev) => ({ ...prev, [i]: t }));
+                  cambiar(i, "unitPrice", t);
+                }}
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 aria-label={`Quitar ${l.name}`}
-                onClick={() => onValueChange(value.filter((_, j) => j !== i))}
+                onClick={() => cambiarLineas(value.filter((_, j) => j !== i))}
               >
                 <X className="size-4" />
               </Button>
@@ -183,6 +209,43 @@ export function MovementProductsField({
           saber nada de este componente, igual que con las cuotas y el plazo. */}
       <input type="hidden" name="productos" value={JSON.stringify(value)} />
     </div>
+  );
+}
+
+// EL CAMPO DEL PRECIO DE UNA LÍNEA, EN SU PROPIO COMPONENTE.
+//
+// No es una preferencia de estilo: `useGroupedAmount` es un hook, y un hook no
+// puede llamarse dentro del `.map` de una lista cuyo largo cambia — React
+// exige que el orden de los hooks sea el mismo en cada pintado, y quitar una
+// línea lo rompería. Una fila, un componente, un hook.
+function CampoDePrecio({
+  etiqueta,
+  texto,
+  onTexto,
+  placeholder,
+}: {
+  etiqueta: string;
+  texto: string;
+  onTexto: (texto: string) => void;
+  placeholder?: string;
+}) {
+  const { ref: refPrecio, onChange: alTeclearPrecio } = useGroupedAmount(texto, onTexto);
+  return (
+    <Input
+      // `type="text"` y no `type="number"`: un campo numérico se niega a
+      // sostener «1.500.000» y lo deja vacío. `inputMode` conserva el teclado
+      // numérico del teléfono, que es lo único que `number` aportaba.
+      type="text"
+      inputMode="decimal"
+      aria-label={etiqueta}
+      placeholder={placeholder}
+      // `w-24` y no `w-20`: con los miles agrupados, un precio colombiano de
+      // seis cifras ya no cabía en 20 y se leía recortado.
+      className="w-24 text-right"
+      value={texto}
+      ref={refPrecio}
+      onChange={alTeclearPrecio}
+    />
   );
 }
 
@@ -265,22 +328,23 @@ function Buscador({
         // fricción por nada.
         <div className="flex items-center gap-2 border-t pt-2">
           <span className="min-w-0 flex-1 truncate text-sm">{nombre}</span>
-          <Input
-            type="number"
-            inputMode="decimal"
-            aria-label={`Precio de ${nombre}`}
+          <CampoDePrecio
+            etiqueta={`Precio de ${nombre}`}
+            texto={precio}
+            onTexto={setPrecio}
             placeholder="Precio"
-            className="w-24 text-right"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
           />
           <Button
             type="button"
             size="sm"
             disabled={precio.trim() === ""}
             onClick={() => {
-              const n = Number(precio.replace(",", "."));
-              if (!Number.isFinite(n) || n < 0) return;
+              // `parseTypedAmount`: el campo agrupa los miles, así que aquí
+              // llega «1.500» y `Number` lo leía como NaN — el botón «Crear»
+              // no hacía nada, en silencio, para cualquier precio de cuatro
+              // cifras o más.
+              const n = parseTypedAmount(precio);
+              if (n == null || !Number.isFinite(n) || n < 0) return;
               onCrear(nombre, n);
               setPrecio("");
             }}

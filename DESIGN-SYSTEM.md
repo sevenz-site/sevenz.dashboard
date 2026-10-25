@@ -2296,6 +2296,334 @@ misma medición, y lo que pidió por la tarde fue la barra, no el botón. Son
 dos cosas fijas sobre el mismo borde y se decidieron por separado — que es
 precisamente lo que hizo falta medir una por una para verlas.
 
+## Todo campo de DINERO agrupa los miles mientras se teclea
+
+**El tendero escribe `1000000` y tiene que leer `1.000.000`.** Pedido por el
+dueño el 2026-10-24 para toda la app: *«moneda debería ser con lo último que
+definimos para todo el app, es decir, al digitar se debe ver "1.000.000" y no
+"1000000"»*.
+
+**Se monta `useGroupedAmount`** (`hooks/use-grouped-amount.ts`), nunca una copia
+de sus clases ni de su lógica:
+
+```tsx
+const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(monto, setMonto);
+
+<Input type="text" inputMode="decimal" value={monto}
+       ref={refMonto} onChange={alTeclearMonto} />
+```
+
+El hook nació de tres copias idénticas a mano —`abono-monto`, `abono-reparto`
+y `nueva-venta`—, tan idénticas que un diff entre ellas no enseñaba nada. Es
+la misma lección que `StickyActions`, unas secciones más arriba.
+
+### `type="number"` es INCOMPATIBLE, y no es una preferencia
+
+Un campo numérico **se niega a sostener «1.000.000»**: el navegador lo
+considera un valor inválido y deja el campo vacío. Así que agrupar obliga a
+`type="text"` con `inputMode="decimal"`, que mantiene el teclado numérico del
+teléfono — lo único que `number` aportaba aquí.
+
+Con él se van `min`, `max` y `step`. **No se pierde validación**: el tope lo
+comprueba `amountRule` con su mensaje en español —el del navegador salía en
+inglés, que es por lo que estos formularios llevan `noValidate`— y el servidor
+lo vuelve a comprobar.
+
+### QUIÉN LEE EL CAMPO IMPORTA MÁS QUE EL FORMATO, y es donde está el dinero
+
+**El orden es al revés de lo que parece: primero se arregla el lector, después
+se agrupa.** Agrupar cambia el TEXTO que queda en el campo, y de ese texto sale
+el número que se guarda. Hay tres lectores y cada uno tiene su sitio:
+
+| Lector | Cuándo | Qué hace |
+|---|---|---|
+| `parseTypedAmount` | El texto salió de un campo agrupado | Los puntos son miles, la coma es el decimal. Sin adivinar |
+| `parseMoneyInput` | El texto cruzó la red, un borrador, otra pantalla | Decide por la forma: con coma, convención de campo; sin ella, `parseAmount` |
+| `parseAmount` | Texto libre, un pegado | Adivina. Es su trabajo y está documentado |
+
+**`Number(...)` no es ninguno de los tres.** `Number("1.000.000")` es `NaN`, y
+lo que el `NaN` produce depende de quién lo reciba: un `|| 0` lo convierte en
+CERO —el monto se vacía solo al pasar de tres cifras—, un guarda lo descarta
+—el botón deja de hacer nada, en silencio— y una validación contesta «El monto
+solo puede tener números» sobre un campo con un millón bien escrito.
+
+**Y `parseAmount` tampoco vale sobre un campo agrupado**, que es el que más
+cuesta de ver. Su regla para texto libre es «un separador solo con tres dígitos
+detrás son miles» —cierta para «12.000»— y en un campo agrupado lee **«1,234»
+como MIL DOSCIENTOS TREINTA Y CUATRO**. Mil veces el importe acordado, sin un
+error, sin un rojo, sin nada que mirar. Medido el 2026-10-24, no razonado; la
+suite `npm run qa:agrupado` lo vigila.
+
+### Un campo cuyo estado es un NÚMERO necesita un espejo de texto
+
+Un número no recuerda cómo se escribió: repintado desde él, «1.500» vuelve a
+ser «1500» en la siguiente tecla y la agrupación se pierde sola. Así que el
+componente guarda el TEXTO aparte y escribe el número al leerlo
+(`editar-movimiento.tsx`, `movement-products-field.tsx`).
+
+**Y si el espejo está indexado por posición, se BORRA al añadir o quitar una
+fila.** Al quitar una, las de debajo se corren: sin el borrado, el texto de la
+fila 3 se pinta sobre la 2 — un precio que el tendero no escribió, encima de un
+producto que no es el suyo. Vaciarlo no pierde nada, cada campo vuelve a
+formatear su propio número.
+
+### El signo menos se conserva, y hay un campo que lo necesita
+
+El saldo de apertura de una libreta acepta un importe **negativo** a propósito:
+una página puede arrancar con el negocio debiéndole al cliente. El filtro de
+caracteres del formateador se comía el menos hasta el 2026-10-24 — con la
+agrupación puesta y sin eso, esa libreta habría pasado a ser imposible de
+escribir.
+
+### Qué NO agrupa
+
+Cantidades (unidades en el carrito, inventario, cantidad mínima al mayor), la
+tasa de cambio, cédulas, teléfonos, plazos en días y los filtros numéricos. No
+son dinero, y un par de ellos llevan guardas que cuentan dígitos y chocarían
+con los puntos.
+
+**`/admin` se queda fuera a propósito**: sus campos siguen con `type="number"`,
+solo los ve el dueño de Sevenz, y el navegador ya le impide escribir un
+separador.
+
+### El ancho hay que mirarlo
+
+Agrupar alarga el texto. Dos campos se quedaron cortos y se midieron: el precio
+de una línea de producto pasó de `w-20` a `w-24`, y el saldo de apertura de
+`w-32` a `w-36` —con signo, «-1.234.567,89» no cabía—. A 375px, comprobado sin
+desbordar ni el campo ni la página.
+
+## `1.000` ES EL ESTÁNDAR DE TODA LA APP, en pantalla y al teclear
+
+**Punto de miles, coma decimal. En cualquier moneda, en cualquier pantalla, en
+el PNG que se comparte y en el mensaje de WhatsApp.** Decisión del dueño el
+2026-10-24: *«ese formato de miles 1.000 será el estándar para toda el app»*.
+
+```
+$1.234.567,89     €1.234.567,89     Bs. 1.234.567,89     $ 1.234.567,89 (COP)
+```
+
+**No es una convención nueva: es la que ya tenían dos de las tres monedas.** El
+peso se formateaba en `es-CO` y el bolívar en `es-VE` desde el primer día — los
+dos con punto. El dólar y el euro eran la excepción, en `en-US`, así que la
+tarjeta del Inicio decía **«$11,283.19»** y justo debajo **«Bs. 9.999.468,75»**:
+dos formas de escribir dinero a dos renglones de distancia.
+
+### Un sitio, y solo uno
+
+| Moneda | Función | Dónde |
+|---|---|---|
+| USD y EUR | `formatDisplayCurrency` | `lib/exchange-rate/format.ts` |
+| VES | `formatBs` / `formatBsAmount` | `lib/exchange-rate/format.ts` |
+| COP | `formatCurrency` | `lib/format.ts` |
+| Cualquiera, por su código | `formatPriceAmount` | `lib/products/price.ts` |
+| Dentro de un campo | `formatAmountForInput(x, { miles: true })` | `lib/products/price.ts` |
+
+**Nunca se escribe un importe con `toFixed`, con `toLocaleString` suelto ni con
+un `Intl.NumberFormat` nuevo.** Un formateador de más es la forma exacta de que
+media app vuelva a las comas sin que nadie lo note.
+
+### Y NO se hace con `style: "currency"`. Medido, no supuesto
+
+Ningún locale da «$1.234.567,89» con el símbolo pegado delante. El 2026-10-24,
+sobre el ICU de este Node:
+
+| Locale | USD |
+|---|---|
+| `es-VE` | `USD 1.234.567,89` |
+| `es-CO` | `US$ 1.234.567,89` |
+| `de-DE` | `1.234.567,89 $` |
+| `es-ES` | `1.234.567,89 US$` |
+
+Todos cambian el símbolo, lo mueven al final, o las dos cosas. Así que se hace
+con un **formateador de número** (`es-VE`, dos decimales) y el **símbolo
+literal delante** — que es el patrón que `formatBs` lleva documentado desde el
+primer día, por esta misma razón. La ventaja práctica: lo único que cambia
+respecto a lo que había son los separadores; el símbolo y su posición se quedan
+donde estaban, así que ninguna maquetación se mueve.
+
+**El signo menos va DELANTE del símbolo**: `-$1.234,56`, nunca `$-1.234,56`.
+Eso lo hacía solo `style: "currency"` y a mano hay que escribirlo. Es una red
+de seguridad, no el camino normal: un saldo a favor se enseña con `Math.abs` y
+el chip «A favor» (regla de `CLAUDE.md`, 2026-10-23).
+
+### Un campo de solo lectura se escribe como el que se teclea
+
+Si dos campos están pegados dentro del mismo control, uno editable y otro
+calculado, **los dos usan el mismo escritor**. La fila del euro de un producto
+decía `€2,230,987.52` mientras la de al lado decía `2.500.000`, y lo que lo
+delataba estaba en el propio control: **romper el vínculo de esa fila la pasaba
+a `formatAmountForInput(..., { miles: true })`**, o sea que pulsar el candado
+cambiaba el formato del mismo número. La moneda no se pierde al quitar el
+símbolo — la fila la nombra en su rótulo y la repite su bandera.
+
+### Lo que este cambio NO toca, y por qué se puede desplegar sin miedo
+
+**Nada guardado cambia.** Es formato de salida: no hay migración, no hay
+columna, y **ningún lector del repo vuelve a leer una cadena ya formateada**
+(comprobado con `grep` el 2026-10-24; si algún día lo hubiera, sería el único
+sitio por donde esto podría romper un saldo). Los importes se guardan como
+números y se escriben al dibujar.
+
+**El peor escenario no es el cambio: es hacerlo a medias.** Hoy la app es
+consistente dentro de cada moneda; si esto se aplicara a unas pantallas y a
+otras no, el tendero vería dos convenciones para la MISMA moneda, que es peor
+que la incoherencia que esto viene a quitar. Por eso vive en una función y no
+en las pantallas.
+
+## «Registrar» ES UN COMPONENTE, y toda pantalla monta el mismo
+
+**`RegisterButton` en escritorio, el flotante de `MobileNav` en teléfono. Nadie
+dibuja su propio botón de registrar.** Instrucción del dueño el 2026-10-24, con
+las capturas de `/clients` y `/malas-pagas` rodeadas en rojo: *«usa el mismo
+componente en todas las pantallas para que en un futuro al cambiar el botón en
+una pantalla se cambie a todas»*.
+
+```tsx
+{/* Solo escritorio: en teléfono esta acción vive en el botón flotante. */}
+<div className="hidden md:block">
+  <RegisterButton />
+</div>
+```
+
+**El envoltorio `hidden md:block` no es decoración**: sin él, en un teléfono
+salen DOS «Registrar», el flotante de la barra y éste.
+
+### Lo que estaba pasando, y por qué no se vio durante semanas
+
+Inicio abrió la hoja de tres opciones desde el 2026-10-18. `/clients` y
+`/malas-pagas` siguieron dibujando el **disparador de `ClientSearchDialog`** —un
+botón «Agregar movimiento» que abría el diálogo viejo «Agregar transacción»—
+porque ese botón no lo pone la página: **lo pone el diálogo**, cuando se monta
+sin `hideTrigger`. Quien cambió Inicio no tenía ninguna razón para abrir esas
+dos pantallas.
+
+Es el mismo patrón que la cabecera de `app-header.tsx`, unas secciones más
+arriba: **un elemento que una pantalla hereda sin pedirlo es el que nadie
+revisa.** La defensa es la misma — un componente con nombre, montado a
+propósito, en vez de algo que aparece solo.
+
+### El nombre del componente dice lo que hace
+
+Se llamaba `NewSaleButton`, de cuando abría el asistente de venta. Abre
+`RegisterSheet`, que ofrece tres cosas y solo una es una venta. Con un botón
+que vive en tres pantallas, **un nombre que miente es lo que hace que el
+siguiente escriba otro botón** en vez de montar éste.
+
+### La hoja navega a rutas absolutas, así que da igual desde dónde se abra
+
+«Nuevo cliente» va a `/clients/nuevo`, «Fiado o venta» a `/ventas/nueva` y
+«Abono» a `/dashboard?nuevo=abono`. Esa última es la única que necesita algo al
+otro lado —el buscador de clientes de Inicio— y por eso Inicio monta
+`ClientSearchDialog` con `hideTrigger`: **sin disparador visible, solo para
+contestar al marcador**. Una pantalla que monta `RegisterButton` no necesita
+montar nada más.
+
+## El diálogo «Agregar transacción» ya no existe. No se reescribe
+
+**Borrado el 2026-10-24 por orden del dueño**, después de que él encontrara su
+botón todavía vivo en `/clients` y `/malas-pagas`: *«está mal, ese flujo ya no
+debe existir»*.
+
+Era un formulario que preguntaba **cuánto** y nada más. Las tres cosas que un
+tendero registra pasaron a preguntar algo antes:
+
+| Lo que se registra | Dónde vive hoy | Qué pregunta primero |
+|---|---|---|
+| Un cliente nuevo | `/clients/nuevo` | Sus datos. Sin movimiento |
+| Un fiado o una venta | `/ventas/nueva` | Qué se llevó |
+| Un abono | `/abonos/nuevo` | Qué fiado paga |
+
+**Por qué no basta con «dejarlo por si acaso»**, que es la tentación: las tres
+pantallas nuevas guardan cosas que aquél no sabía guardar — el fiado al que
+apunta un abono, las líneas de producto de una venta, los bolívares tecleados
+por línea de un reparto. Una puerta vieja que escribe movimientos sin nada de
+eso no es una alternativa más: **es una forma de meter en la base filas que el
+resto de la app ya no sabe explicar.**
+
+### Lo que se fue con él
+
+`add-movement-dialog.tsx` entero, el paso de alta de `client-search-dialog.tsx`
+y las acciones `addMovement` y `createClientWithMovement`. Unas 2.400 líneas.
+
+### Y lo que se quedó, que es lo que hay que saber antes de tocarlo
+
+- **El buscador de cliente del abono.** `?nuevo=abono` lo abre, se elige a
+  alguien y se aterriza en `/abonos/nuevo?cliente=<id>`. Su carcasa de abrir y
+  cerrar tiene **tres fallos reales resueltos dentro** —el marcador que no se
+  limpiaba, el `replace` que cancelaba el `push`, el campo de teléfono que
+  sobrevivía a un cierre— y cada uno está explicado donde ocurre. Reescribirla
+  «limpia» es volver a pisarlos.
+- **Los dos botones de la ficha del cliente**, que ahora son
+  `ClientActionsRow`: dos enlaces y nada más. Los dibujaba el diálogo, que
+  llevaba meses montándose entero para eso.
+
+### La señal de que esto va a volver a pasar
+
+Un botón que **no lo dibuja la pantalla sino un componente que ella monta** es
+el que nadie revisa. Pasó aquí —seis días con dos flujos vivos— y pasa con la
+cabecera de `app-header.tsx`, unas secciones más arriba. Cuando quites una
+puerta, busca quién más la dibujaba, no solo quién la abría.
+
+## EL DOCUMENTO DEL CLIENTE SE ESCRIBE SIEMPRE CON SU LETRA
+
+**«V-32.256.369», nunca «32256369».** En toda la app: la del tendero, la del
+cliente, los PNG que se comparten y los mensajes de WhatsApp. Regla del dueño
+del 2026-10-23, al dar de alta dos personas con el mismo número y distinta
+letra: *«en todos los lugares donde se maquete el documento del cliente debe
+incluir el prefijo»*.
+
+**Se escribe con `formatDocumentId(documento, tipo)`**, de `lib/format.ts`.
+Nunca pegando el valor de la columna.
+
+### Esta regla ya se escapó DOS veces, y la segunda explica cómo
+
+La primera fue el 2026-10-23: dieciséis sitios dibujaban el documento y varios
+lo hacían en crudo. La defensa que se montó entonces sigue siendo la buena —
+**el segundo parámetro de `formatDocumentId` es obligatorio, sin valor por
+defecto**, así que TypeScript obliga a cada sitio a decir de dónde saca la
+letra. Eso encontró dos pantallas que el barrido a mano no vio.
+
+La segunda fue el 2026-10-24, y TypeScript no podía cazarla: la pantalla «Tu
+pedido quedó registrado» recibe el documento como **una cadena ya hecha**
+dentro de un objeto `comprador`, así que ahí no hay nada que formatear — el
+error estaba cuatrocientas líneas antes, donde ese objeto se construye.
+
+**La lección, y es la regla práctica:**
+
+> **Formatea en el ORIGEN, donde el documento y su letra están juntos. No en
+> cada sitio que lo dibuja.**
+
+De ese valor colgaban **tres** superficies —la pantalla, el PNG que el cliente
+se queda en el chat y el mensaje de WhatsApp—. Arreglar la que se ve deja las
+otras dos diciendo otra cosa, y la que se ve es la única que alguien mira.
+
+### Cómo se busca, que no es mirando pantallas
+
+Una lista de pantallas nunca está completa; una de columnas sí. Son dos
+parejas:
+
+| Columna | Su letra |
+|---|---|
+| `clients.document_id` | `clients.document_type` |
+| `catalog_orders.customer_document` | `catalog_orders.customer_document_type` |
+
+```sh
+grep -rn "document_id\|customer_document" --include=*.tsx --include=*.ts app components lib
+```
+
+Y para cada sitio que lo DIBUJA, la pregunta es si llama a `formatDocumentId`
+o si recibe una cadena que alguien formateó antes. Si es lo segundo, el sitio
+a revisar es ese alguien.
+
+### Cuando no hay letra
+
+`null` es el estado normal de todo lo anterior a las migraciones `154` y
+`155`: a esos clientes nunca se les preguntó. `formatDocumentId` lo resuelve
+—escribe los dígitos agrupados y nada más— y no se inventa una letra. Una `V`
+puesta por defecto convierte «no lo sé» en una afirmación sobre la cédula de
+alguien.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

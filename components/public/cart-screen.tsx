@@ -45,7 +45,7 @@ import {
 } from "@/lib/products/price";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { telefonoLegible } from "@/lib/phone";
-import { formatReceiptDateTime } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
 import { useCarrito } from "@/lib/cart/store";
 import {
@@ -506,6 +506,7 @@ function FormularioDeLaOrden({
     defaultDocumentType(ownerCountry as OwnerCountry | null),
   );
   const [whatsapp, setWhatsapp] = useState("");
+  const [direccion, setDireccion] = useState("");
   // DESMARCADA, aunque el frame la dibuje marcada. El porqué está en
   // `lib/cart/mensaje.ts`, junto al texto: Meta exige consentimiento
   // afirmativo, y una premarcada no es una elección.
@@ -529,6 +530,7 @@ function FormularioDeLaOrden({
           documento,
           tipoDeDocumento,
           whatsapp,
+          direccion,
           quiereAvisos,
           textoDelPermiso: quiereAvisos ? TEXTO_PERMISO_ORDEN : null,
         },
@@ -619,9 +621,24 @@ function FormularioDeLaOrden({
       // nada esperando por delante. El pedido YA está guardado —decisión del
       // 2026-10-14— así que lo que falle aquí cuesta un toque más, no un
       // pedido.
+      // ── EL DOCUMENTO CON SU LETRA, Y SE FORMATEA UNA SOLA VEZ ─────────
+      //
+      // «V-15.715.800» y no «15715800». Regla del dueño del 2026-10-23: el
+      // documento del cliente lleva su prefijo EN TODAS PARTES. Esta pantalla
+      // se quedó fuera de aquel barrido y él lo cazó el 2026-10-24 con la
+      // captura de «Tu pedido quedó registrado».
+      //
+      // SE FORMATEA AQUÍ Y NO EN CADA SITIO QUE LO DIBUJA, que es por lo que
+      // se escapó: de este valor cuelgan TRES superficies —la pantalla de
+      // confirmación, el PNG que el cliente comparte y el mensaje de
+      // WhatsApp— y arreglar la que se ve deja las otras dos diciendo otra
+      // cosa. Formateado en el origen, las tres dicen lo mismo por
+      // construcción.
+      const documentoConLetra = formatDocumentId(documento, tipoDeDocumento);
+
       const recibo = dibujarRecibo({
         businessName,
-        comprador: { nombre, documento, telefono: telefonoLegible(whatsapp) },
+        comprador: { nombre, documento: documentoConLetra, telefono: telefonoLegible(whatsapp) },
         resumen: resumenPorMoneda(lineas, productos, rates),
         rates,
         fecha: fechaDelPedido,
@@ -652,7 +669,7 @@ function FormularioDeLaOrden({
       }
 
       onAbierto(false);
-      onEnviada(mensaje, { nombre, documento, telefono: whatsapp }, fechaDelPedido);
+      onEnviada(mensaje, { nombre, documento: documentoConLetra, telefono: whatsapp }, fechaDelPedido);
     });
   }
 
@@ -720,6 +737,38 @@ function FormularioDeLaOrden({
               name="orden_whatsapp"
               preferredDialCode={prefijo}
               onValueChange={setWhatsapp}
+              disabled={enviando}
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {/* ── LA DIRECCIÓN, Y ES LA ÚNICA OPCIONAL DE ESTE FORMULARIO ────
+                Decisión del dueño el 2026-10-24: *«pidámosla en el carrito»*.
+                La tarjeta del pedido que él lee enseña «Dirección:» y hasta
+                hoy no había nada en la base que pudiera llenarla.
+
+                «(opcional)» EN EL RÓTULO Y NO EN UN AVISO DEBAJO: este
+                formulario está entre el cliente y su pedido, así que un campo
+                más es una razón más para abandonarlo. Que se pueda saltar
+                tiene que leerse ANTES de empezar a escribirlo, no después.
+
+                Es el mismo rótulo que el alta de cliente del tendero
+                —«Dirección (opcional)»— a propósito: cuando él dé de alta a
+                esta persona desde el pedido, va a ver el mismo campo con el
+                mismo nombre y su valor ya puesto.
+
+                200 CARACTERES, que es lo que admite la columna de la `157`.
+                El tope está aquí y no solo en la base porque una dirección
+                recortada al guardar se descubre leyéndola, cuando ya no se
+                puede preguntar. */}
+            <Label htmlFor="orden_direccion">Dirección (opcional)</Label>
+            <Input
+              id="orden_direccion"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+              placeholder="Dónde llevarlo"
+              maxLength={200}
+              autoComplete="street-address"
               disabled={enviando}
             />
           </div>
