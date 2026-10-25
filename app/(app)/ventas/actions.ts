@@ -617,6 +617,10 @@ export type LineaDeVentaEntrada = {
   productId: string;
   quantity: number;
   currency: PriceCurrency;
+  // THE ORDER LINE THIS CAME FROM, when the sale is a catalogue order being
+  // registered. See `pedidoId` below: it is how the SERVER finds the sealed
+  // price, and the browser never sends a price of its own.
+  orderItemId?: string;
 };
 
 // UN PAGO, Y AQUÍ SÍ MANDA EL NAVEGADOR LA CIFRA — porque es otra clase de
@@ -682,6 +686,21 @@ export type VentaEntrada = {
   pagos: PagoDeVentaEntrada[];
   credito: CreditoDeVentaEntrada[];
   nota?: string | null;
+  // ── REGISTRAR UN PEDIDO DEL CATÁLOGO ────────────────────────────────
+  //
+  // Cuando viene, esta venta ES ese pedido, y los precios salen de
+  // `catalog_order_items` y no del catálogo de hoy. Decisión del dueño el
+  // 2026-10-24, preguntado cuál de los dos se cobra: «al congelado».
+  //
+  // EL PRECIO SIGUE SIN VIAJAR DESDE EL NAVEGADOR, y es toda la razón de que
+  // esto sea el id de un pedido y no un número: el servidor lee la cifra
+  // sellada del pedido que ya tiene, igual que si no la leyera del catálogo.
+  // Un campo `precioSellado` habría sido un hueco por el que cobrar
+  // cualquier cosa.
+  //
+  // También sella `sale_id` y `registered_at` en el pedido cuando la venta
+  // queda escrita, que es lo que impide registrarlo dos veces.
+  pedidoId?: string;
 };
 
 export type ResultadoVenta =
@@ -771,6 +790,42 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   const productos = await armarProductos(supabase, (filas ?? []) as FilaDeProducto[]);
   const porId = new Map(productos.map((p) => [p.id, p]));
 
+  // ── LOS PRECIOS SELLADOS DEL PEDIDO ─────────────────────────────────
+  //
+  // Filtrados por el pedido Y por su dueño, para que un `orderItemId` de otro
+  // negocio pegado en la petición no traiga su precio.
+  const selladas = new Map<
+    string,
+    { unit_price: number; currency: PriceCurrency; tier: "retail" | "wholesale" }
+  >();
+  if (entrada.pedidoId) {
+    const { data: pedido } = await supabase
+      .from("catalog_orders")
+      .select("id, sale_id, registered_at")
+      .eq("id", entrada.pedidoId)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
+    // LA PARADA DURA, y aquí es la que vale: las pantallas ya la tienen, pero
+    // una petición repetida --un doble toque, una pestaña vieja-- llega aquí
+    // sin pasar por ninguna, y lo que está en juego es que el cliente deba el
+    // doble.
+    if (pedido.sale_id != null || pedido.registered_at != null) {
+      return { ok: false, error: "Este pedido ya se registró." };
+    }
+    const { data: lineasDelPedido } = await supabase
+      .from("catalog_order_items")
+      .select("id, unit_price, currency, tier")
+      .eq("order_id", entrada.pedidoId);
+    for (const l of lineasDelPedido ?? []) {
+      selladas.set(l.id, {
+        unit_price: Number(l.unit_price),
+        currency: l.currency as PriceCurrency,
+        tier: l.tier === "wholesale" ? "wholesale" : "retail",
+      });
+    }
+  }
+
   const lineasResueltas: {
     productId: string;
     name: string;
@@ -798,8 +853,19 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     const tier = escalonParaCantidad(producto.producto, linea.quantity);
     if (!tier) return { ok: false, error: `La cantidad de ${producto.name} es menor que el mínimo que vendes.` };
 
-    const bloque = tier === "retail" ? producto.producto.retail : producto.producto.wholesale;
-    const unitPrice = precioEnMoneda(bloque, linea.currency, rates);
+    // ── EL PRECIO SELLADO MANDA, CUANDO LO HAY ──────────────────────
+    //
+    // Y SOLO SI LA MONEDA NO CAMBIÓ. Un precio sellado existe en UNA moneda:
+    // la que el cliente vio. Si el tendero movió la línea a otra con
+    // «Editar», no hay nada sellado que cobrar ahí y el precio sale del
+    // catálogo, como en cualquier venta --que es lo que él acaba de elegir al
+    // cambiarla--. El escalón también se respeta sellado: recalcularlo por la
+    // cantidad nueva podría saltar a mayoreo y cambiar el precio por detrás.
+    const sellada = linea.orderItemId ? selladas.get(linea.orderItemId) : undefined;
+    const usaSellado = sellada != null && sellada.currency === linea.currency;
+    const tierFinal = usaSellado ? sellada.tier : tier;
+    const bloque = tierFinal === "retail" ? producto.producto.retail : producto.producto.wholesale;
+    const unitPrice = usaSellado ? sellada.unit_price : precioEnMoneda(bloque, linea.currency, rates);
     // `null` significa «no hay número», nunca cero: un producto sin precio en
     // esa moneda no se cobra a cero, se rechaza. Pasa de verdad cuando el
     // negocio es venezolano y ahora mismo no hay tasa para convertir.
@@ -813,7 +879,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       quantity: linea.quantity,
       unitPrice,
       currency: linea.currency,
-      tier,
+      tier: tierFinal,
     });
   }
 
@@ -1083,6 +1149,34 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       return { ok: false, error: "No pudimos guardar lo que queda fiado. Vuelve a intentarlo." };
     }
     fiado.push({ currency: resto.currency, amount: resto.amount, movementId: movimiento.id });
+  }
+
+  // ── EL PEDIDO QUEDA SELLADO COMO REGISTRADO ─────────────────────────
+  //
+  // DESPUÉS de escribir la venta y no antes, y el orden importa: si esto
+  // fuera primero y la venta fallara, el pedido quedaría marcado como
+  // registrado sin venta detrás --imposible de registrar y sin nada que
+  // enseñar--.
+  //
+  // UN FALLO AQUÍ NO TUMBA LA VENTA, que ya está escrita y es la que lleva el
+  // dinero. Lo que queda es un pedido que sigue ofreciendo «Registrar», y la
+  // parada dura de más arriba lo atrapa al segundo intento: `sale_id` es
+  // null, pero el cliente ya tiene su cargo. Se escribe en el log para que se
+  // pueda arreglar a mano, que es lo único peor que esto: que no se sepa.
+  if (entrada.pedidoId) {
+    const { error: errorSello } = await supabase
+      .from("catalog_orders")
+      .update({ sale_id: venta.id, registered_at: new Date().toISOString(), status: "registered" })
+      .eq("id", entrada.pedidoId)
+      .eq("owner_id", user.id);
+    if (errorSello) {
+      console.error("registrarVenta sello del pedido:", errorSello.message, {
+        pedidoId: entrada.pedidoId,
+        saleId: venta.id,
+      });
+    }
+    revalidatePath(`/productos/ordenes/${entrada.pedidoId}`);
+    revalidatePath("/productos/ordenes");
   }
 
   revalidatePath("/dashboard");
