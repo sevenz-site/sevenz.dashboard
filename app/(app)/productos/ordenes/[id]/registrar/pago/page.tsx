@@ -1,6 +1,7 @@
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { OrderCurrencyPaymentForm } from "@/components/dashboard/order-currency-payment-form";
+import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
 import { findOrderClient } from "@/lib/orders/order-client-match";
 import { createClient } from "@/lib/supabase/server";
@@ -43,7 +44,7 @@ export default async function PagoDeBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, rates, prevista, ownerId } = await cargarBloque(
+  const { pedido, bloque, bloques, rates, prevista, ownerId } = await cargarBloque(
     id,
     moneda,
   );
@@ -66,7 +67,7 @@ export default async function PagoDeBloquePage({
           ?.amount ?? null)
       : null;
 
-  const destino = `/productos/ordenes/${pedido.id}/registrar/cliente?moneda=${bloque.moneda}${ficha ? `&ficha=${ficha}` : ""}`;
+  const hrefCliente = `/productos/ordenes/${pedido.id}/registrar/cliente?moneda=${bloque.moneda}${ficha ? `&ficha=${ficha}` : ""}`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -77,7 +78,7 @@ export default async function PagoDeBloquePage({
         soloEnTelefono={false}
       />
       <ScreenTitle>Registrar pago</ScreenTitle>
-      <p className="-mt-2 text-sm text-muted-foreground">3/4 Pago</p>
+      <OrderStepCounter pedidoId={pedido.id} paso={3} nombre="Pago" />
 
       <div className="rounded-xl border bg-card p-4">
         <p className="text-sm text-muted-foreground">Total a pagar</p>
@@ -98,7 +99,10 @@ export default async function PagoDeBloquePage({
         total={bloque.total}
         rates={rates}
         prevista={prevista}
-        href={destino}
+        hrefCliente={hrefCliente}
+        hrefPedido={`/productos/ordenes/${pedido.id}/registrar`}
+        // TODAS las monedas del pedido, para saber si esta era la última.
+        monedas={bloques.map((b) => b.moneda)}
       />
     </div>
   );

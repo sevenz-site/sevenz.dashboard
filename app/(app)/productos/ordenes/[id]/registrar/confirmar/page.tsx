@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
+import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -56,11 +57,11 @@ export default async function ConfirmarBloquePage({
   return (
     <div className="flex flex-col gap-4">
       <ScreenBackRow
-        href={`/productos/ordenes/${pedido.id}`}
+        href={`/productos/ordenes/${pedido.id}/registrar`}
         soloEnTelefono={false}
       />
       <ScreenTitle>Detalle del pedido</ScreenTitle>
-      <p className="-mt-2 text-sm text-muted-foreground">2/4 Confirmar pedido</p>
+      <OrderStepCounter pedidoId={pedido.id} paso={2} nombre="Confirmar pedido" />
 
       {/* «Total a pagar», el encabezado del frame. Es el total del BLOQUE, no
           el del pedido entero: lo que esta pantalla confirma es esta moneda. */}

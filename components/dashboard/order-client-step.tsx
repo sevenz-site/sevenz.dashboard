@@ -152,7 +152,10 @@ export function OrderClientStep({
     // borrador -- la nota de la flecha, *«el flujo pasa a ser de 4/4 pasos a
     // 3/3»*.
     if (quedanMonedas) {
-      router.push(`/productos/ordenes/${pedidoId}`);
+      // AL 1/4 Y NO AL DETALLE: desde que son dos pantallas (2026-10-25) los
+      // bloques de moneda viven en `/registrar`. Volver al detalle dejaría al
+      // tendero mirando los totales sin el botón de la moneda que le falta.
+      router.push(`/productos/ordenes/${pedidoId}/registrar`);
       router.refresh();
       return;
     }
@@ -192,27 +195,33 @@ export function OrderClientStep({
         href={
           cuentaSeparada
             ? `/productos/ordenes/${pedidoId}/registrar/cliente`
-            : `/productos/ordenes/${pedidoId}`
+            : `/productos/ordenes/${pedidoId}/registrar`
         }
         label={cuentaSeparada ? "Volver" : "Volver al pedido"}
         soloEnTelefono={false}
       />
 
       <div className="flex flex-col gap-2">
+        {/* «Registrar cliente», QUE ES LO QUE ESCRIBE EL FRAME del flujo
+            nuevo (`1653:12971`, `1654:15657`), con o sin ficha emparejada.
+            Antes eran dos títulos distintos --«Registrar pedido» y «Datos del
+            cliente»-- heredados del flujo por producto; el frame nuevo usa
+            uno solo. */}
         <ScreenTitle>
-          {cuentaSeparada
-            ? "Nuevo cliente"
-            : ficha
-              ? "Registrar pedido"
-              : "Datos del cliente"}
+          {cuentaSeparada ? "Nuevo cliente" : "Registrar cliente"}
         </ScreenTitle>
         {/* NO COUNTER ON «Nuevo cliente» — its frame (`1542:11888`) draws
             none. It is a detour off the matched screen, not a step of the
             flow, and numbering it would make the flow look longer than it is. */}
         {!cuentaSeparada ? (
           <>
+            {/* «4/4», SIEMPRE, y no depende de si hay ficha: en el flujo
+                nuevo esta pantalla es el cuarto paso de cuatro, y cuando el
+                cliente ya está en el borrador no se muestra --la nota de la
+                flecha, *«el flujo pasa a ser de 4/4 pasos a 3/3»*--. Los
+                «1/1» y «2/2» de antes eran del flujo por producto. */}
             <p className="text-sm text-muted-foreground">
-              {ficha ? "2/2 Información del cliente" : "1/1 Datos del cliente"}
+              4/4 Información del cliente
             </p>
             <div
               aria-hidden="true"

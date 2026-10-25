@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
 import {
+  borrarBorrador,
   fijarPagoDeMoneda,
+  leerBorrador,
   leerPagoDeMoneda,
   type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
+import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
 import {
   formatPriceAmount,
   type BolivarRates,
@@ -66,7 +69,9 @@ export function OrderCurrencyPaymentForm({
   total,
   rates,
   prevista,
-  href,
+  hrefCliente,
+  hrefPedido,
+  monedas,
 }: {
   pedidoId: string;
   moneda: PriceCurrency;
@@ -76,10 +81,14 @@ export function OrderCurrencyPaymentForm({
   total: number;
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
-  // Adónde lleva «Pagar», decidido por la página: la ficha del cliente si
-  // todavía no se ha rellenado, o el pedido si quedan monedas.
-  href: string;
+  // La pantalla del cliente, con su ficha emparejada si la había.
+  hrefCliente: string;
+  hrefPedido: string;
+  // Todas las monedas del pedido, para saber si esta era la última.
+  monedas: string[];
 }) {
+  const [cerrando, setCerrando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   // THE DRAFT IS READ THROUGH `useSyncExternalStore`, the house pattern of
@@ -107,34 +116,84 @@ export function OrderCurrencyPaymentForm({
     () => null,
   );
 
-  function guardar(r: Registro) {
+  async function guardar(r: Registro) {
     fijarPagoDeMoneda(pedidoId, moneda, r);
-    // WHERE «Pagar» GOES IS THE ROMBO OF THE SITEMAP: «¿Hay más de una moneda
-    // en el pedido?». The page works out the answer — it is the only one that
-    // has read the order's lines — and hands it over as `href`, so this
-    // component never has to guess.
-    router.push(href);
+
+    // ── EL ROMBO DEL SITEMAP, RESUELTO AQUÍ ──────────────────────────
+    //
+    // «¿Hay más de una moneda en el pedido?» --`1654:15724`-- y su respuesta
+    // depende del BORRADOR, que solo el navegador ve. Tres salidas:
+    const borrador = leerBorrador(pedidoId);
+    const faltan = monedas.filter((m) => borrador?.monedas[m] == null);
+
+    // 1. SIN CLIENTE TODAVÍA: la pantalla del cliente, que es el paso 4/4.
+    if (!borrador?.cliente) {
+      router.push(hrefCliente);
+      return;
+    }
+
+    // 2. CON CLIENTE Y MONEDAS PENDIENTES: de vuelta al pedido, a por la
+    //    siguiente. ESTE PASO NO VUELVE A PEDIR EL CLIENTE, que es la nota
+    //    escrita encima de la flecha: *«el flujo pasa a ser de 4/4 pasos a
+    //    3/3 porque la pantalla de Registrar cliente ya no se muestra porque
+    //    registró el cliente en el primer pedido»*.
+    if (faltan.length > 0) {
+      router.push(hrefPedido);
+      router.refresh();
+      return;
+    }
+
+    // 3. ERA LA ÚLTIMA: se guarda todo. Aquí no hay más pantallas que pasar,
+    //    así que pedir otra vez los datos del cliente solo para tener dónde
+    //    poner el botón sería un paso de más -- justo el que el dueño mandó
+    //    quitar al rediseñar esto.
+    setCerrando(true);
+    setError(null);
+    const resultado = await registrarTodoElPedido(pedidoId, borrador, monedas);
+    if (!resultado.ok) {
+      setCerrando(false);
+      setError(resultado.error);
+      // SI ALGO LLEGÓ A GUARDARSE, la pantalla de detrás ya no es la misma:
+      // dejarla vieja es cómo el tendero registra dos veces lo que ya está
+      // escrito.
+      if (resultado.monedasHechas.length > 0) router.refresh();
+      return;
+    }
+    // EL BORRADOR SE BORRA SOLO DESPUÉS DE QUE LA VENTA ATERRICE.
+    borrarBorrador();
+    router.push(`/ventas/${resultado.primeraVentaId}`);
     router.refresh();
   }
 
   return (
-    <PagoCampos
-      moneda={moneda}
-      ownerId={ownerId}
-      total={total}
-      rates={rates}
-      prevista={prevista}
-      inicial={inicial}
-      // «Total a pagar» YA ESTÁ ARRIBA, dibujado por la página como en el
-      // frame. La tarjeta de total de los campos sería la misma cifra otra
-      // vez.
-      mostrarTotal={false}
-      onGuardar={guardar}
-      // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
-      // It is the BLOCK's total and not what is typed into the amount field —
-      // the frame's own caption is the ceiling, which is what the shopkeeper
-      // is confirming against.
-      etiquetaBoton={`Pagar ${formatPriceAmount(total, moneda)}`}
-    />
+    <>
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <PagoCampos
+        moneda={moneda}
+        ownerId={ownerId}
+        total={total}
+        rates={rates}
+        prevista={prevista}
+        inicial={inicial}
+        // «Total a pagar» YA ESTÁ ARRIBA, dibujado por la página como en el
+        // frame. La tarjeta de total de los campos sería la misma cifra otra
+        // vez.
+        mostrarTotal={false}
+        onGuardar={guardar}
+        // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
+        // It is the BLOCK's total and not what is typed into the amount field —
+        // the frame's own caption is the ceiling, which is what the shopkeeper
+        // is confirming against.
+        etiquetaBoton={
+          cerrando
+            ? "Registrando…"
+            : `Pagar ${formatPriceAmount(total, moneda)}`
+        }
+      />
+    </>
   );
 }

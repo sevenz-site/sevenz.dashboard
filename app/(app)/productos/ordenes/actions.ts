@@ -8,7 +8,6 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { isDocumentTypeFor } from "@/lib/document-id";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { registrarVenta, type VentaEntrada } from "@/app/(app)/ventas/actions";
-import type { PriceCurrency } from "@/lib/products/price";
 
 // THE ONE WRITE IN D's READING HALF, and it is here for a reason worth
 // stating: without it the counter can only ever go up.

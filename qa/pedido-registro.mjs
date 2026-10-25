@@ -685,6 +685,85 @@ try {
   );
   if (rE.ok && rE.clientId) creados.clientes.push(rE.clientId);
 
+  // ═══ 14. UN FALLO A MITAD NO SE LLEVA LO QUE YA SE GUARDÓ ════════════
+  //
+  // Dos monedas son dos llamadas, así que la segunda puede fallar con la
+  // primera ya escrita. `registrarTodoElPedido` lo contempla --devuelve
+  // `monedasHechas` y lo dice en el mensaje-- y hasta hoy nadie lo había
+  // ejecutado.
+  //
+  // EL FALLO ES UN ABONO MAYOR QUE EL TOTAL, y la elección importa: la
+  // primera versión de esta fila usaba una moneda cuyos productos ya no
+  // estaban en el catálogo, y se puso roja contra un comportamiento que es
+  // CORRECTO -- una moneda que nunca va a poder registrarse no debe dejar el
+  // pedido pendiente para siempre, así que el pedido SÍ queda sellado. Lo
+  // equivocado era la prueba. Un fallo de verdad es el de una moneda que sí
+  // se puede cobrar y cuya llamada se cae.
+  //
+  // LO QUE TIENE QUE PASAR, y no es «deshacerlo todo»: la venta en dólares se
+  // QUEDA --el tendero ya se llevó ese dinero y el cliente ya lo debe-- y el
+  // pedido NO se da por registrado, así que sigue reclamando los euros.
+  // Borrar la primera para dejar la pantalla limpia sería quitarle un cargo
+  // del que el cliente ya está enterado.
+  const pedidoF = await nuevoPedido("fallo a mitad", [lineaViva, lineaEuros]);
+  const rF1 = await registrar(
+    entradaDe(pedidoF.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("77777777")),
+    pedidoF.id,
+  );
+  if (rF1.ok && rF1.clientId) creados.clientes.push(rF1.clientId);
+  const clienteF = { ...clienteNuevo("77777777"), fichaId: rF1.ok ? rF1.clientId : null };
+
+  // 3 × 4 = 12 €. Un abono de 9.999 lo rechaza `registrarVenta`.
+  const rF2 = await registrar(
+    entradaDe(pedidoF.id, "EUR", pagoDeMoneda({ amount: 9999 }), clienteF),
+    pedidoF.id,
+  );
+  check(
+    "14a. la segunda moneda se rechaza si el abono pasa del total",
+    rF2.ok === false,
+    rF2.ok ? "LA REGISTRÓ" : rF2.error,
+  );
+  const { data: ventasF } = await admin
+    .from("sales")
+    .select("id")
+    .eq("catalog_order_id", pedidoF.id)
+    .is("deleted_at", null);
+  check(
+    "14b. la venta de la PRIMERA moneda se queda escrita, no se deshace",
+    ventasF?.length === 1,
+    `${ventasF?.length} ventas`,
+  );
+  const { data: selloF } = await admin
+    .from("catalog_orders")
+    .select("status, registered_at")
+    .eq("id", pedidoF.id)
+    .single();
+  check(
+    "14c. y el pedido NO queda registrado, así que sigue reclamando lo que falta",
+    selloF?.status !== "registered" && selloF?.registered_at == null,
+    `status ${selloF?.status} · registered_at ${selloF?.registered_at ?? "null"}`,
+  );
+
+  // Y SE PUEDE REINTENTAR, que es la promesa entera: el tendero corrige el
+  // monto y la moneda que faltaba entra sin tocar la que ya estaba.
+  const rF3 = await registrar(
+    entradaDe(pedidoF.id, "EUR", pagoDeMoneda({ amount: 12 }), clienteF),
+    pedidoF.id,
+  );
+  const { data: selloF2 } = await admin
+    .from("catalog_orders")
+    .select("status, registered_at")
+    .eq("id", pedidoF.id)
+    .single();
+  check(
+    "14d. al reintentarla con el monto bueno, entra y el pedido queda cerrado",
+    rF3.ok === true &&
+      Array.isArray(rF3.pendientes) &&
+      rF3.pendientes.length === 0 &&
+      selloF2?.status === "registered",
+    rF3.ok ? `pendientes ${JSON.stringify(rF3.pendientes)} · status ${selloF2?.status}` : rF3.error,
+  );
+
   // ═══ 13. UNA VENTA RECHAZADA NO DEJA UN CLIENTE HUÉRFANO ══════════════
   //
   // La fila que encontró el fallo, y lo encontró por la puerta de atrás: la

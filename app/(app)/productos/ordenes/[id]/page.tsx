@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { formatCantidad } from "@/lib/products/cantidad";
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
@@ -24,19 +27,8 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
-import { OrderProductSheet } from "@/components/dashboard/order-product-sheet";
-import {
-  OrderRegistrationSummary,
-  type LineaDelPedido,
-} from "@/components/dashboard/order-registration-summary";
-import { OrderContinueButton } from "@/components/dashboard/order-continue-button";
-import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
-import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
-import {
-  OrderProductCard,
-  OrderProductRowButton,
-} from "@/components/dashboard/order-product-card";
-import type { BolivarRates, PriceTier } from "@/lib/products/price";
+import {} from "@/components/dashboard/order-product-card";
+import type { BolivarRates } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 // ONE ORDER'S PAGE. Deliverable D, reading half.
@@ -125,7 +117,7 @@ export default async function OrdenPage({
   // Las dos en el mismo viaje, y no al abrir el diálogo: el detalle ya está
   // montado, así que pedirlo al tocar pondría una espera justo donde se
   // espera una respuesta inmediata.
-  const [productosPorId, rateContext] = await Promise.all([
+  const [, rateContext] = await Promise.all([
     readOrderProducts(supabase, user!.id, items),
     getOwnerRateContext(supabase, user!.id),
   ]);
@@ -146,21 +138,6 @@ export default async function OrdenPage({
   const primerNombre = pedido.customer_name.trim().split(/\s+/)[0];
   const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
   const totales = totalsByCurrency(items);
-
-  // THE LINES AS THE DRAFT SEES THEM: id, quantity, unit price and currency.
-  // The draft lives in the browser, so the per-currency roll-up is computed
-  // there; what the server owes it is the sealed half of each line.
-  const lineasParaResumen: LineaDelPedido[] = items.map((i) => ({
-    id: i.id,
-    cantidad: Number(i.quantity),
-    precioUnitario: Number(i.unit_price),
-    moneda: i.currency as PriceCurrency,
-  }));
-
-  // LOS BLOQUES DE MONEDA, que es la unidad de trabajo desde `CT-147`. Se
-  // agrupan por la moneda SELLADA porque el servidor no ve el borrador; las
-  // ediciones entran en el siguiente dibujo.
-  const bloques = bloquesDeMoneda(items, undefined);
 
   // WHAT THIS CUSTOMER ALREADY OWED, for the «Deuda antigua» row.
   //
@@ -319,6 +296,61 @@ export default async function OrdenPage({
           two rows inside the same box as everything else, which read as the
           last two facts of the order rather than as its bottom line -- and
           the bottom line is what the shopkeeper opens this screen to see. */}
+      {/* ── LO QUE PIDIÓ, EN FRÍO ──────────────────────────────────────
+          El frame del detalle (`1655:15864`) dibuja «Pedido» con una fila por
+          producto antes de los totales, y es lo que esta pantalla existe para
+          contestar: qué pidió y cuánto es.
+
+          SE REPUSO EL 2026-10-25. Al separar el `1/4 Pedido` en su propia
+          pantalla se fue con él la lista de productos, y el detalle se quedó
+          enseñando totales de algo que no decía qué era. Lo cazó abrirlo en
+          el navegador, no el compilador: quitar de más no rompe nada.
+
+          AQUÍ NO HAY BOTONES. Lo que escribe dinero vive en el 1/4; esta
+          pantalla se mira. */}
+      {items.length > 0 ? (
+        <>
+          <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
+          <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+            {items.map((item) => {
+              const porPagar =
+                Math.round(
+                  Number(item.quantity) * Number(item.unit_price) * 100,
+                ) / 100;
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-start justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{item.product_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatCantidad(Number(item.quantity))} ×{" "}
+                      {formatPriceAmount(
+                        Number(item.unit_price),
+                        item.currency as PriceCurrency,
+                      )}{" "}
+                      · {item.tier === "wholesale" ? "al mayor" : "al detal"}
+                    </p>
+                    {item.comment ? (
+                      <p className="mt-1 text-sm whitespace-pre-line text-muted-foreground">
+                        {item.comment}
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="shrink-0 font-semibold tabular-nums">
+                    {formatPriceAmount(
+                      porPagar,
+                      item.currency as PriceCurrency,
+                    )}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+
       {totales.length > 0 ? (
         <>
           {/* «TOTAL POR PAGAR», which is what BOTH frames write --
@@ -381,88 +413,28 @@ export default async function OrdenPage({
         </>
       ) : null}
 
-      <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
-      <div className="flex flex-col gap-2">
-        {/* WHAT THIS ORDER WOULD BECOME, once something has been registered.
-            It draws nothing until then, which is the difference between the
-            two frames of this screen. */}
-        <OrderRegistrationSummary
-          pedidoId={pedido.id}
-          lineas={lineasParaResumen}
-          deudaAntigua={deudaAntigua}
-          rates={rates}
-        />
-        {items.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            Este pedido no tiene líneas.
-          </p>
-        ) : (
-          // ── UN BLOQUE POR MONEDA, Y ESTO ES `CT-147` ──────────────────
-          //
-          // Aquí había una tarjeta POR PRODUCTO, cada una con su «Registrar».
-          // Ocho productos eran dieciséis pantallas, y dos en la misma moneda
-          // con plazos distintos hacían que uno de los dos se perdiera sin
-          // decirlo. El dueño el 2026-10-24: *«el registro/pago debería
-          // hacerse por moneda no por producto (…) no puede salir a
-          // producción así»*.
-          //
-          // El frame `1654:15548` lo dibuja así: «Resumen de pedido en
-          // Dólares» con su tabla y su «Registrar», y otro igual en euros.
-          //
-          // LAS EDICIONES DEL BORRADOR NO SE LEEN AQUÍ y es a propósito: esto
-          // es un componente de servidor y el borrador vive en el navegador.
-          // Agrupar por la moneda sellada es lo correcto para el PRIMER
-          // dibujo; mover una línea con «Editar» recarga la pantalla, que es
-          // cuando el servidor vuelve a mirar.
-          bloques.map((bloque) => (
-            <OrderCurrencyBlockCard
-              key={bloque.moneda}
-              pedidoId={pedido.id}
-              bloque={bloque}
-              rates={rates}
-              hrefRegistrar={`/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${bloque.moneda}`}
-            />
-          ))
-        )}
-      </div>
+      {/* ── «REGISTRAR PEDIDO», Y VUELVE CON ALGO DETRÁS ──────────────
+          El comentario que vivía aquí decía que este botón se había quitado
+          el 2026-10-21 porque lo que haría era `CT-70`, sin construir, y que
+          *«cuando CT-70 aterrice, el botón vuelve aquí con una acción de
+          verdad detrás»*. Aterrizó el 2026-10-25.
 
-      {/* «CONTINUAR», which draws nothing until at least one line is
-          registered — the owner's rule of 2026-10-24, and the whole
-          difference between this screen's two frames.
+          LLEVA AL PASO 1/4 Y NO REGISTRA NADA ÉL MISMO: el sitemap dibuja
+          dos pantallas unidas por esta flecha, «Selecciona "Registrar
+          pedido"». Lo que se registra vive allí.
 
-          WHERE IT GOES DEPENDS ON THE CLIENT. One ficha matched: straight to
-          confirming it (`1614:11782`). None, or several: the client's details
-          have to be filled in (`1564:11876`). The page decides because only
-          the page knows which, and `findOrderClient` already answered it for
-          the card at the top. */}
-      <OrderContinueButton
-        pedidoId={pedido.id}
-        bloques={bloques}
-        href={
-          clienteDelPedido.kind === "uno"
-            ? `/productos/ordenes/${pedido.id}/registrar/cliente?ficha=${clienteDelPedido.cliente.id}`
-            : `/productos/ordenes/${pedido.id}/registrar/cliente`
-        }
-      />
+          NO SE DIBUJA EN UN PEDIDO YA REGISTRADO: no hay nada que registrar,
+          y ofrecerlo llevaría a una pantalla que redirige de vuelta aquí. */}
+      {pedido.registered_at == null ? (
+        <div className="pt-1">
+          <Button className="h-10 w-full" asChild>
+            <Link href={`/productos/ordenes/${pedido.id}/registrar`}>
+              Registrar pedido
+            </Link>
+          </Button>
+        </div>
+      ) : null}
 
-      {/* «REGISTRAR PEDIDO» IS NOT HERE, AND THAT IS THE DECISION, NOT AN
-          OVERSIGHT.
-
-          The frame `1371:7229` draws it, and it shipped disabled on
-          2026-10-17 with the sentence «llega en la próxima entrega»
-          underneath. The owner removed both on 2026-10-21, for launch A:
-          what the button would do is `CT-70`, which is blocked on three of
-          his own decisions and is not built. A disabled control that
-          promises a date is a promise this release cannot keep, and it sits
-          directly above the one action the screen can actually perform.
-
-          SO THE SCREEN NOW ENDS AT «MARCAR COMO ATENDIDO», which is all it
-          has ever been able to do. When `CT-70` lands, the button comes back
-          here with a real action behind it -- never enabled against
-          `OrderAttendButton`, because marking an order attended is a
-          different thing from registering it as a sale, and wiring one to
-          the other would be lying in the owner's own words. `CT-92` tracked
-          this and closes with its removal. */}
       <div className="pt-1">
         <OrderAttendButton
           orderId={pedido.id}
