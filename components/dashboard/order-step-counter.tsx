@@ -34,9 +34,35 @@ export function OrderStepCounter({
 }) {
   const borrador = useBorrador(pedidoId);
   const total = borrador?.cliente ? 3 : 4;
+
   return (
-    <p className="-mt-2 text-sm text-muted-foreground">
-      {paso}/{total} {nombre}
-    </p>
+    <div className="-mt-2 flex flex-col gap-2">
+      <p className="text-sm text-muted-foreground">
+        {paso}/{total} {nombre}
+      </p>
+      {/* ── LA BARRA DE PROGRESO, QUE ESTÁ EN EL FRAME ─────────────────
+          Reportada por el dueño el 2026-10-25: *«colocaste el texto del paso
+          a paso de cada pantalla pero quitaste la barra de progreso, revisa
+          el frame y te darás cuenta de que la barra está en el diseño»*.
+          Tenía razón: el paso 4/4 la lleva desde que se construyó y los pasos
+          nuevos nacieron solo con el texto.
+
+          `aria-hidden` A PROPÓSITO: lo que un lector de pantalla necesita ya
+          está dicho en letras —«2/4 Confirmar pedido»— y anunciar además una
+          barra sería decir dos veces lo mismo. Es lo que ya hacía el 4/4.
+
+          SE LLENA POR PASOS COMPLETOS, no por el que está en curso: en el
+          paso 2 de 4 se ve medio llena. Llenarla hasta el paso actual diría
+          que está hecho lo que se está haciendo. */}
+      <div
+        aria-hidden="true"
+        className="h-1 w-full overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full rounded-full bg-foreground transition-all"
+          style={{ width: `${Math.round((paso / total) * 100)}%` }}
+        />
+      </div>
+    </div>
   );
 }

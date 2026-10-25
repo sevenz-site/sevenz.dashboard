@@ -5,6 +5,9 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
+import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
+import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn } from "@/lib/products/price";
@@ -54,8 +57,46 @@ export default async function ConfirmarBloquePage({
 
   const comentarioDe = new Map(items.map((i) => [i.id, i.comment]));
 
+  // ── LO QUE LA HOJA DE «EDITAR PEDIDO» NECESITA ──────────────────────
+  //
+  // `productoParaVentaPorId` es lo que la pantalla de editar cargaba cuando
+  // era una ruta; al pasar a hoja (petición del dueño el 2026-10-25) el
+  // trabajo del servidor se hace aquí, una vez por línea viva de este bloque.
+  //
+  // EN PARALELO Y NO EN SERIE: un bloque de tres productos serían tres viajes
+  // encadenados justo antes de pintar, y esto es la pantalla que el tendero
+  // mira con el cliente delante.
+  //
+  // SOLO LAS LÍNEAS CON PRODUCTO: una descatalogada no se puede editar, y su
+  // tarjeta ya dice por qué no entra en la venta.
+  const lineasVivas = bloque.lineas.filter((l) => l.productId != null);
+  const paraEditar = new Map(
+    (
+      await Promise.all(
+        lineasVivas.map(async (l) => {
+          const { productos, rates: r, monedasDelLibro } = await productoParaVentaPorId(
+            l.productId as string,
+          );
+          const p = productos[0];
+          return p ? ([l.id, { p, rates: r, monedasDelLibro }] as const) : null;
+        }),
+      )
+    ).filter((x): x is NonNullable<typeof x> => x != null),
+  );
+
+  // TODAS las líneas del pedido con su moneda sellada: `fijarLineaEditada`
+  // las exige para limpiar el abono de un bloque que la edición deje vacío.
+  const lineasDelPedido = items.map((i) => ({
+    id: i.id,
+    moneda: String(i.currency ?? ""),
+  }));
+
   return (
-    <div className="flex flex-col gap-4">
+    // `flex-1` NO SOBRA: `StickyActions` baja con `mt-auto`, y `mt-auto` solo
+    // empuja si el contenedor tiene alto que repartir. Sin esto la barra se
+    // quedaba pegada al contenido —con media pantalla vacía debajo— que es lo
+    // que el dueño reportó el 2026-10-25 con la captura del paso 2/4.
+    <div className="flex flex-1 flex-col gap-4">
       <ScreenBackRow
         href={`/productos/ordenes/${pedido.id}/registrar`}
         soloEnTelefono={false}
@@ -146,15 +187,32 @@ export default async function ConfirmarBloquePage({
               </div>
             ) : null}
 
-            {producto != null ? (
-              <Button variant="outline" size="sm" className="h-10 w-full" asChild>
-                <Link
-                  href={`/productos/ordenes/${pedido.id}/registrar/editar/${linea.id}?moneda=${bloque.moneda}`}
-                >
-                  Editar pedido
-                </Link>
-              </Button>
-            ) : null}
+            {(() => {
+              const edicion = paraEditar.get(linea.id);
+              if (!edicion) return null;
+              return (
+                <OrderLineEditSheet
+                  pedidoId={pedido.id}
+                  lineaId={linea.id}
+                  lineasDelPedido={lineasDelPedido}
+                  productId={edicion.p.id}
+                  producto={edicion.p.producto}
+                  nombre={edicion.p.name}
+                  descripcion={edicion.p.description}
+                  unidad={edicion.p.unit}
+                  stock={edicion.p.stock}
+                  foto={
+                    edicion.p.photoPath
+                      ? getPublicProductPhotoUrl(edicion.p.photoPath)
+                      : null
+                  }
+                  cantidad={linea.cantidad}
+                  moneda={bloque.moneda}
+                  rates={edicion.rates}
+                  monedasDelLibro={edicion.monedasDelLibro}
+                />
+              );
+            })()}
           </div>
         );
       })}

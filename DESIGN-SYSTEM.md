@@ -2565,6 +2565,49 @@ el que nadie revisa. Pasó aquí —seis días con dos flujos vivos— y pasa co
 cabecera de `app-header.tsx`, unas secciones más arriba. Cuando quites una
 puerta, busca quién más la dibujaba, no solo quién la abría.
 
+## LOS BOTONES DE ABAJO VAN A 40px DEL BORDE DEL TELÉFONO
+
+**Todo botón que cierre una pantalla —«Registrar pedido», «Confirmar y
+continuar», «Pagar», «Registrar y finalizar»— deja 40px (`2.5rem`) entre él y
+el filo inferior**, además del área segura del iPhone.
+
+Pedido por el dueño el **2026-10-18** para el flujo de venta —*«para que los
+botones no queden tan pegados a la parte inferior del teléfono ni el
+widget»*— y **otra vez el 2026-10-25** para el de registrar un pedido.
+
+### Por qué hizo falta pedirlo dos veces, que es lo que de verdad enseña
+
+**La regla estaba escrita, pero en el sitio equivocado**: solo en comentarios
+de `components/dashboard/sticky-actions.tsx` y `components/dashboard/app-main.tsx`.
+
+Y eso la hace invisible exactamente para quien la va a romper. Una pantalla
+nueva que **no** monta `StickyActions` no tiene ninguna razón para abrir esos
+dos archivos; cae en la última rama del `cn` de `AppMain` —los 16px de
+cualquier pantalla— y nadie se entera hasta que alguien la mira en un
+teléfono. Es la misma forma de fallar que la cabecera duplicada, que está más
+arriba en este documento.
+
+Lo que lo arregla no es acordarse: es que la regla viva **aquí**, que es el
+archivo que `CLAUDE.md` manda leer antes de escribir UI.
+
+**OJO, NO CONFUNDIR CON LOS OTROS 40px DE ESTE DOCUMENTO.** Más abajo hay una
+regla de que todo botón etiquetado **mide** 40px de alto (`h-10`). Son dos
+cosas distintas con el mismo número, y buscar «40px» aquí devuelve la otra
+primero — que es parte de por qué esta parecía ya escrita.
+
+### Dónde se pone, según la pantalla
+
+| La pantalla… | Quién pone los 40px |
+|---|---|
+| …monta `StickyActions` | La propia barra (`pb-[calc(env(safe-area-inset-bottom)+2.5rem)]`). `AppMain` NO debe añadir nada o salen 80. |
+| …termina en botones dentro de la columna | `AppMain`, metiendo su ruta en la rama de `2.5rem`. |
+| …dibuja la barra de navegación | La barra ya ocupa ese borde; aquí manda la regla del botón flotante, más arriba. |
+
+**Y `StickyActions` necesita que su contenedor tenga alto que repartir.** Baja
+con `mt-auto`, así que el `<div>` raíz de la pantalla lleva `flex-1` o la
+barra se queda pegada al contenido con media pantalla vacía debajo. Reportado
+así el 2026-10-25 en el paso «2/4 Confirmar pedido».
+
 ## EL DOCUMENTO DEL CLIENTE SE ESCRIBE SIEMPRE CON SU LETRA
 
 **«V-32.256.369», nunca «32256369».** En toda la app: la del tendero, la del
@@ -2597,12 +2640,26 @@ preguntar de dónde sale la letra en los datos de verdad.
 Lo que hizo fallar la tercera vez, y no era un `formatDocumentId` olvidado:
 la llamada era correcta y **lo que llegaba nulo era el tipo**.
 
-`catalog_orders` lo guarda de dos formas, porque el carrito del cliente no
-siempre captura `customer_document_type`: hay filas con «V-24242424» metido
+`catalog_orders` lo guarda de dos formas: hay filas con «V-24242424» metido
 dentro de `customer_document` y otras con los dígitos pelados y el tipo
 vacío. Pasarle ese par a `formatDocumentId` en crudo pierde la letra en el
 segundo caso — y en la misma tarjeta se veía «Cédula: 21.054.832» arriba y
 «V-21.054.832» en el recuadro de abajo, que lee la ficha.
+
+**CORRECCIÓN DEL 2026-10-25, y el error era mío**: aquí llegó a decir que *«el
+carrito del cliente no siempre captura `customer_document_type`»*. **Es
+falso.** El carrito tiene su selector V/E/J desde la migración `156`, lo manda
+como `p_customer_document_type`, y `create_catalog_order` lo valida contra el
+país y lo guarda. Comprobado contra dev creando un pedido real: entra «J» y
+queda «J».
+
+Lo que yo había mirado eran filas **anteriores** a esa migración —todas las de
+dev son del 17 de octubre y la `155` corrió el 24— así que no probaban nada
+sobre el camino de hoy. **Un dato viejo no es un defecto actual**, y escribirlo
+como causa manda al siguiente a arreglar algo que funciona. Lo cazó el dueño.
+
+La búsqueda en tres sitios de abajo **se queda** igualmente: sigue siendo lo
+correcto para los pedidos viejos, que existen y se abren.
 
 **Para un documento que viene de un PEDIDO, la letra se busca en este orden:**
 

@@ -202,13 +202,31 @@ export function AppMain({ children }: { children: React.ReactNode }) {
           "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+5.5rem)]",
         hasBar && !enFlujoDeRegistrar && !conFilaQueSeToca &&
           "pb-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem)]",
-        !hasBar && enFlujoDeRegistrar && "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
+        // ── 40px DEBAJO DEL ÚLTIMO BOTÓN, TAMBIÉN EN EL PEDIDO ───────
+        //
+        // El dueño lo ha pedido DOS veces: el 2026-10-18 para el flujo de
+        // registrar una venta —«para que los botones no queden tan pegados a
+        // la parte inferior del teléfono ni el widget»— y el 2026-10-25 para
+        // el de registrar un pedido, que nació con los 16px de cualquier
+        // pantalla porque cae en la última rama de este `cn`.
+        //
+        // LA SEGUNDA VEZ NO FUE UN DESCUIDO DE ESTE ARCHIVO: era que la regla
+        // vivía SOLO en comentarios de aquí y de `StickyActions`, y una
+        // pantalla que no monta esa barra no abre ninguno de los dos. Por eso
+        // ahora está en `DESIGN-SYSTEM.md`, que sí se lee antes de escribir
+        // UI.
+        !hasBar &&
+          (enFlujoDeRegistrar || enRegistroDePedido) &&
+          !conBarraDeBotones &&
+          "pb-[calc(env(safe-area-inset-bottom)+2.5rem)]",
         // CON BARRA DE BOTONES, NI UN PIXEL DE MAS. Solo el area segura del
         // iPhone, porque la barra se pega al borde y su propio `pb` ya pone
         // los 40. Con el `1rem` de la rama de abajo el hueco salia de 56, que
         // es lo que se midio en pantalla antes de poner esta linea.
         !hasBar && conBarraDeBotones && "pb-[env(safe-area-inset-bottom)]",
-        !hasBar && !enFlujoDeRegistrar && !conBarraDeBotones &&
+        // Y ESTA RAMA TIENE QUE EXCLUIR EL PEDIDO, o las dos se aplican y
+        // `cn` deja ganar a la última: 16px donde acaban de pedirse 40.
+        !hasBar && !enFlujoDeRegistrar && !enRegistroDePedido && !conBarraDeBotones &&
           "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
       )}
     >
