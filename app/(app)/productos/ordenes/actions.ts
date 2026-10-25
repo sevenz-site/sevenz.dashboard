@@ -7,6 +7,7 @@ import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { isDocumentTypeFor } from "@/lib/document-id";
 import { DOCUMENT_SOURCE } from "@/lib/types";
+import { trackServer } from "@/lib/mixpanel-server";
 import { registrarVenta, type VentaEntrada } from "@/app/(app)/ventas/actions";
 
 // THE ONE WRITE IN D's READING HALF, and it is here for a reason worth
@@ -163,7 +164,7 @@ export async function registrarPedidoComoVenta(
   // `.eq("owner_id")` EXPLICITLY — the id comes from the browser.
   const { data: pedido, error: errorPedido } = await supabase
     .from("catalog_orders")
-    .select("id")
+    .select("id, created_at")
     .eq("id", entrada.pedidoId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -436,9 +437,10 @@ export async function registrarPedidoComoVenta(
   // contando como pendientes, porque `isUnregistered` pregunta por
   // «registered» y no por «new».
   if (pendientes.length === 0) {
+    const registradoEl = new Date().toISOString();
     const { error: errorSello } = await supabase
       .from("catalog_orders")
-      .update({ registered_at: new Date().toISOString(), status: "registered" })
+      .update({ registered_at: registradoEl, status: "registered" })
       .eq("id", pedido.id)
       .eq("owner_id", user.id);
     if (errorSello) {
@@ -447,6 +449,13 @@ export async function registrarPedidoComoVenta(
         saleId: resultado.saleId,
       });
     }
+
+    await registrarAnalitica(supabase, user.id, user.email ?? null, {
+      pedidoId: pedido.id,
+      recibidoEl: String(pedido.created_at),
+      registradoEl,
+      excluidas: excluidas.length,
+    });
   }
 
   // La campana y el enlace de Catálogo llevan la cuenta de los sin atender,
@@ -458,4 +467,158 @@ export async function registrarPedidoComoVenta(
   revalidatePath("/productos/ordenes");
 
   return { ok: true, saleId: resultado.saleId, clientId, excluidas, pendientes };
+}
+
+// ══ ANALÍTICA: «Catalog Order Registered» ═════════════════════════════
+//
+// PREGUNTAS DE NEGOCIO, del dueño el 2026-10-25. Cinco de las ocho que pidió
+// salen de este único evento, y van juntas porque se contestan mirando el
+// mismo instante:
+//
+//   · *«¿cuántas órdenes se registran?»* — el recuento del evento. Contra
+//     «Catalog Order Received» da la tasa de conversión del catálogo, que es
+//     la pregunta que de verdad decide dónde trabajar: muchos pedidos y pocos
+//     registros señalan al flujo de registro, no al catálogo.
+//   · *«¿cuántas se registran de contado y cuántas fiado?»* — `forma`.
+//   · *«¿cuánto tarda de media desde que se recibe hasta que se registra?»* —
+//     `horas_hasta_registro`, que es el mismo número que la pantalla enseña
+//     como «Tiempo de respuesta».
+//   · *«¿cuál es el monto total de las órdenes procesadas (eur, usd)?»* —
+//     `total_usd`, `total_eur`, `total_cop`.
+//   · *«¿cuántos productos en promedio se procesan en una orden?»* — `lineas`
+//     y `unidades`.
+//
+// Y DOS DE SUS OCHO NO SON EVENTOS, lo que se dice aquí porque es donde se
+// va a buscar: *«¿cuántos productos publicados y no publicados promedia el
+// catálogo?»* y *«¿cuál es el precio promedio del producto en catálogo?»* son
+// ESTADO, no acciones. Preguntadas como evento contarían cuántas veces se
+// miró el catálogo, no cuánto mide. Van al PERFIL del dueño, que es lo que
+// Mixpanel sabe promediar entre negocios, y se refrescan cada vez que se
+// registra un pedido. Es una foto, no un dato vivo, y para una media entre
+// negocios eso basta.
+//
+// BAJO QUÉ PERFIL SE ARCHIVA: el del dueño, que aquí sí tiene sesión.
+//
+// SE PUEDE PERDER: todo esto va dentro de un `try` y después de que la venta
+// esté escrita. Un fallo aquí cuesta una fila en Mixpanel, nunca un registro.
+async function registrarAnalitica(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  ownerEmail: string | null,
+  datos: {
+    pedidoId: string;
+    recibidoEl: string;
+    registradoEl: string;
+    excluidas: number;
+  },
+): Promise<void> {
+  try {
+    const { data: ventas } = await supabase
+      .from("sales")
+      .select("id")
+      .eq("catalog_order_id", datos.pedidoId)
+      .is("deleted_at", null);
+    const ids = (ventas ?? []).map((v) => v.id as string);
+    if (ids.length === 0) return;
+
+    const [{ data: lineas }, { data: pagos }, { data: cargos }, { data: productos }] =
+      await Promise.all([
+        supabase.from("sale_lines").select("currency, quantity, unit_price").in("sale_id", ids),
+        supabase.from("sale_payments").select("currency, amount").in("sale_id", ids),
+        supabase.from("movements").select("id").in("sale_id", ids).eq("type", "charge"),
+        supabase
+          .from("products")
+          .select("base_currency, price_retail, published_retail")
+          .eq("owner_id", ownerId)
+          .is("deleted_at", null),
+      ]);
+
+    const porMoneda = (filas: { currency: string | null; valor: number }[]) => {
+      const m = new Map<string, number>();
+      for (const f of filas) {
+        const k = String(f.currency ?? "COP");
+        m.set(k, Math.round(((m.get(k) ?? 0) + f.valor) * 100) / 100);
+      }
+      return m;
+    };
+
+    const totales = porMoneda(
+      (lineas ?? []).map((l) => ({
+        currency: l.currency as string | null,
+        valor: Number(l.quantity) * Number(l.unit_price),
+      })),
+    );
+    const cobrado = porMoneda(
+      (pagos ?? []).map((p) => ({
+        currency: p.currency as string | null,
+        valor: Number(p.amount),
+      })),
+    );
+
+    // CONTADO, FIADO O MIXTO — y la tercera opción no sobra: un pedido de dos
+    // monedas puede cobrarse entero en una y fiarse en la otra, que es
+    // exactamente el caso que `CT-147` vino a arreglar. Meterlo en «fiado»
+    // escondería que el tendero sí cobró algo ese día.
+    const hayCargo = (cargos ?? []).length > 0;
+    const hayCobro = [...cobrado.values()].some((v) => v > 0);
+    const forma = hayCargo && hayCobro ? "mixto" : hayCargo ? "fiado" : "contado";
+
+    const minutos = Math.max(
+      0,
+      Math.floor(
+        (new Date(datos.registradoEl).getTime() - new Date(datos.recibidoEl).getTime()) / 60_000,
+      ),
+    );
+
+    const vivos = productos ?? [];
+    const precios = new Map<string, { suma: number; n: number }>();
+    for (const p of vivos) {
+      if (p.price_retail == null) continue;
+      const k = String(p.base_currency ?? "COP");
+      const a = precios.get(k) ?? { suma: 0, n: 0 };
+      a.suma += Number(p.price_retail);
+      a.n += 1;
+      precios.set(k, a);
+    }
+    const medio = (k: string) => {
+      const a = precios.get(k);
+      return a && a.n > 0 ? Math.round((a.suma / a.n) * 100) / 100 : null;
+    };
+
+    trackServer(
+      "Catalog Order Registered",
+      ownerId,
+      {
+        order_id: datos.pedidoId,
+        ventas: ids.length,
+        monedas: totales.size,
+        forma,
+        lineas: (lineas ?? []).length,
+        unidades: (lineas ?? []).reduce((s, l) => s + Number(l.quantity), 0),
+        lineas_excluidas: datos.excluidas,
+        total_usd: totales.get("USD") ?? 0,
+        total_eur: totales.get("EUR") ?? 0,
+        total_cop: totales.get("COP") ?? 0,
+        // EN MINUTOS Y EN HORAS: los minutos para que una media no pierda los
+        // pedidos que se atienden en el acto, las horas para leer la cifra sin
+        // dividir.
+        minutos_hasta_registro: minutos,
+        horas_hasta_registro: Math.round((minutos / 60) * 10) / 10,
+      },
+      ownerEmail,
+      {
+        catalogo_productos: vivos.length,
+        catalogo_publicados: vivos.filter((p) => p.published_retail).length,
+        catalogo_sin_publicar: vivos.filter((p) => !p.published_retail).length,
+        catalogo_precio_medio_usd: medio("USD"),
+        catalogo_precio_medio_eur: medio("EUR"),
+        catalogo_precio_medio_cop: medio("COP"),
+      },
+    );
+  } catch (error) {
+    console.error(
+      "registrarPedidoComoVenta analitica:",
+      error instanceof Error ? error.message : error,
+    );
+  }
 }

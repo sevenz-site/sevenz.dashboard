@@ -18,6 +18,8 @@ import {
   leerBorrador,
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
+import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
 import type { OwnerCountry } from "@/lib/types";
 import type { OrderClient } from "@/lib/orders/order-client-match";
@@ -61,6 +63,7 @@ export function OrderClientStep({
   // dibujó, y cuáles quedan sin rellenar. Las dos salen del servidor y del
   // borrador respectivamente, y juntas contestan el rombo del sitemap.
   monedas,
+  ledger,
 }: {
   pedidoId: string;
   ficha: OrderClient | null;
@@ -74,6 +77,8 @@ export function OrderClientStep({
   country: OwnerCountry | null;
   cuentaSeparada: boolean;
   monedas: string[];
+  // La tasa vigente, que la hoja de la cuenta del cliente necesita.
+  ledger: LedgerDisplay | null;
 }) {
   const router = useRouter();
   // ── LA SEGUNDA PASADA NO VUELVE A PREGUNTAR LO MISMO ────────────────
@@ -274,9 +279,21 @@ export function OrderClientStep({
             </div>
           </div>
 
-          <Button variant="outline" className="h-10 w-full" asChild>
-            <Link href={`/clients/${ficha.id}`}>Ver {ficha.name}</Link>
-          </Button>
+          {/* ── TAMBIÉN AQUÍ ABRE UNA HOJA ──────────────────────────────
+              Reportado por el dueño el 2026-10-25: este era el ÚLTIMO «Ver
+              ‹nombre›» que seguía navegando, y además rompía el camino de
+              vuelta —*«al seleccionar "<" en el perfil del cliente me regresa
+              al home»*—, así que el tendero perdía el registro a medias en
+              el paso 4 de 4.
+
+              NO BASTABA CON ARREGLAR LA FLECHA: volver a esta pantalla desde
+              la ficha es una navegación nueva, y el borrador sobrevive pero
+              el hilo no. La hoja no sale de aquí, que es lo que él pidió. */}
+          <OrderClientSheetButton
+            clientId={ficha.id}
+            clientName={ficha.name}
+            ledger={ledger}
+          />
         </div>
       ) : null}
 

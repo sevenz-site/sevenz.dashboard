@@ -1,3 +1,4 @@
+import { CatalogOrderTrace } from "@/components/dashboard/catalog-order-trace";
 import { redirect, notFound } from "next/navigation";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { createClient } from "@/lib/supabase/server";
@@ -123,6 +124,29 @@ export default async function TransaccionPage({
 
   // ── QUÉ SE LLEVÓ EL CLIENTE, si este movimiento nació de una venta ───
   const productos = await lineasDe(supabase, m.sale_id, m.currency);
+
+  // ── EL PEDIDO DEL QUE NACIÓ ESTE FIADO, SI NACIÓ DE UNO ─────────────
+  //
+  // Dos saltos: el movimiento lleva su venta, y la venta lleva su pedido
+  // desde la migración `158`. Sin `sale_id` --un fiado tecleado a mano-- no
+  // se consulta nada.
+  const pedidoDelCatalogo = await (async () => {
+    if (!m.sale_id) return null;
+    const { data: v } = await supabase
+      .from("sales")
+      .select("catalog_order_id")
+      .eq("id", m.sale_id)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    if (!v?.catalog_order_id) return null;
+    const { data: o } = await supabase
+      .from("catalog_orders")
+      .select("created_at, registered_at")
+      .eq("id", v.catalog_order_id)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    return o ?? null;
+  })();
 
   // ── EL FIADO AL QUE FUE ESTE ABONO ───────────────────────────────────
   //
@@ -392,6 +416,14 @@ export default async function TransaccionPage({
           «Pagar» SOLO SI QUEDA ALGO QUE PAGAR, igual que en el menú: el flujo
           rechazaría un fiado saldado con «ese fiado ya está saldado», y
           ofrecerlo sería mandar al tendero a un callejón sin salida. */}
+      {/* DE DÓNDE VINO, cuando el fiado nació de un pedido del catálogo. Va
+          antes de los botones y no después: es contexto para decidir, no una
+          acción. Dibuja `null` en un fiado tecleado en el mostrador. */}
+      <CatalogOrderTrace
+        recibidoEl={pedidoDelCatalogo?.created_at ?? null}
+        registradoEl={pedidoDelCatalogo?.registered_at ?? null}
+      />
+
       <DetalleBotones
         movementId={m.id}
         compartir={compartir}

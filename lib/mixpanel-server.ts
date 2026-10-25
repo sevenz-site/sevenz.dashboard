@@ -38,6 +38,23 @@ export function trackServer(
   // Sent as $set so the profile stays current even for owners whose browser
   // never lets identifyOwner() run — that's what leaves "Updated at" stale.
   ownerEmail?: string | null,
+  // ── PROPIEDADES DE PERFIL, PARA LO QUE NO ES UNA ACCIÓN ─────────────
+  //
+  // Un evento contesta «cuántas veces pasó algo». No contesta «cuánto mide
+  // hoy el catálogo de un negocio»: eso es un ESTADO, y preguntado como
+  // evento daría una cuenta de cuántas veces se miró, no el tamaño.
+  //
+  // Mixpanel sí sabe promediar un número guardado en el perfil de cada
+  // usuario, así que ahí es donde va. Añadido el 2026-10-25 para dos
+  // preguntas del dueño —cuántos productos publicados y sin publicar
+  // promedia un catálogo, y a qué precio medio— que no tienen ningún
+  // momento en el que «ocurran».
+  //
+  // ES UNA FOTO, NO UN DATO VIVO: vale lo que valiera la última vez que el
+  // negocio disparó un evento que la trae. Para una media entre negocios eso
+  // basta; para «cuántos productos tiene ahora mismo», no — eso se pregunta a
+  // Supabase, que es la fuente.
+  perfil?: Record<string, unknown>,
 ) {
   if (!mixpanelConfigured()) return;
 
@@ -57,7 +74,9 @@ export function trackServer(
         ownerId,
         props,
         "server",
-        ownerEmail ? { $email: ownerEmail } : undefined,
+        ownerEmail || perfil
+          ? { ...(ownerEmail ? { $email: ownerEmail } : {}), ...(perfil ?? {}) }
+          : undefined,
         await contextPromise,
       );
     });

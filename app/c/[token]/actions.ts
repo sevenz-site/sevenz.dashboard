@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { trackServer } from "@/lib/mixpanel-server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { ProductoDelCarrito } from "@/lib/cart/cart";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
@@ -197,6 +199,59 @@ export async function crearOrden(
         ok: false,
         error: MOTIVOS[motivo] ?? "No pudimos enviar tu pedido. Intenta de nuevo.",
       };
+    }
+
+    // ══ ANALÍTICA: «Catalog Order Received» ═══════════════════════════
+    //
+    // PREGUNTA DE NEGOCIO, del dueño el 2026-10-25: *«¿cuántas órdenes recibe
+    // un negocio?»* — y, de la misma tanda, *«¿cuántos productos en promedio
+    // se procesan en una orden?»*.
+    //
+    // QUÉ DECISIÓN CAMBIA SEGÚN LA RESPUESTA. Si un negocio recibe pedidos y
+    // casi ninguno se registra, el problema no es el catálogo: es el flujo de
+    // registro, y hay que ir a mirarlo. Si no recibe ninguno, el catálogo no
+    // se está compartiendo y lo que hay que trabajar es el enlace. Las dos
+    // salidas llevan a sitios opuestos, y sin este evento no se distinguen.
+    //
+    // BAJO QUÉ PERFIL SE ARCHIVA: el del DUEÑO, resuelto en el servidor con
+    // `catalog_link_owner` (migración `159`). Quien hace esta acción es el
+    // CLIENTE, que no tiene identidad en Mixpanel — es el caso que `CLAUDE.md`
+    // nombra: la resolución es parte de la decisión, no un detalle.
+    //
+    // SE PUEDE PERDER: si Mixpanel no está configurado, `trackServer` calla y
+    // sigue. El pedido ya está guardado en Supabase, que es la fuente; este
+    // número es un suelo, no un recuento exacto.
+    try {
+      const { data: dueno } = await createServiceClient().rpc("catalog_link_owner", {
+        p_token: token,
+      });
+      const o = dueno as { owner_id: string; owner_email: string | null } | null;
+      if (o?.owner_id) {
+        const unidades = items.reduce((suma, i) => suma + Number(i.quantity ?? 0), 0);
+        trackServer(
+          "Catalog Order Received",
+          o.owner_id,
+          {
+            order_id: r.order_id,
+            // DOS CUENTAS Y NO UNA: «tres productos» y «tres unidades del
+            // mismo producto» son pedidos muy distintos de preparar, y la
+            // pregunta del dueño —cuántos productos se procesan— se lee mejor
+            // con las dos al lado.
+            lineas: items.length,
+            unidades,
+            quiere_avisos: datos.quiereAvisos,
+            con_direccion: Boolean(datos.direccion?.trim()),
+          },
+          o.owner_email,
+        );
+      }
+    } catch (error) {
+      // LA ANALÍTICA NO TUMBA UN PEDIDO. Está guardado; lo que falle aquí
+      // cuesta una fila en Mixpanel, no una venta.
+      console.error(
+        "[orden] analitica:",
+        error instanceof Error ? error.message : error,
+      );
     }
 
     return { ok: true, orderId: r.order_id! };

@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { OrderClientStep } from "@/components/dashboard/order-client-step";
 import { createClient } from "@/lib/supabase/server";
 import { readOwnerCountry } from "@/lib/owner-country";
+import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
   findOrderClient,
   partirDocumento,
@@ -45,6 +46,10 @@ export default async function ClienteDelPedidoPage({
   if (!order) notFound();
   const pedido = order as CatalogOrderRow;
 
+  // La tasa vigente, solo para la hoja de la cuenta del cliente: enseña
+  // bolívares bajo cada cifra. `null` en un negocio colombiano.
+  const rateContext = await getOwnerRateContext(supabase, user!.id);
+
   // LAS LÍNEAS, solo para saber qué monedas tiene el pedido. Agrupadas por la
   // moneda sellada, como en el paso 1/4: el servidor no ve el borrador.
   const { data: filas } = await supabase
@@ -85,6 +90,8 @@ export default async function ClienteDelPedidoPage({
   return (
     <OrderClientStep
       pedidoId={pedido.id}
+      // La tasa vigente, para la hoja de la cuenta del cliente.
+      ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
       // LAS MONEDAS DEL PEDIDO, en el mismo orden que el paso 1/4 las dibuja.
       // Es lo que deja a esta pantalla contestar el rombo del sitemap --
       // «¿Hay más de una moneda?» -- sin volver a consultar nada.
