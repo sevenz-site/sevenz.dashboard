@@ -25,51 +25,6 @@ import { registrarVenta, type VentaEntrada } from "@/app/(app)/ventas/actions";
 
 export type OrderActionResult = { error: string | null };
 
-export async function markOrderAttended(
-  orderId: string,
-): Promise<OrderActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
-
-  // `.eq("owner_id", user.id)` EXPLICITLY, not RLS alone. `orderId` arrives
-  // from the browser, and CLAUDE.md's rule exists because two functions once
-  // relied on the policy and would have had nothing left if a migration ever
-  // loosened it. The policy is the backstop; this is the lock.
-  const { error, count } = await supabase
-    .from("catalog_orders")
-    .update(
-      { status: "seen", seen_at: new Date().toISOString() },
-      { count: "exact" },
-    )
-    .eq("id", orderId)
-    .eq("owner_id", user.id)
-    // ONLY FROM `new`. An order already registered or discarded must not be
-    // dragged back to "seen" by a second tap -- `status` is what CT-70's
-    // button will set, and this one must never undo it.
-    .eq("status", "new");
-
-  if (error) {
-    console.error("[orders] markOrderAttended:", error.message);
-    return { error: "No pudimos marcar el pedido. Intenta de nuevo." };
-  }
-
-  // Zero rows is not an error the shopkeeper needs to see: it means the order
-  // was already attended, which is where they wanted to get to anyway.
-  if (count === 0) {
-    console.warn("[orders] markOrderAttended: nada que marcar", orderId);
-  }
-
-  revalidatePath("/productos/ordenes");
-  revalidatePath(`/productos/ordenes/${orderId}`);
-  // The bell and the Catálogo link both carry the count, so both go stale.
-  revalidatePath("/productos");
-  revalidatePath("/notificaciones");
-  return { error: null };
-}
-
 // REGISTERING A CATALOGUE ORDER AS A SALE — ONE CURRENCY PER CALL.
 //
 // ===========================================================================
@@ -208,7 +163,7 @@ export async function registrarPedidoComoVenta(
   // `.eq("owner_id")` EXPLICITLY — the id comes from the browser.
   const { data: pedido, error: errorPedido } = await supabase
     .from("catalog_orders")
-    .select("id")
+    .select("id, status, seen_at")
     .eq("id", entrada.pedidoId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -459,19 +414,54 @@ export async function registrarPedidoComoVenta(
   // UN FALLO AQUÍ NO TUMBA LA VENTA, que ya está escrita. Lo que queda es un
   // pedido que sigue ofreciendo «Registrar» en una moneda ya vendida, y la
   // parada dura de `registrarVenta` lo rechaza al segundo intento.
-  if (pendientes.length === 0) {
+  // ── Y REGISTRAR ES LO QUE DA EL PEDIDO POR ATENDIDO ─────────────────
+  //
+  // Decisión del dueño el 2026-10-25, al quitar «Marcar como atendido» del
+  // detalle: *«registrar lo da por atendido»*. Cierra `CT-83` por la raíz --
+  // ese aviso existía PORQUE no se podía registrar desde la app-- y deja un
+  // solo camino en vez de dos que el tendero tenía que recordar coordinar.
+  //
+  // DOS SELLOS Y NO UNO, porque son dos cosas distintas:
+  //
+  //   `seen`       en cuanto entra la PRIMERA moneda. El tendero ya está
+  //                trabajando el pedido, así que deja de contar como «sin
+  //                atender» en la campana y en la lista -- aunque le falte
+  //                una moneda por cobrar.
+  //   `registered` cuando no queda ninguna. Eso sí es «terminado», y es lo
+  //                que impide volver a entrar al flujo.
+  //
+  // `seen_at` SOLO SI ESTABA VACÍO: el segundo registro no mueve la fecha en
+  // que el tendero se ocupó por primera vez de este pedido.
+  //
+  // LO QUE ESTA DECISIÓN CUESTA, dicho porque el dueño lo eligió sabiéndolo:
+  // un pedido que se atiende pero NO se registra --se lo regaló, se lo llevó
+  // sin cobrar-- se queda como nuevo para siempre. No hay otra puerta.
+  const sello =
+    pendientes.length === 0
+      ? { registered_at: new Date().toISOString(), status: "registered" }
+      : pedido.status === "new"
+        ? { status: "seen", seen_at: pedido.seen_at ?? new Date().toISOString() }
+        : null;
+
+  if (sello) {
     const { error: errorSello } = await supabase
       .from("catalog_orders")
-      .update({ registered_at: new Date().toISOString(), status: "registered" })
+      .update(sello)
       .eq("id", pedido.id)
       .eq("owner_id", user.id);
     if (errorSello) {
       console.error("registrarPedidoComoVenta sello:", errorSello.message, {
         pedidoId: pedido.id,
         saleId: resultado.saleId,
+        sello,
       });
     }
   }
+
+  // La campana y el enlace de Catálogo llevan la cuenta de los sin atender,
+  // así que los dos se quedan viejos.
+  revalidatePath("/productos");
+  revalidatePath("/notificaciones");
 
   revalidatePath(`/productos/ordenes/${pedido.id}`);
   revalidatePath("/productos/ordenes");

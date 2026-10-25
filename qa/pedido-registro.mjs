@@ -421,6 +421,23 @@ try {
     `sale_id ${selloA?.sale_id ? "sí" : "no"} · fecha ${selloA?.registered_at ? "sí" : "no"} · status ${selloA?.status}`,
   );
 
+  // ═══ 3b. REGISTRAR DA EL PEDIDO POR ATENDIDO ═════════════════════════
+  //
+  // Decisión del dueño el 2026-10-25, al quitar «Marcar como atendido» de la
+  // pantalla: *«registrar lo da por atendido»*. Era el único sitio desde el
+  // que se podía ejecutar esa acción, así que ahora registrar es lo único que
+  // saca un pedido de «sin atender» — y la campana y la lista de Pedidos
+  // cuentan por `status`.
+  //
+  // UN PEDIDO DE UNA SOLA MONEDA SALTA DE `new` A `registered` directo, sin
+  // pasar por `seen`: `registered` ya no es «sin atender», que es lo que esta
+  // fila comprueba. El escalón intermedio se ve en la fila 11b.
+  check(
+    "3b. registrar saca el pedido de «sin atender» (status deja de ser `new`)",
+    selloA?.status !== "new",
+    `status ${selloA?.status}`,
+  );
+
   // ═══ 4. NO SE REGISTRA DOS VECES ══════════════════════════════════════
   //
   // The worst case this closes is not a duplicated row: it is the customer
@@ -571,13 +588,21 @@ try {
 
   const { data: selloMedio } = await admin
     .from("catalog_orders")
-    .select("status, registered_at")
+    .select("status, registered_at, seen_at")
     .eq("id", pedidoD.id)
     .single();
   check(
     "11b. con una moneda sin cobrar el pedido NO se da por registrado",
     selloMedio?.status !== "registered" && selloMedio?.registered_at == null,
     `status ${selloMedio?.status} · registered_at ${selloMedio?.registered_at ?? "null"}`,
+  );
+  // EL ESCALÓN INTERMEDIO, que es la otra mitad de la decisión del 2026-10-25:
+  // a medio registrar el pedido ya NO cuenta como «sin atender» --el tendero
+  // está trabajándolo-- aunque todavía no esté terminado.
+  check(
+    "11b bis. pero SÍ deja de estar «sin atender» con la primera moneda",
+    selloMedio?.status === "seen",
+    `status ${selloMedio?.status}`,
   );
 
   // THE SECOND PASS SENDS BACK THE FICHA THE FIRST ONE CREATED. If it did

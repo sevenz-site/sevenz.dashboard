@@ -425,19 +425,22 @@ export default async function OrdenPage({
         </div>
       ) : null}
 
-      {/* ── «MARCAR COMO ATENDIDO» SE FUE DE AQUÍ ──────────────────────
+      {/* ── «MARCAR COMO ATENDIDO» YA NO EXISTE ────────────────────────
           Petición del dueño el 2026-10-25, con la captura y el círculo en
           rojo, junto con la barra de navegación. El frame del detalle
           (`1655:15864`) tampoco lo dibuja: esa pantalla termina en «Registrar
           pedido».
 
-          LO QUE ESTO DEJA ABIERTO, Y SE DIJO EN VOZ ALTA: era el ÚNICO sitio
-          de la app desde donde se podía marcar un pedido como atendido. Al
-          quitarlo, esa acción no tiene puerta. Está puesto al dueño como
-          pregunta — si registrarlo pasa a ser lo que lo da por atendido (que
-          es la premisa de `CT-83`), el botón sobra; si no, hay que darle sitio
-          en la lista de Pedidos. `OrderAttendButton` y `markOrderAttended`
-          siguen existiendo y no se tocan hasta que lo decida. */}
+          Y AL PREGUNTARLE DÓNDE IBA ESA ACCIÓN --era el único sitio desde el
+          que se podía ejecutar-- decidió que no va a ninguna parte:
+          *«registrar lo da por atendido»*. `registrarPedidoComoVenta` sella
+          `seen` con la primera moneda y `registered` con la última; el botón,
+          su diálogo y `markOrderAttended` se borraron. Eso cierra `CT-83` por
+          la raíz: aquel aviso existía porque no se podía registrar.
+
+          LO QUE CUESTA, que él eligió sabiéndolo: un pedido atendido pero NO
+          registrado --regalado, entregado sin cobrar-- se queda como nuevo
+          para siempre. No hay otra puerta. */}
     </div>
   );
 }
