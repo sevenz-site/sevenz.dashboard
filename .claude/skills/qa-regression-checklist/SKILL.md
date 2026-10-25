@@ -219,6 +219,32 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
   nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
   «Mostrador» aparece ahí (`CT-125`), con saldo siempre cero.
 
+### El PEDIDO que se vuelve venta — `npm run qa:pedido-registro`
+
+Desde el 2026-10-25. **Necesita `npm run dev` corriendo.** Dieciséis controles,
+escribe solo en dev y se limpia solo.
+
+`registrarPedidoComoVenta` es el único sitio donde un pedido del catálogo se
+convierte en dinero, y hasta que existió un pedido y el libro eran dos cosas sin
+relación. Lo que vigila esta suite —y ninguna otra puede, porque viven en otras
+tablas— es: que se cobre el **precio sellado** que el cliente vio y no el del
+catálogo de hoy; que una línea cuyo producto ya no existe **se excluya y vuelva
+nombrada**, no contada; que el pedido quede sellado con su `sale_id` y no se
+pueda registrar **dos veces**; que el pedido de otro dueño **no se encuentre**; y
+que el cliente que nace del flujo nazca con su documento en dígitos y marcado
+como confirmado por el tendero.
+
+**Corre como el DUEÑO**, con su propia cookie de sesión, no con la clave de
+servicio — así que una política o un `grant` que falten salen aquí. Es la lección
+de la migración `108`, que dejó `catalog_orders` sin grants mientras
+`qa:pedidos` pasaba 14 de 14.
+
+**Y es la red de `CT-147`**: ese rediseño cambia la ENTRADA de la acción —el
+cobro pasa de ser por producto a ser por moneda—, no sus resultados. Cuando se
+haga, lo que se actualiza es `pagoDeLinea()`, una función; si alguna de las
+dieciséis filas se pone roja al terminarlo, el rediseño se llevó por delante algo
+que no tenía que tocar.
+
 **COLOMBIA TIENE SU PROPIA FIXTURE Y NO ES OPCIONAL.** `sale_payments` y
 `sale_lines` escriben el libro colombiano como `'COP'` y `movements` lo
 escribe como `NULL`. Cruzar esas dos columnas en bruto no casa nunca, no
