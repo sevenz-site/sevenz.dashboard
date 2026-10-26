@@ -5,6 +5,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { OrderTotalCard } from "@/components/dashboard/order-total-card";
 import {
   CantidadDeLinea,
@@ -13,9 +14,7 @@ import {
 import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
-import { formatPriceAmount, priceIn } from "@/lib/products/price";
 
 // STEP `2/4 Confirmar pedido` — frame `1652:12831`, read with the desktop
 // bridge on 2026-10-25.
@@ -49,10 +48,8 @@ export default async function ConfirmarBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, rates, productosPorId, items } = await cargarBloque(
-    id,
-    moneda,
-  );
+  const { pedido, bloque, bloques, rates, productosPorId, items } =
+    await cargarBloque(id, moneda);
 
 
   const comentarioDe = new Map(items.map((i) => [i.id, i.comment]));
@@ -91,18 +88,35 @@ export default async function ConfirmarBloquePage({
     moneda: String(i.currency ?? ""),
   }));
 
+  // ¿ES ESTA LA PRIMERA PANTALLA DEL FLUJO? Decide la flecha de atrás y el
+  // contador, y las dos tienen que contestar igual que `/registrar`, que es
+  // quien redirige hasta aquí. Por eso las tres preguntan a la misma función.
+  const unicaMoneda = unicaMonedaDelPedido(bloques);
+
   return (
     // `flex-1` NO SOBRA: `StickyActions` baja con `mt-auto`, y `mt-auto` solo
     // empuja si el contenedor tiene alto que repartir. Sin esto la barra se
     // quedaba pegada al contenido —con media pantalla vacía debajo— que es lo
     // que el dueño reportó el 2026-10-25 con la captura del paso 2/4.
     <div className="flex flex-1 flex-col gap-4">
+      {/* ATRÁS AL DETALLE CUANDO ESTA ES LA PRIMERA PANTALLA DEL FLUJO.
+          Con una sola moneda el `1/4` no existe --encargo del dueño del
+          2026-10-25-- y apuntar ahí mandaría al tendero a una pantalla que
+          redirige de vuelta aquí: la flecha de atrás dejaría de retroceder. */}
       <ScreenBackRow
-        href={`/productos/ordenes/${pedido.id}/registrar`}
+        href={
+          unicaMoneda
+            ? `/productos/ordenes/${pedido.id}`
+            : `/productos/ordenes/${pedido.id}/registrar`
+        }
         soloEnTelefono={false}
       />
       <ScreenTitle>Detalle del pedido</ScreenTitle>
-      <OrderStepCounter pedidoId={pedido.id} paso={2} nombre="Confirmar pedido" />
+      <OrderStepCounter
+        pedidoId={pedido.id}
+        paso="confirmar"
+        sinPasoDePedido={unicaMoneda != null}
+      />
 
       <OrderTotalCard
         pedidoId={pedido.id}

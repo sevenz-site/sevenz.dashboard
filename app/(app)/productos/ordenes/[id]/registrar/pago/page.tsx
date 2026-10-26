@@ -3,6 +3,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { OrderCurrencyPaymentForm } from "@/components/dashboard/order-currency-payment-form";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { OrderTotalCard } from "@/components/dashboard/order-total-card";
 import { findOrderClient } from "@/lib/orders/order-client-match";
 import { createClient } from "@/lib/supabase/server";
@@ -72,7 +73,11 @@ export default async function PagoDeBloquePage({
         soloEnTelefono={false}
       />
       <ScreenTitle>Registrar pago</ScreenTitle>
-      <OrderStepCounter pedidoId={pedido.id} paso={3} nombre="Pago" />
+      <OrderStepCounter
+        pedidoId={pedido.id}
+        paso="pago"
+        sinPasoDePedido={unicaMonedaDelPedido(bloques) != null}
+      />
 
       <OrderTotalCard
         pedidoId={pedido.id}

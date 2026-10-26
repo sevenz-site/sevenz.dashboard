@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import {
   borrarBorrador,
@@ -63,6 +64,8 @@ export function OrderClientStep({
   // dibujó, y cuáles quedan sin rellenar. Las dos salen del servidor y del
   // borrador respectivamente, y juntas contestan el rombo del sitemap.
   monedas,
+  sinPasoDePedido,
+  monedaDeOrigen,
   ledger,
 }: {
   pedidoId: string;
@@ -77,6 +80,11 @@ export function OrderClientStep({
   country: OwnerCountry | null;
   cuentaSeparada: boolean;
   monedas: string[];
+  // `true` cuando el pedido tiene una sola moneda y el paso «1/4 Pedido» no
+  // existe en este flujo: entonces esta pantalla es el `3/3`.
+  sinPasoDePedido: boolean;
+  // La moneda cuyo pago acaba de confirmarse, para que la flecha vuelva ahí.
+  monedaDeOrigen: string | null;
   // La tasa vigente, que la hoja de la cuenta del cliente necesita.
   ledger: LedgerDisplay | null;
 }) {
@@ -193,16 +201,30 @@ export function OrderClientStep({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* ── ATRÁS ES EL PASO ANTERIOR, QUE ES EL PAGO ─────────────────
+          «Registrar a cuenta separada» vuelve a la pantalla emparejada, no
+          fuera del flujo: es un paso que el tendero dio, y retroceder
+          significa deshacer esa elección, no perder el registro entero.
+
+          DESDE EL RESTO VUELVE AL `Pago` DE SU MONEDA, que es de donde se
+          llega. Apuntaba al `1/4`, y con una sola moneda esa pantalla ya no
+          existe --redirige aquí al lado--, así que la flecha habría saltado
+          el paso del pago o, peor, rebotado. Un contador «3/3» promete que
+          atrás está el `2/3`.
+
+          EL `null` es un enlace viejo sin `?moneda=`: entonces se vuelve a
+          donde empieza el flujo, que con una moneda es el detalle. */}
       <ScreenBackRow
-        // «Registrar a cuenta separada» goes back to the matched screen, not
-        // out of the flow: it is a step the shopkeeper took and backing out of
-        // it means undoing that choice, not losing the whole registration.
         href={
           cuentaSeparada
-            ? `/productos/ordenes/${pedidoId}/registrar/cliente`
-            : `/productos/ordenes/${pedidoId}/registrar`
+            ? `/productos/ordenes/${pedidoId}/registrar/cliente${monedaDeOrigen ? `?moneda=${monedaDeOrigen}` : ""}`
+            : monedaDeOrigen
+              ? `/productos/ordenes/${pedidoId}/registrar/pago?moneda=${monedaDeOrigen}`
+              : sinPasoDePedido
+                ? `/productos/ordenes/${pedidoId}`
+                : `/productos/ordenes/${pedidoId}/registrar`
         }
-        label={cuentaSeparada ? "Volver" : "Volver al pedido"}
+        label="Volver"
         soloEnTelefono={false}
       />
 
@@ -218,23 +240,19 @@ export function OrderClientStep({
         {/* NO COUNTER ON «Nuevo cliente» — its frame (`1542:11888`) draws
             none. It is a detour off the matched screen, not a step of the
             flow, and numbering it would make the flow look longer than it is. */}
+        {/* EL CONTADOR LO PINTA `OrderStepCounter` DESDE EL 2026-10-25, y
+            no un «4/4» escrito a mano como hasta entonces. Dejó de ser cierto
+            ese día: con una sola moneda el flujo no tiene paso «Pedido» y
+            esta pantalla es el `3/3`. Un número fijo sobre una pantalla cuyo
+            número cambia es exactamente la clase de cifra creíble y falsa que
+            `CLAUDE.md` persigue — y aquí además contradecía al contador de la
+            pantalla anterior. */}
         {!cuentaSeparada ? (
-          <>
-            {/* «4/4», SIEMPRE, y no depende de si hay ficha: en el flujo
-                nuevo esta pantalla es el cuarto paso de cuatro, y cuando el
-                cliente ya está en el borrador no se muestra --la nota de la
-                flecha, *«el flujo pasa a ser de 4/4 pasos a 3/3»*--. Los
-                «1/1» y «2/2» de antes eran del flujo por producto. */}
-            <p className="text-sm text-muted-foreground">
-              4/4 Información del cliente
-            </p>
-            <div
-              aria-hidden="true"
-              className="h-1 w-full overflow-hidden rounded-full bg-muted"
-            >
-              <div className="h-full w-full rounded-full bg-foreground transition-all" />
-            </div>
-          </>
+          <OrderStepCounter
+            pedidoId={pedidoId}
+            paso="cliente"
+            sinPasoDePedido={sinPasoDePedido}
+          />
         ) : null}
       </div>
 
@@ -408,7 +426,10 @@ export function OrderClientStep({
         {ficha && !cuentaSeparada ? (
           <Button variant="outline" className="h-10 w-full" asChild>
             <Link
-              href={`/productos/ordenes/${pedidoId}/registrar/cliente?nuevo=1`}
+              // ARRASTRA LA MONEDA. Sin ella, volver desde la cuenta
+              // separada pierde de dónde venía el tendero y la flecha
+              // retrocede más de un paso.
+              href={`/productos/ordenes/${pedidoId}/registrar/cliente?nuevo=1${monedaDeOrigen ? `&moneda=${monedaDeOrigen}` : ""}`}
             >
               Registrar a cuenta separada
             </Link>

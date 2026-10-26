@@ -8,6 +8,8 @@ import {
   OrderProductRowButton,
 } from "@/components/dashboard/order-product-sheet";
 import { findOrderClient } from "@/lib/orders/order-client-match";
+import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
+import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { UserRound } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
@@ -172,6 +174,14 @@ export default async function OrdenPage({
   const fecha = (iso: string) => formatReceiptDateTime(iso, country);
 
   const cuando = fecha(pedido.created_at);
+
+  // A DÓNDE LLEVA «REGISTRAR PEDIDO». Agrupado por la moneda sellada, que es
+  // lo único que el servidor puede ver; `unicaMonedaDelPedido` explica qué
+  // cuenta como «una sola moneda» y qué no.
+  const unicaMoneda = unicaMonedaDelPedido(bloquesDeMoneda(items, undefined));
+  const hrefRegistrar = unicaMoneda
+    ? `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`
+    : `/productos/ordenes/${pedido.id}/registrar`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -474,9 +484,11 @@ export default async function OrdenPage({
       {pedido.registered_at == null ? (
         <div className="pt-1">
           <Button className="h-10 w-full" asChild>
-            <Link href={`/productos/ordenes/${pedido.id}/registrar`}>
-              Registrar pedido
-            </Link>
+            {/* CON UNA SOLA MONEDA SALTA DIRECTO AL `2/4`, encargo del dueño
+                del 2026-10-25: el paso «1/4 Pedido» es un selector de moneda
+                y con una no hay nada que seleccionar. La condición entera
+                --y sus dos bordes-- vive en `unicaMonedaDelPedido`. */}
+            <Link href={hrefRegistrar}>Registrar pedido</Link>
           </Button>
         </div>
       ) : null}

@@ -11,6 +11,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
+import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
@@ -145,6 +146,24 @@ export default async function RegistrarPedidoPage({
   const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
 
   const bloques = bloquesDeMoneda(items, undefined);
+
+  // ── ESTA PANTALLA SOBRA CUANDO HAY UNA SOLA MONEDA ────────────────
+  //
+  // Encargo del dueño del 2026-10-25. El redirect es el que hace que la regla
+  // valga también para quien NO llega por el botón del detalle: la flecha de
+  // atrás, un enlace viejo, una pestaña abierta antes del cambio, la URL
+  // escrita a mano. Sin él quedaría una pantalla fuera del flujo a la que se
+  // puede volver, con su contador «1/4» contradiciendo al «1/3» de al lado.
+  //
+  // NO HAY BUCLE, y conviene decir por qué: el `2/4` vuelve atrás al DETALLE
+  // cuando hay una sola moneda, nunca aquí. Las dos pantallas preguntan lo
+  // mismo a la misma función, así que no pueden discrepar.
+  const unicaMoneda = unicaMonedaDelPedido(bloques);
+  if (unicaMoneda) {
+    redirect(
+      `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`,
+    );
+  }
   const lineasParaResumen: LineaDelPedido[] = items.map((i) => ({
     id: i.id,
     cantidad: Number(i.quantity),
@@ -159,7 +178,10 @@ export default async function RegistrarPedidoPage({
         soloEnTelefono={false}
       />
       <ScreenTitle>Nuevo pedido</ScreenTitle>
-      <OrderStepCounter pedidoId={pedido.id} paso={1} nombre="Pedido" />
+      {/* `sinPasoDePedido={false}` SIEMPRE AQUÍ, y no es un literal perezoso:
+          si fuera `true` esta pantalla no existiría — el redirect de arriba ya
+          se habría llevado al tendero. */}
+      <OrderStepCounter pedidoId={pedido.id} paso="pedido" sinPasoDePedido={false} />
 
       <OrderClientCard
         nombreDelPedido={pedido.customer_name}

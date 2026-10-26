@@ -14,6 +14,7 @@ import {
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
+import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 
 // WHO THE SALE GOES TO — step `4/4`, where «Pagar $00.00» lands.
 //
@@ -32,10 +33,10 @@ export default async function ClienteDelPedidoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ nuevo?: string }>;
+  searchParams: Promise<{ nuevo?: string; moneda?: string }>;
 }) {
   const { id } = await params;
-  const { nuevo } = await searchParams;
+  const { nuevo, moneda } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -88,6 +89,8 @@ export default async function ClienteDelPedidoPage({
   // SPLIT, NOT PASSED RAW. See `partirDocumento`: this column holds «V-2424…»
   // on some rows and bare digits on others, and the form needs the two halves
   // apart or it warns the shopkeeper about a format they just typed.
+  const bloques = bloquesDeMoneda(items, undefined);
+
   const documento = partirDocumento(
     pedido.customer_document,
     pedido.customer_document_type,
@@ -101,7 +104,14 @@ export default async function ClienteDelPedidoPage({
       // LAS MONEDAS DEL PEDIDO, en el mismo orden que el paso 1/4 las dibuja.
       // Es lo que deja a esta pantalla contestar el rombo del sitemap --
       // «¿Hay más de una moneda?» -- sin volver a consultar nada.
-      monedas={bloquesDeMoneda(items, undefined).map((b) => b.moneda)}
+      monedas={bloques.map((b) => b.moneda)}
+      // SI EL `1/4` NO EXISTE EN ESTE FLUJO, este paso es el tercero de tres
+      // y no el cuarto de cuatro. Misma función que las otras cuatro
+      // pantallas, para que los contadores no se contradigan.
+      sinPasoDePedido={unicaMonedaDelPedido(bloques) != null}
+      // DE QUÉ MONEDA VIENE, para que la flecha de atrás vuelva a SU pago.
+      // `undefined` solo en un enlace viejo que no la llevaba.
+      monedaDeOrigen={moneda ?? null}
       ficha={ficha}
       delPedido={{
         name: pedido.customer_name,
