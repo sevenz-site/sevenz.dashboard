@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { OrderLineEditForm } from "@/components/dashboard/order-line-edit-form";
+import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
@@ -71,6 +72,25 @@ export function OrderLineEditSheet({
 }) {
   const router = useRouter();
   const [abierta, setAbierta] = useState(false);
+
+  // ── ABRE CON LO QUE YA ESTÁ PUESTO, NO CON LO QUE PIDIÓ EL CLIENTE ──
+  //
+  // `cantidad` y `moneda` llegan del SERVIDOR, o sea de `catalog_order_items`:
+  // lo que el cliente encargó. Pero si el tendero ya editó esta línea, lo que
+  // vale es su edición, y vive en el borrador --que el servidor no ve--.
+  //
+  // QUÉ COSTÓ, el 2026-10-26: el dueño puso 4, dio a «Agregar», volvió a
+  // abrir la hoja y le salía 1 otra vez. *«el sheet "Editar pedido" abre con
+  // el número original del pedido "1"»*. La edición estaba guardada; la hoja
+  // no la leía, así que cada vez que la abría parecía que se había perdido —
+  // y el siguiente «Agregar» la habría pisado con el número viejo.
+  const borrador = useBorrador(pedidoId);
+  const edicion = borrador?.editadas?.[lineaId];
+  const cantidadActual = edicion?.quantity ?? cantidad;
+  // La moneda a la que el tendero la movió, si la movió. `moneda` sigue
+  // siendo la del BLOQUE en el que estamos, y `OrderLineEditForm` la necesita
+  // aparte para saber si al guardar hay que navegar a otro bloque.
+  const monedaActual = (edicion?.currency as PriceCurrency | undefined) ?? moneda;
 
   return (
     <>
@@ -152,8 +172,9 @@ export function OrderLineEditSheet({
               lineaId={lineaId}
               productId={productId}
               producto={producto}
-              cantidad={cantidad}
+              cantidad={cantidadActual}
               moneda={moneda}
+              monedaInicial={monedaActual}
               rates={rates}
               stock={stock}
               monedasDelLibro={monedasDelLibro}

@@ -163,6 +163,40 @@ export function leerBorrador(pedidoId: string): BorradorDeRegistro | null {
   return b;
 }
 
+// ── QUIÉN SE ENTERA DE QUE ESTO CAMBIÓ ────────────────────────────────
+//
+// `sessionStorage` NO avisa a la pestaña que escribe. El evento `storage` del
+// navegador solo se dispara en las OTRAS pestañas, así que un componente que
+// lea este borrador no tiene forma de saber que alguien lo acaba de tocar: se
+// queda con la cifra vieja hasta que React lo repinte por cualquier otro
+// motivo.
+//
+// QUÉ COSTÓ NO TENER ESTO, el 2026-10-26. El dueño editó una línea de un
+// pedido --de 1 unidad a 4--, dio a «Agregar», y la tarjeta de detrás siguió
+// diciendo «Cantidad del pedido: 1». *«Resultado: no se agregan»*. La
+// cantidad SÍ se guardaba, y de hecho la venta se escribió con 4: lo único
+// que no ocurría era que la pantalla se enterara.
+//
+// Y ES PEOR QUE UN DESAJUSTE VISUAL: esa tarjeta es la última que el tendero
+// mira antes de cobrar. Diciendo 1 cuando se van a cobrar 4, lo que enseña no
+// es un número desactualizado — es el número equivocado, justo donde se
+// decide el dinero.
+//
+// SE AVISA DESDE `escribir`, que es la única puerta de escritura de este
+// fichero. Pegado ahí, no hay forma de guardar algo sin avisar.
+const oyentes = new Set<() => void>();
+
+export function suscribirseAlBorrador(avisar: () => void): () => void {
+  oyentes.add(avisar);
+  return () => {
+    oyentes.delete(avisar);
+  };
+}
+
+function avisarDelCambio(): void {
+  for (const oyente of [...oyentes]) oyente();
+}
+
 // A SNAPSHOT WITH A STABLE IDENTITY, for `useSyncExternalStore`.
 //
 // VARIOS COMPONENTES LEEN ESTE BORRADOR EN LA MISMA PANTALLA --el resumen
@@ -237,6 +271,10 @@ function escribir(
     // Storage refused. The shopkeeper will be asked for the amount again,
     // which is the designed failure of this whole file.
   }
+  // FUERA DEL `try`, Y A PROPÓSITO: si el almacenamiento falló, lo que hay en
+  // memoria tampoco cambió, pero avisar de más solo cuesta un repintado que
+  // enseña lo mismo. Avisar de menos cuesta una cifra falsa en pantalla.
+  avisarDelCambio();
 }
 
 export function leerPagoDeMoneda(
@@ -317,4 +355,5 @@ export function borrarBorrador(): void {
   } catch {
     // Same as above.
   }
+  avisarDelCambio();
 }

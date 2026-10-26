@@ -5,6 +5,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
 import {
   instantanea,
+  suscribirseAlBorrador,
   type BorradorDeRegistro,
 } from "@/lib/orders/borrador-de-registro";
 import {
@@ -41,12 +42,24 @@ export type LineaDelPedido = {
   moneda: PriceCurrency;
 };
 
-const sinSuscripcion = () => () => {};
-
+// ── SE SUSCRIBE DE VERDAD DESDE EL 2026-10-26 ─────────────────────────
+//
+// Hasta ese día el primer argumento era un `() => () => {}`: un «no me avises
+// nunca». Con eso, `getSnapshot` solo se vuelve a leer cuando React repinta
+// el componente por otra razón, y editar una línea no es ninguna — la hoja se
+// cierra, `router.refresh()` vuelve a pedir la pantalla al servidor, y el
+// servidor no ve el borrador. La tarjeta se quedaba diciendo la cantidad
+// vieja.
+//
+// Lo reportó el dueño con la captura: *«selecciono 4 > selecciono "Agregar" >
+// Resultado: no se agregan»*. Se agregaba; no se contaba.
+//
+// `suscribirseAlBorrador` es el aviso que `sessionStorage` no da en la propia
+// pestaña. Ver su comentario en `lib/orders/borrador-de-registro.ts`.
 export function useBorrador(pedidoId: string): BorradorDeRegistro | null {
   const cache = useRef<BorradorDeRegistro | null | undefined>(undefined);
   return useSyncExternalStore(
-    sinSuscripcion,
+    suscribirseAlBorrador,
     () => {
       cache.current = instantanea(pedidoId);
       return cache.current;

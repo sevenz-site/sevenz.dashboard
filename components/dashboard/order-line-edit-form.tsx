@@ -36,6 +36,7 @@ export function OrderLineEditForm({
   producto,
   cantidad,
   moneda,
+  monedaInicial,
   rates,
   stock,
   monedasDelLibro,
@@ -50,7 +51,14 @@ export function OrderLineEditForm({
   // Opening at the catalogue's minimum instead would turn an order of five
   // into an order of one without saying so.
   cantidad: number;
+  // LA MONEDA DEL BLOQUE que se está confirmando. Se usa para una sola cosa:
+  // saber si al guardar la línea se va a OTRO bloque, y entonces llevar al
+  // tendero allí.
   moneda: PriceCurrency;
+  // LA QUE SE DIBUJA SELECCIONADA al abrir, que es la del borrador cuando el
+  // tendero ya movió esta línea. Sin separarla, reabrir la hoja enseñaba la
+  // moneda del bloque viejo y «Agregar» la devolvía ahí sin decir nada.
+  monedaInicial?: PriceCurrency;
   rates: BolivarRates | null;
   // TODAS las líneas del pedido con su moneda sellada, para poder decir qué
   // bloques quedan vivos después de esta edición. Ver `alAgregar`.
@@ -74,7 +82,7 @@ export function OrderLineEditForm({
       productId={productId}
       producto={producto}
       cantidadInicial={cantidad}
-      monedaInicial={moneda}
+      monedaInicial={monedaInicial ?? moneda}
       rates={rates}
       stock={stock}
       // THE LEDGER'S CURRENCIES, never bolívares or USDT: `movements.currency`
