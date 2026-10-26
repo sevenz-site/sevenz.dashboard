@@ -100,7 +100,11 @@ export function resumirPorMoneda(
     // tarjeta dice qué va a ser la venta, y eso aún no lo es.
     if (!borrador.monedas[moneda]) continue;
     const cantidad = edicion?.quantity ?? linea.cantidad;
-    const total = Math.round(cantidad * linea.precioUnitario * 100) / 100;
+    // EL PRECIO DE LA EDICIÓN MANDA, igual que en las otras tres cifras del
+    // flujo: una línea que subió al mínimo de mayoreo cuesta menos por
+    // unidad, y esta tarjeta dice en qué va a quedar la deuda del cliente.
+    const total =
+      Math.round(cantidad * (edicion?.unitPrice ?? linea.precioUnitario) * 100) / 100;
 
     const acc = porMoneda.get(moneda) ?? { total: 0, abonado: 0 };
     acc.total = Math.round((acc.total + total) * 100) / 100;

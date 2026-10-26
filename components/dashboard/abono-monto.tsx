@@ -1,5 +1,6 @@
 "use client";
 
+import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import {
   useState,
   useSyncExternalStore,
@@ -74,10 +75,6 @@ import { StickyActions } from "@/components/dashboard/sticky-actions";
 // segundo manda el tope del fiado.
 const DESCONOCIDO = -1;
 const SIN_LIMITE = Number.POSITIVE_INFINITY;
-
-// Fuera del componente para que su referencia no cambie: `useSyncExternalStore`
-// vuelve a suscribirse cada vez que esta función es otra.
-const sinSuscripcion = () => () => {};
 
 export function AbonoMonto({
   ownerId,
@@ -222,7 +219,7 @@ export function AbonoMonto({
   // Sin suscripción: el borrador no cambia mientras esta pantalla vive. Quien
   // lo cambia es la 1/2, y para volver a ella hay que salir de aquí.
   const leido = useSyncExternalStore(
-    sinSuscripcion,
+    leerUnaVezAlEntrar,
     () => {
       if (!enReparto) return SIN_LIMITE;
       const b = leerBorrador(clienteId);

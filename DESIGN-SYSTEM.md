@@ -2768,6 +2768,55 @@ que lo enciende sea otra pantalla y aunque el síntoma aparezca a tres
 pantallas de distancia. Es hermana de la lección de `use-keyboard-open.ts`:
 **el foco sobrevive al teclado, y mirarlo a secas deja una pantalla muerta.**
 
+## UNA CIFRA QUE SALE DEL NAVEGADOR SE SUSCRIBE. SIEMPRE
+
+**Si un número en pantalla sale de `localStorage` o `sessionStorage`, y algo
+de esa misma pantalla puede cambiarlo, el componente que lo dibuja tiene que
+estar suscrito.** No es una optimización: sin suscripción la cifra se queda
+congelada en la que se leyó al montar.
+
+**Ha costado dos fallos, los dos con dinero delante, los dos en el mismo mes:**
+
+| Fecha | Qué se vio | Qué pasaba de verdad |
+|---|---|---|
+| 2026-10-25 | «Agregar» en la hoja de editar una línea «no hace nada» | Guardaba; la pantalla de detrás no se enteraba |
+| 2026-10-26 | La tarjeta decía «Cantidad: 1» con 4 puestas | Se registró la venta con 4, mirando una tarjeta que decía 1 |
+
+### Por qué no se nota, y por qué `router.refresh()` no lo arregla
+
+`localStorage` y `sessionStorage` **no avisan a la pestaña que escribe**. El
+evento `storage` del navegador se dispara solo en las OTRAS pestañas — está
+pensado para sincronizar ventanas, no para esto. Así que si nadie avisa a
+mano, nadie se entera.
+
+Y la salida que parece obvia es la que no puede funcionar: **`router.refresh()`
+vuelve a pedirle la pantalla al SERVIDOR, y el servidor no ve el
+almacenamiento del navegador.** La pantalla se repinta entera con el mismo
+dato viejo, lo cual además hace parecer que el problema está en otro sitio.
+
+### La regla, de dos piezas
+
+1. **Todo módulo que escriba exporta su propia suscripción** y avisa desde su
+   única función de escritura. Los dos que hay lo hacen:
+   `lib/cart/store.ts` (el carrito del cliente) y
+   `lib/orders/borrador-de-registro.ts` (registrar un pedido).
+2. **Quien NO se suscribe lo dice con un nombre**: `leerUnaVezAlEntrar`, de
+   `lib/suscripcion-de-almacenamiento.ts`. Escribir el `() => () => {}` a mano
+   está prohibido, y **`npm run qa:suscripciones` falla si alguien lo hace**.
+
+Ese guion **no lleva lista de excepciones a propósito** — una lista hay que
+mantenerla y una desactualizada falla en silencio, que es el mismo fallo que
+cierra. La excepción se declara importando la función, y su nombre dice cuál
+es; `grep leerUnaVezAlEntrar` las enumera todas.
+
+### Cuándo NO suscribirse es correcto
+
+- ✅ El valor **inicial** de un campo de formulario, cacheado en un `useRef`:
+  a partir de ahí manda el campo y esta pantalla es la única que escribe.
+- ✅ Algo que no cambia nunca: qué sistema operativo es el teléfono.
+- ✅ Algo escrito en **otra** página, antes de que el componente existiera.
+- ❌ **Nunca** una cifra dibujada que otra parte de la misma pantalla toca.
+
 ## Contrast floor
 
 Text must clear **4.5:1** against the surface it actually sits on, and UI

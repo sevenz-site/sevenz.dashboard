@@ -1,5 +1,6 @@
 "use client";
 
+import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
@@ -59,10 +60,6 @@ import {
 // owner's rule of 2026-10-18 that the chip is a consequence of the amount and
 // not a field of its own.
 
-// No subscription: the draft does not change while this screen is alive. The
-// only writer is this screen's own «Pagar», and that navigates away.
-const sinSuscripcion = () => () => {};
-
 export function OrderCurrencyPaymentForm({
   pedidoId,
   moneda,
@@ -107,7 +104,14 @@ export function OrderCurrencyPaymentForm({
         if (l.productId == null) return suma;
         const edicion = borradorDeLineas?.editadas?.[l.id];
         if (edicion && String(edicion.currency) !== String(moneda)) return suma;
-        return suma + (edicion?.quantity ?? l.cantidad) * l.precioUnitario;
+        // MISMA CUENTA QUE `OrderTotalCard`, incluido el precio de la
+        // edición: este número es el TECHO de lo que se deja cobrar, así que
+        // si se quedara con el precio sellado el tendero no podría cobrar la
+        // venta que la pantalla de al lado le está enseñando.
+        return (
+          suma +
+          (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario)
+        );
       }, 0) * 100,
     ) / 100;
   const router = useRouter();
@@ -128,7 +132,7 @@ export function OrderCurrencyPaymentForm({
   // here on the fields own the value, and this screen is the only writer.
   const cache = useRef<PagoDeMoneda | null | undefined>(undefined);
   const inicial = useSyncExternalStore(
-    sinSuscripcion,
+    leerUnaVezAlEntrar,
     () => {
       if (cache.current === undefined)
         cache.current = leerPagoDeMoneda(pedidoId, moneda);

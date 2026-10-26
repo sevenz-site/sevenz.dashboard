@@ -1,5 +1,6 @@
 "use client";
 
+import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useCallback,
   useEffect,
   useMemo,
@@ -52,53 +53,6 @@ import {
 import type { LedgerCurrency } from "@/lib/types";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 
-// PASO 1/2 DEL ABONO REPARTIDO — frame `1526:11182`.
-//
-// El tendero escribe cuánto le pagaron y la pantalla enseña cómo cae ese
-// dinero entre los fiados abiertos, antes de guardar nada. Sustituye al paso
-// 1/3, que obligaba a elegir UN fiado y repetir la operación por cada uno.
-//
-// ===========================================================================
-// EL REPARTO SE CALCULA DOS VECES A PROPÓSITO
-//
-// Aquí, para enseñarlo; y en el servidor, para guardarlo. Es la MISMA función
-// —`repartir()`— con las mismas entradas, así que no pueden discrepar. Lo que
-// NO se hace es mandar las líneas ya repartidas desde el navegador: entonces
-// cualquiera podría guardar un reparto que no sigue la gravedad o que le mete
-// a un fiado más de lo que debe, y esta pantalla no tendría forma de notarlo.
-//
-// ===========================================================================
-// DOS TARJETAS DISTINTAS, COMO EL FRAME, Y ESO CAMBIÓ EL 2026-10-23
-//
-// El frame `1564:11211` dibuja DOS: la que ya tiene importe asignado lleva
-// título, FECHA y su renglón «Abona» debajo (`1564:11242`); la que no lleva
-// título, la cifra en rojo debajo y un botón «Pagar» al lado, SIN fecha
-// (`1564:11286`).
-//
-// HASTA HOY LAS DOS ERAN `TarjetaDeFiado` con cosas distintas debajo, y la
-// razón escrita era buena: tres copias de la misma tarjeta en tres archivos
-// es cómo dejan de ser la misma. Lo que esa razón no cubría es que no son la
-// misma tarjeta — tienen distinto contenido y distinta disposición, y
-// forzarlas a una sola forma es lo que puso DOS cifras del mismo fiado en la
-// misma caja: «Debe €15.95» abajo a la izquierda y «−€25.00» en grande a la
-// derecha. El dueño lo reportó al tocar la segunda y encontrarse la primera:
-// *«Estoy seleccionando un abono de 25 euros pero al seleccionarlo me dice
-// que es de 15.95»*.
-//
-// ASÍ QUE LA DE «Pagar» SE ESCRIBE AQUÍ, y la que recibe sigue siendo
-// `TarjetaDeFiado` —la misma de `/abonos/nuevo` y del detalle de un abono—
-// con `cifra="pendiente"` y sin su línea «Debe».
-//
-// Y ESTO NO DESHACE LA RESPUESTA DEL 2026-10-22. Aquel día se le preguntó si
-// mantener «Debe $X», que el frame no dibuja, y dijo *«Sí mantén la
-// tarjeta»*: lo que quería era ver cuánto falta en cada fiado, porque
-// repartir sin eso es repartir a ciegas. Esa cifra no se va — pasa a ser LA
-// cifra, la roja, en lugar de ser la segunda y la pequeña.
-//
-// Fuera del componente para que su referencia no cambie en cada render:
-// `useSyncExternalStore` vuelve a suscribirse cuando `subscribe` es otra
-// función, y `SIN_AJUSTES` tiene que ser el MISMO objeto vacío siempre.
-const sinSuscripcion = () => () => {};
 const SIN_AJUSTES: Record<string, number> = {};
 
 export function AbonoReparto({
@@ -163,7 +117,7 @@ export function AbonoReparto({
   // de esta pantalla, que es quien lo escribe.
   const cacheBorrador = useRef<BorradorDeReparto | null | undefined>(undefined);
   const borrador = useSyncExternalStore(
-    sinSuscripcion,
+    leerUnaVezAlEntrar,
     () => {
       if (cacheBorrador.current === undefined) cacheBorrador.current = leerBorrador(clienteId);
       return cacheBorrador.current;

@@ -3,7 +3,11 @@
 import { useRouter } from "next/navigation";
 import { ProductDetail } from "@/components/public/product-detail";
 import { fijarLineaEditada, leerBorrador } from "@/lib/orders/borrador-de-registro";
-import type { ProductoPublico } from "@/lib/products/public-pricing";
+import {
+  escalonParaCantidad,
+  precioEnMoneda,
+  type ProductoPublico,
+} from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // STEP 1/2 «EDITA PRODUCTO» — frame `1566:13300`, reached from «Editar» on an
@@ -107,7 +111,27 @@ export function OrderLineEditForm({
             l.id === lineaId ? currency : String(previas[l.id]?.currency ?? l.moneda),
           ),
         );
-        fijarLineaEditada(pedidoId, lineaId, { quantity, currency }, [...vivas]);
+        // ── EL PRECIO DE ESA CANTIDAD, CON LAS FUNCIONES DEL SERVIDOR ──
+        //
+        // `escalonParaCantidad` y `precioEnMoneda` son LAS MISMAS que usa
+        // `registrarVenta`. No es ahorro: es la única forma de que la cifra
+        // que el tendero ve aquí y la que se escribe en la venta no puedan
+        // separarse. Si un día cambia la regla de escalones, cambia para las
+        // dos a la vez.
+        //
+        // `null` cuando no hay tasa con la que calcular --un negocio sin BCV
+        // ahora mismo--: entonces no se guarda nada y la pantalla dibuja el
+        // precio sellado. La venta fallará con su propio mensaje, que es más
+        // claro que una cifra inventada aquí.
+        const escalon = escalonParaCantidad(producto, quantity);
+        const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
+        const unitPrice = escalon ? precioEnMoneda(bloque, currency, rates) : null;
+        fijarLineaEditada(
+          pedidoId,
+          lineaId,
+          { quantity, currency, ...(unitPrice != null ? { unitPrice } : {}) },
+          [...vivas],
+        );
 
         // ── QUÉ PASA DESPUÉS, Y AQUÍ HUBO UN FALLO REAL ────────────────
         //

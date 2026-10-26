@@ -90,6 +90,33 @@ export type PagoDeMoneda = {
 export type LineaEditada = {
   quantity: number;
   currency: string;
+  // ── EL PRECIO QUE LA HOJA ENSEÑÓ, PARA DIBUJARLO ─────────────────────
+  //
+  // Decisión del dueño el 2026-10-26, preguntada con las dos salidas
+  // delante: *«B) Manda la edición»*. Cambiar la cantidad recalcula el
+  // escalón, así que subir de 1 a 5 unidades cobra al MAYOR.
+  //
+  // ESO DESPLAZA UNA DECISIÓN ESCRITA, y las dos quedan: `registrarVenta`
+  // decía *«El escalón también se respeta sellado: recalcularlo por la
+  // cantidad nueva podría saltar a mayoreo y cambiar el precio por detrás»*.
+  // Era verdad y era prudente, pero la hoja «Editar pedido» ya recalculaba y
+  // ya enseñaba el precio nuevo: lo que había no era un precio estable, era
+  // una pantalla prometiendo una cifra y una venta escribiendo otra. Medido
+  // en dev ese día con el Alicate: la hoja decía «Agregar $28,75» y la venta
+  // se escribía por $285,00.
+  //
+  // ESTE NÚMERO NO VIAJA AL SERVIDOR, y eso no es un detalle: `CLAUDE.md` y
+  // `create_catalog_order` dicen lo mismo --«el PRECIO lo calcula esta
+  // función, nunca viaja en la petición»--. Vive aquí solo para que la
+  // tarjeta, el total y el botón de cobro dibujen lo mismo que la hoja.
+  // `registrarVenta` lo vuelve a calcular por su cuenta con las MISMAS dos
+  // funciones --`escalonParaCantidad` y `precioEnMoneda`--, que es lo que
+  // impide que pantalla y venta se separen otra vez.
+  //
+  // `undefined` en un borrador escrito antes de este cambio, o cuando no hay
+  // tasa con la que calcularlo: entonces se dibuja el precio sellado, que es
+  // la pantalla de ayer.
+  unitPrice?: number;
 };
 
 // WHO THE SALE GOES TO, decided on the last step before the summary.

@@ -379,13 +379,27 @@ export function CartScreen({
                 {totales.map((t) => (
                   <div
                     key={t.currency}
-                    className="flex items-baseline justify-between gap-3"
+                    className="flex items-center justify-between gap-3"
                   >
                     <span className="text-sm text-muted-foreground">
                       {totales.length > 1 ? `Total en ${t.currency}` : "Total"}
                     </span>
-                    <span className="text-base font-semibold tabular-nums">
-                      {formatPriceAmount(t.amount, t.currency)}
+                    {/* LA BANDERA A LA DERECHA DE LA CIFRA, encargo del dueño
+                        el 2026-10-26. Es la misma forma que ya tienen las
+                        tarjetas de total del lado del tendero: el símbolo
+                        distingue dólares de euros de un vistazo, pero no
+                        distingue dos dólares --el americano del australiano--
+                        y la bandera sí. Aquí además hay dos totales uno
+                        encima de otro, que es justo donde se confunden.
+
+                        `items-center` Y NO `items-baseline` en la fila: una
+                        bandera no tiene línea base, así que con la de antes
+                        quedaba montada sobre el número. */}
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-base font-semibold tabular-nums">
+                        {formatPriceAmount(t.amount, t.currency)}
+                      </span>
+                      <CurrencyFlagIcon currency={t.currency} className="size-4 shrink-0" />
                     </span>
                   </div>
                 ))}
@@ -522,6 +536,28 @@ function FormularioDeLaOrden({
 
   function enviar() {
     setError(null);
+    // ── EL NÚMERO FALTA ≠ EL NÚMERO NO SE ENTIENDE ────────────────────
+    //
+    // Los dos casos volvían del servidor con el mismo código
+    // --`whatsapp_invalido`-- y por tanto con la misma frase, «Ese número de
+    // WhatsApp no se entiende. Revísalo.». Con el campo VACÍO eso manda al
+    // cliente a revisar un número que no escribió.
+    //
+    // Lo reportó el dueño el 2026-10-26 con la captura, y pidió la frase que
+    // nombra el problema de verdad: *«El mensaje "El número de WhatsApp no se
+    // entiende. Revísalo" debe ser "Número de WhatsApp es obligatorio"»*.
+    //
+    // SE COMPRUEBA AQUÍ Y NO EN EL SERVIDOR porque el servidor no puede
+    // distinguirlos: `WhatsappInput` manda cadena vacía tanto si el campo
+    // está en blanco como si lo tecleado no compone un número, así que lo que
+    // llega es lo mismo. Quien sí lo sabe es la pantalla.
+    //
+    // LA PARADA DURA SIGUE SIENDO LA DEL SERVIDOR: esto es un mensaje mejor,
+    // no una validación. `create_catalog_order` rechaza igual.
+    if (whatsapp.trim() === "") {
+      setError("Número de WhatsApp es obligatorio");
+      return;
+    }
     startTransition(async () => {
       const r = await crearOrden(
         token,
@@ -736,7 +772,16 @@ function FormularioDeLaOrden({
               id="orden_whatsapp"
               name="orden_whatsapp"
               preferredDialCode={prefijo}
-              onValueChange={setWhatsapp}
+              // EL ERROR SE VA AL TOCAR EL CAMPO, y eso es la otra mitad
+              // de lo mismo. En la captura del dueño el aviso en rojo salía
+              // DEBAJO de un número ya tecleado: era el de un intento
+              // anterior con el campo vacío, que se quedó en pantalla. Un
+              // mensaje que sobrevive a su causa no se lee como viejo, se lee
+              // como que el número que acabas de escribir tampoco vale.
+              onValueChange={(v) => {
+                setWhatsapp(v);
+                setError(null);
+              }}
               disabled={enviando}
             />
           </div>

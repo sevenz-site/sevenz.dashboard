@@ -72,7 +72,14 @@ export function OrderTotalCard({
         // UNA LÍNEA MOVIDA A OTRA MONEDA SALE DE ESTE TOTAL. Si no, el bloque
         // de euros seguiría sumando algo que se va a cobrar en dólares.
         if (edicion && String(edicion.currency) !== String(moneda)) return suma;
-        return suma + (edicion?.quantity ?? l.cantidad) * l.precioUnitario;
+        // EL PRECIO DE LA EDICIÓN, cuando lo hay. Una línea editada puede
+        // haber saltado de escalón --decisión del dueño del 2026-10-26-- y
+        // sumarla al precio sellado haría que esta tarjeta y el botón de
+        // cobro dijeran cifras distintas de la misma venta.
+        return (
+          suma +
+          (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario)
+        );
       }, 0) * 100,
     ) / 100;
 

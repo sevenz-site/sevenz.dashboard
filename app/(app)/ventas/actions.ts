@@ -940,7 +940,14 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   // negocio pegado en la petición no traiga su precio.
   const selladas = new Map<
     string,
-    { unit_price: number; currency: PriceCurrency; tier: "retail" | "wholesale" }
+    {
+      unit_price: number;
+      currency: PriceCurrency;
+      tier: "retail" | "wholesale";
+      // LA CANTIDAD QUE PIDIÓ EL CLIENTE. Es lo que dice si el sello sigue
+      // siendo suyo: ver `usaSellado` más abajo.
+      quantity: number;
+    }
   >();
   if (entrada.pedidoId) {
     const { data: pedido } = await supabase
@@ -984,13 +991,14 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     }
     const { data: lineasDelPedido } = await supabase
       .from("catalog_order_items")
-      .select("id, unit_price, currency, tier")
+      .select("id, unit_price, currency, tier, quantity")
       .eq("order_id", entrada.pedidoId);
     for (const l of lineasDelPedido ?? []) {
       selladas.set(l.id, {
         unit_price: Number(l.unit_price),
         currency: l.currency as PriceCurrency,
         tier: l.tier === "wholesale" ? "wholesale" : "retail",
+        quantity: Number(l.quantity),
       });
     }
   }
@@ -1022,16 +1030,39 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     const tier = escalonParaCantidad(producto.producto, linea.quantity);
     if (!tier) return { ok: false, error: `La cantidad de ${producto.name} es menor que el mínimo que vendes.` };
 
-    // ── EL PRECIO SELLADO MANDA, CUANDO LO HAY ──────────────────────
+    // ── EL PRECIO SELLADO MANDA MIENTRAS NADIE TOQUE LA LÍNEA ───────
     //
-    // Y SOLO SI LA MONEDA NO CAMBIÓ. Un precio sellado existe en UNA moneda:
-    // la que el cliente vio. Si el tendero movió la línea a otra con
-    // «Editar», no hay nada sellado que cobrar ahí y el precio sale del
-    // catálogo, como en cualquier venta --que es lo que él acaba de elegir al
-    // cambiarla--. El escalón también se respeta sellado: recalcularlo por la
-    // cantidad nueva podría saltar a mayoreo y cambiar el precio por detrás.
+    // Un precio sellado es lo que el CLIENTE vio y aceptó, así que vale
+    // mientras la línea siga siendo la suya. Deja de valer en dos casos, y
+    // los dos son el tendero cambiándola con «Editar pedido»:
+    //
+    //   · LA MONEDA. Un precio sellado existe en UNA moneda --la que el
+    //     cliente vio--, así que movida a otra no hay nada sellado que
+    //     cobrar y el precio sale del catálogo.
+    //
+    //   · LA CANTIDAD. Decisión del dueño el 2026-10-26, preguntada con las
+    //     dos salidas delante: *«B) Manda la edición»*. Subir de 1 a 5
+    //     unidades cobra al MAYOR.
+    //
+    // ESTO DESPLAZA LO QUE ESTE MISMO COMENTARIO DECÍA, y la razón vieja
+    // queda escrita porque era buena: *«recalcularlo por la cantidad nueva
+    // podría saltar a mayoreo y cambiar el precio por detrás»*. Lo que la
+    // desmontó es que ya no era «por detrás»: la hoja «Editar pedido»
+    // recalcula el escalón y enseña el precio nuevo en su propio botón desde
+    // que existe. Medido en dev el 2026-10-26 con el Alicate --al detal
+    // $57,00, al mayor desde 5 a $5,75--: la hoja prometía «Agregar $28,75»
+    // y la venta se escribía por $285,00. No había un precio estable; había
+    // dos pantallas diciendo cosas distintas.
+    //
+    // SE COMPARA CONTRA LA CANTIDAD DEL PEDIDO, no contra una bandera que
+    // mande la pantalla. Una bandera habría que acordarse de ponerla; esto
+    // lo decide la base comparando lo que el cliente pidió con lo que se va
+    // a cobrar, y no se puede olvidar.
     const sellada = linea.orderItemId ? selladas.get(linea.orderItemId) : undefined;
-    const usaSellado = sellada != null && sellada.currency === linea.currency;
+    const usaSellado =
+      sellada != null &&
+      sellada.currency === linea.currency &&
+      sellada.quantity === linea.quantity;
     const tierFinal = usaSellado ? sellada.tier : tier;
     const bloque = tierFinal === "retail" ? producto.producto.retail : producto.producto.wholesale;
     const unitPrice = usaSellado ? sellada.unit_price : precioEnMoneda(bloque, linea.currency, rates);

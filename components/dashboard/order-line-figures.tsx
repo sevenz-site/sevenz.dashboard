@@ -89,7 +89,12 @@ export function ImporteDeLinea({
       ? String(edicion.currency)
       : null;
 
-  const porPagar = Math.round(precioUnitario * cantidad * 100) / 100;
+  // EL PRECIO DE LA EDICIÓN MANDA SOBRE EL SELLADO. Decisión del dueño el
+  // 2026-10-26: cambiar la cantidad recalcula el escalón, así que una línea
+  // que sube al mínimo de mayoreo cuesta el precio al mayor. El porqué entero
+  // --y la decisión que desplaza-- está en `LineaEditada.unitPrice`.
+  const precio = edicion?.unitPrice ?? precioUnitario;
+  const porPagar = Math.round(precio * cantidad * 100) / 100;
   const enBs =
     rates != null && !movidaA
       ? (priceIn("VES", { amount: porPagar, currency: moneda }, rates)?.amount ?? null)
