@@ -141,45 +141,21 @@ export function OrderClientCard({
           <p className="truncate text-sm text-muted-foreground">
             Cédula: {formatDocumentId(digitosDelPedido, letraDelPedido)}
           </p>
-          <p className="truncate text-sm text-muted-foreground">Teléfono: {telefono || "—"}</p>
-          <p className="truncate text-sm text-muted-foreground">Dirección: {direccion || "—"}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            Teléfono: {telefono || "—"}
+          </p>
+          <p className="truncate text-sm text-muted-foreground">
+            Dirección: {direccion || "—"}
+          </p>
         </div>
       </div>
 
-      {coincidencia.kind !== "ninguno" ? (
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
-          <CircleUserRound className="mt-px size-4 shrink-0" aria-hidden="true" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">
-              {coincidencia.kind === "varios"
-                ? "El cliente ya existe en varias cuentas de Sevenz."
-                : "El cliente ya existe en tu cuenta de Sevenz."}
-            </p>
-            {/* LA SEGUNDA LÍNEA CAMBIA DE SUJETO A PROPÓSITO. Con una sola
-                ficha nombra LA FICHA, que es lo que deja comparar con el
-                nombre de arriba —el que escribió el cliente— y cazar un
-                emparejamiento malo. Con varias no hay una que nombrar, así que
-                repite el documento del pedido, que es lo único común a todas.
-                El frame `1634:30094` lo dibuja así. */}
-            <p>
-              {cliente
-                ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
-                : `${nombreDelPedido} con cédula ${formatDocumentId(digitosDelPedido, letraDelPedido)}`}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
-          <UserRoundSearch className="mt-px size-4 shrink-0" aria-hidden="true" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">No hemos encontrado este cliente en tu cuenta de Sevenz.</p>
-            <p>
-              {nombreDelPedido} con cédula{" "}
-              {formatDocumentId(digitosDelPedido, letraDelPedido)}
-            </p>
-          </div>
-        </div>
-      )}
+      <OrderClientMatchAlert
+        nombreDelPedido={nombreDelPedido}
+        digitosDelPedido={digitosDelPedido}
+        letraDelPedido={letraDelPedido}
+        coincidencia={coincidencia}
+      />
 
       {cliente ? (
         // ABRE UNA HOJA, NO NAVEGA. Petición del dueño el 2026-10-25, para no
@@ -192,8 +168,82 @@ export function OrderClientCard({
       ) : null}
 
       {coincidencia.kind === "varios" ? (
-        <OrderClientPickerSheet clientes={coincidencia.clientes} ledger={ledger} />
+        <OrderClientPickerSheet
+          clientes={coincidencia.clientes}
+          ledger={ledger}
+        />
       ) : null}
     </div>
+  );
+}
+
+// ── EL AVISO DE SI ESE CLIENTE YA ESTÁ EN LA CUENTA, SUELTO ───────────
+//
+// Sacado de `OrderClientCard` el 2026-10-26, cuando el dueño rehízo la
+// tarjeta del detalle (frame `1704:14739`): ahí el aviso va DENTRO de la
+// tarjeta «Datos del comprador», que no tiene avatar ni botón, así que lo
+// que se comparte entre las dos pantallas es solo esto.
+//
+// ES EL MISMO COMPONENTE Y NO UNA COPIA a propósito: son tres estados --una
+// ficha, varias, ninguna-- con tres textos y dos colores, y dos copias de eso
+// es como una pantalla acaba diciendo «ya existe» donde la otra dice «no lo
+// encontramos» sobre el mismo pedido.
+export function OrderClientMatchAlert({
+  nombreDelPedido,
+  digitosDelPedido,
+  letraDelPedido,
+  coincidencia,
+}: {
+  nombreDelPedido: string;
+  digitosDelPedido: string;
+  letraDelPedido: string | null;
+  coincidencia: OrderClientMatch;
+}) {
+  const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+  return (
+    <>
+      {coincidencia.kind !== "ninguno" ? (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          <CircleUserRound
+            className="mt-px size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="font-semibold">
+              {coincidencia.kind === "varios"
+                ? "El cliente ya existe en varias cuentas de Sevenz."
+                : "El cliente ya existe en tu cuenta de Sevenz."}
+            </p>
+            {/* LA SEGUNDA LÍNEA CAMBIA DE SUJETO A PROPÓSITO. Con una sola
+            ficha nombra LA FICHA, que es lo que deja comparar con el
+            nombre de arriba —el que escribió el cliente— y cazar un
+            emparejamiento malo. Con varias no hay una que nombrar, así que
+            repite el documento del pedido, que es lo único común a todas.
+            El frame `1634:30094` lo dibuja así. */}
+            <p>
+              {cliente
+                ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
+                : `${nombreDelPedido} con cédula ${formatDocumentId(digitosDelPedido, letraDelPedido)}`}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
+          <UserRoundSearch
+            className="mt-px size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="font-semibold">
+              No hemos encontrado este cliente en tu cuenta de Sevenz.
+            </p>
+            <p>
+              {nombreDelPedido} con cédula{" "}
+              {formatDocumentId(digitosDelPedido, letraDelPedido)}
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

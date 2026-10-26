@@ -1058,11 +1058,26 @@ function Enviado({
               </tbody>
             </table>
 
-            <div className="flex items-baseline justify-between gap-3 border-t pt-3">
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
               <span className="text-sm font-semibold">
                 Total en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
               </span>
-              <span className="text-right">
+              {/* LA BANDERA TAMBIÉN AQUÍ, encargo del dueño el 2026-10-26
+                  después de verla en el carrito: *«Agrega la bandera también
+                  en los totales del recibo compartible»*.
+
+                  Y AQUÍ PESA MÁS QUE EN EL CARRITO, aunque el rótulo ya diga
+                  «Dólares» con todas las letras: esta es la pantalla que el
+                  cliente guarda o reenvía, así que se va a leer fuera de su
+                  contexto, en la galería del teléfono de otra persona. Un
+                  símbolo suelto a esas alturas no distingue dos dólares; una
+                  bandera sí.
+
+                  `items-center` Y NO `items-baseline`: una bandera no tiene
+                  línea base y con la de antes quedaba montada sobre la cifra.
+                  Es el mismo cambio que en el carrito. */}
+              <span className="flex items-center gap-1.5 text-right">
+                <span className="flex flex-col items-end">
                 <span className="block text-base font-semibold tabular-nums">
                   {formatPriceAmount(bloque.total, bloque.currency)}
                 </span>
@@ -1071,6 +1086,11 @@ function Enviado({
                     {formatBs(enBs.amount)}
                   </span>
                 ) : null}
+                </span>
+                <CurrencyFlagIcon
+                  currency={bloque.currency}
+                  className="size-4 shrink-0"
+                />
               </span>
             </div>
           </section>

@@ -7,7 +7,9 @@ import {
   OrderProductSheet,
   OrderProductRowButton,
 } from "@/components/dashboard/order-product-sheet";
-import { findOrderClient } from "@/lib/orders/order-client-match";
+import { findOrderClient, partirDocumento } from "@/lib/orders/order-client-match";
+import { OrderClientMatchAlert } from "@/components/dashboard/order-client-card";
+import { OrderDraftReset } from "@/components/dashboard/order-draft-reset";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
 import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { UserRound } from "lucide-react";
@@ -178,6 +180,15 @@ export default async function OrdenPage({
   // A DÓNDE LLEVA «REGISTRAR PEDIDO». Agrupado por la moneda sellada, que es
   // lo único que el servidor puede ver; `unicaMonedaDelPedido` explica qué
   // cuenta como «una sola moneda» y qué no.
+  // EL DOCUMENTO EN DOS PIEZAS. `catalog_orders` guarda unas filas con la
+  // letra pegada dentro --«V-24242424»-- y otras con los dígitos pelados y el
+  // tipo en su columna, así que partirlo es lo único que deja escribirlo
+  // igual en los dos casos. Lo mismo que hace la tarjeta del paso 4/4.
+  const documentoDelPedido = partirDocumento(
+    pedido.customer_document,
+    pedido.customer_document_type,
+  );
+
   const unicaMoneda = unicaMonedaDelPedido(bloquesDeMoneda(items, undefined));
   const hrefRegistrar = unicaMoneda
     ? `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`
@@ -202,6 +213,13 @@ export default async function OrdenPage({
           Catálogo. */}
       {/* `soloEnTelefono={false}` porque esta pantalla nunca tuvo el
           `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
+      {/* ── ESTAR AQUÍ ES NO ESTAR REGISTRANDO ─────────────────────────
+          Así que lo editado en el flujo se tira. Encargo del dueño el
+          2026-10-26: *«toda la edición del pedido debería reiniciarse si me
+          salgo del flujo, incluyendo la cantidad»*. El porqué entero --y lo
+          que cuesta-- está en `OrderDraftReset`. */}
+      <OrderDraftReset />
+
       <ScreenBackRow
         href="/productos/ordenes"
         label="Volver a Pedidos"
@@ -297,6 +315,26 @@ export default async function OrdenPage({
         <Fila nombre="Notificaciones por WhatsApp">
           {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
         </Fila>
+
+        {/* ── Y SI ESE COMPRADOR YA ESTÁ EN LA CUENTA, DENTRO ────────
+            Frame `1704:14739`, leído el 2026-10-26: el aviso va DENTRO de la
+            tarjeta «Datos del comprador», debajo de las cinco filas.
+
+            POR QUÉ IMPORTA QUE ESTÉ DENTRO y no debajo: lo que afirma es
+            sobre ESTAS cinco filas --este nombre, este documento--. Suelto,
+            un recuadro verde entre dos tarjetas no dice de quién habla.
+
+            Y ES LA ÚNICA PANTALLA DEL FLUJO QUE LO DICE desde hoy: el paso
+            1/4 se quedó solo con los bloques de moneda, por encargo del
+            dueño el mismo día. */}
+        <div className="pt-3">
+          <OrderClientMatchAlert
+            nombreDelPedido={pedido.customer_name}
+            digitosDelPedido={documentoDelPedido.digits}
+            letraDelPedido={documentoDelPedido.letter}
+            coincidencia={clienteDelPedido}
+          />
+        </div>
       </div>
 
       {/* CONTACTAR, right under "Datos del cliente" -- the owner's placement,

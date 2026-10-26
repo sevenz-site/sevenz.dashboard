@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { OrderClientCard } from "@/components/dashboard/order-client-card";
 import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
 import {
   OrderRegistrationSummary,
@@ -19,9 +18,6 @@ import {
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
 import { findOrderClient } from "@/lib/orders/order-client-match";
-import { WhatsappIcon } from "@/components/icons/whatsapp";
-import { readOwnerCountry } from "@/lib/owner-country";
-import { formatReceiptDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -51,19 +47,6 @@ import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 // ficha, porque aquí es donde se decide a quién se le apunta la deuda; la del
 // detalle es una lista de datos y nada más. Eran la misma y el dueño leyó las
 // dos pantallas como una sola.
-// LA MISMA FILA QUE EL DETALLE: rótulo a la izquierda, valor a la derecha.
-// Copiada y no importada porque son cuatro líneas y exportarla desde una
-// `page.tsx` de Next para que otra la use es un acoplamiento peor que la
-// copia. Si crecen, se van a un componente las dos a la vez.
-function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="shrink-0 text-sm text-muted-foreground">{nombre}</span>
-      <span className="min-w-0 text-right text-sm font-medium">{children}</span>
-    </div>
-  );
-}
-
 export default async function RegistrarPedidoPage({
   params,
 }: {
@@ -133,18 +116,6 @@ export default async function RegistrarPedidoPage({
     }
   }
 
-  // CUÁNDO PIDIÓ, EN LA ZONA DEL DUEÑO y no en la del servidor, que corre en
-  // UTC. La misma función que el detalle, para que las dos pantallas escriban
-  // la misma fecha con las mismas palabras.
-  const country = await readOwnerCountry(supabase, user.id);
-  const cuando = formatReceiptDateTime(pedido.created_at, country);
-
-  // Solo dígitos. La columna ya viene normalizada; esto cubre lo que haya
-  // entrado por otra puerta que el carrito.
-  const whatsappDigits = (pedido.customer_whatsapp ?? "").replace(/\D/g, "");
-  const primerNombre = pedido.customer_name.trim().split(/\s+/)[0];
-  const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
-
   const bloques = bloquesDeMoneda(items, undefined);
 
   // ── ESTA PANTALLA SOBRA CUANDO HAY UNA SOLA MONEDA ────────────────
@@ -183,52 +154,38 @@ export default async function RegistrarPedidoPage({
           se habría llevado al tendero. */}
       <OrderStepCounter pedidoId={pedido.id} paso="pedido" sinPasoDePedido={false} />
 
-      <OrderClientCard
-        nombreDelPedido={pedido.customer_name}
-        documentoDelPedido={pedido.customer_document ?? ""}
-        tipoDeDocumento={pedido.customer_document_type}
-        telefono={pedido.customer_whatsapp_raw ?? pedido.customer_whatsapp ?? ""}
-        coincidencia={clienteDelPedido}
-        // La tasa vigente, para la hoja de la cuenta del cliente.
-        ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
-      />
+      {/* ── AQUÍ YA NO VA NADA DEL COMPRADOR, Y ES EL ENCARGO ──────────
+          El frame `1652:12752` se rehizo el 2026-10-26 y esta pantalla se
+          quedó con el título, el contador y los bloques de moneda. Sus
+          palabras: *«el cambio se basa en dejar solo los pedidos por
+          moneda»*.
 
-      {/* ── LAS DOS FILAS DEL PEDIDO Y EL BOTÓN DE WHATSAPP ────────────
-          Frame `1652:12752`, nodos «Order Details» y «WhatsApp button»: van
-          AQUÍ, entre la tarjeta del comprador y la sección «Pedido». Faltaban
-          desde que este paso nació, y no por decisión: se quedaron en el
-          detalle al partir la pantalla en dos.
+          QUÉ SE QUITÓ: la tarjeta del comprador con su avatar, el aviso de
+          si ya está en la cuenta, los botones «Ver ‹cliente›» / «Ver
+          clientes», las filas «Fecha del pedido» y «Notificaciones por
+          WhatsApp», y «Contactar vía WhatsApp». Todo eso estaba aquí esta
+          misma mañana porque el frame de entonces lo dibujaba.
 
-          NO SON UNA REPETICIÓN DEL DETALLE aunque las dos pantallas las
-          dibujen. Lo que contestan cambia de sitio con el tendero: en el
-          detalle, «¿cuándo pidió esto y puedo escribirle?»; aquí, con el
-          cliente al teléfono y a punto de apuntarle una deuda, «¿esto es de
-          hoy, y tengo permiso para mandarle el recibo?». La segunda decide si
-          marca la casilla de avisos en el paso 4/4.
+          Y TIENE SENTIDO CON LO DE AYER: esta pantalla solo existe cuando el
+          pedido tiene MÁS DE UNA moneda, así que su única pregunta es «¿cuál
+          registro primero?». Quién pidió y si ya está en la cuenta se
+          contesta en el detalle, una pantalla antes, donde el aviso vive
+          ahora dentro de la tarjeta «Datos del comprador».
 
-          SIN EL LÁPIZ QUE DIBUJA EL FRAME. Corregir la fecha de un pedido o
-          el permiso de WhatsApp no está construido --el permiso va por número
-          y no por cliente, que es `CT-69` y sigue abierto--, y un icono de
-          editar que no edita es peor que ninguno. */}
-      <div className="flex flex-col rounded-[10px] border px-4 py-1">
-        <Fila nombre="Fecha del pedido:">{cuando}</Fila>
-        <Fila nombre="Notificaciones por WhatsApp">
-          {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
-        </Fila>
-      </div>
+          ───────────────────────────────────────────────────────────────
+          LO QUE SE PIERDE, DICHO EN VOZ ALTA
 
-      {whatsappDigits ? (
-        <a
-          href={`https://wa.me/${whatsappDigits}?text=${encodeURIComponent(mensajeWhatsapp)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
-        >
-          Contactar vía WhatsApp
-          <WhatsappIcon className="size-4" />
-        </a>
-      ) : null}
+          «Ver ‹cliente›» DESAPARECE DEL FLUJO salvo en el paso 4/4. El dueño
+          pidió el 2026-10-25 que ese botón abriera una hoja *«en todas las
+          pantallas del flujo de registrar pedido»*; de las dos que lo tenían,
+          una lo perdió ayer con la tarjeta nueva del detalle y la otra lo
+          pierde hoy. Queda en el 4/4, que es donde se decide a quién se le
+          apunta la deuda.
 
+          Y CON ÉL, «Ver clientes»: un pedido cuyo documento coincide con
+          VARIAS fichas ya no tiene desde aquí forma de mirarlas. El aviso del
+          detalle lo sigue diciendo --«ya existe en varias cuentas»-- pero
+          hasta el 4/4 no hay dónde abrirlas. */}
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
         {/* EN QUÉ VA A QUEDAR ESTE PEDIDO, en cuanto haya algo registrado. No
