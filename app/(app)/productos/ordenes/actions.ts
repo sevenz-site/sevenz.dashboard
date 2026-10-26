@@ -8,6 +8,7 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { isDocumentTypeFor } from "@/lib/document-id";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { trackServer } from "@/lib/mixpanel-server";
+import { estaDescartado } from "@/lib/orders/catalog-orders";
 import { registrarVenta, type VentaEntrada } from "@/app/(app)/ventas/actions";
 
 // THE ONE WRITE IN D's READING HALF, and it is here for a reason worth
@@ -137,6 +138,62 @@ function monedaDeLinea(
   return String(editadas[linea.id]?.currency ?? linea.currency ?? "");
 }
 
+// ── QUÉ MONEDAS DE ESTE PEDIDO SIGUEN SIN VENDER ──────────────────────
+//
+// WRITTEN ONCE BECAUSE TWO DOORS ASK IT, and if they answered differently the
+// order would be sealed as done with a currency still to charge -- or never
+// sealed at all. The two: `registrarPedidoComoVenta`, after writing a sale,
+// and `quitarMonedaDelPedido`, after taking a currency out.
+//
+// IT ASKS THE DATABASE AND NOT THE BROWSER. The draft knows what the
+// shopkeeper typed; only `sales` knows what got written, and calling an order
+// finished on the strength of a draft is how one gets stamped with a whole
+// currency missing.
+//
+// DEAD LINES DO NOT COUNT AS PENDING. A currency whose products all left the
+// catalogue can never have a sale, so waiting for it would leave the order
+// pending for ever -- which is the same broken-in-silence bell this function's
+// second caller exists to fix.
+//
+// `hayVentas` IS THE OTHER HALF, and it is what `quitarMonedaDelPedido` needs:
+// «no pending currencies» is true of an order whose only remaining currency is
+// dead and which has NO sale at all. Sealing that one would mark as registered
+// an order that produced nothing.
+async function monedasPendientes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  pedidoId: string,
+  // Las líneas VIVAS, ya leídas por quien llama: las dos puertas las tienen.
+  lineas: readonly { id: string; product_id: string | null; currency: string | null }[],
+  // Las ediciones del borrador, cuando las haya: una línea movida de moneda
+  // cuenta en la suya nueva. `quitarMonedaDelPedido` no ve el borrador y pasa
+  // el objeto vacío, igual que agrupan su pantalla y su guardia.
+  editadas: RegistroDePedidoEntrada["editadas"] = {},
+): Promise<{ pendientes: string[]; hayVentas: boolean }> {
+  const delPedido = new Set<string>();
+  for (const linea of lineas) {
+    if (!linea.product_id) continue;
+    const m = monedaDeLinea(linea, editadas);
+    if (m !== "") delPedido.add(m);
+  }
+
+  const { data: ventasDelPedido } = await supabase
+    .from("sales")
+    .select("id, sale_lines(currency)")
+    .eq("catalog_order_id", pedidoId)
+    .is("deleted_at", null);
+  const vendidas = new Set<string>();
+  for (const v of ventasDelPedido ?? []) {
+    for (const l of (v.sale_lines ?? []) as { currency: string | null }[]) {
+      if (l.currency != null) vendidas.add(String(l.currency));
+    }
+  }
+
+  return {
+    pendientes: [...delPedido].filter((m) => !vendidas.has(m)),
+    hayVentas: (ventasDelPedido ?? []).length > 0,
+  };
+}
+
 export async function registrarPedidoComoVenta(
   entrada: RegistroDePedidoEntrada,
 ): Promise<ResultadoRegistroDePedido> {
@@ -164,7 +221,9 @@ export async function registrarPedidoComoVenta(
   // `.eq("owner_id")` EXPLICITLY — the id comes from the browser.
   const { data: pedido, error: errorPedido } = await supabase
     .from("catalog_orders")
-    .select("id, created_at")
+    // `status` SE LEE desde el 2026-10-26: es lo que dice si el pedido está
+    // descartado, y hasta ese día esta consulta no lo pedía.
+    .select("id, created_at, status")
     .eq("id", entrada.pedidoId)
     .eq("owner_id", user.id)
     .maybeSingle();
@@ -176,6 +235,25 @@ export async function registrarPedidoComoVenta(
     };
   }
   if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
+
+  // ── UN PEDIDO DESCARTADO NO SE COBRA ──────────────────────────────
+  //
+  // LA PARADA DURA de lo que las seis pantallas ya rechazan, y hace falta
+  // igual: una pestaña abierta antes de descartarlo llega aquí sin pasar por
+  // ninguna de ellas, y lo que se escribe es la deuda de una persona.
+  //
+  // AQUÍ Y NO EN `registrarVenta`: esta función es la ÚNICA que le pasa un
+  // `pedidoId` (comprobado con `grep`), así que el candado está en su puerta y
+  // no repartido en dos sitios que pueden separarse.
+  //
+  // EL MENSAJE DICE LA SALIDA. «No se puede» dejaría al tendero sin saber qué
+  // hacer con un pedido que tiene delante; esto le dice dónde está el botón.
+  if (estaDescartado(pedido)) {
+    return {
+      ok: false,
+      error: "Descartaste este pedido. Restáuralo desde tus notificaciones si quieres cobrarlo.",
+    };
+  }
 
   const { data: lineasDelPedido, error: errorLineas } = await supabase
     .from("catalog_order_items")
@@ -391,26 +469,12 @@ export async function registrarPedidoComoVenta(
   // SE CUENTAN SÓLO LAS LÍNEAS VIVAS: una moneda cuyos productos ya no están
   // en el catálogo nunca va a tener venta, así que esperarla dejaría el
   // pedido pendiente para siempre.
-  const monedasDelPedido = new Set<string>();
-  for (const linea of lineasDelPedido ?? []) {
-    if (!linea.product_id) continue;
-    const m = monedaDeLinea(linea, entrada.editadas);
-    if (m !== "") monedasDelPedido.add(m);
-  }
-
-  const { data: ventasDelPedido } = await supabase
-    .from("sales")
-    .select("id, sale_lines(currency)")
-    .eq("catalog_order_id", pedido.id)
-    .is("deleted_at", null);
-  const vendidas = new Set<string>();
-  for (const v of ventasDelPedido ?? []) {
-    for (const l of (v.sale_lines ?? []) as { currency: string | null }[]) {
-      if (l.currency != null) vendidas.add(String(l.currency));
-    }
-  }
-
-  const pendientes = [...monedasDelPedido].filter((m) => !vendidas.has(m));
+  const { pendientes } = await monedasPendientes(
+    supabase,
+    pedido.id,
+    lineasDelPedido ?? [],
+    entrada.editadas,
+  );
 
   // EL PEDIDO SE DA POR REGISTRADO CUANDO NO QUEDA NINGUNA, y ni un momento
   // antes: con una moneda sin cobrar, un pedido marcado «registrado» le dice
@@ -658,7 +722,11 @@ async function registrarAnalitica(
 // usara otra, el tendero daría a «Eliminar» en un bloque y desaparecería otro.
 
 export type ResultadoDeQuitarMoneda =
-  | { ok: true }
+  // `pedidoCerrado` -- quitar esta moneda dejó el pedido terminado, porque lo
+  // único que quedaba vivo ya estaba vendido. Lo necesita la PANTALLA: sin
+  // esto, el tendero da a «Eliminar» esperando su tarjeta de «Restaurar» y lo
+  // que recibe es un salto al detalle, sin una palabra de por qué.
+  | { ok: true; pedidoCerrado?: boolean }
   | { ok: false; error: string };
 
 async function pedidoDelDueno(
@@ -670,7 +738,7 @@ async function pedidoDelDueno(
   // `CLAUDE.md` y aquí se estaría tocando el pedido de otro negocio.
   const { data, error } = await supabase
     .from("catalog_orders")
-    .select("id, registered_at")
+    .select("id, registered_at, status")
     .eq("id", pedidoId)
     .eq("owner_id", ownerId)
     .maybeSingle();
@@ -683,6 +751,21 @@ async function pedidoDelDueno(
   // venta esté escrita dejaría el pedido diciendo una cosa y la venta otra.
   if (data.registered_at != null) {
     return { pedido: null, error: "Ese pedido ya está registrado." };
+  }
+  // ── NI UNO DESCARTADO ─────────────────────────────────────────────
+  //
+  // Desde el 2026-10-26, y cubre tres puertas de una vez: quitar una moneda,
+  // devolverla y volver a descartar. Un pedido descartado está fuera de
+  // juego, así que editarlo es escribir en algo que nadie va a mirar.
+  //
+  // Y DE PASO ARREGLA EL DOBLE DESCARTE: hasta hoy, dos toques seguidos --o
+  // una pestaña vieja-- volvían a sellar `discarded_at` y subían el aviso al
+  // principio de la campana como si acabara de pasar algo nuevo.
+  //
+  // `restaurarPedido` NO PASA POR AQUÍ a propósito: lo que viene a deshacer es
+  // justo este estado. Tiene su propia comprobación de dueño.
+  if (data.status === "discarded") {
+    return { pedido: null, error: "Ese pedido está descartado." };
   }
   return { pedido: data, error: null };
 }
@@ -748,8 +831,69 @@ export async function quitarMonedaDelPedido(
     return { ok: false, error: "No pudimos quitarlo. Vuelve a intentarlo." };
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // Y SI YA NO QUEDA NADA POR COBRAR, EL PEDIDO SE CIERRA AQUÍ
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // EL CALLEJÓN QUE ESTO ARREGLA, medido en dev el 2026-10-26: un pedido de
+  // dólares y euros, con los dólares ya cobrados. El tendero quita el bloque
+  // de euros --que es exactamente para lo que está ese botón-- y el pedido se
+  // quedaba `new` con `registered_at` nulo PARA SIEMPRE. La campana lo
+  // reclamaba en cada apertura, y el único botón de su pantalla contestaba
+  // «Esa parte del pedido ya se registró».
+  //
+  // NO PIERDE DINERO --la venta de los dólares es correcta-- y aun así es de
+  // los peores fallos que hay: **un aviso que no se puede apagar es un aviso
+  // que se deja de leer**, y detrás de ese se dejan de leer los demás. Es la
+  // misma avería que `CLAUDE.md` describe para un contador que nunca baja.
+  //
+  // SE PREGUNTA A LA BASE OTRA VEZ y no se calcula restando lo que acabamos de
+  // quitar: entre las dos consultas puede haber entrado otra pestaña, y lo que
+  // decide sellar un pedido tiene que mirar lo que hay, no lo que debería
+  // haber.
+  //
+  // LA MISMA FUNCIÓN QUE USA EL REGISTRO. Si esta cuenta se escribiera aquí
+  // otra vez, las dos puertas podrían contestar distinto sobre el mismo
+  // pedido, y una de las dos respuestas lo dejaría mal sellado.
+  const { data: tras, error: errorTras } = await supabase
+    .from("catalog_order_items")
+    .select("id, product_id, currency")
+    .is("deleted_at", null)
+    .eq("order_id", pedido.id);
+  if (errorTras) {
+    // NO SE DESHACE LO QUITADO: eso ya está bien hecho y es lo que el tendero
+    // pidió. Lo que queda sin saberse es si además había que cerrar el pedido,
+    // y eso se puede volver a intentar quitando otra cosa o registrando.
+    console.error("[pedido] lineas tras quitar:", errorTras.message);
+    return { ok: true };
+  }
+
+  const { pendientes, hayVentas } = await monedasPendientes(
+    supabase,
+    pedido.id,
+    tras ?? [],
+  );
+  let pedidoCerrado = false;
+  if (hayVentas && pendientes.length === 0) {
+    const { error: errorSello } = await supabase
+      .from("catalog_orders")
+      .update({ registered_at: new Date().toISOString(), status: "registered" })
+      .eq("id", pedido.id)
+      .eq("owner_id", user.id);
+    if (errorSello) {
+      console.error("[pedido] sello al quitar moneda:", errorSello.message, {
+        pedidoId: pedido.id,
+      });
+    } else {
+      pedidoCerrado = true;
+    }
+  }
+
+  // `layout` Y LA RAÍZ: el contador de la campana vive en la cabecera, que es
+  // otro árbol, y al cerrar un pedido ese número baja.
+  revalidatePath("/", "layout");
   revalidatePath(`/productos/ordenes/${pedido.id}`, "layout");
-  return { ok: true };
+  return { ok: true, pedidoCerrado };
 }
 
 export async function restaurarMonedaDelPedido(

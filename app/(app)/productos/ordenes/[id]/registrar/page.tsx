@@ -13,6 +13,7 @@ import {
   unicaMonedaDelPedido,
 } from "@/lib/orders/pasos-del-registro";
 import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   type CatalogOrderItemRow,
@@ -74,7 +75,13 @@ export default async function RegistrarPedidoPage({
   // UN PEDIDO TERMINADO NO VUELVE A ENTRAR AQUÍ. `registered_at` y no
   // `sale_id`: desde la migración `158` el segundo guarda solo la PRIMERA
   // venta, así que está puesto mientras el pedido va por la mitad.
-  if (pedido.registered_at != null) redirect(`/productos/ordenes/${pedido.id}`);
+  //
+  // Y UNO DESCARTADO TAMPOCO, desde el 2026-10-26. Ver `estaDescartado`: sin
+  // esta mitad, descartar un pedido y volver por la flecha de atrás del
+  // navegador escribía la venta igual.
+  if (pedido.registered_at != null || estaDescartado(pedido)) {
+    redirect(`/productos/ordenes/${pedido.id}`);
+  }
 
   const { data: filas } = await supabase
     .from("catalog_order_items")

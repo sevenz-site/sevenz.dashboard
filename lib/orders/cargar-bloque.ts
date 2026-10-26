@@ -8,6 +8,7 @@ import {
   type BloqueDeMoneda,
 } from "@/lib/orders/bloques-de-moneda";
 import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   readOrderProducts,
@@ -93,6 +94,18 @@ export async function cargarBloque(
   // `registrarPedidoComoVenta` when the LAST currency lands, which is exactly
   // «this order is done».
   if (pedido.registered_at != null) {
+    redirect(`/productos/ordenes/${pedido.id}`);
+  }
+
+  // ── Y LA OTRA MITAD: UN PEDIDO DESCARTADO ─────────────────────────
+  //
+  // Desde el 2026-10-26. Las dos pantallas que cargan por aquí --`Confirmar`
+  // y `Pago`-- respondían 200 sobre un pedido descartado, medido en dev. Va
+  // junto al guardia de arriba a propósito: son la misma pregunta --«este
+  // pedido ya no está en juego»-- y separarlas es cómo una se queda sin la
+  // otra. Mismo destino, por la misma razón: el pedido existe, así que el
+  // detalle le dice qué le pasó.
+  if (estaDescartado(pedido)) {
     redirect(`/productos/ordenes/${pedido.id}`);
   }
 

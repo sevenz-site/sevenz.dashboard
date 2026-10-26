@@ -4,7 +4,21 @@ import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
-import { useBorrador } from "@/components/dashboard/order-registration-summary";
+import {
+  quedaFiado,
+  useBorrador,
+  type LineaDelPedido,
+} from "@/components/dashboard/order-registration-summary";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   borrarBorrador,
   fijarPagoDeMoneda,
@@ -70,6 +84,8 @@ export function OrderCurrencyPaymentForm({
   hrefCliente,
   hrefPedido,
   monedas,
+  lineasDelPedido,
+  ficha,
 }: {
   pedidoId: string;
   moneda: PriceCurrency;
@@ -93,9 +109,25 @@ export function OrderCurrencyPaymentForm({
   hrefPedido: string;
   // Todas las monedas del pedido, para saber si esta era la última.
   monedas: string[];
+  // ── LO QUE EL AVISO DE «MALA PAGA» NECESITA ─────────────────────────
+  //
+  // ESTA PANTALLA TAMBIÉN ESCRIBE LA VENTA, y ahí está la mitad que se olvida:
+  // en la segunda pasada de un pedido de dos monedas el cliente ya está en el
+  // borrador, así que el paso del cliente NO se vuelve a mostrar y el registro
+  // sale de aquí. Un aviso montado solo en esa pantalla no saldría nunca justo
+  // en el caso de dos monedas.
+  //
+  // Es la regla de `CLAUDE.md`: *«un campo nuevo entra por TODAS las puertas
+  // de su acción»*. Las puertas de este registro son dos y esta es la segunda.
+  lineasDelPedido: LineaDelPedido[];
+  // La ficha emparejada por documento, con su marca. `null` cuando no hay
+  // ninguna o hay varias: entonces se crea un cliente nuevo, que no tiene
+  // marca que avisar.
+  ficha: { id: string; name: string; marcada: boolean } | null;
 }) {
   const [cerrando, setCerrando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avisando, setAvisando] = useState(false);
 
   const borradorDeLineas = useBorrador(pedidoId);
   const total =
@@ -172,6 +204,25 @@ export function OrderCurrencyPaymentForm({
     //    así que pedir otra vez los datos del cliente solo para tener dónde
     //    poner el botón sería un paso de más -- justo el que el dueño mandó
     //    quitar al rediseñar esto.
+    //
+    //    ANTES DE ESCRIBIR, EL AVISO DE «MALA PAGA»: si la deuda va a una
+    //    ficha marcada y queda algo debiendo, se pregunta. Ver el diálogo al
+    //    final de este fichero.
+    if (
+      ficha?.marcada === true &&
+      borrador.cliente.fichaId === ficha.id &&
+      quedaFiado(lineasDelPedido, borrador)
+    ) {
+      setAvisando(true);
+      return;
+    }
+    await cerrarVenta(borrador);
+  }
+
+  // LO QUE ESCRIBE LA VENTA, aparte para que el diálogo de «mala paga» pueda
+  // llamarlo tal cual al confirmar. Una copia dentro del diálogo sería dos
+  // caminos que escriben dinero, y uno de los dos se quedaría atrás.
+  async function cerrarVenta(borrador: NonNullable<ReturnType<typeof leerBorrador>>) {
     setCerrando(true);
     setError(null);
     const resultado = await registrarTodoElPedido(pedidoId, borrador, monedas);
@@ -219,6 +270,55 @@ export function OrderCurrencyPaymentForm({
             : `Pagar ${formatPriceAmount(total, moneda)}`
         }
       />
+
+      {/* ── EL MISMO AVISO QUE EL PASO DEL CLIENTE, EN LA OTRA PUERTA ──
+          Las dos pantallas escriben la venta, así que las dos preguntan. El
+          texto es el del diálogo que vivía en `add-movement-dialog.tsx` hasta
+          el 2026-10-24; ver el comentario largo en `order-client-step.tsx`
+          para por qué desapareció y qué costó.
+
+          NO SE EXTRAE A UN COMPONENTE COMPARTIDO, y es una decisión: son diez
+          líneas de JSX sin estado propio, y lo que de verdad no puede
+          separarse --cuándo sale el aviso-- ya vive en UNA función,
+          `quedaFiado`. Un componente para esto escondería la condición en un
+          tercer fichero sin quitar ninguna de las dos llamadas. */}
+      <AlertDialog open={avisando} onOpenChange={setAvisando}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {ficha?.name} está marcado como Mala paga
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Revisa el motivo en su historial. ¿Fiarle de todas formas?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cerrando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={cerrando}
+              onClick={(e) => {
+                e.preventDefault();
+                setAvisando(false);
+                const borrador = leerBorrador(pedidoId);
+                // EL BORRADOR SE VUELVE A LEER aquí y no se guarda en el
+                // estado: entre abrir el diálogo y confirmarlo no hay nada que
+                // lo cambie, y leerlo otra vez es lo que hace imposible
+                // escribir una venta con una copia vieja.
+                if (!borrador) {
+                  setError(
+                    "Se perdió lo que llevabas registrado. Vuelve al pedido y empieza de nuevo.",
+                  );
+                  return;
+                }
+                void cerrarVenta(borrador);
+              }}
+            >
+              Fiar de todas formas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

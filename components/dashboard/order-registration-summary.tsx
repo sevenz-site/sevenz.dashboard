@@ -117,6 +117,37 @@ export function resumirPorMoneda(
   return porMoneda;
 }
 
+// ── ¿ESTE REGISTRO DEJA ALGO DEBIENDO? ────────────────────────────────
+//
+// LO QUE DECIDE SI SALE EL AVISO DE «MALA PAGA», y por eso se calcula con la
+// misma función que dibuja las cifras del flujo: un aviso que apareciera con
+// otra cuenta que la pantalla diría lo contrario de lo que el tendero ve.
+//
+// SOLO CUANDO SE FÍA, que es lo que hacía el diálogo original de
+// `add-movement-dialog.tsx` --`isFlagged && type === "charge"`--: un abono y
+// una venta pagada entera no prestan nada, así que avisar ahí sería una alarma
+// que suena siempre. Y una alarma que suena siempre se deja de leer, que es
+// exactamente lo que no puede pasarle a esta.
+//
+// LAS LÍNEAS SIN PRODUCTO NO ENTRAN, y eso lo filtra quien llama: una línea
+// descatalogada no se cobra, así que contarla inventaría una deuda y el aviso
+// saldría sobre una venta de contado.
+//
+// EN LA DUDA, AVISA: si una moneda del borrador no tiene líneas que sumar
+// --porque la edición las movió a otra-- su total sale 0 y su abono también,
+// así que no cuenta como fiado. Eso es correcto, y el sesgo general es el
+// bueno: pasarse de avisar cuesta un toque, quedarse corto cuesta el dinero
+// que la marca existe para no prestar.
+export function quedaFiado(
+  lineas: LineaDelPedido[],
+  borrador: BorradorDeRegistro | null,
+): boolean {
+  for (const [, { total, abonado }] of resumirPorMoneda(lineas, borrador)) {
+    if (Math.round((total - abonado) * 100) / 100 > 0) return true;
+  }
+  return false;
+}
+
 function Fila({
   nombre,
   children,

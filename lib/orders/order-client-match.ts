@@ -82,6 +82,22 @@ export type OrderClient = {
   document_type: string | null;
   whatsapp: string | null;
   address: string | null;
+  // ── LA MARCA DE «MALA PAGA», DESDE EL 2026-10-26 ──────────────────
+  //
+  // Esta columna no se leía, y lo que costaba está medido: el flujo de
+  // registrar un pedido NO nombraba la marca en ninguna de sus cuatro
+  // pantallas, y dos de ellas enseñaban la tarjeta VERDE «El cliente ya
+  // existe en tu cuenta de Sevenz» sobre la persona que el tendero había
+  // puesto en su lista negra.
+  //
+  // ESO NO ERA SILENCIO: era un aval. Y como un cliente marcado no sale en
+  // Cartera ni en Inicio, la deuda nueva era además más difícil de ver
+  // después.
+  //
+  // Encargo del dueño ese mismo día: *«debería mostrar modal de confirmación
+  // como el flujo anterior que menciona que esa persona está marcada como
+  // mala paga y preguntarle si desea fiarle de todas maneras o no»*.
+  is_flagged: boolean;
 };
 
 export type OrderClientMatch =
@@ -148,7 +164,7 @@ export async function findOrderClient(
   // Here it comes from the order, which comes from the URL.
   const { data, error } = await supabase
     .from("clients")
-    .select("id, name, document_id, document_type, whatsapp, address")
+    .select("id, name, document_id, document_type, whatsapp, address, is_flagged")
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
     .not("document_id", "is", null);

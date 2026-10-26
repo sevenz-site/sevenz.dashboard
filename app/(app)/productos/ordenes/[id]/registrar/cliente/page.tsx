@@ -8,6 +8,7 @@ import {
   partirDocumento,
 } from "@/lib/orders/order-client-match";
 import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   type CatalogOrderItemRow,
@@ -18,6 +19,7 @@ import {
   quitadasPorMoneda,
   unicaMonedaDelPedido,
 } from "@/lib/orders/pasos-del-registro";
+import type { PriceCurrency } from "@/lib/products/price";
 
 // WHO THE SALE GOES TO — step `4/4`, where «Pagar $00.00» lands.
 //
@@ -73,7 +75,12 @@ export default async function ClienteDelPedidoPage({
 
   // THE HARD STOP, repeated here like on every other step: this URL can be
   // typed or reached with the back button long after the sale was written.
-  if (pedido.registered_at != null || pedido.sale_id != null) {
+  // `estaDescartado` desde el 2026-10-26, por lo mismo.
+  if (
+    pedido.registered_at != null ||
+    pedido.sale_id != null ||
+    estaDescartado(pedido)
+  ) {
     redirect(`/productos/ordenes/${pedido.id}`);
   }
 
@@ -135,6 +142,22 @@ export default async function ClienteDelPedidoPage({
       // `?nuevo=1` there would silently drop the «no encontramos» alert that
       // explains why the shopkeeper is filling it in.
       cuentaSeparada={ficha != null && nuevo === "1"}
+      // TODAS las líneas del pedido con su precio: es lo que decide si este
+      // registro deja algo debiendo y, con eso, si sale el aviso de «mala
+      // paga». Ver `quedaFiado`.
+      //
+      // SIN LAS DESCATALOGADAS. Una línea sin producto no se cobra --la
+      // excluye `registrarPedidoComoVenta` y lo avisa el paso `2/x`-- así que
+      // contarla inventaría una deuda, y el aviso saldría sobre una venta que
+      // en realidad se paga entera.
+      lineas={items
+        .filter((i) => i.product_id != null)
+        .map((i) => ({
+          id: i.id,
+          cantidad: Number(i.quantity),
+          precioUnitario: Number(i.unit_price),
+          moneda: i.currency as PriceCurrency,
+        }))}
     />
   );
 }

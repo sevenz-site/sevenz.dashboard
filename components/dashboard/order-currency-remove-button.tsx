@@ -113,7 +113,13 @@ export function OrderCurrencyRemoveButton({
                 : cuantosProductos != null
                   ? `Los ${cuantosProductos} productos que tu cliente pidió en ${nombre.toLowerCase()} no entrarán en la venta. `
                   : `Lo que tu cliente pidió en ${nombre.toLowerCase()} no entrará en la venta. `}
-              Puedes devolverlo mientras no registres el pedido.
+              {/* LA PROMESA, CON SU LÍMITE. «Puedes devolverlo» a secas no
+                  es cierto en un caso: si lo que queda vivo ya está vendido,
+                  quitar esto CIERRA el pedido y la vuelta atrás se va con él
+                  --ver `quitarMonedaDelPedido`--. Prometer de más en el
+                  diálogo que pregunta antes de destruir algo es lo peor que
+                  puede hacer ese diálogo. */}
+              Puedes devolverlo mientras quede algo del pedido por registrar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -135,6 +141,20 @@ export function OrderCurrencyRemoveButton({
                   }
                   quitarPagoDeMoneda(pedidoId, moneda);
                   setPreguntando(false);
+                  // ── SI ESO CERRÓ EL PEDIDO, SE DICE ────────────────
+                  //
+                  // Pasa cuando lo que quedaba vivo ya estaba vendido: la
+                  // acción lo sella como registrado en ese mismo momento
+                  // --ver su comentario-- y entonces esta pantalla redirige
+                  // al detalle.
+                  //
+                  // SIN ESTE AVISO el tendero toca «Eliminar» esperando la
+                  // tarjeta de «Restaurar» que el diálogo le acaba de
+                  // prometer, y lo que recibe es un salto a otra pantalla.
+                  // El salto es correcto; lo que faltaba era la frase.
+                  if (r.pedidoCerrado) {
+                    toast.success("Quitado. El pedido queda registrado.");
+                  }
                   router.refresh();
                 });
               }}

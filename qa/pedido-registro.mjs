@@ -960,6 +960,189 @@ try {
     );
   }
 
+  // === 16. UN PEDIDO DESCARTADO NO SE COBRA ============================
+  //
+  // Medido roto el 2026-10-26: ningun guardia del flujo miraba `status`, solo
+  // `registered_at`. La accion contestaba `ok:true` sobre un pedido
+  // descartado, escribia su venta y creaba su cliente, y el pedido quedaba
+  // `registered` con `discarded_at` puesto -- o sea que la campana seguia
+  // diciendo «Descartaste el pedido de X» con un boton «Restaurar» que
+  // contestaba «Ese pedido no esta descartado».
+  //
+  // LO QUE COSTABA: el tendero descarta el pedido de Pedro porque lo hablo con
+  // el y no va. Vuelve con la flecha de atras del navegador y la app le deja
+  // cobrar. Pedro queda debiendo por algo que la app dijo que estaba
+  // descartado, sin un error y sin nada en rojo.
+  //
+  // SE PRUEBA LA ACCION Y NO LA PANTALLA porque la pantalla ya redirige: lo
+  // que esta fila vigila es la parada dura, que es la que recibe una pestana
+  // abierta ANTES de descartar.
+  const pedidoDesc = await nuevoPedido("descartado", [lineaViva]);
+  await admin
+    .from("catalog_orders")
+    .update({ status: "discarded", discarded_at: new Date().toISOString(), restored_at: null })
+    .eq("id", pedidoDesc.id);
+  const rDesc = await registrar(
+    entradaDe(
+      pedidoDesc.id,
+      "USD",
+      pagoDeMoneda({ amount: 10 }),
+      clienteNuevo("77777771"),
+    ),
+    pedidoDesc.id,
+  );
+  check(
+    "16a. un pedido DESCARTADO se rechaza, y el mensaje dice donde esta la salida",
+    rDesc.ok === false && /[Rr]est(a|\u00e1)uralo/.test(rDesc.error ?? ""),
+    rDesc.ok ? `SE REGISTRO: ${rDesc.saleId}` : rDesc.error,
+  );
+
+  const { data: trasDesc } = await admin
+    .from("catalog_orders")
+    .select("status, registered_at, sale_id")
+    .eq("id", pedidoDesc.id)
+    .single();
+  check(
+    "16b. y no deja nada escrito: ni venta ni sello",
+    trasDesc?.status === "discarded" &&
+      trasDesc?.registered_at == null &&
+      trasDesc?.sale_id == null,
+    `status ${trasDesc?.status} - sale_id ${trasDesc?.sale_id ?? "null"}`,
+  );
+
+  const { count: clientesDelDesc } = await admin
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", ve.id)
+    .eq("document_id", "77777771");
+  check(
+    "16c. ni un cliente: el rechazo es ANTES de crear la ficha",
+    (clientesDelDesc ?? 0) === 0,
+    `${clientesDelDesc} fichas con ese documento`,
+  );
+
+  // Y RESTAURADO, SE REGISTRA NORMAL. La mitad que demuestra que el guardia
+  // mira el estado y no se ha quedado pegado al pedido.
+  await admin
+    .from("catalog_orders")
+    .update({ status: "new", restored_at: new Date().toISOString() })
+    .eq("id", pedidoDesc.id);
+  const rRest = await registrar(
+    entradaDe(
+      pedidoDesc.id,
+      "USD",
+      pagoDeMoneda({ amount: 10 }),
+      clienteNuevo("77777772"),
+    ),
+    pedidoDesc.id,
+  );
+  check(
+    "16d. restaurado, el mismo pedido se registra sin mas",
+    rRest.ok === true,
+    rRest.ok ? rRest.saleId : rRest.error,
+  );
+  if (rRest.ok && rRest.clientId) creados.clientes.push(rRest.clientId);
+
+  // === 17. QUITAR LA MONEDA QUE FALTA CIERRA EL PEDIDO =================
+  //
+  // EL CALLEJON, medido el 2026-10-26: un pedido de dos monedas con la primera
+  // cobrada. El tendero quita el bloque de la otra --que es para lo que esta
+  // ese boton-- y el pedido se quedaba `new` con `registered_at` nulo PARA
+  // SIEMPRE: la campana lo reclamaba en cada apertura y el unico boton de su
+  // pantalla contestaba «Esa parte del pedido ya se registro».
+  //
+  // No pierde dinero y aun asi es de los peores: un aviso que no se puede
+  // apagar es un aviso que se deja de leer, y detras de el se dejan de leer
+  // los demas.
+  // EL PEDIDO PRIMERO, Y DE AHÍ EL ID. Descubrirlo desde `pedidoD` no
+  // funciona: a estas alturas está registrado, así que su `/registrar`
+  // redirige al detalle y esa página no sirve el chunk del paso `1/x`, que es
+  // donde vive el botón «Eliminar». Costó una fila roja al escribir esto.
+  const pedidoCall = await nuevoPedido("callejon", [lineaViva, lineaEuros]);
+  const accionQuitar = await idDeLaAccion(
+    BASE,
+    "quitarMonedaDelPedido",
+    cookie,
+    `/productos/ordenes/${pedidoCall.id}/registrar`,
+  );
+  check(
+    "17a. el id de `quitarMonedaDelPedido` se descubre en los chunks",
+    accionQuitar != null,
+    accionQuitar ? `${accionQuitar.slice(0, 10)}...` : "NO ENCONTRADO",
+  );
+
+  async function quitarMoneda(pedidoId, moneda) {
+    const res = await fetch(`${BASE}/productos/ordenes/${pedidoId}/registrar`, {
+      method: "POST",
+      headers: {
+        "Next-Action": accionQuitar,
+        "Content-Type": "text/plain;charset=UTF-8",
+        Cookie: cookie,
+      },
+      body: JSON.stringify([pedidoId, moneda]),
+    });
+    return await res.text();
+  }
+
+  if (accionQuitar) {
+    const rPrimera = await registrar(
+      entradaDe(
+        pedidoCall.id,
+        "USD",
+        pagoDeMoneda({ amount: 10 }),
+        clienteNuevo("77777773"),
+      ),
+      pedidoCall.id,
+    );
+    check(
+      "17b. se cobra la primera moneda y queda la otra pendiente",
+      rPrimera.ok === true && rPrimera.pendientes?.includes("EUR") === true,
+      rPrimera.ok ? `pendientes: ${rPrimera.pendientes?.join(",")}` : rPrimera.error,
+    );
+    if (rPrimera.ok && rPrimera.clientId) creados.clientes.push(rPrimera.clientId);
+
+    const textoQuitar = await quitarMoneda(pedidoCall.id, "EUR");
+    check(
+      "17c. quitar la moneda que falta responde que CERRO el pedido",
+      /"pedidoCerrado":true/.test(textoQuitar),
+      textoQuitar.includes('{"ok"')
+        ? textoQuitar.slice(textoQuitar.indexOf('{"ok"'), textoQuitar.indexOf('{"ok"') + 60)
+        : "sin resultado",
+    );
+
+    const { data: selloCall } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at")
+      .eq("id", pedidoCall.id)
+      .single();
+    check(
+      "17d. y el pedido queda registrado, asi que la campana deja de reclamarlo",
+      selloCall?.status === "registered" && selloCall?.registered_at != null,
+      `status ${selloCall?.status} - registered_at ${selloCall?.registered_at ?? "null"}`,
+    );
+
+    // -- Y EL CONTROL, que es la mitad que no se puede quitar -----------
+    //
+    // Quitar una moneda de un pedido SIN NINGUNA VENTA no cierra nada. Sin
+    // esta fila, «arreglar» el callejon sellando siempre pasaria la prueba --y
+    // marcaria como registrados pedidos que no han producido ni un bolivar.
+    const pedidoLimpio = await nuevoPedido("quitar sin venta", [lineaViva, lineaEuros]);
+    const textoQuitar2 = await quitarMoneda(pedidoLimpio.id, "EUR");
+    const { data: selloLimpio } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at")
+      .eq("id", pedidoLimpio.id)
+      .single();
+    check(
+      "17e. CONTROL: quitar una moneda de un pedido sin ventas NO lo cierra",
+      /"ok":true/.test(textoQuitar2) &&
+        !/"pedidoCerrado":true/.test(textoQuitar2) &&
+        selloLimpio?.status !== "registered" &&
+        selloLimpio?.registered_at == null,
+      `status ${selloLimpio?.status} - registered_at ${selloLimpio?.registered_at ?? "null"}`,
+    );
+  }
+
 } catch (e) {
   check("la suite llegó al final", false, e.message);
 } finally {

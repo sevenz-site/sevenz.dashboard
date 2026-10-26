@@ -73,7 +73,8 @@
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",
     "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs",
     "qa:suscripciones": "node qa/suscripciones.mjs",
-    "qa:lineas-borradas": "node qa/lineas-borradas.mjs"
+    "qa:lineas-borradas": "node qa/lineas-borradas.mjs",
+    "qa:aviso-mala-paga": "node qa/aviso-mala-paga.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

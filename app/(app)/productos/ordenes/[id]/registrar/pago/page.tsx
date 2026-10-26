@@ -7,6 +7,7 @@ import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { OrderTotalCard } from "@/components/dashboard/order-total-card";
 import { findOrderClient } from "@/lib/orders/order-client-match";
 import { createClient } from "@/lib/supabase/server";
+import type { PriceCurrency } from "@/lib/products/price";
 
 // STEP `3/4 Pago` — frame `1653:12718`, read with the desktop bridge on
 // 2026-10-25.
@@ -44,7 +45,7 @@ export default async function PagoDeBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, bloques, rates, prevista, ownerId, quitadas } =
+  const { pedido, bloque, bloques, rates, prevista, ownerId, quitadas, items } =
     await cargarBloque(id, moneda);
 
   // LA FICHA QUE YA EXISTE, buscada por DOCUMENTO. Es lo que decide si la
@@ -105,6 +106,29 @@ export default async function PagoDeBloquePage({
         hrefPedido={`/productos/ordenes/${pedido.id}/registrar`}
         // TODAS las monedas del pedido, para saber si esta era la última.
         monedas={bloques.map((b) => b.moneda)}
+        // ── Y TODAS SUS LÍNEAS, para el aviso de «mala paga» ──────────
+        //
+        // Esta pantalla escribe la venta cuando esta era la última moneda y el
+        // cliente ya estaba puesto, así que necesita saber si el pedido ENTERO
+        // deja algo debiendo -- no solo su bloque. Sin las descatalogadas, que
+        // no se cobran.
+        lineasDelPedido={items
+          .filter((i) => i.product_id != null)
+          .map((i) => ({
+            id: i.id,
+            cantidad: Number(i.quantity),
+            precioUnitario: Number(i.unit_price),
+            moneda: i.currency as PriceCurrency,
+          }))}
+        ficha={
+          coincidencia.kind === "uno"
+            ? {
+                id: coincidencia.cliente.id,
+                name: coincidencia.cliente.name,
+                marcada: coincidencia.cliente.is_flagged,
+              }
+            : null
+        }
       />
     </div>
   );

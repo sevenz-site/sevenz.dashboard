@@ -21,18 +21,22 @@ decir «falla el `PR-C3`» en vez de describirlo otra vez.
 
 ---
 
-## Las tres cosas que se midieron hoy y están rotas
+## Las tres que se midieron rotas, y se arreglaron el mismo día
 
-Se ponen primero porque un documento que las deja en su sección se lee hasta la
-mitad. Las tres se midieron contra dev con la sesión del dueño, no se dedujeron.
+Se escribieron aquí el 2026-10-26 al medir el flujo, y el dueño mandó
+arreglarlas esa misma tarde. **Se dejan escritas con su avería entera**, no se
+borran: lo que explica por qué el código es como es hoy es el fallo que tuvo, y
+eso es justo lo que se pierde primero.
 
-| Id | Qué pasa | Peor escenario |
+| Id | Qué pasaba | Qué hace hoy |
 |---|---|---|
-| **PR-A2** | Un pedido **descartado se registra igual** si se llega por URL | El tendero descarta el pedido de Pedro, lo registra por error desde el historial, y Pedro queda debiendo por algo que la app dijo que estaba descartado |
-| **PR-E6** | Un cliente **marcado «mala paga»** no se nombra en ninguna de las cuatro pantallas | La tarjeta VERDE «el cliente ya existe» tranquiliza sobre la persona a la que el tendero puso en la lista negra, y le fía otra vez |
-| **PR-F6** | Registrar una moneda y **quitar la que falta** deja el pedido pendiente **para siempre** | La campana reclama un pedido ya cobrado, y el único botón de su pantalla contesta «Esa parte del pedido ya se registró» |
+| **PR-A2** | Un pedido **descartado se registraba igual** si se llegaba por URL | Las seis pantallas redirigen al detalle y la acción lo rechaza. El detalle lo dice con su chip **«Descartado»**, no ofrece «Registrar pedido», y su «⋮» ofrece **«Restaurar»** |
+| **PR-E6** | Un cliente **marcado «mala paga»** no se nombraba en ninguna de las cuatro pantallas | Diálogo **«‹Nombre› está marcado como Mala paga · ¿Fiarle de todas formas?»** antes de escribir, en **las dos** puertas que registran, y solo cuando queda algo debiendo |
+| **PR-F6** | Registrar una moneda y **quitar la que falta** dejaba el pedido pendiente **para siempre** | Quitarla **cierra el pedido** cuando lo que queda vivo ya está vendido, y la pantalla lo dice: «Quitado. El pedido queda registrado» |
 
-El detalle de cada uno está en su sección, con la medición entera.
+Las tres tienen suite desde ese día: `qa:pedido-registro` 16a-16d y 17a-17e, y
+`qa:aviso-mala-paga`. Cada una con su CONTROL, que es la mitad que impide
+«arreglarlas» de la forma fácil y equivocada — sellar siempre, avisar siempre.
 
 ---
 
@@ -136,11 +140,30 @@ descartado.
 **Peor escenario:** es dinero mal anotado **y es silencioso**. No hay error, no
 hay rojo; lo único raro es un aviso que se contradice con la cuenta del cliente.
 
-**Qué debería hacer:** las cinco pantallas y `registrarPedidoComoVenta` tratan
-`status = 'discarded'` como tratan `registered_at`: se redirige al detalle, y
-la acción lo rechaza. La salida alternativa —que registrar restaure el pedido
-sola— es una decisión de producto, **no técnica**, porque cambia lo que el
-tendero quiso decir al descartarlo.
+**ARREGLADO EL 2026-10-26.** `estaDescartado()` vive en un solo sitio
+--`lib/orders/catalog-orders.ts`-- y lo preguntan las seis pantallas y la
+acción. Una copia en cada una serían seis oportunidades de olvidarla, y la
+olvidada sería una puerta sin cerradura.
+
+**Y el arreglo necesitaba una segunda mitad, o creaba un fallo peor:** si el
+detalle siguiera ofreciendo «Registrar pedido», el tendero entraría en un
+**bucle** —el botón lleva al `1/x`, que ahora redirige al detalle— sin una
+palabra que lo explique. Así que el detalle enseña el chip **«Descartado»**,
+esconde ese botón, y su «⋮» pasa a ofrecer **«Restaurar»**.
+
+**Eso cierra además un agujero que nadie había nombrado**: la campana enseña 20
+avisos y un pedido descartado sale de la lista de Pedidos, así que cuando su
+aviso se iba por abajo, el pedido **dejaba de tener puerta**. Ahora se devuelve
+desde su propia pantalla.
+
+**Lo que sigue sin tener puerta, dicho en voz alta:** ENCONTRARLO. El filtro de
+la lista tiene «Todos / Sin registrar / Registrado» y ninguno enseña los
+descartados. Un filtro «Descartados» sería la otra mitad, y es una decisión del
+dueño.
+
+**La salida que NO se tomó**, por si alguien la reabre: que registrar restaure
+el pedido solo. Cambia lo que el tendero quiso decir al descartarlo, así que es
+decisión de producto y no técnica.
 
 ---
 
@@ -168,11 +191,11 @@ un producto que ya no existe a precio inventado.
 
 ---
 
-**`PR-A6` · Descartar dos veces (doble toque, pestaña vieja)** ⛔
-`discarded_at` se vuelve a sellar y `restored_at` pasa a nulo. No pierde nada,
-pero **el aviso sube al principio de la campana otra vez**, como si acabara de
-pasar algo nuevo.
-**Peor escenario:** ruido en la campana, no dinero.
+**`PR-A6` · Descartar dos veces (doble toque, pestaña vieja)** ✅ arreglado el 2026-10-26
+Antes volvía a sellar `discarded_at` y subía el aviso al principio de la
+campana como si acabara de pasar algo nuevo. Ahora el guardia compartido
+contesta «Ese pedido está descartado», y el «⋮» de un descartado ya no ofrece
+descartarlo: ofrece devolverlo.
 
 ---
 
@@ -490,10 +513,41 @@ deuda nueva es además más difícil de ver después.
 **Peor escenario:** dinero fiado a quien el tendero decidió no fiar, con el aval
 visual de la app.
 
-**Qué debería hacer:** es decisión del dueño, y hay al menos tres salidas con
-coste distinto — nombrarlo en la tarjeta (un chip negro, como en Cartera), pedir
-la confirmación extra que ya existe al fiar desde la ficha, o las dos. **No se
-elige aquí.**
+**ARREGLADO EL 2026-10-26**, y lo eligió el dueño: *«debería mostrar modal de
+confirmación como el flujo anterior que menciona que esa persona está marcada
+como mala paga y preguntarle si desea fiarle de todas maneras o no»*.
+
+**Es el diálogo que ya existía, palabra por palabra.** Vivía en
+`add-movement-dialog.tsx` y se fue con ese fichero el 2026-10-24, cuando él
+mandó borrar aquel flujo. Nadie se dio cuenta de que con el formulario se iba
+el ÚNICO aviso de mala paga que la app ha tenido: desde ese día y hasta este,
+**ninguna pantalla de Sevenz lo mencionaba antes de fiar**. Así que esto no es
+copiar un patrón de otro sitio — es devolver uno que se perdió sin que nadie lo
+notara.
+
+> ‹Nombre› está marcado como Mala paga
+> Revisa el motivo en su historial. ¿Fiarle de todas formas?
+> **Cancelar** · **Fiar de todas formas**
+
+**SALE POR LAS DOS PUERTAS, y esa es la mitad que se olvida.** El registro se
+escribe desde DOS pantallas: el paso del cliente, y el **Pago** --que es quien
+registra en la segunda pasada de un pedido de dos monedas, cuando el cliente ya
+está en el borrador y su pantalla no se vuelve a enseñar--. Un aviso montado
+solo en la primera no saldría nunca justo en el caso de dos monedas. Es la
+regla de `CLAUDE.md` sobre un campo que entra por todas las puertas de su
+acción.
+
+**SOLO CUANDO SE FÍA**, que es la condición del diálogo original
+(`isFlagged && type === "charge"`). Una venta pagada entera no presta nada, y
+avisar ahí sería una alarma que suena siempre — y una alarma que suena siempre
+se deja de leer, que es exactamente lo que no le puede pasar a esta. Lo decide
+`quedaFiado`, con la misma cuenta que dibuja las cifras de la pantalla.
+
+**Lo que NO cambió, y se dice porque el informe de la avería lo señalaba:** la
+tarjeta sigue siendo VERDE y sigue diciendo «El cliente ya existe en tu cuenta
+de Sevenz» durante todo el flujo. El aviso llega al final, antes de escribir.
+Poner además un chip «Mala paga» en esa tarjeta es una línea de trabajo y no se
+hizo: el dueño pidió el diálogo.
 
 ---
 
@@ -598,10 +652,26 @@ ya está registrado.
 no se puede apagar es un aviso que se deja de leer. Es la misma avería que
 `CLAUDE.md` describe para un contador que nunca baja.
 
-**Qué debería hacer:** cuando quitar una moneda deja todas las vivas ya vendidas,
-el pedido se sella como registrado en ese mismo momento. El código para
-decidirlo ya existe —es la cuenta de `pendientes` de `registrarPedidoComoVenta`—
-y lo que falta es llamarla también desde `quitarMonedaDelPedido`.
+**ARREGLADO EL 2026-10-26.** Quitar una moneda que deja todas las vivas ya
+vendidas **cierra el pedido** en ese mismo momento, y la pantalla lo dice:
+«Quitado. El pedido queda registrado».
+
+**La cuenta es UNA y la usan las dos puertas.** `monedasPendientes()` se extrajo
+de `registrarPedidoComoVenta` para que quitar una moneda y registrar una no
+puedan contestar distinto sobre el mismo pedido — escrita dos veces, una de las
+dos respuestas lo dejaría mal sellado.
+
+**Y lleva una condición que parece de más y no lo es:** solo sella **si hay al
+menos una venta**. Sin ella, un pedido cuya única moneda viva esté
+descatalogada --que nunca puede venderse, así que nunca está «pendiente»-- se
+sellaría como registrado sin haber producido nada. `qa:pedido-registro` 17e es
+justo ese control.
+
+**Lo que esto cambia en el diálogo de «Eliminar»**, y está dicho ahí: su
+promesa pasó a ser *«Puedes devolverlo mientras quede algo del pedido por
+registrar»*. Decía «mientras no registres el pedido» y en este caso dejó de ser
+cierto — prometer de más en el diálogo que pregunta antes de destruir algo es
+lo peor que puede hacer ese diálogo.
 
 ---
 
@@ -794,16 +864,19 @@ Dicho porque una guía que no nombra sus huecos se lee como si no los tuviera.
 
 ---
 
-## 7. Fichas propuestas para `PENDIENTES.md`
+## 7. Lo que queda abierto de este flujo
 
-**No están escritas**: el dueño decide qué entra en la lista. Los tres defectos
-medidos, con el id libre que les tocaría:
+Los tres defectos medidos se arreglaron el mismo día, así que **no llegaron a
+ser fichas**. Lo que sigue abierto, por si merece una:
 
-| Id propuesto | Vertical | Qué |
+| Id | Qué | Por qué no se hizo |
 |---|---|---|
-| `CT-150` | Inventario y catálogo | Un pedido descartado se registra igual por URL (`PR-A2`) |
-| `CT-151` | Cartera | El flujo de pedido no avisa de un cliente mala paga (`PR-E6`) |
-| `CT-152` | Inventario y catálogo | Quitar la moneda que falta deja el pedido pendiente para siempre (`PR-F6`) |
+| `PR-F7` | Borrar la venta deja el pedido sellado para siempre | Nadie lo ha pedido; el tendero tiene la salida de registrar a mano |
+| `PR-G3` | Dos pedidos en dos pestañas: el segundo pisa el borrador del primero | Leído en el código, no medido en pantalla |
+| `PR-E3` | Varias fichas con los mismos dígitos: no hay dónde mirarlas desde el flujo | El frame del `1/x` quitó «Ver clientes» el 2026-10-26 |
+| — | Un filtro **«Descartados»** en la lista de Pedidos | Un descartado se devuelve desde su pantalla, pero no hay forma de ENCONTRARLO |
+| — | Un chip **«Mala paga»** en la tarjeta verde del cliente | El dueño pidió el diálogo; la tarjeta sigue diciendo solo «ya existe» |
+| `PR-H5` | **iPhone** | Hace falta un teléfono real |
 
 ---
 

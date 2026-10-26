@@ -86,11 +86,34 @@ export const ORDER_ITEM_COLUMNS =
 // contar como pendientes, que es lo que son.
 //
 // `discarded` NO CUENTA, aunque tampoco esté registrado: es el estado de un
-// pedido descartado a propósito. Hoy no lo escribe nadie; está en el `check`
-// de la migración `108` y esto es lo que impide que el día que se escriba
-// empiece a sonar en la campana.
+// pedido descartado a propósito. Lo escribe `descartarPedido` desde el «⋮» de
+// la pantalla del pedido --encargo del dueño el 2026-10-26-- y esto es lo que
+// impide que un pedido descartado siga sonando en la campana.
 export function isUnregistered(order: Pick<CatalogOrderRow, "status">): boolean {
   return order.status !== "registered" && order.status !== "discarded";
+}
+
+// ── UN PEDIDO DESCARTADO NO ENTRA AL FLUJO DE REGISTRO ────────────────
+//
+// THE GUARD THE WHOLE FLOW WAS MISSING, measured in dev on 2026-10-26: every
+// screen checked `registered_at` and NONE checked `status`, so a discarded
+// order walked the flow and `registrarPedidoComoVenta` answered `ok:true`.
+// The order ended up `registered` with its `discarded_at` still set, the bell
+// kept showing it in red as discarded, and that notice's «Restaurar» button
+// answered «Ese pedido no está descartado».
+//
+// WHAT IT COST, had it shipped: the shopkeeper discards Pedro's order because
+// they talked and it is off. Later they come back with the browser's back
+// arrow, or tap the red notice that is still there, and the app lets them
+// charge. Pedro owes money for an order the app said was discarded -- and
+// nothing is in error, nothing is red.
+//
+// A FUNCTION AND NOT `=== "discarded"` IN EIGHT PLACES, for the same reason
+// `unicaMonedaDelPedido` is one: eight copies are eight chances for one of
+// them to be forgotten, and the one that is forgotten is a door with no lock.
+// Six screens and the action ask this; the answer has to be the same word.
+export function estaDescartado(order: Pick<CatalogOrderRow, "status">): boolean {
+  return order.status === "discarded";
 }
 
 // The number the bell and the Catálogo link both show: orders NOT registered. A `head: true` count

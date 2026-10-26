@@ -28,6 +28,7 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   readOrderProducts,
@@ -252,9 +253,16 @@ export default async function OrdenPage({
         // parte y la venta diciendo lo contrario. Para deshacer eso hay que
         // borrar la VENTA, que es otra puerta. Un menú de una sola opción que
         // no aplica es un menú vacío, así que se va entero.
+        //
+        // EN UNO DESCARTADO SÍ SE DIBUJA, y su opción es «Restaurar» --desde
+        // el 2026-10-26--. Ver `OrderMoreMenu`: sin eso, un pedido cuyo aviso
+        // ya se fue de los 20 de la campana no tenía forma de volver.
         acciones={
           pedido.registered_at == null ? (
-            <OrderMoreMenu pedidoId={pedido.id} />
+            <OrderMoreMenu
+              pedidoId={pedido.id}
+              descartado={estaDescartado(pedido)}
+            />
           ) : null
         }
       />
@@ -283,6 +291,25 @@ export default async function OrdenPage({
       {pedido.registered_at ? (
         <span className="w-fit rounded-full bg-money-in/10 px-2 py-0.5 text-xs text-money-in">
           Registrado: {fecha(pedido.registered_at)}
+        </span>
+      ) : null}
+
+      {/* ── «DESCARTADO», POR LA MISMA RAZÓN QUE EL DE ARRIBA ─────────
+          Desde el 2026-10-26, con el guardia que impide registrar un pedido
+          descartado. Sin este chip, el arreglo creaba un fallo peor que el
+          que cerraba: el botón «Registrar pedido» desaparece y nada ocupa su
+          sitio, así que el tendero se queda mirando una pantalla idéntica a
+          la de un pedido nuevo que simplemente no le deja hacer nada.
+
+          Y SI EL BOTÓN SIGUIERA AHÍ sería un BUCLE: llevaría al `1/x`, que
+          redirige aquí. Es el fallo que `unicaMonedaDelPedido` documenta para
+          las monedas, entrando por otra puerta.
+
+          EN ROJO TENUE y no en gris: lo que dice es que esto está fuera de
+          juego por una decisión, no que le falte un dato. */}
+      {estaDescartado(pedido) ? (
+        <span className="w-fit rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+          Descartado
         </span>
       ) : null}
 
@@ -563,8 +590,13 @@ export default async function OrdenPage({
           pedido"». Lo que se registra vive allí.
 
           NO SE DIBUJA EN UN PEDIDO YA REGISTRADO: no hay nada que registrar,
-          y ofrecerlo llevaría a una pantalla que redirige de vuelta aquí. */}
-      {pedido.registered_at == null ? (
+          y ofrecerlo llevaría a una pantalla que redirige de vuelta aquí.
+
+          NI EN UNO DESCARTADO, desde el 2026-10-26, y por esa segunda razón
+          exactamente: el `1/x` ahora rebota a los descartados, así que el
+          botón sería un viaje de ida y vuelta sin explicación. Lo que ocupa su
+          sitio es el chip «Descartado» de arriba y el «Restaurar» del «⋮». */}
+      {pedido.registered_at == null && !estaDescartado(pedido) ? (
         <div className="pt-1">
           <Button className="h-10 w-full" asChild>
             {/* CON UNA SOLA MONEDA SALTA DIRECTO AL `2/4`, encargo del dueño

@@ -21,6 +21,20 @@ import {
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
 import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  quedaFiado,
+  type LineaDelPedido,
+} from "@/components/dashboard/order-registration-summary";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
 import type { OwnerCountry } from "@/lib/types";
@@ -68,6 +82,11 @@ export function OrderClientStep({
   sinPasoDePedido,
   monedaDeOrigen,
   ledger,
+  // TODAS las líneas del pedido con precio, para saber si este registro deja
+  // algo debiendo. Es lo único que decide si sale el aviso de «mala paga»:
+  // ver `quedaFiado`. Las descatalogadas las filtra la página, porque no se
+  // cobran.
+  lineas,
 }: {
   pedidoId: string;
   ficha: OrderClient | null;
@@ -88,6 +107,7 @@ export function OrderClientStep({
   monedaDeOrigen: string | null;
   // La tasa vigente, que la hoja de la cuenta del cliente necesita.
   ledger: LedgerDisplay | null;
+  lineas: LineaDelPedido[];
 }) {
   const router = useRouter();
   // ── LA SEGUNDA PASADA NO VUELVE A PREGUNTAR LO MISMO ────────────────
@@ -141,10 +161,32 @@ export function OrderClientStep({
   // sabe, y decide tanto el rótulo del botón como lo que hace.
   const borradorActual = leerBorrador(pedidoId);
   const quedanMonedas = monedas.some((m) => borradorActual?.monedas[m] == null);
+
+  // ── ¿HAY QUE AVISAR DE QUE ESTE CLIENTE ES MALA PAGA? ─────────────
+  //
+  // TRES CONDICIONES Y LAS TRES HACEN FALTA:
+  //
+  //   · HAY FICHA EMPAREJADA Y SE VA A USAR. Un cliente nuevo no tiene marca,
+  //     y «Registrar a cuenta separada» abre otra ficha a propósito --el
+  //     tendero acaba de decir «este no es ese Pedro»--, así que la deuda no
+  //     va a la persona marcada y avisar sería hablar de otra.
+  //   · ESTÁ MARCADA. `is_flagged`, que `findOrderClient` no leía hasta hoy.
+  //   · Y QUEDA ALGO DEBIENDO. Es la condición del diálogo original
+  //     (`isFlagged && type === "charge"`): una venta pagada entera no presta
+  //     nada. Ver `quedaFiado`.
+  //
+  // UN PEDIDO DE VARIAS MONEDAS AVISA UNA SOLA VEZ, al final: con monedas
+  // pendientes esta pantalla no escribe nada --solo guarda el cliente-- así
+  // que el aviso sale donde de verdad se decide.
+  const fichaMarcada = ficha != null && !cuentaSeparada && ficha.is_flagged;
+  const debeAvisar = fichaMarcada && quedaFiado(lineas, borradorActual);
+  const [avisando, setAvisando] = useState(false);
   const nombreParaElPermiso =
     (conFormulario ? nombre : ficha!.name).trim() || "tu cliente";
 
-  async function finalizar() {
+  // `yaConfirmado` -- viene del diálogo de «mala paga». Sin él, confirmar
+  // volvería a abrir el mismo diálogo para siempre.
+  async function finalizar(yaConfirmado = false) {
     if (conFormulario) {
       if (nombre.trim() === "") {
         setError("Escribe el nombre del cliente.");
@@ -184,6 +226,20 @@ export function OrderClientStep({
       // tendero mirando los totales sin el botón de la moneda que le falta.
       router.push(`/productos/ordenes/${pedidoId}/registrar`);
       router.refresh();
+      return;
+    }
+
+    // ── EL AVISO VA AQUÍ Y NO EN EL `onClick` ───────────────────────
+    //
+    // Después de validar y DESPUÉS de la rama de arriba, que no escribe nada.
+    // Puesto en el botón saldría también cuando esta pantalla solo guarda el
+    // cliente para seguir con la siguiente moneda, y entonces el tendero
+    // confirmaría un fiado dos veces para una sola venta.
+    //
+    // `fijarCliente` YA CORRIÓ y da igual: es un borrador en el navegador, no
+    // una fila. Si el tendero cancela, lo guardado es lo que ya había puesto.
+    if (debeAvisar && !yaConfirmado) {
+      setAvisando(true);
       return;
     }
 
@@ -449,7 +505,15 @@ export function OrderClientStep({
               la flecha del sitemap escribe con todas las letras --*«CTA es
               "Registrar y finalizar" porque no hay más pedidos que
               registrar»*--. */}
-        <Button className="h-10 w-full" onClick={finalizar} disabled={enviando}>
+        {/* ROJO CUANDO VA A FIARLE A UNA MALA PAGA, como el diálogo
+            original ponía su propio «Guardar fiado»: el color es la mitad del
+            aviso que llega ANTES de tocar. */}
+        <Button
+          className="h-10 w-full"
+          variant={debeAvisar ? "destructive" : undefined}
+          onClick={() => finalizar()}
+          disabled={enviando}
+        >
           {enviando
             ? esCorreccion
               ? "Guardando…"
@@ -477,6 +541,61 @@ export function OrderClientStep({
           </Button>
         ) : null}
       </StickyActions>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          «ESTÁ MARCADO COMO MALA PAGA. ¿FIARLE DE TODAS FORMAS?»
+          ═══════════════════════════════════════════════════════════════
+
+          Encargo del dueño el 2026-10-26: *«debería mostrar modal de
+          confirmación como el flujo anterior que menciona que esa persona está
+          marcada como mala paga y preguntarle si desea fiarle de todas maneras
+          o no»*.
+
+          ES EL DIÁLOGO QUE EXISTÍA, palabra por palabra. Vivía en
+          `add-movement-dialog.tsx` y se fue con él el 2026-10-24, cuando el
+          dueño mandó borrar ese flujo --*«ese flujo ya no debe existir»*--.
+          Nadie se dio cuenta de que con el formulario se iba también el único
+          aviso de mala paga que la app ha tenido: desde ese día, NINGUNA
+          pantalla de Sevenz lo menciona antes de fiar. Así que esto no es
+          copiar un patrón de otro sitio; es devolver uno que se perdió.
+
+          «Revisa el motivo en su historial» NO ES RELLENO: marcar a alguien
+          exige escribir un motivo, y ese motivo está en su ficha. El diálogo
+          manda ahí porque la decisión --fiarle o no-- se toma con el motivo
+          delante, no con la etiqueta.
+
+          AQUÍ NO HAY UN ENLACE A ESA FICHA a propósito: salir de esta pantalla
+          en el último paso pierde el hilo del registro, que es justo lo que el
+          dueño reportó el 2026-10-25 con «Ver ‹nombre›». Para mirarlo sin
+          salir está la hoja de arriba, en la tarjeta del cliente. */}
+      <AlertDialog open={avisando} onOpenChange={setAvisando}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {ficha?.name} está marcado como Mala paga
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Revisa el motivo en su historial. ¿Fiarle de todas formas?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={enviando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={enviando}
+              onClick={(e) => {
+                // El diálogo no se cierra solo: Radix lo cerraría al tocar la
+                // acción y el «Registrando…» del botón de detrás no se vería.
+                e.preventDefault();
+                setAvisando(false);
+                void finalizar(true);
+              }}
+            >
+              Fiar de todas formas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

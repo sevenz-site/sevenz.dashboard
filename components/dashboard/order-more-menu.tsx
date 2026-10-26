@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +50,31 @@ import { descartarPedido, restaurarPedido } from "@/app/(app)/productos/ordenes/
 // confiar solo en él es pedirle al tendero que reaccione a tiempo, que es
 // justo lo que `detalle-del-cliente.tsx` ya dice de las filas quitadas de la
 // libreta.
-export function OrderMoreMenu({ pedidoId }: { pedidoId: string }) {
+// ── Y DESDE EL 2026-10-26 TIENE DOS CARAS ─────────────────────────────
+//
+// En un pedido descartado la opción es «Restaurar», no «Descartar». Hasta hoy
+// el menú ofrecía descartar lo ya descartado --que volvía a sellar la fecha y
+// subía el aviso al principio de la campana-- y la ÚNICA forma de devolver un
+// pedido era su notificación.
+//
+// POR QUÉ ESO NO BASTABA: la campana enseña 20 avisos. Un pedido descartado
+// sale de la lista de Pedidos --`.neq("status", "discarded")`-- así que cuando
+// su aviso se va por abajo, el pedido deja de tener puerta: existe, se puede
+// abrir por su enlace, y no hay nada que lo devuelva.
+//
+// LO QUE SIGUE SIN TENER PUERTA, dicho en voz alta: ENCONTRARLO. El filtro de
+// la lista tiene «Todos / Sin registrar / Registrado» y ninguno enseña los
+// descartados, así que esto arregla «lo tengo delante y no puedo devolverlo»,
+// no «no sé dónde está». Un filtro «Descartados» sería la otra mitad y es una
+// decisión del dueño, no mía.
+export function OrderMoreMenu({
+  pedidoId,
+  // `true` cuando el pedido está descartado: el menú pasa a ofrecer la vuelta.
+  descartado = false,
+}: {
+  pedidoId: string;
+  descartado?: boolean;
+}) {
   const router = useRouter();
   const [preguntando, setPreguntando] = useState(false);
   const [trabajando, startTransition] = useTransition();
@@ -82,15 +106,26 @@ export function OrderMoreMenu({ pedidoId }: { pedidoId: string }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {/* `variant="destructive"` del propio menú, que es como ya lo pide
-              el «⋮» de la ficha de un cliente. Un rojo escrito a mano aquí
-              sería el mismo color por otro camino. */}
-          <DropdownMenuItem
-            variant="destructive"
-            onSelect={() => setPreguntando(true)}
-          >
-            Descartar
-          </DropdownMenuItem>
+          {descartado ? (
+            // SIN DIÁLOGO, y no es un olvido: devolver un pedido a su sitio no
+            // destruye nada y tiene vuelta atrás por el mismo menú. Preguntar
+            // antes de cada cosa es cómo se deja de leer la pregunta que sí
+            // importa.
+            <DropdownMenuItem onSelect={() => devolver()}>
+              <RotateCcw aria-hidden="true" />
+              Restaurar
+            </DropdownMenuItem>
+          ) : (
+            /* `variant="destructive"` del propio menú, que es como ya lo pide
+               el «⋮» de la ficha de un cliente. Un rojo escrito a mano aquí
+               sería el mismo color por otro camino. */
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => setPreguntando(true)}
+            >
+              Descartar
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

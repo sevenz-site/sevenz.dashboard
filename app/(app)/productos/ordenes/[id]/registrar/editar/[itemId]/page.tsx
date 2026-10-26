@@ -10,6 +10,7 @@ import { formatCantidad } from "@/lib/products/cantidad";
 import type { PriceCurrency } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
   type CatalogOrderRow,
@@ -54,7 +55,13 @@ export default async function EditarLineaPage({
   const pedido = order as CatalogOrderRow;
 
   // THE HARD STOP: an order that is already a sale cannot be walked again.
-  if (pedido.registered_at != null || pedido.sale_id != null) {
+  // Ni uno descartado, desde el 2026-10-26: editar una línea de un pedido que
+  // no va a ninguna parte no tiene nada que escribir.
+  if (
+    pedido.registered_at != null ||
+    pedido.sale_id != null ||
+    estaDescartado(pedido)
+  ) {
     redirect(`/productos/ordenes/${pedido.id}`);
   }
 
