@@ -996,7 +996,7 @@ function Enviado({
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-4 px-4 py-8">
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
         <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
-        <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
+        <h1 className="text-xl font-semibold">¡Tu pedido quedó registrado!</h1>
         {/* LA FECHA, DEBAJO DEL TÍTULO Y EN TENUE — misma posición que en el
             PNG que se comparte desde aquí, para que la imagen y la pantalla se
             lean igual. */}
@@ -1097,6 +1097,45 @@ function Enviado({
         );
       })}
 
+      {/* ── EL CARRUSEL, ENCIMA DE LA FIRMA DE SEVENZ ─────────────────
+          Encargo del dueño el 2026-10-26, con la captura y la flecha:
+          *«Sección "Otros productos" súbela arriba del disclaimer de
+          Sevenz»*. Estaba debajo de «Compartir» desde el 2026-10-17.
+
+          POR QUÉ IMPORTA EL ORDEN, y no es colocación: el logo, el aviso
+          antifraude y «sevenz.site» son la FIRMA de este recibo —cierran lo
+          que el cliente guarda o reenvía—. Con una tienda de productos
+          colgando debajo, la firma dejaba de ser el final de nada.
+
+          40px A LOS LADOS, también suyo: `wideGutters`. La cuenta está en el
+          propio `CatalogStrip`.
+
+          ES EL MISMO COMPONENTE que la franja del saldo —no una copia—
+          porque las dos enseñan lo mismo y el día que una cambie la otra
+          tiene que cambiar con ella.
+
+          SIN `shareToken`, a propósito: quien lee esto YA está dentro del
+          catálogo, así que no hay ningún «abrió el catálogo desde el enlace»
+          que contar. Mandar ese evento desde aquí inflaría el único número
+          que existe para contestar esa pregunta.
+
+          FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo le
+          ofrece otra vez lo que tiene en la bolsa no es una sugerencia, es un
+          despiste — y en un producto sobre dinero, invitar a comprar dos
+          veces lo mismo es exactamente lo que no conviene.
+
+          EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
+          Nació con lo segundo y el dueño lo cambió el mismo día, al leer que
+          el dato no lo sostenía: la ficha de un producto no tiene categoría,
+          ni etiquetas, ni familia, así que lo único que une a estos con lo
+          comprado es ser de la misma bodega. Cierra `CT-96`. */}
+      <CatalogStrip
+        catalogToken={token}
+        titulo="Otros productos"
+        wideGutters
+        products={relacionados.filter((p) => !yaComprados.includes(p.id))}
+      />
+
       {/* EL LOGO Y LA DIRECCIÓN, del frame. A petición del dueño el
           2026-10-15, y van en la pantalla Y en la imagen por la misma razón:
           esta es la única pantalla del catálogo que el cliente guarda o
@@ -1130,42 +1169,6 @@ function Enviado({
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </button>
-
-        {/* EL CARRUSEL, DEBAJO DE «COMPARTIR». Encargo del dueño el
-            2026-10-17, y es el MISMO componente que la franja del saldo —no
-            una copia— porque las dos enseñan lo mismo y el día que una
-            cambie la otra tiene que cambiar con ella.
-
-            SIN `shareToken`, a propósito: quien lee esto YA está dentro del
-            catálogo, así que no hay ningún «abrió el catálogo desde el
-            enlace» que contar. Mandar ese evento desde aquí inflaría el único
-            número que existe para contestar esa pregunta.
-
-            FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo
-            le ofrece otra vez lo que tiene en la bolsa no es una sugerencia,
-            es un despiste — y en un producto sobre dinero, invitar a comprar
-            dos veces lo mismo es exactamente lo que no conviene.
-
-            EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
-            Nació con lo segundo y el dueño lo cambió el mismo día, al leer
-            que el dato no lo sostenía: la ficha de un producto no tiene
-            categoría, ni etiquetas, ni familia, así que lo único que une a
-            estos con lo comprado es ser de la misma bodega.
-
-            Con seis productos no se nota —«relacionados» y «los otros» son el
-            mismo conjunto— pero el día que una bodega publique decenas, quien
-            compró arroz vería tornillos bajo un título que le prometió otra
-            cosa. «Otros productos» es verdad hoy y lo seguirá siendo cuando
-            el catálogo crezca, que es la única clase de rótulo que no hay que
-            volver a tocar. Cierra `CT-96`.
-
-            Si algún día la ficha gana una categoría, el rótulo puede volver a
-            prometer parentesco — pero entonces habrá con qué cumplirlo. */}
-        <CatalogStrip
-          catalogToken={token}
-          titulo="Otros productos"
-          products={relacionados.filter((p) => !yaComprados.includes(p.id))}
-        />
 
         <Link
           href={`/c/${token}`}

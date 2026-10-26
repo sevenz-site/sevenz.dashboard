@@ -38,6 +38,7 @@ export function CatalogStrip({
   catalogToken,
   products,
   titulo = "Productos",
+  wideGutters = false,
 }: {
   // The CLIENT's token, the one in the address bar. It is what the event
   // route uses to find out which business to file the event under; it is
@@ -56,6 +57,23 @@ export function CatalogStrip({
   // «Productos» en el saldo del cliente y «Otros productos» en el
   // comprobante. Por defecto el primero, que es el que ya existía.
   titulo?: string;
+  // ── 40px A LOS LADOS EN VEZ DE 16 ─────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-26 para el recibo del pedido:
+  // *«incrementa sus paddings horizontales a 40px»*. Solo ahí: la franja del
+  // saldo y la del catálogo se quedan como están, porque él pidió esta.
+  //
+  // LA CUENTA, porque los números no son arbitrarios: quien monta esto ya le
+  // da 16px (el `px-4` de su `main`), así que la sección añade 24 para
+  // llegar a 40. Y el carrusel pasa de `-mx-4 px-4` a `-mx-10 px-10` para
+  // seguir sangrando hasta el BORDE de la pantalla --si se quedara en
+  // `-mx-4`, el raíl se cortaría a 24px del filo y se vería como un recorte,
+  // no como una franja--.
+  //
+  // CLASES ENTERAS Y NO CALCULADAS: Tailwind lee el código buscando cadenas
+  // literales, así que una clase armada con una variable no existe en el CSS
+  // final. Es el fallo que no da error: el estilo simplemente no aparece.
+  wideGutters?: boolean;
 }) {
   if (products.length === 0) return null;
 
@@ -101,7 +119,7 @@ export function CatalogStrip({
   };
 
   return (
-    <section className="flex flex-col gap-2">
+    <section className={`flex flex-col gap-2 ${wideGutters ? "px-6" : ""}`}>
       <div className="flex items-center justify-between">
         {/* `mt-1 text-xl font-semibold`, que es el ÚNICO estilo de título que
             `DESIGN-SYSTEM.md` admite — «un solo estilo, en todas partes; no
@@ -129,7 +147,11 @@ export function CatalogStrip({
 
           `scrollbar-none` is not available here, so the bar is left alone: on
           a phone it is an overlay that fades, which is where this is read. */}
-      <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1">
+      <div
+        className={`flex gap-3 overflow-x-auto pb-1 ${
+          wideGutters ? "-mx-10 px-10" : "-mx-4 px-4"
+        }`}
+      >
         {products.map((p) => {
           const foto = p.photo_path ? getPublicProductPhotoUrl(p.photo_path) : null;
           return (
