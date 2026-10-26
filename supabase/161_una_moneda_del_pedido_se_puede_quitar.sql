@@ -51,9 +51,42 @@ create index if not exists catalog_order_items_vivas_idx
   on public.catalog_order_items (order_id)
   where deleted_at is null;
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- Y EL PERMISO, QUE ES LA MITAD QUE SE OLVIDA
+-- ═══════════════════════════════════════════════════════════════════════
+--
+-- La migración `116` existe por esto mismo: la `108` creó estas tablas, les
+-- puso RLS y escribió la política correcta, y nunca otorgó nada a
+-- `authenticated`. Lo que `116` dio sobre `catalog_order_items` fue `select`
+-- a secas -- porque hasta hoy el tendero solo las LEÍA.
+--
+-- QUITAR UNA MONEDA ES UN `update`, así que sin esta línea la acción muere
+-- con `42501: permission denied for table catalog_order_items`. Medido en dev
+-- el 2026-10-26: el botón se dibujaba, el diálogo preguntaba, se confirmaba
+-- y no pasaba nada. Ningún guion de `qa/` lo vio, porque todos corren con la
+-- clave de servicio, que ni usa RLS ni necesita permisos. Lo cazó abrir la
+-- pantalla en el navegador. Es la misma historia que la `116`, letra por
+-- letra, y por eso está escrita aquí otra vez.
+--
+-- ───────────────────────────────────────────────────────────────────────
+-- SOLO ESA COLUMNA, Y NO LA TABLA ENTERA
+--
+-- `grant update (deleted_at)` y no `grant update`. Las demás columnas son lo
+-- que el CLIENTE acordó --cantidad, precio unitario, escalón-- y siguen sin
+-- poder tocarse desde la sesión del tendero: esa es justo la razón por la que
+-- `registrarVenta` las trata como selladas. Un permiso de tabla entera
+-- abriría la puerta a cambiar el precio de lo que alguien ya pidió, que no es
+-- lo que esta migración viene a permitir.
+--
+-- LA POLÍTICA YA ACOTA LAS FILAS: `catalog_order_items_owner_all` es `for
+-- all` sobre las líneas de un pedido cuyo `owner_id` es el de la sesión. Sin
+-- `with check` explícito, Postgres usa su `using` también para escribir, así
+-- que un tendero no puede marcar la línea de otro negocio.
+grant update (deleted_at) on public.catalog_order_items to authenticated;
+
 insert into public.schema_migrations (key, description)
 values (
   '161_una_moneda_del_pedido_se_puede_quitar',
-  'catalog_order_items.deleted_at: el tendero puede quitar una moneda entera de un pedido antes de registrarlo, y restaurarla. Decision del dueno el 2026-10-26, con borrado suave y no `delete` porque esas filas las escribio su cliente al pedir. Incluye indice parcial sobre las lineas vivas.'
+  'catalog_order_items.deleted_at: el tendero puede quitar una moneda entera de un pedido antes de registrarlo, y restaurarla. Decision del dueno el 2026-10-26, con borrado suave y no `delete` porque esas filas las escribio su cliente al pedir. Incluye indice parcial sobre las lineas vivas Y el grant update(deleted_at) a authenticated, sin el cual la accion muere con 42501: la 116 solo habia dado select sobre esta tabla. Es la misma historia que la 116 y la cazo el navegador, no las suites, porque corren con la clave de servicio.'
 )
 on conflict (key) do nothing;

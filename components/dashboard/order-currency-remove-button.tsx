@@ -90,9 +90,16 @@ export function OrderCurrencyRemoveButton({
               ¿Quitar lo de {nombre.toLowerCase()} del pedido?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {cuantosProductos != null
-                ? `${cuantosProductos === 1 ? "El producto" : `Los ${cuantosProductos} productos`} que tu cliente pidió en ${nombre.toLowerCase()} no entrarán en la venta. `
-                : `Lo que tu cliente pidió en ${nombre.toLowerCase()} no entrará en la venta. `}
+              {/* EL VERBO CONCUERDA CON EL SUJETO, y no es quisquillosería:
+                  salía «El producto … no entrarán en la venta», visto en el
+                  navegador el 2026-10-26. Una frase mal construida en un
+                  diálogo que pregunta antes de destruir algo resta justo lo
+                  que ese diálogo necesita, que es que se lea con atención. */}
+              {cuantosProductos === 1
+                ? `El producto que tu cliente pidió en ${nombre.toLowerCase()} no entrará en la venta. `
+                : cuantosProductos != null
+                  ? `Los ${cuantosProductos} productos que tu cliente pidió en ${nombre.toLowerCase()} no entrarán en la venta. `
+                  : `Lo que tu cliente pidió en ${nombre.toLowerCase()} no entrará en la venta. `}
               Puedes devolverlo mientras no registres el pedido.
             </AlertDialogDescription>
           </AlertDialogHeader>

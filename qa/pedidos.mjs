@@ -249,6 +249,71 @@ try {
     eLineas ? `${eLineas.code} ${eLineas.message}` : `${lineasSuyas.length} líneas`,
   );
 
+  // ── 7c. QUITAR Y DEVOLVER UNA MONEDA, CON SU SESIÓN ──────────────────
+  //
+  // Migración `161`. Esto va AQUÍ y con la sesión del dueño por una razón que
+  // ya costó una vez: la `116` existe porque la `108` encendió RLS y nunca
+  // dio el `grant`, y ninguna suite lo vio porque todas corren con la clave
+  // de servicio, que ni usa RLS ni necesita permisos.
+  //
+  // VOLVIÓ A PASAR EL 2026-10-26, letra por letra: la `116` había dado
+  // `select` sobre esta tabla y nunca `update`, así que «Eliminar» moría con
+  // `42501` --el botón se dibujaba, el diálogo preguntaba, y no pasaba nada--
+  // mientras `qa:pedidos` pasaba 17 de 17. Lo cazó abrir la pantalla.
+  //
+  // ESTO ES LO QUE LO HABRÍA CAZADO, y por eso escribe con la sesión y lee la
+  // confirmación con ella también.
+  const lineaEur = (lineasSuyas ?? []).find((l) => l.currency === "EUR");
+  const { error: eQuitar } = await dueno
+    .from("catalog_order_items")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", lineaEur?.id ?? "");
+  check(
+    "7c. el dueño puede QUITAR una línea con su sesión (grant update)",
+    !eQuitar,
+    eQuitar ? `${eQuitar.code} ${eQuitar.message}` : "marcada",
+  );
+
+  const { data: vivasTrasQuitar } = await dueno
+    .from("catalog_order_items")
+    .select("id")
+    .is("deleted_at", null)
+    .eq("order_id", nuevo.id);
+  check(
+    "7d. y deja de verla entre las vivas",
+    (vivasTrasQuitar ?? []).length === 1,
+    `${(vivasTrasQuitar ?? []).length} viva(s)`,
+  );
+
+  const { error: eDevolver } = await dueno
+    .from("catalog_order_items")
+    .update({ deleted_at: null })
+    .eq("id", lineaEur?.id ?? "");
+  const { data: vivasTrasDevolver } = await dueno
+    .from("catalog_order_items")
+    .select("id")
+    .is("deleted_at", null)
+    .eq("order_id", nuevo.id);
+  check(
+    "7e. y puede DEVOLVERLA, que es lo que promete la tarjeta de «Restaurar»",
+    !eDevolver && (vivasTrasDevolver ?? []).length === 2,
+    eDevolver ? `${eDevolver.code} ${eDevolver.message}` : `${(vivasTrasDevolver ?? []).length} vivas`,
+  );
+
+  // LO QUE SIGUE SIENDO SUYO Y NO SE PUEDE TOCAR. El `grant` es de UNA
+  // columna: la cantidad y el precio son lo que el CLIENTE acordó, y una
+  // sesión de tendero que pudiera cambiarlos convertiría el precio sellado de
+  // `registrarVenta` en una promesa sin cerradura.
+  const { error: ePrecio } = await dueno
+    .from("catalog_order_items")
+    .update({ unit_price: 1 })
+    .eq("id", lineaEur?.id ?? "");
+  check(
+    "7f. y NO puede cambiar el precio sellado de una línea",
+    ePrecio != null,
+    ePrecio ? `${ePrecio.code} rechazado` : "LO CAMBIÓ — el grant es demasiado ancho",
+  );
+
   // ── 1. EL CONTADOR ────────────────────────────────────────────────────
   const antes = await countUnregisteredOrders(admin, owner.id);
   check("1a. el contador ve el pedido sin registrar", antes >= 1, `${antes}`);
