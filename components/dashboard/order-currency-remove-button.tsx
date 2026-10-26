@@ -69,13 +69,26 @@ export function OrderCurrencyRemoveButton({
 
   return (
     <>
-      {/* `variant="ghost"`, que es lo que el frame dibuja: sin relleno y sin
-          borde. NO destructivo en rojo — el frame lo pinta en el color normal
-          del texto, y teñirlo sería decidir por el diseño que esto es grave.
-          Lo grave lo dice el diálogo. */}
+      {/* ── EN ROJO, LOS DOS, Y ES DECISIÓN DEL DUEÑO ─────────────────
+          El 2026-10-26: *«Botón "Eliminar" debe ser destructive tanto en
+          modal de la moneda (text destructive) como modal de confirmación
+          (filled destructive)»*.
+
+          ESTO DESPLAZA LO QUE AQUÍ DECÍA, y la razón vieja queda escrita
+          porque era defendible: el frame `1708:15285` lo pinta sin relleno y
+          en el color normal del texto, así que esto nació en `ghost` --«lo
+          grave lo dice el diálogo»--. Él lo vio montado y decidió que el
+          color lo diga antes.
+
+          LOS DOS NOMBRES SON LOS DEL SISTEMA, no inventados:
+          `destructiveText` es rojo sin fondo y `destructive` es rojo con su
+          relleno suave. El comentario de `button.tsx` explica por qué existen
+          los dos --el de texto pesa menos, para ir al lado de una salida
+          segura-- y aquí se usan justo así: plano en la tarjeta, donde
+          compite con «Registrar»; relleno en el diálogo, donde es la acción. */}
       <Button
         type="button"
-        variant="ghost"
+        variant="destructiveText"
         className={className}
         disabled={quitando}
         onClick={() => setPreguntando(true)}
@@ -106,6 +119,7 @@ export function OrderCurrencyRemoveButton({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={quitando}>Volver</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={quitando}
               onClick={(e) => {
                 // `preventDefault` PARA QUE EL DIÁLOGO NO SE CIERRE SOLO:

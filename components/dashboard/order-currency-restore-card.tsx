@@ -59,11 +59,19 @@ export function OrderCurrencyRestoreCard({
         <p className="truncate text-sm font-medium">
           Quitaste lo de {nombre.toLowerCase()}
         </p>
+        {/* ── CORTO, Y CON EL VERBO QUE TOCA ───────────────────────
+            Decía «1 producto que no entrarán en la venta»: plural sobre un
+            sujeto singular, y encima tan largo que se cortaba en el teléfono
+            --medido a 375px el 2026-10-26, terminaba en «no entrarán en la
+            ve…»--. Una frase truncada en una tarjeta que avisa de algo que
+            falta no avisa de nada.
+
+            SIN VERBO, ENTONCES: el rótulo de arriba ya dice lo que pasó
+            («Quitaste lo de euros») y esta línea solo cuantifica. */}
         <p className="truncate text-xs opacity-80">
           {cuantosProductos === 1
-            ? "1 producto"
-            : `${cuantosProductos} productos`}{" "}
-          que no entrarán en la venta
+            ? "1 producto fuera de la venta"
+            : `${cuantosProductos} productos fuera de la venta`}
         </p>
       </div>
       <Button
