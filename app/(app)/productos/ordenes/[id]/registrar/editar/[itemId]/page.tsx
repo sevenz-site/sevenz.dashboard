@@ -64,6 +64,9 @@ export default async function EditarLineaPage({
   const { data: filas, error: errorItem } = await supabase
     .from("catalog_order_items")
     .select(ORDER_ITEM_COLUMNS)
+    // SOLO LAS VIVAS -- migración `161`. Esta ruta vieja sigue existiendo
+    // para un enlace antiguo, y editar una línea quitada no tiene sentido.
+    .is("deleted_at", null)
     .eq("order_id", pedido.id);
   const todasLasLineas = (filas ?? []) as CatalogOrderItemRow[];
   const itemRow = todasLasLineas.find((l) => l.id === itemId) ?? null;

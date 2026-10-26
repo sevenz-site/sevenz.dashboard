@@ -197,7 +197,11 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     // the only event that means anything here.
     supabase
       .from("catalog_orders")
+      // `!inner` NO, y el filtro va en el embebido: un pedido cuyas líneas
+      // estén TODAS quitadas sigue existiendo y debe salir en la lista con
+      // cero productos, no desaparecer. Migración `161`.
       .select("id, customer_name, created_at, catalog_order_items(id)")
+      .is("catalog_order_items.deleted_at", null)
       .eq("owner_id", user.id)
       .eq("status", "new")
       .order("created_at", { ascending: false })

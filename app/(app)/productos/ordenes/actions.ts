@@ -180,6 +180,12 @@ export async function registrarPedidoComoVenta(
   const { data: lineasDelPedido, error: errorLineas } = await supabase
     .from("catalog_order_items")
     .select("id, product_id, product_name, quantity, currency")
+    // ── SOLO LAS VIVAS, Y AQUÍ ES DONDE MÁS IMPORTA ──────────────────
+    //
+    // Migración `161`. Esta es la consulta que decide QUÉ SE COBRA. Sin el
+    // filtro, una moneda que el tendero acaba de quitar entraría en la venta
+    // igual, con el cliente delante y sin que nada lo dijera.
+    .is("deleted_at", null)
     .eq("order_id", pedido.id);
   if (errorLineas) {
     console.error("registrarPedidoComoVenta lineas:", errorLineas.message);
@@ -621,4 +627,175 @@ async function registrarAnalitica(
       error instanceof Error ? error.message : error,
     );
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// QUITAR UNA MONEDA DEL PEDIDO, Y DEVOLVERLA
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Decisión del dueño el 2026-10-26, cerrando una pregunta que llevaba abierta
+// desde que se quitó «Continuar»: ¿puede el tendero cobrar solo una parte de
+// un pedido de dos monedas? Su respuesta fue que no --*«ambos pedidos entran
+// juntos en la misma venta»*-- y la salida es QUITAR la moneda que no va a
+// vender: *«agreguemos botón "Eliminar" en cada una de las cards de los
+// pedidos por moneda»*.
+//
+// ───────────────────────────────────────────────────────────────────────
+// SE MARCA, NO SE BORRA
+//
+// También suyo: *«que se pueda restaurar»*. Y la razón de fondo es de quién
+// son esas filas: las escribió su CLIENTE al pedir. Borrarlas de verdad hace
+// que el pedido afirme que nunca pidió esos euros, sin rastro de que
+// existieron. Ver la migración `161`.
+//
+// ───────────────────────────────────────────────────────────────────────
+// LA MONEDA ES LA SELLADA, Y ESO NO ES UN ATAJO
+//
+// El servidor no ve el borrador, así que no sabe si «Editar pedido» movió una
+// línea a otra moneda. Agrupa por `catalog_order_items.currency`, que es
+// exactamente como agrupan la pantalla que dibuja los bloques y el guardia
+// que carga uno. Las tres preguntan lo mismo a la misma columna; si esta
+// usara otra, el tendero daría a «Eliminar» en un bloque y desaparecería otro.
+
+export type ResultadoDeQuitarMoneda =
+  | { ok: true }
+  | { ok: false; error: string };
+
+async function pedidoDelDueno(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  pedidoId: string,
+  ownerId: string,
+) {
+  // `.eq("owner_id")` EXPLÍCITO: el id llega del navegador. Es la regla de
+  // `CLAUDE.md` y aquí se estaría tocando el pedido de otro negocio.
+  const { data, error } = await supabase
+    .from("catalog_orders")
+    .select("id, registered_at")
+    .eq("id", pedidoId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  if (error) {
+    console.error("[pedido] lectura:", error.message);
+    return { pedido: null, error: "No pudimos leer el pedido. Vuelve a intentarlo." };
+  }
+  if (!data) return { pedido: null, error: "No encontramos ese pedido." };
+  // UN PEDIDO YA REGISTRADO NO SE TOCA. Quitarle una línea después de que su
+  // venta esté escrita dejaría el pedido diciendo una cosa y la venta otra.
+  if (data.registered_at != null) {
+    return { pedido: null, error: "Ese pedido ya está registrado." };
+  }
+  return { pedido: data, error: null };
+}
+
+export async function quitarMonedaDelPedido(
+  pedidoId: string,
+  moneda: string,
+): Promise<ResultadoDeQuitarMoneda> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  const { pedido, error } = await pedidoDelDueno(supabase, pedidoId, user.id);
+  if (!pedido) return { ok: false, error: error! };
+
+  const { data: vivas, error: errorVivas } = await supabase
+    .from("catalog_order_items")
+    .select("id, currency")
+    .is("deleted_at", null)
+    .eq("order_id", pedido.id);
+  if (errorVivas) {
+    console.error("[pedido] lineas vivas:", errorVivas.message);
+    return { ok: false, error: "No pudimos leer el pedido. Vuelve a intentarlo." };
+  }
+
+  // ── LA ÚLTIMA MONEDA NO SE QUITA ───────────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-26, preguntada con las tres salidas
+  // delante. Un pedido sin líneas no se puede registrar y no tiene nada que
+  // enseñar: ofrecerlo sería llevar al tendero a un callejón.
+  //
+  // LA PANTALLA YA NO DIBUJA EL BOTÓN en ese caso, y aun así se comprueba
+  // AQUÍ: esta función se puede llamar desde una pestaña vieja que todavía
+  // enseña dos bloques, o con dos toques seguidos en el último que queda.
+  const monedasVivas = new Set(
+    (vivas ?? []).map((l) => String(l.currency ?? "")),
+  );
+  if (!monedasVivas.has(moneda)) {
+    return { ok: false, error: "Ese pedido ya no tiene esa moneda." };
+  }
+  if (monedasVivas.size <= 1) {
+    return {
+      ok: false,
+      error: "Es lo único que queda en el pedido. Si no vas a cobrarlo, no lo registres.",
+    };
+  }
+
+  const aQuitar = (vivas ?? [])
+    .filter((l) => String(l.currency ?? "") === moneda)
+    .map((l) => l.id as string);
+
+  const { error: errorQuitar } = await supabase
+    .from("catalog_order_items")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", aQuitar);
+  if (errorQuitar) {
+    console.error("[pedido] quitar moneda:", errorQuitar.message);
+    return { ok: false, error: "No pudimos quitarlo. Vuelve a intentarlo." };
+  }
+
+  revalidatePath(`/productos/ordenes/${pedido.id}`, "layout");
+  return { ok: true };
+}
+
+export async function restaurarMonedaDelPedido(
+  pedidoId: string,
+  moneda: string,
+): Promise<ResultadoDeQuitarMoneda> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  const { pedido, error } = await pedidoDelDueno(supabase, pedidoId, user.id);
+  if (!pedido) return { ok: false, error: error! };
+
+  // LAS BORRADAS, que es la única consulta del repo que las pide. Va con su
+  // `.not(...)` explícito y por eso `qa:lineas-borradas` la deja pasar.
+  const { data: quitadas, error: errorQuitadas } = await supabase
+    .from("catalog_order_items")
+    .select("id, currency")
+    .not("deleted_at", "is", null)
+    .eq("order_id", pedido.id);
+  if (errorQuitadas) {
+    console.error("[pedido] lineas quitadas:", errorQuitadas.message);
+    return { ok: false, error: "No pudimos leer el pedido. Vuelve a intentarlo." };
+  }
+
+  const aDevolver = (quitadas ?? [])
+    .filter((l) => String(l.currency ?? "") === moneda)
+    .map((l) => l.id as string);
+  if (aDevolver.length === 0) {
+    return { ok: false, error: "No hay nada que restaurar en esa moneda." };
+  }
+
+  const { error: errorDevolver } = await supabase
+    .from("catalog_order_items")
+    .update({ deleted_at: null })
+    .in("id", aDevolver);
+  if (errorDevolver) {
+    console.error("[pedido] restaurar moneda:", errorDevolver.message);
+    return { ok: false, error: "No pudimos restaurarlo. Vuelve a intentarlo." };
+  }
+
+  revalidatePath(`/productos/ordenes/${pedido.id}`, "layout");
+  return { ok: true };
 }

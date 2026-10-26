@@ -992,6 +992,9 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     const { data: lineasDelPedido } = await supabase
       .from("catalog_order_items")
       .select("id, unit_price, currency, tier, quantity")
+      // SOLO LAS VIVAS -- migración `161`. Son los precios sellados, y una
+      // línea quitada no tiene precio que sellar.
+      .is("deleted_at", null)
       .eq("order_id", entrada.pedidoId);
     for (const l of lineasDelPedido ?? []) {
       selladas.set(l.id, {

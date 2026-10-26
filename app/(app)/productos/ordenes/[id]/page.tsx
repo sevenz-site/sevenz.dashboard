@@ -94,6 +94,8 @@ export default async function OrdenPage({
       supabase
         .from("catalog_order_items")
         .select(ORDER_ITEM_COLUMNS)
+        // SOLO LAS VIVAS -- migración `161`.
+        .is("deleted_at", null)
         .eq("order_id", pedido.id)
         .order("product_name", { ascending: true }),
       readOwnerCountry(supabase, user!.id),

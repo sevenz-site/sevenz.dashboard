@@ -62,6 +62,9 @@ export default async function ClienteDelPedidoPage({
   const { data: filas } = await supabase
     .from("catalog_order_items")
     .select(ORDER_ITEM_COLUMNS)
+    // SOLO LAS VIVAS -- migración `161`: esta pantalla cuenta las monedas
+    // para saber si quedan pendientes, y una quitada no está pendiente.
+    .is("deleted_at", null)
     .eq("order_id", pedido.id);
   const items = (filas ?? []) as CatalogOrderItemRow[];
 

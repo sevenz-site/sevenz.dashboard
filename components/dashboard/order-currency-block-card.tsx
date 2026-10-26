@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OrderCurrencyRemoveButton } from "@/components/dashboard/order-currency-remove-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -54,11 +55,24 @@ export function OrderCurrencyBlockCard({
   bloque,
   rates,
   hrefRegistrar,
+  sePuedeQuitar,
 }: {
   pedidoId: string;
   bloque: BloqueDeMoneda;
   rates: BolivarRates | null;
   hrefRegistrar: string;
+  // ── ¿SE PUEDE QUITAR ESTA MONEDA? ─────────────────────────────────
+  //
+  // `false` cuando es la única que le queda al pedido: entonces el botón no
+  // se dibuja. Decisión del dueño el 2026-10-26 --un pedido vacío no se puede
+  // registrar y no tiene nada que enseñar, así que ofrecerlo sería llevarlo a
+  // un callejón--.
+  //
+  // LO DECIDE LA PÁGINA Y NO ESTA TARJETA porque la pregunta es sobre el
+  // pedido entero y cada tarjeta solo conoce su bloque. La acción del
+  // servidor lo vuelve a comprobar: esta pantalla puede ser una pestaña vieja
+  // que todavía dibuja dos.
+  sePuedeQuitar: boolean;
 }) {
   const borrador = useBorrador(pedidoId);
   const yaTieneMonto = borrador?.monedas?.[bloque.moneda] != null;
@@ -131,11 +145,31 @@ export function OrderCurrencyBlockCard({
         </div>
       </div>
 
-      <div className="pt-4">
+      {/* ── LOS DOS BOTONES, A MEDIO ANCHO CADA UNO ──────────────────
+          Frames `1708:15285` (pre-registrado) y `1708:15082` (por
+          registrar), medidos: fila horizontal, 16px entre ellos, 16 de aire
+          arriba y los dos del mismo ancho. «Eliminar» va en plano --sin
+          relleno ni borde-- y al lado el de siempre: relleno oscuro para
+          «Registrar», con borde para «Editar».
+
+          «ELIMINAR» A LA IZQUIERDA, que es donde lo pone el frame. No es
+          indiferente: el pulgar derecho cae antes en la derecha, y ahí está
+          el botón que NO destruye nada. */}
+      <div className="flex gap-4 pt-4">
+        {registrable && sePuedeQuitar ? (
+          <OrderCurrencyRemoveButton
+            pedidoId={pedidoId}
+            moneda={bloque.moneda}
+            // CUÁNTOS SE LLEVA, para que el diálogo lo diga. «¿Seguro?» a
+            // secas es una frase que se toca sin leer.
+            cuantosProductos={bloque.lineas.length}
+            className="h-10 flex-1"
+          />
+        ) : null}
         {registrable ? (
           <Button
             variant={yaTieneMonto ? "outline" : "default"}
-            className="h-10 w-full"
+            className="h-10 flex-1"
             asChild
           >
             <Link href={hrefRegistrar}>

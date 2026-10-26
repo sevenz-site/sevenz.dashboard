@@ -93,6 +93,10 @@ export async function cargarBloque(
   const { data: filas } = await supabase
     .from("catalog_order_items")
     .select(ORDER_ITEM_COLUMNS)
+    // SOLO LAS VIVAS -- migración `161`. Si una moneda entera se quitó, su
+    // bloque deja de existir y el guardia de abajo rebota al detalle, que es
+    // lo mismo que ya hacía con una moneda que el pedido no tiene.
+    .is("deleted_at", null)
     .eq("order_id", pedido.id)
     .order("created_at", { ascending: true });
   const items = (filas ?? []) as CatalogOrderItemRow[];

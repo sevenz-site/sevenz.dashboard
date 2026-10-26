@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
+import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { OrderRegisteredClientCard } from "@/components/dashboard/order-registered-client-card";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
@@ -75,6 +76,9 @@ export default async function RegistrarPedidoPage({
   const { data: filas } = await supabase
     .from("catalog_order_items")
     .select(ORDER_ITEM_COLUMNS)
+    // SOLO LAS VIVAS -- migración `161`. Las quitadas se leen aparte, abajo,
+    // para dibujar su tarjeta de «Restaurar».
+    .is("deleted_at", null)
     .eq("order_id", pedido.id);
   const items = (filas ?? []) as CatalogOrderItemRow[];
 
@@ -114,6 +118,26 @@ export default async function RegistrarPedidoPage({
   }
 
   const bloques = bloquesDeMoneda(items, undefined);
+
+  // ── LAS MONEDAS QUE EL TENDERO QUITÓ ────────────────────────────────
+  //
+  // Migración `161`. Es la ÚNICA consulta del repo que pide las borradas, y
+  // por eso lleva su `.not(...)` explícito: `qa:lineas-borradas` lo reconoce
+  // como una decisión y no como un olvido.
+  //
+  // SE AGRUPAN POR SU MONEDA SELLADA, igual que los bloques vivos, para que
+  // la tarjeta de «Restaurar» caiga donde estaba el bloque.
+  const { data: filasQuitadas } = await supabase
+    .from("catalog_order_items")
+    .select("id, currency")
+    .not("deleted_at", "is", null)
+    .eq("order_id", pedido.id);
+  const quitadas = new Map<string, number>();
+  for (const l of filasQuitadas ?? []) {
+    const m = String(l.currency ?? "");
+    if (m === "") continue;
+    quitadas.set(m, (quitadas.get(m) ?? 0) + 1);
+  }
 
   // ── ESTA PANTALLA SOBRA CUANDO HAY UNA SOLA MONEDA ────────────────
   //
@@ -217,9 +241,26 @@ export default async function RegistrarPedidoPage({
               bloque={bloque}
               rates={rates}
               hrefRegistrar={`/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${bloque.moneda}`}
+              // LA ÚLTIMA MONEDA NO SE QUITA. Lo decide la PÁGINA porque la
+              // pregunta es sobre el pedido entero y cada tarjeta solo conoce
+              // su bloque. La acción del servidor lo vuelve a comprobar.
+              sePuedeQuitar={bloques.length > 1}
             />
           ))
         )}
+
+        {/* ── LO QUITADO, EN SU SITIO ──────────────────────────────────
+            Encargo del dueño el 2026-10-26, con el patrón que él mismo
+            nombró: la fila quitada de la verificación de la libreta. Se
+            queda a la vista para poder devolverla antes de registrar. */}
+        {[...quitadas.entries()].map(([moneda, cuantos]) => (
+          <OrderCurrencyRestoreCard
+            key={`quitada-${moneda}`}
+            pedidoId={pedido.id}
+            moneda={moneda as PriceCurrency}
+            cuantosProductos={cuantos}
+          />
+        ))}
       </div>
 
       {/* ── AQUÍ NO VA NINGÚN BOTÓN, Y ESO ES LO QUE DICE EL SITEMAP ───

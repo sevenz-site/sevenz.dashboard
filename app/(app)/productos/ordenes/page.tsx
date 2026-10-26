@@ -138,6 +138,10 @@ export default async function OrdenesPage() {
     const { data, error } = await supabase
       .from("catalog_order_items")
       .select(ORDER_ITEM_COLUMNS)
+      // SOLO LAS VIVAS -- migración `161`. Una moneda que el tendero quitó no
+      // cuenta en los totales de la lista: si contara, un pedido del que solo
+      // va a cobrar los dólares seguiría anunciando sus euros.
+      .is("deleted_at", null)
       .in(
         "order_id",
         rows.map((o) => o.id),
