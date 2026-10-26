@@ -14,6 +14,7 @@ import {
   type CatalogOrderRow,
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
+import { quitadasPorMoneda } from "@/lib/orders/pasos-del-registro";
 import type { BolivarRates } from "@/lib/products/price";
 
 // WHAT `2/4 Confirmar pedido` AND `3/4 Pago` BOTH NEED, loaded once.
@@ -48,6 +49,11 @@ export type BloqueCargado = {
   prevista: { fecha: string } | null;
   ownerId: string;
   productosPorId: Awaited<ReturnType<typeof readOrderProducts>>;
+  // LAS MONEDAS QUITADAS, por su nombre y con cuántas líneas. Las devuelve
+  // este cargador --y no cada pantalla-- porque de ellas depende si el paso
+  // `1/x` existe, y dos pantallas que contesten distinto a eso dejan al
+  // tendero sin forma de retroceder.
+  quitadas: Map<string, number>;
 };
 
 export async function cargarBloque(
@@ -114,9 +120,10 @@ export async function cargarBloque(
     redirect(`/productos/ordenes/${pedido.id}`);
   }
 
-  const [productosPorId, rateContext] = await Promise.all([
+  const [productosPorId, rateContext, quitadas] = await Promise.all([
     readOrderProducts(supabase, user.id, items),
     getOwnerRateContext(supabase, user.id),
+    quitadasPorMoneda(supabase, pedido.id),
   ]);
   const rates: BolivarRates | null = rateContext
     ? await getBolivarRates(rateContext.effectiveRate)
@@ -132,5 +139,6 @@ export async function cargarBloque(
     prevista,
     ownerId: user.id,
     productosPorId,
+    quitadas,
   };
 }

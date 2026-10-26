@@ -8,7 +8,10 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
-import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
+import {
+  quitadasPorMoneda,
+  unicaMonedaDelPedido,
+} from "@/lib/orders/pasos-del-registro";
 import {
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
@@ -119,38 +122,11 @@ export default async function RegistrarPedidoPage({
 
   const bloques = bloquesDeMoneda(items, undefined);
 
-  // ── LAS MONEDAS QUE EL TENDERO QUITÓ ────────────────────────────────
-  //
-  // Migración `161`. Es la ÚNICA consulta del repo que pide las borradas, y
-  // por eso lleva su `.not(...)` explícito: `qa:lineas-borradas` lo reconoce
-  // como una decisión y no como un olvido.
-  //
-  // SE AGRUPAN POR SU MONEDA SELLADA, igual que los bloques vivos, para que
-  // la tarjeta de «Restaurar» caiga donde estaba el bloque.
-  const { data: filasQuitadas } = await supabase
-    .from("catalog_order_items")
-    .select("id, currency")
-    .not("deleted_at", "is", null)
-    .eq("order_id", pedido.id);
-  const quitadas = new Map<string, number>();
-  for (const l of filasQuitadas ?? []) {
-    const m = String(l.currency ?? "");
-    if (m === "") continue;
-    quitadas.set(m, (quitadas.get(m) ?? 0) + 1);
-  }
+  // LAS MONEDAS QUITADAS. Deciden dos cosas: la tarjeta de «Restaurar» de
+  // abajo y si esta pantalla sigue teniendo trabajo. Ver `quitadasPorMoneda`.
+  const quitadas = await quitadasPorMoneda(supabase, pedido.id);
 
-  // ── ESTA PANTALLA SOBRA CUANDO HAY UNA SOLA MONEDA ────────────────
-  //
-  // Encargo del dueño del 2026-10-25. El redirect es el que hace que la regla
-  // valga también para quien NO llega por el botón del detalle: la flecha de
-  // atrás, un enlace viejo, una pestaña abierta antes del cambio, la URL
-  // escrita a mano. Sin él quedaría una pantalla fuera del flujo a la que se
-  // puede volver, con su contador «1/4» contradiciendo al «1/3» de al lado.
-  //
-  // NO HAY BUCLE, y conviene decir por qué: el `2/4` vuelve atrás al DETALLE
-  // cuando hay una sola moneda, nunca aquí. Las dos pantallas preguntan lo
-  // mismo a la misma función, así que no pueden discrepar.
-  const unicaMoneda = unicaMonedaDelPedido(bloques);
+  const unicaMoneda = unicaMonedaDelPedido(bloques, quitadas.size > 0);
   if (unicaMoneda) {
     redirect(
       `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`,

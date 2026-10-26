@@ -48,7 +48,7 @@ export default async function ConfirmarBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, bloques, rates, productosPorId, items } =
+  const { pedido, bloque, bloques, rates, productosPorId, items, quitadas } =
     await cargarBloque(id, moneda);
 
 
@@ -91,7 +91,7 @@ export default async function ConfirmarBloquePage({
   // ¿ES ESTA LA PRIMERA PANTALLA DEL FLUJO? Decide la flecha de atrás y el
   // contador, y las dos tienen que contestar igual que `/registrar`, que es
   // quien redirige hasta aquí. Por eso las tres preguntan a la misma función.
-  const unicaMoneda = unicaMonedaDelPedido(bloques);
+  const unicaMoneda = unicaMonedaDelPedido(bloques, quitadas.size > 0);
 
   return (
     // `flex-1` NO SOBRA: `StickyActions` baja con `mt-auto`, y `mt-auto` solo

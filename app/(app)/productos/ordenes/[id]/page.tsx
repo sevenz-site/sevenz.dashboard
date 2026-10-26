@@ -12,7 +12,10 @@ import { OrderClientMatchAlert } from "@/components/dashboard/order-client-card"
 import { OrderDraftReset } from "@/components/dashboard/order-draft-reset";
 import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
-import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
+import {
+  quitadasPorMoneda,
+  unicaMonedaDelPedido,
+} from "@/lib/orders/pasos-del-registro";
 import { UserRound } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
@@ -194,32 +197,16 @@ export default async function OrdenPage({
 
   // ── LAS MONEDAS QUE EL TENDERO QUITÓ ────────────────────────────────
   //
-  // Migración `161`, y esta tarjeta vive aquí por un agujero medido en dev el
-  // 2026-10-26: quitar una de las dos monedas deja el pedido con UNA, y con
-  // una sola el flujo se salta la pantalla `1/x` --que es donde estaba la
-  // tarjeta de «Restaurar»--. O sea que al quitar los euros ya no había
-  // forma de devolverlos desde ninguna parte.
-  //
-  // AQUÍ NO PUEDE PASAR ESO: al detalle se llega siempre, con la flecha de
-  // atrás de cualquier paso. Y además es donde tiene sentido que esté: esta
-  // pantalla es el pedido en frío, así que es la que debe decir que falta
-  // algo de lo que el cliente pidió.
-  //
-  // ES LA ÚNICA CONSULTA DE ESTA PÁGINA QUE PIDE LAS BORRADAS, con su `.not`
-  // explícito para que `qa:lineas-borradas` lo lea como decisión.
-  const { data: filasQuitadas } = await supabase
-    .from("catalog_order_items")
-    .select("id, currency")
-    .not("deleted_at", "is", null)
-    .eq("order_id", pedido.id);
-  const quitadas = new Map<string, number>();
-  for (const l of filasQuitadas ?? []) {
-    const m = String(l.currency ?? "");
-    if (m === "") continue;
-    quitadas.set(m, (quitadas.get(m) ?? 0) + 1);
-  }
+  // Esta tarjeta vive aquí por un agujero medido en dev el 2026-10-26: al
+  // detalle se llega SIEMPRE, con la flecha de atrás de cualquier paso. Y es
+  // donde tiene sentido que esté: esta pantalla es el pedido en frío, así que
+  // es la que debe decir que falta algo de lo que el cliente pidió.
+  const quitadas = await quitadasPorMoneda(supabase, pedido.id);
 
-  const unicaMoneda = unicaMonedaDelPedido(bloquesDeMoneda(items, undefined));
+  const unicaMoneda = unicaMonedaDelPedido(
+    bloquesDeMoneda(items, undefined),
+    quitadas.size > 0,
+  );
   const hrefRegistrar = unicaMoneda
     ? `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`
     : `/productos/ordenes/${pedido.id}/registrar`;

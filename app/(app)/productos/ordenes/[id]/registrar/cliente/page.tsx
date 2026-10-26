@@ -14,7 +14,10 @@ import {
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
-import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
+import {
+  quitadasPorMoneda,
+  unicaMonedaDelPedido,
+} from "@/lib/orders/pasos-del-registro";
 
 // WHO THE SALE GOES TO — step `4/4`, where «Pagar $00.00» lands.
 //
@@ -93,6 +96,9 @@ export default async function ClienteDelPedidoPage({
   // on some rows and bare digits on others, and the form needs the two halves
   // apart or it warns the shopkeeper about a format they just typed.
   const bloques = bloquesDeMoneda(items, undefined);
+  // Mismo criterio que las otras cuatro pantallas: con algo quitado, el paso
+  // «1/x» sigue existiendo y este es el cuarto de cuatro, no el tercero.
+  const quitadas = await quitadasPorMoneda(supabase, pedido.id);
 
   const documento = partirDocumento(
     pedido.customer_document,
@@ -111,7 +117,7 @@ export default async function ClienteDelPedidoPage({
       // SI EL `1/4` NO EXISTE EN ESTE FLUJO, este paso es el tercero de tres
       // y no el cuarto de cuatro. Misma función que las otras cuatro
       // pantallas, para que los contadores no se contradigan.
-      sinPasoDePedido={unicaMonedaDelPedido(bloques) != null}
+      sinPasoDePedido={unicaMonedaDelPedido(bloques, quitadas.size > 0) != null}
       // DE QUÉ MONEDA VIENE, para que la flecha de atrás vuelva a SU pago.
       // `undefined` solo en un enlace viejo que no la llevaba.
       monedaDeOrigen={moneda ?? null}

@@ -62,8 +62,54 @@ import type { PriceCurrency } from "@/lib/products/price";
 // aquí porque es el sitio donde alguien lo va a buscar.
 export function unicaMonedaDelPedido(
   bloques: readonly BloqueDeMoneda[],
+  // ── Y TAMPOCO SE SALTA SI HAY ALGO QUITADO ────────────────────────
+  //
+  // Reportado por el dueño el 2026-10-26: quitar una de las dos monedas lo
+  // echaba del `1/x` a «Detalle del pedido», y restaurar lo movía otra vez.
+  // *«debe dejarme en la misma pantalla»*, las dos veces.
+  //
+  // LA CAUSA ERA UNA SOLA: al quitar una moneda el pedido se queda con una,
+  // y con una sola esta función decía «sáltate el 1/x». Pero con algo quitado
+  // ese paso SÍ tiene trabajo: es donde está la tarjeta de «Restaurar», o sea
+  // la decisión de devolverlo. Saltárselo es sacar al tendero de la pantalla
+  // en la que acaba de tocar un botón.
+  //
+  // `false` POR DEFECTO para que quien no lo sepa no cambie de
+  // comportamiento: las pantallas que no leen las quitadas se comportan como
+  // antes, y las que sí lo pasan.
+  hayQuitadas = false,
 ): PriceCurrency | null {
+  if (hayQuitadas) return null;
   if (bloques.length !== 1) return null;
   const unico = bloques[0];
   return tieneAlgoQueCobrar(unico) ? unico.moneda : null;
+}
+
+// ── LAS MONEDAS QUE EL TENDERO QUITÓ, CONTADAS ────────────────────────
+//
+// Migración `161`. Es la ÚNICA lectura del repo que pide las borradas, y por
+// eso lleva su `.not(...)` explícito: `qa:lineas-borradas` lo reconoce como
+// una decisión y no como un olvido.
+//
+// ESTÁ AQUÍ Y NO EN CADA PANTALLA porque la respuesta decide dos cosas que no
+// pueden discrepar: si se dibuja la tarjeta de «Restaurar» y si el paso `1/x`
+// sigue existiendo. Escrita en cinco sitios, basta con que uno la olvide para
+// que el tendero quite una moneda y se quede sin forma de devolverla.
+export async function quitadasPorMoneda(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  pedidoId: string,
+): Promise<Map<string, number>> {
+  const { data } = await supabase
+    .from("catalog_order_items")
+    .select("id, currency")
+    .not("deleted_at", "is", null)
+    .eq("order_id", pedidoId);
+  const porMoneda = new Map<string, number>();
+  for (const l of (data ?? []) as { currency: string | null }[]) {
+    const m = String(l.currency ?? "");
+    if (m === "") continue;
+    porMoneda.set(m, (porMoneda.get(m) ?? 0) + 1);
+  }
+  return porMoneda;
 }

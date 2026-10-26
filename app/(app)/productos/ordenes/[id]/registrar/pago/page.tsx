@@ -44,10 +44,8 @@ export default async function PagoDeBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, bloques, rates, prevista, ownerId } = await cargarBloque(
-    id,
-    moneda,
-  );
+  const { pedido, bloque, bloques, rates, prevista, ownerId, quitadas } =
+    await cargarBloque(id, moneda);
 
   // LA FICHA QUE YA EXISTE, buscada por DOCUMENTO. Es lo que decide si la
   // pantalla del cliente llega con sus datos ya puestos o en blanco, y se
@@ -76,7 +74,7 @@ export default async function PagoDeBloquePage({
       <OrderStepCounter
         pedidoId={pedido.id}
         paso="pago"
-        sinPasoDePedido={unicaMonedaDelPedido(bloques) != null}
+        sinPasoDePedido={unicaMonedaDelPedido(bloques, quitadas.size > 0) != null}
       />
 
       <OrderTotalCard
