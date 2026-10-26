@@ -221,6 +221,13 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
 
 ### El PEDIDO que se vuelve venta — `npm run qa:pedido-registro`
 
+**Y los bordes de ese flujo tienen su propia guía: `REGISTRO-DE-PEDIDO-BORDES.md`
+en la raíz del repo.** Esta sección dice qué suite correr; esa guía dice qué
+abrir en el navegador y qué puede salir mal, borde por borde, con su peor
+escenario — incluido lo que ninguna suite ve. Si el diff toca el flujo de
+registrar un pedido, se lee entera antes de tocar el navegador, y el paso 3 de su
+sección 5 es el guion de lo manual.
+
 Desde el 2026-10-25. **Necesita `npm run dev` corriendo.** Dieciséis controles,
 escribe solo en dev y se limpia solo.
 
