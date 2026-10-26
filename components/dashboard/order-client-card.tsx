@@ -265,13 +265,26 @@ export function OrderClientMatchAlert({
             </p>
             {/* SOLO CUANDO NO SE PUEDE NOMBRAR. Con una sola ficha el chip ya
                 está encima del nombre que esta misma línea dice, y repetirlo
-                en prosa no añade nada. */}
+                en prosa no añade nada.
+
+                Y MANDA A «Clientes», NO A «Ver clientes». La primera versión
+                de esta frase, escrita el 2026-10-26, decía «Ábrelas para ver
+                cuál» apuntando al botón «Ver clientes» de la hoja
+                `OrderClientPickerSheet` — que existe como componente y NO está
+                montado en ninguna pantalla desde que el frame del `1/x` lo
+                quitó. O sea que la frase prometía una puerta que no está, que
+                es peor que no decir nada: deja al tendero buscando un botón.
+
+                `Clientes` sí existe y busca por documento, así que la frase
+                nombra algo que se puede hacer. Lo que falta de verdad es
+                `PR-E3` --poder mirarlas SIN salir del flujo-- y eso es una
+                pantalla, no una frase. */}
             {coincidencia.kind === "varios" && marcadas > 0 ? (
               <p className="font-medium">
                 {marcadas === 1
                   ? "Una de esas fichas está marcada como Mala paga."
                   : `${marcadas} de esas fichas están marcadas como Mala paga.`}{" "}
-                Ábrelas para ver cuál.
+                Búscalas en Clientes antes de fiar.
               </p>
             ) : null}
           </div>
