@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { OrderClientCard } from "@/components/dashboard/order-client-card";
-import { OrderContinueButton } from "@/components/dashboard/order-continue-button";
 import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
 import {
   OrderRegistrationSummary,
@@ -236,18 +235,45 @@ export default async function RegistrarPedidoPage({
         )}
       </div>
 
-      {/* «CONTINUAR» no se dibuja hasta que al menos una moneda esté
-          registrada --regla del dueño del 2026-10-24-- y avisa de las que se
-          quedan fuera antes de seguir. */}
-      <OrderContinueButton
-        pedidoId={pedido.id}
-        bloques={bloques}
-        href={
-          clienteDelPedido.kind === "uno"
-            ? `/productos/ordenes/${pedido.id}/registrar/cliente?ficha=${clienteDelPedido.cliente.id}`
-            : `/productos/ordenes/${pedido.id}/registrar/cliente`
-        }
-      />
+      {/* ── AQUÍ NO VA NINGÚN BOTÓN, Y ESO ES LO QUE DICE EL SITEMAP ───
+          Los dos frames de esta pantalla --`1652:12752` en la primera pasada
+          y `1654:15525` en la segunda-- terminan en los bloques de moneda.
+          Ninguno dibuja un pie. El único camino hacia adelante es el
+          «Registrar» de un bloque, y el segundo frame lo confirma: con los
+          dólares ya resueltos su botón pasa a «Editar» y el de los euros
+          sigue diciendo «Registrar».
+
+          ═══════════════════════════════════════════════════════════════
+          AQUÍ VIVÍA «CONTINUAR», Y SE QUITÓ EL 2026-10-25
+
+          El dueño lo aprobó avisado de que era suyo --regla del 2026-10-24,
+          *«aparecerá solo cuando al menos uno de los productos ya esté
+          registrado»*, con su modal de «faltan X»--. Lo que inclinó la
+          balanza fue medirlo: **el botón mentía y daba vueltas.**
+
+          Recorrido real, medido en dev el 2026-10-25 con un pedido de dos
+          monedas: «Continuar» → modal *«Falta 1 moneda por registrar. Lo de
+          esa moneda no entrará en la venta»* → «Continuar igual» → 4/4
+          Información del cliente → «Registrar» → **otra vez el 1/3 con
+          «Continuar»**. El bucle es inevitable por construcción: la pantalla
+          del cliente solo escribe la venta cuando NO queda ninguna moneda
+          pendiente, así que con una pendiente guarda la ficha en el borrador
+          y devuelve aquí. Siempre.
+
+          O sea que la promesa del modal --«esa moneda no entrará en la
+          venta»-- nunca se cumplió: no había forma de registrar parte de un
+          pedido, solo una puerta que parecía serlo.
+
+          ───────────────────────────────────────────────────────────────
+          LO QUE SE PIERDE, DICHO EN VOZ ALTA
+
+          Con esto, la regla del 2026-10-24 --dejar fuera una moneda a
+          propósito-- queda SIN IMPLEMENTAR, no implementada de otra forma.
+          El tendero que solo quiera registrar los dólares de un pedido mixto
+          tiene que registrar también los euros o salirse (la flecha de
+          atrás; el borrador se queda en el navegador y la base no recibe
+          nada). Está dicho en el informe del día para que el dueño decida si
+          lo quiere de vuelta bien hecho. */}
     </div>
   );
 }

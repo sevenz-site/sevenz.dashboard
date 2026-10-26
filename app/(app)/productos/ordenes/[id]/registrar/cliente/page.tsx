@@ -15,7 +15,13 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
 
-// WHO THE SALE GOES TO — the step the order's «Continuar» leads to.
+// WHO THE SALE GOES TO — step `4/4`, where «Pagar $00.00» lands.
+//
+// LA ÚNICA PUERTA DESDE EL 2026-10-25. Hasta ese día había una segunda, el
+// «Continuar» del pie del 1/4, y daba vueltas: con una moneda pendiente esta
+// pantalla guarda la ficha en el borrador y devuelve al pedido, así que el
+// par de botones se llamaba el uno al otro. El sitemap no dibuja ese pie en
+// ninguno de los dos frames del 1/4; ahora tampoco la app.
 //
 // Three frames behind one route, and which one is drawn depends on two
 // things the page resolves here: whether a ficha matched, and whether the

@@ -165,9 +165,11 @@ export function leerBorrador(pedidoId: string): BorradorDeRegistro | null {
 
 // A SNAPSHOT WITH A STABLE IDENTITY, for `useSyncExternalStore`.
 //
-// TWO COMPONENTS READ THIS DRAFT ON THE ORDER'S SCREEN — the per-currency
-// summary inside «Pedido» and the «Continuar» at the foot — and they sit in
-// different places in the DOM, so they cannot be one component.
+// VARIOS COMPONENTES LEEN ESTE BORRADOR EN LA MISMA PANTALLA --el resumen
+// por moneda, la tarjeta de cada bloque, el contador de pasos-- y están en
+// sitios distintos del DOM, así que no pueden ser uno solo. (Hasta el
+// 2026-10-25 uno de ellos era el «Continuar» del pie, que el sitemap no
+// dibuja y se quitó; los demás siguen.)
 //
 // `leerBorrador` parses JSON and hands back a FRESH object every call, which
 // React compares with `Object.is` and repaints forever. Caching by the raw

@@ -56,9 +56,11 @@ export function useBorrador(pedidoId: string): BorradorDeRegistro | null {
 }
 
 // THE PER-CURRENCY ROLL-UP, computed from the draft and the order's lines.
-// Exported because the «Continuar» at the foot of the screen needs the same
-// count of what is resolved, and counting it twice in two places is how the
-// two start disagreeing.
+// Exportada desde que el «Continuar» del pie necesitaba esta misma cuenta.
+// Ese botón se quitó el 2026-10-25 --el sitemap no lo dibuja--, pero la
+// función se queda exportada: es la única cuenta de «qué hay resuelto» del
+// flujo, y tenerla en un sitio es lo que impide que dos pantallas se
+// contradigan sobre lo mismo.
 export function resumirPorMoneda(
   lineas: LineaDelPedido[],
   borrador: BorradorDeRegistro | null,
