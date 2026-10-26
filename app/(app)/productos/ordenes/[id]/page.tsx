@@ -3,16 +3,16 @@ import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
-import { OrderClientCard } from "@/components/dashboard/order-client-card";
 import {
   OrderProductSheet,
   OrderProductRowButton,
 } from "@/components/dashboard/order-product-sheet";
 import { findOrderClient } from "@/lib/orders/order-client-match";
+import { UserRound } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
-import { formatReceiptDateTime } from "@/lib/format";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import {
   currencyName,
   formatPriceAmount,
@@ -225,25 +225,63 @@ export default async function OrdenPage({
         </span>
       ) : null}
 
-      {/* QUIÉN PIDIÓ, Y SI YA ESTÁ EN LA CUENTA — frames `1518:10879` y
-          `1514:10294`. Sustituye a la lista de filas «Nombre / Documento /
-          WhatsApp» que había aquí: las mismas cuatro cosas, más la única que
-          el tendero no podía saber sin ir a buscarla. */}
-      <OrderClientCard
-        nombreDelPedido={pedido.customer_name}
-        documentoDelPedido={pedido.customer_document}
-        tipoDeDocumento={pedido.customer_document_type}
-        telefono={pedido.customer_whatsapp_raw || ""}
-        coincidencia={clienteDelPedido}
-        // La tasa vigente, para la hoja de la cuenta del cliente.
-        ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
-      />
+      {/* ── «DATOS DEL COMPRADOR» — FRAME `1655:15869` ────────────────
+          Leído con `get_design_context` el 2026-10-25, nodo por nodo: una
+          tarjeta con su cabecera y el icono de persona, y debajo CINCO filas
+          de rótulo a la izquierda y valor a la derecha — nombre, documento,
+          teléfono, fecha de pedido y notificaciones.
 
-      {/* LAS DOS FILAS QUE NO SON DEL CLIENTE SINO DEL PEDIDO, y por eso
-          quedan fuera de su tarjeta — frame `1518:10873`, que las dibuja
-          debajo. La fecha es cuándo pidió; el permiso es de este pedido. */}
-      <div className="flex flex-col rounded-[10px] border px-4 py-1">
-        <Fila nombre="Fecha del pedido:">{cuando}</Fila>
+          ═══════════════════════════════════════════════════════════════
+          ESTO ERA LA TARJETA DEL PASO 1/4 Y POR ESO LAS DOS PANTALLAS SE
+          LEÍAN COMO UNA
+
+          Aquí vivía `OrderClientCard`: avatar, aviso verde «El cliente ya
+          existe en tu cuenta de Sevenz» y botón «Ver ‹nombre›» — que es,
+          literalmente, el frame `1652:12752`, o sea el PASO SIGUIENTE. El
+          dueño lo reportó el 2026-10-25: *«Nuevo pedido > Selecciono
+          "Registrar pedido" > Me muestra nuevamente "Nuevo pedido" (está mal,
+          me estás volviendo a mostrar la misma pantalla anterior, en el
+          sitemap no está así)»*. Tenía razón y la causa no era el título: era
+          que el cuerpo de las dos pantallas era el mismo.
+
+          LAS DOS SIGUEN LLAMÁNDOSE «Nuevo pedido», y eso SÍ está en el
+          sitemap: el frame del detalle rotula su H1 «Nuevo pedido» igual que
+          el del 1/4. Lo que las distingue es lo que hay debajo — aquí, una
+          ficha en frío de quién pidió y cuánto; allí, el contador «1/4», el
+          cotejo con la cuenta y un botón «Registrar» por moneda.
+
+          ───────────────────────────────────────────────────────────────
+          QUÉ SE PIERDE AQUÍ, DICHO EN VOZ ALTA
+
+          El cotejo contra la cuenta —«ya existe» / «no lo encontramos»— y el
+          botón para abrir su cuenta YA NO SALEN EN ESTA PANTALLA. El frame no
+          los dibuja y es coherente: esto es el pedido en frío, y la pregunta
+          «¿quién es este en mi cuenta?» es del paso 1/4, donde se decide a
+          quién se le apunta la deuda. Quien lo necesite antes lo tiene a un
+          toque, detrás de «Registrar pedido».
+
+          EL DOCUMENTO LLEVA SU PREFIJO aunque el frame escriba «00.000.000» a
+          secas. Es la norma del 2026-10-25, escrita en `DESIGN-SYSTEM.md`
+          después de que esto fallara tres veces: «V-21.054.832» y
+          «E-21.054.832» son dos personas distintas. */}
+      <div className="flex flex-col rounded-[10px] border p-4">
+        <div className="flex items-center justify-between pb-2 pt-1">
+          <h2 className="text-base font-semibold">Datos del comprador</h2>
+          <UserRound className="size-5 shrink-0" aria-hidden="true" />
+        </div>
+        <Fila nombre="Nombre y apellido">{pedido.customer_name}</Fila>
+        <Fila nombre="Documento">
+          {pedido.customer_document
+            ? formatDocumentId(pedido.customer_document, pedido.customer_document_type)
+            : "—"}
+        </Fila>
+        <Fila nombre="Teléfono">
+          {/* EL CRUDO, el que el cliente tecleó, igual que hacía la tarjeta
+              que había antes: el normalizado es dígitos pegados y lo usa
+              `wa.me`, no un ojo humano comparándolo con una agenda. */}
+          {pedido.customer_whatsapp_raw || pedido.customer_whatsapp || "—"}
+        </Fila>
+        <Fila nombre="Fecha de pedido">{cuando}</Fila>
         {/* "Notificaciones" and not "Avisos", "Aceptada" and not "Los
             aceptó": the owner's wording, 2026-10-16. */}
         <Fila nombre="Notificaciones por WhatsApp">

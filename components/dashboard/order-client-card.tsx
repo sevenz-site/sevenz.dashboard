@@ -192,7 +192,7 @@ export function OrderClientCard({
       ) : null}
 
       {coincidencia.kind === "varios" ? (
-        <OrderClientPickerSheet clientes={coincidencia.clientes} />
+        <OrderClientPickerSheet clientes={coincidencia.clientes} ledger={ledger} />
       ) : null}
     </div>
   );

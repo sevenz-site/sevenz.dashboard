@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
+import { getOwnerRateContext, getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
+import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
+import { computeCreditScore, type CreditScoreResult } from "@/lib/credit-score";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
@@ -13,7 +15,13 @@ import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/produ
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
-import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import {
+  estadoDeCliente,
+  estadoDelFiado,
+  estadoPorLibro,
+  type EstadoDelPlazo,
+  type LibroJuzgado,
+} from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
@@ -487,6 +495,37 @@ export type CuentaDelCliente = {
   estadosDeFiado: Record<string, EstadoDelPlazo | null>;
   // Lo que cada fiado todavía debe, por el id de su movimiento.
   pendientePorFiado: Record<string, number>;
+  // ── LO QUE LA HOJA TENÍA QUE ENSEÑAR Y NO ENSEÑABA ─────────────────
+  //
+  // Encargo del dueño el 2026-10-25, mirando la hoja dentro del flujo de
+  // registrar un pedido: *«se debe mostrar en el sheet cuánto debe en total
+  // por moneda y el puntaje de crédito, solo se está viendo el historial»*.
+  //
+  // LAS DOS COSAS SE CALCULAN AQUÍ Y NO EN EL NAVEGADOR, y no es una
+  // preferencia: el puntaje necesita TODOS los movimientos del cliente, no
+  // los cincuenta que la hoja pinta. Mandarlos al navegador para sumarlos
+  // allí sería bajar un historial entero por una cifra de tres dígitos.
+  //
+  // El estado POR LIBRO, para que cada tarjeta lleve su propio chip igual que
+  // en la ficha del cliente. La clave es `libroDe(moneda)`: `USD`, `EUR` o
+  // `COP` para un negocio colombiano.
+  estadosDeLibro: Record<string, LibroJuzgado>;
+  // `null` cuando no se pudo leer la ficha. Un cliente sin historial SÍ tiene
+  // puntaje --«Sin historial»--, que es una respuesta y no un hueco.
+  puntaje: CreditScoreResult | null;
+};
+
+// El vacío que devuelven las dos salidas tempranas. Escrito una vez: cada
+// campo que se añada arriba y se olvide en una de ellas es un `undefined` que
+// revienta en el navegador, y han sido dos salidas desde el primer día.
+const CUENTA_VACIA: CuentaDelCliente = {
+  fila: null,
+  movimientos: [],
+  ventasDeContado: [],
+  estadosDeFiado: {},
+  pendientePorFiado: {},
+  estadosDeLibro: {},
+  puntaje: null,
 };
 
 export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
@@ -494,7 +533,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
+  if (!user) return CUENTA_VACIA;
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
   // `CLAUDE.md` para toda fila leída por un id que llega del navegador, y aquí
@@ -505,7 +544,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .eq("client_id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
-  if (!fila) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
+  if (!fila) return CUENTA_VACIA;
 
   // LOS ÚLTIMOS CINCUENTA. Es una mirada para decidir, no la ficha: quien
   // necesite el historial entero lo tiene en la pantalla del cliente, y traer
@@ -575,31 +614,136 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   // Es el fallo del 2026-10-18 otra vez, dicho arriba en esta misma función:
   // la ficha enseñaba las ventas de contado y esta hoja no. Misma lista, dos
   // puertas, y solo se arregló una.
+  // LA LLAMADA SALIÓ DEL `if` EL 2026-10-25, y la diferencia importa: antes
+  // solo se pedían los fiados abiertos cuando alguno de los CINCUENTA
+  // movimientos traídos era un cargo. Con el estado por libro colgando de
+  // aquí, un cliente con mucha actividad reciente y un fiado viejo abierto se
+  // habría quedado sin chips — y «sin chip» se lee como «a este no le pasa
+  // nada», que es justo lo contrario.
+  const { data: abiertosCrudos } = await supabase.rpc("get_open_charges_for_client", {
+    p_client_id: clientId,
+  });
+  const abiertos = (abiertosCrudos ?? []) as {
+    movement_id: string;
+    charge_at: string;
+    currency: string | null;
+    amount: number;
+    pending: number;
+    plazo_dias: number | null;
+    cuotas: number | null;
+  }[];
+
   const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
   const pendientePorFiadoMapa: Record<string, number> = {};
-  if (movementRows.some((m) => m.type === "charge")) {
-    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
-      p_client_id: clientId,
+  const pendientePorFiado = new Map<string, number>();
+  for (const c of abiertos) pendientePorFiado.set(c.movement_id, Number(c.pending));
+  for (const m of movementRows) {
+    if (m.type !== "charge") continue;
+    const pendiente = pendientePorFiado.get(m.id) ?? 0;
+    pendientePorFiadoMapa[m.id] = pendiente;
+    estadosDeFiado[m.id] = estadoDelFiado({
+      createdAt: m.created_at,
+      plazoDias: m.plazo_dias,
+      cuotas: m.cuotas,
+      amount: Number(m.amount),
+      pendiente,
     });
-    const pendientePorFiado = new Map<string, number>();
-    for (const c of (abiertos ?? []) as { movement_id: string; pending: number }[]) {
-      pendientePorFiado.set(c.movement_id, Number(c.pending));
-    }
-    for (const m of movementRows) {
-      if (m.type !== "charge") continue;
-      const pendiente = pendientePorFiado.get(m.id) ?? 0;
-      pendientePorFiadoMapa[m.id] = pendiente;
-      estadosDeFiado[m.id] = estadoDelFiado({
-        createdAt: m.created_at,
-        plazoDias: m.plazo_dias,
-        cuotas: m.cuotas,
-        amount: Number(m.amount),
-        pendiente,
-      });
-    }
   }
 
-  return { fila: fila as ClientSummary, movimientos: movementRows, ventasDeContado, estadosDeFiado, pendientePorFiado: pendientePorFiadoMapa };
+  // ── UN ESTADO POR LIBRO Y UN PUNTAJE, COMO EN LA FICHA ──────────────
+  //
+  // Las dos cosas se calculan EXACTAMENTE como `app/(app)/clients/[id]`, y
+  // eso no es copiar por comodidad: es la misma clienta en dos pantallas. Si
+  // la hoja juzgara con otra fórmula, el tendero vería «Bueno» aquí y
+  // «Regular» a dos toques de distancia, sobre la misma persona y el mismo
+  // día. Cualquier cambio en una va en la otra; el precedente de que eso se
+  // olvida está escrito dentro de esta misma función, con fecha.
+  const resumen = fila as ClientSummary;
+  const ownerRate = await getOwnerRateContext(supabase, user.id);
+
+  const estadosDeLibro = estadoPorLibro({
+    saldos: ownerRate
+      ? { USD: resumen.balance_usd ?? 0, EUR: resumen.balance_eur ?? 0 }
+      : { COP: resumen.balance ?? 0 },
+    abiertos: abiertos.map((c) => ({
+      createdAt: c.charge_at,
+      currency: c.currency,
+      amount: Number(c.amount),
+      pendiente: Number(c.pending),
+      plazoDias: c.plazo_dias,
+      cuotas: c.cuotas,
+    })),
+    daysSincePayment: resumen.days_since_payment ?? 0,
+  });
+
+  // TODOS LOS MOVIMIENTOS, no los cincuenta de arriba. El puntaje mide la
+  // puntualidad histórica del cliente: calcularlo sobre una ventana lo
+  // convertiría en «qué tal se ha portado últimamente», que es otra pregunta
+  // y no la que la tarjeta rotula.
+  const { data: todosLosMovimientos } = await supabase
+    .from("movements")
+    .select("id, type, amount, currency, created_at, plazo_dias, applies_to_movement_id")
+    .eq("client_id", clientId)
+    .is("deleted_at", null);
+
+  const { data: ultimoDesmarcado } = await supabase
+    .from("client_flags")
+    .select("unflagged_at")
+    .eq("client_id", clientId)
+    .not("unflagged_at", "is", null)
+    .order("unflagged_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { status: estadoCombinado } = estadoDeCliente({
+    fila: resumen,
+    saldos: {
+      cop: resumen.balance ?? 0,
+      usd: resumen.balance_usd ?? 0,
+      eur: resumen.balance_eur ?? 0,
+    },
+    saldoCombinado: ownerRate
+      ? combinedBalanceUsd(
+          resumen.balance_usd ?? 0,
+          resumen.balance_eur ?? 0,
+          ownerRate.effectiveRate,
+        )
+      : (resumen.balance ?? 0),
+    dosLibros: ownerRate != null,
+  });
+
+  const puntaje = computeCreditScore({
+    movements: (todosLosMovimientos ?? []) as Pick<
+      Movement,
+      "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
+    >[],
+    statusParaMostrar: estadoCombinado,
+    // EL SALDO COMBINADO, igual que la ficha. El puntaje es un juicio único
+    // por cliente a propósito; el que va por libro es el chip.
+    balance: ownerRate
+      ? combinedBalanceUsd(
+          resumen.balance_usd ?? 0,
+          resumen.balance_eur ?? 0,
+          ownerRate.effectiveRate,
+        )
+      : (resumen.balance ?? 0),
+    daysSincePayment: resumen.days_since_payment ?? 0,
+    worstChargeAt: resumen.worst_unpaid_charge_at ?? null,
+    worstChargePlazoDias: resumen.worst_unpaid_charge_plazo_dias ?? null,
+    worstChargeDueAt: resumen.worst_unpaid_charge_due_at ?? null,
+    isFlagged: resumen.is_flagged,
+    mostRecentUnflaggedAt: (ultimoDesmarcado?.unflagged_at as string | null) ?? null,
+  });
+
+  return {
+    fila: resumen,
+    movimientos: movementRows,
+    ventasDeContado,
+    estadosDeFiado,
+    pendientePorFiado: pendientePorFiadoMapa,
+    estadosDeLibro,
+    puntaje,
+  };
 }
 
 // ===========================================================================

@@ -9,8 +9,19 @@ import {
   clientCardShell,
 } from "@/components/dashboard/client-card";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
+import { Badge } from "@/components/ui/badge";
 import { cuentaDelCliente, type CuentaDelCliente } from "@/app/(app)/ventas/actions";
-import { estadoDeCliente } from "@/lib/estado-del-plazo";
+import { estadoDeCliente, type LibroJuzgado } from "@/lib/estado-del-plazo";
+import {
+  clientStatusLabel,
+  CLIENT_STATUS_BADGE_CLASS,
+  CREDIT_SCORE_TIER_BADGE_CLASS,
+  type ClientSummary,
+  type LedgerCurrency,
+} from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +144,56 @@ export function ClientAccountSheet({
                 </Button>
               ) : null}
 
+              {/* ── POR COBRAR, UN LIBRO POR TARJETA ─────────────────
+                  Encargo del dueño el 2026-10-25: *«cuando se abre el detalle
+                  del cliente en todas las pantallas del flujo de registrar
+                  pedido se debe mostrar en el sheet cuánto debe en total por
+                  moneda y el puntaje de crédito, solo se está viendo el
+                  historial»*.
+
+                  LA TARJETA DE ARRIBA NO BASTABA, y por eso esto no es
+                  duplicar: `ClientCardBody` enseña UN libro —el que manda el
+                  chip— porque esa tarjeta nació para una lista donde cada
+                  fila tiene una línea. Un cliente que debe en dólares Y en
+                  euros salía con una sola cifra, y la otra no estaba en
+                  ninguna parte de la hoja.
+
+                  MISMA FORMA QUE LA FICHA DEL CLIENTE —rótulo, bandera,
+                  cifra en absoluto y el chip de ESE libro debajo— porque es
+                  la misma clienta a dos toques de distancia. */}
+              <SaldosPorLibro
+                fila={fila}
+                ledger={ledger}
+                estadosDeLibro={cuenta?.estadosDeLibro ?? {}}
+              />
+
+              {/* EL PUNTAJE, que es la otra mitad del encargo. Va DEBAJO de
+                  los saldos y ENCIMA del historial: el tendero baja por la
+                  hoja contestando «¿cuánto me debe?» y luego «¿me fío de
+                  él?», y el historial es el detalle que sostiene las dos.
+
+                  SIN EL DESGLOSE DE LA FICHA. Esta hoja se abre en mitad de
+                  un registro para decidir en diez segundos; las cuatro líneas
+                  de «cómo se calcula» son para quien va a discutirlo, y eso
+                  se hace en la ficha. */}
+              {cuenta?.puntaje ? (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-sm font-medium">Puntaje de crédito</h3>
+                  <div className="flex flex-col items-center gap-2 rounded-lg border p-3">
+                    <CreditScoreRadialChart
+                      score={cuenta.puntaje.score}
+                      tier={cuenta.puntaje.tier}
+                    />
+                    <Badge
+                      variant="outline"
+                      className={CREDIT_SCORE_TIER_BADGE_CLASS[cuenta.puntaje.tier]}
+                    >
+                      {cuenta.puntaje.tier}
+                    </Badge>
+                  </div>
+                </div>
+              ) : null}
+
               <MovementHistoryList
                 movements={cuenta?.movimientos ?? []}
                 ventasDeContado={cuenta?.ventasDeContado ?? []}
@@ -156,5 +217,73 @@ export function ClientAccountSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ===========================================================================
+// «POR COBRAR», UNA TARJETA POR LIBRO
+// ===========================================================================
+//
+// La misma forma que `app/(app)/clients/[id]` —rótulo con bandera a la
+// izquierda, cifra a la derecha, chip del libro debajo— porque es la misma
+// clienta vista desde otra pantalla. Es una copia pequeña y a propósito: la
+// de la ficha es una función local de un componente de servidor y esta hoja
+// es de navegador, así que no se puede importar. Lo que NO puede divergir es
+// lo que deciden las dos —`estadoPorLibro` y `ExchangeRateBalanceDisplay`—, y
+// eso sí está compartido.
+//
+// LA CIFRA VA EN ABSOLUTO Y EL SIGNO LO DICE EL CHIP. Regla del dueño del
+// 2026-10-23: «Por cobrar −$178,00» no se lee como «te sobran 178», se lee
+// como una avería.
+function SaldosPorLibro({
+  fila,
+  ledger,
+  estadosDeLibro,
+}: {
+  fila: ClientSummary;
+  ledger: LedgerDisplay | null;
+  estadosDeLibro: Record<string, LibroJuzgado>;
+}) {
+  // DOS LIBROS O UNO, decidido por la MISMA señal que la ficha: que haya tasa
+  // es que el negocio es venezolano. Un negocio colombiano lleva un solo
+  // libro y su moneda es `null`.
+  const libros: { clave: string; label: string; moneda: LedgerCurrency | null; saldo: number }[] =
+    ledger
+      ? [
+          { clave: "USD", label: "Por cobrar Dólares", moneda: "USD", saldo: fila.balance_usd ?? 0 },
+          { clave: "EUR", label: "Por cobrar Euros", moneda: "EUR", saldo: fila.balance_eur ?? 0 },
+        ]
+      : [{ clave: "COP", label: "Por cobrar", moneda: null, saldo: fila.balance ?? 0 }];
+
+  return (
+    <div className="flex flex-col gap-2">
+      {libros.map((libro) => {
+        const juicio = estadosDeLibro[libro.clave];
+        return (
+          <div key={libro.clave} className="rounded-lg border bg-muted/30 px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+                {libro.moneda ? <CurrencyFlagIcon currency={libro.moneda} /> : null}
+                <span className="truncate">{libro.label}</span>
+              </p>
+              <ExchangeRateBalanceDisplay
+                balance={Math.abs(libro.saldo)}
+                currency={libro.moneda}
+                ledger={libro.moneda ? ledger : null}
+                size="sm"
+                align="end"
+              />
+            </div>
+            {juicio ? (
+              <div className="flex justify-end pt-1">
+                <Badge variant="outline" className={CLIENT_STATUS_BADGE_CLASS[juicio.status]}>
+                  {clientStatusLabel(juicio.status, juicio.vencidos, true)}
+                </Badge>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }

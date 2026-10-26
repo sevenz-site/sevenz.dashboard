@@ -19,6 +19,9 @@ import {
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
 import { findOrderClient } from "@/lib/orders/order-client-match";
+import { WhatsappIcon } from "@/components/icons/whatsapp";
+import { readOwnerCountry } from "@/lib/owner-country";
+import { formatReceiptDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -39,9 +42,28 @@ import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 // nada. Separarlas convierte «voy a registrar esto» en una decisión con su
 // propio toque.
 //
-// EL DETALLE SE QUEDA CON LO QUE NO ESCRIBE: los datos del comprador, los
-// totales, «Contactar vía WhatsApp» y «Marcar como atendido». Aquí vive todo
+// EL DETALLE SE QUEDA CON LO QUE NO ESCRIBE: la tarjeta «Datos del
+// comprador» en frío, los totales y «Contactar vía WhatsApp». Aquí vive todo
 // lo que termina en una venta.
+//
+// Y LAS DOS TARJETAS DE COMPRADOR SON DISTINTAS A PROPÓSITO desde el
+// 2026-10-25. Esta --`OrderClientCard`-- coteja contra la cuenta y abre la
+// ficha, porque aquí es donde se decide a quién se le apunta la deuda; la del
+// detalle es una lista de datos y nada más. Eran la misma y el dueño leyó las
+// dos pantallas como una sola.
+// LA MISMA FILA QUE EL DETALLE: rótulo a la izquierda, valor a la derecha.
+// Copiada y no importada porque son cuatro líneas y exportarla desde una
+// `page.tsx` de Next para que otra la use es un acoplamiento peor que la
+// copia. Si crecen, se van a un componente las dos a la vez.
+function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className="shrink-0 text-sm text-muted-foreground">{nombre}</span>
+      <span className="min-w-0 text-right text-sm font-medium">{children}</span>
+    </div>
+  );
+}
+
 export default async function RegistrarPedidoPage({
   params,
 }: {
@@ -111,6 +133,18 @@ export default async function RegistrarPedidoPage({
     }
   }
 
+  // CUÁNDO PIDIÓ, EN LA ZONA DEL DUEÑO y no en la del servidor, que corre en
+  // UTC. La misma función que el detalle, para que las dos pantallas escriban
+  // la misma fecha con las mismas palabras.
+  const country = await readOwnerCountry(supabase, user.id);
+  const cuando = formatReceiptDateTime(pedido.created_at, country);
+
+  // Solo dígitos. La columna ya viene normalizada; esto cubre lo que haya
+  // entrado por otra puerta que el carrito.
+  const whatsappDigits = (pedido.customer_whatsapp ?? "").replace(/\D/g, "");
+  const primerNombre = pedido.customer_name.trim().split(/\s+/)[0];
+  const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
+
   const bloques = bloquesDeMoneda(items, undefined);
   const lineasParaResumen: LineaDelPedido[] = items.map((i) => ({
     id: i.id,
@@ -137,6 +171,42 @@ export default async function RegistrarPedidoPage({
         // La tasa vigente, para la hoja de la cuenta del cliente.
         ledger={rateContext ? { rate: rateContext.effectiveRate } : null}
       />
+
+      {/* ── LAS DOS FILAS DEL PEDIDO Y EL BOTÓN DE WHATSAPP ────────────
+          Frame `1652:12752`, nodos «Order Details» y «WhatsApp button»: van
+          AQUÍ, entre la tarjeta del comprador y la sección «Pedido». Faltaban
+          desde que este paso nació, y no por decisión: se quedaron en el
+          detalle al partir la pantalla en dos.
+
+          NO SON UNA REPETICIÓN DEL DETALLE aunque las dos pantallas las
+          dibujen. Lo que contestan cambia de sitio con el tendero: en el
+          detalle, «¿cuándo pidió esto y puedo escribirle?»; aquí, con el
+          cliente al teléfono y a punto de apuntarle una deuda, «¿esto es de
+          hoy, y tengo permiso para mandarle el recibo?». La segunda decide si
+          marca la casilla de avisos en el paso 4/4.
+
+          SIN EL LÁPIZ QUE DIBUJA EL FRAME. Corregir la fecha de un pedido o
+          el permiso de WhatsApp no está construido --el permiso va por número
+          y no por cliente, que es `CT-69` y sigue abierto--, y un icono de
+          editar que no edita es peor que ninguno. */}
+      <div className="flex flex-col rounded-[10px] border px-4 py-1">
+        <Fila nombre="Fecha del pedido:">{cuando}</Fila>
+        <Fila nombre="Notificaciones por WhatsApp">
+          {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
+        </Fila>
+      </div>
+
+      {whatsappDigits ? (
+        <a
+          href={`https://wa.me/${whatsappDigits}?text=${encodeURIComponent(mensajeWhatsapp)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+        >
+          Contactar vía WhatsApp
+          <WhatsappIcon className="size-4" />
+        </a>
+      ) : null}
 
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
