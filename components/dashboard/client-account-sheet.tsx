@@ -3,18 +3,15 @@
 import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import {
-  ClientCardBody,
-  CLIENT_CARD_INNER,
-  clientCardShell,
-} from "@/components/dashboard/client-card";
 import { MovementHistoryList } from "@/components/dashboard/movement-history-list";
+import { ClientAvatar } from "@/components/dashboard/client-avatar";
+import { formatDocumentId } from "@/lib/format";
 import { CreditScoreRadialChart } from "@/components/dashboard/credit-score-radial-chart";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { Badge } from "@/components/ui/badge";
 import { cuentaDelCliente, type CuentaDelCliente } from "@/app/(app)/ventas/actions";
-import { estadoDeCliente, type LibroJuzgado } from "@/lib/estado-del-plazo";
+import type { LibroJuzgado } from "@/lib/estado-del-plazo";
 import {
   clientStatusLabel,
   CLIENT_STATUS_BADGE_CLASS,
@@ -23,7 +20,6 @@ import {
   type LedgerCurrency,
 } from "@/lib/types";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { cn } from "@/lib/utils";
 
 // «VER CUENTA DE …» — la hoja que se abre cuando la cédula tecleada en el paso
 // 4 ya pertenece a alguien.
@@ -83,20 +79,10 @@ export function ClientAccountSheet({
   }, [clientId]);
 
   const fila = cuenta?.fila ?? null;
-  // `CT-137`, un libro a la vez, igual que las cuatro listas. Esta hoja se
-  // abre en medio de una venta para contestar una sola pregunta —«¿le fío a
-  // este?»—, así que el chip que enseña no puede ser más suave que el de la
-  // ficha del mismo cliente.
-  const { status, currency, overdueCount } = fila
-    ? estadoDeCliente({
-        fila,
-        saldos: { cop: fila.balance, usd: fila.balance_usd, eur: fila.balance_eur },
-        // Igual que antes de `CT-137`: aquí nunca hubo tasa a mano con la que
-        // convertir, así que la degradación juzga por el libro colombiano.
-        saldoCombinado: fila.balance,
-        dosLibros: ledger !== null,
-      })
-    : { status: "sin_deuda" as const, currency: null, overdueCount: null };
+  // EL CHIP DE ESTADO COMBINADO SE FUE CON LA TARJETA DE LISTA, el
+  // 2026-10-26. Ya no hace falta aquí: cada tarjeta «Por cobrar» lleva el
+  // suyo, por libro, que es más preciso que uno solo para los dos --y es lo
+  // que la ficha del cliente hace desde `CT-137`--.
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -108,25 +94,59 @@ export function ClientAccountSheet({
         <div className="flex flex-col gap-4 px-4 pb-6">
           {fila ? (
             <>
-              {/* LA MISMA TARJETA QUE LA LISTA DE CLIENTES, por lo mismo que en
-                  el paso 4: el tendero ya sabe leerla. */}
-              <div className={clientCardShell(status)}>
-                <div className={cn(CLIENT_CARD_INNER, "flex items-start gap-1.5 px-4 py-2")}>
-                  <ClientCardBody
-                    name={fila.name}
-                    documentId={fila.document_id}
-                    documentType={fila.document_type}
-                    status={status}
-                    overdueCount={overdueCount}
-                    monedaDelEstado={currency}
-                    isFlagged={fila.is_flagged}
-                    balance={fila.balance}
-                    balanceUsd={fila.balance_usd}
-                    balanceEur={fila.balance_eur}
-                    ledger={ledger}
-                    conFlecha={false}
-                  />
-                </div>
+              {/* ── QUIÉN ES, EN GRANDE — frame `1713:18347` ──────────
+                  Encargo del dueño el 2026-10-26: *«es el mismo patrón que el
+                  del perfil del cliente pero en light»*. Foto de 80, nombre
+                  en 24 regular, y debajo cédula, teléfono y dirección.
+
+                  QUÉ HABÍA ANTES Y POR QUÉ SOBRABA: la tarjeta de la lista de
+                  clientes, con su saldo y su chip de estado. Él lo rodeó en
+                  la captura, y tenía razón: ese saldo es el MISMO que las
+                  tarjetas «Por cobrar» de justo debajo, pero de un solo libro
+                  —la tarjeta de lista enseña uno— así que decía «€100,00»
+                  encima de un «Por cobrar Dólares $21,50» que no nombraba.
+                  Dos cifras de la misma persona, una incompleta.
+
+                  AQUÍ NO VA NI SALDO NI CHIP, entonces: esta parte contesta
+                  «¿quién es?» y las de abajo «¿cuánto debe?». Es el reparto
+                  que ya hace el perfil del cliente, de donde sale el patrón.
+
+                  LAS TRES FILAS SIEMPRE, aunque vengan vacías: regla del
+                  `DESIGN-SYSTEM.md`. Un dato que falta y desaparece no se
+                  distingue de uno que nunca se pidió. */}
+              <div className="flex flex-col items-center gap-2 pt-1">
+                <ClientAvatar
+                  clientId={clientId}
+                  clientName={fila.name}
+                  ownerId={fila.owner_id}
+                  picturePath={cuenta?.ficha?.picturePath ?? null}
+                  // NO EDITABLE: esta hoja se abre en mitad de un registro
+                  // para mirar, no para cambiarle la foto a nadie. Y la
+                  // edición abre OTRA hoja, que encima de esta sería una
+                  // hoja sobre una hoja.
+                  editable={false}
+                />
+                <h3 className="w-full truncate text-center text-2xl font-normal">
+                  {fila.name}
+                </h3>
+                <dl className="flex w-full flex-col gap-1 text-sm text-muted-foreground">
+                  {[
+                    {
+                      label: "Cédula",
+                      value: formatDocumentId(fila.document_id, fila.document_type),
+                    },
+                    { label: "Teléfono", value: fila.whatsapp || "—" },
+                    { label: "Dirección", value: cuenta?.ficha?.address || "—" },
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-center gap-1.5"
+                    >
+                      <dt>{row.label}:</dt>
+                      <dd className="min-w-0 truncate">{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
 
               {/* SIN FOTOS DE COMPROBANTE, a propósito: sus URLs se firman una

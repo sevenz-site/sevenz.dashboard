@@ -510,6 +510,16 @@ export type CuentaDelCliente = {
   // en la ficha del cliente. La clave es `libroDe(moneda)`: `USD`, `EUR` o
   // `COP` para un negocio colombiano.
   estadosDeLibro: Record<string, LibroJuzgado>;
+  // ── LO QUE `client_summary` NO TRAE ────────────────────────────────
+  //
+  // La vista da nombre, documento y teléfono, pero no la DIRECCIÓN ni la
+  // foto. La tarjeta de esta hoja --frame `1713:18347`, encargo del dueño el
+  // 2026-10-26-- las dibuja las dos, así que se leen de `clients` aparte.
+  //
+  // Ampliar la vista habría sido la otra salida y es peor: `client_summary`
+  // la consultan la Cartera, las malas pagas y la papelera, y engordarla para
+  // dos campos que solo pide una hoja hace más caro todo lo demás.
+  ficha: { address: string | null; picturePath: string | null } | null;
   // `null` cuando no se pudo leer la ficha. Un cliente sin historial SÍ tiene
   // puntaje --«Sin historial»--, que es una respuesta y no un hueco.
   puntaje: CreditScoreResult | null;
@@ -526,6 +536,7 @@ const CUENTA_VACIA: CuentaDelCliente = {
   pendientePorFiado: {},
   estadosDeLibro: {},
   puntaje: null,
+  ficha: null,
 };
 
 export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
@@ -686,6 +697,13 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .eq("client_id", clientId)
     .is("deleted_at", null);
 
+  const { data: fichaCruda } = await supabase
+    .from("clients")
+    .select("address, profile_picture_path")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
   const { data: ultimoDesmarcado } = await supabase
     .from("client_flags")
     .select("unflagged_at")
@@ -743,6 +761,12 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     pendientePorFiado: pendientePorFiadoMapa,
     estadosDeLibro,
     puntaje,
+    ficha: fichaCruda
+      ? {
+          address: (fichaCruda.address as string | null) ?? null,
+          picturePath: (fichaCruda.profile_picture_path as string | null) ?? null,
+        }
+      : null,
   };
 }
 
