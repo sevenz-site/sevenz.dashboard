@@ -104,29 +104,33 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 // primero acaban discrepando, y aquí el orden ya lo dice.
 const POR_PAIS: Record<"VE" | "CO", DocumentType[]> = {
   VE: ["V", "E", "J"],
-  // LOS SEIS QUE PIDIÓ EL DUEÑO el 2026-10-26, en su orden. `CC` sigue
-  // primero, así que lo que viene puesto no cambia.
+  // LOS SEIS QUE PIDIÓ EL DUEÑO el 2026-10-26, en su orden, MÁS `NIT` al
+  // final. `CC` sigue primero, así que lo que viene puesto no cambia.
   //
-  // «NIT» NO ESTÁ, y es lo único que sale de aquí: era la tercera opción
-  // desde que el selector colombiano existe (2026-10-18) y su lista no lo
-  // nombra. Queda ACEPTADO abajo pero no ofrecido — ver `EXTRAS_ACEPTADOS`.
-  CO: ["CC", "CE", "TI", "PAS", "PEP", "PPT"],
+  // `NIT` SALIÓ Y VOLVIÓ EL MISMO DÍA. Su lista no lo nombraba, así que se
+  // quitó del desplegable; al decírselo --que un negocio colombiano se
+  // quedaba sin forma de marcar a una empresa-- contestó *«Agrega NIT al
+  // desplegable colombiano»*. Va el ÚLTIMO y no tercero como antes: los seis
+  // de arriba son documentos de personas y los pide cualquier cliente;
+  // facturarle a una empresa es lo raro, y el orden de una lista es lo que
+  // dice qué se espera encontrar primero.
+  CO: ["CC", "CE", "TI", "PAS", "PEP", "PPT", "NIT"],
 };
 
-// ── LO QUE YA NO SE OFRECE PERO SIGUE VALIENDO ────────────────────────
+// ── LO QUE SE ACEPTA SIN ESTAR EN EL DESPLEGABLE ──────────────────────
 //
-// `NIT` dejó de estar en el desplegable el 2026-10-26 y NO se puede dejar de
-// aceptar a la vez, porque son dos cosas distintas: una es qué se ofrece al
-// teclear una ficha nueva, y otra qué se admite al GUARDAR una que ya existe.
+// Hoy está vacío, y se queda escrito porque la distinción vale: una cosa es
+// qué se OFRECE al teclear una ficha nueva y otra qué se ADMITE al guardar
+// una que ya existe.
 //
-// Si `isDocumentTypeFor` dejara de admitirlo, la primera vez que alguien
-// abriera y guardara una ficha vieja marcada NIT, el servidor lo descartaría
-// y la guardaría sin tipo. Sin error, sin aviso, y el dato que distingue a
-// una empresa de una persona perdido. Es exactamente la clase de pérdida
-// silenciosa que este repo ya ha pagado.
+// Si una letra sale del desplegable y a la vez deja de admitirse, la primera
+// vez que alguien abra y guarde una ficha vieja marcada con ella, el servidor
+// la descartará y la guardará sin tipo. Sin error y sin aviso. `NIT` estuvo
+// aquí unas horas el 2026-10-26, entre que salió del desplegable y el dueño
+// pidió devolverlo; si alguna otra sale algún día, este es su sitio.
 const EXTRAS_ACEPTADOS: Record<"VE" | "CO", DocumentType[]> = {
   VE: [],
-  CO: ["NIT"],
+  CO: [],
 };
 
 // LOS TIPOS QUE UN NEGOCIO DE ESTE PAÍS PUEDE ELEGIR.

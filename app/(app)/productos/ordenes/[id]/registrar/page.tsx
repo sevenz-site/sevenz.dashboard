@@ -1,9 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
-import {
-  OrderRegistrationSummary,
-  type LineaDelPedido,
-} from "@/components/dashboard/order-registration-summary";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { OrderRegisteredClientCard } from "@/components/dashboard/order-registered-client-card";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
@@ -136,13 +132,6 @@ export default async function RegistrarPedidoPage({
       `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`,
     );
   }
-  const lineasParaResumen: LineaDelPedido[] = items.map((i) => ({
-    id: i.id,
-    cantidad: Number(i.quantity),
-    precioUnitario: Number(i.unit_price),
-    moneda: i.currency as PriceCurrency,
-  }));
-
   return (
     <div className="flex flex-col gap-4">
       <ScreenBackRow
@@ -196,15 +185,26 @@ export default async function RegistrarPedidoPage({
 
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
-        {/* EN QUÉ VA A QUEDAR ESTE PEDIDO, en cuanto haya algo registrado. No
-            dibuja nada hasta entonces, que es la diferencia entre los dos
-            estados de este frame. */}
-        <OrderRegistrationSummary
-          pedidoId={pedido.id}
-          lineas={lineasParaResumen}
-          deudaAntigua={deudaAntigua}
-          rates={rates}
-        />
+        {/* ── AQUÍ NO VA NINGÚN RESUMEN DE LA VENTA ──────────────────
+            Vivía aquí `OrderRegistrationSummary` --«Total en X», «Abonó»,
+            «Debe (esta venta)», «Deuda antigua», «Deuda total»-- desde el
+            frame `1564:11979`. El dueño lo mandó quitar el 2026-10-26:
+            *«está mal, en ningún momento te pedí que la agregaras.
+            Elimínala de allí, en este punto no se ha registrado la venta»*.
+
+            Y LA RAZÓN QUE DA ES DE FONDO, no de maquetación: cobrar la
+            primera moneda es un PRE-REGISTRO. La venta no existe hasta que
+            se registran las dos, así que una tarjeta que anuncia «Deuda
+            total» en medio del flujo afirma algo que la base todavía no
+            dice. Si el tendero se va ahí, no hay deuda ninguna.
+
+            EL FRAME NUEVO DE ESTA PANTALLA (`1708:15043`) tampoco la dibuja:
+            entre la tarjeta del cliente y los bloques de moneda no hay nada.
+
+            `resumirPorMoneda` SE QUEDA EXPORTADA en
+            `order-registration-summary.tsx`: es la única cuenta de «qué hay
+            resuelto» del flujo y tenerla en un sitio es lo que impide que dos
+            pantallas se contradigan. */}
         {items.length === 0 ? (
           <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             Este pedido no tiene líneas.

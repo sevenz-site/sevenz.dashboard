@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import {
@@ -213,7 +214,11 @@ export function OrderClientStep({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // `flex-1` NO SOBRA: `StickyActions` baja con `mt-auto`, y `mt-auto` solo
+    // empuja si el contenedor tiene alto que repartir. Sin esto la barra se
+    // queda pegada al contenido, con media pantalla vacía debajo — el fallo
+    // que el dueño reportó el 2026-10-25 en el paso 2/4.
+    <div className="flex flex-1 flex-col gap-4">
       {/* ── ATRÁS ES EL PASO ANTERIOR, QUE ES EL PAGO ─────────────────
           «Registrar a cuenta separada» vuelve a la pantalla emparejada, no
           fuera del flujo: es un paso que el tendero dio, y retroceder
@@ -420,17 +425,40 @@ export function OrderClientStep({
 
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-      <div className="flex flex-col gap-4 pb-10">
-        {/* EL RÓTULO LO DICE LA FLECHA DEL SITEMAP, literalmente: *«CTA es
-            "Registrar y finalizar" porque no hay más pedidos que
-            registrar»*. Con monedas pendientes es «Registrar» a secas, que es
-            lo que el frame del caso de dos monedas dibuja. */}
+      {/* ── PEGADO ABAJO, A 40px DEL FILO ─────────────────────────────
+          Encargo del dueño el 2026-10-26: *«Botón "Registrar" debe estar
+          pegado abajo a 40px del fondo de la pantalla»*. Es `StickyActions`,
+          el mismo componente que el paso 2/4, y NO sus clases copiadas: la
+          regla de `CLAUDE.md` nació justamente de una pantalla que las copió
+          a mano y se quedó sin lo único que el original añade --esconderse
+          con el teclado arriba, que en una pantalla de SEIS campos como esta
+          es la mitad del asunto--.
+
+          Los 40px los pone la barra; `app-main.tsx` deja de sumar los suyos
+          en esta ruta, o serían 80. */}
+      <StickyActions>
+        {/* EL RÓTULO, TRES CASOS Y NO DOS desde el 2026-10-26:
+
+            · CORRIGIENDO (se llegó por el lápiz de la tarjeta del cliente):
+              «Guardar». Suyo, preguntado: *«Sí, cámbialo a "Guardar"»*.
+              «Registrar» ahí prometía apuntar algo nuevo cuando lo único que
+              se hace es cambiar una letra de lo ya tecleado.
+            · CON MONEDAS PENDIENTES: «Registrar» a secas, como dibuja el
+              frame del caso de dos monedas.
+            · SIN NINGUNA PENDIENTE: «Registrar y finalizar», que es lo que
+              la flecha del sitemap escribe con todas las letras --*«CTA es
+              "Registrar y finalizar" porque no hay más pedidos que
+              registrar»*--. */}
         <Button className="h-10 w-full" onClick={finalizar} disabled={enviando}>
           {enviando
-            ? "Registrando…"
-            : quedanMonedas
-              ? "Registrar"
-              : "Registrar y finalizar"}
+            ? esCorreccion
+              ? "Guardando…"
+              : "Registrando…"
+            : esCorreccion
+              ? "Guardar"
+              : quedanMonedas
+                ? "Registrar"
+                : "Registrar y finalizar"}
         </Button>
         {/* «REGISTRAR A CUENTA SEPARADA», only on the matched screen. The
             shopkeeper is saying «this is not that Pedro», which the document
@@ -448,7 +476,7 @@ export function OrderClientStep({
             </Link>
           </Button>
         ) : null}
-      </div>
+      </StickyActions>
     </div>
   );
 }

@@ -1502,16 +1502,55 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     // escribe ni un movimiento (migracion `124`), asi que su codigo solo vive
     // en esta fila. Es la razon por la que la migracion `147` puso la columna
     // en `sales` ademas de en `movements`.
-    .select("id, client_id, created_at, transaction_code")
+    .select("id, client_id, created_at, transaction_code, catalog_order_id")
     .eq("id", saleId)
     .eq("owner_id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
   if (!venta) return { ok: false, error: "No encontramos esa venta." };
 
+  // ── UN PEDIDO DE DOS MONEDAS SON DOS VENTAS, Y UNA SOLA COMPRA ──────
+  //
+  // Encargo del dueño el 2026-10-26, con la captura: *«en la pantalla de
+  // "Transacción registrada con éxito" debe aparecer el registro de venta de
+  // ambas monedas»*. Y su razón, que es la que manda: *«el registrar una
+  // moneda primero que otra realmente es un pre-registro de venta, no el
+  // registro de la venta como tal»*.
+  //
+  // QUÉ SE VEÍA ANTES: la pantalla leía UNA fila de `sales`, así que de un
+  // pedido con dólares y euros enseñaba el bloque de una moneda y se callaba
+  // el otro. El tendero acababa el flujo creyendo que había cobrado la mitad.
+  //
+  // SE AGRUPA POR `catalog_order_id` --migración `158`-- y no por cliente ni
+  // por fecha: es la única columna que dice «estas ventas salieron del mismo
+  // pedido». Una venta tecleada en el mostrador no lo tiene, así que no
+  // arrastra nada y esta pantalla se comporta igual que siempre.
+  //
+  // FILTRADO POR `owner_id`, como la de arriba: el id llega de la URL y sus
+  // hermanas se buscan por una columna que ese id eligió.
+  const idsDeLaCompra = [venta.id as string];
+  let fechaMasTemprana = venta.created_at as string;
+  if (venta.catalog_order_id) {
+    const { data: hermanas } = await supabase
+      .from("sales")
+      .select("id, created_at")
+      .eq("catalog_order_id", venta.catalog_order_id)
+      .eq("owner_id", user.id)
+      .is("deleted_at", null);
+    for (const h of hermanas ?? []) {
+      if ((h.id as string) !== venta.id) idsDeLaCompra.push(h.id as string);
+      if ((h.created_at as string) < fechaMasTemprana) {
+        fechaMasTemprana = h.created_at as string;
+      }
+    }
+  }
+
   const [{ data: lineas }, { data: pagos }, { data: cliente }, contexto] = await Promise.all([
-    supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", venta.id),
-    supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
+    supabase
+      .from("sale_lines")
+      .select("name, quantity, unit_price, currency")
+      .in("sale_id", idsDeLaCompra),
+    supabase.from("sale_payments").select("currency, amount").in("sale_id", idsDeLaCompra),
     supabase
       .from("clients")
       // `id` LO LLEVA EL COMPRADOR desde el 2026-10-19, para el botón «Ver
@@ -1536,18 +1575,25 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   // `sale_id` se descarta además de la fecha: los cargos de esta venta se
   // escriben inmediatamente después de la fila de `sales` y dos marcas de
   // tiempo iguales harían que su propia deuda se contara como antigua.
+  //
+  // Y DESDE EL 2026-10-26, «ANTES» ES LA FECHA DE LA PRIMERA DE LAS DOS
+  // VENTAS, no la de la que se abrió. Las dos se escriben con segundos de
+  // diferencia: con la fecha de la segunda, los cargos de la PRIMERA caen
+  // dentro del «antes» y la pantalla contaría como deuda antigua una deuda
+  // que acaba de crear ella misma. Por eso se excluyen además TODAS las
+  // ventas de la compra, no solo la de la URL.
   const { data: previos } = venta.client_id
     ? await supabase
         .from("movements")
         .select("type, amount, currency, sale_id")
         .eq("client_id", venta.client_id)
         .is("deleted_at", null)
-        .lte("created_at", venta.created_at)
+        .lte("created_at", fechaMasTemprana)
     : { data: [] };
 
   const deudaPrevia = new Map<PriceCurrency, number>();
   for (const m of previos ?? []) {
-    if (m.sale_id === venta.id) continue;
+    if (m.sale_id && idsDeLaCompra.includes(m.sale_id as string)) continue;
     // `currency` nulo es el libro de un negocio colombiano, que es una
     // respuesta y no una ausencia -- el mismo criterio que `libroDeMoneda`.
     const libro = (m.currency ?? "COP") as PriceCurrency;

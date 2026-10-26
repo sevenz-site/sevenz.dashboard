@@ -113,6 +113,11 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // El paso 2/4 del registro de un pedido: su «Confirmar y continuar» va en
     // `StickyActions`, que trae sus propios 40px.
     /^\/productos\/ordenes\/[^/]+\/registrar\/confirmar$/.test(pathname) ||
+    // Y EL PASO DEL CLIENTE, desde el 2026-10-26: su «Registrar» --o
+    // «Guardar», cuando se llega a corregir-- pasó a `StickyActions` por
+    // encargo del dueño, *«pegado abajo a 40px del fondo»*. Sin esta línea
+    // `main` le suma sus 16 a los 40 de la barra y quedan 56.
+    /^\/productos\/ordenes\/[^/]+\/registrar\/cliente$/.test(pathname) ||
     pathname.startsWith("/ventas/nueva") ||
     pathname === "/clients/nuevo" ||
     pathname.startsWith("/abonos/nuevo/") ||
