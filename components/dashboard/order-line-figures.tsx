@@ -1,6 +1,7 @@
 "use client";
 
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
@@ -106,9 +107,28 @@ export function ImporteDeLinea({
         <p className="text-sm text-muted-foreground">Movido a {movidaA}</p>
       ) : (
         <>
-          <p className="font-semibold tabular-nums">
-            {hayProducto ? formatPriceAmount(porPagar, moneda) : "—"}
-          </p>
+          {/* ── LA BANDERA, PEGADA AL IMPORTE ───────────────────────────
+              El frame dibuja «Price With Currency»: la cifra y su bandera en
+              la misma línea. El dueño lo pidió el 2026-10-26 --*«monto total
+              del producto debe llevar bandera»*-- y es la misma forma que ya
+              tienen la tarjeta «Total a pagar» de arriba y los totales del
+              carrito del cliente.
+
+              Y AQUÍ GANA MÁS QUE EN OTRAS: esta pantalla confirma UNA moneda
+              de un pedido que puede tener dos, y el símbolo solo no separa
+              dos dólares. La bandera dice en cuál de los dos libros va a
+              caer esta línea.
+
+              `items-center` Y NO `baseline`: una bandera no tiene línea base
+              y con la otra se monta sobre el número. */}
+          <span className="flex items-center justify-end gap-1">
+            <span className="font-semibold tabular-nums">
+              {hayProducto ? formatPriceAmount(porPagar, moneda) : "—"}
+            </span>
+            {hayProducto ? (
+              <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
+            ) : null}
+          </span>
           {enBs != null && hayProducto ? (
             <p className="text-xs text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</p>
           ) : null}

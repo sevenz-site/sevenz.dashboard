@@ -143,7 +143,28 @@ export default async function ConfirmarBloquePage({
           <div key={linea.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                <p className="font-medium">{linea.nombre}</p>
+                {/* ── EL NOMBRE Y EL STOCK, EN LA MISMA FILA ──────────────
+                    El frame dibuja un «Product Header» con el nombre y, a su
+                    lado, un `chip_info` que dice «Disponible: 00». Aquí el
+                    stock era una línea de texto suelta debajo, y el dueño lo
+                    reportó el 2026-10-26 con la captura.
+
+                    ES EL MISMO CHIP QUE LA HOJA «Editar pedido», no uno
+                    nuevo: es el mismo dato del mismo producto a un toque de
+                    distancia, y dos dibujos distintos de la misma cifra se
+                    leen como dos cifras.
+
+                    SIN STOCK NO HAY CHIP. `stock_opening` es nulo en un
+                    producto que no lo lleva, y un chip que dijera
+                    «Disponible: —» afirma que se midió y salió vacío. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{linea.nombre}</p>
+                  {producto != null && stock != null ? (
+                    <span className="w-fit rounded-full bg-money-in/10 px-1.5 text-xs text-money-in">
+                      Disponible: {formatCantidad(stock)}
+                    </span>
+                  ) : null}
+                </div>
                 {producto == null ? (
                   // LA LÍNEA QUE NO VA A ENTRAR, dicha aquí y no al final. La
                   // decisión del dueño del 2026-10-24 es «se excluye esa línea
@@ -153,11 +174,7 @@ export default async function ConfirmarBloquePage({
                     Este producto ya no está en tu catálogo, así que no entrará
                     en la venta.
                   </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Disponible: {stock == null ? "—" : formatCantidad(stock)}
-                  </p>
-                )}
+                ) : null}
                 <CantidadDeLinea
                   pedidoId={pedido.id}
                   lineaId={linea.id}
