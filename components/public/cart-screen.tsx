@@ -236,10 +236,32 @@ export function CartScreen({
         <ScreenTitle>Tu carrito</ScreenTitle>
 
         {lineas.length === 0 ? (
+          /* ── EL VACÍO AHORA TIENE SALIDA — frame `1707:14933` ─────────
+             Encargo del dueño el 2026-10-26: *«agrégale el botón "Agregar
+             producto" y al seleccionarlo dirige al catálogo»*.
+
+             LA ÚNICA FORMA DE SALIR DE AQUÍ ERA LA FLECHA DE ARRIBA, de
+             24px y en una esquina. El texto decía «Vuelve al catálogo» sin
+             dar con qué: una instrucción que no se puede obedecer donde
+             está escrita. Y es la pantalla donde el cliente aterriza si
+             abre el carrito por curiosidad antes de elegir nada, así que
+             era también la primera impresión más fácil de abandonar.
+
+             EL SUBTÍTULO CAMBIA CON EL BOTÓN, y así lo escribe el frame:
+             de «Vuelve al catálogo y elige lo que quieras pedir» a
+             nombrar el botón que ahora está debajo. Un texto que manda ir
+             a otro sitio, con el atajo delante, se contradice solo. */
           <EmptyState
             title="Todavía no has agregado nada"
-            subtitle="Vuelve al catálogo y elige lo que quieras pedir."
-          />
+            subtitle={'Selecciona "Agregar producto" para continuar con tu compra.'}
+          >
+            <Link
+              href={`/c/${token}`}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-foreground text-base font-semibold text-background outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Plus className="size-6" aria-hidden="true" /> Agregar producto
+            </Link>
+          </EmptyState>
         ) : primeraCarga ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Preparando tu carrito...
