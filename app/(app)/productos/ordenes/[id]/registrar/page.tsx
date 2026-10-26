@@ -5,6 +5,7 @@ import {
   type LineaDelPedido,
 } from "@/components/dashboard/order-registration-summary";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
+import { OrderRegisteredClientCard } from "@/components/dashboard/order-registered-client-card";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { getBolivarRates } from "@/lib/products/catalog";
@@ -186,6 +187,13 @@ export default async function RegistrarPedidoPage({
           VARIAS fichas ya no tiene desde aquí forma de mirarlas. El aviso del
           detalle lo sigue diciendo --«ya existe en varias cuentas»-- pero
           hasta el 4/4 no hay dónde abrirlas. */}
+      {/* ── EL CLIENTE QUE QUEDÓ APUNTADO EN LA PRIMERA MONEDA ─────────
+          Frame `1708:15043`: la tarjeta va ARRIBA del título «Pedido», no
+          entre los bloques. Solo se dibuja a partir de la segunda pasada
+          --antes no hay cliente que enseñar-- y por eso es un componente de
+          navegador: ese dato vive en el borrador, que el servidor no ve. */}
+      <OrderRegisteredClientCard pedidoId={pedido.id} />
+
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">
         {/* EN QUÉ VA A QUEDAR ESTE PEDIDO, en cuanto haya algo registrado. No

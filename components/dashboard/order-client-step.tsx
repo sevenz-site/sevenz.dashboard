@@ -109,6 +109,19 @@ export function OrderClientStep({
   // árbol -- con los campos dentro. El inicializador perezoso solo corre en
   // el navegador, en el primer render, que es cuando hace falta.
   const delBorrador = () => leerBorrador(pedidoId)?.cliente ?? null;
+  // ── ¿ES UN PASO DEL FLUJO O UNA CORRECCIÓN? ────────────────────────
+  //
+  // Con el cliente YA en el borrador, a esta pantalla solo se llega por el
+  // lápiz de la tarjeta del 1/3 --encargo del dueño el 2026-10-26-- y eso no
+  // es el paso 4 de nada: es un desvío para corregir un dato, igual que
+  // «Registrar a cuenta separada», que tampoco lleva contador (su frame
+  // `1542:11888` no lo dibuja).
+  //
+  // DECIDIDO UNA VEZ AL ENTRAR, con el mismo inicializador perezoso que los
+  // campos: un instante después de guardar, el borrador tendrá cliente
+  // SIEMPRE, así que leerlo en cada render convertiría el 4/4 en un desvío a
+  // mitad de la primera pasada.
+  const [esCorreccion] = useState(() => delBorrador() != null);
   const [consiente, setConsiente] = useState(() => delBorrador()?.consienteWhatsapp ?? false);
   const [nombre, setNombre] = useState(() => delBorrador()?.name || delPedido.name);
   const [documento, setDocumento] = useState(
@@ -247,7 +260,7 @@ export function OrderClientStep({
             número cambia es exactamente la clase de cifra creíble y falsa que
             `CLAUDE.md` persigue — y aquí además contradecía al contador de la
             pantalla anterior. */}
-        {!cuentaSeparada ? (
+        {!cuentaSeparada && !esCorreccion ? (
           <OrderStepCounter
             pedidoId={pedidoId}
             paso="cliente"
