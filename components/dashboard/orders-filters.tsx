@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
-import { isUnregistered } from "@/lib/orders/catalog-orders";
+import { estaDescartado, isUnregistered } from "@/lib/orders/catalog-orders";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
 // EL BUSCADOR Y EL CHIP DE ESTADO DE PEDIDOS.
@@ -22,10 +22,24 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 // would offer to break it. Amount is not a question anyone asks of an order
 // either. If a sort ever arrives it goes here, beside this one.
 
+// «DESCARTADOS» ES UNA VISTA APARTE, NO UN ESTADO MÁS DE LA LISTA.
+//
+// Encargo del dueño el 2026-10-26, cuando el informe de los tres arreglos
+// dijo que un pedido descartado se podía devolver desde su propia pantalla
+// pero no se podía ENCONTRAR: *«¿Esto sería en la sección de "Pedidos"
+// cierto? de ser así agrégalo»*.
+//
+// LOS OTROS TRES NUNCA ENSEÑAN UN DESCARTADO, incluido «Todos», y eso es a
+// propósito: el diálogo de descartar le promete al tendero que el pedido
+// «sale de tu lista de pedidos y deja de contar como pendiente». Si
+// apareciera en «Todos» --que es la vista que se abre sola-- la promesa sería
+// falsa desde el primer segundo. Así que «Todos» significa «todos los que
+// siguen en tu lista», y los descartados tienen su puerta, que es esta.
 const STATUS_OPTIONS = [
   { value: "todos", label: "Todos" },
   { value: "sin-registrar", label: "Sin registrar" },
   { value: "registrados", label: "Registrado" },
+  { value: "descartados", label: "Descartado" },
 ] as const;
 
 type StatusFilter = (typeof STATUS_OPTIONS)[number]["value"];
@@ -37,7 +51,14 @@ type OrdersFilterState = {
   setStatus: (v: StatusFilter) => void;
   // Already filtered. The list consumes it as it is.
   visible: OrderWithItems[];
+  // CUÁNTOS SIGUEN EN LA LISTA, sin contar los descartados. Es la cifra que
+  // decide si la tarjeta de compartir se dibuja y si «no hay nada» se lee
+  // como «no coincide» o como «todavía no te ha llegado nada».
   total: number;
+  // Y LOS DESCARTADOS APARTE, porque son dos preguntas distintas. Un negocio
+  // cuyo único pedido está descartado tiene `total` 0 y `descartados` 1, y
+  // decirle «todavía no te ha llegado ningún pedido» ahí sería mentirle.
+  descartados: number;
 };
 
 const OrdersFilterContext = createContext<OrdersFilterState | null>(null);
@@ -77,6 +98,11 @@ export function OrdersFilterProvider({
     const q = plano(query.trim());
 
     return orders.filter((o) => {
+      // EL DESCARTE MANDA ANTES QUE CUALQUIER OTRO ESTADO. Preguntarlo
+      // después no bastaría: `isUnregistered` contesta `false` a un
+      // descartado --no está pendiente-- así que el chip «Registrado» lo
+      // habría colado entre los registrados, que es justo donde no está.
+      if (estaDescartado(o) !== (status === "descartados")) return false;
       if (status === "sin-registrar" && !isUnregistered(o)) return false;
       if (status === "registrados" && isUnregistered(o)) return false;
       if (!q) return true;
@@ -88,7 +114,17 @@ export function OrdersFilterProvider({
     });
   }, [orders, query, status]);
 
-  const value: OrdersFilterState = { query, setQuery, status, setStatus, visible, total: orders.length };
+  const descartados = useMemo(() => orders.filter((o) => estaDescartado(o)).length, [orders]);
+
+  const value: OrdersFilterState = {
+    query,
+    setQuery,
+    status,
+    setStatus,
+    visible,
+    total: orders.length - descartados,
+    descartados,
+  };
 
   return <OrdersFilterContext.Provider value={value}>{children}</OrdersFilterContext.Provider>;
 }
@@ -161,12 +197,31 @@ export function OrdersShareCard({ children }: { children: ReactNode }) {
 }
 
 export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
-  const { visible, total } = useOrdersFilters();
+  const { visible, total, descartados, status } = useOrdersFilters();
 
-  // "NOTHING MATCHES" IS NOT "NOTHING HAS ARRIVED", and `OrdersList`'s own
-  // empty state says the second one. Telling a shopkeeper who filtered by
-  // "Registrado" that no customer has ever ordered would be a lie with a
-  // perfectly good explanation sitting one tap away in the chip.
+  // ── CUATRO MANERAS DE NO TENER NADA EN PANTALLA, Y CADA UNA ES OTRA COSA
+  //
+  // Son cuatro ramas y no una porque las cuatro frases dicen verdades
+  // distintas, y la de al lado leída en el caso equivocado es una mentira con
+  // muy buena presentación. Ya pasó aquí: el estado vacío de `OrdersList`
+  // --«todavía no te ha llegado ningún pedido»-- se le enseñó durante meses a
+  // negocios que tenían tres, porque un `42501` se descartaba en silencio.
+
+  // 1. LA VISTA DE DESCARTADOS, VACÍA. Su propia frase, porque «ningún pedido
+  //    coincide con lo que buscas» mandaría a cambiar una búsqueda que no hay.
+  if (status === "descartados" && visible.length === 0) {
+    return (
+      <EmptyState
+        title="No has descartado ningún pedido"
+        subtitle="Los pedidos que descartes se guardan aquí y puedes restaurarlos."
+      />
+    );
+  }
+
+  // 2. "NOTHING MATCHES" IS NOT "NOTHING HAS ARRIVED", and `OrdersList`'s own
+  //    empty state says the second one. Telling a shopkeeper who filtered by
+  //    "Registrado" that no customer has ever ordered would be a lie with a
+  //    perfectly good explanation sitting one tap away in the chip.
   if (total > 0 && visible.length === 0) {
     return (
       <EmptyState
@@ -176,5 +231,19 @@ export function OrdersResults({ vacio }: { vacio?: ReactNode }) {
     );
   }
 
+  // 3. TODOS SUS PEDIDOS ESTÁN DESCARTADOS. Sin esta rama caería en el estado
+  //    vacío de abajo, que dice que no le ha llegado nada -- y le ha llegado:
+  //    lo descartó él. La frase nombra el chip donde están, que es el único
+  //    sitio desde el que se pueden devolver.
+  if (total === 0 && descartados > 0 && visible.length === 0) {
+    return (
+      <EmptyState
+        title="Todos tus pedidos están descartados"
+        subtitle="Míralos en el filtro «Descartado» para restaurar el que quieras."
+      />
+    );
+  }
+
+  // 4. Y si de verdad no ha llegado nada, el estado vacío de la lista.
   return <OrdersList orders={visible} vacio={vacio} />;
 }

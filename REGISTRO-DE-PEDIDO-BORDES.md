@@ -30,9 +30,13 @@ eso es justo lo que se pierde primero.
 
 | Id | Qué pasaba | Qué hace hoy |
 |---|---|---|
-| **PR-A2** | Un pedido **descartado se registraba igual** si se llegaba por URL | Las seis pantallas redirigen al detalle y la acción lo rechaza. El detalle lo dice con su chip **«Descartado»**, no ofrece «Registrar pedido», y su «⋮» ofrece **«Restaurar»** |
-| **PR-E6** | Un cliente **marcado «mala paga»** no se nombraba en ninguna de las cuatro pantallas | Diálogo **«‹Nombre› está marcado como Mala paga · ¿Fiarle de todas formas?»** antes de escribir, en **las dos** puertas que registran, y solo cuando queda algo debiendo |
+| **PR-A2** | Un pedido **descartado se registraba igual** si se llegaba por URL | Las seis pantallas redirigen al detalle y la acción lo rechaza. El detalle lo dice con su chip **«Descartado»**, no ofrece «Registrar pedido», y su «⋮» ofrece **«Restaurar»**. Y desde esa tarde se pueden ENCONTRAR: el chip de estado de la lista tiene un cuarto valor, **«Descartado»** |
+| **PR-E6** | Un cliente **marcado «mala paga»** no se nombraba en ninguna de las cuatro pantallas | Diálogo **«‹Nombre› está marcado como Mala paga · ¿Fiarle de todas formas?»** antes de escribir, en **las dos** puertas que registran, y solo cuando queda algo debiendo. Y desde esa tarde, un chip **«Mala paga»** en las **tres** tarjetas de cliente del flujo |
 | **PR-F6** | Registrar una moneda y **quitar la que falta** dejaba el pedido pendiente **para siempre** | Quitarla **cierra el pedido** cuando lo que queda vivo ya está vendido, y la pantalla lo dice: «Quitado. El pedido queda registrado» |
+
+**Las dos últimas columnas de `PR-A2` y `PR-E6` crecieron esa misma tarde**, y
+las dos por lo mismo: el dueño leyó este documento y pidió lo que faltaba. Es
+para lo que está.
 
 Las tres tienen suite desde ese día: `qa:pedido-registro` 16a-16d y 17a-17e, y
 `qa:aviso-mala-paga`. Cada una con su CONTROL, que es la mitad que impide
@@ -156,10 +160,16 @@ avisos y un pedido descartado sale de la lista de Pedidos, así que cuando su
 aviso se iba por abajo, el pedido **dejaba de tener puerta**. Ahora se devuelve
 desde su propia pantalla.
 
-**Lo que sigue sin tener puerta, dicho en voz alta:** ENCONTRARLO. El filtro de
-la lista tiene «Todos / Sin registrar / Registrado» y ninguno enseña los
-descartados. Un filtro «Descartados» sería la otra mitad, y es una decisión del
-dueño.
+**Y ENCONTRARLO YA TIENE PUERTA, desde el 2026-10-26 por la tarde**: el chip de
+estado de la lista lleva un cuarto valor, **«Descartado»**, y es el único que
+los enseña. Encargo del dueño al leer este mismo apartado: *«¿Esto sería en la
+sección de "Pedidos" cierto? de ser así agrégalo»*.
+
+**Los otros tres chips siguen sin enseñarlos, «Todos» incluido**, y eso no es un
+descuido: el diálogo de descartar promete que el pedido «sale de tu lista de
+pedidos». «Todos» es la vista que se abre sola, así que un descartado ahí
+convertiría esa promesa en mentira el primer segundo. «Todos» quiere decir
+«todos los que siguen en tu lista».
 
 **La salida que NO se tomó**, por si alguien la reabre: que registrar restaure
 el pedido solo. Cambia lo que el tendero quiso decir al descartarlo, así que es
@@ -543,11 +553,27 @@ avisar ahí sería una alarma que suena siempre — y una alarma que suena siemp
 se deja de leer, que es exactamente lo que no le puede pasar a esta. Lo decide
 `quedaFiado`, con la misma cuenta que dibuja las cifras de la pantalla.
 
-**Lo que NO cambió, y se dice porque el informe de la avería lo señalaba:** la
-tarjeta sigue siendo VERDE y sigue diciendo «El cliente ya existe en tu cuenta
-de Sevenz» durante todo el flujo. El aviso llega al final, antes de escribir.
-Poner además un chip «Mala paga» en esa tarjeta es una línea de trabajo y no se
-hizo: el dueño pidió el diálogo.
+**Y LA TARJETA VERDE YA LLEVA SU CHIP, desde el 2026-10-26 por la tarde.**
+Este apartado decía que no, porque el dueño había pedido el diálogo; al leerlo
+pidió la otra mitad: *«Un chip «Mala paga» en la tarjeta verde (…) agrégalo»*.
+
+Y la mitad importa: **el diálogo avisa en el último toque, cuando el tendero ya
+decidió; el chip avisa mientras lo está decidiendo.** Sin él, la única pantalla
+que habla de esa persona antes de fiarle la presenta en VERDE con un «ya
+existe», que es un aval.
+
+Va en **tres** tarjetas, y la tercera es la que se habría olvidado: el recuadro
+verde del paso del cliente, el del detalle del pedido, y la tarjeta del `1/x` —
+que es la ÚNICA tarjeta de cliente de la segunda pasada de un pedido de dos
+monedas, porque ahí el paso del cliente se salta. `qa:aviso-mala-paga` vigila
+las tres por su token (`MALA_PAGA_BADGE_CLASS`) y no por el texto, que esos
+ficheros ya llevan dentro del diálogo.
+
+**CON VARIAS FICHAS SE DICE DE OTRA FORMA.** El pedido trae un documento que
+varias comparten y nada dice cuál es: callarlo sería dejar al tendero fiando a
+ciegas, y señalar a una sería acusar a quien quizá no es. Así que el chip sale
+si alguna lo está, y una línea debajo dice que es una de ellas y manda a «Ver
+clientes».
 
 ---
 
@@ -675,14 +701,27 @@ lo peor que puede hacer ese diálogo.
 
 ---
 
-**`PR-F7` · Borrar la venta de un pedido ya registrado** ⛔
-`eliminarVenta` **no toca `catalog_orders`** (comprobado por ausencia: la función
-no escribe en esa tabla). Así que el pedido se queda sellado como registrado,
-apuntando a una venta borrada, y el flujo se niega a volver a entrar —redirige al
-detalle—. **El pedido del cliente no se puede volver a registrar.**
+**`PR-F7` · Borrar la venta de un pedido ya registrado** ❌ **MEDIDO en dev el 2026-10-26**
+`eliminarVenta` **no toca `catalog_orders`**. Así que el pedido se queda sellado
+como registrado, apuntando a una venta borrada, y el flujo se niega a volver a
+entrar —redirige al detalle—. **El pedido del cliente no se puede volver a
+registrar.**
+
+**Lo que se midió**, y ya no es una lectura del código: un pedido se registró de
+contado desde la app, se borró su venta desde «⋮ → Eliminar venta», y después:
+la fila de `sales` quedó con su `deleted_at` puesto, el cliente quedó con
+«Todavía no hay transacciones registradas», y el pedido siguió enseñando
+**«Registrado: 26 oct. 2026, 6:38 p. m.»** con su `sale_id` apuntando a la venta
+borrada. Ninguna pantalla dice nada.
+
 **Peor escenario:** el tendero borra una venta mal hecha para repetirla y
 descubre que el pedido ya no le deja. Lo que le queda es registrar la venta a
 mano por el asistente, sin los precios sellados que el cliente vio.
+
+**Y hay un caso que ni siquiera se puede intentar:** si el pedido se registró
+**fiado entero**, no hay venta que borrar — `/transacciones/venta/<id>/usd`
+devuelve 404 porque no hubo cobro en esa moneda, y la ficha del fiado no ofrece
+«Eliminar». O sea que el borde solo existe cuando hubo algo de contado.
 
 ---
 
@@ -706,12 +745,27 @@ tiene nada.
 
 ---
 
-**`PR-G3` · Dos pedidos a la vez, en dos pestañas** ⛔
-**Hay UNA sola clave de almacenamiento.** Abrir el segundo pedido y teclear algo
-**pisa el borrador del primero**, en silencio. `leerBorrador` filtra por id, así
-que el primero no se corrompe: simplemente deja de existir.
-**Peor escenario:** el tendero vuelve a la primera pestaña y sus dos pantallas de
-pago están vacías, sin una palabra. (Leído en el código, no medido en pantalla.)
+**`PR-G3` · Dos pedidos a la vez, EN LA MISMA PESTAÑA** ❌ **MEDIDO en dev el 2026-10-26**
+
+**Este apartado decía «en dos pestañas» y eso era FALSO.** Estaba leído en el
+código y no medido, que es justo contra lo que avisa `CLAUDE.md`. Medido: el
+borrador vive en **`sessionStorage`**, que es **de cada pestaña**. Dos pestañas
+sobre dos pedidos distintos guardan cada una el suyo y no se tocan — comprobado
+con las dos abiertas a la vez, leyendo la clave en cada una.
+
+**Lo que sí pasa, y es igual de silencioso, es en UNA pestaña.** Hay una sola
+clave, así que empezar un segundo pedido **pisa el borrador del primero**.
+`leerBorrador` filtra por id, así que el primero no se corrompe: deja de existir.
+
+**Medido con un pedido de dos monedas a medias** —dólares ya puestos, cliente ya
+elegido—: abrir otro pedido y teclear su pago devuelve al primero de **`1/3
+Pedido` con la tarjeta del cliente y «Editar» en los dólares** a **`1/4 Pedido`,
+sin tarjeta y con los dos bloques diciendo «Registrar»**. Sin un aviso.
+
+**No se pierde dinero**: la base no tiene nada hasta el último paso, y el cliente
+que el tendero había elegido se vuelve a emparejar solo por el documento, así que
+tampoco se parte en dos fichas. **Lo que se pierde es lo tecleado**, y el contador
+de pasos cambia de sitio sin explicar por qué.
 
 ---
 
@@ -871,12 +925,15 @@ ser fichas**. Lo que sigue abierto, por si merece una:
 
 | Id | Qué | Por qué no se hizo |
 |---|---|---|
-| `PR-F7` | Borrar la venta deja el pedido sellado para siempre | Nadie lo ha pedido; el tendero tiene la salida de registrar a mano |
-| `PR-G3` | Dos pedidos en dos pestañas: el segundo pisa el borrador del primero | Leído en el código, no medido en pantalla |
+| `PR-F7` | Borrar la venta deja el pedido sellado para siempre | Nadie lo ha pedido; el tendero tiene la salida de registrar a mano. **Medido el 2026-10-26** |
+| `PR-G3` | Dos pedidos seguidos en la MISMA pestaña: el segundo pisa el borrador del primero | **Medido el 2026-10-26**, y de paso corregido: entre pestañas NO pasa. No se pierde dinero, se pierde lo tecleado |
 | `PR-E3` | Varias fichas con los mismos dígitos: no hay dónde mirarlas desde el flujo | El frame del `1/x` quitó «Ver clientes» el 2026-10-26 |
-| — | Un filtro **«Descartados»** en la lista de Pedidos | Un descartado se devuelve desde su pantalla, pero no hay forma de ENCONTRARLO |
-| — | Un chip **«Mala paga»** en la tarjeta verde del cliente | El dueño pidió el diálogo; la tarjeta sigue diciendo solo «ya existe» |
 | `PR-H5` | **iPhone** | Hace falta un teléfono real |
+
+**Dos salieron de esta tabla el 2026-10-26**, los dos por encargo del dueño al
+leerla: el filtro **«Descartados»** de la lista de Pedidos (`PR-A2`) y el chip
+**«Mala paga»** de la tarjeta verde (`PR-E6`). Están construidos y sus apartados
+lo cuentan.
 
 ---
 

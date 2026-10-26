@@ -565,6 +565,16 @@ la base: era la puerta**.
 | El aviso de **«Mala paga»** | `qa:aviso-mala-paga` · y fiarle a uno marcado | Ninguna de las cuatro pantallas lo nombraba, y dos enseñaban la tarjeta VERDE «el cliente ya existe» |
 | Quitar la moneda que falta **cierra** el pedido | `qa:pedido-registro` 17a-17e · y hacerlo en pantalla | El pedido quedaba pendiente PARA SIEMPRE y su único botón contestaba «Esa parte del pedido ya se registró» |
 
+**Y LOS DESCARTADOS SE TIENEN QUE PODER ENCONTRAR**, desde el 2026-10-26: el
+chip de estado de la lista de Pedidos tiene un cuarto valor, **«Descartado»**,
+y es el ÚNICO que los enseña. Dos comprobaciones y las dos importan:
+
+- con el chip en **«Descartado»**, el pedido descartado sale, con su chip rojo
+  tenue en la columna de estado;
+- con el chip en **«Todos»** --que es la vista que se abre sola-- **NO sale**.
+  Si saliera, el diálogo de descartar estaría mintiendo: le promete al tendero
+  que el pedido «sale de tu lista de pedidos».
+
 **El detalle del descartado**, que es donde el arreglo se puede romper sin que
 nada falle: el pedido tiene que enseñar su chip **«Descartado»**, **no** el
 botón «Registrar pedido», y su «⋮» tiene que ofrecer **«Restaurar»**. Si el
@@ -575,6 +585,12 @@ detalle-- y nada en pantalla le dice por qué.
 del cliente, y el **Pago** --que es quien registra en la segunda pasada de un
 pedido de dos monedas, cuando el cliente ya está puesto--. Un aviso que solo
 salga en la primera no sale nunca justo en el caso de dos monedas.
+
+**Y EL CHIP «Mala paga» VA EN TRES TARJETAS**, también desde el 2026-10-26.
+`qa:aviso-mala-paga` las vigila, y en pantalla se mira la tercera, que es la
+que se olvida: la del **`1/x`** de un pedido de dos monedas, porque ahí el paso
+del cliente se salta y el recuadro verde no pasa por delante de nadie. Las
+otras dos son ese recuadro verde y el del detalle del pedido.
 
 **Los dos controles no son opcionales**, y sin ellos «avisar siempre» pasaría
 la prueba: un cliente **sin marca** no ve el diálogo, y un cliente marcado cuyo

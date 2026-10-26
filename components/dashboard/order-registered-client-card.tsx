@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { SquarePen } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { formatDocumentId } from "@/lib/format";
+import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
 
 // QUIÉN QUEDÓ APUNTADO EN LA PRIMERA MONEDA — frames `1708:15043` (la
 // pantalla) y `1708:15220` (la tarjeta), leídos con el puente de escritorio el
@@ -48,10 +50,36 @@ import { formatDocumentId } from "@/lib/format";
 //
 // NO HAY FLECHA EN EL SITEMAP que lo diga: el icono no tiene conector. Lo que
 // hay es su frase, y queda citada arriba para que se sepa de dónde salió.
-export function OrderRegisteredClientCard({ pedidoId }: { pedidoId: string }) {
+// ── Y EL CHIP «MALA PAGA», PORQUE AQUÍ EL RECUADRO VERDE NO PASA ─────
+//
+// El chip que el dueño pidió el 2026-10-26 vive en la tarjeta verde del paso
+// del cliente. ESTA PANTALLA NO LA TIENE: en la segunda pasada de un pedido
+// de dos monedas el paso del cliente se salta --ya está en el borrador-- así
+// que la única tarjeta de cliente que el tendero ve antes de cobrar la
+// segunda moneda es ésta.
+//
+// Sin esto, ese camino --el único que necesita dos cobros, o sea el más
+// largo-- no enseñaría la marca en ninguna pantalla, y el aviso llegaría solo
+// en el diálogo del último toque. Es la misma puerta que `PR-E6` tuvo que
+// cerrar dos veces por el mismo motivo.
+//
+// SE COMPRUEBA CONTRA EL ID, NO CONTRA LA MARCA A SECAS: el borrador puede
+// llevar otro cliente --el tendero lo cambió con el lápiz, o eligió «cuenta
+// separada»-- y entonces la ficha emparejada con el pedido no es a quien se
+// le va a apuntar nada. Es la misma condición que la puerta del Pago.
+export function OrderRegisteredClientCard({
+  pedidoId,
+  ficha,
+}: {
+  pedidoId: string;
+  // La ficha emparejada con el DOCUMENTO del pedido, cuando hay exactamente
+  // una. `null` con varias o con ninguna.
+  ficha?: { id: string; marcada: boolean } | null;
+}) {
   const borrador = useBorrador(pedidoId);
   const cliente = borrador?.cliente;
   if (!cliente) return null;
+  const marcada = ficha != null && ficha.marcada && cliente.fichaId === ficha.id;
 
   // INICIALES DE PALABRAS QUE EMPIECEN POR LETRA O NÚMERO. El nombre puede
   // venir del formulario que rellenó el CLIENTE, así que trae lo que él
@@ -78,6 +106,11 @@ export function OrderRegisteredClientCard({ pedidoId }: { pedidoId: string }) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-2">
           <p className="min-w-0 truncate text-base font-semibold">{cliente.name}</p>
+          {marcada ? (
+            <Badge variant="outline" className={`${MALA_PAGA_BADGE_CLASS} shrink-0`}>
+              Mala paga
+            </Badge>
+          ) : null}
           {/* ── EL LÁPIZ, A LA DERECHA DEL NOMBRE ───────────────────────
               Donde lo pone el frame: dentro de la fila del nombre, pegado al
               borde derecho de la columna.

@@ -1,4 +1,6 @@
 import { CircleUserRound, UserRoundSearch } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
 import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
@@ -200,6 +202,29 @@ export function OrderClientMatchAlert({
   coincidencia: OrderClientMatch;
 }) {
   const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+  // ── ¿HAY UNA MARCA DE «MALA PAGA» DETRÁS DE ESTE PEDIDO? ─────────────
+  //
+  // Encargo del dueño el 2026-10-26: *«Un chip «Mala paga» en la tarjeta
+  // verde (…) agrégalo»*. Es la mitad que faltaba del aviso que pidió esa
+  // misma mañana -- el diálogo avisa en el último toque, esto avisa mientras
+  // decide.
+  //
+  // CON VARIAS FICHAS NO SE PUEDE NOMBRAR A NADIE, y eso cambia qué se dice,
+  // no si se dice. El pedido trae un documento que varias fichas comparten
+  // --`033` normaliza sin quitar la letra, así que `V-` y `E-` conviven-- y
+  // nada en el pedido dice cuál es. Callarlo sería dejar al tendero fiando a
+  // ciegas, que es el fallo entero de `PR-E6`; afirmarlo sobre una ficha
+  // concreta sería acusar a quien quizá no es. Así que el chip sale cuando
+  // alguna lo está, y la frase de debajo dice que es una de ellas y manda a
+  // «Ver clientes», que es la única cosa capaz de distinguirlas.
+  const marcadas =
+    coincidencia.kind === "uno"
+      ? coincidencia.cliente.is_flagged
+        ? 1
+        : 0
+      : coincidencia.kind === "varios"
+        ? coincidencia.clientes.filter((c) => c.is_flagged).length
+        : 0;
   return (
     <>
       {coincidencia.kind !== "ninguno" ? (
@@ -208,12 +233,25 @@ export function OrderClientMatchAlert({
             className="mt-px size-4 shrink-0"
             aria-hidden="true"
           />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">
-              {coincidencia.kind === "varios"
-                ? "El cliente ya existe en varias cuentas de Sevenz."
-                : "El cliente ya existe en tu cuenta de Sevenz."}
-            </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* EL CHIP ARRIBA Y A LA DERECHA, no pegado a la frase: a 375px
+                el rótulo ocupa dos líneas y un chip dentro del texto se iría
+                al final de la segunda, que es donde no se mira. */}
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold">
+                {coincidencia.kind === "varios"
+                  ? "El cliente ya existe en varias cuentas de Sevenz."
+                  : "El cliente ya existe en tu cuenta de Sevenz."}
+              </p>
+              {marcadas > 0 ? (
+                <Badge
+                  variant="outline"
+                  className={`${MALA_PAGA_BADGE_CLASS} shrink-0`}
+                >
+                  Mala paga
+                </Badge>
+              ) : null}
+            </div>
             {/* LA SEGUNDA LÍNEA CAMBIA DE SUJETO A PROPÓSITO. Con una sola
             ficha nombra LA FICHA, que es lo que deja comparar con el
             nombre de arriba —el que escribió el cliente— y cazar un
@@ -225,6 +263,17 @@ export function OrderClientMatchAlert({
                 ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
                 : `${nombreDelPedido} con cédula ${formatDocumentId(digitosDelPedido, letraDelPedido)}`}
             </p>
+            {/* SOLO CUANDO NO SE PUEDE NOMBRAR. Con una sola ficha el chip ya
+                está encima del nombre que esta misma línea dice, y repetirlo
+                en prosa no añade nada. */}
+            {coincidencia.kind === "varios" && marcadas > 0 ? (
+              <p className="font-medium">
+                {marcadas === 1
+                  ? "Una de esas fichas está marcada como Mala paga."
+                  : `${marcadas} de esas fichas están marcadas como Mala paga.`}{" "}
+                Ábrelas para ver cuál.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : (

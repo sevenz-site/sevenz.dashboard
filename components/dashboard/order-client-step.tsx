@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { HandHelping, UserRoundSearch } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,7 @@ import {
 } from "@/components/dashboard/order-registration-summary";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
-import type { OwnerCountry } from "@/lib/types";
+import { MALA_PAGA_BADGE_CLASS, type OwnerCountry } from "@/lib/types";
 import type { OrderClient } from "@/lib/orders/order-client-match";
 
 // THE LAST STEP BEFORE THE SUMMARY: who this sale belongs to.
@@ -357,10 +358,35 @@ export function OrderClientStep({
 
           <div className="flex items-start gap-2 rounded-lg border border-money-in/30 bg-money-in/10 p-2.5 text-xs text-money-in">
             <HandHelping className="mt-px size-4 shrink-0" aria-hidden />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="font-semibold">
-                El cliente ya existe en tu cuenta de Sevenz.
-              </p>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              {/* ── EL CHIP «MALA PAGA», DENTRO DEL RECUADRO VERDE ──────
+                  Encargo del dueño el 2026-10-26, al leer el informe del
+                  diálogo que había pedido esa mañana: la tarjeta «sigue
+                  diciendo solo "ya existe"».
+
+                  Y ESA ERA LA MITAD QUE FALTABA, no un adorno. El diálogo
+                  avisa en el ÚLTIMO toque, cuando el tendero ya decidió; esto
+                  avisa mientras lo está decidiendo. Sin el chip, la única
+                  pantalla que habla de esa persona antes de fiarle la
+                  presenta en VERDE con un «ya existe» --que es un aval--, y
+                  el aviso llega cuando ya ha dicho que sí.
+
+                  ARRIBA Y A LA DERECHA, no pegado a la frase: a 375px el
+                  rótulo ocupa dos líneas, y un chip dentro del texto se iría
+                  al final de la segunda, que es donde no se mira. */}
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold">
+                  El cliente ya existe en tu cuenta de Sevenz.
+                </p>
+                {fichaMarcada ? (
+                  <Badge
+                    variant="outline"
+                    className={`${MALA_PAGA_BADGE_CLASS} shrink-0`}
+                  >
+                    Mala paga
+                  </Badge>
+                ) : null}
+              </div>
               <p>
                 {ficha.name} con documento{" "}
                 {formatDocumentId(

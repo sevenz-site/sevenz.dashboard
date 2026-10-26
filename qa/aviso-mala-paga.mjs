@@ -109,6 +109,37 @@ for (const ruta of PUERTAS) {
   }
 }
 
+// ── 4. Y EL CHIP, QUE ES LA OTRA MITAD DEL AVISO ──────────────────────
+//
+// Encargo del dueño el 2026-10-26, al leer el informe del diálogo: la tarjeta
+// «sigue diciendo solo "ya existe"». El diálogo avisa en el ÚLTIMO toque,
+// cuando el tendero ya decidió; el chip avisa mientras lo está decidiendo.
+//
+// SE VIGILA `MALA_PAGA_BADGE_CLASS` Y NO EL TEXTO «Mala paga»: esos dos
+// ficheros ya llevan esa frase dentro del diálogo, así que buscarla pasaría
+// en verde con el chip borrado. El token es lo único que solo tiene el chip --
+// y además es el que lleva el negro medido, así que una copia de sus clases se
+// quedaría atrás el día que se afine.
+const TARJETAS = [
+  // El recuadro verde del paso del cliente.
+  "components/dashboard/order-client-step.tsx",
+  // El del detalle del pedido, `OrderClientMatchAlert`.
+  "components/dashboard/order-client-card.tsx",
+  // Y la tarjeta del `1/4`, que es la ÚNICA tarjeta de cliente de la segunda
+  // pasada de un pedido de dos monedas: ahí el paso del cliente se salta, así
+  // que el recuadro verde no pasa por delante de nadie.
+  "components/dashboard/order-registered-client-card.tsx",
+];
+for (const ruta of TARJETAS) {
+  const texto = leer(ruta);
+  if (!texto) continue;
+  if (!/MALA_PAGA_BADGE_CLASS/.test(texto)) {
+    fallos.push(
+      `${ruta} — perdió el chip «Mala paga»: la tarjeta presenta a esa persona sin una marca.`,
+    );
+  }
+}
+
 if (fallos.length > 0) {
   console.log(`\nFALLA — el aviso de «mala paga» del flujo de pedidos:\n`);
   for (const f of fallos) console.log(`  ✗ ${f}`);
@@ -123,5 +154,5 @@ if (fallos.length > 0) {
 }
 
 console.log(
-  "PASS  el aviso de «mala paga» sigue en pie: la marca se lee, `quedaFiado` decide, y las dos puertas preguntan.",
+  "PASS  el aviso de «mala paga» sigue en pie: la marca se lee, `quedaFiado` decide, las dos puertas preguntan y las tres tarjetas llevan su chip.",
 );

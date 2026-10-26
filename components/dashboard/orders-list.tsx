@@ -17,6 +17,7 @@ import { formatDocumentId } from "@/lib/format";
 import { type PriceCurrency } from "@/lib/products/price";
 import { partirDocumento } from "@/lib/orders/order-client-match";
 import {
+  estaDescartado,
   isUnregistered,
   type CatalogOrderRow,
   type CatalogOrderItemRow,
@@ -82,6 +83,25 @@ function Importes({ importes }: { importes: OrderWithItems["importes"] }) {
 }
 
 function Estado({ order }: { order: CatalogOrderRow }) {
+  // ── «DESCARTADO», CON EL MISMO ROJO TENUE QUE SU PROPIA PANTALLA ─────
+  //
+  // Las clases son las del chip del detalle (`[id]/page.tsx`) a propósito: es
+  // la misma palabra sobre el mismo pedido, y dos aspectos distintos para un
+  // estado se leen como dos estados.
+  //
+  // Y NO CHOCA CON EL ROJO DE «Sin registrar», que está diez líneas más
+  // abajo, porque las dos no pueden salir en la misma pantalla: un descartado
+  // solo llega a esta lista cuando el chip del filtro está en «Descartado», y
+  // en esa vista TODAS las filas son descartadas. Si algún día «Todos»
+  // empieza a enseñarlos, esta coincidencia deja de ser inofensiva y hay que
+  // separar los dos rojos.
+  if (estaDescartado(order)) {
+    return (
+      <Badge variant="outline" className="border-transparent bg-destructive/10 text-destructive">
+        Descartado
+      </Badge>
+    );
+  }
   if (isUnregistered(order)) {
     // ── MISMO CHIP QUE UN CLIENTE EN «Crítico» ────────────────────────
     //

@@ -188,7 +188,17 @@ export default async function RegistrarPedidoPage({
           entre los bloques. Solo se dibuja a partir de la segunda pasada
           --antes no hay cliente que enseñar-- y por eso es un componente de
           navegador: ese dato vive en el borrador, que el servidor no ve. */}
-      <OrderRegisteredClientCard pedidoId={pedido.id} />
+      <OrderRegisteredClientCard
+        pedidoId={pedido.id}
+        ficha={
+          clienteDelPedido.kind === "uno"
+            ? {
+                id: clienteDelPedido.cliente.id,
+                marcada: clienteDelPedido.cliente.is_flagged,
+              }
+            : null
+        }
+      />
 
       <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
       <div className="flex flex-col gap-2">

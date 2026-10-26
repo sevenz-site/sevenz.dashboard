@@ -54,20 +54,24 @@ export default async function OrdenesPage() {
       .from("catalog_orders")
       .select(ORDER_COLUMNS)
       .eq("owner_id", user!.id)
-      // ── LOS DESCARTADOS NO SALEN AQUÍ ─────────────────────────────
+      // ── LOS DESCARTADOS LLEGAN, Y EL FILTRO DECIDE SI SE VEN ──────
       //
-      // Migración `162`. El dueño lo pidió el 2026-10-26 --*«al seleccionarla
-      // elimina el pedido»*-- y el propio diálogo se lo promete: «sale de tu
-      // lista de pedidos y deja de contar como pendiente».
+      // Aquí había un `.neq("status", "discarded")`: el pedido descartado no
+      // salía de la base, así que no había forma de ENSEÑARLO nunca. Se quitó
+      // el 2026-10-26, cuando el dueño pidió el filtro --*«¿Esto sería en la
+      // sección de "Pedidos" cierto? de ser así agrégalo»*--.
       //
-      // MEDIDO EN DEV ESE DÍA: sin esta línea el pedido descartado seguía en
-      // la lista, con su estado y todo. El diálogo decía una cosa y la
-      // pantalla de al lado otra.
+      // LA PROMESA DEL DIÁLOGO SIGUE EN PIE, y es la razón por la que esto no
+      // deshace nada: lo que le promete al tendero es que el pedido «sale de
+      // tu lista de pedidos», y de la lista lo sigue sacando
+      // `OrdersFilterProvider`, que los esconde en los tres chips normales
+      // --«Todos» incluido-- y solo los enseña en el suyo.
       //
-      // Y NO SE PIERDE: la notificación roja lo nombra y lleva su
-      // «Restaurar». Esconderlo de la lista sin ese aviso sí sería perderlo,
-      // y por eso las dos cosas se construyeron juntas.
-      .neq("status", "discarded")
+      // POR QUÉ MOVERLO DE LA CONSULTA AL FILTRO Y NO HACER OTRA CONSULTA:
+      // son los pedidos de un negocio, ya paginados en el cliente, y una
+      // segunda vuelta al servidor para la vista que casi nunca se abre
+      // costaría más que traerlos. Lo que la consulta NO puede hacer es
+      // enseñarlos cuando se piden.
       // UNATTENDED FIRST, most recent at the top within each group.
       // Ordering by date alone would bury yesterday's unprepared order under
       // three of today's already dealt with -- the exact opposite of what the
