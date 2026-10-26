@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package, ShoppingBag } from "lucide-react";
+import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package } from "lucide-react";
+import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
+import { restaurarPedido } from "@/app/(app)/productos/ordenes/actions";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
@@ -135,20 +137,68 @@ export function NotificationList({
                 <ProductHideRow notification={n} />
               ) : n.kind === "catalog_order" ? (
                 <>
-                  <ShoppingBag className="mt-0.5 size-4 shrink-0 text-brand" />
+                  {/* ── EL MISMO ICONO QUE LA TARJETA «PEDIDOS» DE INICIO ──
+                      Encargo del dueño el 2026-10-26: *«las notificaciones
+                      relacionadas a pedidos deben tener el mismo ícono de la
+                      card "Pedidos" en el home, lo único que cambia es el
+                      color según el estado del pedido»*.
+
+                      ERA UN `ShoppingBag` DE LUCIDE, o sea otro dibujo para
+                      el mismo hecho. El tendero ve la tarjeta verde en Inicio
+                      y el aviso en la campana, y si no son el mismo icono no
+                      se leen como lo mismo.
+
+                      VERDE, ROJO Y AZUL, los tres suyos:
+                        · recibido    — verde, el de la tarjeta de Inicio
+                        · descartado  — rojo, el `--destructive` de la app
+                        · restaurado  — azul
+
+                      EL VERDE VA POR SU HEX y no por una clase de Tailwind
+                      porque es el color del propio icono, no un token del
+                      sistema: está en `VERDE_PEDIDOS`, junto al dibujo, para
+                      que la tarjeta y esto no se separen. Los otros dos sí
+                      son tokens, porque rojo y azul ya significan algo en
+                      esta app. */}
+                  <PedidosIcon
+                    className={
+                      n.estado === "descartado"
+                        ? "mt-0.5 size-5 shrink-0 text-destructive"
+                        : n.estado === "restaurado"
+                          ? "mt-0.5 size-5 shrink-0 text-sky-600 dark:text-sky-400"
+                          : "mt-0.5 size-5 shrink-0"
+                    }
+                    style={
+                      n.estado === "recibido" ? { color: VERDE_PEDIDOS } : undefined
+                    }
+                  />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium">{n.customerName} te hizo un pedido</p>
+                    {/* LA FRASE DICE QUIÉN HIZO QUÉ. «Te hizo un pedido» es
+                        del cliente; descartar y restaurar son del tendero, y
+                        por eso van en segunda persona: es él quien lo hizo y
+                        quien puede deshacerlo. */}
+                    <p className="font-medium">
+                      {n.estado === "descartado"
+                        ? `Descartaste el pedido de ${n.customerName}`
+                        : n.estado === "restaurado"
+                          ? `Restauraste el pedido de ${n.customerName}`
+                          : `${n.customerName} te hizo un pedido`}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {n.itemCount} {n.itemCount === 1 ? "producto" : "productos"} ·{" "}
                       {formatDateTime(n.occurredAt)}
                     </p>
-                    {/* A LINK AND NOT A BUTTON, unlike the rows above: this
-                        one navigates, and the three states an order can reach
-                        -- attended, registered, discarded -- all live on its
-                        own page. The notice itself has nothing to toggle. */}
+                    {/* «RESTAURAR» AQUÍ, QUE ES LA OTRA MITAD DEL ENCARGO
+                        --*«debe mandar la notificación y ofrecer
+                        restaurarlo»*--. El toast que sale al descartar
+                        también lo ofrece, pero se va en segundos: este es el
+                        del arrepentimiento de mañana. */}
+                    {n.estado === "descartado" ? (
+                      <OrderRestoreRow orderId={n.orderId} />
+                    ) : (
                     <Button asChild type="button" variant="outline" size="sm" className="mt-1.5 h-7">
                       <Link href={`/productos/ordenes/${n.orderId}`}>Ver pedido</Link>
                     </Button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -305,5 +355,40 @@ function ProductHideRow({
         ) : null}
       </div>
     </>
+  );
+}
+
+// «RESTAURAR» DENTRO DE LA NOTIFICACIÓN DE UN PEDIDO DESCARTADO.
+//
+// Fila propia y no un `onClick` suelto por lo mismo que `ProductHideRow`, que
+// es el precedente exacto de esto: necesita su `useState` de ocupado, y
+// meterlo en la lista obligaría a tener uno por cada notificación de la
+// pantalla.
+function OrderRestoreRow({ orderId }: { orderId: string }) {
+  const router = useRouter();
+  const [ocupado, setOcupado] = useState(false);
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="mt-1.5 h-7"
+      disabled={ocupado}
+      onClick={() => {
+        setOcupado(true);
+        void restaurarPedido(orderId).then((r) => {
+          setOcupado(false);
+          if (!r.ok) {
+            toast.error(r.error);
+            return;
+          }
+          toast.success("El pedido volvió a tu lista");
+          router.refresh();
+        });
+      }}
+    >
+      {ocupado ? "Restaurando…" : "Restaurar"}
+    </Button>
   );
 }

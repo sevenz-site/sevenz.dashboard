@@ -54,6 +54,20 @@ export default async function OrdenesPage() {
       .from("catalog_orders")
       .select(ORDER_COLUMNS)
       .eq("owner_id", user!.id)
+      // ── LOS DESCARTADOS NO SALEN AQUÍ ─────────────────────────────
+      //
+      // Migración `162`. El dueño lo pidió el 2026-10-26 --*«al seleccionarla
+      // elimina el pedido»*-- y el propio diálogo se lo promete: «sale de tu
+      // lista de pedidos y deja de contar como pendiente».
+      //
+      // MEDIDO EN DEV ESE DÍA: sin esta línea el pedido descartado seguía en
+      // la lista, con su estado y todo. El diálogo decía una cosa y la
+      // pantalla de al lado otra.
+      //
+      // Y NO SE PIERDE: la notificación roja lo nombra y lleva su
+      // «Restaurar». Esconderlo de la lista sin ese aviso sí sería perderlo,
+      // y por eso las dos cosas se construyeron juntas.
+      .neq("status", "discarded")
       // UNATTENDED FIRST, most recent at the top within each group.
       // Ordering by date alone would bury yesterday's unprepared order under
       // three of today's already dealt with -- the exact opposite of what the

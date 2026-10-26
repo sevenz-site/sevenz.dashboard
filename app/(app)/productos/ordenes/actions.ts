@@ -799,3 +799,127 @@ export async function restaurarMonedaDelPedido(
   revalidatePath(`/productos/ordenes/${pedido.id}`, "layout");
   return { ok: true };
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// DESCARTAR UN PEDIDO ENTERO, Y DEVOLVERLO
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Encargo del dueño el 2026-10-26: *«en el header, agrega botón "More" con
+// opción "Descartar"; al seleccionarla elimina el pedido (debe mandar la
+// notificación y ofrecer restaurarlo)»*.
+//
+// NO ES LO MISMO QUE QUITAR UNA MONEDA, y por eso son dos acciones y no una
+// con un argumento: quitar una moneda deja un pedido que SIGUE vivo y se va a
+// registrar; descartar dice que ese pedido no va a ninguna parte. Lo primero
+// toca líneas; esto toca el pedido.
+//
+// ───────────────────────────────────────────────────────────────────────
+// SE GUARDA LA FECHA Y NO SOLO EL ESTADO — migración `162`
+//
+// Porque la notificación cuelga de ella. Los avisos de pedido no se guardan
+// en ninguna tabla: `getNotifications` los DEDUCE de `catalog_orders`. Sin un
+// `discarded_at` no hay de qué colgar el aviso rojo ni cómo ordenarlo entre
+// los demás, y el pedido descartado simplemente desaparecería sin dejar
+// rastro de que alguien lo descartó.
+//
+// DOS FECHAS Y NO UN ESTADO porque esto se puede repetir: descartar, devolver
+// y volver a descartar. Gana la más reciente, que es lo que mira la
+// notificación para saber si enseña la roja o la azul.
+//
+// ───────────────────────────────────────────────────────────────────────
+// UN PEDIDO YA REGISTRADO NO SE DESCARTA
+//
+// Su venta está escrita, con su cargo o su cobro. Descartarlo dejaría el
+// pedido diciendo que no va a ninguna parte y la venta diciendo lo contrario,
+// y nada en pantalla explicaría cuál manda. Para deshacer eso hay que borrar
+// la VENTA, que es otra puerta y tiene su propio diálogo.
+
+export type ResultadoDeDescartar = { ok: true } | { ok: false; error: string };
+
+export async function descartarPedido(
+  pedidoId: string,
+): Promise<ResultadoDeDescartar> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  const { pedido, error } = await pedidoDelDueno(supabase, pedidoId, user.id);
+  if (!pedido) return { ok: false, error: error! };
+
+  const { error: errorDescartar } = await supabase
+    .from("catalog_orders")
+    .update({
+      status: "discarded",
+      discarded_at: new Date().toISOString(),
+      // `restored_at` A NULO, y no se deja el de la vez anterior: la
+      // notificación decide cuál enseña comparando las dos fechas, y una
+      // restauración vieja ganándole a un descarte nuevo pintaría de azul un
+      // pedido que acaba de descartarse.
+      restored_at: null,
+    })
+    .eq("id", pedido.id)
+    .eq("owner_id", user.id);
+  if (errorDescartar) {
+    console.error("[pedido] descartar:", errorDescartar.message);
+    return { ok: false, error: "No pudimos descartarlo. Vuelve a intentarlo." };
+  }
+
+  // EL CONTADOR DE LA CAMPANA Y LA LISTA SE REHACEN. `layout` y no la ruta
+  // sola: el número vive en la cabecera, que es otro árbol.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function restaurarPedido(
+  pedidoId: string,
+): Promise<ResultadoDeDescartar> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  // AQUÍ NO VALE `pedidoDelDueno`: esa función rechaza los registrados, y
+  // además este pedido está DESCARTADO, que es el estado que se viene a
+  // deshacer. Se comprueba el dueño igual --el id llega del navegador-- y se
+  // exige que de verdad estuviera descartado.
+  const { data: pedido, error: errorLeer } = await supabase
+    .from("catalog_orders")
+    .select("id, status, registered_at")
+    .eq("id", pedidoId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (errorLeer) {
+    console.error("[pedido] leer para restaurar:", errorLeer.message);
+    return { ok: false, error: "No pudimos leer el pedido. Vuelve a intentarlo." };
+  }
+  if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
+  if (pedido.status !== "discarded") {
+    return { ok: false, error: "Ese pedido no está descartado." };
+  }
+
+  // VUELVE A `new` Y NO A `seen`. `seen` significaba «lo miré», y ese estado
+  // dejó de usarse el 2026-10-25 cuando el dueño eliminó el concepto de
+  // pedido atendido. `new` es lo que cuenta como pendiente, que es justo lo
+  // que un pedido restaurado vuelve a ser.
+  const { error: errorRestaurar } = await supabase
+    .from("catalog_orders")
+    .update({ status: "new", restored_at: new Date().toISOString() })
+    .eq("id", pedido.id)
+    .eq("owner_id", user.id);
+  if (errorRestaurar) {
+    console.error("[pedido] restaurar:", errorRestaurar.message);
+    return { ok: false, error: "No pudimos restaurarlo. Vuelve a intentarlo." };
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}

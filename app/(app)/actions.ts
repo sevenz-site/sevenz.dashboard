@@ -127,6 +127,17 @@ export type NotificationItem =
       // listing them: the order's own page is one tap away and is where they
       // belong.
       itemCount: number;
+      // ── QUÉ LE PASÓ AL PEDIDO ────────────────────────────────────
+      //
+      // Encargo del dueño el 2026-10-26: *«lo único que cambia es el color
+      // según el estado del pedido»* -- verde al recibirlo, rojo al
+      // eliminarlo, azul al restaurarlo.
+      //
+      // UN SOLO `kind` CON TRES ESTADOS Y NO TRES `kind`: es el mismo hecho
+      // --un pedido-- en tres momentos, con el mismo icono, el mismo enlace
+      // y la misma fila. Tres tipos obligarían a escribir esa fila tres
+      // veces, y la tercera se quedaría atrás el día que cambie.
+      estado: "recibido" | "descartado" | "restaurado";
     };
 
 const NOTIFICATION_PHOTO_SIGNED_URL_TTL_SECONDS = 300;
@@ -200,10 +211,23 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       // `!inner` NO, y el filtro va en el embebido: un pedido cuyas líneas
       // estén TODAS quitadas sigue existiendo y debe salir en la lista con
       // cero productos, no desaparecer. Migración `161`.
-      .select("id, customer_name, created_at, catalog_order_items(id)")
+      .select(
+        "id, customer_name, created_at, status, discarded_at, restored_at, catalog_order_items(id)",
+      )
       .is("catalog_order_items.deleted_at", null)
       .eq("owner_id", user.id)
-      .eq("status", "new")
+      // ── YA NO SOLO LOS `new` ─────────────────────────────────────
+      //
+      // Hasta el 2026-10-26 el filtro era `status = 'new'`, y eso bastaba
+      // porque solo había un aviso que dar: «te hizo un pedido». Desde que el
+      // tendero puede DESCARTAR uno --y devolverlo-- hay dos avisos más, y el
+      // descartado tiene por definición otro estado.
+      //
+      // ASÍ QUE LO QUE ENTRA ES: los pendientes, y los que alguien tocó
+      // alguna vez. Un pedido ya REGISTRADO no entra por `status`, pero sí
+      // por `discarded_at` si se descartó antes de registrarse -- y debe,
+      // porque ese aviso cuenta algo que pasó.
+      .or(`status.eq.new,discarded_at.not.is.null,restored_at.not.is.null`)
       .order("created_at", { ascending: false })
       .limit(20),
   ]);
@@ -272,6 +296,9 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     id: string;
     customer_name: string;
     created_at: string;
+    status: string;
+    discarded_at: string | null;
+    restored_at: string | null;
     catalog_order_items: { id: string }[] | null;
   }[];
 
@@ -445,14 +472,44 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     // 2026-10-16. Each order is attended separately (ring the customer,
     // prepare it), and grouping hides which is which exactly when they have
     // to be told apart.
-    ...orderRows.map((r): NotificationItem => ({
-      id: r.id,
-      kind: "catalog_order",
-      occurredAt: r.created_at,
-      orderId: r.id,
-      customerName: r.customer_name,
-      itemCount: r.catalog_order_items?.length ?? 0,
-    })),
+    // ── CADA PEDIDO DA UN AVISO: EL DE LO ÚLTIMO QUE LE PASÓ ─────────
+    //
+    // Y no tres acumulados. El tendero que descarta un pedido no quiere ver
+    // encima «te hizo un pedido» del mismo: el aviso es para enterarse de
+    // algo, y lo que hay que enterarse es del estado de hoy.
+    //
+    // CUÁL GANA LO DICE LA FECHA MÁS RECIENTE, no el `status`. Son dos
+    // columnas --`discarded_at` y `restored_at`, migración `162`-- justo
+    // porque esto se puede repetir: descartar, devolver, volver a descartar.
+    //
+    // Y LA FECHA DEL AVISO ES LA DE ESE HECHO, no la del pedido: un pedido de
+    // la semana pasada descartado hace un minuto tiene que salir ARRIBA, que
+    // es donde lo busca quien acaba de tocarlo.
+    ...orderRows.map((r): NotificationItem => {
+      const descartado = r.discarded_at ? new Date(r.discarded_at).getTime() : 0;
+      const restaurado = r.restored_at ? new Date(r.restored_at).getTime() : 0;
+      const estado =
+        descartado === 0 && restaurado === 0
+          ? ("recibido" as const)
+          : descartado > restaurado
+            ? ("descartado" as const)
+            : ("restaurado" as const);
+      const cuando =
+        estado === "descartado"
+          ? (r.discarded_at as string)
+          : estado === "restaurado"
+            ? (r.restored_at as string)
+            : r.created_at;
+      return {
+        id: r.id,
+        kind: "catalog_order",
+        occurredAt: cuando,
+        orderId: r.id,
+        customerName: r.customer_name,
+        itemCount: r.catalog_order_items?.length ?? 0,
+        estado,
+      };
+    }),
   ];
 
   return items

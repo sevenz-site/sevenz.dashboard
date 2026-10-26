@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { ChevronRight } from "lucide-react";
+import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
 
 // THE SHORTCUT TO PEDIDOS, in the two places the owner asked for it:
 // Catálogo (frame `1360:6518`, 2026-10-16) and Inicio (frame `1360:6592`, the
@@ -83,14 +83,17 @@ export function OrdersCard({
             : "flex min-w-0 flex-1 items-center gap-3"
         }
       >
-        <Image
-          src="/icon-pedidos.svg"
-          alt=""
-          width={32}
-          height={32}
-          className="shrink-0"
-          aria-hidden="true"
-        />
+        {/* EL MISMO DIBUJO QUE LAS NOTIFICACIONES desde el 2026-10-26. Era
+            un `<Image src="/icon-pedidos.svg">`, y un `.svg` servido como
+            imagen no se puede pintar: el color vive dentro del fichero. Las
+            notificaciones lo necesitan en tres colores --verde, rojo y azul,
+            según lo que le pasó al pedido-- así que el trazo se mudó a
+            `PedidosIcon` con `currentColor`.
+
+            AQUÍ SIGUE SIENDO EL MISMO VERDE, el que el icono ya tenía. No es
+            un color nuevo ni un token: `VERDE_PEDIDOS` vive junto al dibujo
+            para que esta tarjeta y el aviso de la campana no se separen. */}
+        <PedidosIcon className="size-8 shrink-0" style={{ color: VERDE_PEDIDOS }} />
         {place === "inicio" && !vacia ? (
           <span className="truncate text-xs leading-4 text-primary">{unattended} sin registrar</span>
         ) : (

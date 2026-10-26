@@ -48,11 +48,22 @@ export function ScreenBackRow({
   // esto la pantalla se quedaría sin ninguna salida en un escritorio.
   soloEnTelefono = true,
   children,
+  acciones,
 }: {
   href?: string;
   label?: string;
   onClick?: () => void;
   soloEnTelefono?: boolean;
+  // ── LO QUE VA AL OTRO EXTREMO DE LA FILA ───────────────────────────
+  //
+  // Hoy solo el «⋮» de la pantalla de un pedido, añadido el 2026-10-26. Va
+  // aquí dentro y no como un hermano suelto porque esta fila es `sticky`:
+  // pegado fuera, el menú se quedaría atrás al bajar mientras la flecha sube,
+  // y el frame los dibuja en la misma barra.
+  //
+  // `ml-auto` LO EMPUJA SOLO, así que la flecha no se mueve ni hace falta
+  // reservarle hueco a algo que casi ninguna pantalla monta.
+  acciones?: React.ReactNode;
   // El control, cuando no es ni un enlace ni un botón corriente. Lo usan «Mi
   // negocio» y «Subir libreta» con `CarteraBackButton`, que pregunta antes de
   // salir si hay cambios sin guardar.
@@ -84,6 +95,7 @@ export function ScreenBackRow({
             </Link>
           </Button>
         ))}
+      {acciones ? <div className="ml-auto flex items-center">{acciones}</div> : null}
     </div>
   );
 }

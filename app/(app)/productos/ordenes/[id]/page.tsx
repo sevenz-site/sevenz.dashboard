@@ -10,6 +10,7 @@ import {
 import { findOrderClient, partirDocumento } from "@/lib/orders/order-client-match";
 import { OrderClientMatchAlert } from "@/components/dashboard/order-client-card";
 import { OrderDraftReset } from "@/components/dashboard/order-draft-reset";
+import { OrderMoreMenu } from "@/components/dashboard/order-more-menu";
 import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
 import {
@@ -241,6 +242,21 @@ export default async function OrdenPage({
         href="/productos/ordenes"
         label="Volver a Pedidos"
         soloEnTelefono={false}
+        // ── EL «⋮» DE LA CABECERA, CON «DESCARTAR» ──────────────────
+        //
+        // Encargo del dueño el 2026-10-26. El frame lo dibuja en esta barra
+        // desde el principio y hasta hoy no hacía nada.
+        //
+        // NO SE DIBUJA EN UN PEDIDO YA REGISTRADO: su venta está escrita, así
+        // que descartarlo dejaría el pedido diciendo que no va a ninguna
+        // parte y la venta diciendo lo contrario. Para deshacer eso hay que
+        // borrar la VENTA, que es otra puerta. Un menú de una sola opción que
+        // no aplica es un menú vacío, así que se va entero.
+        acciones={
+          pedido.registered_at == null ? (
+            <OrderMoreMenu pedidoId={pedido.id} />
+          ) : null
+        }
       />
 
       {/* «Nuevo pedido» Y NO EL NOMBRE DEL CLIENTE — frame `1518:10873`, y
