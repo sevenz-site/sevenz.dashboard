@@ -43,6 +43,7 @@ export function ProductShareButton({
   businessName,
   initialToken,
   variante = "flotante",
+  sinServidor = false,
 }: {
   productId: string;
   productName: string;
@@ -56,12 +57,31 @@ export function ProductShareButton({
   //   no compite con nada: la foto ocupa el ancho entero de la pantalla.
   // `fila` = el icono suelto de una fila de acciones.
   variante?: "flotante" | "grande" | "fila";
+  // ── EN EL CATÁLOGO DEL CLIENTE NO HAY SESIÓN ────────────────────────
+  //
+  // `getOrCreateCatalogLink` es una acción del DUEÑO: lee `auth.getUser()` y
+  // sin sesión devuelve error. En `/c/<token>` quien mira no tiene cuenta --
+  // ni tiene por qué-- así que esa llamada no puede ocurrir nunca.
+  //
+  // HOY NO OCURRIRÍA IGUALMENTE, porque esa página siempre trae el token en
+  // su propia URL y `conseguirToken` corta antes. Esto no es por hoy: es para
+  // que el día que alguien monte este botón en otra pantalla pública sin
+  // token, falle al escribirlo y no delante de un cliente.
+  //
+  // El síntoma que evita es de los que no se parecen a su causa: el cliente
+  // toca «Compartir», no pasa nada visible, y lo único que queda es un toast
+  // diciendo «Sesión expirada» a alguien que nunca inició una.
+  sinServidor?: boolean;
 }) {
   const [token, setToken] = useState(initialToken);
   const [, startTransition] = useTransition();
 
   function conseguirToken(): Promise<string | null> {
     if (token) return Promise.resolve(token);
+    // La puerta del modo público: sin token y sin servidor no hay nada que
+    // pedir, así que se contesta `null` y el botón no hace nada en vez de
+    // llamar a una acción que exige sesión.
+    if (sinServidor) return Promise.resolve(null);
     return new Promise((resolve) => {
       startTransition(async () => {
         const r = await getOrCreateCatalogLink();

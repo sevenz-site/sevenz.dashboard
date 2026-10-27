@@ -92,6 +92,22 @@ export async function generateMetadata({
         locale: "es_VE",
         type: "website",
       },
+      // ── `twitter` TAMBIÉN, Y NO ES REDUNDANTE ──────────────────────
+      //
+      // `app/layout.tsx` declara un bloque `twitter` global con el título de
+      // la marca y `/og.png`. Los metadatos se heredan POR CLAVE: definir
+      // solo `openGraph` deja intacto el `twitter` del layout, y WhatsApp
+      // --que lee los dos-- enseñaba el logo de Sevenz sobre un producto con
+      // foto. Reportado por el dueño el 2026-10-27 con la captura.
+      //
+      // SIN `images` AQUÍ a propósito: la pone `twitter-image.tsx`, al lado
+      // de este archivo, porque la URL de esa imagen lleva un hash que Next
+      // recalcula en cada compilación.
+      twitter: {
+        card: "summary_large_image",
+        title: d.name,
+        description: d.description ?? undefined,
+      },
     };
   } catch (error) {
     console.error(
