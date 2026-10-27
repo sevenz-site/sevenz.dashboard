@@ -8,9 +8,14 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
 import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
-import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import type { Facturacion, Libro } from "@/lib/reports/facturacion";
+import { PlazosSheet } from "@/components/dashboard/reportes-plazos-sheet";
+import type {
+  ClavePlazo,
+  ClienteDePlazo,
+  Facturacion,
+  Libro,
+} from "@/lib/reports/facturacion";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LA PESTAÑA «FACTURACIÓN» — frame `1502:10283`
@@ -362,17 +367,17 @@ export function ReportesFacturacion({
       <section className="flex flex-col">
         <TituloDeBloque texto="Plazos de pago" />
         <div className="grid grid-cols-2 gap-3">
-          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} estado="dentro_del_plazo" />
-          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} estado="plazo_vencido" />
-          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} estado="critico" />
-          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} estado="mala_paga" />
+          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} clave="porVencer" clientes={datos.clientesPorPlazo.porVencer} />
+          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} clave="vencido" clientes={datos.clientesPorPlazo.vencido} enRojo />
+          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} clave="criticos" clientes={datos.clientesPorPlazo.criticos} enRojo />
+          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} clave="malasPagas" clientes={datos.clientesPorPlazo.malasPagas} />
           {/* LA QUINTA TARJETA NO ESTÁ EN EL FRAME Y SE DIBUJA SI HAY ALGUIEN.
               Un fiado vencido SIN plazo pactado cae en «Sin plazo», que no es
               ninguna de las cuatro de arriba. Sin esta tarjeta esos clientes no
               se cuentan en ninguna parte y las cuatro cifras sugieren que no
               existen -- que es peor que una tarjeta de más. */}
           {datos.plazos.sinPlazo > 0 ? (
-            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} estado="sin_plazo" />
+            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} clave="sinPlazo" clientes={datos.clientesPorPlazo.sinPlazo} />
           ) : null}
         </div>
       </section>
@@ -430,25 +435,26 @@ export function ReportesFacturacion({
 function TarjetaDePlazo({
   rotulo,
   cuenta,
-  estado,
+  clave,
+  clientes,
+  enRojo = false,
 }: {
   rotulo: string;
   cuenta: number;
-  estado: keyof typeof CLIENT_STATUS_BADGE_CLASS | "mala_paga";
+  clave: ClavePlazo;
+  clientes: ClienteDePlazo[];
+  enRojo?: boolean;
 }) {
-  // «Ver todo» LLEVA A LA LISTA DE CLIENTES CON SU FILTRO PUESTO, no a una
-  // hoja nueva. El frame dibuja una hoja con su propio buscador; la lista de
-  // Clientes ya ES esa pantalla --mismo chip, mismo criterio, mismo buscador--
-  // y duplicarla sería un segundo sitio donde el estado puede divergir, que es
-  // el fallo que `estadoDeCliente` existe para cerrar.
-  const href = estado === "mala_paga" ? "/malas-pagas" : `/clients?estado=${estado}`;
-  const enRojo = estado === "critico" || estado === "plazo_vencido";
-
-  return (
-    <Link
-      href={href}
-      className="flex flex-col gap-1 rounded-[10px] border px-3 py-3 transition-colors active:bg-accent"
-    >
+  // ── ERA UN ENLACE A `/clients?estado=…`, Y AHORA ABRE SU HOJA ────────
+  //
+  // Encargo del dueño el 2026-10-27, con los cuatro frames. El porqué del
+  // cambio --y qué decisión desplaza-- está en `reportes-plazos-sheet.tsx`.
+  //
+  // SIN NADIE DENTRO NO ABRE NADA: una hoja vacía que se despliega y hay que
+  // cerrar es peor que un «0» que no reacciona. La tarjeta sigue diciendo su
+  // cifra, que es la respuesta.
+  const contenido = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0 text-xs text-muted-foreground">{rotulo}</span>
         <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -460,11 +466,27 @@ function TarjetaDePlazo({
       </span>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">Clientes</span>
-        <span className="flex items-center gap-0.5 text-xs">
-          Ver todo
-          <ChevronRight className="size-3.5" aria-hidden />
-        </span>
+        {cuenta > 0 ? (
+          <span className="flex items-center gap-0.5 text-xs">
+            Ver todo
+            <ChevronRight className="size-3.5" aria-hidden />
+          </span>
+        ) : null}
       </div>
-    </Link>
+    </>
+  );
+
+  const clases = "flex flex-col gap-1 rounded-[10px] border px-3 py-3 text-left transition-colors";
+
+  if (cuenta === 0) {
+    return <div className={clases}>{contenido}</div>;
+  }
+
+  return (
+    <PlazosSheet clave={clave} clientes={clientes}>
+      <button type="button" className={`${clases} active:bg-accent`}>
+        {contenido}
+      </button>
+    </PlazosSheet>
   );
 }

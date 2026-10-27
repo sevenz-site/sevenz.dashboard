@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
-import type { ClientSummary } from "@/lib/types";
+import type { ClientStatus, ClientSummary } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LO QUE LA PESTAÑA «FACTURACIÓN» DE REPORTES NECESITA — frame `1502:10283`
@@ -61,6 +61,20 @@ export type PuntoDeTransacciones = {
   fiado: number;
 };
 
+/** Un cliente dentro de una de las cuatro hojas de «Plazos de pago». */
+export type ClienteDePlazo = {
+  clientId: string;
+  nombre: string;
+  /** Lo que debe en SU libro, nunca una suma de los dos. */
+  monto: number;
+  libro: Libro;
+  status: ClientStatus;
+  /** La marca de «mala paga», que NO es un estado: va en su propio chip. */
+  marcado: boolean;
+  /** Cuándo vence --o venció-- su fiado más grave. ISO, o `null` si no tiene. */
+  venceEl: string | null;
+};
+
 export type MejorPagador = {
   clientId: string;
   nombre: string;
@@ -94,8 +108,19 @@ export type Facturacion = {
     // la pantalla sugiere que no existen.
     sinPlazo: number;
   };
+  // LOS CLIENTES DE CADA TARJETA, que es lo que abre su hoja (frames
+  // `1667:20645`, `1667:21438`, `1667:21230` y `1667:21622`).
+  //
+  // VIAJAN ENTEROS AL NAVEGADOR y no por página: la hoja lleva su propio
+  // buscador, así que filtrar en el servidor pediría un viaje por letra
+  // tecleada. Son cuatro campos por cliente; con los 214 de producción son
+  // unos pocos KB. El día que un negocio tenga miles, esto se nota antes que
+  // nada y el arreglo es buscar en el servidor.
+  clientesPorPlazo: Record<ClavePlazo, ClienteDePlazo[]>;
   mejoresPagadores: MejorPagador[];
 };
+
+export type ClavePlazo = "porVencer" | "vencido" | "criticos" | "malasPagas" | "sinPlazo";
 
 const BUCKETS = 7;
 
@@ -305,9 +330,16 @@ export async function cargarFacturacion({
   // y una lista con otros once allí serían dos verdades que no se pueden
   // reconciliar mirando.
   const plazos = { porVencer: 0, vencido: 0, criticos: 0, malasPagas: 0, sinPlazo: 0 };
+  const clientesPorPlazo: Record<ClavePlazo, ClienteDePlazo[]> = {
+    porVencer: [],
+    vencido: [],
+    criticos: [],
+    malasPagas: [],
+    sinPlazo: [],
+  };
+
   for (const r of (resumenes ?? []) as ClientSummary[]) {
-    if (r.is_flagged) plazos.malasPagas += 1;
-    const { status } = estadoDeCliente({
+    const { status, currency } = estadoDeCliente({
       fila: r,
       saldos: {
         cop: Number(r.balance ?? 0),
@@ -317,10 +349,73 @@ export async function cargarFacturacion({
       saldoCombinado: Number(r.balance ?? 0),
       dosLibros,
     });
-    if (status === "dentro_del_plazo") plazos.porVencer += 1;
-    else if (status === "plazo_vencido") plazos.vencido += 1;
-    else if (status === "critico") plazos.criticos += 1;
-    else if (status === "sin_plazo") plazos.sinPlazo += 1;
+
+    // EL LIBRO QUE MANDA ES EL QUE DECIDIÓ EL ESTADO, no el mayor ni la suma:
+    // si el chip dice «Plazo vencido» por los euros, la cifra de al lado tiene
+    // que ser la de euros. Es la misma regla que la lista de clientes ya
+    // sigue -- el estado y su importe hablan del mismo libro o no hablan de
+    // nada.
+    const libro: Libro = currency ?? (dosLibros ? "USD" : "COP");
+    const monto =
+      libro === "USD"
+        ? Number(r.balance_usd ?? 0)
+        : libro === "EUR"
+          ? Number(r.balance_eur ?? 0)
+          : Number(r.balance ?? 0);
+
+    const venceEl =
+      (libro === "USD"
+        ? r.worst_unpaid_charge_due_at_usd
+        : libro === "EUR"
+          ? r.worst_unpaid_charge_due_at_eur
+          : r.worst_unpaid_charge_due_at_cop) ??
+      r.worst_unpaid_charge_due_at ??
+      null;
+
+    const fila: ClienteDePlazo = {
+      clientId: r.client_id,
+      nombre: r.name,
+      monto: Math.abs(monto),
+      libro,
+      status,
+      marcado: Boolean(r.is_flagged),
+      venceEl,
+    };
+
+    // MALA PAGA ES UNA MARCA, NO UN ESTADO, así que un cliente puede salir en
+    // su hoja Y en la del plazo que le toque. No es una fila duplicada: son
+    // dos preguntas distintas --«a quién hay que cobrar» y «de quién me
+    // fío»-- y la lista de Clientes ya las trata así.
+    if (r.is_flagged) {
+      plazos.malasPagas += 1;
+      clientesPorPlazo.malasPagas.push(fila);
+    }
+
+    if (status === "dentro_del_plazo") {
+      plazos.porVencer += 1;
+      clientesPorPlazo.porVencer.push(fila);
+    } else if (status === "plazo_vencido") {
+      plazos.vencido += 1;
+      clientesPorPlazo.vencido.push(fila);
+    } else if (status === "critico") {
+      plazos.criticos += 1;
+      clientesPorPlazo.criticos.push(fila);
+    } else if (status === "sin_plazo") {
+      plazos.sinPlazo += 1;
+      clientesPorPlazo.sinPlazo.push(fila);
+    }
+  }
+
+  // DE MÁS GRAVE A MENOS DENTRO DE CADA HOJA: el que lleva más tiempo vencido
+  // primero. Sin orden, la hoja devuelve el orden de la consulta -- que es el
+  // de la vista y no significa nada para quien va a cobrar.
+  for (const k of Object.keys(clientesPorPlazo) as ClavePlazo[]) {
+    clientesPorPlazo[k].sort((a, b) => {
+      if (a.venceEl && b.venceEl) return a.venceEl.localeCompare(b.venceEl);
+      if (a.venceEl) return -1;
+      if (b.venceEl) return 1;
+      return b.monto - a.monto;
+    });
   }
 
   // ── MEJORES PAGADORES ──────────────────────────────────────────────
@@ -395,6 +490,7 @@ export async function cargarFacturacion({
     pedidosPorAtender: pedidos,
     dineroPorAtender,
     plazos,
+    clientesPorPlazo,
     mejoresPagadores,
   };
 }
