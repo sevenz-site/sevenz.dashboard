@@ -4,7 +4,9 @@ import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
 import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
+import { ReportesDescargar } from "@/components/dashboard/reportes-descargar";
 import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
+import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
 import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
 import { apartadoDe } from "@/lib/reports/apartados";
 import { rangoDe, textoDelRango } from "@/lib/reports/rango";
@@ -38,15 +40,21 @@ import type { OwnerCountry } from "@/lib/types";
 // primero se suma por la misma razón que ellos: el servidor sabe qué pintar,
 // así que no se cargan los datos de los tres apartados para enseñar uno.
 //
-// LO QUE EL FRAME DIBUJA Y AQUÍ NO ESTÁ, y se dice en vez de inventarlo:
+// ───────────────────────────────────────────────────────────────────────
+// «DESCARGAR» YA ESTÁ, Y A MEDIAS A PROPÓSITO
 //
-//   · **«Descargar»** en la cabecera. Su nota suelta dice que manda .xlsx y
-//     .pdf al correo y que hay un envío mensual por apartado. Eso es la parte
-//     B de `REPORTES-PLAN.md` --generar ficheros, un proveedor de correo y un
-//     cron--, no esta pantalla. Un botón que no hace nada se lee como que la
-//     app está rota, que es lo que `CT-58` ya dejó escrito.
-//   · **El desplegable «Fecha»**. Aquí siguen los chips de periodo que esta
-//     pantalla ya tenía, que contestan lo mismo con un toque menos.
+// Hasta el 2026-10-27 esta nota decía que el botón del frame `1502:10291` no
+// estaba porque su nota suelta pide `.xlsx`, `.pdf` y envío por correo -- tres
+// dependencias nuevas, cada una con `new-api-risk-review` obligatorio.
+//
+// LO QUE CAMBIÓ es una decisión del dueño ese mismo día: esta entrega es solo
+// lo visible, con **descarga directa al teléfono en `.csv`** y sin correo. El
+// envío, el `.xlsx`, el `.pdf` y el correo mensual por apartado quedan para
+// una segunda entrega, con su propia reseña de dependencias.
+//
+// Y el menú dibuja **una sola fila**, no las dos del frame: Inventario y
+// Proveedores son estado vacío, así que no hay nada que descargar de ellos.
+// La razón entera está en `reportes-descargar.tsx`.
 // ═══════════════════════════════════════════════════════════════════════
 
 export default async function ReportesPage({
@@ -58,9 +66,13 @@ export default async function ReportesPage({
     hasta?: string;
     cliente?: string;
     tab?: string;
+    // Los pone la ruta de descarga al volver aquí tras un fallo. Ver
+    // `app/api/reportes/movimientos/route.ts`.
+    export?: string;
+    motivo?: string;
   }>;
 }) {
-  const { periodo, desde, hasta, cliente, tab } = await searchParams;
+  const { periodo, desde, hasta, cliente, tab, export: exportado, motivo } = await searchParams;
   // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
   // estos parámetros van en una URL que el dueño puede compartir o teclear
   // mal, y un informe no vale una pantalla caída.
@@ -114,6 +126,7 @@ export default async function ReportesPage({
       <ScreenHeader
         title="Reportes"
         subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
+        action={<ReportesDescargar />}
         search={
           <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
         }
@@ -127,6 +140,22 @@ export default async function ReportesPage({
           </div>
         }
       />
+
+      {/* LA DESCARGA QUE NO SALIÓ SE DICE AQUÍ, y en el sitio donde el tendero
+          acaba de darle al botón. La ruta vuelve con `?export=error&motivo=`
+          en vez de dejar un 500 pelado en una pestaña del teléfono, que no
+          tiene reintento ni app alrededor. Los mensajes viven en un solo
+          sitio -- `MENSAJE_DE_FALLO` -- para que la ruta y esta pantalla no
+          puedan contar versiones distintas del mismo fallo. */}
+      {exportado === "error" ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-1 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2"
+        >
+          <p className="text-sm font-medium">No se pudo descargar</p>
+          <p className="text-sm text-muted-foreground">{mensajeDelMotivo(motivo)}</p>
+        </div>
+      ) : null}
 
       {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
           una persona se lee como el del negocio entero, que es la clase de

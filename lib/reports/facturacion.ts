@@ -235,7 +235,7 @@ export async function cargarFacturacion({
 
   // Sin clientes no hay movimientos que pedir, y un `in()` vacío en PostgREST
   // devuelve TODO en vez de nada -- que aquí sería el libro de otro negocio.
-  let qMov = idsDeCliente.length
+  const qMov = idsDeCliente.length
     ? supabase
         .from("movements")
         .select("type, amount, currency, created_at, client_id")
