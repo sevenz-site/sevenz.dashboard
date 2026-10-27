@@ -140,6 +140,61 @@ for (const ruta of TARJETAS) {
   }
 }
 
+// ── 5. Y EL MISMO AVISO EN «VENTA O FIADO» ───────────────────────────
+//
+// Encargo del dueño el 2026-10-27: *«en el flujo de "Venta o fiado" desde el
+// perfil de un cliente mala paga no muestra el mensaje ni el botón "Registrar
+// y finalizar" en destructive (…) implementa el mismo patrón»*.
+//
+// ES OTRO FICHERO Y OTRAS CINCO PUERTAS. `nueva-venta.tsx` cierra la venta
+// desde CINCO botones --«Finalizar · ‹nombre›», «Finalizar» del paso del
+// cliente, «Registrar a cuenta existente», «Registrar a cuenta separada» y el
+// «Finalizar» del paso de PAGO, que es el que sale entrando desde la ficha--.
+// Todos pasan por `guardar`, y ahí está la parada; lo que se reparte es el
+// rojo del botón.
+//
+// LA MARCA VIAJA EN EL CLIENTE ELEGIDO (`marcada`) y no se busca al final,
+// porque entrando por `?cliente=` no hay paso de elegir: la trae la página.
+// Si alguien quita ese campo del `select`, el aviso deja de salir en el ÚNICO
+// camino que el dueño nombró, y nada se rompe.
+const venta = leer("components/dashboard/nueva-venta.tsx");
+if (venta && !/marcada:\s*boolean/.test(venta)) {
+  fallos.push(
+    "components/dashboard/nueva-venta.tsx — el cliente elegido ya no lleva `marcada`, así que el aviso no puede saber si está en la lista negra.",
+  );
+}
+if (venta && !/quedaFiadoEnLaVenta/.test(venta)) {
+  fallos.push(
+    "components/dashboard/nueva-venta.tsx — ya no distingue si la venta deja algo debiendo: el aviso saldría también en una venta de contado, que es lo que el dueño pidió que NO pasara.",
+  );
+}
+if (venta && !/está marcado como Mala paga/.test(venta)) {
+  fallos.push(
+    "components/dashboard/nueva-venta.tsx — falta el diálogo: el mismo título que el flujo del pedido.",
+  );
+}
+if (venta && !/Fiar de todas formas/.test(venta)) {
+  fallos.push(
+    "components/dashboard/nueva-venta.tsx — falta la salida «Fiar de todas formas» del diálogo.",
+  );
+}
+// EL ROJO VA EN TRES BOTONES: los dos del paso del cliente y el del paso de
+// pago. Menos de tres es una rama que se quedó negra, que es justo lo que el
+// dueño reportó.
+const rojos = (venta.match(/debeAvisar \? "destructive"/g) ?? []).length;
+if (venta && rojos < 3) {
+  fallos.push(
+    `components/dashboard/nueva-venta.tsx — solo ${rojos} de los 3 botones que cierran la venta se ponen en rojo al fiarle a una mala paga.`,
+  );
+}
+// Y LA PÁGINA TIENE QUE TRAER LA MARCA, que es la puerta de «desde el perfil».
+const paginaVenta = leer("app/(app)/ventas/nueva/page.tsx");
+if (paginaVenta && !/is_walk_in,\s*is_flagged/.test(paginaVenta)) {
+  fallos.push(
+    "app/(app)/ventas/nueva/page.tsx — la consulta del cliente inicial ya no pide `is_flagged`: entrando desde su ficha, el aviso no saldría.",
+  );
+}
+
 if (fallos.length > 0) {
   console.log(`\nFALLA — el aviso de «mala paga» del flujo de pedidos:\n`);
   for (const f of fallos) console.log(`  ✗ ${f}`);
@@ -154,5 +209,5 @@ if (fallos.length > 0) {
 }
 
 console.log(
-  "PASS  el aviso de «mala paga» sigue en pie: la marca se lee, `quedaFiado` decide, las dos puertas preguntan y las tres tarjetas llevan su chip.",
+  "PASS  el aviso de «mala paga» sigue en pie: en el PEDIDO (dos puertas, tres tarjetas) y en VENTA O FIADO (cinco puertas, tres botones en rojo).",
 );

@@ -5,7 +5,10 @@ import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import {
+  getProductPreviewImageUrl,
+  getPublicProductPhotoUrl,
+} from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
@@ -28,18 +31,123 @@ import { IconoVolver } from "@/components/dashboard/screen-chrome";
 //      una hoja no tiene a dónde volver.
 //
 // ===========================================================================
-// SIN `generateMetadata` A PROPÓSITO
+// CON `generateMetadata` DESDE EL 2026-10-27, Y ESO DESHACE LO QUE DECÍA AQUÍ
 //
-// La página de la lista sí la tiene. Aquí no, y no es un olvido: el nombre y
-// la foto de un producto en la vista previa de un enlace de WhatsApp le dirían
-// a cualquiera que lo reenvíe qué vende ese negocio y a cómo. El enlace circula
-// precisamente para eso, pero quien lo reenvía debería estar eligiendo hacerlo,
-// no descubrirlo porque la miniatura ya lo contaba.
+// Lo que había escrito, y queda porque es la razón que haría falta para
+// revertirlo: *«SIN `generateMetadata` A PROPÓSITO. La página de la lista sí
+// la tiene. Aquí no, y no es un olvido: el nombre y la foto de un producto en
+// la vista previa de un enlace de WhatsApp le dirían a cualquiera que lo
+// reenvíe qué vende ese negocio y a cómo. El enlace circula precisamente para
+// eso, pero quien lo reenvía debería estar eligiendo hacerlo, no descubrirlo
+// porque la miniatura ya lo contaba»*.
+//
+// LO QUE CAMBIÓ ES LA PREMISA, NO EL RIESGO. Ese día el enlace de un producto
+// solo circulaba de rebote. El 2026-10-27 el dueño encargó un botón
+// «Compartir» en el detalle y en cada tarjeta, con su frame de la vista previa
+// (`1732:14757`): ahora el tendero ELIGE mandarlo, que es exactamente lo que
+// el párrafo de arriba pedía.
+//
+// Y LA MITAD DEL MIEDO VIEJO SIGUE CUBIERTA: el frame no dibuja ningún precio.
+// «Qué vende» pasa a verse; «a cómo» no.
+//
+// `robots: noindex` SE QUEDA. Compartir por WhatsApp y salir en Google son dos
+// cosas distintas, y los rastreadores de los chats no miran esa etiqueta.
+//
+// LA IMAGEN la genera `opengraph-image.tsx`, al lado de este fichero.
 
-export const metadata: Metadata = {
-  title: "Producto — Sevenz",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string; productId: string }>;
+}): Promise<Metadata> {
+  const { token, productId } = await params;
+
+  // UN FALLO AQUÍ NO TUMBA LA PÁGINA: se devuelven los metadatos genéricos y
+  // el producto se abre igual. Una vista previa pobre es un inconveniente; una
+  // página que no carga por su `<head>` es un enlace roto.
+  const generico: Metadata = {
+    title: "Producto — Sevenz",
+    robots: { index: false, follow: false },
+  };
+  if (!isSupabaseConfigured()) return generico;
+
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("get_shared_product", {
+      p_token: token,
+      p_product_id: productId,
+    });
+    const d = data as {
+      name?: string;
+      description?: string | null;
+      photo_path?: string | null;
+    } | null;
+    if (!d?.name) return generico;
+
+    // ── LA IMAGEN ES LA FOTO, SERVIDA POR SUPABASE ───────────────────
+    //
+    // Y no una imagen generada, que es lo que había y lo que falló: pesaba
+    // 1,6 MB y WhatsApp la descartaba. El porqué entero está en
+    // `getProductPreviewImageUrl`.
+    //
+    // SIN FOTO, LA TARJETA DE LA MARCA. Un producto sin foto es el caso
+    // corriente, y un enlace cuya vista previa es un hueco parece un enlace
+    // roto. `/og.png` es la misma que enseñan el catálogo y el saldo.
+    const imagen = d.photo_path
+      ? getProductPreviewImageUrl(d.photo_path)
+      : "/og.png";
+
+    // EL TEXTO DEL FRAME, repartido donde el chat lo pinta: el nombre arriba,
+    // la descripción debajo, y la línea de Sevenz como nombre del sitio.
+    //
+    // SIN PRECIO, que es la mitad de la decisión vieja que se conserva.
+    //
+    // `?? null` Y NO `?? undefined`, y la diferencia se vio en una captura:
+    // `undefined` deja que Next herede la descripción del layout raíz, así
+    // que un producto SIN descripción salía en WhatsApp anunciando *«¡Lleva
+    // las cuentas claras de tu negocio sin tanta vaina!»* debajo de su
+    // nombre -- la frase de la marca presentada como si describiera el
+    // bafle. `null` dice «esta página no tiene descripción» y no hereda nada.
+    const descripcion = d.description?.trim() || null;
+
+    return {
+      title: `${d.name} — Sevenz`,
+      description: descripcion,
+      robots: { index: false, follow: false },
+      openGraph: {
+        title: d.name,
+        // `undefined` AQUI y `null` arriba, y no es incoherencia: dentro de
+        // `openGraph` el tipo no admite `null`, y no hace falta -- este bloque
+        // REEMPLAZA entero al del layout, asi que lo que no se declara no se
+        // emite. Arriba si hace falta, porque `description` a secas sí hereda.
+        description: descripcion ?? undefined,
+        siteName: "Sevenz.site ¡Cuentas claras sin tanta vaina!",
+        locale: "es_VE",
+        type: "website",
+        images: [{ url: imagen, width: 1200, height: 630, alt: d.name }],
+      },
+      // ── `twitter` TAMBIÉN, Y NO ES REDUNDANTE ──────────────────────
+      //
+      // `app/layout.tsx` declara un bloque `twitter` global con el título de
+      // la marca y `/og.png`. Los metadatos se heredan POR CLAVE: definir
+      // solo `openGraph` deja intacto el `twitter` del layout, y WhatsApp
+      // --que lee los dos-- enseñaba el logo de Sevenz sobre un producto con
+      // foto. Reportado por el dueño el 2026-10-27 con la captura.
+      twitter: {
+        card: "summary_large_image",
+        title: d.name,
+        description: descripcion ?? undefined,
+        images: [imagen],
+      },
+    };
+  } catch (error) {
+    console.error(
+      "[productoPublico] metadata:",
+      error instanceof Error ? error.message : error,
+    );
+    return generico;
+  }
+}
 
 type SharedProductDetail = {
   business_name: string | null;

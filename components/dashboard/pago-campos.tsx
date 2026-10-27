@@ -20,6 +20,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, Percent, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -147,6 +148,27 @@ function calendarioDeCuotas(
 
 export function PagoCampos({
   etiquetaBoton,
+  // ── EL BOTÓN, PEGADO ABAJO A 40px ─────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-27: *«pega el botón Pagar abajo a 40px de
+  // distancia del fondo de la pantalla»*. Los 40px no se escriben aquí: los
+  // pone `StickyActions`, que es el componente que ya los tiene medidos.
+  //
+  // ES UNA PROP Y NO EL COMPORTAMIENTO POR DEFECTO porque este componente
+  // tiene DOS usos y solo uno es una pantalla:
+  //
+  //   · El paso `2/x` del pedido --una pantalla completa-- lo pide. Su botón
+  //     estaba al final de la columna, a 160px de desplazamiento a 375x812,
+  //     que es lo que el dueño vio.
+  //   · El «Registrar pago» del asistente de venta vive dentro de una HOJA
+  //     que ya termina abajo. Una barra pegada dentro de otra cosa pegada no
+  //     añade nada y le quitaría a la hoja su propio pie.
+  //
+  // Y NO SON SOLO 40px: `StickyActions` se esconde con el teclado arriba.
+  // Esta pantalla tiene el campo del monto, así que sin eso el botón se
+  // quedaría flotando encima del teclado justo mientras se teclea el dinero
+  // --el fallo que el dueño ha reportado tres veces--.
+  botonPegadoAbajo = false,
   mostrarTotal = true,
   moneda,
   ownerId,
@@ -171,6 +193,7 @@ export function PagoCampos({
   // the sealed line -- product, quantity and «Por pagar» -- and drawing both
   // would show the same amount twice, one of them with a heading the frame
   // never had.
+  botonPegadoAbajo?: boolean;
   mostrarTotal?: boolean;
   // THE SUBMIT LABEL. The sheet in the sale wizard says «Pagar»; the full
   // screen of frame `1564:11028` says «Pagar $00.00», with the figure. One
@@ -710,6 +733,7 @@ export function PagoCampos({
         />
       </div>
 
+      <Pie pegado={botonPegadoAbajo}>
       <Button
         type="button"
         className="h-10 w-full"
@@ -741,6 +765,28 @@ export function PagoCampos({
       >
         {etiquetaBoton ?? "Pagar"}
       </Button>
+      </Pie>
     </div>
   );
+}
+
+// ── EL PIE: `StickyActions` O NADA, Y NUNCA SUS CLASES COPIADAS ───────
+//
+// Un envoltorio de tres líneas en vez de un `botonPegadoAbajo ? <Sticky…>`
+// repetido alrededor del botón: con el ternario habría que escribir el botón
+// dos veces, y dos copias de un botón que escribe dinero es exactamente la
+// clase de duplicado que este fichero nació para quitar.
+//
+// SIN PEGAR DEVUELVE A SUS HIJOS TAL CUAL, no un `<div>` vacío: dentro de la
+// hoja del asistente de venta, un contenedor de más rompería el `gap` de la
+// columna que lo envuelve.
+function Pie({
+  pegado,
+  children,
+}: {
+  pegado: boolean;
+  children: React.ReactNode;
+}) {
+  if (!pegado) return <>{children}</>;
+  return <StickyActions>{children}</StickyActions>;
 }

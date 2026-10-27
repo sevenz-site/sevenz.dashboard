@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { isProductDetailRoute } from "@/lib/products/routes";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 
 // Wraps <main> purely so the bottom padding can follow whether MobileNav
@@ -65,7 +66,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/ventas/nueva") ||
     pathname.startsWith("/abonos/nuevo") ||
     pathname === "/productos/nuevo" ||
-    /^\/productos\/[^/]+\/editar$/.test(pathname);
+    /^\/productos\/[^/]+\/editar$/.test(pathname) ||
+    // Y LA FICHA DEL PRODUCTO, desde el 2026-10-26: ni barra de abajo ni su
+    // altura reservada. Su propia fila de botones termina la pantalla.
+    isProductDetailRoute(pathname);
   const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
 
   // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────
@@ -123,6 +127,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/abonos/nuevo/") ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname) ||
+    // LA FICHA DEL PRODUCTO, desde el 2026-10-26: el frame `1730:14329` le
+    // pone 40px de aire bajo «Eliminar» (nodo `1730:14421`), los mismos que
+    // trae esta fila. Sin esta línea `main` le suma sus 16 y quedan 56.
+    isProductDetailRoute(pathname) ||
     // EL DETALLE DE UNA TRANSACCIÓN, desde el 2026-10-21: sus botones
     // «Compartir» y «Pagar» pasaron a `StickyActions` por instrucción del
     // dueño —*«siempre visibles en la parte inferior»*— y esa barra trae sus

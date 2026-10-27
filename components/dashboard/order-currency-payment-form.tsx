@@ -276,6 +276,11 @@ export function OrderCurrencyPaymentForm({
         // frame. La tarjeta de total de los campos sería la misma cifra otra
         // vez.
         mostrarTotal={false}
+        // PEGADO ABAJO A 40px, encargo del dueño el 2026-10-27. Es una
+        // pantalla completa: su botón estaba al final de la columna, a 160px
+        // de desplazamiento a 375x812. La hoja del asistente de venta no lo
+        // pide, por eso es una prop y no el comportamiento por defecto.
+        botonPegadoAbajo
         onGuardar={guardar}
         // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
         // It is the BLOCK's total and not what is typed into the amount field —

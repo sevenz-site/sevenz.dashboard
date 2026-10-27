@@ -286,20 +286,37 @@ try {
   // Es el estado NORMAL: el catálogo es opcional y la mayoría no lo ha
   // creado. Tiene que devolver token nulo y lista vacía, nunca crear uno —
   // quien llama es una página sin sesión que cualquiera puede abrir.
-  const { data: catB } = await admin
-    .from("catalog_share_links")
-    .select("id")
-    .eq("owner_id", duenoB)
-    .maybeSingle();
-  const cliB = await clienteConEnlace(duenoB, `${MARCA} cliente sin catalogo`);
-  const r6 = await preview(cliB.token);
-  if (catB) {
+  // EL NEGOCIO LO ELIGE LA CONDICIÓN, NO SU POSICIÓN EN LA LISTA.
+  //
+  // Antes era «el segundo negocio de dev», y en cuanto ese negocio publicó su
+  // catálogo la comprobación se saltaba sola Y SE INFORMABA COMO PASS -- que
+  // es exactamente lo que `CLAUDE.md` dice que se lee como aprobada.
+  //
+  // Pasó el 2026-10-26: un «Compartir» acuñó el enlace del negocio B y el
+  // 17.º control desapareció del informe sin que nada se pusiera rojo. El
+  // síntoma no era un fallo, era una cuenta más baja.
+  //
+  // En dev hay diez negocios sin enlace, así que la condición se cumple
+  // siempre; y si algún día no quedara ninguno, la fila sale ROJA en vez de
+  // saltarse, porque entonces este control ya no se puede hacer y eso es algo
+  // que hay que saber.
+  const { data: todosLosDuenos } = await admin.from("owners").select("id").order("id");
+  const { data: conEnlace } = await admin.from("catalog_share_links").select("owner_id");
+  const tienenEnlace = new Set((conEnlace ?? []).map((x) => x.owner_id));
+  const duenoSinCatalogo = (todosLosDuenos ?? []).find((o) => !tienenEnlace.has(o.id))?.id ?? null;
+
+  if (!duenoSinCatalogo) {
     check(
-      "6. negocio SIN catálogo: token nulo (saltada, el negocio B sí tiene)",
-      true,
-      "no comprobada: el segundo negocio de dev tiene enlace de catálogo",
+      "6. un negocio sin enlace de catálogo devuelve token nulo y lista vacía",
+      false,
+      "NO SE PUDO COMPROBAR: todos los negocios de dev tienen enlace de catálogo",
     );
   } else {
+    const cliB = await clienteConEnlace(
+      duenoSinCatalogo,
+      `${MARCA} cliente sin catalogo`,
+    );
+    const r6 = await preview(cliB.token);
     check(
       "6. un negocio sin enlace de catálogo devuelve token nulo y lista vacía",
       r6?.catalog_token === null && Array.isArray(r6?.products) && r6.products.length === 0,
@@ -308,7 +325,7 @@ try {
     const { count: creados } = await admin
       .from("catalog_share_links")
       .select("id", { count: "exact", head: true })
-      .eq("owner_id", duenoB);
+      .eq("owner_id", duenoSinCatalogo);
     check(
       "6b. y NO le creó uno de paso — la página es pública y no puede escribir",
       creados === 0,

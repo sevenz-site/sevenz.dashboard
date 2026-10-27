@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { SupplierField } from "@/components/dashboard/supplier-field";
 import {
@@ -48,6 +47,8 @@ import {
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TarjetaDePublicacion } from "@/components/dashboard/product-detail-rows";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
@@ -2139,22 +2140,6 @@ function BloqueDeVenta({
 
 // A CHECKED BOX, READ-ONLY. `PublishCheck` is the editable one from step 3/4
 // and takes an `onChange`; this is the same shape with nothing behind it.
-function FilaDeControl({ marcado, etiqueta }: { marcado: boolean; etiqueta: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      {/* Same reason as the switch above: not `disabled`, or a ticked box
-          turns grey and stops reading as ticked. */}
-      <Checkbox
-        checked={marcado}
-        aria-readonly="true"
-        tabIndex={-1}
-        className="pointer-events-none size-4 shrink-0"
-      />
-      <span className="min-w-0 flex-1 text-xs leading-4">{etiqueta}</span>
-    </div>
-  );
-}
-
 // ============================================================================
 // 4/4 VERIFICA — frame `1465:19856`
 //
@@ -2275,30 +2260,17 @@ function Verifica({
 
           READ-ONLY, not interactive. Editing it here would make this a fifth
           editing screen instead of the re-read it exists to be; «Editar» goes
-          back to the step that owns it. */}
-      <div className="flex flex-col gap-5 rounded-[14px] border px-3 py-3.5">
-        <div className="flex items-start gap-2">
-          <span className="min-w-0 flex-1 text-sm leading-5">Publicar producto en catálogo</span>
-          {/* READ-ONLY WITHOUT `disabled`, and the difference is visible.
-              `disabled` greys the switch out, and a greyed switch reads as
-              «this setting is unavailable» — the opposite of what this screen
-              reports, which is that the owner DID turn publishing on. The
-              frame draws it in its normal on state. So the control keeps its
-              colours and loses only the ability to be touched or focused. */}
-          <Switch
-            checked={publicando}
-            aria-readonly="true"
-            tabIndex={-1}
-            className="pointer-events-none"
-          />
-        </div>
-        {publicando ? (
-          <div className="flex flex-col gap-4">
-            <FilaDeControl marcado={pubWholesale} etiqueta="Incluir precio al mayor" />
-            <FilaDeControl marcado={pubRetail} etiqueta="Incluir precio al detal" />
-          </div>
-        ) : null}
-      </div>
+          back to the step that owns it.
+
+          EL COMPONENTE VIVE FUERA desde el 2026-10-26, porque la ficha del
+          producto (frame `1730:14329`) dibuja esta misma tarjeta con el mismo
+          razonamiento. Lo que había aquí era su original; se movió en vez de
+          copiarse, que es la regla que `StickyActions` dejó escrita. */}
+      <TarjetaDePublicacion
+        publicando={publicando}
+        alMayor={pubWholesale}
+        alDetal={pubRetail}
+      />
 
       {ventaRetail ? (
         <BloqueDeVenta

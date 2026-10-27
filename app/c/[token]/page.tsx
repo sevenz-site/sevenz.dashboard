@@ -14,6 +14,7 @@ import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
+import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   formatPriceAmount,
@@ -359,7 +360,35 @@ export default async function CatalogoPublicoPage({
                 id: p.id,
                 name: p.name,
                 card: (
-                  <li key={p.id} className="flex">
+                  <li key={p.id} className="relative flex">
+                    {/* ── «COMPARTIR», TAMBIÉN AQUÍ — encargo del dueño el
+                        2026-10-27: *«Las cards de los productos en el catálogo
+                        del cliente deben tener botón "Compartir", también»*.
+
+                        HERMANO DEL ENLACE, NO HIJO. La tarjeta entera es un
+                        `<a>`, y un `<button>` dentro de un `<a>` es HTML
+                        inválido: React lo canta como error de hidratación y el
+                        toque abre el producto EN VEZ de compartir. Es el mismo
+                        fallo que el catálogo del dueño tuvo el 2026-10-26 con
+                        un botón dentro de otro botón, y por eso el `<li>` lleva
+                        `relative`: para que el disco se ancle a la tarjeta sin
+                        meterse dentro del enlace.
+
+                        `sinServidor`: esta página NO tiene sesión. El token ya
+                        viene en su propia URL, así que no hay nada que pedirle
+                        al servidor -- y la acción que lo acuña es del dueño.
+
+                        SE DIBUJA TAMBIÉN EN LA VISTA PREVIA a propósito: esa
+                        pantalla existe para que el tendero vea lo que ve su
+                        cliente, y esconderle justo el botón nuevo la haría
+                        mentir sobre lo único que le pidió. */}
+                    <ProductShareButton
+                      productId={p.id}
+                      productName={p.name}
+                      businessName={shared.business_name || "este negocio"}
+                      initialToken={token}
+                      sinServidor
+                    />
                     {/* LA TARJETA ENTERA ES EL ENLACE al detalle, desde el
                     entregable B (2026-10-14). Un `Link` y no un `onClick`: así
                     el cliente puede abrirlo en otra pestaña, copiarlo para

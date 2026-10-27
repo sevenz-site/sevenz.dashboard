@@ -19,6 +19,16 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -139,7 +149,22 @@ type Cliente = ClientSummary;
 // mostrador no está en la lista, y un cliente recién creado en el paso 4
 // tampoco —llegó después de que el servidor la mandara—. Pedirle aquí las
 // dieciséis columnas de `client_summary` haría inexpresables esos dos casos.
-type Elegido = { id: string; name: string; esMostrador: boolean };
+// `marcada` ES «MALA PAGA», y viaja con el cliente elegido desde el
+// 2026-10-27. Encargo del dueño: *«en el flujo de "Venta o fiado" desde el
+// perfil de un cliente mala paga no muestra el mensaje ni el botón
+// "Registrar y finalizar" en destructive»*.
+//
+// VIAJA EN EL ELEGIDO Y NO SE BUSCA AL FINAL, porque hay DOS puertas y solo
+// una tiene lista donde buscar: entrando desde la ficha del cliente
+// (`?cliente=`) no se pasa por el paso de elegir, así que la marca la tiene
+// que traer puesta la página. Es la regla de `CLAUDE.md` sobre un campo que
+// entra por todas las puertas de su acción.
+type Elegido = {
+  id: string;
+  name: string;
+  esMostrador: boolean;
+  marcada: boolean;
+};
 
 export function NuevaVenta({
   clientes,
@@ -248,6 +273,35 @@ export function NuevaVenta({
 
   const hayDeuda = cuentas.some((c) => c.registro != null && c.debe > 0.005);
 
+  // ── ¿QUEDA ALGO DEBIENDO EN ESTA VENTA? ───────────────────────────
+  //
+  // NO ES `hayDeuda`, y confundirlas sería el fallo: esa mira si hay un pago
+  // PARCIAL --para decidir si el cliente es obligatorio-- y una moneda que el
+  // tendero no ha tocado no tiene registro ninguno. Pero sin tocarla queda
+  // fiada entera, que es lo que dice `debe` unas líneas más arriba.
+  //
+  // Así que la pregunta del aviso es sobre `debe` a secas: una venta pagada
+  // entera deja todas las cuentas en cero y no presta nada.
+  const quedaFiadoEnLaVenta = cuentas.some((c) => c.debe > 0.005);
+
+  // ── EL AVISO DE «MALA PAGA», IGUAL QUE EN EL PEDIDO ───────────────
+  //
+  // Encargo del dueño el 2026-10-27: *«implementa el mismo patrón del
+  // registro de la orden de compra de un cliente mala paga a esos flujos de
+  // venta o fiado desde el botón "Registrar" y desde el perfil del cliente
+  // marcado»*. Y su límite, en la misma frase: *«para el caso de venta
+  // directa y abono no debería aparecer la alerta»*.
+  //
+  // LAS DOS CONDICIONES HACEN FALTA. Un cliente marcado al que se le cobra
+  // entero no recibe nada prestado, y avisar ahí sería una alarma que suena
+  // siempre -- y una que suena siempre se deja de leer, que es justo lo que no
+  // le puede pasar a esta.
+  //
+  // EL ABONO NO PASA POR AQUÍ: es otra pantalla (`abono-monto.tsx`), y por eso
+  // no hay nada que apagar para cumplir esa mitad del encargo.
+  const marcadaYFiando = cliente?.marcada === true && quedaFiadoEnLaVenta;
+  const [avisando, setAvisando] = useState<Elegido | null>(null);
+
   // ── NO SE TERMINA UNA VENTA A MEDIO REGISTRAR ──────────────────────
   //
   // Regla del dueño, 2026-10-18: «el botón Finalizar debe poder seleccionarse
@@ -263,7 +317,9 @@ export function NuevaVenta({
   // `destinoForzado` LLEGA DEL PASO 4 cuando acaba de crear al cliente. Sin
   // él, `guardar` leería `cliente` del cierre del render anterior —todavía
   // nulo— y la venta se iría al mostrador justo después de registrar a alguien.
-  async function guardar(destinoForzado?: Elegido) {
+  // `yaConfirmado` VIENE DEL DIÁLOGO de «mala paga». Sin él, confirmar
+  // volvería a abrir el mismo diálogo para siempre.
+  async function guardar(destinoForzado?: Elegido, yaConfirmado = false) {
     setError(null);
     setGuardando(true);
 
@@ -283,8 +339,28 @@ export function NuevaVenta({
         setGuardando(false);
         return;
       }
-      destino = { ...r, esMostrador: true };
+      // EL MOSTRADOR NO PUEDE ESTAR MARCADO: lo crea la app para una venta sin
+      // cliente, no tiene historial y además no puede quedar debiendo.
+      destino = { ...r, esMostrador: true, marcada: false };
       setCliente(destino);
+    }
+
+    // ── ANTES DE ESCRIBIR, EL AVISO ───────────────────────────────
+    //
+    // VA AQUÍ Y NO EN LOS BOTONES, que son cuatro: «Finalizar · ‹nombre›»,
+    // «Finalizar», «Registrar a cuenta existente» y «Registrar a cuenta
+    // separada», repartidos en dos ramas de `PasoCliente`. `guardar` es por
+    // donde pasan los cuatro, y la regla de `CLAUDE.md` es que un campo entra
+    // por TODAS las puertas de su acción: la forma de no olvidarse de una es
+    // no tener cuatro sitios donde acordarse.
+    //
+    // SE MIRA `destino` Y NO `cliente`: con un destino forzado --el cliente
+    // recién creado, o el duplicado que se decide usar-- el estado todavía no
+    // se ha repintado, y preguntarle a él dejaría pasar justo esos dos casos.
+    if (!yaConfirmado && destino.marcada && quedaFiadoEnLaVenta) {
+      setAvisando(destino);
+      setGuardando(false);
+      return;
     }
 
     const resultado = await registrarVenta({
@@ -387,7 +463,14 @@ export function NuevaVenta({
       return;
     }
     setDuplicado(null);
-    const nuevo = { id: r.clientId, name: String(datos.get("name") ?? "").trim(), esMostrador: false };
+    // UN CLIENTE RECIÉN CREADO NO PUEDE ESTAR MARCADO: la marca la pone el
+    // tendero sobre alguien con historial, y este nace en esta pantalla.
+    const nuevo = {
+      id: r.clientId,
+      name: String(datos.get("name") ?? "").trim(),
+      esMostrador: false,
+      marcada: false,
+    };
     setCliente(nuevo);
     await guardar(nuevo);
   }
@@ -470,6 +553,7 @@ export function NuevaVenta({
       {paso === 3 ? (
         <PasoPago
           conCliente={inicial != null}
+          debeAvisar={marcadaYFiando}
           registros={registros}
           setRegistros={setRegistros}
           saldoDelElegido={saldoDelElegido}
@@ -509,6 +593,9 @@ export function NuevaVenta({
           // como parcial, el registro del cliente es obligatorio; cuando se
           // registran de contado, es opcional» — el dueño, 2026-10-18.
           obligatorio={hayDeuda}
+          // EL BOTÓN EN ROJO CUANDO VA A FIARLE A UNA MALA PAGA. Es la mitad
+          // del aviso que llega ANTES de tocar, igual que en el pedido.
+          debeAvisar={marcadaYFiando}
           ownerCountry={ownerCountry}
           aceptaAvisos={delElegido ? delElegido.aceptaAvisos : null}
           ledger={ledger}
@@ -542,9 +629,71 @@ export function NuevaVenta({
           // destino forzado desde que existe el paso 4 —se añadió para el
           // cliente recién creado— y aquí sirve igual: no se crea a nadie y
           // la venta queda en su cuenta.
-          onUsarExistente={(c) => void guardar({ ...c, esMostrador: false })}
+          // LA MARCA SE BUSCA EN LA LISTA, porque el servidor solo devuelve
+          // el id y el nombre del duplicado. `clientes` es `client_summary`
+          // ENTERA del dueño --sin límite, ver la página-- así que el
+          // duplicado está ahí por definición: es un cliente suyo.
+          //
+          // SI NO ESTUVIERA, se asume MARCADO y no sin marcar. Un aviso de más
+          // cuesta un toque; uno de menos es fiarle a quien el tendero puso en
+          // su lista negra sin decírselo, que es el fallo entero de `PR-E6`.
+          onUsarExistente={(c) =>
+            void guardar({
+              ...c,
+              esMostrador: false,
+              marcada:
+                clientes.find((x) => x.client_id === c.id)?.is_flagged ?? true,
+            })
+          }
         />
       ) : null}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          «ESTÁ MARCADO COMO MALA PAGA. ¿FIARLE DE TODAS FORMAS?»
+          ═══════════════════════════════════════════════════════════════
+
+          EL MISMO DIÁLOGO, PALABRA POR PALABRA, que el flujo de registrar un
+          pedido (`order-client-step.tsx`). Encargo del dueño el 2026-10-27:
+          *«implementa el mismo patrón»*. No se reescribió el texto: dos
+          avisos sobre lo mismo con dos redacciones distintas se leen como dos
+          cosas distintas.
+
+          ES UN `AlertDialog` Y NO UN `Dialog`: se cierra solo con uno de sus
+          dos botones. Tocar fuera no vale, que es lo que separa una pregunta
+          de un aviso.
+
+          «Fiar de todas formas» NO ES EL BOTÓN POR DEFECTO ni va en rojo: lo
+          rojo ya es el botón de la pantalla de detrás. Aquí lo que se ofrece
+          es seguir, y lo que se destaca es poder echarse atrás. */}
+      <AlertDialog
+        open={avisando != null}
+        onOpenChange={(abierto: boolean) => {
+          if (!abierto) setAvisando(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {avisando?.name} está marcado como Mala paga
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Revisa el motivo en su historial. ¿Fiarle de todas formas?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const destino = avisando;
+                setAvisando(null);
+                if (destino) void guardar(destino, true);
+              }}
+            >
+              Fiar de todas formas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1183,6 +1332,7 @@ function TarjetaDeLinea({
 // clasifica la venta de antemano: cobra lo que le den y lo que sobre se fía.
 function PasoPago({
   conCliente,
+  debeAvisar,
   registros,
   setRegistros,
   saldoDelElegido,
@@ -1214,6 +1364,9 @@ function PasoPago({
   }[];
   guardando: boolean;
   error: string | null;
+  // `true` cuando el cliente ya puesto esta marcado como mala paga Y la venta
+  // deja algo debiendo. Solo pinta el boton: el dialogo lo abre `guardar`.
+  debeAvisar: boolean;
   onContinuar: () => void;
   guardar: () => void;
   rates: BolivarRates | null;
@@ -1491,6 +1644,16 @@ function PasoPago({
           <Button
             type="button"
             className="h-10 w-full"
+            // ROJO CUANDO VA A FIARLE A UNA MALA PAGA. ES LA QUINTA PUERTA, y
+            // la que se habría olvidado: entrando desde la ficha del cliente
+            // (`?cliente=`) el flujo tiene TRES pasos y no cuatro, así que la
+            // venta se cierra AQUÍ y la pantalla del cliente no existe.
+            //
+            // LO CAZÓ EL NAVEGADOR, no el compilador: el diálogo ya salía
+            // —lo abre `guardar`, por donde pasan las cinco— y lo que se
+            // quedaba negro era el botón. Es justo el camino que el dueño
+            // nombró: *«desde el perfil del cliente marcado»*.
+            variant={conCliente && debeAvisar ? "destructive" : undefined}
             disabled={guardando}
             onClick={() => {
               if (conCliente) void guardar();
@@ -1563,6 +1726,7 @@ function PasoCliente({
   duplicado,
   guardando,
   error,
+  debeAvisar,
   onFinalizar,
   onUsarExistente,
   onEditarFormulario,
@@ -1583,6 +1747,10 @@ function PasoCliente({
   // El segundo argumento es la casilla del permiso para un cliente que YA
   // existe: el alta lo manda dentro de su `FormData`, pero aquí no hay
   // formulario que enviar.
+  // `true` cuando el cliente elegido está marcado como mala paga Y la venta
+  // deja algo debiendo. Pinta de rojo el botón que cierra; el diálogo lo abre
+  // `guardar`, que es por donde pasan los cuatro botones de este paso.
+  debeAvisar: boolean;
   onFinalizar: (form: HTMLFormElement | null, permiso: boolean) => void;
   // GUARDA LA VENTA EN EL CLIENTE QUE YA EXISTE, sin crear nada y sin tocar su
   // ficha. Ver el comentario de los dos botones.
@@ -1673,7 +1841,12 @@ function PasoCliente({
           onSelect={(id) => {
             const c = encontrados.find((x) => x.client_id === id);
             if (!c) return;
-            onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+            onElegirCliente({
+              id: c.client_id,
+              name: c.name,
+              esMostrador: false,
+              marcada: c.is_flagged === true,
+            });
             // El campo se vacía al cambiar: la lista ya cumplió, y dejarla
             // abierta encima de la tarjeta nueva tapa justo lo que se acaba de
             // elegir.
@@ -1767,6 +1940,7 @@ function PasoCliente({
           <Button
             type="button"
             className="h-10 w-full"
+            variant={debeAvisar ? "destructive" : undefined}
             disabled={guardando}
             onClick={() => onFinalizar(null, acepta)}
           >
@@ -1805,7 +1979,12 @@ function PasoCliente({
         onSelect={(id) => {
           const c = encontrados.find((x) => x.client_id === id);
           if (!c) return;
-          onElegirCliente({ id: c.client_id, name: c.name, esMostrador: false });
+          onElegirCliente({
+            id: c.client_id,
+            name: c.name,
+            esMostrador: false,
+            marcada: c.is_flagged === true,
+          });
           // EL BUSCADOR SE VACÍA, igual que al cambiar de cliente más abajo.
           //
           // SE OLVIDÓ EN ESTA RAMA Y SOLO EN ESTA, que es por qué el dueño lo
@@ -1957,6 +2136,7 @@ function PasoCliente({
         <Button
           type="button"
           className="h-10 w-full"
+          variant={debeAvisar ? "destructive" : undefined}
           disabled={guardando || (obligatorio && !hayNombre && !duplicado)}
           onClick={() => {
             if (duplicado) onUsarExistente(duplicado);

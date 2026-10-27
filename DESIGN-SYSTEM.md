@@ -2858,6 +2858,45 @@ The focus ring is also the one token whose failure nobody reports: it is
 `focus-visible`, so it only appears when navigating by keyboard, and everyone
 testing with a finger never sees it at all.
 
+## UNA PANTALLA COMPLETA SE APUNTA EN CUATRO LISTAS, NO EN UNA
+
+Escrito el 2026-10-26, al montar la ficha del producto (`/productos/<uuid>`,
+frame `1730:14329`). `CLAUDE.md` ya avisa de dos de ellas y el comentario de
+`mobile-nav.tsx` de tres. **Son cuatro**, y cada una falla distinto:
+
+| Archivo | Si falta la ruta… |
+|---|---|
+| `components/dashboard/app-header.tsx` | Salen **dos cabeceras** y la marca aparece dos veces en la misma pantalla |
+| `components/dashboard/mobile-nav.tsx` | La barra de abajo se dibuja **ENCIMA** del último botón y no se puede pulsar |
+| `app-main.tsx` · `enAsistenteDeVenta` | Queda reservada la altura de una barra que no se dibuja: una franja muerta |
+| `app-main.tsx` · `conBarraDeBotones` | `main` suma sus 16px a los 40 del pie y quedan 56 |
+
+**Ninguno de los cuatro da un error.** Los cuatro dan una pantalla que se ve
+casi bien, y el peor —el segundo— se reporta como «le di y no hizo nada», que
+no se parece en nada a su causa.
+
+### La pregunta vive en un módulo, no copiada cuatro veces
+
+`lib/products/routes.ts` es el precedente: una función, `isProductDetailRoute`,
+que los cuatro llaman. Copiar el patrón en cada archivo es exactamente cómo se
+desincronizan — y la cabecera que no tocaba se ha añadido sola **seis veces**
+justamente porque cada lista se mantiene a mano.
+
+**Y ojo con el comodín**: `/^\/productos\/[^/]+$/` casa también con
+`/productos/ordenes`, que es una LISTA y sí lleva cabecera en pantalla ancha.
+Un id es siempre un uuid, así que la forma del uuid es lo que distingue.
+
+### Una pantalla a sangre se come el relleno de `main` con `-m-4`
+
+`app-main.tsx` le pone `p-4` a TODAS las pantallas. Una cuya foto llega a los
+bordes lo cancela en su propio `<div>` raíz con `-m-4`, y vuelve a poner sus
+16px donde los quiere. Medido el 2026-10-26: sin eso la foto empezaba en x=16
+—con marco blanco alrededor— y el contenido llevaba 32px a los lados en vez de
+los 16 de la regla.
+
+**Se cancela en la pantalla, no en `app-main.tsx`**: ese archivo lo usan todas,
+y una excepción allí sería una quinta lista que mantener.
+
 ## Before calling UI work done
 
 Render it and **measure at 375px**, not just at desktop width. Check
