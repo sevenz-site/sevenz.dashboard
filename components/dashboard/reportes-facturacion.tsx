@@ -1,0 +1,395 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ChevronRight, Eye, EyeOff, Users } from "lucide-react";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { Facturacion, Libro } from "@/lib/reports/facturacion";
+
+// ═══════════════════════════════════════════════════════════════════════
+// LA PESTAÑA «FACTURACIÓN» — frame `1502:10283`
+//
+// Cuatro bloques, en el orden del frame: Cartera, Transacciones, Plazos de
+// pago y Mejores pagadores. De dónde sale cada cifra y las decisiones que el
+// mock no toma están en `lib/reports/facturacion.ts`.
+// ═══════════════════════════════════════════════════════════════════════
+
+const NOMBRE_DEL_LIBRO: Record<Libro, string> = {
+  USD: "Dólares",
+  // «Euro», en singular, que es como lo escribe el frame.
+  EUR: "Euro",
+  COP: "Pesos",
+};
+
+function Monto({
+  valor,
+  libro,
+  oculto,
+  className,
+}: {
+  valor: number;
+  libro: Libro;
+  oculto: boolean;
+  className?: string;
+}) {
+  return (
+    <span className={cn("flex items-center gap-1.5 tabular-nums", className)}>
+      {/* OCULTAR ES SUSTITUIR, NO BORRAR: el hueco conserva su sitio, así que
+          la tarjeta no cambia de alto al taparse y la pantalla no salta. */}
+      {oculto ? "•••••" : formatPriceAmount(valor, libro as PriceCurrency)}
+      <CurrencyFlagIcon currency={libro as PriceCurrency} />
+    </span>
+  );
+}
+
+function TarjetaDeMonto({
+  rotulo,
+  valor,
+  libro,
+  oculto,
+}: {
+  rotulo: string;
+  valor: number;
+  libro: Libro;
+  oculto: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] border px-3 py-3">
+      <span className="text-xs text-muted-foreground">{rotulo}</span>
+      <Monto valor={valor} libro={libro} oculto={oculto} className="text-xl leading-7" />
+    </div>
+  );
+}
+
+// ── EL GRÁFICO DE BARRAS ────────────────────────────────────────────
+//
+// A mano y no con una librería: son siete cubos y dos o tres series, y
+// `@tanstack/react-table` ya enseñó lo que cuesta atar una pantalla a una
+// dependencia que luego hay que migrar (ver `CLAUDE.md`). Aquí no hay ejes,
+// ni tooltips, ni zoom -- el frame no los dibuja.
+//
+// LA ALTURA ES RELATIVA AL MÁXIMO DE TODO EL GRÁFICO, no de cada barra: si
+// cada una se escalara sola, siete barras distintas se dibujarían iguales.
+function Barras({
+  puntos,
+  series,
+  oculto,
+}: {
+  puntos: { etiqueta: string; valores: number[] }[];
+  series: { nombre: string; clase: string }[];
+  oculto: boolean;
+}) {
+  const maximo = Math.max(0, ...puntos.flatMap((p) => p.valores));
+
+  return (
+    <div className="flex flex-col gap-4 rounded-[10px] border px-4 pt-4 pb-2">
+      {/* 92px: el alto del `Chart container` del frame (nodo `1505:...`). */}
+      {/* `items-stretch` Y LA COLUMNA CON `h-full`, y no es cosmético: con
+          `items-end` en el padre, cada columna coge el alto de su contenido, y
+          entonces el `height: N%` de cada barra se resuelve contra CERO. Las
+          barras medían 0,0px --medido en el navegador el 2026-10-27-- mientras
+          las de valor cero, que llevan 2px fijos, sí se veían. Un gráfico donde
+          solo se dibuja lo que vale cero. */}
+      <div className="flex h-[92px] items-stretch justify-between gap-2">
+        {puntos.map((p, i) => (
+          <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+            <div className="flex w-full flex-1 items-end justify-center gap-0.5">
+              {p.valores.map((v, j) => {
+                // CERO SE DIBUJA COMO UNA RAYA y no como nada. El frame lo hace
+                // así --sus cubos vacíos llevan un guion-- y resuelve una
+                // ambigüedad real: una barra ausente se lee como «no hay dato»,
+                // y esto es «ese día no hubo».
+                const alto = maximo > 0 ? Math.round((v / maximo) * 100) : 0;
+                return (
+                  <div
+                    key={j}
+                    className={cn(
+                      "w-1.5 rounded-sm",
+                      v > 0 ? series[j].clase : "bg-muted",
+                    )}
+                    style={{ height: v > 0 ? `${Math.max(alto, 6)}%` : "2px" }}
+                  />
+                );
+              })}
+            </div>
+            <span className="text-[11px] text-muted-foreground">{p.etiqueta}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {series.map((s) => (
+          <span key={s.nombre} className="flex items-center gap-1.5 text-[11px]">
+            <span className={cn("size-2 rounded-[2px]", s.clase)} aria-hidden />
+            {s.nombre}
+          </span>
+        ))}
+      </div>
+      {oculto ? (
+        <span className="sr-only">Importes ocultos</span>
+      ) : null}
+    </div>
+  );
+}
+
+function TituloDeBloque({
+  texto,
+  subtitulo,
+  accion,
+}: {
+  texto: string;
+  subtitulo?: string;
+  accion?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1 pt-3 pb-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-medium">{texto}</h2>
+        {accion}
+      </div>
+      {subtitulo ? (
+        <p className="text-xs leading-4 text-muted-foreground">{subtitulo}</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ReportesFacturacion({
+  datos,
+  periodoTexto,
+}: {
+  datos: Facturacion;
+  periodoTexto: string;
+}) {
+  // ── EL OJO TACHADO DEL FRAME (nodo `1502:10315`) ──────────────────
+  //
+  // Tapa los importes, no las cuentas. Para qué sirve, en una frase: el
+  // tendero abre Reportes con un cliente delante del mostrador, y lo que no
+  // quiere es que se vea cuánto factura ni cuánto le deben los demás.
+  //
+  // NO SE RECUERDA ENTRE VISITAS a propósito: si quedara apagado, un tendero
+  // que lo usó una vez abriría su propio informe tapado sin acordarse de por
+  // qué, y lo leería como que la app no carga.
+  const [oculto, setOculto] = useState(false);
+  const { libros } = datos;
+
+  const hayVentas = libros.some((l) => (datos.ventas[l] ?? 0) > 0);
+  const hayCartera = libros.some((l) => (datos.porCobrar[l] ?? 0) > 0);
+
+  return (
+    <div className="flex flex-col">
+      {/* ══ CARTERA ══════════════════════════════════════════════════ */}
+      <section className="flex flex-col">
+        <TituloDeBloque
+          texto="Cartera"
+          accion={
+            <button
+              type="button"
+              onClick={() => setOculto((v) => !v)}
+              aria-pressed={oculto}
+              aria-label={oculto ? "Mostrar importes" : "Ocultar importes"}
+              className="-m-2 rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {oculto ? <Eye className="size-6" /> : <EyeOff className="size-6" />}
+            </button>
+          }
+        />
+        {!hayCartera && !hayVentas ? (
+          <EmptyState
+            title="Todavía no hay nada que resumir"
+            subtitle={`No se registraron ventas ni fiados en ${periodoTexto}.`}
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-3">
+              {libros.map((l) => (
+                <TarjetaDeMonto
+                  key={l}
+                  rotulo={libros.length > 1 ? `Por cobrar en ${NOMBRE_DEL_LIBRO[l]}` : "Por cobrar"}
+                  valor={datos.porCobrar[l] ?? 0}
+                  libro={l}
+                  oculto={oculto}
+                />
+              ))}
+            </div>
+            <div className="flex gap-3">
+              {libros.map((l) => (
+                <TarjetaDeMonto
+                  key={l}
+                  rotulo={libros.length > 1 ? `Ventas en ${NOMBRE_DEL_LIBRO[l]}` : "Ventas"}
+                  valor={datos.ventas[l] ?? 0}
+                  libro={l}
+                  oculto={oculto}
+                />
+              ))}
+            </div>
+            <Barras
+              oculto={oculto}
+              puntos={datos.serieVentas.map((p) => ({
+                etiqueta: p.etiqueta,
+                valores: libros.map((l) => p[l] ?? 0),
+              }))}
+              series={libros.map((l, i) => ({
+                nombre: libros.length > 1 ? `Ventas en ${NOMBRE_DEL_LIBRO[l]}` : "Ventas",
+                clase: i === 0 ? "bg-money-in" : "bg-sky-600",
+              }))}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* ══ TRANSACCIONES ════════════════════════════════════════════ */}
+      <section className="flex flex-col">
+        <TituloDeBloque
+          texto="Transacciones"
+          // EL SUBTÍTULO DICE QUE SON RECUENTOS, y no está en el frame.
+          // Va porque sin él tres barras sin eje se leen como dinero, y el
+          // porqué de que NO sean dinero está en el cargador: sumar dólares
+          // con euros en una barra es el fallo del 2026-10-20.
+          subtitulo={`Cuántas veces se registró cada cosa en ${periodoTexto}.`}
+        />
+        <div className="flex flex-col gap-3">
+          <Barras
+            oculto={false}
+            puntos={datos.serieTransacciones.map((p) => ({
+              etiqueta: p.etiqueta,
+              valores: [p.contado, p.abono, p.fiado],
+            }))}
+            series={[
+              { nombre: "De contado", clase: "bg-money-in" },
+              { nombre: "Abono", clase: "bg-sky-600" },
+              { nombre: "Fiado", clase: "bg-destructive" },
+            ]}
+          />
+          <div className="flex gap-3">
+            {libros.map((l) => (
+              <TarjetaDeMonto
+                key={l}
+                rotulo={
+                  libros.length > 1
+                    ? `Ventas por catálogo en ${NOMBRE_DEL_LIBRO[l]}`
+                    : "Ventas por catálogo"
+                }
+                valor={datos.ventasPorCatalogo[l] ?? 0}
+                libro={l}
+                oculto={oculto}
+              />
+            ))}
+          </div>
+          {/* UNA SOLA TARJETA DE PEDIDOS, y el frame dibuja dos idénticas.
+              No es una por moneda: un pedido sin atender no tiene moneda
+              todavía --nadie ha decidido cómo se cobra--. Dos tarjetas con el
+              mismo número se leen como dos cosas distintas que coinciden. */}
+          <Link
+            href="/productos/ordenes"
+            className="flex items-center gap-3 rounded-[10px] border px-3 py-3 transition-colors active:bg-accent"
+          >
+            <span className="text-xl leading-7 text-money-due tabular-nums">
+              {datos.pedidosPorAtender}
+            </span>
+            <span className="min-w-0 flex-1 text-sm">Pedidos por atender</span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </Link>
+        </div>
+      </section>
+
+      {/* ══ PLAZOS DE PAGO ═══════════════════════════════════════════ */}
+      <section className="flex flex-col">
+        <TituloDeBloque texto="Plazos de pago" />
+        <div className="grid grid-cols-2 gap-3">
+          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} estado="dentro_del_plazo" />
+          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} estado="plazo_vencido" />
+          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} estado="critico" />
+          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} estado="mala_paga" />
+          {/* LA QUINTA TARJETA NO ESTÁ EN EL FRAME Y SE DIBUJA SI HAY ALGUIEN.
+              Un fiado vencido SIN plazo pactado cae en «Sin plazo», que no es
+              ninguna de las cuatro de arriba. Sin esta tarjeta esos clientes no
+              se cuentan en ninguna parte y las cuatro cifras sugieren que no
+              existen -- que es peor que una tarjeta de más. */}
+          {datos.plazos.sinPlazo > 0 ? (
+            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} estado="sin_plazo" />
+          ) : null}
+        </div>
+      </section>
+
+      {/* ══ MEJORES PAGADORES ════════════════════════════════════════ */}
+      <section className="flex flex-col">
+        <TituloDeBloque
+          texto="Mejores pagadores"
+          // EL FRAME DEJA EL CRITERIO SIN DECIDIR --«<Agregar acá el criterio
+          // objetivo…>»-- así que la pantalla lo ESCRIBE en vez de esconderlo.
+          // Quien lea la lista sabe por qué sale ese cliente y no otro, y
+          // puede decir que el criterio no le sirve, que es justo lo que un
+          // placeholder impide.
+          subtitulo={`Quien más abonó en ${periodoTexto}, entre los que están al día.`}
+        />
+        {datos.mejoresPagadores.length === 0 ? (
+          <EmptyState
+            title="Todavía nadie"
+            subtitle={`Nadie al día registró abonos en ${periodoTexto}.`}
+          />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {datos.mejoresPagadores.map((m) => (
+              <li key={m.clientId}>
+                <Link
+                  href={`/clients/${m.clientId}`}
+                  className="flex items-center gap-3 rounded-[10px] border border-l-4 border-l-money-in px-3 py-3 transition-colors active:bg-accent"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.nombre}</span>
+                  <Monto valor={m.pagado} libro={m.libro} oculto={oculto} className="text-sm" />
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TarjetaDePlazo({
+  rotulo,
+  cuenta,
+  estado,
+}: {
+  rotulo: string;
+  cuenta: number;
+  estado: keyof typeof CLIENT_STATUS_BADGE_CLASS | "mala_paga";
+}) {
+  // «Ver todo» LLEVA A LA LISTA DE CLIENTES CON SU FILTRO PUESTO, no a una
+  // hoja nueva. El frame dibuja una hoja con su propio buscador; la lista de
+  // Clientes ya ES esa pantalla --mismo chip, mismo criterio, mismo buscador--
+  // y duplicarla sería un segundo sitio donde el estado puede divergir, que es
+  // el fallo que `estadoDeCliente` existe para cerrar.
+  const href = estado === "mala_paga" ? "/malas-pagas" : `/clients?estado=${estado}`;
+  const enRojo = estado === "critico" || estado === "plazo_vencido";
+
+  return (
+    <Link
+      href={href}
+      className="flex flex-col gap-1 rounded-[10px] border px-3 py-3 transition-colors active:bg-accent"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 text-xs text-muted-foreground">{rotulo}</span>
+        <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      </div>
+      <span
+        className={cn("text-2xl leading-8 tabular-nums", enRojo && cuenta > 0 && "text-destructive")}
+      >
+        {cuenta}
+      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">Clientes</span>
+        <span className="flex items-center gap-0.5 text-xs">
+          Ver todo
+          <ChevronRight className="size-3.5" aria-hidden />
+        </span>
+      </div>
+    </Link>
+  );
+}

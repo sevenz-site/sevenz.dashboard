@@ -1,39 +1,55 @@
-import { ChartColumn } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
-import { ReporteCard } from "@/components/dashboard/reporte-card";
-import { ReporteClienteCard } from "@/components/dashboard/reporte-cliente-card";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   ReportesClientSearch,
   ReportesPeriodChips,
 } from "@/components/dashboard/reportes-controls";
-import { readWeeklyLending, hasAnyMovement } from "@/lib/weekly-lending-read";
+import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
+import { apartadoDe } from "@/lib/reports/apartados";
+import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
+import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
 import type { LendingPeriod } from "@/lib/lending-charts";
-import type { ClientSummary, OwnerCountry } from "@/lib/types";
-import { EmptyState } from "@/components/dashboard/empty-state";
+import type { OwnerCountry } from "@/lib/types";
 
-// REPORTES — rebuilt to the Figma spec of 2026-10-04 (frame `1074:30167`).
+// ═══════════════════════════════════════════════════════════════════════
+// REPORTES — reescrita al frame `1502:10283` el 2026-10-27
 //
-// It used to be two bare charts. Now it is one card per ledger, each carrying
-// that currency's capital on top and its own chart underneath, because a chart
-// means something different next to the figure it explains: "fiaste 300 esta
-// semana" reads one way beside "te deben 4.000" and another way alone.
+// Encargo del dueño: *«tendrá tres tabs en versión dark como la sección
+// superior de reportes: Clientes, Inventario y Proveedores»*, con el primero
+// renombrado a **Facturación** al pasar los frames.
 //
-// `CT-7` ("Informes", planned in `../docs/REPORTES-PLAN.md`) is still a bigger
-// thing that will eventually own this route and rewrite this page. Taking the
-// URL now is deliberate — the owner should not have to learn a second one —
-// but nothing here should be built on as if it were CT-7.
+// ───────────────────────────────────────────────────────────────────────
+// QUÉ SE VA DE AQUÍ, DICHO EN VOZ ALTA
 //
-// ─────────────────────────────────────────────────────────────────────────
-// THE TWO CONTROLS LIVE IN THE URL
+// La versión anterior (frame `1074:30167`, del 2026-10-04) era una tarjeta por
+// libro con su gráfico de **Fiado contra Abono**. El frame nuevo no lo dibuja:
+// en su lugar hay un gráfico de **Ventas** por moneda y otro de
+// **Transacciones** por tipo. No es lo mismo, y conviene saber qué se pierde
+// -- la comparación directa entre lo que se fía y lo que se cobra, que ahora
+// hay que leer de las barras de Transacciones.
 //
-// `?periodo=` and `?cliente=`, read here and applied before a single bar is
-// bucketed. The alternative — shipping the movements and filtering in the
-// browser — would put a shop's whole month of rows on a phone so it could throw
-// most of them away.
+// ───────────────────────────────────────────────────────────────────────
+// TRES CONTROLES EN LA URL, no en estado de cliente
+//
+// `?tab=`, `?periodo=` y `?cliente=`. Los dos últimos ya vivían ahí; el
+// primero se suma por la misma razón que ellos: el servidor sabe qué pintar,
+// así que no se cargan los datos de los tres apartados para enseñar uno.
+//
+// LO QUE EL FRAME DIBUJA Y AQUÍ NO ESTÁ, y se dice en vez de inventarlo:
+//
+//   · **«Descargar»** en la cabecera. Su nota suelta dice que manda .xlsx y
+//     .pdf al correo y que hay un envío mensual por apartado. Eso es la parte
+//     B de `REPORTES-PLAN.md` --generar ficheros, un proveedor de correo y un
+//     cron--, no esta pantalla. Un botón que no hace nada se lee como que la
+//     app está rota, que es lo que `CT-58` ya dejó escrito.
+//   · **El desplegable «Fecha»**. Aquí siguen los chips de periodo que esta
+//     pantalla ya tenía, que contestan lo mismo con un toque menos.
+// ═══════════════════════════════════════════════════════════════════════
+
 const PERIOD_LABEL: Record<LendingPeriod, string> = {
   "7d": "los últimos 7 días",
   "30d": "los últimos 30 días",
@@ -42,20 +58,21 @@ const PERIOD_LABEL: Record<LendingPeriod, string> = {
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string; cliente?: string }>;
+  searchParams: Promise<{ periodo?: string; cliente?: string; tab?: string }>;
 }) {
-  const { periodo, cliente } = await searchParams;
-  // Anything that is not one of the two known values falls back to 7 days
-  // rather than erroring: this parameter is in a URL the owner can share, edit
-  // or mistype, and a report is not worth a crash.
+  const { periodo, cliente, tab } = await searchParams;
+  // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
+  // estos parámetros van en una URL que el dueño puede compartir o teclear
+  // mal, y un informe no vale una pantalla caída.
   const period: LendingPeriod = periodo === "30d" ? "30d" : "7d";
+  const apartado = apartadoDe(tab);
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: clients }, { data: summaries }, { data: owner }, ownerRate] = await Promise.all([
+  const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("clients")
       .select("id, name, document_id, document_type")
@@ -63,133 +80,84 @@ export default async function ReportesPage({
       .is("trashed_at", null)
       .is("deleted_at", null)
       .order("name"),
-    supabase.from("client_summary").select("*").eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  // Same guard as Inicio, and for the same reason: not knowing the country is
-  // not knowing it is CO. Guessing here would draw a Venezuelan shop the
-  // Colombian chart — which is not an error message, it is an empty chart that
-  // looks like "you had a quiet week".
+  // La misma guarda que Inicio, y por la misma razón: no saber el país no es
+  // saber que es CO. Adivinar aquí le dibujaría a un negocio venezolano el
+  // informe colombiano -- que no es un mensaje de error, es un informe vacío
+  // que parece «tuviste una semana floja».
   const ownerCountry =
     (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
   if (!ownerCountry) return <OwnerUnavailableDialog />;
 
-  // An unknown or hidden id simply means "no filter". Silently, and on purpose:
-  // the alternative is a 404 on a screen whose job is to show numbers, from a
-  // parameter the owner may have inherited from a shared link.
+  // Un id desconocido u oculto es simplemente «sin filtro». En silencio y a
+  // propósito: la alternativa es un 404 en una pantalla cuyo trabajo es
+  // enseñar números, por un parámetro que pudo llegar en un enlace compartido.
   const selected = (clients ?? []).find((c) => c.id === cliente) ?? null;
-  const scopeIds = selected ? [selected.id] : (clients ?? []).map((c) => c.id);
 
-  const rows = ((summaries ?? []) as ClientSummary[]).filter(
-    (r) => !selected || r.client_id === selected.id,
-  );
-  // Flagged clients count here, exactly as they do in Inicio's capital. The
-  // mark hides someone from a list; it does not stop them owing money.
-  const totalCop = rows.filter((r) => Number(r.balance) > 0).reduce((s, r) => s + Number(r.balance), 0);
-  const totalUsd = rows.filter((r) => Number(r.balance_usd) > 0).reduce((s, r) => s + Number(r.balance_usd), 0);
-  const totalEur = rows.filter((r) => Number(r.balance_eur) > 0).reduce((s, r) => s + Number(r.balance_eur), 0);
-
-  const lending = await readWeeklyLending(supabase, scopeIds, period);
-  // Only asked when the period came back empty: on any other period the answer
-  // changes nothing, and this is a count over the whole movements table.
-  const everAny = lending.anyInPeriod ? true : await hasAnyMovement(supabase, scopeIds);
-
-  const ledger = ownerRate ? { rate: ownerRate.effectiveRate } : null;
-  const chartSuffix = period === "7d" ? "de la semana" : "de 30 días";
+  const facturacion =
+    apartado === "facturacion"
+      ? await cargarFacturacion({
+          supabase,
+          ownerId: user!.id,
+          period,
+          dosLibros: ownerRate !== null,
+          clientId: selected?.id ?? null,
+        })
+      : null;
 
   return (
     <div className="flex flex-1 flex-col gap-4">
       <ScreenHeader
         title="Reportes"
-        /* No subtitle: the spec turns that layer off on this screen, and the
-           period chip right below already says which window the bars cover. */
+        subtitle={`Comportamiento de clientes y productos durante ${PERIOD_LABEL[period]}.`}
         search={
           <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
         }
-        filters={<ReportesPeriodChips period={period} />}
+        filters={
+          // LOS DOS EN EL MISMO HUECO porque `ScreenHeader` tiene UNA ranura de
+          // filtros, y el frame los dibuja juntos dentro del bloque oscuro: los
+          // apartados arriba y el periodo debajo.
+          <div className="flex flex-col gap-3">
+            <ReportesTabs activo={apartado} />
+            <ReportesPeriodChips period={period} />
+          </div>
+        }
       />
 
-      {/* "Métricas totales" is the spec's own label, and the word "totales" is
-          what makes the filtered state readable: with a client picked it says
-          whose numbers these are instead of quietly showing one person's under
-          a heading that claims to cover everyone. */}
-      <h2 className="text-base font-semibold">
-        {selected ? `Métricas de ${selected.name}` : "Métricas totales"}
-      </h2>
-
-      {/* LA FICHA DEL CLIENTE, encima de sus métricas y solo cuando hay filtro.
-          Sin ella la pantalla contestaba «cómo va Petra» y te dejaba buscarla
-          otra vez por otra pantalla para hacer algo al respecto.
-
-          Va fuera del `if` de abajo a propósito: si Petra no tuvo movimientos en
-          el periodo, su ficha es justo lo que hay que poder abrir. */}
-      {selected && rows[0] ? (
-        <ReporteClienteCard row={rows[0]} ledger={ledger} rateContext={ownerRate} />
+      {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
+          una persona se lee como el del negocio entero, que es la clase de
+          error que nadie detecta mirando. */}
+      {selected ? (
+        <p className="text-sm text-muted-foreground">
+          Mostrando solo <span className="font-medium text-foreground">{selected.name}</span>.
+        </p>
       ) : null}
 
-      {lending.anyInPeriod ? (
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-          {ownerRate ? (
-            <>
-              <ReporteCard
-                label="Capital por cobrar en USD"
-                balance={totalUsd}
-                currency="USD"
-                ledger={ledger}
-                chartData={lending.usd}
-                chartTitle={`Fiado vs. Abono ${chartSuffix} (USD)`}
-              />
-              <ReporteCard
-                label="Capital por cobrar en Euro"
-                balance={totalEur}
-                currency="EUR"
-                ledger={ledger}
-                chartData={lending.eur}
-                chartTitle={`Fiado vs. Abono ${chartSuffix} (EUR)`}
-              />
-            </>
-          ) : (
-            <ReporteCard
-              label="Capital por cobrar"
-              balance={totalCop}
-              currency={null}
-              ledger={null}
-              chartData={lending.cop}
-              chartTitle={`Fiado vs. Abono ${chartSuffix}`}
-            />
-          )}
-        </div>
-      ) : (
-        /* Two different texts because they are two different situations, and
-           confusing them reads badly in both directions: telling someone who
-           signed up yesterday "nothing in the last 7 days" sounds like a
-           reproach for a week they were not here for, and telling someone with
-           eight months of history "here you will see your activity" sounds like
-           the app lost their data. */
-        /* EL ICONO SE QUEDA, y es el único estado vacío de la app que lleva
-           uno: esta caja sustituye a un GRÁFICO, no a una lista, y sin él el
-           hueco que deja una gráfica se lee como un error de carga. Va dentro
-           del título por eso --`EmptyState` no tiene ranura de icono y no se
-           le añade una para un solo caso--. */
+      {apartado === "facturacion" && facturacion ? (
+        <ReportesFacturacion datos={facturacion} periodoTexto={PERIOD_LABEL[period]} />
+      ) : null}
+
+      {/* LOS OTROS DOS APARTADOS DICEN QUÉ VAN A ENSEÑAR, y no se dibujan
+          vacíos ni a medias. Sus frames existen (`1667:19321` y `1749:14583`)
+          y varios de sus bloques dependen de datos que la app todavía no
+          lleva -- existencias vivas y órdenes de compra--, así que pintarlos
+          con lo que hay sería enseñar cifras que describen el día que se
+          registró el producto. */}
+      {apartado === "inventario" ? (
         <EmptyState
-          className="bg-muted/30"
-          title={
-            <span className="flex flex-col items-center gap-3">
-              <ChartColumn className="size-8 text-muted-foreground" aria-hidden="true" />
-              {everAny
-                ? `${selected ? `${selected.name} no tiene transacciones` : "No hay transacciones"} en ${PERIOD_LABEL[period]}`
-                : "Todavía no hay nada que mostrar"}
-            </span>
-          }
-          subtitle={
-            everAny
-              ? `${selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve la transacción del periodo que elijas.`
-              : "En cuanto registres tu primer fiado o abono, aquí verás cuánto diste y cuánto te pagaron."
-          }
+          title="Inventario, en camino"
+          subtitle="Aquí irán el capital en inventario, lo que está por agotarse, el margen por producto y los más vendidos."
         />
-      )}
+      ) : null}
+      {apartado === "proveedores" ? (
+        <EmptyState
+          title="Proveedores, en camino"
+          subtitle="Aquí irá cada proveedor con cuántos productos le compras y el margen que te dejan."
+        />
+      ) : null}
     </div>
   );
 }

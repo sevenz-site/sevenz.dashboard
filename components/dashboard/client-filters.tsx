@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Broom, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -116,7 +117,25 @@ export function useClientFilters<T extends ClientSummary>(
   },
 ) {
   const [nameQuery, setNameQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ClientStatus | "todos">("todos");
+  // ── EL ESTADO PUEDE VENIR EN LA URL (`?estado=`), desde el 2026-10-27 ──
+  //
+  // Lo manda el bloque «Plazos de pago» de Reportes: sus cuatro tarjetas
+  // prometen «Ver todo» y lo que abren es ESTA lista ya filtrada.
+  //
+  // SE SIEMBRA Y NO SE SINCRONIZA. El parámetro decide el valor INICIAL y a
+  // partir de ahí manda el chip: si se reescribiera la URL en cada toque, el
+  // botón de atrás del navegador recorrería los filtros uno a uno en vez de
+  // salir de la pantalla.
+  //
+  // Un valor que no sea un estado conocido cae en «todos» en lugar de dejar
+  // la lista vacía: la URL es compartible y se puede teclear mal, y una lista
+  // que no enseña a nadie se lee como «no tienes clientes».
+  const estadoEnLaUrl = useSearchParams().get("estado");
+  const [statusFilter, setStatusFilter] = useState<ClientStatus | "todos">(
+    estadoEnLaUrl && CLIENT_STATUS_LABEL[estadoEnLaUrl as ClientStatus]
+      ? (estadoEnLaUrl as ClientStatus)
+      : "todos",
+  );
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("nombre");
