@@ -34,8 +34,17 @@
 -- filtra. Misma forma que `qa:suscripciones`, y por el mismo motivo: una
 -- regla que solo vive en un comentario se salta sola.
 --
--- NO HAY QUE TOCAR GRANTS NI POLÍTICAS: los permisos de esta tabla son de
--- tabla entera, así que una columna nueva entra con ellos.
+-- LA POLÍTICA NO HAY QUE TOCARLA; EL GRANT SÍ, Y ESA ES LA SORPRESA.
+-- `catalog_order_items_owner_all` es `for all`, así que cubre el `update`.
+-- Los permisos, en cambio, NO son de tabla entera aquí: la `116` dio `select`
+-- a secas sobre esta tabla, y quitar una moneda es un `update`. El porqué
+-- entero, y lo que costó descubrirlo, está al final de este fichero.
+--
+-- (Esta línea decía lo contrario --«no hay que tocar grants»-- hasta el
+-- 2026-10-27. Era lo que yo creía al empezar a escribir la migración, y el
+-- navegador lo desmintió media hora después con un `42501`. Se corrige ahora
+-- porque esto todavía no ha corrido en producción; una vez allí, la prosa de
+-- una migración se queda como está.)
 -- ═══════════════════════════════════════════════════════════════════════
 
 alter table public.catalog_order_items
