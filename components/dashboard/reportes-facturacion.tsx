@@ -2,10 +2,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, CircleAlert, Eye, EyeOff, Users } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleDollarSign,
+  Eye,
+  EyeOff,
+  Package2,
+  UserRound,
+  UserRoundMinus,
+  UserRoundX,
+  type LucideIcon,
+} from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
+import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { cn } from "@/lib/utils";
@@ -192,6 +204,7 @@ export function ReportesFacturacion({
   // que lo usó una vez abriría su propio informe tapado sin acordarse de por
   // qué, y lo leería como que la app no carga.
   const [oculto, setOculto] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   const { libros } = datos;
 
   const hayVentas = libros.some((l) => (datos.ventas[l] ?? 0) > 0);
@@ -220,6 +233,41 @@ export function ReportesFacturacion({
     // encendida esconde el flotante en TODA la app hasta recargar.
     return () => marcarPantallaVacia(false);
   }, [vacia]);
+
+  // ── EL ESTADO VACÍO GENERAL — frame `1756:15450` ─────────────────
+  //
+  // SUSTITUYE LA PESTAÑA ENTERA, no un bloque. Es lo que ese frame dibuja y lo
+  // que el dueño describió: *«este es empty state de todas las secciones de
+  // reportes»*. Hasta ahora cada bloque traía el suyo, así que un negocio sin
+  // nada veía cuatro cajas vacías en fila en vez de una sola frase.
+  //
+  // SUS DOS BOTONES SON LOS DEL FRAME, y por eso el flotante se aparta: con
+  // «Registrar» dentro de la tarjeta, el de la barra sería el mismo control
+  // dos veces -- la misma razón escrita en `pantalla-vacia.ts`.
+  //
+  // «Registrar» Y NO «Registar», que es como lo escribe el frame.
+  if (vacia) {
+    return (
+      <EmptyState
+        title="Aún no hay clientes, ventas ni abonos registrados"
+        subtitle="Registra tu primera transacción para generar tus reportes en esta sección."
+      >
+        {/* ABRE LA MISMA HOJA QUE EL BOTÓN FLOTANTE, montando `RegisterSheet`
+            con su propio estado: esa hoja se controla desde fuera a propósito
+            --lo dice su comentario-- justo para que cada disparador traiga su
+            maquetación. Enlazar a una ruta en su lugar elegiría por el tendero
+            entre venta, fiado y abono, que es lo que esa hoja existe para no
+            hacer. */}
+        <Button type="button" className="h-10 w-full" onClick={() => setRegistrando(true)}>
+          Registrar
+        </Button>
+        <Button asChild variant="outline" className="h-10 w-full">
+          <Link href="/productos/nuevo">Crear producto</Link>
+        </Button>
+        <RegisterSheet open={registrando} onOpenChange={setRegistrando} />
+      </EmptyState>
+    );
+  }
 
   return (
     <div className="flex flex-col">
@@ -271,6 +319,10 @@ export function ReportesFacturacion({
                   valor={datos.ventas[l] ?? 0}
                   libro={l}
                   oculto={oculto}
+                  // `paid` en #007956 -- frame `1752:14744`. `CircleDollarSign`
+                  // de lucide es la misma moneda; el dueño dijo que los iconos
+                  // que pasó son referenciales y el COLOR es el requisito.
+                  icono={<CircleDollarSign className="size-4 text-brand-sales" aria-hidden />}
                 />
               ))}
             </div>
@@ -324,6 +376,8 @@ export function ReportesFacturacion({
                 valor={datos.ventasPorCatalogo[l] ?? 0}
                 libro={l}
                 oculto={oculto}
+                // `package_2` en #007956 -- frame `1752:14808`.
+                icono={<Package2 className="size-4 text-brand-sales" aria-hidden />}
               />
             ))}
           </div>
@@ -367,17 +421,23 @@ export function ReportesFacturacion({
       <section className="flex flex-col">
         <TituloDeBloque texto="Plazos de pago" />
         <div className="grid grid-cols-2 gap-3">
-          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} clave="porVencer" clientes={datos.clientesPorPlazo.porVencer} />
-          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} clave="vencido" clientes={datos.clientesPorPlazo.vencido} enRojo />
-          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} clave="criticos" clientes={datos.clientesPorPlazo.criticos} enRojo />
-          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} clave="malasPagas" clientes={datos.clientesPorPlazo.malasPagas} />
+          {/* LOS CUATRO ICONOS Y SUS DOS COLORES salen del frame `1618:12530`,
+              leído el 2026-10-27. No son decorativos: separan «hay que
+              vigilar» (#BF4C00) de «ya es un problema» (#E7000B), y la CIFRA
+              se tiñe en otro eje -- roja solo donde el número en sí es la mala
+              noticia. Por eso «Malas pagas» lleva icono rojo y cifra normal:
+              la marca es grave, pero su cantidad no sube ni baja sola. */}
+          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} clave="porVencer" clientes={datos.clientesPorPlazo.porVencer} Icono={UserRound} colorIcono="text-brand-report" />
+          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} clave="vencido" clientes={datos.clientesPorPlazo.vencido} Icono={UserRoundMinus} colorIcono="text-brand-report" enRojo />
+          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} clave="criticos" clientes={datos.clientesPorPlazo.criticos} Icono={UserRoundMinus} colorIcono="text-destructive" enRojo />
+          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} clave="malasPagas" clientes={datos.clientesPorPlazo.malasPagas} Icono={UserRoundX} colorIcono="text-destructive" />
           {/* LA QUINTA TARJETA NO ESTÁ EN EL FRAME Y SE DIBUJA SI HAY ALGUIEN.
               Un fiado vencido SIN plazo pactado cae en «Sin plazo», que no es
               ninguna de las cuatro de arriba. Sin esta tarjeta esos clientes no
               se cuentan en ninguna parte y las cuatro cifras sugieren que no
               existen -- que es peor que una tarjeta de más. */}
           {datos.plazos.sinPlazo > 0 ? (
-            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} clave="sinPlazo" clientes={datos.clientesPorPlazo.sinPlazo} />
+            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} clave="sinPlazo" clientes={datos.clientesPorPlazo.sinPlazo} Icono={UserRound} colorIcono="text-brand-report" />
           ) : null}
         </div>
       </section>
@@ -395,7 +455,11 @@ export function ReportesFacturacion({
         />
         {datos.mejoresPagadores.length === 0 ? (
           <EmptyState
-            title="Todavía nadie"
+            // EL TEXTO DEL FRAME `1755:15157`, con dos arreglos que se dicen
+            // en voz alta: su subtítulo escribe «Nadia» --errata-- y fija «los
+            // últimos 7 días», que aquí depende del rango que el tendero haya
+            // elegido.
+            title="Aún no hay clientes calificados"
             subtitle={`Nadie al día registró abonos ${periodoTexto}.`}
           >
             {/* EL ESTADO VACÍO OFRECE LA ACCIÓN, no solo informa. Encargo del
@@ -437,55 +501,55 @@ function TarjetaDePlazo({
   cuenta,
   clave,
   clientes,
+  Icono,
+  colorIcono,
   enRojo = false,
 }: {
   rotulo: string;
   cuenta: number;
   clave: ClavePlazo;
   clientes: ClienteDePlazo[];
+  Icono: LucideIcon;
+  colorIcono: string;
   enRojo?: boolean;
 }) {
-  // ── ERA UN ENLACE A `/clients?estado=…`, Y AHORA ABRE SU HOJA ────────
+  // ── «VER TODO» VA SIEMPRE, TAMBIÉN EN CERO ──────────────────────────
   //
-  // Encargo del dueño el 2026-10-27, con los cuatro frames. El porqué del
-  // cambio --y qué decisión desplaza-- está en `reportes-plazos-sheet.tsx`.
+  // Lo tuve escondido cuando la cifra era 0, con este argumento: «una hoja
+  // vacía que se despliega y hay que cerrar es peor que un 0 que no
+  // reacciona». El dueño lo reportó el 2026-10-27 -- *«hay un par que les
+  // falta el botón»*-- y su frame `1618:12530` lo dibuja en las CUATRO.
   //
-  // SIN NADIE DENTRO NO ABRE NADA: una hoja vacía que se despliega y hay que
-  // cerrar es peor que un «0» que no reacciona. La tarjeta sigue diciendo su
-  // cifra, que es la respuesta.
-  const contenido = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 text-xs text-muted-foreground">{rotulo}</span>
-        <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      </div>
-      <span
-        className={cn("text-2xl leading-8 tabular-nums", enRojo && cuenta > 0 && "text-destructive")}
+  // Y tiene razón por algo que yo no había mirado: cuatro tarjetas iguales de
+  // las que dos reaccionan y dos no se lee como que la pantalla está a medio
+  // cargar, no como que están vacías. La hoja en cero no queda muda: enseña su
+  // propio estado vacío, que CONFIRMA la respuesta en vez de dejar al tendero
+  // dudando de si tocó bien.
+  return (
+    <PlazosSheet clave={clave} clientes={clientes}>
+      <button
+        type="button"
+        className="flex flex-col gap-1 rounded-[10px] border px-3 py-3 text-left transition-colors active:bg-accent"
       >
-        {cuenta}
-      </span>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">Clientes</span>
-        {cuenta > 0 ? (
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 text-xs text-muted-foreground">{rotulo}</span>
+          <Icono className={cn("size-4 shrink-0", colorIcono)} aria-hidden />
+        </div>
+        <span
+          className={cn(
+            "text-2xl leading-8 tabular-nums",
+            enRojo && cuenta > 0 && "text-destructive",
+          )}
+        >
+          {cuenta}
+        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Clientes</span>
           <span className="flex items-center gap-0.5 text-xs">
             Ver todo
             <ChevronRight className="size-3.5" aria-hidden />
           </span>
-        ) : null}
-      </div>
-    </>
-  );
-
-  const clases = "flex flex-col gap-1 rounded-[10px] border px-3 py-3 text-left transition-colors";
-
-  if (cuenta === 0) {
-    return <div className={clases}>{contenido}</div>;
-  }
-
-  return (
-    <PlazosSheet clave={clave} clientes={clientes}>
-      <button type="button" className={`${clases} active:bg-accent`}>
-        {contenido}
+        </div>
       </button>
     </PlazosSheet>
   );

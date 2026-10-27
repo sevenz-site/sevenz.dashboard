@@ -36,6 +36,7 @@
   --color-brand-field-border: var(--brand-field-border);
   --color-brand-tab-selected: var(--brand-tab-selected);
   --color-brand-report: var(--brand-report);
+  --color-brand-sales: var(--brand-sales);
   --color-brand-muted: var(--brand-muted);
   --color-money-due: var(--money-due);
   --color-brand-whatsapp: var(--brand-whatsapp);
@@ -127,8 +128,18 @@
 
      NO ES `--brand` (#f66b02), que es el naranja de la marca: este es mas
      oscuro y existe para un icono sobre fondo claro, donde el de marca se
-     lava. */
+     lava. Sobre blanco da 4,94:1, medido por `npm run qa:contraste`. */
   --brand-report: #bf4c00;
+  /* EL VERDE DE LOS ICONOS DE VENTAS en Reportes (frames `1752:14744` y
+     `1752:14808`). Lo pidio el dueno el 2026-10-27 con el color como
+     requisito.
+
+     ESTA A UN PASO DE `--money-in`, QUE ES #008236 -- convertido desde su
+     oklch, no citado de memoria. Son dos verdes casi iguales y eso es un olor:
+     si algun dia se unifican, este es el que sobra. Se crea igualmente porque
+     el frame pide este y `--money-in` ademas GIRA con el tema, mientras que
+     estos iconos viven sobre fondo claro siempre. */
+  --brand-sales: #007956;
   /* Secondary text on the dark header: subtitles, the back arrow, the filter
      chips' labels. 5,31:1 against `--brand-primary`, so it clears the 4,5 of
      normal text with a little room.
