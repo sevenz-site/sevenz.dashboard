@@ -49,13 +49,18 @@ import { borrarBorrador } from "@/lib/orders/borrador-de-registro";
 // que teclear los dos otra vez. Hoy eso es correcto porque tampoco se escribe
 // nada hasta la última moneda; el día que la primera venta se escriba antes
 // --está abierto-- esta regla hay que volver a mirarla.
-export function OrderDraftReset() {
+// EL ID, DESDE EL 2026-10-26, y es la otra mitad de `PR-G3`. Sin él esto
+// borraba el borrador de CUALQUIER pedido, así que abrir el de Luis tiraba lo
+// que estaba a medias en el de Pedro -- y eso pasaba incluso con una llave por
+// pedido, porque el que borraba era este componente. Lo que el dueño pidió es
+// que salirse del flujo reinicie ESE pedido, y eso es lo que hace ahora.
+export function OrderDraftReset({ pedidoId }: { pedidoId: string }) {
   useEffect(() => {
     // NO ES `setState` EN UN EFECTO: escribe en un almacén de fuera de React,
     // que es para lo que los efectos existen. El lint que prohíbe lo primero
     // --y que ya tiene en rojo a `feedback-banner.tsx`-- no aplica aquí.
-    borrarBorrador();
-  }, []);
+    borrarBorrador(pedidoId);
+  }, [pedidoId]);
 
   return null;
 }

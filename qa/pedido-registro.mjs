@@ -1143,6 +1143,159 @@ try {
     );
   }
 
+  // ═══ 18. BORRAR LA VENTA DEVUELVE EL PEDIDO A PENDIENTE (PR-F7) ═══════
+  //
+  // Medido como DEFECTO en dev el 2026-10-26: `eliminarVenta` borraba la venta
+  // y no sabia que existian los pedidos, asi que el pedido se quedaba sellado
+  // como «Registrado» apuntando a una venta borrada y el flujo se negaba a
+  // volver a entrar. El cliente quedaba con «Todavia no hay transacciones
+  // registradas» y el pedido diciendo lo contrario, sin un solo aviso.
+  //
+  // LO QUE COSTABA: el tendero que borra una venta mal hecha para repetirla
+  // tiene que apuntarla a mano, SIN los precios sellados que el cliente vio.
+  //
+  // EL ID SE DESCUBRE EN LA PANTALLA DE LA VENTA, que es donde vive el boton
+  // «Eliminar venta» -- y esa pantalla solo existe si hubo algo DE CONTADO en
+  // esa moneda. Por eso el pedido de esta tanda se registra de contado entero.
+  const pedidoBorrar = await nuevoPedido("borrar venta", [lineaViva]);
+  const rBorrar = await registrar(
+    entradaDe(pedidoBorrar.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("18181818")),
+    pedidoBorrar.id,
+  );
+  if (rBorrar.ok && rBorrar.clientId) creados.clientes.push(rBorrar.clientId);
+
+  const accionBorrar = rBorrar.ok
+    ? await idDeLaAccion(
+        BASE,
+        "eliminarVenta",
+        cookie,
+        `/transacciones/venta/${rBorrar.saleId}/usd`,
+      )
+    : null;
+  check(
+    "18a. el id de `eliminarVenta` se descubre en los chunks",
+    accionBorrar != null,
+    accionBorrar ? `${accionBorrar.slice(0, 10)}...` : "NO ENCONTRADO",
+  );
+
+  async function borrarVenta(saleId) {
+    const res = await fetch(`${BASE}/transacciones/venta/${saleId}/usd`, {
+      method: "POST",
+      headers: {
+        "Next-Action": accionBorrar,
+        "Content-Type": "text/plain;charset=UTF-8",
+        Cookie: cookie,
+      },
+      body: JSON.stringify([saleId]),
+    });
+    return await res.text();
+  }
+
+  if (accionBorrar) {
+    // El sello existe ANTES de borrar: sin esta mitad, un pedido que nunca se
+    // hubiera sellado pasaria la fila siguiente sin que nada funcionara.
+    const { data: selloAntes } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at, sale_id")
+      .eq("id", pedidoBorrar.id)
+      .single();
+    check(
+      "18b. el pedido quedo sellado al registrarlo",
+      selloAntes?.status === "registered" &&
+        selloAntes?.registered_at != null &&
+        selloAntes?.sale_id === rBorrar.saleId,
+      `status ${selloAntes?.status}`,
+    );
+
+    const textoBorrar = await borrarVenta(rBorrar.saleId);
+    const { data: selloDespues } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at, sale_id")
+      .eq("id", pedidoBorrar.id)
+      .single();
+    check(
+      "18c. borrada la venta, el pedido vuelve a estar PENDIENTE",
+      /"ok":true/.test(textoBorrar) &&
+        selloDespues?.status === "new" &&
+        selloDespues?.registered_at == null &&
+        selloDespues?.sale_id == null,
+      `status ${selloDespues?.status} - registered_at ${selloDespues?.registered_at ?? "null"} - sale_id ${selloDespues?.sale_id ?? "null"}`,
+    );
+
+    // ── Y SE PUEDE VOLVER A REGISTRAR, que es para lo que se desella ────
+    //
+    // La fila de arriba mira la base; esta mira lo que de verdad le importa al
+    // tendero. Un pedido con el estado correcto y la accion todavia
+    // rechazandolo seguiria sin dejarle cobrar.
+    const rOtraVez = await registrar(
+      entradaDe(pedidoBorrar.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("18181818")),
+      pedidoBorrar.id,
+    );
+    if (rOtraVez.ok && rOtraVez.clientId) creados.clientes.push(rOtraVez.clientId);
+    check(
+      "18d. y el pedido se puede volver a registrar",
+      rOtraVez.ok === true,
+      rOtraVez.ok ? rOtraVez.saleId : rOtraVez.error,
+    );
+
+    // ── 18e. CONTROL: DOS MONEDAS, UNA SOLA VENTA BORRADA ───────────────
+    //
+    // ESTA ES LA FILA QUE IMPIDE «ARREGLARLO» DESSELLANDO A SECAS. Un pedido
+    // de dos monedas tiene DOS ventas: borrar la de dolares tiene que dejar
+    // pendientes los dolares y NADA mas. Un `registered_at = null` escrito a
+    // mano pasaria 18c y dejaria este pedido reclamando tambien unos euros que
+    // ya estan cobrados -- y el tendero los cobraria dos veces.
+    const pedidoDos = await nuevoPedido("borrar una de dos", [lineaViva, lineaEuros]);
+    const rUno = await registrar(
+      entradaDe(pedidoDos.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("18282828")),
+      pedidoDos.id,
+    );
+    if (rUno.ok && rUno.clientId) creados.clientes.push(rUno.clientId);
+    const rDos = await registrar(
+      {
+        ...entradaDe(pedidoDos.id, "EUR", pagoDeMoneda({ amount: 12 }), clienteNuevo("18282828")),
+        cliente: { ...clienteNuevo("18282828"), fichaId: rUno.ok ? rUno.clientId : null },
+      },
+      pedidoDos.id,
+    );
+
+    const textoBorrar2 = await borrarVenta(rUno.ok ? rUno.saleId : VACIO);
+    const { data: selloMixto } = await admin
+      .from("catalog_orders")
+      .select("status, registered_at, sale_id")
+      .eq("id", pedidoDos.id)
+      .single();
+    // La venta de euros sigue viva, asi que `sale_id` tiene que apuntar a ELLA
+    // y no quedarse colgando de la borrada.
+    check(
+      "18e. CONTROL: borrar una de dos ventas deja el pedido pendiente y `sale_id` en la viva",
+      rDos.ok === true &&
+        /"ok":true/.test(textoBorrar2) &&
+        selloMixto?.status === "new" &&
+        selloMixto?.registered_at == null &&
+        selloMixto?.sale_id === (rDos.ok ? rDos.saleId : null),
+      `status ${selloMixto?.status} - sale_id ${selloMixto?.sale_id === (rDos.ok ? rDos.saleId : null) ? "la viva" : selloMixto?.sale_id}`,
+    );
+
+    // ── 18f. Y SOLO LOS DOLARES VUELVEN A ESTAR PENDIENTES ──────────────
+    //
+    // Lo que de verdad decide si el control de arriba vale: intentar cobrar
+    // OTRA VEZ los euros tiene que seguir rechazado. Si pasara, el pedido
+    // desellado seria una puerta abierta a cobrar dos veces.
+    const rEurosOtraVez = await registrar(
+      {
+        ...entradaDe(pedidoDos.id, "EUR", pagoDeMoneda({ amount: 12 }), clienteNuevo("18282828")),
+        cliente: { ...clienteNuevo("18282828"), fichaId: rUno.ok ? rUno.clientId : null },
+      },
+      pedidoDos.id,
+    );
+    check(
+      "18f. CONTROL: la moneda que NO se borro sigue sin poderse cobrar dos veces",
+      rEurosOtraVez.ok === false,
+      rEurosOtraVez.ok ? "LA COBRO OTRA VEZ" : rEurosOtraVez.error,
+    );
+  }
+
 } catch (e) {
   check("la suite llegó al final", false, e.message);
 } finally {

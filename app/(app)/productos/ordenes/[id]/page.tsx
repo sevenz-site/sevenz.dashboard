@@ -237,7 +237,7 @@ export default async function OrdenPage({
           2026-10-26: *«toda la edición del pedido debería reiniciarse si me
           salgo del flujo, incluyendo la cantidad»*. El porqué entero --y lo
           que cuesta-- está en `OrderDraftReset`. */}
-      <OrderDraftReset />
+      <OrderDraftReset pedidoId={pedido.id} />
 
       <ScreenBackRow
         href="/productos/ordenes"

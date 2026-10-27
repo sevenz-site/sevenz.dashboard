@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
@@ -1765,7 +1766,9 @@ export async function eliminarVenta(
   // id que llega del navegador.
   const { data: venta } = await supabase
     .from("sales")
-    .select("id, owner_id, client_id")
+    // `catalog_order_id` SE PIDE AQUÍ PORQUE EL PEDIDO HAY QUE DESSELLARLO.
+    // Ver abajo, al final de la función: `PR-F7`.
+    .select("id, owner_id, client_id, catalog_order_id")
     .eq("id", saleId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1856,6 +1859,36 @@ export async function eliminarVenta(
   });
   if (errorRecalc) {
     return { ok: false, error: mensajeDeError("recalcular el saldo", errorRecalc, "recalc") };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SI ESTA VENTA NACIÓ DE UN PEDIDO, EL PEDIDO VUELVE A ESTAR PENDIENTE
+  //
+  // `PR-F7`, medido en dev el 2026-10-26. Esta función hacía tres cosas bien
+  // --borraba los movimientos, borraba la venta, recalculaba el saldo-- y NO
+  // SABÍA QUE EXISTÍAN LOS PEDIDOS. Así que el pedido se quedaba sellado como
+  // «Registrado», apuntando a una venta borrada, y el flujo se negaba a volver
+  // a entrar: el cliente quedaba con «Todavía no hay transacciones
+  // registradas» y el pedido afirmando lo contrario, sin un solo aviso.
+  //
+  // LO QUE COSTABA: el tendero que borra una venta mal hecha para repetirla
+  // descubre que el pedido ya no le deja, y tiene que apuntarla a mano --SIN
+  // los precios sellados que el cliente vio en el catálogo--. O sea que puede
+  // cobrarle un precio distinto al que el cliente aceptó.
+  //
+  // SE RECALCULA, NO SE «DESSELLA». Un pedido de dos monedas tiene DOS ventas:
+  // borrar la de dólares tiene que dejar pendientes los dólares y NADA más.
+  // Eso solo se sabe volviendo a preguntar, que es lo que hace esa función.
+  //
+  // VA DESPUÉS DEL RECÁLCULO DEL SALDO Y NO FALLA LA ACCIÓN. El borrado ya
+  // ocurrió y es lo que el tendero pidió; si esto no corriera, lo que queda es
+  // el estado viejo del pedido, que es exactamente el defecto de antes. Se
+  // registra en el log para poder encontrarlo, no se convierte en un error que
+  // le haga creer que la venta sigue ahí.
+  if (venta.catalog_order_id) {
+    await recalcularSelloDelPedido(supabase, venta.catalog_order_id as string);
+    revalidatePath(`/productos/ordenes/${venta.catalog_order_id}`);
+    revalidatePath("/productos/ordenes");
   }
 
   revalidatePath("/dashboard");

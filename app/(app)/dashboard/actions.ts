@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { mensajeDeError } from "@/lib/errores-legibles";
@@ -248,6 +249,28 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
       .eq("owner_id", user.id)
       .not("deleted_at", "is", null);
     if (errorVenta) console.error("restoreMovement: no se pudo revivir la venta", errorVenta.message);
+
+    // ── Y SI ESA VENTA ERA DE UN PEDIDO, EL PEDIDO SE VUELVE A SELLAR ──
+    //
+    // ESTA ES LA MITAD QUE NO ES OPCIONAL DE `PR-F7`, y sin ella el arreglo
+    // sería PEOR que el fallo: `eliminarVenta` deja ahora el pedido sin sellar
+    // cuando se borra su venta, así que restaurar devolvería la venta a la
+    // vida con el pedido todavía diciendo «pendiente» -- y el flujo lo dejaría
+    // registrar OTRA VEZ, cobrándole al cliente dos veces el mismo pedido.
+    //
+    // Es la misma función que llama el borrado, y a propósito: las dos hacen
+    // literalmente lo mismo --volver a preguntar qué queda por cobrar-- y
+    // escribir eso dos veces es cómo una de las dos se queda atrás.
+    const { data: ventaRestaurada } = await supabase
+      .from("sales")
+      .select("catalog_order_id")
+      .eq("id", movement.sale_id)
+      .maybeSingle();
+    if (ventaRestaurada?.catalog_order_id) {
+      await recalcularSelloDelPedido(supabase, ventaRestaurada.catalog_order_id as string);
+      revalidatePath(`/productos/ordenes/${ventaRestaurada.catalog_order_id}`);
+      revalidatePath("/productos/ordenes");
+    }
   }
 
   const { error: restoreError } = await supabase

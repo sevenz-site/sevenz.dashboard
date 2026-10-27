@@ -515,9 +515,9 @@ todos los pedidos de todos los negocios, y es el primero que nadie prueba
 porque se da por hecho que funciona. Los cuatro de abajo son los cuatro
 recorridos que de verdad ocurren todos los días.
 
-**Antes de esto corren las suites** --`qa:pedido-registro` (47 controles),
-`qa:pedidos`, `qa:aviso-mala-paga`, `qa:lineas-borradas`-- que están en la
-sección 2b y en la 6b. Lo de aquí es lo que **ninguna suite puede ver**: la
+**Antes de esto corren las suites** --`qa:pedido-registro` (53 controles),
+`qa:pedidos`, `qa:aviso-mala-paga`, `qa:sello-del-pedido`,
+`qa:lineas-borradas`-- que están en la sección 2b y en la 6b. Lo de aquí es lo que **ninguna suite puede ver**: la
 pantalla.
 
 **Y el detalle entero de los bordes vive en `REGISTRO-DE-PEDIDO-BORDES.md`**,
@@ -564,6 +564,8 @@ la base: era la puerta**.
 | Un pedido **descartado** no se registra | `qa:pedido-registro` 16a-16d · y abrir su URL de `/registrar` a mano | Se registraba entero. El cliente quedaba debiendo por un pedido que la app decía descartado |
 | El aviso de **«Mala paga»** | `qa:aviso-mala-paga` · y fiarle a uno marcado | Ninguna de las cuatro pantallas lo nombraba, y dos enseñaban la tarjeta VERDE «el cliente ya existe» |
 | Quitar la moneda que falta **cierra** el pedido | `qa:pedido-registro` 17a-17e · y hacerlo en pantalla | El pedido quedaba pendiente PARA SIEMPRE y su único botón contestaba «Esa parte del pedido ya se registró» |
+| **Borrar la venta** devuelve el pedido a pendiente, y **restaurarla** lo vuelve a sellar | `qa:pedido-registro` 18a-18f · `qa:sello-del-pedido` · y el ciclo entero en pantalla | El pedido se quedaba «Registrado» apuntando a una venta borrada, y el flujo se negaba a volver a entrar |
+| Un pedido a medias **sobrevive** a que se abra otro | hacerlo en pantalla | El segundo pisaba el borrador del primero y la pantalla volvía al paso 1 sin una palabra |
 
 **Y LOS DESCARTADOS SE TIENEN QUE PODER ENCONTRAR**, desde el 2026-10-26: el
 chip de estado de la lista de Pedidos tiene un cuarto valor, **«Descartado»**,
@@ -591,6 +593,19 @@ salga en la primera no sale nunca justo en el caso de dos monedas.
 que se olvida: la del **`1/x`** de un pedido de dos monedas, porque ahí el paso
 del cliente se salta y el recuadro verde no pasa por delante de nadie. Las
 otras dos son ese recuadro verde y el del detalle del pedido.
+
+**EL CICLO DE BORRAR Y RESTAURAR SE MIRA ENTERO, y la segunda mitad es la que
+importa**: `eliminarVenta` dessella el pedido, así que si `restoreMovement`
+dejara de volver a sellarlo, restaurar devolvería la venta a la vida con el
+pedido diciendo «pendiente» -- y el flujo lo dejaría registrar otra vez.
+Después de restaurar, el detalle tiene que decir **«Registrado: ‹fecha›»** (con
+fecha, no vacío: los guardias de las seis pantallas miran esa columna y no
+`status`) y su `/registrar` tiene que rebotar.
+
+**Y EL BORRADOR DE UN PEDIDO ES SUYO**: dejar uno a medias, abrir otro y volver
+tiene que devolver al primero donde estaba. El control, que impide «arreglarlo»
+quitando el reinicio: salirse al detalle **de ese mismo pedido** sí lo
+reinicia, que es lo que el dueño pidió el 2026-10-26.
 
 **Los dos controles no son opcionales**, y sin ellos «avisar siempre» pasaría
 la prueba: un cliente **sin marca** no ve el diálogo, y un cliente marcado cuyo
@@ -1057,7 +1072,7 @@ no escribe nada.
 | **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |
 | `/admin` y métricas | `qa:multi-owner` |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
-| **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, `qa:lineas-borradas`, `qa:suscripciones` |
+| **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, **`qa:sello-del-pedido`**, `qa:lineas-borradas`, `qa:suscripciones` |
 
 **Las tres últimas de esa fila leen el CÓDIGO, no la base**, así que tardan un
 segundo y no necesitan servidor. Cada una cierra una avería que no se ve: un

@@ -236,7 +236,7 @@ export function OrderCurrencyPaymentForm({
       return;
     }
     // EL BORRADOR SE BORRA SOLO DESPUÉS DE QUE LA VENTA ATERRICE.
-    borrarBorrador();
+    borrarBorrador(pedidoId);
     router.push(`/ventas/${resultado.primeraVentaId}`);
     router.refresh();
   }

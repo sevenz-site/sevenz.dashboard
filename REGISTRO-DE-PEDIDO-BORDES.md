@@ -33,13 +33,19 @@ eso es justo lo que se pierde primero.
 | **PR-A2** | Un pedido **descartado se registraba igual** si se llegaba por URL | Las seis pantallas redirigen al detalle y la acción lo rechaza. El detalle lo dice con su chip **«Descartado»**, no ofrece «Registrar pedido», y su «⋮» ofrece **«Restaurar»**. Y desde esa tarde se pueden ENCONTRAR: el chip de estado de la lista tiene un cuarto valor, **«Descartado»** |
 | **PR-E6** | Un cliente **marcado «mala paga»** no se nombraba en ninguna de las cuatro pantallas | Diálogo **«‹Nombre› está marcado como Mala paga · ¿Fiarle de todas formas?»** antes de escribir, en **las dos** puertas que registran, y solo cuando queda algo debiendo. Y desde esa tarde, un chip **«Mala paga»** en las **tres** tarjetas de cliente del flujo |
 | **PR-F6** | Registrar una moneda y **quitar la que falta** dejaba el pedido pendiente **para siempre** | Quitarla **cierra el pedido** cuando lo que queda vivo ya está vendido, y la pantalla lo dice: «Quitado. El pedido queda registrado» |
+| **PR-F7** | **Borrar la venta** dejaba el pedido sellado para siempre, apuntando a una venta que ya no existe | El sello se **recalcula** al borrar y al **restaurar**: el pedido vuelve a estar pendiente de lo que se borró, y solo de eso |
+| **PR-G3** | Empezar un segundo pedido **pisaba el borrador del primero**, en silencio | Una llave de almacenamiento **por pedido**, y el borrado del detalle acotado al suyo |
 
 **Las dos últimas columnas de `PR-A2` y `PR-E6` crecieron esa misma tarde**, y
 las dos por lo mismo: el dueño leyó este documento y pidió lo que faltaba. Es
 para lo que está.
 
-Las tres tienen suite desde ese día: `qa:pedido-registro` 16a-16d y 17a-17e, y
-`qa:aviso-mala-paga`. Cada una con su CONTROL, que es la mitad que impide
+**Las dos últimas se arreglaron esa misma noche**, por encargo del dueño al
+leer la lista de lo abierto: *«Arregla PR-F7 + PR-G3»*. Las dos estaban medidas
+desde esa tarde, que es lo que hizo que arreglarlas costara horas y no días.
+
+Las cinco tienen suite desde ese día: `qa:pedido-registro` 16a-16d, 17a-17e y
+18a-18f, `qa:aviso-mala-paga` y `qa:sello-del-pedido`. Cada una con su CONTROL, que es la mitad que impide
 «arreglarlas» de la forma fácil y equivocada — sellar siempre, avisar siempre.
 
 ---
@@ -721,7 +727,41 @@ mano por el asistente, sin los precios sellados que el cliente vio.
 **Y hay un caso que ni siquiera se puede intentar:** si el pedido se registró
 **fiado entero**, no hay venta que borrar — `/transacciones/venta/<id>/usd`
 devuelve 404 porque no hubo cobro en esa moneda, y la ficha del fiado no ofrece
-«Eliminar». O sea que el borde solo existe cuando hubo algo de contado.
+«Eliminar». O sea que el borde solo existía cuando hubo algo de contado.
+
+---
+
+#### ARREGLADO el 2026-10-26 por la noche
+
+`eliminarVenta` **no sabía que existían los pedidos**. El enlace está en los
+dos sentidos desde la migración `157`, pero solo el registro escribía el sello;
+el borrado no lo deshacía.
+
+**SE RECALCULA, NO SE «DESSELLA»**, y esa palabra es el arreglo entero. Un
+pedido de dos monedas tiene DOS ventas: borrar la de dólares tiene que dejar
+pendientes los dólares **y nada más**. `recalcularSelloDelPedido` vuelve a
+preguntar con `monedasPendientes` —la misma función que ya usaban registrar y
+quitar una moneda, movida a `lib/` para que la compartan los tres— y escribe lo
+que salga. `sale_id` se repone con la venta viva más antigua, que es lo que esa
+columna significa.
+
+**LA MITAD QUE NO ERA OPCIONAL: RESTAURAR TIENE QUE VOLVER A SELLAR.**
+`restoreMovement` revive la venta a propósito desde el 2026-10-20. Sin llamar
+ahí también, restaurar devolvería la venta a la vida con el pedido diciendo
+«pendiente» — y el flujo lo dejaría registrar otra vez. **Habría sido un fallo
+peor que el arreglado, creado por el propio arreglo.**
+
+**Y UN SEGUNDO FALLO, CAZADO EN EL NAVEGADOR Y NO POR LA SUITE.** La primera
+versión sellaba escribiendo solo `status` y `sale_id`. Al restaurar, el pedido
+volvía a `registered` con **`registered_at` en nulo** — y los guardias de las
+seis pantallas miran la FECHA, no el estado. La pantalla volvía a ofrecer
+«Registrar pedido» sobre un pedido ya cobrado. Se repone con la fecha de la
+última venta viva, que es cuando de verdad se terminó de cobrar; `now()` diría
+que el pedido se registró al pulsar «Restaurar», que es falso.
+
+Las seis filas `18a-18f` de `qa:pedido-registro` cubren el borrado, y
+**`qa:sello-del-pedido`** vigila que las dos llamadas sigan ahí — porque
+restaurar se pulsa desde una hoja y eso ninguna suite de HTTP lo alcanza.
 
 ---
 
@@ -766,6 +806,31 @@ sin tarjeta y con los dos bloques diciendo «Registrar»**. Sin un aviso.
 que el tendero había elegido se vuelve a emparejar solo por el documento, así que
 tampoco se parte en dos fichas. **Lo que se pierde es lo tecleado**, y el contador
 de pasos cambia de sitio sin explicar por qué.
+
+---
+
+#### ARREGLADO el 2026-10-26 por la noche, y eran DOS cosas
+
+**1. Una llave por pedido.** Había UNA, `sevenz:pedido-registro`, con el
+`pedidoId` dentro; ahora es `sevenz:pedido-registro:<id>`. Los dos borradores
+conviven y el guardia lo da la llave, no una comparación.
+
+**2. Y el borrado del detalle, acotado a SU pedido — que es la mitad que no
+salta a la vista.** `OrderDraftReset` vive en la pantalla de detalle para que
+salirse del flujo tire lo editado (encargo del dueño de esa misma mañana), y
+llamaba a `borrarBorrador()` **sin id**. O sea que abrir el pedido de Luis
+tiraba lo que había a medias en el de Pedro — y eso habría seguido pasando con
+las llaves ya separadas. Ahora pide el `pedidoId`, así que cada pantalla tira
+lo suyo y la instrucción del dueño se cumple igual.
+
+**LO QUE CUESTA, dicho por delante:** ahora pueden convivir varios borradores,
+uno por pedido empezado. Son ~400 bytes cada uno, `sessionStorage` muere con la
+pestaña, y `barrerCaducados` tira los de más de dos horas en cada escritura.
+
+**Y EL CONTROL que impide «arreglarlo» quitando el reinicio**: salirse del flujo
+de un pedido a **su propio** detalle tiene que seguir reiniciándolo. Medido:
+vuelve a `1/4` sin tarjeta de cliente, y las llaves de los otros dos pedidos
+siguen ahí.
 
 ---
 
@@ -895,8 +960,15 @@ Lo que ninguna suite ve. Por pedido:
 6. **Descartar un pedido** desde el `⋮` y restaurarlo desde la campana.
 7. **Teclear en bolívares** y comprobar que la cifra que vuelve es la tecleada
    (`PR-D2`).
-8. **Con el teclado abierto**, en un teléfono de verdad, entrando por cada
-   puerta (`PR-H1`).
+8. **Borrar la venta de un pedido registrado** y comprobar que el pedido vuelve
+   a estar pendiente; **restaurarla** desde la campana y comprobar que vuelve a
+   decir «Registrado: ‹fecha›» y que su `/registrar` vuelve a rebotar
+   (`PR-F7`). La segunda mitad es la que ninguna suite alcanza.
+9. **Empezar un pedido, dejarlo a medias, abrir OTRO y volver** (`PR-G3`): el
+   primero tiene que seguir donde estaba. Y el control: salirse al detalle **de
+   ese mismo pedido** sí lo reinicia.
+10. **Con el teclado abierto**, en un teléfono de verdad, entrando por cada
+    puerta (`PR-H1`).
 
 ### Paso 4 — Antes de producción
 
@@ -925,15 +997,22 @@ ser fichas**. Lo que sigue abierto, por si merece una:
 
 | Id | Qué | Por qué no se hizo |
 |---|---|---|
-| `PR-F7` | Borrar la venta deja el pedido sellado para siempre | Nadie lo ha pedido; el tendero tiene la salida de registrar a mano. **Medido el 2026-10-26** |
-| `PR-G3` | Dos pedidos seguidos en la MISMA pestaña: el segundo pisa el borrador del primero | **Medido el 2026-10-26**, y de paso corregido: entre pestañas NO pasa. No se pierde dinero, se pierde lo tecleado |
-| `PR-E3` | Varias fichas con los mismos dígitos: no hay dónde mirarlas desde el flujo | El frame del `1/x` quitó «Ver clientes» el 2026-10-26 |
-| `PR-H5` | **iPhone** | Hace falta un teléfono real |
+| `PR-E3` | **Varias fichas con los mismos dígitos**: no hay dónde mirarlas desde el flujo, y las dos pantallas se CONTRADICEN | El detalle dice «ya existe en varias cuentas» y el paso del cliente, dos pantallas después, dice «no hemos encontrado este cliente» — con un formulario vacío que crearía una tercera ficha |
+| `PR-H1` | **El teclado abierto** tapa la barra de abajo | Solo se puede medir en un teléfono real |
+| `PR-H5` | **iPhone** | Lo mismo |
 
-**Dos salieron de esta tabla el 2026-10-26**, los dos por encargo del dueño al
-leerla: el filtro **«Descartados»** de la lista de Pedidos (`PR-A2`) y el chip
-**«Mala paga»** de la tarjeta verde (`PR-E6`). Están construidos y sus apartados
-lo cuentan.
+**Cuatro salieron de esta tabla el 2026-10-26**, todas por encargo del dueño al
+leerla: el filtro **«Descartados»** (`PR-A2`), el chip **«Mala paga»**
+(`PR-E6`), el sello reversible (`PR-F7`) y la llave por pedido (`PR-G3`). Están
+construidas y sus apartados lo cuentan.
+
+**Y una observación que no es de este flujo pero se vio aquí**: el paso del
+cliente lanza un `Hydration failed` en desarrollo, porque el servidor pinta
+«Registrar» (no ve el borrador, que vive en el navegador) y el cliente pinta
+«Registrar y finalizar». React lo repara repintando y no se pierde nada, pero
+es ruido en la consola justo en la pantalla que escribe la venta. No lo
+introduce ninguno de estos arreglos: viene de que el rótulo del botón depende
+de un dato que el servidor no puede ver.
 
 ---
 

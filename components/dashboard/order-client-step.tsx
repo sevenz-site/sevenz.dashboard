@@ -266,7 +266,7 @@ export function OrderClientStep({
     // EL BORRADOR SE BORRA SOLO DESPUÉS DE QUE LA VENTA ATERRICE. Borrarlo
     // antes dejaría, ante un fallo de escritura, un pedido que sigue
     // diciendo «Registrar» y nada de lo que el tendero había tecleado.
-    borrarBorrador();
+    borrarBorrador(pedidoId);
     router.push(`/ventas/${r.primeraVentaId}`);
   }
 

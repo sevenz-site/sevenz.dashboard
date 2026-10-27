@@ -27,7 +27,32 @@
 // draft, over an order whose prices have since changed, would draw a sale
 // nobody agreed to and say nothing about it. Hence the expiry.
 
-const CLAVE = "sevenz:pedido-registro";
+// ── UNA LLAVE POR PEDIDO ──────────────────────────────────────────────
+//
+// `PR-G3`, medido en dev el 2026-10-26 y arreglado ese mismo día. Había UNA
+// llave para toda la app, con el `pedidoId` dentro, y `leerBorrador` comparaba
+// ese id: empezar un segundo pedido no corrompía el primero, lo SUSTITUÍA, y
+// el primero dejaba de existir sin que nada avisara.
+//
+// QUÉ SE VEÍA, medido con un pedido de dos monedas a medias --dólares puestos,
+// cliente elegido--: al volver, la pantalla pasaba de `1/3 Pedido` con la
+// tarjeta del cliente a `1/4 Pedido` sin ella y con los dos bloques diciendo
+// «Registrar». Sin un aviso. No se pierde dinero --la base no tiene nada hasta
+// el último paso-- pero sí lo tecleado.
+//
+// Y LA FICHA DE ESE BORDE DECÍA «EN DOS PESTAÑAS», QUE ERA FALSO: esto vive en
+// `sessionStorage`, que es de cada pestaña, así que dos pestañas nunca se han
+// pisado. Lo que se pisa es un pedido tras otro en la MISMA pestaña, que es lo
+// que de verdad hace un tendero cuando le entra alguien con prisa.
+//
+// EL COSTO, dicho por delante: ahora pueden convivir varios borradores, uno
+// por pedido empezado. Son ~400 bytes cada uno, `sessionStorage` muere con la
+// pestaña, y `barrerCaducados` tira los de más de dos horas en cada escritura.
+const PREFIJO = "sevenz:pedido-registro";
+
+function claveDe(pedidoId: string): string {
+  return `${PREFIJO}:${pedidoId}`;
+}
 
 // Two hours, the same as the payment split's. Registering an order is a
 // counter-top conversation: it starts and ends with the customer in front of
@@ -156,14 +181,9 @@ export type BorradorDeRegistro = {
   guardadoEn: number;
 };
 
-function leerTodo(): BorradorDeRegistro | null {
-  // EVERY READ IS WRAPPED. In a private window, or with site data blocked,
-  // the accessor itself throws — it does not return empty. A screen that
-  // crashed on that would be unusable for exactly the owners whose phones are
-  // strictest, which in this product is most of them.
+function interpretar(crudo: string | null): BorradorDeRegistro | null {
+  if (!crudo) return null;
   try {
-    const crudo = sessionStorage.getItem(CLAVE);
-    if (!crudo) return null;
     const b = JSON.parse(crudo) as BorradorDeRegistro;
     if (
       !b ||
@@ -171,21 +191,56 @@ function leerTodo(): BorradorDeRegistro | null {
       typeof b.guardadoEn !== "number"
     )
       return null;
-    if (Date.now() - b.guardadoEn > CADUCIDAD_MS) {
-      borrarBorrador();
-      return null;
-    }
+    if (Date.now() - b.guardadoEn > CADUCIDAD_MS) return null;
     return b;
   } catch {
     return null;
   }
 }
 
+// LOS BORRADORES CADUCADOS SE TIRAN AL ESCRIBIR, no en un temporizador.
+//
+// Con una llave sola no hacía falta: la caducidad se comprobaba al leerla y
+// esa era toda la limpieza. Con una llave por pedido, un borrador abandonado
+// se queda ahí aunque nadie vuelva a abrir ese pedido, así que la escritura
+// --que es la única puerta de este fichero-- barre de paso.
+//
+// VA ENVUELTO ENTERO: enumerar `sessionStorage` lanza en los mismos sitios
+// donde lanza leerlo, y una pantalla que se cayera aquí sería inservible justo
+// en los teléfonos más estrictos.
+function barrerCaducados(): void {
+  try {
+    const sobran: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (!k || !k.startsWith(`${PREFIJO}:`)) continue;
+      if (interpretar(sessionStorage.getItem(k)) === null) sobran.push(k);
+    }
+    for (const k of sobran) sessionStorage.removeItem(k);
+  } catch {
+    // Igual que arriba: el almacén dijo que no y no hay nada que limpiar.
+  }
+}
+
 // WHAT THIS ORDER HAS RESOLVED SO FAR. It takes the order's id and returns
 // nothing for any other, which is the whole guard: a draft belongs to ONE
 // order, and opening a second one must not inherit the first one's payments.
+//
+// Desde el 2026-10-26 ese guardia lo da la LLAVE y no una comparación: cada
+// pedido tiene la suya, así que el borrador de otro no se puede ni leer por
+// accidente -- ni pisar.
 export function leerBorrador(pedidoId: string): BorradorDeRegistro | null {
-  const b = leerTodo();
+  // EVERY READ IS WRAPPED. In a private window, or with site data blocked,
+  // the accessor itself throws — it does not return empty. A screen that
+  // crashed on that would be unusable for exactly the owners whose phones are
+  // strictest, which in this product is most of them.
+  let crudo: string | null = null;
+  try {
+    crudo = sessionStorage.getItem(claveDe(pedidoId));
+  } catch {
+    return null;
+  }
+  const b = interpretar(crudo);
   if (!b || b.pedidoId !== pedidoId) return null;
   return b;
 }
@@ -236,18 +291,25 @@ function avisarDelCambio(): void {
 // React compares with `Object.is` and repaints forever. Caching by the raw
 // stored string gives both of them the same object while nothing has changed,
 // and a new one the moment something has.
+// LA CACHÉ GUARDA TAMBIÉN DE QUÉ PEDIDO ES, desde que hay una llave por
+// pedido. Dos pantallas de dos pedidos distintos pueden pedir su instantánea
+// una detrás de otra --el detalle de uno y el `1/x` de otro durante una
+// navegación-- y sin el id, dos borradores con el mismo texto crudo se
+// servirían el uno por el otro.
+let pedidoEnCache: string | null = null;
 let crudoEnCache: string | null = null;
 let valorEnCache: BorradorDeRegistro | null = null;
 
 export function instantanea(pedidoId: string): BorradorDeRegistro | null {
   let crudo: string | null = null;
   try {
-    crudo = sessionStorage.getItem(CLAVE);
+    crudo = sessionStorage.getItem(claveDe(pedidoId));
   } catch {
     return null;
   }
-  if (crudo !== crudoEnCache) {
+  if (crudo !== crudoEnCache || pedidoId !== pedidoEnCache) {
     crudoEnCache = crudo;
+    pedidoEnCache = pedidoId;
     valorEnCache = leerBorrador(pedidoId);
   }
   return valorEnCache && valorEnCache.pedidoId === pedidoId
@@ -291,9 +353,10 @@ function escribir(
       guardadoEn: Date.now(),
     };
     sessionStorage.setItem(
-      CLAVE,
+      claveDe(pedidoId),
       JSON.stringify({ ...base, ...cambio(actual), guardadoEn: Date.now() }),
     );
+    barrerCaducados();
   } catch {
     // Storage refused. The shopkeeper will be asked for the amount again,
     // which is the designed failure of this whole file.
@@ -376,9 +439,21 @@ export function fijarCliente(
   escribir(pedidoId, () => ({ cliente }));
 }
 
-export function borrarBorrador(): void {
+// BORRA EL DE UN PEDIDO, NO «EL BORRADOR».
+//
+// Pide el id desde el 2026-10-26 y eso NO es solo consecuencia de la llave: es
+// la otra mitad de `PR-G3`. `OrderDraftReset` llama aquí desde el detalle de
+// un pedido --para que salirse del flujo tire lo editado, encargo del dueño de
+// ese mismo día-- y sin el id borraba el borrador de CUALQUIER pedido. O sea
+// que abrir el pedido de Luis tiraba lo que había a medias en el de Pedro,
+// aunque las llaves ya fueran dos.
+//
+// Con el id, cada pantalla tira lo suyo y la instrucción del dueño se cumple
+// igual: lo que se reinicia al salirse del flujo de un pedido es el de ESE
+// pedido.
+export function borrarBorrador(pedidoId: string): void {
   try {
-    sessionStorage.removeItem(CLAVE);
+    sessionStorage.removeItem(claveDe(pedidoId));
   } catch {
     // Same as above.
   }
