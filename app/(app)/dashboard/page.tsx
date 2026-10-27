@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
+import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
 import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { RegisterButton } from "@/components/dashboard/register-button";
@@ -89,7 +89,7 @@ export default async function DashboardPage({
     // The red number on the Pedidos card. In the same batch and not after it:
     // it is a `head: true` count, and waiting for it in series would hold the
     // whole screen for a figure that decorates one line.
-    countUnattendedOrders(supabase, user!.id),
+    countUnregisteredOrders(supabase, user!.id),
   ]);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de

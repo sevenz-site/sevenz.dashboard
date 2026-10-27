@@ -82,6 +82,22 @@ export type OrderClient = {
   document_type: string | null;
   whatsapp: string | null;
   address: string | null;
+  // ── LA MARCA DE «MALA PAGA», DESDE EL 2026-10-26 ──────────────────
+  //
+  // Esta columna no se leía, y lo que costaba está medido: el flujo de
+  // registrar un pedido NO nombraba la marca en ninguna de sus cuatro
+  // pantallas, y dos de ellas enseñaban la tarjeta VERDE «El cliente ya
+  // existe en tu cuenta de Sevenz» sobre la persona que el tendero había
+  // puesto en su lista negra.
+  //
+  // ESO NO ERA SILENCIO: era un aval. Y como un cliente marcado no sale en
+  // Cartera ni en Inicio, la deuda nueva era además más difícil de ver
+  // después.
+  //
+  // Encargo del dueño ese mismo día: *«debería mostrar modal de confirmación
+  // como el flujo anterior que menciona que esa persona está marcada como
+  // mala paga y preguntarle si desea fiarle de todas maneras o no»*.
+  is_flagged: boolean;
 };
 
 export type OrderClientMatch =
@@ -98,6 +114,37 @@ export type OrderClientMatch =
 // person and do not look alike as strings.
 function digitsOf(value: string | null | undefined): string {
   return String(value ?? "").replace(/\D/g, "");
+}
+
+// THE ORDER'S DOCUMENT, SPLIT INTO DIGITS AND LETTER.
+//
+// ===========================================================================
+// `catalog_orders.customer_document` IS NOT NORMALISED, and that is measured,
+// not assumed: in dev on 2026-10-24 some rows hold «21054832» and others hold
+// «V-24242424», with `customer_document_type` null on both. The column takes
+// whatever the cart sent, and the separate letter column only arrived with
+// migration `155`.
+//
+// WHY THIS MATTERS AWAY FROM THE MATCHER: matching only ever looks at digits,
+// so it never cared. A FORM does — handing «V-24242424» to `DocumentIdInput`
+// as its value makes it declare the figure a legacy format and warn the
+// shopkeeper about it, on a field they are filling in for the first time. The
+// letter belongs in the selector beside it, which is what this returns.
+export function partirDocumento(
+  document: string | null,
+  documentType: string | null,
+): { digits: string; letter: string | null } {
+  const digits = digitsOf(document);
+  const declarada = (documentType ?? "").trim().toUpperCase();
+  if (declarada !== "") return { digits, letter: declarada };
+  // Only a letter that OPENS the string counts. One sitting anywhere else is
+  // not a prefix, and guessing at it would be inventing a fact about a
+  // person's identity document.
+  const prefijo = String(document ?? "")
+    .trim()
+    .toUpperCase()
+    .match(/^([A-Z])[\s.-]*\d/);
+  return { digits, letter: prefijo ? prefijo[1] : null };
 }
 
 export async function findOrderClient(
@@ -117,7 +164,7 @@ export async function findOrderClient(
   // Here it comes from the order, which comes from the URL.
   const { data, error } = await supabase
     .from("clients")
-    .select("id, name, document_id, document_type, whatsapp, address")
+    .select("id, name, document_id, document_type, whatsapp, address, is_flagged")
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
     .not("document_id", "is", null);
@@ -132,7 +179,9 @@ export async function findOrderClient(
   }
 
   const candidates = (data ?? []) as OrderClient[];
-  const sameDigits = candidates.filter((c) => digitsOf(c.document_id) === digits);
+  const sameDigits = candidates.filter(
+    (c) => digitsOf(c.document_id) === digits,
+  );
   if (sameDigits.length === 0) return { kind: "ninguno" };
 
   const orderLetter = (documentType ?? "").trim().toUpperCase();
@@ -160,7 +209,9 @@ export async function findOrderClient(
   // `E-21054832` are two people as far as this product is concerned, and
   // offering one when the order says the other is the «confidently wrong»
   // this whole function avoids.
-  const sinLetra = sameDigits.filter((c) => (c.document_type ?? "").trim() === "");
+  const sinLetra = sameDigits.filter(
+    (c) => (c.document_type ?? "").trim() === "",
+  );
   if (sinLetra.length === 1) return { kind: "uno", cliente: sinLetra[0] };
   if (sinLetra.length > 1) return { kind: "varios", clientes: sinLetra };
   return { kind: "ninguno" };

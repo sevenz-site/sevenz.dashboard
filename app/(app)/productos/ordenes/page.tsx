@@ -54,6 +54,24 @@ export default async function OrdenesPage() {
       .from("catalog_orders")
       .select(ORDER_COLUMNS)
       .eq("owner_id", user!.id)
+      // ── LOS DESCARTADOS LLEGAN, Y EL FILTRO DECIDE SI SE VEN ──────
+      //
+      // Aquí había un `.neq("status", "discarded")`: el pedido descartado no
+      // salía de la base, así que no había forma de ENSEÑARLO nunca. Se quitó
+      // el 2026-10-26, cuando el dueño pidió el filtro --*«¿Esto sería en la
+      // sección de "Pedidos" cierto? de ser así agrégalo»*--.
+      //
+      // LA PROMESA DEL DIÁLOGO SIGUE EN PIE, y es la razón por la que esto no
+      // deshace nada: lo que le promete al tendero es que el pedido «sale de
+      // tu lista de pedidos», y de la lista lo sigue sacando
+      // `OrdersFilterProvider`, que los esconde en los tres chips normales
+      // --«Todos» incluido-- y solo los enseña en el suyo.
+      //
+      // POR QUÉ MOVERLO DE LA CONSULTA AL FILTRO Y NO HACER OTRA CONSULTA:
+      // son los pedidos de un negocio, ya paginados en el cliente, y una
+      // segunda vuelta al servidor para la vista que casi nunca se abre
+      // costaría más que traerlos. Lo que la consulta NO puede hacer es
+      // enseñarlos cuando se piden.
       // UNATTENDED FIRST, most recent at the top within each group.
       // Ordering by date alone would bury yesterday's unprepared order under
       // three of today's already dealt with -- the exact opposite of what the
@@ -138,6 +156,10 @@ export default async function OrdenesPage() {
     const { data, error } = await supabase
       .from("catalog_order_items")
       .select(ORDER_ITEM_COLUMNS)
+      // SOLO LAS VIVAS -- migración `161`. Una moneda que el tendero quitó no
+      // cuenta en los totales de la lista: si contara, un pedido del que solo
+      // va a cobrar los dólares seguiría anunciando sus euros.
+      .is("deleted_at", null)
       .in(
         "order_id",
         rows.map((o) => o.id),
@@ -205,13 +227,13 @@ export default async function OrdenesPage() {
           backHref="/productos"
           backLabel="Volver a Catálogo"
           // THE SUBTITLE COUNTS EVERYTHING, not what the filter leaves on
-          // screen. "2 sin atender" is the state of the business; the list
+          // screen. "2 sin registrar" is the state of the business; the list
           // below is a view of it. Making this follow the chip would mean the
-          // number drops to zero when the owner filters by "Atendido", which
+          // number drops to zero when the owner filters by "Registrado", which
           // reads as "there is nothing left to do".
           subtitle={
             sinAtender > 0
-              ? `${sinAtender} sin atender`
+              ? `${sinAtender} sin registrar`
               : "Lo que te piden desde tu enlace de catálogo"
           }
           search={<OrdersSearchField />}

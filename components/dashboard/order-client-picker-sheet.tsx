@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +11,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
+import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { OrderClient } from "@/lib/orders/order-client-match";
 
 // «VER CLIENTES»: THE FICHAS THAT SHARE THIS DOCUMENT'S DIGITS.
@@ -40,9 +41,16 @@ import type { OrderClient } from "@/lib/orders/order-client-match";
 // a tappable row. Writing another list here would be the copy `StickyActions`
 // taught us not to make — and this one already handles the `onMouseDown` that
 // is needed when it hangs off a focused field.
-export function OrderClientPickerSheet({ clientes }: { clientes: OrderClient[] }) {
-  const router = useRouter();
+export function OrderClientPickerSheet({
+  clientes,
+  ledger,
+}: {
+  clientes: OrderClient[];
+  ledger: LedgerDisplay | null;
+}) {
   const [abierta, setAbierta] = useState(false);
+  // CUÁL DE LAS FICHAS SE ESTÁ MIRANDO. `null` = ninguna, o sea la lista.
+  const [mirando, setMirando] = useState<OrderClient | null>(null);
 
   return (
     <Sheet open={abierta} onOpenChange={setAbierta}>
@@ -75,17 +83,38 @@ export function OrderClientPickerSheet({ clientes }: { clientes: OrderClient[] }
               documentId: c.document_id,
               documentType: c.document_type ?? null,
             }))}
-            // IT OPENS THE FICHA, which is what «Ver Pedro Pérez» does in
-            // the single-match case. The shopkeeper reads the history and
-            // decides who it is; choosing «this order belongs to this person»
-            // does not exist yet, because the registration flow is not built.
+            // ABRE LA CUENTA EN OTRA HOJA, NO NAVEGA. Hasta el 2026-10-25
+            // hacía `router.push("/clients/<id>")`, que es exactamente lo que
+            // el dueño mandó quitar del caso de una sola ficha: *«debe
+            // abrirse el perfil del cliente pero en sheet, para no salir del
+            // flujo de registrar pedido»*. Las dos puertas llevan a la misma
+            // pregunta —«¿quién es este?»—, así que arreglar solo una dejaba
+            // la otra tirando el pedido a medio registrar.
             onSelect={(id) => {
+              const elegido = clientes.find((c) => c.id === id);
+              if (!elegido) return;
               setAbierta(false);
-              router.push(`/clients/${id}`);
+              setMirando(elegido);
             }}
           />
         </div>
       </SheetContent>
+
+      {/* LA CUENTA DE LA FICHA ELEGIDA, encima de la lista. Se monta solo
+          cuando hay una elegida: `ClientAccountSheet` pide su historial al
+          abrirse, y tenerla montada por cada fila sería una consulta por
+          cliente para una lista que el tendero quizá ni abra. */}
+      {mirando ? (
+        <ClientAccountSheet
+          open
+          onOpenChange={(v) => {
+            if (!v) setMirando(null);
+          }}
+          clientId={mirando.id}
+          clientName={mirando.name}
+          ledger={ledger}
+        />
+      ) : null}
     </Sheet>
   );
 }

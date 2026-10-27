@@ -46,6 +46,7 @@
     "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",
     "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs",
     "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
+    "qa:pedido-registro": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedido-registro.mjs",
     "qa:cuotas": "node qa/cuotas.mjs",
     "qa:abono-dirigido": "node qa/abono-dirigido.mjs",
     "qa:venta": "node qa/sale-lines.mjs",
@@ -70,7 +71,12 @@
     "qa:guiones": "node qa/guiones-con-entrada.mjs",
     "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",
-    "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs"
+    "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs",
+    "qa:suscripciones": "node qa/suscripciones.mjs",
+    "qa:lineas-borradas": "node qa/lineas-borradas.mjs",
+    "qa:aviso-mala-paga": "node qa/aviso-mala-paga.mjs",
+    "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs",
+    "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

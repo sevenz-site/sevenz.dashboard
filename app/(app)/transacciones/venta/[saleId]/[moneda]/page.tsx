@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
+import { CatalogOrderTrace } from "@/components/dashboard/catalog-order-trace";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
@@ -71,7 +72,9 @@ export default async function VentaDeContadoPage({
   // directo --la `124` lo decidió así-- y aun así se compara aquí.
   const { data: venta } = await supabase
     .from("sales")
-    .select("id, owner_id, created_at, client_id, transaction_code, clients!inner(id, name)")
+    .select(
+      "id, owner_id, created_at, client_id, transaction_code, catalog_order_id, clients!inner(id, name)",
+    )
     .eq("id", saleId)
     .maybeSingle();
 
@@ -147,6 +150,26 @@ export default async function VentaDeContadoPage({
   const formatear = (n: number) => formatLedgerAmount(n, moneda, ledger).primary;
 
   const descripcion = pagos.map((p) => p.description).find((d) => d != null && d !== "") ?? null;
+
+  // ── EL PEDIDO DEL QUE NACIÓ ESTA VENTA, SI NACIÓ DE UNO ─────────────
+  //
+  // `catalog_order_id` lo pone `registrarVenta` en el insert desde la
+  // migración `158`. Una venta del mostrador lo tiene en `null` y aquí no se
+  // consulta nada.
+  //
+  // `.eq("owner_id")` AUNQUE EL ID SALGA DE LA PROPIA VENTA: es la regla de
+  // este repo, y el día que alguien mueva esta consulta de sitio el candado
+  // viaja con ella.
+  const pedidoDelCatalogo = venta.catalog_order_id
+    ? ((
+        await supabase
+          .from("catalog_orders")
+          .select("created_at, registered_at")
+          .eq("id", venta.catalog_order_id as string)
+          .eq("owner_id", user!.id)
+          .maybeSingle()
+      ).data ?? null)
+    : null;
 
   // ── LO QUE SE LLEVA POR DELANTE «ELIMINAR VENTA» ─────────────────────
   //
@@ -282,6 +305,14 @@ export default async function VentaDeContadoPage({
           <dd className="text-sm break-words">{descripcion || "—"}</dd>
         </Grupo>
       </dl>
+
+      {/* DE DÓNDE VINO Y CUÁNTO SE TARDÓ, cuando la venta nació de un pedido
+          del catálogo. Dibuja `null` cuando no, que es el caso de cualquier
+          venta tecleada en el mostrador. */}
+      <CatalogOrderTrace
+        recibidoEl={pedidoDelCatalogo?.created_at ?? null}
+        registradoEl={pedidoDelCatalogo?.registered_at ?? null}
+      />
     </div>
   );
 }

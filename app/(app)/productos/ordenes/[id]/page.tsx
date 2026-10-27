@@ -1,18 +1,36 @@
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { createClient } from "@/lib/supabase/server";
-import { OrderAttendButton } from "@/components/dashboard/order-attend-button";
-import { OrderClientCard } from "@/components/dashboard/order-client-card";
-import { findOrderClient } from "@/lib/orders/order-client-match";
+import {
+  OrderProductSheet,
+  OrderProductRowButton,
+} from "@/components/dashboard/order-product-sheet";
+import { findOrderClient, partirDocumento } from "@/lib/orders/order-client-match";
+import { OrderClientMatchAlert } from "@/components/dashboard/order-client-card";
+import { OrderDraftReset } from "@/components/dashboard/order-draft-reset";
+import { OrderMoreMenu } from "@/components/dashboard/order-more-menu";
+import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
+import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
+import {
+  quitadasPorMoneda,
+  unicaMonedaDelPedido,
+} from "@/lib/orders/pasos-del-registro";
+import { UserRound } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { readOwnerCountry } from "@/lib/owner-country";
-import { formatReceiptDateTime } from "@/lib/format";
-import { currencyName, formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import {
+  currencyName,
+  formatPriceAmount,
+  type PriceCurrency,
+} from "@/lib/products/price";
+import {
+  estaDescartado,
   ORDER_COLUMNS,
   ORDER_ITEM_COLUMNS,
-  isUnattended,
   readOrderProducts,
   totalsByCurrency,
   type CatalogOrderRow,
@@ -20,10 +38,6 @@ import {
 } from "@/lib/orders/catalog-orders";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
-import {
-  OrderProductSheet,
-  OrderProductRowButton,
-} from "@/components/dashboard/order-product-sheet";
 import type { BolivarRates, PriceTier } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
@@ -35,7 +49,13 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 // and not by client, and that decision is `CT-69` and still open. Showing them
 // already does what the shopkeeper needs today: know who to call.
 
-function Fila({ nombre, children }: { nombre: string; children: React.ReactNode }) {
+function Fila({
+  nombre,
+  children,
+}: {
+  nombre: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
       <span className="shrink-0 text-sm text-muted-foreground">{nombre}</span>
@@ -44,7 +64,11 @@ function Fila({ nombre, children }: { nombre: string; children: React.ReactNode 
   );
 }
 
-export default async function OrdenPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrdenPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const supabase = await createClient();
   const {
@@ -71,19 +95,27 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   if (!order) notFound();
   const pedido = order as CatalogOrderRow;
 
-  const [{ data: itemRows, error: errorItems }, country, clienteDelPedido] = await Promise.all([
-    supabase
-      .from("catalog_order_items")
-      .select(ORDER_ITEM_COLUMNS)
-      .eq("order_id", pedido.id)
-      .order("product_name", { ascending: true }),
-    readOwnerCountry(supabase, user!.id),
-    // WHETHER THIS SHOP ALREADY HAS THIS CUSTOMER. Matched by document, the
-    // owner's decision of 2026-10-24 -- see `findOrderClient` for why not by
-    // phone and not by name. It goes in the same batch and not after it: the
-    // card at the top of the screen cannot be drawn without the answer.
-    findOrderClient(supabase, user!.id, pedido.customer_document, pedido.customer_document_type),
-  ]);
+  const [{ data: itemRows, error: errorItems }, country, clienteDelPedido] =
+    await Promise.all([
+      supabase
+        .from("catalog_order_items")
+        .select(ORDER_ITEM_COLUMNS)
+        // SOLO LAS VIVAS -- migración `161`.
+        .is("deleted_at", null)
+        .eq("order_id", pedido.id)
+        .order("product_name", { ascending: true }),
+      readOwnerCountry(supabase, user!.id),
+      // WHETHER THIS SHOP ALREADY HAS THIS CUSTOMER. Matched by document, the
+      // owner's decision of 2026-10-24 -- see `findOrderClient` for why not by
+      // phone and not by name. It goes in the same batch and not after it: the
+      // card at the top of the screen cannot be drawn without the answer.
+      findOrderClient(
+        supabase,
+        user!.id,
+        pedido.customer_document,
+        pedido.customer_document_type,
+      ),
+    ]);
 
   if (errorItems) console.error("[orders] detail items:", errorItems.message);
 
@@ -119,6 +151,32 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
   const mensajeWhatsapp = `Hola ${primerNombre}, sobre tu pedido...`;
   const totales = totalsByCurrency(items);
 
+  // WHAT THIS CUSTOMER ALREADY OWED, for the «Deuda antigua» row.
+  //
+  // ONLY WHEN EXACTLY ONE FICHA MATCHED. With several, nothing in the order
+  // tells them apart — see `findOrderClient` — so showing one person's debt
+  // would be a coin flip on whose it is, printed as a fact. With none, there
+  // is no debt to show. Both cases leave this empty and the row reads zero.
+  const deudaAntigua: Partial<Record<PriceCurrency, number>> = {};
+  if (clienteDelPedido.kind === "uno") {
+    const { data: saldo } = await supabase
+      .from("client_summary")
+      .select("balance, balance_usd, balance_eur")
+      .eq("client_id", clienteDelPedido.cliente.id)
+      .eq("owner_id", user!.id)
+      .maybeSingle();
+    if (saldo) {
+      if (saldo.balance_usd != null)
+        deudaAntigua.USD = Number(saldo.balance_usd);
+      if (saldo.balance_eur != null)
+        deudaAntigua.EUR = Number(saldo.balance_eur);
+      // `balance` IS THE COLOMBIAN LEDGER, the one whose `movements.currency`
+      // is null. Filing it under COP is what the rest of the app already does
+      // when it has to name that ledger on screen.
+      if (saldo.balance != null) deudaAntigua.COP = Number(saldo.balance);
+    }
+  }
+
   // The owner's zone, never the server's: this page renders on Vercel, which
   // runs in UTC. It lived here as its own `Intl.DateTimeFormat` until
   // 2026-10-22, when the receipts of the other flows needed the same clock;
@@ -127,18 +185,33 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
 
   const cuando = fecha(pedido.created_at);
 
-  // WHEN IT WAS ATTENDED, FORMATTED HERE AND NOT IN THE BUTTON. The button is
-  // a client component, and `Intl` with no `timeZone` there would use the
-  // phone's zone -- the owner's, usually, but not when they are travelling or
-  // their device is set to another country. This page already knows the
-  // business's zone and the line above it ("Fecha de pedido") is printed with
-  // it, so the two dates on the screen are read in the same clock.
+  // A DÓNDE LLEVA «REGISTRAR PEDIDO». Agrupado por la moneda sellada, que es
+  // lo único que el servidor puede ver; `unicaMonedaDelPedido` explica qué
+  // cuenta como «una sola moneda» y qué no.
+  // EL DOCUMENTO EN DOS PIEZAS. `catalog_orders` guarda unas filas con la
+  // letra pegada dentro --«V-24242424»-- y otras con los dígitos pelados y el
+  // tipo en su columna, así que partirlo es lo único que deja escribirlo
+  // igual en los dos casos. Lo mismo que hace la tarjeta del paso 4/4.
+  const documentoDelPedido = partirDocumento(
+    pedido.customer_document,
+    pedido.customer_document_type,
+  );
+
+  // ── LAS MONEDAS QUE EL TENDERO QUITÓ ────────────────────────────────
   //
-  // It can be null with the order already out of 'new': `registered` and
-  // `discarded` are set by buttons that do not exist yet (`CT-70`), and
-  // nothing forces them to stamp `seen_at`. The sentence then drops the date
-  // instead of printing "Invalid Date".
-  const atendidoEl = pedido.seen_at ? fecha(pedido.seen_at) : null;
+  // Esta tarjeta vive aquí por un agujero medido en dev el 2026-10-26: al
+  // detalle se llega SIEMPRE, con la flecha de atrás de cualquier paso. Y es
+  // donde tiene sentido que esté: esta pantalla es el pedido en frío, así que
+  // es la que debe decir que falta algo de lo que el cliente pidió.
+  const quitadas = await quitadasPorMoneda(supabase, pedido.id);
+
+  const unicaMoneda = unicaMonedaDelPedido(
+    bloquesDeMoneda(items, undefined),
+    quitadas.size > 0,
+  );
+  const hrefRegistrar = unicaMoneda
+    ? `/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${unicaMoneda}`
+    : `/productos/ordenes/${pedido.id}/registrar`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -159,7 +232,40 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           Catálogo. */}
       {/* `soloEnTelefono={false}` porque esta pantalla nunca tuvo el
           `sm:hidden` de las otras tres: su flecha se ve a todas las anchuras. */}
-      <ScreenBackRow href="/productos/ordenes" label="Volver a Pedidos" soloEnTelefono={false} />
+      {/* ── ESTAR AQUÍ ES NO ESTAR REGISTRANDO ─────────────────────────
+          Así que lo editado en el flujo se tira. Encargo del dueño el
+          2026-10-26: *«toda la edición del pedido debería reiniciarse si me
+          salgo del flujo, incluyendo la cantidad»*. El porqué entero --y lo
+          que cuesta-- está en `OrderDraftReset`. */}
+      <OrderDraftReset pedidoId={pedido.id} />
+
+      <ScreenBackRow
+        href="/productos/ordenes"
+        label="Volver a Pedidos"
+        soloEnTelefono={false}
+        // ── EL «⋮» DE LA CABECERA, CON «DESCARTAR» ──────────────────
+        //
+        // Encargo del dueño el 2026-10-26. El frame lo dibuja en esta barra
+        // desde el principio y hasta hoy no hacía nada.
+        //
+        // NO SE DIBUJA EN UN PEDIDO YA REGISTRADO: su venta está escrita, así
+        // que descartarlo dejaría el pedido diciendo que no va a ninguna
+        // parte y la venta diciendo lo contrario. Para deshacer eso hay que
+        // borrar la VENTA, que es otra puerta. Un menú de una sola opción que
+        // no aplica es un menú vacío, así que se va entero.
+        //
+        // EN UNO DESCARTADO SÍ SE DIBUJA, y su opción es «Restaurar» --desde
+        // el 2026-10-26--. Ver `OrderMoreMenu`: sin eso, un pedido cuyo aviso
+        // ya se fue de los 20 de la campana no tenía forma de volver.
+        acciones={
+          pedido.registered_at == null ? (
+            <OrderMoreMenu
+              pedidoId={pedido.id}
+              descartado={estaDescartado(pedido)}
+            />
+          ) : null
+        }
+      />
 
       {/* «Nuevo pedido» Y NO EL NOMBRE DEL CLIENTE — frame `1518:10873`, y
           el dueño renombró la página de Figma así el 2026-10-24.
@@ -170,28 +276,125 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           título, y a dos centímetros. */}
       <ScreenTitle>Nuevo pedido</ScreenTitle>
 
-      {/* QUIÉN PIDIÓ, Y SI YA ESTÁ EN LA CUENTA — frames `1518:10879` y
-          `1514:10294`. Sustituye a la lista de filas «Nombre / Documento /
-          WhatsApp» que había aquí: las mismas cuatro cosas, más la única que
-          el tendero no podía saber sin ir a buscarla. */}
-      <OrderClientCard
-        nombreDelPedido={pedido.customer_name}
-        documentoDelPedido={pedido.customer_document}
-        tipoDeDocumento={pedido.customer_document_type}
-        telefono={pedido.customer_whatsapp_raw || ""}
-        coincidencia={clienteDelPedido}
-      />
+      {/* ── «REGISTRADO: …», SOLO CUANDO YA LO ESTÁ ───────────────────
+          Pedido por el dueño el 2026-10-25. Sin él, un pedido terminado y
+          uno recién llegado se ven exactamente igual al abrirlos: el botón
+          «Registrar pedido» desaparece y nada ocupa su sitio, así que el
+          tendero se queda mirando una pantalla que no le dice por qué.
 
-      {/* LAS DOS FILAS QUE NO SON DEL CLIENTE SINO DEL PEDIDO, y por eso
-          quedan fuera de su tarjeta — frame `1518:10873`, que las dibuja
-          debajo. La fecha es cuándo pidió; el permiso es de este pedido. */}
-      <div className="flex flex-col rounded-[10px] border px-4 py-1">
-        <Fila nombre="Fecha del pedido:">{cuando}</Fila>
+          EL CHIP VA ARRIBA Y NO ABAJO, junto al título, porque contesta la
+          primera pregunta que se hace al abrir un pedido —«¿esto ya está
+          hecho?»— y no la última.
+
+          `registered_at` Y NO `status`: la fecha es lo que el chip enseña, y
+          preguntar por una y dibujar la otra es cómo acaban discrepando. */}
+      {pedido.registered_at ? (
+        <span className="w-fit rounded-full bg-money-in/10 px-2 py-0.5 text-xs text-money-in">
+          Registrado: {fecha(pedido.registered_at)}
+        </span>
+      ) : null}
+
+      {/* ── «DESCARTADO», POR LA MISMA RAZÓN QUE EL DE ARRIBA ─────────
+          Desde el 2026-10-26, con el guardia que impide registrar un pedido
+          descartado. Sin este chip, el arreglo creaba un fallo peor que el
+          que cerraba: el botón «Registrar pedido» desaparece y nada ocupa su
+          sitio, así que el tendero se queda mirando una pantalla idéntica a
+          la de un pedido nuevo que simplemente no le deja hacer nada.
+
+          Y SI EL BOTÓN SIGUIERA AHÍ sería un BUCLE: llevaría al `1/x`, que
+          redirige aquí. Es el fallo que `unicaMonedaDelPedido` documenta para
+          las monedas, entrando por otra puerta.
+
+          EN ROJO TENUE y no en gris: lo que dice es que esto está fuera de
+          juego por una decisión, no que le falte un dato. */}
+      {estaDescartado(pedido) ? (
+        <span className="w-fit rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+          Descartado
+        </span>
+      ) : null}
+
+      {/* ── «DATOS DEL COMPRADOR» — FRAME `1655:15869` ────────────────
+          Leído con `get_design_context` el 2026-10-25, nodo por nodo: una
+          tarjeta con su cabecera y el icono de persona, y debajo CINCO filas
+          de rótulo a la izquierda y valor a la derecha — nombre, documento,
+          teléfono, fecha de pedido y notificaciones.
+
+          ═══════════════════════════════════════════════════════════════
+          ESTO ERA LA TARJETA DEL PASO 1/4 Y POR ESO LAS DOS PANTALLAS SE
+          LEÍAN COMO UNA
+
+          Aquí vivía `OrderClientCard`: avatar, aviso verde «El cliente ya
+          existe en tu cuenta de Sevenz» y botón «Ver ‹nombre›» — que es,
+          literalmente, el frame `1652:12752`, o sea el PASO SIGUIENTE. El
+          dueño lo reportó el 2026-10-25: *«Nuevo pedido > Selecciono
+          "Registrar pedido" > Me muestra nuevamente "Nuevo pedido" (está mal,
+          me estás volviendo a mostrar la misma pantalla anterior, en el
+          sitemap no está así)»*. Tenía razón y la causa no era el título: era
+          que el cuerpo de las dos pantallas era el mismo.
+
+          LAS DOS SIGUEN LLAMÁNDOSE «Nuevo pedido», y eso SÍ está en el
+          sitemap: el frame del detalle rotula su H1 «Nuevo pedido» igual que
+          el del 1/4. Lo que las distingue es lo que hay debajo — aquí, una
+          ficha en frío de quién pidió y cuánto; allí, el contador «1/4», el
+          cotejo con la cuenta y un botón «Registrar» por moneda.
+
+          ───────────────────────────────────────────────────────────────
+          QUÉ SE PIERDE AQUÍ, DICHO EN VOZ ALTA
+
+          El cotejo contra la cuenta —«ya existe» / «no lo encontramos»— y el
+          botón para abrir su cuenta YA NO SALEN EN ESTA PANTALLA. El frame no
+          los dibuja y es coherente: esto es el pedido en frío, y la pregunta
+          «¿quién es este en mi cuenta?» es del paso 1/4, donde se decide a
+          quién se le apunta la deuda. Quien lo necesite antes lo tiene a un
+          toque, detrás de «Registrar pedido».
+
+          EL DOCUMENTO LLEVA SU PREFIJO aunque el frame escriba «00.000.000» a
+          secas. Es la norma del 2026-10-25, escrita en `DESIGN-SYSTEM.md`
+          después de que esto fallara tres veces: «V-21.054.832» y
+          «E-21.054.832» son dos personas distintas. */}
+      <div className="flex flex-col rounded-[10px] border p-4">
+        <div className="flex items-center justify-between pb-2 pt-1">
+          <h2 className="text-base font-semibold">Datos del comprador</h2>
+          <UserRound className="size-5 shrink-0" aria-hidden="true" />
+        </div>
+        <Fila nombre="Nombre y apellido">{pedido.customer_name}</Fila>
+        <Fila nombre="Documento">
+          {pedido.customer_document
+            ? formatDocumentId(pedido.customer_document, pedido.customer_document_type)
+            : "—"}
+        </Fila>
+        <Fila nombre="Teléfono">
+          {/* EL CRUDO, el que el cliente tecleó, igual que hacía la tarjeta
+              que había antes: el normalizado es dígitos pegados y lo usa
+              `wa.me`, no un ojo humano comparándolo con una agenda. */}
+          {pedido.customer_whatsapp_raw || pedido.customer_whatsapp || "—"}
+        </Fila>
+        <Fila nombre="Fecha de pedido">{cuando}</Fila>
         {/* "Notificaciones" and not "Avisos", "Aceptada" and not "Los
             aceptó": the owner's wording, 2026-10-16. */}
         <Fila nombre="Notificaciones por WhatsApp">
           {pedido.wants_whatsapp_notices ? "Aceptada" : "Sin aceptar"}
         </Fila>
+
+        {/* ── Y SI ESE COMPRADOR YA ESTÁ EN LA CUENTA, DENTRO ────────
+            Frame `1704:14739`, leído el 2026-10-26: el aviso va DENTRO de la
+            tarjeta «Datos del comprador», debajo de las cinco filas.
+
+            POR QUÉ IMPORTA QUE ESTÉ DENTRO y no debajo: lo que afirma es
+            sobre ESTAS cinco filas --este nombre, este documento--. Suelto,
+            un recuadro verde entre dos tarjetas no dice de quién habla.
+
+            Y ES LA ÚNICA PANTALLA DEL FLUJO QUE LO DICE desde hoy: el paso
+            1/4 se quedó solo con los bloques de moneda, por encargo del
+            dueño el mismo día. */}
+        <div className="pt-3">
+          <OrderClientMatchAlert
+            nombreDelPedido={pedido.customer_name}
+            digitosDelPedido={documentoDelPedido.digits}
+            letraDelPedido={documentoDelPedido.letter}
+            coincidencia={clienteDelPedido}
+          />
+        </div>
       </div>
 
       {/* CONTACTAR, right under "Datos del cliente" -- the owner's placement,
@@ -238,50 +441,6 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </a>
       ) : null}
 
-      <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
-      <div className="flex flex-col gap-2">
-        {items.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            Este pedido no tiene líneas.
-          </p>
-        ) : (
-          items.map((item) => (
-            // CADA LÍNEA ABRE SU PRODUCTO. Frame `1371:7229`: miniatura,
-            // nombre, cantidad por precio y escalón, el total con su bandera
-            // y un chevron que dice que hay algo detrás.
-            //
-            // EL COMENTARIO SE QUEDA FUERA DE LA FILA y se lee dentro. Antes
-            // vivía aquí debajo y podía ser un párrafo entero: con la fila
-            // ahora tocable, un bloque de texto dentro del botón convierte
-            // una lista de dos renglones en una pared.
-            <OrderProductSheet
-              key={item.id}
-              nombreEnElPedido={item.product_name}
-              cantidad={Number(item.quantity)}
-              precioUnitario={Number(item.unit_price)}
-              moneda={item.currency as PriceCurrency}
-              escalon={item.tier as PriceTier}
-              comentario={item.comment}
-              producto={item.product_id ? (productosPorId.get(item.product_id) ?? null) : null}
-              rates={rates}
-            >
-              <OrderProductRowButton
-                nombre={item.product_name}
-                cantidad={Number(item.quantity)}
-                precioUnitario={Number(item.unit_price)}
-                moneda={item.currency as PriceCurrency}
-                escalon={item.tier as PriceTier}
-                fotoPath={
-                  item.product_id
-                    ? (productosPorId.get(item.product_id)?.photo_path ?? null)
-                    : null
-                }
-              />
-            </OrderProductSheet>
-          ))
-        )}
-      </div>
-
       {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of
           2026-10-14: there is no EUR→USD rate in this product, only BCV to
           bolívares, so a single total would be an invented number.
@@ -290,9 +449,81 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
           two rows inside the same box as everything else, which read as the
           last two facts of the order rather than as its bottom line -- and
           the bottom line is what the shopkeeper opens this screen to see. */}
+      {/* ── LO QUE PIDIÓ, EN FRÍO ──────────────────────────────────────
+          El frame del detalle (`1655:15864`) dibuja «Pedido» con una fila por
+          producto antes de los totales, y es lo que esta pantalla existe para
+          contestar: qué pidió y cuánto es.
+
+          LA FILA ES `OrderProductRowButton`, Y ESO NO ES REUTILIZAR POR
+          REUTILIZAR: el frame de la tarjeta (`1655:15893`) dibuja foto de
+          40×40, nombre en 16 semibold, «00 x $00.00 · al detal» en 12, la
+          bandera de la moneda junto al precio y un chevron. Ese componente es
+          exactamente eso, hasta el respaldo cuando no hay foto.
+
+          SE PERDIÓ Y SE REPUSO DOS VECES EL MISMO DÍA. Al separar el `1/4` en
+          su propia pantalla se fue con los bloques; lo repuse a mano, con una
+          fila plana sin foto, sin bandera y sin chevron, y el dueño lo
+          reportó con el frame delante. Escribir de nuevo algo que ya estaba
+          escrito es cómo una pantalla deja de parecerse a su diseño sin que
+          nadie borre nada.
+
+          EL CHEVRON ABRE LA HOJA DEL PRODUCTO, que es lo que promete: la
+          descripción, la foto grande y el stock de hoy. Aquí no hay botones
+          que escriban dinero — eso vive en el `1/4`. */}
+      {items.length > 0 ? (
+        <>
+          <h2 className="mt-1 text-xl font-semibold">Pedido</h2>
+          <div className="flex flex-col gap-2">
+            {items.map((item) => {
+              const producto = item.product_id
+                ? (productosPorId.get(item.product_id) ?? null)
+                : null;
+              return (
+                <OrderProductSheet
+                  key={item.id}
+                  nombreEnElPedido={item.product_name}
+                  cantidad={Number(item.quantity)}
+                  precioUnitario={Number(item.unit_price)}
+                  moneda={item.currency as PriceCurrency}
+                  escalon={item.tier as PriceTier}
+                  comentario={item.comment}
+                  producto={producto}
+                  rates={rates}
+                >
+                  <OrderProductRowButton
+                    nombre={item.product_name}
+                    cantidad={Number(item.quantity)}
+                    precioUnitario={Number(item.unit_price)}
+                    moneda={item.currency as PriceCurrency}
+                    escalon={item.tier as PriceTier}
+                    fotoPath={producto?.photo_path ?? null}
+                  />
+                </OrderProductSheet>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+
+      {/* ── LO QUE QUITASTE, Y CÓMO DEVOLVERLO ───────────────────────
+          Entre el pedido y los totales: ahí es donde se nota que falta algo,
+          porque es justo debajo de la lista de lo que sí queda. */}
+      {[...quitadas.entries()].map(([moneda, cuantos]) => (
+        <OrderCurrencyRestoreCard
+          key={`quitada-${moneda}`}
+          pedidoId={pedido.id}
+          moneda={moneda as PriceCurrency}
+          cuantosProductos={cuantos}
+        />
+      ))}
+
       {totales.length > 0 ? (
         <>
-          <h2 className="mt-1 text-xl font-semibold">Totales</h2>
+          {/* «TOTAL POR PAGAR», which is what BOTH frames write --
+              `1518:10873` and `1564:11979`. It said «Totales» until
+              2026-10-24; the difference is not cosmetic, because «Totales» is
+              a heading over a sum and this one names what the money is FOR. */}
+          <h2 className="mt-1 text-xl font-semibold">Total por pagar</h2>
           {totales.map((t) => {
             const moneda = t.currency as PriceCurrency;
             // EL EQUIVALENTE EN BOLÍVARES ES EL DE HOY, y por eso no se
@@ -309,7 +540,10 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                       ? rates.usdt
                       : null;
             return (
-              <div key={t.currency} className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2">
+              <div
+                key={t.currency}
+                className="flex flex-col gap-1.5 rounded-[10px] border px-4 py-2"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-col gap-0.5">
                     {/* LA MONEDA SIEMPRE NOMBRADA, aunque el pedido traiga
@@ -334,7 +568,9 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
                 </div>
                 {bsPorUnidad != null ? (
                   <span className="text-xs font-medium text-muted-foreground tabular-nums">
-                    = {formatPriceAmount(t.amount * bsPorUnidad, "VES")}
+                    {/* «Hoy», como lo escriben los frames: el total está
+                        cerrado y su valor en bolívares no. */}
+                    {formatPriceAmount(t.amount * bsPorUnidad, "VES")} Hoy
                   </span>
                 ) : null}
               </div>
@@ -343,31 +579,51 @@ export default async function OrdenPage({ params }: { params: Promise<{ id: stri
         </>
       ) : null}
 
-      {/* «REGISTRAR PEDIDO» IS NOT HERE, AND THAT IS THE DECISION, NOT AN
-          OVERSIGHT.
+      {/* ── «REGISTRAR PEDIDO», Y VUELVE CON ALGO DETRÁS ──────────────
+          El comentario que vivía aquí decía que este botón se había quitado
+          el 2026-10-21 porque lo que haría era `CT-70`, sin construir, y que
+          *«cuando CT-70 aterrice, el botón vuelve aquí con una acción de
+          verdad detrás»*. Aterrizó el 2026-10-25.
 
-          The frame `1371:7229` draws it, and it shipped disabled on
-          2026-10-17 with the sentence «llega en la próxima entrega»
-          underneath. The owner removed both on 2026-10-21, for launch A:
-          what the button would do is `CT-70`, which is blocked on three of
-          his own decisions and is not built. A disabled control that
-          promises a date is a promise this release cannot keep, and it sits
-          directly above the one action the screen can actually perform.
+          LLEVA AL PASO 1/4 Y NO REGISTRA NADA ÉL MISMO: el sitemap dibuja
+          dos pantallas unidas por esta flecha, «Selecciona "Registrar
+          pedido"». Lo que se registra vive allí.
 
-          SO THE SCREEN NOW ENDS AT «MARCAR COMO ATENDIDO», which is all it
-          has ever been able to do. When `CT-70` lands, the button comes back
-          here with a real action behind it -- never enabled against
-          `OrderAttendButton`, because marking an order attended is a
-          different thing from registering it as a sale, and wiring one to
-          the other would be lying in the owner's own words. `CT-92` tracked
-          this and closes with its removal. */}
-      <div className="pt-1">
-        <OrderAttendButton
-          orderId={pedido.id}
-          atendido={!isUnattended(pedido)}
-          atendidoEl={atendidoEl}
-        />
-      </div>
+          NO SE DIBUJA EN UN PEDIDO YA REGISTRADO: no hay nada que registrar,
+          y ofrecerlo llevaría a una pantalla que redirige de vuelta aquí.
+
+          NI EN UNO DESCARTADO, desde el 2026-10-26, y por esa segunda razón
+          exactamente: el `1/x` ahora rebota a los descartados, así que el
+          botón sería un viaje de ida y vuelta sin explicación. Lo que ocupa su
+          sitio es el chip «Descartado» de arriba y el «Restaurar» del «⋮». */}
+      {pedido.registered_at == null && !estaDescartado(pedido) ? (
+        <div className="pt-1">
+          <Button className="h-10 w-full" asChild>
+            {/* CON UNA SOLA MONEDA SALTA DIRECTO AL `2/4`, encargo del dueño
+                del 2026-10-25: el paso «1/4 Pedido» es un selector de moneda
+                y con una no hay nada que seleccionar. La condición entera
+                --y sus dos bordes-- vive en `unicaMonedaDelPedido`. */}
+            <Link href={hrefRegistrar}>Registrar pedido</Link>
+          </Button>
+        </div>
+      ) : null}
+
+      {/* ── «MARCAR COMO ATENDIDO» YA NO EXISTE ────────────────────────
+          Petición del dueño el 2026-10-25, con la captura y el círculo en
+          rojo, junto con la barra de navegación. El frame del detalle
+          (`1655:15864`) tampoco lo dibuja: esa pantalla termina en «Registrar
+          pedido».
+
+          Y AL PREGUNTARLE DÓNDE IBA ESA ACCIÓN --era el único sitio desde el
+          que se podía ejecutar-- decidió que no va a ninguna parte:
+          *«registrar lo da por atendido»*. `registrarPedidoComoVenta` sella
+          `seen` con la primera moneda y `registered` con la última; el botón,
+          su diálogo y `markOrderAttended` se borraron. Eso cierra `CT-83` por
+          la raíz: aquel aviso existía porque no se podía registrar.
+
+          LO QUE CUESTA, que él eligió sabiéndolo: un pedido atendido pero NO
+          registrado --regalado, entregado sin cobrar-- se queda como nuevo
+          para siempre. No hay otra puerta. */}
     </div>
   );
 }

@@ -643,7 +643,28 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // EL FLOTANTE NO VUELVE, y no es un descuido: lo quitó él ayer por la misma
   // medición, y hoy pidió la barra, no el botón. Sale por la condición de
   // abajo.
-  if (onClientDetail || enAsistenteDeVenta || enTransaccion) return null;
+  // ── Y EL FLUJO DE REGISTRAR UN PEDIDO, desde el 2026-10-25 ─────────
+  //
+  // No es criterio mío: los frames del flujo nuevo (`1654:13565`) no dibujan
+  // la barra en ninguno de sus cuatro pasos, y el `Resumen V2` al que
+  // desembocan sí la dibuja. O sea que la barra vuelve justo donde el flujo
+  // termina.
+  //
+  // NO ENCIERRA A NADIE: las cuatro pantallas llevan su propia fila de volver
+  // (`ScreenBackRow` con `soloEnTelefono={false}`), y el paso 1/4 es el
+  // detalle del pedido, que sí tiene barra.
+  // EL DETALLE DE UN PEDIDO TAMBIÉN, desde el 2026-10-25. Petición del
+  // dueño con la captura y el círculo en rojo: *«botón «Marcar como
+  // atendido» y navbar no aparecen en esta pantalla de nuevo pedido»*. Y el
+  // frame le da la razón: `1655:15864` termina en «Registrar pedido», sin
+  // barra y sin segundo botón.
+  //
+  // `[^/]+` DESPUÉS DE `ordenes/` Y NO `startsWith`: la LISTA de pedidos
+  // (`/productos/ordenes` a secas) conserva su barra, porque es una lista a
+  // la que se llega desde el catálogo y de la que se sale navegando.
+  const enPedidoConcreto = /^\/productos\/ordenes\/[^/]+(\/|$)/.test(pathname);
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enPedidoConcreto)
+    return null;
 
   return (
     <>

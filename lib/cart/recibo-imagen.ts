@@ -314,7 +314,11 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelRecibo): 
   if (ctx) {
     ctx.fillStyle = TINTA;
     ctx.textAlign = "center";
-    ctx.fillText("Tu pedido quedó registrado", centro, y);
+    // LAS EXCLAMACIONES VAN TAMBIÉN AQUÍ, encargo del dueño el 2026-10-26.
+    // Esta es la MISMA frase que la pantalla, dibujada sobre el PNG que el
+    // cliente comparte: si una lleva los signos y la otra no, lo que se
+    // reenvía deja de parecerse a lo que se vio.
+    ctx.fillText("¡Tu pedido quedó registrado!", centro, y);
   }
   y += 10 * ESCALA;
 

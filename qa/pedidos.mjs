@@ -44,9 +44,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import {
-  isUnattended,
+  isUnregistered,
   totalsByCurrency,
-  countUnattendedOrders,
+  countUnregisteredOrders,
 } from "../lib/orders/catalog-orders.ts";
 
 const env = Object.fromEntries(
@@ -127,12 +127,22 @@ try {
   );
   check("4c. un pedido vacío no inventa un cero", totalsByCurrency([]).length === 0);
 
-  check("isUnattended: 'new' sí", isUnattended({ status: "new" }));
+  // ── DOS ESTADOS, NO CUATRO ────────────────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-25: *«eliminemos el concepto de pedido
+  // atendido»*. Un pedido está pendiente mientras no esté REGISTRADO, así que
+  // `seen` —el escalón del botón «Marcar como atendido», ya borrado— vuelve a
+  // contar como pendiente. Las filas viejas que quedaron en ese estado son
+  // pedidos sin registrar, que es lo que son.
+  check("isUnregistered: 'new' sí", isUnregistered({ status: "new" }));
   check(
-    "isUnattended: los otros tres no",
-    !isUnattended({ status: "seen" }) &&
-      !isUnattended({ status: "registered" }) &&
-      !isUnattended({ status: "discarded" }),
+    "isUnregistered: 'seen' TAMBIÉN, porque ese estado ya no significa nada",
+    isUnregistered({ status: "seen" }),
+  );
+  check(
+    "isUnregistered: registrado y descartado NO cuentan",
+    !isUnregistered({ status: "registered" }) &&
+      !isUnregistered({ status: "discarded" }),
   );
 
   // ── El montaje ────────────────────────────────────────────────────────
@@ -239,19 +249,91 @@ try {
     eLineas ? `${eLineas.code} ${eLineas.message}` : `${lineasSuyas.length} líneas`,
   );
 
-  // ── 1. EL CONTADOR ────────────────────────────────────────────────────
-  const antes = await countUnattendedOrders(admin, owner.id);
-  check("1a. el contador ve el pedido sin atender", antes >= 1, `${antes}`);
+  // ── 7c. QUITAR Y DEVOLVER UNA MONEDA, CON SU SESIÓN ──────────────────
+  //
+  // Migración `161`. Esto va AQUÍ y con la sesión del dueño por una razón que
+  // ya costó una vez: la `116` existe porque la `108` encendió RLS y nunca
+  // dio el `grant`, y ninguna suite lo vio porque todas corren con la clave
+  // de servicio, que ni usa RLS ni necesita permisos.
+  //
+  // VOLVIÓ A PASAR EL 2026-10-26, letra por letra: la `116` había dado
+  // `select` sobre esta tabla y nunca `update`, así que «Eliminar» moría con
+  // `42501` --el botón se dibujaba, el diálogo preguntaba, y no pasaba nada--
+  // mientras `qa:pedidos` pasaba 17 de 17. Lo cazó abrir la pantalla.
+  //
+  // ESTO ES LO QUE LO HABRÍA CAZADO, y por eso escribe con la sesión y lee la
+  // confirmación con ella también.
+  const lineaEur = (lineasSuyas ?? []).find((l) => l.currency === "EUR");
+  const { error: eQuitar } = await dueno
+    .from("catalog_order_items")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", lineaEur?.id ?? "");
+  check(
+    "7c. el dueño puede QUITAR una línea con su sesión (grant update)",
+    !eQuitar,
+    eQuitar ? `${eQuitar.code} ${eQuitar.message}` : "marcada",
+  );
 
-  const { count: leidos } = await admin
+  const { data: vivasTrasQuitar } = await dueno
+    .from("catalog_order_items")
+    .select("id")
+    .is("deleted_at", null)
+    .eq("order_id", nuevo.id);
+  check(
+    "7d. y deja de verla entre las vivas",
+    (vivasTrasQuitar ?? []).length === 1,
+    `${(vivasTrasQuitar ?? []).length} viva(s)`,
+  );
+
+  const { error: eDevolver } = await dueno
+    .from("catalog_order_items")
+    .update({ deleted_at: null })
+    .eq("id", lineaEur?.id ?? "");
+  const { data: vivasTrasDevolver } = await dueno
+    .from("catalog_order_items")
+    .select("id")
+    .is("deleted_at", null)
+    .eq("order_id", nuevo.id);
+  check(
+    "7e. y puede DEVOLVERLA, que es lo que promete la tarjeta de «Restaurar»",
+    !eDevolver && (vivasTrasDevolver ?? []).length === 2,
+    eDevolver ? `${eDevolver.code} ${eDevolver.message}` : `${(vivasTrasDevolver ?? []).length} vivas`,
+  );
+
+  // LO QUE SIGUE SIENDO SUYO Y NO SE PUEDE TOCAR. El `grant` es de UNA
+  // columna: la cantidad y el precio son lo que el CLIENTE acordó, y una
+  // sesión de tendero que pudiera cambiarlos convertiría el precio sellado de
+  // `registrarVenta` en una promesa sin cerradura.
+  const { error: ePrecio } = await dueno
+    .from("catalog_order_items")
+    .update({ unit_price: 1 })
+    .eq("id", lineaEur?.id ?? "");
+  check(
+    "7f. y NO puede cambiar el precio sellado de una línea",
+    ePrecio != null,
+    ePrecio ? `${ePrecio.code} rechazado` : "LO CAMBIÓ — el grant es demasiado ancho",
+  );
+
+  // ── 1. EL CONTADOR ────────────────────────────────────────────────────
+  const antes = await countUnregisteredOrders(admin, owner.id);
+  check("1a. el contador ve el pedido sin registrar", antes >= 1, `${antes}`);
+
+  // LOS YA REGISTRADOS NO ENTRAN, que es de lo que va el contador. Antes esta
+  // fila miraba `seen`; ese estado dejó de significar nada el 2026-10-25,
+  // cuando el dueño eliminó el concepto de «atendido».
+  const { count: yaRegistrados } = await admin
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", owner.id)
-    .eq("status", "seen");
+    .eq("status", "registered");
+  const { count: todos } = await admin
+    .from("catalog_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", owner.id);
   check(
-    "1b. y NO cuenta los ya atendidos, que es de lo que iba la decisión",
-    antes < antes + (leidos ?? 0) || (leidos ?? 0) === 0,
-    `sin atender ${antes} · atendidos ${leidos}`,
+    "1b. y NO cuenta los ya registrados",
+    antes === (todos ?? 0) - (yaRegistrados ?? 0),
+    `sin registrar ${antes} · registrados ${yaRegistrados} · total ${todos}`,
   );
 
   // ── 5. EL ORDEN DE LA LISTA ───────────────────────────────────────────
@@ -263,7 +345,7 @@ try {
     .order("created_at", { ascending: false });
   const mios = (lista ?? []).filter((o) => o.customer_name?.startsWith(MARCA));
   check(
-    "5. el SIN ATENDER sale antes que el atendido, aunque sea más nuevo",
+    "5. el SIN REGISTRAR sale antes que el registrado, aunque sea más nuevo",
     mios.length === 2 && mios[0].status === "new",
     mios.map((o) => `${o.status}`).join(" → "),
   );
@@ -277,31 +359,42 @@ try {
   // `status` necesita un `grant update` que la 108 tampoco dio y la 116 sí
   // (ver el punto 7 de arriba). Con la clave de servicio esto pasaría en
   // verde con el botón "Marcar como atendido" roto para todo el mundo.
-  const atender = (id) =>
+  // LO QUE SACA UN PEDIDO DEL CONTADOR ES REGISTRARLO, y desde el 2026-10-25
+  // es lo ÚNICO que lo hace: el dueño eliminó «Marcar como atendido» y con él
+  // el estado intermedio. Aquí se escribe el mismo sello que pone
+  // `registrarPedidoComoVenta`, con la sesión del DUEÑO -- que es lo que
+  // mantiene vivo el control del `grant update` explicado arriba.
+  const registrar = (id) =>
     dueno
       .from("catalog_orders")
-      .update({ status: "seen", seen_at: new Date().toISOString() }, { count: "exact" })
+      .update(
+        { status: "registered", registered_at: new Date().toISOString() },
+        { count: "exact" },
+      )
       .eq("id", id)
       .eq("owner_id", owner.id)
       .eq("status", "new");
 
-  const { count: primera } = await atender(nuevo.id);
-  check("2a. atenderlo marca UNA fila", primera === 1, `${primera}`);
+  const { count: primera } = await registrar(nuevo.id);
+  check("2a. registrarlo marca UNA fila", primera === 1, `${primera}`);
 
-  const despues = await countUnattendedOrders(admin, owner.id);
+  const despues = await countUnregisteredOrders(admin, owner.id);
   check("2b. y el contador baja", despues === antes - 1, `${antes} → ${despues}`);
 
-  const { count: segunda } = await atender(nuevo.id);
+  const { count: segunda } = await registrar(nuevo.id);
   check(
-    "2c. atenderlo otra vez no marca nada — el contador no puede bajar dos veces",
+    "2c. registrarlo otra vez no marca nada — el contador no puede bajar dos veces",
     segunda === 0,
     `${segunda}`,
   );
 
+  // Y UNO YA REGISTRADO TAMPOCO SE TOCA. El `.eq("status", "new")` del
+  // `update` es lo que lo impide, y vale igual contra un doble toque que
+  // contra una pestaña vieja.
   await admin.from("catalog_orders").update({ status: "registered" }).eq("id", viejo.id);
-  const { count: tercera } = await atender(viejo.id);
+  const { count: tercera } = await registrar(viejo.id);
   check(
-    "3. un pedido ya REGISTRADO no vuelve a 'seen'",
+    "3. un pedido ya REGISTRADO no se vuelve a sellar",
     tercera === 0,
     "status es lo que escribirá el botón de CT-70 y esta acción no lo deshace",
   );

@@ -236,10 +236,32 @@ export function CartScreen({
         <ScreenTitle>Tu carrito</ScreenTitle>
 
         {lineas.length === 0 ? (
+          /* ── EL VACÍO AHORA TIENE SALIDA — frame `1707:14933` ─────────
+             Encargo del dueño el 2026-10-26: *«agrégale el botón "Agregar
+             producto" y al seleccionarlo dirige al catálogo»*.
+
+             LA ÚNICA FORMA DE SALIR DE AQUÍ ERA LA FLECHA DE ARRIBA, de
+             24px y en una esquina. El texto decía «Vuelve al catálogo» sin
+             dar con qué: una instrucción que no se puede obedecer donde
+             está escrita. Y es la pantalla donde el cliente aterriza si
+             abre el carrito por curiosidad antes de elegir nada, así que
+             era también la primera impresión más fácil de abandonar.
+
+             EL SUBTÍTULO CAMBIA CON EL BOTÓN, y así lo escribe el frame:
+             de «Vuelve al catálogo y elige lo que quieras pedir» a
+             nombrar el botón que ahora está debajo. Un texto que manda ir
+             a otro sitio, con el atajo delante, se contradice solo. */
           <EmptyState
             title="Todavía no has agregado nada"
-            subtitle="Vuelve al catálogo y elige lo que quieras pedir."
-          />
+            subtitle={'Selecciona "Agregar producto" para continuar con tu compra.'}
+          >
+            <Link
+              href={`/c/${token}`}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-foreground text-base font-semibold text-background outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Plus className="size-6" aria-hidden="true" /> Agregar producto
+            </Link>
+          </EmptyState>
         ) : primeraCarga ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Preparando tu carrito...
@@ -379,13 +401,27 @@ export function CartScreen({
                 {totales.map((t) => (
                   <div
                     key={t.currency}
-                    className="flex items-baseline justify-between gap-3"
+                    className="flex items-center justify-between gap-3"
                   >
                     <span className="text-sm text-muted-foreground">
                       {totales.length > 1 ? `Total en ${t.currency}` : "Total"}
                     </span>
-                    <span className="text-base font-semibold tabular-nums">
-                      {formatPriceAmount(t.amount, t.currency)}
+                    {/* LA BANDERA A LA DERECHA DE LA CIFRA, encargo del dueño
+                        el 2026-10-26. Es la misma forma que ya tienen las
+                        tarjetas de total del lado del tendero: el símbolo
+                        distingue dólares de euros de un vistazo, pero no
+                        distingue dos dólares --el americano del australiano--
+                        y la bandera sí. Aquí además hay dos totales uno
+                        encima de otro, que es justo donde se confunden.
+
+                        `items-center` Y NO `items-baseline` en la fila: una
+                        bandera no tiene línea base, así que con la de antes
+                        quedaba montada sobre el número. */}
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-base font-semibold tabular-nums">
+                        {formatPriceAmount(t.amount, t.currency)}
+                      </span>
+                      <CurrencyFlagIcon currency={t.currency} className="size-4 shrink-0" />
                     </span>
                   </div>
                 ))}
@@ -522,6 +558,28 @@ function FormularioDeLaOrden({
 
   function enviar() {
     setError(null);
+    // ── EL NÚMERO FALTA ≠ EL NÚMERO NO SE ENTIENDE ────────────────────
+    //
+    // Los dos casos volvían del servidor con el mismo código
+    // --`whatsapp_invalido`-- y por tanto con la misma frase, «Ese número de
+    // WhatsApp no se entiende. Revísalo.». Con el campo VACÍO eso manda al
+    // cliente a revisar un número que no escribió.
+    //
+    // Lo reportó el dueño el 2026-10-26 con la captura, y pidió la frase que
+    // nombra el problema de verdad: *«El mensaje "El número de WhatsApp no se
+    // entiende. Revísalo" debe ser "Número de WhatsApp es obligatorio"»*.
+    //
+    // SE COMPRUEBA AQUÍ Y NO EN EL SERVIDOR porque el servidor no puede
+    // distinguirlos: `WhatsappInput` manda cadena vacía tanto si el campo
+    // está en blanco como si lo tecleado no compone un número, así que lo que
+    // llega es lo mismo. Quien sí lo sabe es la pantalla.
+    //
+    // LA PARADA DURA SIGUE SIENDO LA DEL SERVIDOR: esto es un mensaje mejor,
+    // no una validación. `create_catalog_order` rechaza igual.
+    if (whatsapp.trim() === "") {
+      setError("Número de WhatsApp es obligatorio");
+      return;
+    }
     startTransition(async () => {
       const r = await crearOrden(
         token,
@@ -736,7 +794,16 @@ function FormularioDeLaOrden({
               id="orden_whatsapp"
               name="orden_whatsapp"
               preferredDialCode={prefijo}
-              onValueChange={setWhatsapp}
+              // EL ERROR SE VA AL TOCAR EL CAMPO, y eso es la otra mitad
+              // de lo mismo. En la captura del dueño el aviso en rojo salía
+              // DEBAJO de un número ya tecleado: era el de un intento
+              // anterior con el campo vacío, que se quedó en pantalla. Un
+              // mensaje que sobrevive a su causa no se lee como viejo, se lee
+              // como que el número que acabas de escribir tampoco vale.
+              onValueChange={(v) => {
+                setWhatsapp(v);
+                setError(null);
+              }}
               disabled={enviando}
             />
           </div>
@@ -951,7 +1018,7 @@ function Enviado({
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-4 px-4 py-8">
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
         <CheckCircle2 className="size-14 text-emerald-600" aria-hidden="true" />
-        <h1 className="text-xl font-semibold">Tu pedido quedó registrado</h1>
+        <h1 className="text-xl font-semibold">¡Tu pedido quedó registrado!</h1>
         {/* LA FECHA, DEBAJO DEL TÍTULO Y EN TENUE — misma posición que en el
             PNG que se comparte desde aquí, para que la imagen y la pantalla se
             lean igual. */}
@@ -1013,11 +1080,26 @@ function Enviado({
               </tbody>
             </table>
 
-            <div className="flex items-baseline justify-between gap-3 border-t pt-3">
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
               <span className="text-sm font-semibold">
                 Total en {NOMBRE_MONEDA[bloque.currency] ?? bloque.currency}
               </span>
-              <span className="text-right">
+              {/* LA BANDERA TAMBIÉN AQUÍ, encargo del dueño el 2026-10-26
+                  después de verla en el carrito: *«Agrega la bandera también
+                  en los totales del recibo compartible»*.
+
+                  Y AQUÍ PESA MÁS QUE EN EL CARRITO, aunque el rótulo ya diga
+                  «Dólares» con todas las letras: esta es la pantalla que el
+                  cliente guarda o reenvía, así que se va a leer fuera de su
+                  contexto, en la galería del teléfono de otra persona. Un
+                  símbolo suelto a esas alturas no distingue dos dólares; una
+                  bandera sí.
+
+                  `items-center` Y NO `items-baseline`: una bandera no tiene
+                  línea base y con la de antes quedaba montada sobre la cifra.
+                  Es el mismo cambio que en el carrito. */}
+              <span className="flex items-center gap-1.5 text-right">
+                <span className="flex flex-col items-end">
                 <span className="block text-base font-semibold tabular-nums">
                   {formatPriceAmount(bloque.total, bloque.currency)}
                 </span>
@@ -1026,11 +1108,55 @@ function Enviado({
                     {formatBs(enBs.amount)}
                   </span>
                 ) : null}
+                </span>
+                <CurrencyFlagIcon
+                  currency={bloque.currency}
+                  className="size-4 shrink-0"
+                />
               </span>
             </div>
           </section>
         );
       })}
+
+      {/* ── EL CARRUSEL, ENCIMA DE LA FIRMA DE SEVENZ ─────────────────
+          Encargo del dueño el 2026-10-26, con la captura y la flecha:
+          *«Sección "Otros productos" súbela arriba del disclaimer de
+          Sevenz»*. Estaba debajo de «Compartir» desde el 2026-10-17.
+
+          POR QUÉ IMPORTA EL ORDEN, y no es colocación: el logo, el aviso
+          antifraude y «sevenz.site» son la FIRMA de este recibo —cierran lo
+          que el cliente guarda o reenvía—. Con una tienda de productos
+          colgando debajo, la firma dejaba de ser el final de nada.
+
+          40px A LOS LADOS, también suyo: `wideGutters`. La cuenta está en el
+          propio `CatalogStrip`.
+
+          ES EL MISMO COMPONENTE que la franja del saldo —no una copia—
+          porque las dos enseñan lo mismo y el día que una cambie la otra
+          tiene que cambiar con ella.
+
+          SIN `shareToken`, a propósito: quien lee esto YA está dentro del
+          catálogo, así que no hay ningún «abrió el catálogo desde el enlace»
+          que contar. Mandar ese evento desde aquí inflaría el único número
+          que existe para contestar esa pregunta.
+
+          FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo le
+          ofrece otra vez lo que tiene en la bolsa no es una sugerencia, es un
+          despiste — y en un producto sobre dinero, invitar a comprar dos
+          veces lo mismo es exactamente lo que no conviene.
+
+          EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
+          Nació con lo segundo y el dueño lo cambió el mismo día, al leer que
+          el dato no lo sostenía: la ficha de un producto no tiene categoría,
+          ni etiquetas, ni familia, así que lo único que une a estos con lo
+          comprado es ser de la misma bodega. Cierra `CT-96`. */}
+      <CatalogStrip
+        catalogToken={token}
+        titulo="Otros productos"
+        wideGutters
+        products={relacionados.filter((p) => !yaComprados.includes(p.id))}
+      />
 
       {/* EL LOGO Y LA DIRECCIÓN, del frame. A petición del dueño el
           2026-10-15, y van en la pantalla Y en la imagen por la misma razón:
@@ -1065,42 +1191,6 @@ function Enviado({
         >
           <Share2 className="size-5" aria-hidden="true" /> Compartir
         </button>
-
-        {/* EL CARRUSEL, DEBAJO DE «COMPARTIR». Encargo del dueño el
-            2026-10-17, y es el MISMO componente que la franja del saldo —no
-            una copia— porque las dos enseñan lo mismo y el día que una
-            cambie la otra tiene que cambiar con ella.
-
-            SIN `shareToken`, a propósito: quien lee esto YA está dentro del
-            catálogo, así que no hay ningún «abrió el catálogo desde el
-            enlace» que contar. Mandar ese evento desde aquí inflaría el único
-            número que existe para contestar esa pregunta.
-
-            FUERA LO QUE ACABA DE COMPRAR. Un carrusel que debajo del recibo
-            le ofrece otra vez lo que tiene en la bolsa no es una sugerencia,
-            es un despiste — y en un producto sobre dinero, invitar a comprar
-            dos veces lo mismo es exactamente lo que no conviene.
-
-            EL RÓTULO DICE «OTROS PRODUCTOS» Y NO «PRODUCTOS RELACIONADOS».
-            Nació con lo segundo y el dueño lo cambió el mismo día, al leer
-            que el dato no lo sostenía: la ficha de un producto no tiene
-            categoría, ni etiquetas, ni familia, así que lo único que une a
-            estos con lo comprado es ser de la misma bodega.
-
-            Con seis productos no se nota —«relacionados» y «los otros» son el
-            mismo conjunto— pero el día que una bodega publique decenas, quien
-            compró arroz vería tornillos bajo un título que le prometió otra
-            cosa. «Otros productos» es verdad hoy y lo seguirá siendo cuando
-            el catálogo crezca, que es la única clase de rótulo que no hay que
-            volver a tocar. Cierra `CT-96`.
-
-            Si algún día la ficha gana una categoría, el rótulo puede volver a
-            prometer parentesco — pero entonces habrá con qué cumplirlo. */}
-        <CatalogStrip
-          catalogToken={token}
-          titulo="Otros productos"
-          products={relacionados.filter((p) => !yaComprados.includes(p.id))}
-        />
 
         <Link
           href={`/c/${token}`}

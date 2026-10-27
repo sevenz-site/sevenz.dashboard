@@ -1,7 +1,10 @@
-import Link from "next/link";
 import { CircleUserRound, UserRoundSearch } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
+import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatDocumentId } from "@/lib/format";
+import { partirDocumento } from "@/lib/orders/order-client-match";
 import type { OrderClientMatch } from "@/lib/orders/order-client-match";
 import { OrderClientPickerSheet } from "@/components/dashboard/order-client-picker-sheet";
 
@@ -54,6 +57,7 @@ export function OrderClientCard({
   tipoDeDocumento,
   telefono,
   coincidencia,
+  ledger,
 }: {
   // As the CUSTOMER typed it in the cart, never the ficha's. The two can
   // differ and seeing both is what lets the shopkeeper judge the match.
@@ -64,8 +68,19 @@ export function OrderClientCard({
   // One ficha, several, or none. See `findOrderClient` for why it is matched
   // by document and nothing else, and why «several» is its own answer.
   coincidencia: OrderClientMatch;
+  // La tasa vigente, que la hoja de la cuenta necesita para enseñar bolívares.
+  // `null` en un negocio colombiano, que no tiene segunda línea.
+  ledger: LedgerDisplay | null;
 }) {
   const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+
+  // Ver el comentario de «Cédula:» más abajo: la letra puede venir en la
+  // columna del tipo, pegada al documento, o de la ficha emparejada.
+  const { digits: digitosDelPedido, letter: letraPropia } = partirDocumento(
+    documentoDelPedido,
+    tipoDeDocumento,
+  );
+  const letraDelPedido = letraPropia ?? cliente?.document_type ?? null;
   // THE ADDRESS COMES FROM THE FICHA, NOT FROM THE ORDER. The owner's
   // decision, 2026-10-24: *«la sacamos de la ficha del cliente ya existente y
   // la dejamos vacía cuando no existe»*. The ficha's is the one he maintains;
@@ -104,61 +119,195 @@ export function OrderClientCard({
           {/* THE THREE LINES ALWAYS, EVEN EMPTY. `DESIGN-SYSTEM.md`'s rule:
               a missing fact that disappears cannot be told apart from one
               that was never asked for. */}
+          {/* ── LA LETRA, AUNQUE EL PEDIDO NO LA TRAIGA EN SU COLUMNA ──
+              El dueño lo reportó el 2026-10-25 con la captura: «Cédula:
+              21.054.832», sin la V, mientras el recuadro verde de debajo —que
+              lee la FICHA— decía «V-21.054.832» en la misma tarjeta.
+
+              POR QUÉ FALTABA: `formatDocumentId` se llamaba bien; lo que
+              llegaba nulo era el tipo. El carrito del cliente no siempre
+              guarda `customer_document_type`, así que `catalog_orders` tiene
+              filas con «V-24242424» dentro de `customer_document` y otras con
+              los dígitos pelados y el tipo vacío.
+
+              DE DÓNDE SE SACA, EN ESTE ORDEN: la columna del tipo; si no, la
+              letra que venga pegada al propio documento --eso lo resuelve
+              `partirDocumento`--; y si tampoco, la de la ficha emparejada,
+              que es lícita porque el emparejamiento se hizo por los dígitos y
+              el recuadro verde ya la está afirmando ahí mismo.
+
+              SIN LETRA NO SE INVENTA NINGUNA. Un documento sin ficha y sin
+              tipo sale con sus dígitos y nada más: poner la «V» por defecto
+              sería afirmar algo que nadie dijo, y este producto distingue a
+              dos personas por esa letra. */}
           <p className="truncate text-sm text-muted-foreground">
-            Cédula: {formatDocumentId(documentoDelPedido, tipoDeDocumento)}
+            Cédula: {formatDocumentId(digitosDelPedido, letraDelPedido)}
           </p>
-          <p className="truncate text-sm text-muted-foreground">Teléfono: {telefono || "—"}</p>
-          <p className="truncate text-sm text-muted-foreground">Dirección: {direccion || "—"}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            Teléfono: {telefono || "—"}
+          </p>
+          <p className="truncate text-sm text-muted-foreground">
+            Dirección: {direccion || "—"}
+          </p>
         </div>
       </div>
 
+      <OrderClientMatchAlert
+        nombreDelPedido={nombreDelPedido}
+        digitosDelPedido={digitosDelPedido}
+        letraDelPedido={letraDelPedido}
+        coincidencia={coincidencia}
+      />
+
+      {cliente ? (
+        // ABRE UNA HOJA, NO NAVEGA. Petición del dueño el 2026-10-25, para no
+        // salir del flujo de registrar el pedido. Ver `OrderClientSheetButton`.
+        <OrderClientSheetButton
+          clientId={cliente.id}
+          clientName={cliente.name}
+          ledger={ledger}
+        />
+      ) : null}
+
+      {coincidencia.kind === "varios" ? (
+        <OrderClientPickerSheet
+          clientes={coincidencia.clientes}
+          ledger={ledger}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ── EL AVISO DE SI ESE CLIENTE YA ESTÁ EN LA CUENTA, SUELTO ───────────
+//
+// Sacado de `OrderClientCard` el 2026-10-26, cuando el dueño rehízo la
+// tarjeta del detalle (frame `1704:14739`): ahí el aviso va DENTRO de la
+// tarjeta «Datos del comprador», que no tiene avatar ni botón, así que lo
+// que se comparte entre las dos pantallas es solo esto.
+//
+// ES EL MISMO COMPONENTE Y NO UNA COPIA a propósito: son tres estados --una
+// ficha, varias, ninguna-- con tres textos y dos colores, y dos copias de eso
+// es como una pantalla acaba diciendo «ya existe» donde la otra dice «no lo
+// encontramos» sobre el mismo pedido.
+export function OrderClientMatchAlert({
+  nombreDelPedido,
+  digitosDelPedido,
+  letraDelPedido,
+  coincidencia,
+}: {
+  nombreDelPedido: string;
+  digitosDelPedido: string;
+  letraDelPedido: string | null;
+  coincidencia: OrderClientMatch;
+}) {
+  const cliente = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+  // ── ¿HAY UNA MARCA DE «MALA PAGA» DETRÁS DE ESTE PEDIDO? ─────────────
+  //
+  // Encargo del dueño el 2026-10-26: *«Un chip «Mala paga» en la tarjeta
+  // verde (…) agrégalo»*. Es la mitad que faltaba del aviso que pidió esa
+  // misma mañana -- el diálogo avisa en el último toque, esto avisa mientras
+  // decide.
+  //
+  // CON VARIAS FICHAS NO SE PUEDE NOMBRAR A NADIE, y eso cambia qué se dice,
+  // no si se dice. El pedido trae un documento que varias fichas comparten
+  // --`033` normaliza sin quitar la letra, así que `V-` y `E-` conviven-- y
+  // nada en el pedido dice cuál es. Callarlo sería dejar al tendero fiando a
+  // ciegas, que es el fallo entero de `PR-E6`; afirmarlo sobre una ficha
+  // concreta sería acusar a quien quizá no es. Así que el chip sale cuando
+  // alguna lo está, y la frase de debajo dice que es una de ellas y manda a
+  // «Ver clientes», que es la única cosa capaz de distinguirlas.
+  const marcadas =
+    coincidencia.kind === "uno"
+      ? coincidencia.cliente.is_flagged
+        ? 1
+        : 0
+      : coincidencia.kind === "varios"
+        ? coincidencia.clientes.filter((c) => c.is_flagged).length
+        : 0;
+  return (
+    <>
       {coincidencia.kind !== "ninguno" ? (
         <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
-          <CircleUserRound className="mt-px size-4 shrink-0" aria-hidden="true" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">
-              {coincidencia.kind === "varios"
-                ? "El cliente ya existe en varias cuentas de Sevenz."
-                : "El cliente ya existe en tu cuenta de Sevenz."}
-            </p>
+          <CircleUserRound
+            className="mt-px size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* EL CHIP ARRIBA Y A LA DERECHA, no pegado a la frase: a 375px
+                el rótulo ocupa dos líneas y un chip dentro del texto se iría
+                al final de la segunda, que es donde no se mira. */}
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold">
+                {coincidencia.kind === "varios"
+                  ? "El cliente ya existe en varias cuentas de Sevenz."
+                  : "El cliente ya existe en tu cuenta de Sevenz."}
+              </p>
+              {marcadas > 0 ? (
+                <Badge
+                  variant="outline"
+                  className={`${MALA_PAGA_BADGE_CLASS} shrink-0`}
+                >
+                  Mala paga
+                </Badge>
+              ) : null}
+            </div>
             {/* LA SEGUNDA LÍNEA CAMBIA DE SUJETO A PROPÓSITO. Con una sola
-                ficha nombra LA FICHA, que es lo que deja comparar con el
-                nombre de arriba —el que escribió el cliente— y cazar un
-                emparejamiento malo. Con varias no hay una que nombrar, así que
-                repite el documento del pedido, que es lo único común a todas.
-                El frame `1634:30094` lo dibuja así. */}
+            ficha nombra LA FICHA, que es lo que deja comparar con el
+            nombre de arriba —el que escribió el cliente— y cazar un
+            emparejamiento malo. Con varias no hay una que nombrar, así que
+            repite el documento del pedido, que es lo único común a todas.
+            El frame `1634:30094` lo dibuja así. */}
             <p>
               {cliente
                 ? `${cliente.name} con cédula ${formatDocumentId(cliente.document_id ?? "", cliente.document_type)}`
-                : `${nombreDelPedido} con cédula ${formatDocumentId(documentoDelPedido, tipoDeDocumento)}`}
+                : `${nombreDelPedido} con cédula ${formatDocumentId(digitosDelPedido, letraDelPedido)}`}
             </p>
+            {/* SOLO CUANDO NO SE PUEDE NOMBRAR. Con una sola ficha el chip ya
+                está encima del nombre que esta misma línea dice, y repetirlo
+                en prosa no añade nada.
+
+                LA FRASE HA CAMBIADO DOS VECES EL MISMO DÍA, y las dos
+                razones quedan porque explican dónde está el trabajo:
+
+                1. Nació diciendo «Ábrelas para ver cuál», apuntando al botón
+                   «Ver clientes» de `OrderClientPickerSheet` — que existe
+                   como componente y NO está montado en ninguna pantalla desde
+                   que el frame del `1/x` lo quitó. Prometía una puerta que no
+                   estaba.
+                2. Pasó a «Búscalas en Clientes», que era verdad pero mandaba
+                   al tendero FUERA del flujo, a cotejar de memoria.
+
+                Ahora el flujo pregunta: el paso del cliente enseña las fichas
+                con su chip y se elige una (`PR-E3`, arreglado esa noche). La
+                frase puede por fin prometer algo que pasa sola. */}
+            {coincidencia.kind === "varios" && marcadas > 0 ? (
+              <p className="font-medium">
+                {marcadas === 1
+                  ? "Una de esas fichas está marcada como Mala paga."
+                  : `${marcadas} de esas fichas están marcadas como Mala paga.`}{" "}
+                Al registrar el pedido te preguntamos cuál es.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : (
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
-          <UserRoundSearch className="mt-px size-4 shrink-0" aria-hidden="true" />
+          <UserRoundSearch
+            className="mt-px size-4 shrink-0"
+            aria-hidden="true"
+          />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-semibold">No hemos encontrado este cliente en tu cuenta de Sevenz.</p>
+            <p className="font-semibold">
+              No hemos encontrado este cliente en tu cuenta de Sevenz.
+            </p>
             <p>
               {nombreDelPedido} con cédula{" "}
-              {formatDocumentId(documentoDelPedido, tipoDeDocumento)}
+              {formatDocumentId(digitosDelPedido, letraDelPedido)}
             </p>
           </div>
         </div>
       )}
-
-      {cliente ? (
-        <Button variant="outline" size="sm" className="h-10 w-full" asChild>
-          {/* THE FICHA'S NAME AND NOT THE ORDER'S. The button says where it
-              goes, and it goes to the client this shop has on file — which is
-              the name that will be at the other end. */}
-          <Link href={`/clients/${cliente.id}`}>Ver {cliente.name}</Link>
-        </Button>
-      ) : null}
-
-      {coincidencia.kind === "varios" ? (
-        <OrderClientPickerSheet clientes={coincidencia.clientes} />
-      ) : null}
-    </div>
+    </>
   );
 }

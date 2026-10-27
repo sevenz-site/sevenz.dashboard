@@ -219,6 +219,39 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
   nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
   «Mostrador» aparece ahí (`CT-125`), con saldo siempre cero.
 
+### El PEDIDO que se vuelve venta — `npm run qa:pedido-registro`
+
+**Y los bordes de ese flujo tienen su propia guía: `REGISTRO-DE-PEDIDO-BORDES.md`
+en la raíz del repo.** Esta sección dice qué suite correr; esa guía dice qué
+abrir en el navegador y qué puede salir mal, borde por borde, con su peor
+escenario — incluido lo que ninguna suite ve. Si el diff toca el flujo de
+registrar un pedido, se lee entera antes de tocar el navegador, y el paso 3 de su
+sección 5 es el guion de lo manual.
+
+Desde el 2026-10-25. **Necesita `npm run dev` corriendo.** Dieciséis controles,
+escribe solo en dev y se limpia solo.
+
+`registrarPedidoComoVenta` es el único sitio donde un pedido del catálogo se
+convierte en dinero, y hasta que existió un pedido y el libro eran dos cosas sin
+relación. Lo que vigila esta suite —y ninguna otra puede, porque viven en otras
+tablas— es: que se cobre el **precio sellado** que el cliente vio y no el del
+catálogo de hoy; que una línea cuyo producto ya no existe **se excluya y vuelva
+nombrada**, no contada; que el pedido quede sellado con su `sale_id` y no se
+pueda registrar **dos veces**; que el pedido de otro dueño **no se encuentre**; y
+que el cliente que nace del flujo nazca con su documento en dígitos y marcado
+como confirmado por el tendero.
+
+**Corre como el DUEÑO**, con su propia cookie de sesión, no con la clave de
+servicio — así que una política o un `grant` que falten salen aquí. Es la lección
+de la migración `108`, que dejó `catalog_orders` sin grants mientras
+`qa:pedidos` pasaba 14 de 14.
+
+**Y es la red de `CT-147`**: ese rediseño cambia la ENTRADA de la acción —el
+cobro pasa de ser por producto a ser por moneda—, no sus resultados. Cuando se
+haga, lo que se actualiza es `pagoDeLinea()`, una función; si alguna de las
+dieciséis filas se pone roja al terminarlo, el rediseño se llevó por delante algo
+que no tenía que tocar.
+
 **COLOMBIA TIENE SU PROPIA FIXTURE Y NO ES OPCIONAL.** `sale_payments` y
 `sale_lines` escriben el libro colombiano como `'COP'` y `movements` lo
 escribe como `NULL`. Cruzar esas dos columnas en bruto no casa nunca, no
@@ -440,8 +473,12 @@ Una vez por lanzamiento que toque esta zona, de punta a punta:
    distintos** —uno del cliente, otro del negocio— y el puente lo resuelve el
    servidor; si se rompe, el cliente se queda sin forma de llegar.
 6. **La pantalla de Pedidos del tendero**: el pedido llegó, el contador lo
-   cuenta, se abre el detalle con sus líneas y el total, y «Marcar como
-   atendido» baja el contador.
+   cuenta, y se abre el detalle con sus líneas y su total.
+
+   **«Marcar como atendido» YA NO EXISTE** --se borró el 2026-10-25 con el
+   concepto de «pedido atendido», decisión del dueño: *«registrar lo da por
+   atendido»*--. Lo que baja el contador es REGISTRAR el pedido, que es el
+   recorrido de la sección siguiente.
 
 ### Dos cosas que ya fallaron aquí y conviene no redescubrir
 
@@ -459,9 +496,123 @@ comprobación de que la regla del escalón de la base y la de TypeScript
 coinciden es lo único que caza una divergencia que enseñaría un precio al
 cliente y guardaría otro **sin un solo error en ninguna parte**.
 
-**El botón «Registrar pedido» NO está en la pantalla** desde el 2026-10-21, y
-no es un olvido: lo que haría es `CT-70`, que no está construido. Si reaparece
-en una captura, es una regresión.
+**«Registrar pedido» YA ESTÁ CONSTRUIDO** desde el 2026-10-25, y esta línea
+decía lo contrario hasta el 2026-10-26: *«no es un olvido: lo que haría es
+`CT-70`, que no está construido»*. Era verdad y dejó de serlo, que es
+exactamente como una lista de comprobación empieza a mandar a buscar cosas que
+ya no son. Su recorrido es el de aquí abajo.
+
+### REGISTRAR UN PEDIDO COMO VENTA — el happy path es el mínimo
+
+**El criterio lo fijó el dueño el 2026-10-26**: *«como mínimo los del happy
+path deberían ir, todos los happy paths de cada funcionalidad deberían ir como
+mínimo»*.
+
+Y la razón por la que un happy path merece sitio en una lista que por lo demás
+está llena de bordes: **es lo único que un cambio no puede romper sin que
+importe**. Un borde roto afecta a un caso raro; el camino bueno roto afecta a
+todos los pedidos de todos los negocios, y es el primero que nadie prueba
+porque se da por hecho que funciona. Los cuatro de abajo son los cuatro
+recorridos que de verdad ocurren todos los días.
+
+**Antes de esto corren las suites** --`qa:pedido-registro` (53 controles),
+`qa:pedidos`, `qa:aviso-mala-paga`, `qa:sello-del-pedido`,
+`qa:barra-de-abajo`, `qa:lineas-borradas`-- que están en la sección 2b y en
+la 6b. Lo de aquí es lo que **ninguna suite puede ver**: la
+pantalla.
+
+**Y el detalle entero de los bordes vive en `REGISTRO-DE-PEDIDO-BORDES.md`**,
+en la raíz del repo: 48 bordes con su peor escenario. Esta lista es el mínimo;
+ese documento es lo que se lee cuando el diff toca el flujo.
+
+#### Los cuatro happy paths, en el navegador y a 375px
+
+1. **UNA moneda, de contado entero.** Pedido → «Registrar pedido» → `1/3
+   Confirmar` → `2/3 Pago` (De contado) → `3/3 Información del cliente` →
+   «Registrar y finalizar».
+   - Los pasos dicen `1/3 · 2/3 · 3/3`, **no** `2/4`.
+   - La flecha de atrás del `1/3` lleva al detalle del pedido.
+   - Al terminar, **el cliente no debe nada**: una venta pagada entera no
+     escribe ni una fila en `movements` (sección 2b).
+   - El pedido queda «Registrado: ‹fecha›» y sale de la campana.
+
+2. **DOS monedas, una fiada y otra de contado.** Es el recorrido más largo y
+   el que más piezas toca.
+   - Primera pasada: `1/4 Pedido · 2/4 · 3/4 · 4/4`.
+   - Segunda: `1/3 · 2/3 · 3/3` **sin volver a pedir el cliente**, con su
+     tarjeta arriba y el lápiz para corregirlo.
+   - Al final, **DOS ventas y UNA sola ficha de cliente**. Dos fichas para la
+     misma persona parten su historial en dos que no vuelven a juntarse.
+
+3. **Editar la cantidad de una línea.** «Editar pedido» → cambiar la cantidad
+   → «Agregar».
+   - La tarjeta de detrás, el «Total a pagar» y el botón «Pagar $…» tienen que
+     decir **lo mismo**. Es la cifra con la que se cobra.
+   - Si la cantidad cruza el mínimo de mayoreo, el precio BAJA y eso se ve.
+
+4. **Teclear el pago en BOLÍVARES.** La cifra que vuelve en el historial y en
+   la ficha de la transacción es **la tecleada**, no una reconversión.
+   Bs. 100.000 reconvertidos salen Bs. 100.001,87 (sección 6b).
+
+#### Y las tres paradas duras que se arreglaron el 2026-10-26
+
+Las tres eran defectos medidos en dev, las tres están cubiertas por suite, y
+las tres se miran igualmente en pantalla una vez porque **lo que fallaba no era
+la base: era la puerta**.
+
+| Qué | Cómo se comprueba | Qué pasaba antes |
+|---|---|---|
+| Un pedido **descartado** no se registra | `qa:pedido-registro` 16a-16d · y abrir su URL de `/registrar` a mano | Se registraba entero. El cliente quedaba debiendo por un pedido que la app decía descartado |
+| El aviso de **«Mala paga»** | `qa:aviso-mala-paga` · y fiarle a uno marcado | Ninguna de las cuatro pantallas lo nombraba, y dos enseñaban la tarjeta VERDE «el cliente ya existe» |
+| Quitar la moneda que falta **cierra** el pedido | `qa:pedido-registro` 17a-17e · y hacerlo en pantalla | El pedido quedaba pendiente PARA SIEMPRE y su único botón contestaba «Esa parte del pedido ya se registró» |
+| **Borrar la venta** devuelve el pedido a pendiente, y **restaurarla** lo vuelve a sellar | `qa:pedido-registro` 18a-18f · `qa:sello-del-pedido` · y el ciclo entero en pantalla | El pedido se quedaba «Registrado» apuntando a una venta borrada, y el flujo se negaba a volver a entrar |
+| Un pedido a medias **sobrevive** a que se abra otro | hacerlo en pantalla | El segundo pisaba el borrador del primero y la pantalla volvía al paso 1 sin una palabra |
+| Con **varias fichas** del mismo documento, el paso del cliente PREGUNTA cuál | hacerlo en pantalla · control con un `?ficha=` inventado | El detalle decía «ya existe en varias» y dos pantallas después «no lo encontramos», con un formulario que creaba una ficha más |
+
+**Y LOS DESCARTADOS SE TIENEN QUE PODER ENCONTRAR**, desde el 2026-10-26: el
+chip de estado de la lista de Pedidos tiene un cuarto valor, **«Descartado»**,
+y es el ÚNICO que los enseña. Dos comprobaciones y las dos importan:
+
+- con el chip en **«Descartado»**, el pedido descartado sale, con su chip rojo
+  tenue en la columna de estado;
+- con el chip en **«Todos»** --que es la vista que se abre sola-- **NO sale**.
+  Si saliera, el diálogo de descartar estaría mintiendo: le promete al tendero
+  que el pedido «sale de tu lista de pedidos».
+
+**El detalle del descartado**, que es donde el arreglo se puede romper sin que
+nada falle: el pedido tiene que enseñar su chip **«Descartado»**, **no** el
+botón «Registrar pedido», y su «⋮» tiene que ofrecer **«Restaurar»**. Si el
+botón reaparece, el tendero entra en un BUCLE --lleva al `1/x`, que redirige al
+detalle-- y nada en pantalla le dice por qué.
+
+**Y el de mala paga tiene DOS puertas y las dos escriben la venta**: el paso
+del cliente, y el **Pago** --que es quien registra en la segunda pasada de un
+pedido de dos monedas, cuando el cliente ya está puesto--. Un aviso que solo
+salga en la primera no sale nunca justo en el caso de dos monedas.
+
+**Y EL CHIP «Mala paga» VA EN TRES TARJETAS**, también desde el 2026-10-26.
+`qa:aviso-mala-paga` las vigila, y en pantalla se mira la tercera, que es la
+que se olvida: la del **`1/x`** de un pedido de dos monedas, porque ahí el paso
+del cliente se salta y el recuadro verde no pasa por delante de nadie. Las
+otras dos son ese recuadro verde y el del detalle del pedido.
+
+**EL CICLO DE BORRAR Y RESTAURAR SE MIRA ENTERO, y la segunda mitad es la que
+importa**: `eliminarVenta` dessella el pedido, así que si `restoreMovement`
+dejara de volver a sellarlo, restaurar devolvería la venta a la vida con el
+pedido diciendo «pendiente» -- y el flujo lo dejaría registrar otra vez.
+Después de restaurar, el detalle tiene que decir **«Registrado: ‹fecha›»** (con
+fecha, no vacío: los guardias de las seis pantallas miran esa columna y no
+`status`) y su `/registrar` tiene que rebotar.
+
+**Y EL BORRADOR DE UN PEDIDO ES SUYO**: dejar uno a medias, abrir otro y volver
+tiene que devolver al primero donde estaba. El control, que impide «arreglarlo»
+quitando el reinicio: salirse al detalle **de ese mismo pedido** sí lo
+reinicia, que es lo que el dueño pidió el 2026-10-26.
+
+**Los dos controles no son opcionales**, y sin ellos «avisar siempre» pasaría
+la prueba: un cliente **sin marca** no ve el diálogo, y un cliente marcado cuyo
+pedido se paga **entero** tampoco --no se le está fiando nada--. Una alarma que
+suena siempre se deja de leer, y detrás de ella se dejan de leer las demás.
 
 ## 4. Public, unauthenticated surfaces
 
@@ -704,6 +855,41 @@ caía dentro de la banda. El que rompe es el caso de en medio, no un extremo:
 | Venta de contado | **667-707** | 652-708 | **solapa** |
 | Venta de mostrador | 481-521 | 652-708 | limpio |
 
+### Y SE MIDEN TODOS LOS BOTONES DE LA PANTALLA, no el último ni el señalado
+
+**La tabla de arriba solo lista «Compartir», y por eso esta sección volvió a
+dar «limpio» el 2026-10-25 mirando el botón equivocado.** La pantalla de venta
+registrada tiene DOS botones propios, y el que estaba roto era el segundo:
+
+| Botón | Rectángulo | Barra fija | |
+|---|---|---|---|
+| «Compartir» | 667-707 | 723-812 | vivo ✓ (es el que se arregló el 2026-10-24) |
+| **«Ver ‹nombre›»** | **723-763** | 723-812 | **MUERTO** |
+
+Tocarlo abre **Reportes, Catálogo o Clientes** según dónde caiga el dedo —
+medido en tres puntos del botón. Es `CT-148`.
+
+**Así que la comprobación es sobre el conjunto**, y el filtro es «propio de la
+pantalla», no «el último»:
+
+```js
+const propios = [...document.querySelector('main').querySelectorAll('a,button')]
+  .filter((b) => b.offsetParent !== null && !b.closest('nav'));
+for (const b of propios) {
+  const r = b.getBoundingClientRect();
+  const e = document.elementFromPoint(
+    Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+  console.log(b.textContent.trim(), b.contains(e) || e === b ? 'vivo' : 'MUERTO');
+}
+```
+
+**Y un botón alcanzable desplazando sigue siendo un fallo.** El documento de
+esa pantalla mide 938 con un viewport de 812, así que bajando 126px el botón
+sale de debajo de la barra y funciona. No lo salva: en reposo no se ve **ni un
+píxel** de él, la página parece terminar en el botón de arriba, y nadie se
+desplaza buscando algo que no sabe que existe. Un botón escondido donde nadie
+tiene motivo para mirar es, en la práctica, un botón que no está.
+
 **Si hay que quitar algo fijo, antes se comprueba que quede salida.** Las dos
 pantallas de éxito conservan la cabecera con «Abrir menú», así que quitarles la
 barra no encierra a nadie. Importa sobre todo en la venta de mostrador: no hay
@@ -888,6 +1074,14 @@ no escribe nada.
 | **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |
 | `/admin` y métricas | `qa:multi-owner` |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
+| **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, **`qa:sello-del-pedido`**, **`qa:barra-de-abajo`**, `qa:lineas-borradas`, `qa:suscripciones` |
+
+**Las tres últimas de esa fila leen el CÓDIGO, no la base**, así que tardan un
+segundo y no necesitan servidor. Cada una cierra una avería que no se ve: un
+aviso de mala paga que desaparece porque alguien quitó una columna de un
+`select`; una línea quitada por el tendero que vuelve a entrar en la venta; un
+borrador que cambia y no avisa a la pantalla. Las tres fallan en silencio y las
+tres ya pasaron.
 
 ### Un campo de dinero que se toca se mira TECLEÁNDOLO, no leyéndolo
 

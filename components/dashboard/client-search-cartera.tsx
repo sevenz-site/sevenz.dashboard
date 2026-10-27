@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import {
@@ -66,7 +67,11 @@ import { clientHref } from "@/lib/client-origin";
 // when there is text. The alternative was a white placeholder (7,80:1), which
 // would leave it BRIGHTER than the value: the opposite of what it means.
 
-export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeholder?: string }) {
+export function ClientSearchCartera({
+  placeholder = "Buscar cliente",
+}: {
+  placeholder?: string;
+}) {
   const router = useRouter();
   const filters = useSharedClientFilters();
   // El estado vive en el proveedor, no aquí: "Agregar movimiento" se aparta
@@ -78,17 +83,30 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
   // flotante se quedan tapando el primer resultado, que es justo donde el
   // dueño busca a alguien para abrir su ficha.
   const { setFocused: setBuscando } = useSearchFocus();
+  // AL DESMONTARSE, EL INTERRUPTOR SE APAGA. Quitar del DOM un elemento
+  // enfocado no dispara `blur`, así que navegar con el buscador enfocado
+  // dejaba la barra y el flotante escondidos en TODAS las pantallas --el
+  // proveedor vive en el layout--. Lo reportó el dueño desde producción el
+  // 2026-10-25 creyendo que era un fallo del catálogo.
+  //
+  // El proveedor además se cura solo con un reloj, por si algún buscador
+  // futuro olvida esto; las dos cosas hacen falta y no son la misma: esta
+  // apaga al instante, aquélla es la red.
+  useEffect(() => () => setBuscando(false), [setBuscando]);
+
   if (!filters) return null;
 
   const c = filters.controls;
   const query = c.nameQuery.trim();
 
-  const results = filters.sortedRows.slice(0, CLIENT_RESULT_LIMIT).map((row) => ({
-    id: row.client_id,
-    name: row.name,
-    documentId: row.document_id,
-    documentType: row.document_type,
-  }));
+  const results = filters.sortedRows
+    .slice(0, CLIENT_RESULT_LIMIT)
+    .map((row) => ({
+      id: row.client_id,
+      name: row.name,
+      documentId: row.document_id,
+      documentType: row.document_type,
+    }));
 
   return (
     <div className="relative">
@@ -150,7 +168,10 @@ export function ClientSearchCartera({ placeholder = "Buscar cliente" }: { placeh
           <ClientResultList
             results={results}
             onSelect={(id) => {
-              track("Client Details Opened", { client_id: id, source: "cartera" });
+              track("Client Details Opened", {
+                client_id: id,
+                source: "cartera",
+              });
               router.push(clientHref(id, "cartera"));
             }}
           />

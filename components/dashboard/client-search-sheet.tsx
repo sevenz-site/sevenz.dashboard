@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Search, X } from "lucide-react";
 import {
   ClientFilterChips,
@@ -80,6 +81,16 @@ export function SearchField({
   // —Catálogo, Reportes, Pedidos— el contexto trae un valor por defecto que
   // no hace nada, así que el campo funciona igual.
   const { setFocused } = useSearchFocus();
+  // AL DESMONTARSE, EL INTERRUPTOR SE APAGA. Quitar del DOM un elemento
+  // enfocado no dispara `blur`, así que navegar con el buscador enfocado
+  // dejaba la barra y el flotante escondidos en TODAS las pantallas --el
+  // proveedor vive en el layout--. Lo reportó el dueño desde producción el
+  // 2026-10-25 creyendo que era un fallo del catálogo.
+  //
+  // El proveedor además se cura solo con un reloj, por si algún buscador
+  // futuro olvida esto; las dos cosas hacen falta y no son la misma: esta
+  // apaga al instante, aquélla es la red.
+  useEffect(() => () => setFocused(false), [setFocused]);
 
   return (
     <div className="relative">

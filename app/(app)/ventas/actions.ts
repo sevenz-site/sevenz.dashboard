@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
+import { getOwnerRateContext, getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
+import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
+import { computeCreditScore, type CreditScoreResult } from "@/lib/credit-score";
 import { resolveMovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
@@ -13,7 +16,13 @@ import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/produ
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
-import { estadoDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
+import {
+  estadoDeCliente,
+  estadoDelFiado,
+  estadoPorLibro,
+  type EstadoDelPlazo,
+  type LibroJuzgado,
+} from "@/lib/estado-del-plazo";
 import { telefonoLegible } from "@/lib/phone";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import type { ClientSummary, LedgerCurrency, Movement } from "@/lib/types";
@@ -252,6 +261,52 @@ export async function buscarProductosParaVenta(query: string): Promise<Productos
   };
 }
 
+// ONE PRODUCT, BY ITS ID, IN THE SHAPE THE CUSTOMER SEES.
+//
+// The catalogue order's «1/2 Edita producto» (frame `1566:13300`) opens the
+// product behind ONE order line, so it knows the id and has nothing to search
+// for. It goes through `armarProductos` exactly like the search above, which
+// is the point: the price the shopkeeper charges and the price his customer
+// saw in the catalogue have to come out of the same function, or the counter
+// and the catalogue start quoting different figures for the same product and
+// nobody finds out until a customer complains.
+//
+// `.eq("owner_id", user.id)` EXPLICITLY, because here the id DOES come from
+// the browser — it is in the URL of that screen.
+export async function productoParaVentaPorId(
+  id: string,
+): Promise<ProductosParaVenta> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
+
+  const contexto = await contextoDeVenta(supabase, user.id);
+  if (!contexto.ok) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
+  const { rates, monedasDelLibro, prevista } = contexto;
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(COLUMNAS_PRODUCTO)
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .is("trashed_at", null)
+    .limit(1);
+
+  if (error) {
+    console.error("productoParaVentaPorId:", error.message);
+    return { productos: [], rates, monedasDelLibro, prevista };
+  }
+
+  return {
+    rates,
+    monedasDelLibro,
+    prevista,
+    productos: await armarProductos(supabase, (data ?? []) as FilaDeProducto[]),
+  };
+}
+
 // ===========================================================================
 // EL CLIENTE MOSTRADOR, resuelto cuando el tendero lo pide
 // ===========================================================================
@@ -441,6 +496,48 @@ export type CuentaDelCliente = {
   estadosDeFiado: Record<string, EstadoDelPlazo | null>;
   // Lo que cada fiado todavía debe, por el id de su movimiento.
   pendientePorFiado: Record<string, number>;
+  // ── LO QUE LA HOJA TENÍA QUE ENSEÑAR Y NO ENSEÑABA ─────────────────
+  //
+  // Encargo del dueño el 2026-10-25, mirando la hoja dentro del flujo de
+  // registrar un pedido: *«se debe mostrar en el sheet cuánto debe en total
+  // por moneda y el puntaje de crédito, solo se está viendo el historial»*.
+  //
+  // LAS DOS COSAS SE CALCULAN AQUÍ Y NO EN EL NAVEGADOR, y no es una
+  // preferencia: el puntaje necesita TODOS los movimientos del cliente, no
+  // los cincuenta que la hoja pinta. Mandarlos al navegador para sumarlos
+  // allí sería bajar un historial entero por una cifra de tres dígitos.
+  //
+  // El estado POR LIBRO, para que cada tarjeta lleve su propio chip igual que
+  // en la ficha del cliente. La clave es `libroDe(moneda)`: `USD`, `EUR` o
+  // `COP` para un negocio colombiano.
+  estadosDeLibro: Record<string, LibroJuzgado>;
+  // ── LO QUE `client_summary` NO TRAE ────────────────────────────────
+  //
+  // La vista da nombre, documento y teléfono, pero no la DIRECCIÓN ni la
+  // foto. La tarjeta de esta hoja --frame `1713:18347`, encargo del dueño el
+  // 2026-10-26-- las dibuja las dos, así que se leen de `clients` aparte.
+  //
+  // Ampliar la vista habría sido la otra salida y es peor: `client_summary`
+  // la consultan la Cartera, las malas pagas y la papelera, y engordarla para
+  // dos campos que solo pide una hoja hace más caro todo lo demás.
+  ficha: { address: string | null; picturePath: string | null } | null;
+  // `null` cuando no se pudo leer la ficha. Un cliente sin historial SÍ tiene
+  // puntaje --«Sin historial»--, que es una respuesta y no un hueco.
+  puntaje: CreditScoreResult | null;
+};
+
+// El vacío que devuelven las dos salidas tempranas. Escrito una vez: cada
+// campo que se añada arriba y se olvide en una de ellas es un `undefined` que
+// revienta en el navegador, y han sido dos salidas desde el primer día.
+const CUENTA_VACIA: CuentaDelCliente = {
+  fila: null,
+  movimientos: [],
+  ventasDeContado: [],
+  estadosDeFiado: {},
+  pendientePorFiado: {},
+  estadosDeLibro: {},
+  puntaje: null,
+  ficha: null,
 };
 
 export async function cuentaDelCliente(clientId: string): Promise<CuentaDelCliente> {
@@ -448,7 +545,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
+  if (!user) return CUENTA_VACIA;
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN. Es la regla de
   // `CLAUDE.md` para toda fila leída por un id que llega del navegador, y aquí
@@ -459,7 +556,7 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
     .eq("client_id", clientId)
     .eq("owner_id", user.id)
     .maybeSingle();
-  if (!fila) return { fila: null, movimientos: [], ventasDeContado: [], estadosDeFiado: {}, pendientePorFiado: {} };
+  if (!fila) return CUENTA_VACIA;
 
   // LOS ÚLTIMOS CINCUENTA. Es una mirada para decidir, no la ficha: quien
   // necesite el historial entero lo tiene en la pantalla del cliente, y traer
@@ -529,31 +626,149 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   // Es el fallo del 2026-10-18 otra vez, dicho arriba en esta misma función:
   // la ficha enseñaba las ventas de contado y esta hoja no. Misma lista, dos
   // puertas, y solo se arregló una.
+  // LA LLAMADA SALIÓ DEL `if` EL 2026-10-25, y la diferencia importa: antes
+  // solo se pedían los fiados abiertos cuando alguno de los CINCUENTA
+  // movimientos traídos era un cargo. Con el estado por libro colgando de
+  // aquí, un cliente con mucha actividad reciente y un fiado viejo abierto se
+  // habría quedado sin chips — y «sin chip» se lee como «a este no le pasa
+  // nada», que es justo lo contrario.
+  const { data: abiertosCrudos } = await supabase.rpc("get_open_charges_for_client", {
+    p_client_id: clientId,
+  });
+  const abiertos = (abiertosCrudos ?? []) as {
+    movement_id: string;
+    charge_at: string;
+    currency: string | null;
+    amount: number;
+    pending: number;
+    plazo_dias: number | null;
+    cuotas: number | null;
+  }[];
+
   const estadosDeFiado: Record<string, EstadoDelPlazo | null> = {};
   const pendientePorFiadoMapa: Record<string, number> = {};
-  if (movementRows.some((m) => m.type === "charge")) {
-    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
-      p_client_id: clientId,
+  const pendientePorFiado = new Map<string, number>();
+  for (const c of abiertos) pendientePorFiado.set(c.movement_id, Number(c.pending));
+  for (const m of movementRows) {
+    if (m.type !== "charge") continue;
+    const pendiente = pendientePorFiado.get(m.id) ?? 0;
+    pendientePorFiadoMapa[m.id] = pendiente;
+    estadosDeFiado[m.id] = estadoDelFiado({
+      createdAt: m.created_at,
+      plazoDias: m.plazo_dias,
+      cuotas: m.cuotas,
+      amount: Number(m.amount),
+      pendiente,
     });
-    const pendientePorFiado = new Map<string, number>();
-    for (const c of (abiertos ?? []) as { movement_id: string; pending: number }[]) {
-      pendientePorFiado.set(c.movement_id, Number(c.pending));
-    }
-    for (const m of movementRows) {
-      if (m.type !== "charge") continue;
-      const pendiente = pendientePorFiado.get(m.id) ?? 0;
-      pendientePorFiadoMapa[m.id] = pendiente;
-      estadosDeFiado[m.id] = estadoDelFiado({
-        createdAt: m.created_at,
-        plazoDias: m.plazo_dias,
-        cuotas: m.cuotas,
-        amount: Number(m.amount),
-        pendiente,
-      });
-    }
   }
 
-  return { fila: fila as ClientSummary, movimientos: movementRows, ventasDeContado, estadosDeFiado, pendientePorFiado: pendientePorFiadoMapa };
+  // ── UN ESTADO POR LIBRO Y UN PUNTAJE, COMO EN LA FICHA ──────────────
+  //
+  // Las dos cosas se calculan EXACTAMENTE como `app/(app)/clients/[id]`, y
+  // eso no es copiar por comodidad: es la misma clienta en dos pantallas. Si
+  // la hoja juzgara con otra fórmula, el tendero vería «Bueno» aquí y
+  // «Regular» a dos toques de distancia, sobre la misma persona y el mismo
+  // día. Cualquier cambio en una va en la otra; el precedente de que eso se
+  // olvida está escrito dentro de esta misma función, con fecha.
+  const resumen = fila as ClientSummary;
+  const ownerRate = await getOwnerRateContext(supabase, user.id);
+
+  const estadosDeLibro = estadoPorLibro({
+    saldos: ownerRate
+      ? { USD: resumen.balance_usd ?? 0, EUR: resumen.balance_eur ?? 0 }
+      : { COP: resumen.balance ?? 0 },
+    abiertos: abiertos.map((c) => ({
+      createdAt: c.charge_at,
+      currency: c.currency,
+      amount: Number(c.amount),
+      pendiente: Number(c.pending),
+      plazoDias: c.plazo_dias,
+      cuotas: c.cuotas,
+    })),
+    daysSincePayment: resumen.days_since_payment ?? 0,
+  });
+
+  // TODOS LOS MOVIMIENTOS, no los cincuenta de arriba. El puntaje mide la
+  // puntualidad histórica del cliente: calcularlo sobre una ventana lo
+  // convertiría en «qué tal se ha portado últimamente», que es otra pregunta
+  // y no la que la tarjeta rotula.
+  const { data: todosLosMovimientos } = await supabase
+    .from("movements")
+    .select("id, type, amount, currency, created_at, plazo_dias, applies_to_movement_id")
+    .eq("client_id", clientId)
+    .is("deleted_at", null);
+
+  const { data: fichaCruda } = await supabase
+    .from("clients")
+    .select("address, profile_picture_path")
+    .eq("id", clientId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  const { data: ultimoDesmarcado } = await supabase
+    .from("client_flags")
+    .select("unflagged_at")
+    .eq("client_id", clientId)
+    .not("unflagged_at", "is", null)
+    .order("unflagged_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { status: estadoCombinado } = estadoDeCliente({
+    fila: resumen,
+    saldos: {
+      cop: resumen.balance ?? 0,
+      usd: resumen.balance_usd ?? 0,
+      eur: resumen.balance_eur ?? 0,
+    },
+    saldoCombinado: ownerRate
+      ? combinedBalanceUsd(
+          resumen.balance_usd ?? 0,
+          resumen.balance_eur ?? 0,
+          ownerRate.effectiveRate,
+        )
+      : (resumen.balance ?? 0),
+    dosLibros: ownerRate != null,
+  });
+
+  const puntaje = computeCreditScore({
+    movements: (todosLosMovimientos ?? []) as Pick<
+      Movement,
+      "id" | "type" | "amount" | "currency" | "created_at" | "plazo_dias" | "applies_to_movement_id"
+    >[],
+    statusParaMostrar: estadoCombinado,
+    // EL SALDO COMBINADO, igual que la ficha. El puntaje es un juicio único
+    // por cliente a propósito; el que va por libro es el chip.
+    balance: ownerRate
+      ? combinedBalanceUsd(
+          resumen.balance_usd ?? 0,
+          resumen.balance_eur ?? 0,
+          ownerRate.effectiveRate,
+        )
+      : (resumen.balance ?? 0),
+    daysSincePayment: resumen.days_since_payment ?? 0,
+    worstChargeAt: resumen.worst_unpaid_charge_at ?? null,
+    worstChargePlazoDias: resumen.worst_unpaid_charge_plazo_dias ?? null,
+    worstChargeDueAt: resumen.worst_unpaid_charge_due_at ?? null,
+    isFlagged: resumen.is_flagged,
+    mostRecentUnflaggedAt: (ultimoDesmarcado?.unflagged_at as string | null) ?? null,
+  });
+
+  return {
+    fila: resumen,
+    movimientos: movementRows,
+    ventasDeContado,
+    estadosDeFiado,
+    pendientePorFiado: pendientePorFiadoMapa,
+    estadosDeLibro,
+    puntaje,
+    ficha: fichaCruda
+      ? {
+          address: (fichaCruda.address as string | null) ?? null,
+          picturePath: (fichaCruda.profile_picture_path as string | null) ?? null,
+        }
+      : null,
+  };
 }
 
 // ===========================================================================
@@ -571,6 +786,10 @@ export type LineaDeVentaEntrada = {
   productId: string;
   quantity: number;
   currency: PriceCurrency;
+  // THE ORDER LINE THIS CAME FROM, when the sale is a catalogue order being
+  // registered. See `pedidoId` below: it is how the SERVER finds the sealed
+  // price, and the browser never sends a price of its own.
+  orderItemId?: string;
 };
 
 // UN PAGO, Y AQUÍ SÍ MANDA EL NAVEGADOR LA CIFRA — porque es otra clase de
@@ -636,6 +855,21 @@ export type VentaEntrada = {
   pagos: PagoDeVentaEntrada[];
   credito: CreditoDeVentaEntrada[];
   nota?: string | null;
+  // ── REGISTRAR UN PEDIDO DEL CATÁLOGO ────────────────────────────────
+  //
+  // Cuando viene, esta venta ES ese pedido, y los precios salen de
+  // `catalog_order_items` y no del catálogo de hoy. Decisión del dueño el
+  // 2026-10-24, preguntado cuál de los dos se cobra: «al congelado».
+  //
+  // EL PRECIO SIGUE SIN VIAJAR DESDE EL NAVEGADOR, y es toda la razón de que
+  // esto sea el id de un pedido y no un número: el servidor lee la cifra
+  // sellada del pedido que ya tiene, igual que si no la leyera del catálogo.
+  // Un campo `precioSellado` habría sido un hueco por el que cobrar
+  // cualquier cosa.
+  //
+  // También sella `sale_id` y `registered_at` en el pedido cuando la venta
+  // queda escrita, que es lo que impide registrarlo dos veces.
+  pedidoId?: string;
 };
 
 export type ResultadoVenta =
@@ -725,6 +959,78 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   const productos = await armarProductos(supabase, (filas ?? []) as FilaDeProducto[]);
   const porId = new Map(productos.map((p) => [p.id, p]));
 
+  // ── LOS PRECIOS SELLADOS DEL PEDIDO ─────────────────────────────────
+  //
+  // Filtrados por el pedido Y por su dueño, para que un `orderItemId` de otro
+  // negocio pegado en la petición no traiga su precio.
+  const selladas = new Map<
+    string,
+    {
+      unit_price: number;
+      currency: PriceCurrency;
+      tier: "retail" | "wholesale";
+      // LA CANTIDAD QUE PIDIÓ EL CLIENTE. Es lo que dice si el sello sigue
+      // siendo suyo: ver `usaSellado` más abajo.
+      quantity: number;
+    }
+  >();
+  if (entrada.pedidoId) {
+    const { data: pedido } = await supabase
+      .from("catalog_orders")
+      .select("id")
+      .eq("id", entrada.pedidoId)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
+    // ── LA PARADA DURA, AHORA POR MONEDA Y NO POR PEDIDO ──────────────
+    //
+    // Sigue siendo la que vale: las pantallas ya tienen la suya, pero una
+    // petición repetida --un doble toque, una pestaña vieja-- llega aquí sin
+    // pasar por ninguna, y lo que está en juego es que el cliente deba el
+    // doble.
+    //
+    // LO QUE CAMBIÓ ES QUÉ CUENTA COMO REPETIDA. Hasta la migración `158` un
+    // pedido daba UNA venta, así que `sale_id != null` bastaba. Desde la
+    // decisión del dueño del 2026-10-25 --dos monedas son dos ventas-- esa
+    // condición rechazaría la SEGUNDA moneda, que es trabajo legítimo. Lo
+    // repetido es volver a registrar una moneda que este pedido ya tiene
+    // vendida.
+    //
+    // SE PREGUNTA POR `sales.catalog_order_id` Y NO POR `catalog_orders.
+    // sale_id`: el segundo solo guarda la PRIMERA venta, así que con él la
+    // tercera moneda pasaría dos veces.
+    const { data: ventasDelPedido } = await supabase
+      .from("sales")
+      .select("id, sale_lines(currency)")
+      .eq("catalog_order_id", pedido.id)
+      .is("deleted_at", null);
+    const monedasVendidas = new Set<string>();
+    for (const v of ventasDelPedido ?? []) {
+      for (const l of (v.sale_lines ?? []) as { currency: string | null }[]) {
+        if (l.currency != null) monedasVendidas.add(String(l.currency));
+      }
+    }
+    const repetida = entrada.lineas.find((l) => monedasVendidas.has(String(l.currency)));
+    if (repetida) {
+      return { ok: false, error: "Esa parte del pedido ya se registró." };
+    }
+    const { data: lineasDelPedido } = await supabase
+      .from("catalog_order_items")
+      .select("id, unit_price, currency, tier, quantity")
+      // SOLO LAS VIVAS -- migración `161`. Son los precios sellados, y una
+      // línea quitada no tiene precio que sellar.
+      .is("deleted_at", null)
+      .eq("order_id", entrada.pedidoId);
+    for (const l of lineasDelPedido ?? []) {
+      selladas.set(l.id, {
+        unit_price: Number(l.unit_price),
+        currency: l.currency as PriceCurrency,
+        tier: l.tier === "wholesale" ? "wholesale" : "retail",
+        quantity: Number(l.quantity),
+      });
+    }
+  }
+
   const lineasResueltas: {
     productId: string;
     name: string;
@@ -752,8 +1058,42 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     const tier = escalonParaCantidad(producto.producto, linea.quantity);
     if (!tier) return { ok: false, error: `La cantidad de ${producto.name} es menor que el mínimo que vendes.` };
 
-    const bloque = tier === "retail" ? producto.producto.retail : producto.producto.wholesale;
-    const unitPrice = precioEnMoneda(bloque, linea.currency, rates);
+    // ── EL PRECIO SELLADO MANDA MIENTRAS NADIE TOQUE LA LÍNEA ───────
+    //
+    // Un precio sellado es lo que el CLIENTE vio y aceptó, así que vale
+    // mientras la línea siga siendo la suya. Deja de valer en dos casos, y
+    // los dos son el tendero cambiándola con «Editar pedido»:
+    //
+    //   · LA MONEDA. Un precio sellado existe en UNA moneda --la que el
+    //     cliente vio--, así que movida a otra no hay nada sellado que
+    //     cobrar y el precio sale del catálogo.
+    //
+    //   · LA CANTIDAD. Decisión del dueño el 2026-10-26, preguntada con las
+    //     dos salidas delante: *«B) Manda la edición»*. Subir de 1 a 5
+    //     unidades cobra al MAYOR.
+    //
+    // ESTO DESPLAZA LO QUE ESTE MISMO COMENTARIO DECÍA, y la razón vieja
+    // queda escrita porque era buena: *«recalcularlo por la cantidad nueva
+    // podría saltar a mayoreo y cambiar el precio por detrás»*. Lo que la
+    // desmontó es que ya no era «por detrás»: la hoja «Editar pedido»
+    // recalcula el escalón y enseña el precio nuevo en su propio botón desde
+    // que existe. Medido en dev el 2026-10-26 con el Alicate --al detal
+    // $57,00, al mayor desde 5 a $5,75--: la hoja prometía «Agregar $28,75»
+    // y la venta se escribía por $285,00. No había un precio estable; había
+    // dos pantallas diciendo cosas distintas.
+    //
+    // SE COMPARA CONTRA LA CANTIDAD DEL PEDIDO, no contra una bandera que
+    // mande la pantalla. Una bandera habría que acordarse de ponerla; esto
+    // lo decide la base comparando lo que el cliente pidió con lo que se va
+    // a cobrar, y no se puede olvidar.
+    const sellada = linea.orderItemId ? selladas.get(linea.orderItemId) : undefined;
+    const usaSellado =
+      sellada != null &&
+      sellada.currency === linea.currency &&
+      sellada.quantity === linea.quantity;
+    const tierFinal = usaSellado ? sellada.tier : tier;
+    const bloque = tierFinal === "retail" ? producto.producto.retail : producto.producto.wholesale;
+    const unitPrice = usaSellado ? sellada.unit_price : precioEnMoneda(bloque, linea.currency, rates);
     // `null` significa «no hay número», nunca cero: un producto sin precio en
     // esa moneda no se cobra a cero, se rechaza. Pasa de verdad cuando el
     // negocio es venezolano y ahora mismo no hay tasa para convertir.
@@ -767,7 +1107,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       quantity: linea.quantity,
       unitPrice,
       currency: linea.currency,
-      tier,
+      tier: tierFinal,
     });
   }
 
@@ -914,6 +1254,13 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       client_id: cliente.id,
       created_by: user.id,
       note: entrada.nota?.trim() ? entrada.nota.trim().slice(0, 500) : null,
+      // EL ENLACE CON EL PEDIDO VA EN EL INSERT, no en un `update` después.
+      // Migración `158`: varias ventas pueden compartir pedido, una por
+      // moneda, así que esta columna es la que de verdad los une. Puesta
+      // aquí, una venta nacida de un pedido no puede existir ni un instante
+      // sin decir de cuál -- que es justo el hueco por el que se pierde el
+      // rastro cuando el `update` de después falla.
+      catalog_order_id: entrada.pedidoId ?? null,
     })
     .select("id")
     .single();
@@ -1039,6 +1386,43 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     fiado.push({ currency: resto.currency, amount: resto.amount, movementId: movimiento.id });
   }
 
+  // ── EL PEDIDO APUNTA A SU PRIMERA VENTA ─────────────────────────────
+  //
+  // DESPUÉS de escribir la venta y no antes, y el orden importa: si esto
+  // fuera primero y la venta fallara, el pedido apuntaría a una venta que no
+  // existe.
+  //
+  // SOLO SI ESTÁ VACÍO. Desde la `158` un pedido puede dar varias ventas y
+  // `sale_id` significa «la primera»; pisarlo con la segunda moneda borraría
+  // el único dato que dice por dónde empezó. El enlace completo ya viaja en
+  // `sales.catalog_order_id`, puesto en el insert de arriba.
+  //
+  // QUIÉN LO DA POR TERMINADO NO ES ESTA FUNCIÓN, y es deliberado: un pedido
+  // está registrado cuando TODAS sus monedas tienen venta, y cuáles son sus
+  // monedas depende de lo que «Editar» haya movido --que esta función no sabe
+  // y no tiene por qué saber--. Lo sella `registrarPedidoComoVenta`, que sí
+  // tiene delante las líneas y sus ediciones.
+  //
+  // UN FALLO AQUÍ NO TUMBA LA VENTA, que ya está escrita y es la que lleva el
+  // dinero. Se escribe en el log para que se pueda arreglar a mano, que es lo
+  // único peor que esto: que no se sepa.
+  if (entrada.pedidoId) {
+    const { error: errorSello } = await supabase
+      .from("catalog_orders")
+      .update({ sale_id: venta.id })
+      .eq("id", entrada.pedidoId)
+      .eq("owner_id", user.id)
+      .is("sale_id", null);
+    if (errorSello) {
+      console.error("registrarVenta sello del pedido:", errorSello.message, {
+        pedidoId: entrada.pedidoId,
+        saleId: venta.id,
+      });
+    }
+    revalidatePath(`/productos/ordenes/${entrada.pedidoId}`);
+    revalidatePath("/productos/ordenes");
+  }
+
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${cliente.id}`);
 
@@ -1146,16 +1530,55 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
     // escribe ni un movimiento (migracion `124`), asi que su codigo solo vive
     // en esta fila. Es la razon por la que la migracion `147` puso la columna
     // en `sales` ademas de en `movements`.
-    .select("id, client_id, created_at, transaction_code")
+    .select("id, client_id, created_at, transaction_code, catalog_order_id")
     .eq("id", saleId)
     .eq("owner_id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
   if (!venta) return { ok: false, error: "No encontramos esa venta." };
 
+  // ── UN PEDIDO DE DOS MONEDAS SON DOS VENTAS, Y UNA SOLA COMPRA ──────
+  //
+  // Encargo del dueño el 2026-10-26, con la captura: *«en la pantalla de
+  // "Transacción registrada con éxito" debe aparecer el registro de venta de
+  // ambas monedas»*. Y su razón, que es la que manda: *«el registrar una
+  // moneda primero que otra realmente es un pre-registro de venta, no el
+  // registro de la venta como tal»*.
+  //
+  // QUÉ SE VEÍA ANTES: la pantalla leía UNA fila de `sales`, así que de un
+  // pedido con dólares y euros enseñaba el bloque de una moneda y se callaba
+  // el otro. El tendero acababa el flujo creyendo que había cobrado la mitad.
+  //
+  // SE AGRUPA POR `catalog_order_id` --migración `158`-- y no por cliente ni
+  // por fecha: es la única columna que dice «estas ventas salieron del mismo
+  // pedido». Una venta tecleada en el mostrador no lo tiene, así que no
+  // arrastra nada y esta pantalla se comporta igual que siempre.
+  //
+  // FILTRADO POR `owner_id`, como la de arriba: el id llega de la URL y sus
+  // hermanas se buscan por una columna que ese id eligió.
+  const idsDeLaCompra = [venta.id as string];
+  let fechaMasTemprana = venta.created_at as string;
+  if (venta.catalog_order_id) {
+    const { data: hermanas } = await supabase
+      .from("sales")
+      .select("id, created_at")
+      .eq("catalog_order_id", venta.catalog_order_id)
+      .eq("owner_id", user.id)
+      .is("deleted_at", null);
+    for (const h of hermanas ?? []) {
+      if ((h.id as string) !== venta.id) idsDeLaCompra.push(h.id as string);
+      if ((h.created_at as string) < fechaMasTemprana) {
+        fechaMasTemprana = h.created_at as string;
+      }
+    }
+  }
+
   const [{ data: lineas }, { data: pagos }, { data: cliente }, contexto] = await Promise.all([
-    supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", venta.id),
-    supabase.from("sale_payments").select("currency, amount").eq("sale_id", venta.id),
+    supabase
+      .from("sale_lines")
+      .select("name, quantity, unit_price, currency")
+      .in("sale_id", idsDeLaCompra),
+    supabase.from("sale_payments").select("currency, amount").in("sale_id", idsDeLaCompra),
     supabase
       .from("clients")
       // `id` LO LLEVA EL COMPRADOR desde el 2026-10-19, para el botón «Ver
@@ -1180,18 +1603,25 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   // `sale_id` se descarta además de la fecha: los cargos de esta venta se
   // escriben inmediatamente después de la fila de `sales` y dos marcas de
   // tiempo iguales harían que su propia deuda se contara como antigua.
+  //
+  // Y DESDE EL 2026-10-26, «ANTES» ES LA FECHA DE LA PRIMERA DE LAS DOS
+  // VENTAS, no la de la que se abrió. Las dos se escriben con segundos de
+  // diferencia: con la fecha de la segunda, los cargos de la PRIMERA caen
+  // dentro del «antes» y la pantalla contaría como deuda antigua una deuda
+  // que acaba de crear ella misma. Por eso se excluyen además TODAS las
+  // ventas de la compra, no solo la de la URL.
   const { data: previos } = venta.client_id
     ? await supabase
         .from("movements")
         .select("type, amount, currency, sale_id")
         .eq("client_id", venta.client_id)
         .is("deleted_at", null)
-        .lte("created_at", venta.created_at)
+        .lte("created_at", fechaMasTemprana)
     : { data: [] };
 
   const deudaPrevia = new Map<PriceCurrency, number>();
   for (const m of previos ?? []) {
-    if (m.sale_id === venta.id) continue;
+    if (m.sale_id && idsDeLaCompra.includes(m.sale_id as string)) continue;
     // `currency` nulo es el libro de un negocio colombiano, que es una
     // respuesta y no una ausencia -- el mismo criterio que `libroDeMoneda`.
     const libro = (m.currency ?? "COP") as PriceCurrency;
@@ -1336,7 +1766,9 @@ export async function eliminarVenta(
   // id que llega del navegador.
   const { data: venta } = await supabase
     .from("sales")
-    .select("id, owner_id, client_id")
+    // `catalog_order_id` SE PIDE AQUÍ PORQUE EL PEDIDO HAY QUE DESSELLARLO.
+    // Ver abajo, al final de la función: `PR-F7`.
+    .select("id, owner_id, client_id, catalog_order_id")
     .eq("id", saleId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1427,6 +1859,36 @@ export async function eliminarVenta(
   });
   if (errorRecalc) {
     return { ok: false, error: mensajeDeError("recalcular el saldo", errorRecalc, "recalc") };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SI ESTA VENTA NACIÓ DE UN PEDIDO, EL PEDIDO VUELVE A ESTAR PENDIENTE
+  //
+  // `PR-F7`, medido en dev el 2026-10-26. Esta función hacía tres cosas bien
+  // --borraba los movimientos, borraba la venta, recalculaba el saldo-- y NO
+  // SABÍA QUE EXISTÍAN LOS PEDIDOS. Así que el pedido se quedaba sellado como
+  // «Registrado», apuntando a una venta borrada, y el flujo se negaba a volver
+  // a entrar: el cliente quedaba con «Todavía no hay transacciones
+  // registradas» y el pedido afirmando lo contrario, sin un solo aviso.
+  //
+  // LO QUE COSTABA: el tendero que borra una venta mal hecha para repetirla
+  // descubre que el pedido ya no le deja, y tiene que apuntarla a mano --SIN
+  // los precios sellados que el cliente vio en el catálogo--. O sea que puede
+  // cobrarle un precio distinto al que el cliente aceptó.
+  //
+  // SE RECALCULA, NO SE «DESSELLA». Un pedido de dos monedas tiene DOS ventas:
+  // borrar la de dólares tiene que dejar pendientes los dólares y NADA más.
+  // Eso solo se sabe volviendo a preguntar, que es lo que hace esa función.
+  //
+  // VA DESPUÉS DEL RECÁLCULO DEL SALDO Y NO FALLA LA ACCIÓN. El borrado ya
+  // ocurrió y es lo que el tendero pidió; si esto no corriera, lo que queda es
+  // el estado viejo del pedido, que es exactamente el defecto de antes. Se
+  // registra en el log para poder encontrarlo, no se convierte en un error que
+  // le haga creer que la venta sigue ahí.
+  if (venta.catalog_order_id) {
+    await recalcularSelloDelPedido(supabase, venta.catalog_order_id as string);
+    revalidatePath(`/productos/ordenes/${venta.catalog_order_id}`);
+    revalidatePath("/productos/ordenes");
   }
 
   revalidatePath("/dashboard");

@@ -192,7 +192,12 @@ export default async function ProductoPublicoPage({
         </Link>
       </div>
 
-      <div className="flex flex-col gap-4 px-4 py-5">
+      {/* `pb-0`: la fila de abajo de `ProductDetail` trae sus propios 40px
+          desde el 2026-10-25. Los 20 de `py-5` encima dejarían el botón a 60
+          del filo, no a 40 — el mismo descuadre que la hoja del tendero.
+          Petición del dueño, y él mismo pidió ajustarlo «también en el
+          carrito». */}
+      <div className="flex flex-col gap-4 px-4 pt-5 pb-0">
         <div className="flex flex-col gap-1">
           <ScreenTitle>{detalle.name}</ScreenTitle>
           {detalle.unit ? (

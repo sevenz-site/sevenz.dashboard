@@ -60,7 +60,23 @@ export function parseDocumentId(stored: string): ParsedDocumentId {
 // y un valor guardado en la base sobrevive al código que lo escribió
 // (`CLAUDE.md`). Un enum traducido obligaría a una tabla de equivalencias en
 // cada pantalla que lo enseñe.
-export type DocumentType = "V" | "E" | "J" | "CC" | "CE" | "NIT";
+export type DocumentType =
+  | "V"
+  | "E"
+  | "J"
+  | "CC"
+  | "CE"
+  | "NIT"
+  // COLOMBIA GANÓ CUATRO EL 2026-10-26, por encargo del dueño: *«creémoslo
+  // con las opciones CC, CE, TI, PAS, PEP y PPT»*. Son los documentos con los
+  // que se identifica de verdad quien compra allí: el menor de edad lleva TI,
+  // el turista o el recién llegado el pasaporte, y PEP y PPT son los permisos
+  // con los que está regularizada la migración venezolana —que en una bodega
+  // colombiana no es un caso raro, es media clientela de algunos barrios—.
+  | "TI"
+  | "PAS"
+  | "PEP"
+  | "PPT";
 
 // QUÉ SIGNIFICA CADA UNA, para el desplegable. El tendero no elige entre
 // letras sueltas: elige entre «una persona», «alguien de fuera» y «una
@@ -72,6 +88,10 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   CC: "Cédula de ciudadanía",
   CE: "Cédula de extranjería",
   NIT: "NIT (empresa)",
+  TI: "Tarjeta de identidad",
+  PAS: "Pasaporte",
+  PEP: "Permiso Especial de Permanencia",
+  PPT: "Permiso por Protección Temporal",
 };
 
 // LOS TRES JUEGOS SON PARALELOS: persona del país, persona de fuera, empresa.
@@ -84,7 +104,33 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 // primero acaban discrepando, y aquí el orden ya lo dice.
 const POR_PAIS: Record<"VE" | "CO", DocumentType[]> = {
   VE: ["V", "E", "J"],
-  CO: ["CC", "CE", "NIT"],
+  // LOS SEIS QUE PIDIÓ EL DUEÑO el 2026-10-26, en su orden, MÁS `NIT` al
+  // final. `CC` sigue primero, así que lo que viene puesto no cambia.
+  //
+  // `NIT` SALIÓ Y VOLVIÓ EL MISMO DÍA. Su lista no lo nombraba, así que se
+  // quitó del desplegable; al decírselo --que un negocio colombiano se
+  // quedaba sin forma de marcar a una empresa-- contestó *«Agrega NIT al
+  // desplegable colombiano»*. Va el ÚLTIMO y no tercero como antes: los seis
+  // de arriba son documentos de personas y los pide cualquier cliente;
+  // facturarle a una empresa es lo raro, y el orden de una lista es lo que
+  // dice qué se espera encontrar primero.
+  CO: ["CC", "CE", "TI", "PAS", "PEP", "PPT", "NIT"],
+};
+
+// ── LO QUE SE ACEPTA SIN ESTAR EN EL DESPLEGABLE ──────────────────────
+//
+// Hoy está vacío, y se queda escrito porque la distinción vale: una cosa es
+// qué se OFRECE al teclear una ficha nueva y otra qué se ADMITE al guardar
+// una que ya existe.
+//
+// Si una letra sale del desplegable y a la vez deja de admitirse, la primera
+// vez que alguien abra y guarde una ficha vieja marcada con ella, el servidor
+// la descartará y la guardará sin tipo. Sin error y sin aviso. `NIT` estuvo
+// aquí unas horas el 2026-10-26, entre que salió del desplegable y el dueño
+// pidió devolverlo; si alguna otra sale algún día, este es su sitio.
+const EXTRAS_ACEPTADOS: Record<"VE" | "CO", DocumentType[]> = {
+  VE: [],
+  CO: [],
 };
 
 // LOS TIPOS QUE UN NEGOCIO DE ESTE PAÍS PUEDE ELEGIR.
@@ -114,5 +160,9 @@ export function isDocumentTypeFor(
   type: string | null | undefined,
 ): type is DocumentType {
   if (!type) return false;
-  return documentTypesFor(country).includes(type as DocumentType);
+  if (!country) return false;
+  return (
+    documentTypesFor(country).includes(type as DocumentType) ||
+    EXTRAS_ACEPTADOS[country].includes(type as DocumentType)
+  );
 }

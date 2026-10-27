@@ -37,6 +37,20 @@ export type CatalogOrderRow = {
   status: CatalogOrderStatus;
   seen_at: string | null;
   created_at: string;
+  // La dirección, desde la migración `157`: la pide el carrito y es `null` en
+  // todo pedido anterior.
+  customer_address: string | null;
+  // SI ESTE PEDIDO YA ES UNA VENTA — migración `157`. Las dos columnas, y no
+  // una: `sale_id` dice CUÁL es y `registered_at` CUÁNDO se hizo, que es lo
+  // que la pantalla del pedido enseña.
+  //
+  // Se seleccionan SIEMPRE y no solo donde hacen falta. Son la única parada
+  // que impide registrar dos veces el mismo pedido, y una parada que depende
+  // de que cada lector se acuerde de pedir la columna no es una parada: la
+  // pantalla que la olvide sigue compilando y deja al cliente debiendo el
+  // doble, sin error y sin nada en rojo.
+  sale_id: string | null;
+  registered_at: string | null;
 };
 
 export type CatalogOrderItemRow = {
@@ -52,22 +66,59 @@ export type CatalogOrderItemRow = {
 };
 
 export const ORDER_COLUMNS =
-  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at";
+  "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at, customer_address, sale_id, registered_at";
 
 export const ORDER_ITEM_COLUMNS =
   "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment";
 
-// AN ORDER IS UNATTENDED WHILE IT IS `new`. Not "while `seen_at` is null":
-// the two move together today, but `status` is the one the rest of the
-// product reads and the one the owner's button will set, so there is one
-// definition and it is this one.
-export function isUnattended(order: Pick<CatalogOrderRow, "status">): boolean {
-  return order.status === "new";
+// UN PEDIDO ESTÁ PENDIENTE MIENTRAS NO ESTÉ REGISTRADO.
+//
+// Decisión del dueño el 2026-10-25: *«eliminemos el concepto de pedido
+// atendido, el pedido se recibe (…) y en el app el pedido se registra (…) si
+// presiona el botón "Registrar pedido" y no completa el registro, el pedido
+// vuelve a su estado original»*.
+//
+// SE PREGUNTA POR «registered» Y NO POR «new», y esa es toda la diferencia.
+// Antes había un escalón intermedio —`seen`, que ponía «Marcar como
+// atendido»— y un pedido en él dejaba de contar como pendiente sin que nadie
+// hubiera registrado nada. Ese botón y ese sello ya no existen, pero las
+// filas viejas que quedaron en `seen` sí: preguntando por el final, vuelven a
+// contar como pendientes, que es lo que son.
+//
+// `discarded` NO CUENTA, aunque tampoco esté registrado: es el estado de un
+// pedido descartado a propósito. Lo escribe `descartarPedido` desde el «⋮» de
+// la pantalla del pedido --encargo del dueño el 2026-10-26-- y esto es lo que
+// impide que un pedido descartado siga sonando en la campana.
+export function isUnregistered(order: Pick<CatalogOrderRow, "status">): boolean {
+  return order.status !== "registered" && order.status !== "discarded";
 }
 
-// The number the bell and the Catálogo link both show. A `head: true` count
+// ── UN PEDIDO DESCARTADO NO ENTRA AL FLUJO DE REGISTRO ────────────────
+//
+// THE GUARD THE WHOLE FLOW WAS MISSING, measured in dev on 2026-10-26: every
+// screen checked `registered_at` and NONE checked `status`, so a discarded
+// order walked the flow and `registrarPedidoComoVenta` answered `ok:true`.
+// The order ended up `registered` with its `discarded_at` still set, the bell
+// kept showing it in red as discarded, and that notice's «Restaurar» button
+// answered «Ese pedido no está descartado».
+//
+// WHAT IT COST, had it shipped: the shopkeeper discards Pedro's order because
+// they talked and it is off. Later they come back with the browser's back
+// arrow, or tap the red notice that is still there, and the app lets them
+// charge. Pedro owes money for an order the app said was discarded -- and
+// nothing is in error, nothing is red.
+//
+// A FUNCTION AND NOT `=== "discarded"` IN EIGHT PLACES, for the same reason
+// `unicaMonedaDelPedido` is one: eight copies are eight chances for one of
+// them to be forgotten, and the one that is forgotten is a door with no lock.
+// Six screens and the action ask this; the answer has to be the same word.
+export function estaDescartado(order: Pick<CatalogOrderRow, "status">): boolean {
+  return order.status === "discarded";
+}
+
+// The number the bell and the Catálogo link both show: orders NOT registered. A `head: true` count
 // so it never drags the rows across just to say how many there are.
-export async function countUnattendedOrders(
+export async function countUnregisteredOrders(
   supabase: SupabaseClient,
   ownerId: string,
 ): Promise<number> {
@@ -75,13 +126,13 @@ export async function countUnattendedOrders(
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", ownerId)
-    .eq("status", "new");
+    .not("status", "in", "(registered,discarded)");
 
   // A failure counts as zero rather than throwing: this number decorates a
   // link and a bell, and neither is worth taking a screen down for. The real
   // reason goes to the server log.
   if (error) {
-    console.error("[orders] count unattended:", error.message);
+    console.error("[orders] count sin registrar:", error.message);
     return 0;
   }
   return count ?? 0;

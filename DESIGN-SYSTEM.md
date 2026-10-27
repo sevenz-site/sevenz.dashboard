@@ -2565,6 +2565,49 @@ el que nadie revisa. Pasó aquí —seis días con dos flujos vivos— y pasa co
 cabecera de `app-header.tsx`, unas secciones más arriba. Cuando quites una
 puerta, busca quién más la dibujaba, no solo quién la abría.
 
+## LOS BOTONES DE ABAJO VAN A 40px DEL BORDE DEL TELÉFONO
+
+**Todo botón que cierre una pantalla —«Registrar pedido», «Confirmar y
+continuar», «Pagar», «Registrar y finalizar»— deja 40px (`2.5rem`) entre él y
+el filo inferior**, además del área segura del iPhone.
+
+Pedido por el dueño el **2026-10-18** para el flujo de venta —*«para que los
+botones no queden tan pegados a la parte inferior del teléfono ni el
+widget»*— y **otra vez el 2026-10-25** para el de registrar un pedido.
+
+### Por qué hizo falta pedirlo dos veces, que es lo que de verdad enseña
+
+**La regla estaba escrita, pero en el sitio equivocado**: solo en comentarios
+de `components/dashboard/sticky-actions.tsx` y `components/dashboard/app-main.tsx`.
+
+Y eso la hace invisible exactamente para quien la va a romper. Una pantalla
+nueva que **no** monta `StickyActions` no tiene ninguna razón para abrir esos
+dos archivos; cae en la última rama del `cn` de `AppMain` —los 16px de
+cualquier pantalla— y nadie se entera hasta que alguien la mira en un
+teléfono. Es la misma forma de fallar que la cabecera duplicada, que está más
+arriba en este documento.
+
+Lo que lo arregla no es acordarse: es que la regla viva **aquí**, que es el
+archivo que `CLAUDE.md` manda leer antes de escribir UI.
+
+**OJO, NO CONFUNDIR CON LOS OTROS 40px DE ESTE DOCUMENTO.** Más abajo hay una
+regla de que todo botón etiquetado **mide** 40px de alto (`h-10`). Son dos
+cosas distintas con el mismo número, y buscar «40px» aquí devuelve la otra
+primero — que es parte de por qué esta parecía ya escrita.
+
+### Dónde se pone, según la pantalla
+
+| La pantalla… | Quién pone los 40px |
+|---|---|
+| …monta `StickyActions` | La propia barra (`pb-[calc(env(safe-area-inset-bottom)+2.5rem)]`). `AppMain` NO debe añadir nada o salen 80. |
+| …termina en botones dentro de la columna | `AppMain`, metiendo su ruta en la rama de `2.5rem`. |
+| …dibuja la barra de navegación | La barra ya ocupa ese borde; aquí manda la regla del botón flotante, más arriba. |
+
+**Y `StickyActions` necesita que su contenedor tenga alto que repartir.** Baja
+con `mt-auto`, así que el `<div>` raíz de la pantalla lleva `flex-1` o la
+barra se queda pegada al contenido con media pantalla vacía debajo. Reportado
+así el 2026-10-25 en el paso «2/4 Confirmar pedido».
+
 ## EL DOCUMENTO DEL CLIENTE SE ESCRIBE SIEMPRE CON SU LETRA
 
 **«V-32.256.369», nunca «32256369».** En toda la app: la del tendero, la del
@@ -2575,6 +2618,60 @@ incluir el prefijo»*.
 
 **Se escribe con `formatDocumentId(documento, tipo)`**, de `lib/format.ts`.
 Nunca pegando el valor de la columna.
+
+### Y SE ESCRIBE AUNQUE EL FRAME LA OMITA
+
+**Añadido por el dueño el 2026-10-25**, al encontrarla por TERCERA vez:
+*«Nuevamente hay un error al escribir el documento. Obviaste el prefijo del
+tipo de documento. No debes obviarlo así el frame lo omita»*.
+
+Esa última frase es la regla nueva, y es la que faltaba. Un frame es una
+maqueta con datos de relleno: su «00.000.000» no es una decisión de no poner
+la letra, es un hueco. **Replicar el frame al detalle —que es otra regla de
+este repo— no autoriza a borrar un dato que identifica a una persona.** Donde
+las dos reglas chocan, gana esta.
+
+**La señal de que estás a punto de romperla**: el frame enseña un documento
+sin letra y tú estás copiando ese texto. Ahí es donde hay que parar y
+preguntar de dónde sale la letra en los datos de verdad.
+
+### LA LETRA PUEDE NO ESTAR EN LA COLUMNA DEL TIPO
+
+Lo que hizo fallar la tercera vez, y no era un `formatDocumentId` olvidado:
+la llamada era correcta y **lo que llegaba nulo era el tipo**.
+
+`catalog_orders` lo guarda de dos formas: hay filas con «V-24242424» metido
+dentro de `customer_document` y otras con los dígitos pelados y el tipo
+vacío. Pasarle ese par a `formatDocumentId` en crudo pierde la letra en el
+segundo caso — y en la misma tarjeta se veía «Cédula: 21.054.832» arriba y
+«V-21.054.832» en el recuadro de abajo, que lee la ficha.
+
+**CORRECCIÓN DEL 2026-10-25, y el error era mío**: aquí llegó a decir que *«el
+carrito del cliente no siempre captura `customer_document_type`»*. **Es
+falso.** El carrito tiene su selector V/E/J desde la migración `156`, lo manda
+como `p_customer_document_type`, y `create_catalog_order` lo valida contra el
+país y lo guarda. Comprobado contra dev creando un pedido real: entra «J» y
+queda «J».
+
+Lo que yo había mirado eran filas **anteriores** a esa migración —todas las de
+dev son del 17 de octubre y la `155` corrió el 24— así que no probaban nada
+sobre el camino de hoy. **Un dato viejo no es un defecto actual**, y escribirlo
+como causa manda al siguiente a arreglar algo que funciona. Lo cazó el dueño.
+
+La búsqueda en tres sitios de abajo **se queda** igualmente: sigue siendo lo
+correcto para los pedidos viejos, que existen y se abren.
+
+**Para un documento que viene de un PEDIDO, la letra se busca en este orden:**
+
+1. La columna del tipo.
+2. **La letra pegada al propio documento** — eso lo resuelve `partirDocumento`
+   de `lib/orders/order-client-match.ts`, que devuelve `{digits, letter}`.
+3. La ficha emparejada, cuando hay exactamente una. Es lícito: el
+   emparejamiento se hizo por los dígitos.
+
+**Y si no hay ninguna, no se inventa.** Salen los dígitos y nada más. Poner
+la «V» por defecto es afirmar algo que nadie dijo, y este producto distingue
+a dos personas por esa letra.
 
 ### Esta regla ya se escapó DOS veces, y la segunda explica cómo
 
@@ -2623,6 +2720,102 @@ a revisar es ese alguien.
 —escribe los dígitos agrupados y nada más— y no se inventa una letra. Una `V`
 puesta por defecto convierte «no lo sé» en una afirmación sobre la cédula de
 alguien.
+
+## UN INTERRUPTOR QUE ESCONDE CHROME SE APAGA SOLO
+
+**Si un estado hace desaparecer la barra de navegación, el botón flotante o
+cualquier cosa que el tendero usa para salir, ese estado tiene que saber
+apagarse sin que nadie se lo pida.**
+
+Reportado por el dueño desde **producción** el 2026-10-25, y descrito como un
+fallo del catálogo: *«en ocasiones el botón flotante "Crear producto" se
+desaparece al igual que el navbar (…) debo salirme y volver a entrar (…) no
+siempre resuelve el problema a la primera»*.
+
+**No era del catálogo, y eso es la mitad de la lección.** El interruptor es
+`SearchFocusProvider`, que encienden los buscadores de CLIENTES de Inicio y
+Cartera, y lo lee `mobile-nav.tsx` para esconder barra y flotante mientras se
+busca. El proveedor vive en `app/(app)/layout.tsx`, **por encima de todas las
+pantallas**: encendido en Inicio, el catálogo nace sin barra y sin botón sin
+que nada del catálogo tenga la culpa. Por eso «a veces» y por eso el dueño
+miraba la pantalla equivocada.
+
+**Por qué se quedaba encendido**: sólo se apagaba en `onBlur`. **Quitar del DOM
+un elemento enfocado no dispara ningún evento** —ni `blur` ni `focusout`, por
+especificación— así que navegar con el buscador enfocado lo dejaba encendido
+para el resto de la sesión. Salir y volver es navegación de cliente y no
+desmonta el proveedor; sólo una recarga entera lo reiniciaba, y ni eso si el
+navegador devolvía el foco al campo al restaurar la página.
+
+**Las dos capas del arreglo, y las dos hacen falta:**
+
+1. **El campo apaga al desmontarse** (`useEffect(() => () => setFocused(false), […])`).
+   Es instantáneo y deja la intención escrita donde vive el campo.
+2. **El proveedor se cura solo**, con un reloj que comprueba si el foco sigue
+   en un campo de texto. Es la red para el buscador que mañana olvide el punto
+   1 — y para el caso que no emite evento, que es justo el que falla.
+
+**Y el reloj NO puede ir más rápido que el retardo de salida.** El proveedor
+espera 180ms antes de apagar para que un toque sobre un resultado se resuelva
+antes de que la pantalla se recoloque; sin eso se abre la ficha del cliente de
+arriba. Un reloj más rápido reintroduce ese fallo por la puerta de atrás. Hoy
+son 500ms contra 180.
+
+**La regla general, que es lo que se generaliza**: cualquier estado que
+esconda navegación se pregunta *«¿qué pasa si quien lo encendió desaparece sin
+avisar?»*. Si la respuesta es «se queda encendido», está roto — aunque la ruta
+que lo enciende sea otra pantalla y aunque el síntoma aparezca a tres
+pantallas de distancia. Es hermana de la lección de `use-keyboard-open.ts`:
+**el foco sobrevive al teclado, y mirarlo a secas deja una pantalla muerta.**
+
+## UNA CIFRA QUE SALE DEL NAVEGADOR SE SUSCRIBE. SIEMPRE
+
+**Si un número en pantalla sale de `localStorage` o `sessionStorage`, y algo
+de esa misma pantalla puede cambiarlo, el componente que lo dibuja tiene que
+estar suscrito.** No es una optimización: sin suscripción la cifra se queda
+congelada en la que se leyó al montar.
+
+**Ha costado dos fallos, los dos con dinero delante, los dos en el mismo mes:**
+
+| Fecha | Qué se vio | Qué pasaba de verdad |
+|---|---|---|
+| 2026-10-25 | «Agregar» en la hoja de editar una línea «no hace nada» | Guardaba; la pantalla de detrás no se enteraba |
+| 2026-10-26 | La tarjeta decía «Cantidad: 1» con 4 puestas | Se registró la venta con 4, mirando una tarjeta que decía 1 |
+
+### Por qué no se nota, y por qué `router.refresh()` no lo arregla
+
+`localStorage` y `sessionStorage` **no avisan a la pestaña que escribe**. El
+evento `storage` del navegador se dispara solo en las OTRAS pestañas — está
+pensado para sincronizar ventanas, no para esto. Así que si nadie avisa a
+mano, nadie se entera.
+
+Y la salida que parece obvia es la que no puede funcionar: **`router.refresh()`
+vuelve a pedirle la pantalla al SERVIDOR, y el servidor no ve el
+almacenamiento del navegador.** La pantalla se repinta entera con el mismo
+dato viejo, lo cual además hace parecer que el problema está en otro sitio.
+
+### La regla, de dos piezas
+
+1. **Todo módulo que escriba exporta su propia suscripción** y avisa desde su
+   única función de escritura. Los dos que hay lo hacen:
+   `lib/cart/store.ts` (el carrito del cliente) y
+   `lib/orders/borrador-de-registro.ts` (registrar un pedido).
+2. **Quien NO se suscribe lo dice con un nombre**: `leerUnaVezAlEntrar`, de
+   `lib/suscripcion-de-almacenamiento.ts`. Escribir el `() => () => {}` a mano
+   está prohibido, y **`npm run qa:suscripciones` falla si alguien lo hace**.
+
+Ese guion **no lleva lista de excepciones a propósito** — una lista hay que
+mantenerla y una desactualizada falla en silencio, que es el mismo fallo que
+cierra. La excepción se declara importando la función, y su nombre dice cuál
+es; `grep leerUnaVezAlEntrar` las enumera todas.
+
+### Cuándo NO suscribirse es correcto
+
+- ✅ El valor **inicial** de un campo de formulario, cacheado en un `useRef`:
+  a partir de ahí manda el campo y esta pantalla es la única que escribe.
+- ✅ Algo que no cambia nunca: qué sistema operativo es el teléfono.
+- ✅ Algo escrito en **otra** página, antes de que el componente existiera.
+- ❌ **Nunca** una cifra dibujada que otra parte de la misma pantalla toca.
 
 ## Contrast floor
 

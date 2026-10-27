@@ -1,6 +1,6 @@
 import { OrdersCard } from "@/components/dashboard/orders-card";
 import { createClient } from "@/lib/supabase/server";
-import { countUnattendedOrders } from "@/lib/orders/catalog-orders";
+import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { CatalogTable } from "@/components/dashboard/catalog-table";
 import { CatalogShareButton, CatalogMenu } from "@/components/dashboard/catalog-share";
@@ -80,7 +80,7 @@ export default async function ProductosPage() {
       getOwnerRateContext(supabase, user!.id),
       // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
       // `head: true` count, so it costs a plan and no rows.
-      countUnattendedOrders(supabase, user!.id),
+      countUnregisteredOrders(supabase, user!.id),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano

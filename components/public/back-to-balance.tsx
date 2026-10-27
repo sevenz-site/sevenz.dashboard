@@ -1,5 +1,6 @@
 "use client";
 
+import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -21,7 +22,11 @@ export function useTokenDelSaldo(): string | null {
   // cascada. La suscripción no hace nada a propósito: esto se escribe una
   // sola vez, en otra página, antes de que estos componentes existan.
   return useSyncExternalStore(
-    () => () => {},
+    // LEE UNA VEZ AL ENTRAR, declarado por su nombre desde el 2026-10-26:
+    // esto lo escribe OTRA página antes de que este componente exista, así
+    // que no hay nada a lo que suscribirse. `qa:suscripciones` ya no deja
+    // escribir el no-op a mano -- ver `lib/suscripcion-de-almacenamiento.ts`.
+    leerUnaVezAlEntrar,
     () => {
       try {
         return sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO);

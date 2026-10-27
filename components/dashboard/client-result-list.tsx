@@ -1,7 +1,9 @@
 "use client";
 
 import { UserRound } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { formatDocumentId } from "@/lib/format";
+import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
 
 // La lista de coincidencias al buscar un cliente: nombre + documento.
 //
@@ -22,6 +24,18 @@ export type ClientResult = {
   // Su letra. Sin valor por defecto: las dos pantallas que arman esta lista
   // —el buscador de Cartera y el de la venta— tienen que mandarla.
   documentType: string | null;
+  // ── SI ESTÁ EN LA LISTA NEGRA DEL TENDERO ─────────────────────────
+  //
+  // OPCIONAL, y por eso se añade aquí en vez de copiar la lista: los dos
+  // buscadores que ya la usan no lo mandan y siguen igual. El que sí lo
+  // manda es la elección de ficha del flujo de pedidos (`PR-E3`,
+  // 2026-10-26), donde la marca ES la razón de la pantalla: varias fichas
+  // comparten los dígitos y lo único que de verdad las distingue, para
+  // decidir si se fía, es cuál de ellas no paga.
+  //
+  // Sin esto habría que elegir a ciegas y enterarse DESPUÉS, en el diálogo
+  // del último toque — justo el orden que `PR-E6` existe para evitar.
+  flagged?: boolean;
 };
 
 // Ocho. Es lo que el diálogo lleva usando desde siempre y lo que cabe en un
@@ -57,8 +71,21 @@ export function ClientResultList({
           >
             <UserRound className="size-4 shrink-0 text-muted-foreground" />
             <span className="truncate font-medium">{c.name}</span>
+            {/* EL CHIP ANTES DEL DOCUMENTO, no al final: el documento es lo
+                que TODAS comparten en la pantalla que lo manda, así que es la
+                columna que menos se mira. */}
+            {c.flagged ? (
+              <Badge
+                variant="outline"
+                className={`${MALA_PAGA_BADGE_CLASS} ml-auto shrink-0`}
+              >
+                Mala paga
+              </Badge>
+            ) : null}
             {c.documentId ? (
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+              <span
+                className={`${c.flagged ? "ml-2" : "ml-auto"} shrink-0 text-xs text-muted-foreground`}
+              >
                 {formatDocumentId(c.documentId, c.documentType)}
               </span>
             ) : null}
