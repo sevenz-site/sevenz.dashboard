@@ -205,17 +205,45 @@ export async function cargarFacturacion({
     .lte("created_at", hastaIso);
   if (clientId) qVentas = qVentas.eq("client_id", clientId);
 
-  let qMov = supabase
-    .from("movements")
-    .select("type, amount, currency, created_at, client_id")
-    .eq("owner_id", ownerId)
-    .is("deleted_at", null)
-    .gte("created_at", desdeIso)
-    .lte("created_at", hastaIso);
-  if (clientId) qMov = qMov.eq("client_id", clientId);
-
   let qResumen = supabase.from("client_summary").select("*").eq("owner_id", ownerId);
   if (clientId) qResumen = qResumen.eq("client_id", clientId);
+
+  // ── `movements` NO LLEVA `owner_id`. SE LLEGA POR EL CLIENTE ────────
+  //
+  // Lo tuve escrito como `.eq("owner_id", ownerId)` y esa columna NO EXISTE
+  // (`supabase/schema.sql:131`): un movimiento pertenece a un cliente, y el
+  // cliente a un dueño. La consulta devolvía error, el error se descartaba al
+  // desestructurar solo `{ data }`, y `movimientos` llegaba `null`.
+  //
+  // QUÉ COSTÓ, medido en dev el 2026-10-27 contra la base: el gráfico de
+  // Transacciones decía 0 fiados y 0 abonos donde había **34 y 50**, y
+  // «Mejores pagadores» salía vacío SIEMPRE. No fallaba nada en pantalla --
+  // eran ceros creíbles, que es el fallo que este repo tiene escrito como el
+  // que no avisa. Lo di por plausible al probarlo.
+  //
+  // EL PATRÓN BUENO YA EXISTÍA en `lib/weekly-lending-read.ts`: se resuelven
+  // los clientes del dueño y se filtra por ellos.
+  const { data: clientesDelDueno, error: errorClientes } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("owner_id", ownerId);
+  if (errorClientes) throw new Error(`reportes: clientes: ${errorClientes.message}`);
+
+  const idsDeCliente = (clientesDelDueno ?? [])
+    .map((c) => c.id as string)
+    .filter((id) => !clientId || id === clientId);
+
+  // Sin clientes no hay movimientos que pedir, y un `in()` vacío en PostgREST
+  // devuelve TODO en vez de nada -- que aquí sería el libro de otro negocio.
+  let qMov = idsDeCliente.length
+    ? supabase
+        .from("movements")
+        .select("type, amount, currency, created_at, client_id")
+        .in("client_id", idsDeCliente)
+        .is("deleted_at", null)
+        .gte("created_at", desdeIso)
+        .lte("created_at", hastaIso)
+    : null;
 
   // `countUnregisteredOrders` Y NO UNA CONSULTA PROPIA: es la MISMA función
   // que alimenta la campana y el enlace de Pedidos. Si Reportes contara por su
@@ -223,14 +251,29 @@ export async function cargarFacturacion({
   // de saber cuál miente. Además cuenta por `status`, no por fechas, que es el
   // estado actual -- lo correcto aquí: un pedido sin atender lo está hoy,
   // caiga o no dentro de la ventana del informe.
-  const [{ data: ventas }, { data: movimientos }, { data: resumenes }, pedidos, dineroPorAtender] =
-    await Promise.all([
-      qVentas,
-      qMov,
-      qResumen,
-      countUnregisteredOrders(supabase, ownerId),
-      pendingOrdersMoney(supabase, ownerId),
-    ]);
+  const [resVentas, resMov, resResumen, pedidos, dineroPorAtender] = await Promise.all([
+    qVentas,
+    qMov ?? Promise.resolve({ data: [], error: null }),
+    qResumen,
+    countUnregisteredOrders(supabase, ownerId),
+    pendingOrdersMoney(supabase, ownerId),
+  ]);
+
+  // SE MIRA EL `error` DE CADA UNA, y no solo el `data`. Descartarlo es lo que
+  // convirtió una columna inexistente en un cero creíble durante un día
+  // entero. Un informe que no puede leer sus datos tiene que decirlo, no
+  // dibujar ceros: `error.tsx` de la ruta enseña la pantalla de fallo.
+  for (const [que, r] of [
+    ["ventas", resVentas],
+    ["movimientos", resMov],
+    ["resúmenes", resResumen],
+  ] as const) {
+    if (r.error) throw new Error(`reportes: ${que}: ${r.error.message}`);
+  }
+
+  const ventas = resVentas.data;
+  const movimientos = resMov.data;
+  const resumenes = resResumen.data;
 
   const idsDeVenta = (ventas ?? []).map((v) => v.id as string);
   const deCatalogo = new Set(
