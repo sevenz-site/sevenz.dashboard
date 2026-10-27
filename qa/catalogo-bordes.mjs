@@ -93,6 +93,8 @@ const RAZONES = new Set([
 const vistas = [];
 
 let token;
+// Fuera del `try` porque el `finally` lo necesita para barrer las órdenes.
+let enlaceDeLasOrdenes = null;
 
 async function pedir(items, extra = {}) {
   const { data, error } = await anon.rpc("create_catalog_order", {
@@ -128,12 +130,40 @@ try {
     .limit(1)
     .single();
 
-  const { data: enlace } = await admin
+  // ── EL ENLACE: SE REUSA EL QUE HAYA, NO SE INSERTA A CIEGAS ──────────
+  //
+  // `catalog_share_links_one_per_owner` es un índice único: un negocio tiene
+  // UN enlace de catálogo o ninguno. Un `insert` a pelo aquí solo funciona
+  // mientras ese negocio nunca haya publicado su catálogo -- y en cuanto
+  // alguien le da a «Compartir» una vez, `getOrCreateCatalogLink` acuña la
+  // fila y este fixture choca con un 23505 para siempre.
+  //
+  // PASÓ EL 2026-10-26, y es lo que descubrió el fallo de abajo: la suite se
+  // había quedado en 1/1 verde desde el primer «Compartir» de la sesión. Un
+  // `git stash` del código no lo reproduce, porque la causa no es código: es
+  // una fila.
+  const { data: yaHabia } = await admin
     .from("catalog_share_links")
-    .insert({ owner_id: ve.id })
     .select("id, token")
-    .single();
-  creados.enlaces.push(enlace.id);
+    .eq("owner_id", ve.id)
+    .maybeSingle();
+
+  let enlace = yaHabia;
+  if (!enlace) {
+    const { data: nuevo, error: errorEnlace } = await admin
+      .from("catalog_share_links")
+      .insert({ owner_id: ve.id })
+      .select("id, token")
+      .single();
+    if (errorEnlace) throw new Error(`no se pudo crear el enlace: ${errorEnlace.message}`);
+    enlace = nuevo;
+    // SOLO SE APUNTA PARA BORRAR SI LO CREAMOS NOSOTROS. El del negocio es
+    // suyo: borrarlo rompería el enlace que sus clientes ya tienen.
+    creados.enlaces.push(enlace.id);
+  }
+  // El barrido de órdenes necesita el id del enlace SIEMPRE, lo hayamos creado
+  // o no -- es la red por si alguna orden se escapa de `creados.ordenes`.
+  enlaceDeLasOrdenes = enlace.id;
   token = enlace.token;
 
   const { data: prod } = await admin
@@ -294,14 +324,37 @@ try {
     lecturas.every((l) => l.endsWith(":42501")),
     lecturas.join(" · "),
   );
+} catch (e) {
+  // ── UN FALLO DEL CUERPO ES UNA FILA ROJA, NO UN SILENCIO ────────────
+  //
+  // Sin este `catch` la suite era INDISTINGUIBLE de una que pasa: el `finally`
+  // de abajo termina en `process.exit(0)`, así que se ejecutaba ANTES de que
+  // el error llegara a imprimirse y el proceso se iba en verde con «1/1
+  // pasan» -- una sola fila, la de la limpieza, y ni una de las nueve
+  // comprobaciones.
+  //
+  // ASÍ ESTUVO TODA LA SESIÓN DEL 2026-10-26 sin que nada lo dijera. El
+  // `insert` del enlace chocaba con su índice único, el cuerpo moría en la
+  // línea siguiente, y el informe decía «1/1 pasan». El síntoma no era un
+  // error: era una cuenta de controles más baja, que es exactamente lo que
+  // nadie mira.
+  //
+  // Es la misma lección que la sección 1 del `qa-regression-checklist`: una
+  // comprobación que desaparece se lee como cobertura que nadie escribió, no
+  // como cobertura que se perdió.
+  check(
+    "0. el cuerpo de la suite llegó hasta el final",
+    false,
+    e instanceof Error ? e.message : String(e),
+  );
 } finally {
   // ── LIMPIEZA, pase lo que pase ──────────────────────────────────────
   if (creados.ordenes.length) {
     await admin.from("catalog_orders").delete().in("id", creados.ordenes);
   }
-  if (creados.enlaces.length) {
+  if (enlaceDeLasOrdenes) {
     // Por si alguna orden se escapó de la lista: se borran por el enlace.
-    await admin.from("catalog_orders").delete().in("catalog_link_id", creados.enlaces);
+    await admin.from("catalog_orders").delete().eq("catalog_link_id", enlaceDeLasOrdenes);
   }
   if (creados.productos.length) {
     await admin.from("products").delete().in("id", creados.productos);
