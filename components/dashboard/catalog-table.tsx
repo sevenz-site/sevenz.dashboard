@@ -14,6 +14,7 @@ import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
 import { marcarCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
+import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import {
   isPublished,
   listPrice,
@@ -56,10 +57,16 @@ import {
 // dos diálogos que esta lista montaba. Con el alta y la edición en sus
 // propias rutas, cada una pide lo suyo al servidor y esta tabla vuelve a ser
 // lo que su nombre dice: la rejilla.
-export function CatalogTable({ loadFailed }: {
+export function CatalogTable({ loadFailed, businessName, catalogToken }: {
   // La consulta del catalogo fallo. NO es lo mismo que no tener productos, y
   // esa diferencia tiene su propia pantalla — ver la pagina.
   loadFailed: boolean;
+  // Los dos bajan hasta el boton «Compartir» de cada tarjeta, y los dos vienen
+  // del SERVIDOR por la misma razon que en `catalog-share.tsx`: con el token
+  // ya en la mano no hay ningun `await` entre el toque y la hoja nativa, que
+  // es lo que iOS Safari rechaza. Solo la primerisima vez hay espera.
+  businessName: string;
+  catalogToken: string | null;
 }) {
   const router = useRouter();
   const { visible, total, query, sortBy, status, minAmount, maxAmount } = useCatalogFilters();
@@ -207,7 +214,19 @@ export function CatalogTable({ loadFailed }: {
               <ProductCard
                 key={p.id}
                 product={p}
-                onEdit={() => router.push(`/productos/${p.id}/editar`)}
+                businessName={businessName}
+                catalogToken={catalogToken}
+                // ── A LA FICHA, NO AL EDITOR, DESDE EL 2026-10-26 ──────
+                // La tarjeta abría `/productos/<id>/editar` directamente, y la
+                // anotación del frame del catálogo (`1175:6069`) lo respalda:
+                // «Al seleccionar el producto entra a editar».
+                //
+                // LA DESPLAZA UN CONECTOR MÁS NUEVO, de esta misma tarjeta
+                // (`1175:5758`) a la foto de la ficha (`1730:14330`), y el
+                // encargo del dueño de abrir «el detalle del producto desde el
+                // lado del dueño» -- que no existiría si esto siguiera yendo al
+                // editor. «Editar» vive ahora dentro de la ficha.
+                onEdit={() => router.push(`/productos/${p.id}`)}
               />
             ))}
           </ul>
@@ -219,7 +238,19 @@ export function CatalogTable({ loadFailed }: {
   );
 }
 
-function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => void }) {
+function ProductCard({
+  product,
+  businessName,
+  catalogToken,
+  onEdit,
+}: {
+  product: ProductRow;
+  // Los dos solo existen para el botón «Compartir», que arma el mensaje y la
+  // URL del catálogo público. Ver `ProductShareButton`.
+  businessName: string;
+  catalogToken: string | null;
+  onEdit: () => void;
+}) {
   const router = useRouter();
   // Sin leer `pending`: era lo que deshabilitaba el interruptor 4,4 segundos.
   // La transición sigue haciendo falta para el `router.refresh()` de dentro.
@@ -276,12 +307,36 @@ function ProductCard({ product, onEdit }: { product: ProductRow; onEdit: () => v
   const price = listPrice(product);
 
   return (
-    <li className="flex flex-col overflow-hidden rounded-xl border bg-background">
+    <li className="relative flex flex-col overflow-hidden rounded-xl border bg-background">
+      {/* ── «COMPARTIR», SOBRE LA FOTO — frame `1175:5758` ──────────────
+          Encargo del dueño el 2026-10-27.
+
+          VA AQUÍ, HERMANO DEL BOTÓN DE LA TARJETA, Y NO DENTRO. Lo primero
+          que escribí fue meterlo dentro --queda sobre la foto, que es donde
+          el frame lo dibuja-- y eso es un `<button>` dentro de otro
+          `<button>`: HTML inválido, y React lo rechaza con un error de
+          hidratación que repinta la lista entera. Lo cazó la consola del
+          navegador en la primera pasada.
+
+          Colgado del `<li>`, que ahora es `relative`, cae en el mismo sitio:
+          la foto ocupa la parte de arriba de la tarjeta. Y su
+          `stopPropagation` sigue haciendo falta, porque el toque burbujea
+          hasta el botón de al lado. */}
+      <ProductShareButton
+        productId={product.id}
+        productName={product.name}
+        businessName={businessName}
+        initialToken={catalogToken}
+      />
+      {/* «Abrir» Y NO «Editar» desde el 2026-10-26: la tarjeta lleva a la
+          ficha, no al editor. Un lector de pantalla anunciaba «Editar QA
+          Harina» y lo que se abría era una pantalla de leer -- era el único
+          sitio de la app donde ese nombre seguía siendo el de antes. */}
       <button
         type="button"
         onClick={onEdit}
         className="flex flex-col text-left transition-colors active:bg-accent"
-        aria-label={`Editar ${product.name}`}
+        aria-label={`Abrir ${product.name}`}
       >
         {/* Cuadrada y no de alto libre: en una rejilla de dos columnas, dos
             fotos de proporciones distintas dejan las tarjetas de alturas

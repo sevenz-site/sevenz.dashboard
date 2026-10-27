@@ -28,18 +28,79 @@ import { IconoVolver } from "@/components/dashboard/screen-chrome";
 //      una hoja no tiene a dónde volver.
 //
 // ===========================================================================
-// SIN `generateMetadata` A PROPÓSITO
+// CON `generateMetadata` DESDE EL 2026-10-27, Y ESO DESHACE LO QUE DECÍA AQUÍ
 //
-// La página de la lista sí la tiene. Aquí no, y no es un olvido: el nombre y
-// la foto de un producto en la vista previa de un enlace de WhatsApp le dirían
-// a cualquiera que lo reenvíe qué vende ese negocio y a cómo. El enlace circula
-// precisamente para eso, pero quien lo reenvía debería estar eligiendo hacerlo,
-// no descubrirlo porque la miniatura ya lo contaba.
+// Lo que había escrito, y queda porque es la razón que haría falta para
+// revertirlo: *«SIN `generateMetadata` A PROPÓSITO. La página de la lista sí
+// la tiene. Aquí no, y no es un olvido: el nombre y la foto de un producto en
+// la vista previa de un enlace de WhatsApp le dirían a cualquiera que lo
+// reenvíe qué vende ese negocio y a cómo. El enlace circula precisamente para
+// eso, pero quien lo reenvía debería estar eligiendo hacerlo, no descubrirlo
+// porque la miniatura ya lo contaba»*.
+//
+// LO QUE CAMBIÓ ES LA PREMISA, NO EL RIESGO. Ese día el enlace de un producto
+// solo circulaba de rebote. El 2026-10-27 el dueño encargó un botón
+// «Compartir» en el detalle y en cada tarjeta, con su frame de la vista previa
+// (`1732:14757`): ahora el tendero ELIGE mandarlo, que es exactamente lo que
+// el párrafo de arriba pedía.
+//
+// Y LA MITAD DEL MIEDO VIEJO SIGUE CUBIERTA: el frame no dibuja ningún precio.
+// «Qué vende» pasa a verse; «a cómo» no.
+//
+// `robots: noindex` SE QUEDA. Compartir por WhatsApp y salir en Google son dos
+// cosas distintas, y los rastreadores de los chats no miran esa etiqueta.
+//
+// LA IMAGEN la genera `opengraph-image.tsx`, al lado de este fichero.
 
-export const metadata: Metadata = {
-  title: "Producto — Sevenz",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string; productId: string }>;
+}): Promise<Metadata> {
+  const { token, productId } = await params;
+
+  // UN FALLO AQUÍ NO TUMBA LA PÁGINA: se devuelven los metadatos genéricos y
+  // el producto se abre igual. Una vista previa pobre es un inconveniente; una
+  // página que no carga por su `<head>` es un enlace roto.
+  const generico: Metadata = {
+    title: "Producto — Sevenz",
+    robots: { index: false, follow: false },
+  };
+  if (!isSupabaseConfigured()) return generico;
+
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("get_shared_product", {
+      p_token: token,
+      p_product_id: productId,
+    });
+    const d = data as { name?: string; description?: string | null } | null;
+    if (!d?.name) return generico;
+
+    // EL TEXTO DEL FRAME, repartido donde el chat lo pinta: el nombre arriba,
+    // la descripción debajo, y la línea de Sevenz como nombre del sitio.
+    //
+    // SIN PRECIO, que es la mitad de la decisión vieja que se conserva.
+    return {
+      title: `${d.name} — Sevenz`,
+      description: d.description ?? undefined,
+      robots: { index: false, follow: false },
+      openGraph: {
+        title: d.name,
+        description: d.description ?? undefined,
+        siteName: "Sevenz.site ¡Cuentas claras sin tanta vaina!",
+        locale: "es_VE",
+        type: "website",
+      },
+    };
+  } catch (error) {
+    console.error(
+      "[productoPublico] metadata:",
+      error instanceof Error ? error.message : error,
+    );
+    return generico;
+  }
+}
 
 type SharedProductDetail = {
   business_name: string | null;

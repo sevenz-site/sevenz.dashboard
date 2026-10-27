@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { isProductDetailRoute } from "@/lib/products/routes";
 
 // Several screens get a contextual bar of their own — a "← back" row, or a
 // whole dark header — so this one would be a second bar competing for the
@@ -104,6 +105,19 @@ export function AppHeader({ children }: { children: React.ReactNode }) {
     // Y ESTA VEZ LA LÍNEA LLEGÓ TARDE: se escribió DESPUÉS de ver las dos
     // barras en la pantalla, que es exactamente lo que `CLAUDE.md` pide no
     // hacer desde la cuarta vez. Van cinco.
+    // ── Y LA FICHA DEL PRODUCTO, el 2026-10-26 ──────────────────────────
+    //
+    // `/productos/<uuid>` — frame `1730:14329`. Trae su propia flecha ENCIMA
+    // DE LA FOTO, así que la cabecera de la app la taparía justo donde está
+    // dibujada.
+    //
+    // ESTA VEZ LA LÍNEA SE ESCRIBIÓ ANTES de abrir la pantalla, que es lo que
+    // `CLAUDE.md` pide desde la cuarta vez. Van seis.
+    //
+    // LA PREGUNTA VIVE EN `lib/products/routes.ts` porque la hacen cuatro
+    // archivos, y la trampa que hay dentro es la que el comentario de arriba
+    // avisa: un `[^/]+` casaría también con `/productos/ordenes`.
+    isProductDetailRoute(pathname) ||
     pathname === "/productos/nuevo" ||
     /^\/productos\/[^/]+\/editar$/.test(pathname);
 

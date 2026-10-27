@@ -165,7 +165,11 @@ export default async function ProductosPage() {
         {/* SOLO `loadFailed`. Las otras ocho props existían para los dos
             diálogos que esta tabla montaba; desde el 2026-10-20 el alta y la
             edición son rutas propias y cada una pide sus datos. */}
-        <CatalogTable loadFailed={productsError != null} />
+        <CatalogTable
+                loadFailed={productsError != null}
+                businessName={owner?.business_name || "mi negocio"}
+                catalogToken={catalogLink?.token ?? null}
+              />
       </CatalogFilterProvider>
     </div>
   );

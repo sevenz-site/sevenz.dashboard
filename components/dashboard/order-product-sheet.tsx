@@ -11,11 +11,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+// LAS DOS FILAS VIVEN FUERA desde el 2026-10-26, porque la ficha del producto
+// del lado del dueno (frame 1730:14329) dibuja exactamente las mismas.
+import { BloqueDePrecios, Fila } from "@/components/dashboard/product-detail-rows";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
-  allPrices,
-  currencyName,
-  formatPercent,
   formatPriceAmount,
   type BolivarRates,
   type PriceCurrency,
@@ -54,78 +54,6 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 // keeps the name and the price, so the row in the list still reads and the
 // sealed card still works. Only the catalogue half is missing, and the dialog
 // says that in a sentence instead of opening half empty with blank rows.
-
-function Fila({
-  nombre,
-  children,
-  bandera,
-}: {
-  nombre: string;
-  children: React.ReactNode;
-  bandera?: PriceCurrency;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 py-2">
-      <span className="min-w-0 flex-1 text-xs break-words text-muted-foreground">{nombre}</span>
-      <span className="flex shrink-0 items-center gap-1 text-sm tabular-nums">
-        {children}
-        {bandera ? <CurrencyFlagIcon currency={bandera} /> : null}
-      </span>
-    </div>
-  );
-}
-
-// Los precios de un escalón en todas las monedas que el negocio maneja.
-//
-// SALE DE `allPrices`, la MISMA función que pinta el catálogo y la que valida
-// la orden pública. Rehacer aquí la conversión sería una tercera opinión
-// sobre el mismo número, y esta pantalla existe para comprobar un precio, no
-// para discutirlo.
-function BloqueDePrecios({
-  titulo,
-  margenLabel,
-  margen,
-  base,
-  rates,
-}: {
-  titulo: string;
-  margenLabel: string;
-  margen: number | null;
-  base: { amount: number; currency: PriceCurrency } | null;
-  rates: BolivarRates | null;
-}) {
-  // Sin precio en ese escalón no hay bloque: una lista de huecos no dice
-  // "todavía no lo has puesto", dice "algo se rompió".
-  if (base == null) return null;
-
-  const precios = rates ? allPrices(base, rates) : [{ ...base, origin: "base" as const }];
-
-  return (
-    <div className="flex flex-col gap-1 py-2">
-      <span className="text-sm">{titulo}</span>
-      <div className="flex flex-col">
-        {margen != null ? <Fila nombre={margenLabel}>{formatPercent(margen)}</Fila> : null}
-        {precios.map((p) =>
-          // Bolívares no: es el equivalente de todo lo demás, y repetirlo en
-          // cada escalón convierte la lista en aritmética.
-          p.currency === "VES" ? null : (
-            <Fila
-              key={p.currency}
-              // «Precio EN dólares», y el frame dice «Precio Dólar». Es la
-              // misma etiqueta en español correcto: `currencyName` devuelve
-              // el plural en minúscula porque está escrito para ir dentro de
-              // una frase, y «Precio dólares» no es ninguna de las dos cosas.
-              nombre={`Precio en ${currencyName(p.currency)}`}
-              bandera={p.currency}
-            >
-              {p.amount == null ? "—" : formatPriceAmount(p.amount, p.currency)}
-            </Fila>
-          ),
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function OrderProductSheet({
   nombreEnElPedido,
