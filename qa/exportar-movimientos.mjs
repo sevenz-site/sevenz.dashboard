@@ -47,6 +47,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { fila, importe } from "../lib/reports/csv.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -328,6 +329,27 @@ check(
   "8. ninguna fila cae fuera del rango pedido, leída en la zona del negocio",
   fechasFuera.length === 0,
   fechasFuera.length ? `fuera: ${[...new Set(fechasFuera)].join(", ")}` : `${DESDE} … ${HASTA}`,
+);
+
+// ── LO QUE ACABA EN EL EXCEL DE OTRA PERSONA ─────────────────────────────
+//
+// Logica pura, sin base: va al final porque es lo unico que sigue valiendo
+// aunque no haya servidor, no porque importe menos.
+check(
+  "9. una descripcion que empieza por `=` no entra como formula",
+  fila(["=HYPERLINK(\"http://malo\")"]).startsWith("'=HYPERLINK") ||
+    fila(["=HYPERLINK(\"http://malo\")"]).startsWith("\"'=HYPERLINK"),
+  fila(["=HYPERLINK(\"http://malo\")"]),
+);
+check(
+  "9b. un `;` o unas comillas dentro de un texto no parten la fila",
+  fila(["Pan; leche", 'dijo "ya"']) === '"Pan; leche";"dijo ""ya"""',
+  fila(["Pan; leche", 'dijo "ya"']),
+);
+check(
+  "9c. los importes llevan coma decimal y NINGUN separador de miles",
+  importe(1234.5) === "1234,50" && importe(-78.009) === "-78,01",
+  `${importe(1234.5)} / ${importe(-78.009)}`,
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;

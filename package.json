@@ -77,7 +77,7 @@
     "qa:aviso-mala-paga": "node qa/aviso-mala-paga.mjs",
     "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs",
     "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs",
-    "qa:exportacion": "node qa/exportar-movimientos.mjs"
+    "qa:exportacion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/exportar-movimientos.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
