@@ -212,23 +212,29 @@ export function ProductDetail({
           <Fila nombre="Proveedor">{product.supplier?.trim() || "No registrado"}</Fila>
         </div>
 
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">Descripción del producto</span>
-          {/* EL TEXTO DEL FRAME CUANDO NO HAY DESCRIPCIÓN. Es un hueco que
-              invita, no un error, y por eso no va en gris de «vacío»: en el
-              frame está en el mismo negro que una descripción de verdad. */}
-          <p className="text-sm leading-5 break-words whitespace-pre-line">
-            {product.description?.trim() ||
-              // LITERAL DEL FRAME, nodo `1730:14341`. Dice «para el
-              // propietario» y en la pantalla del propio propietario eso no
-              // se entiende -- parece texto de maqueta que se quedó puesto.
-              // Se deja tal cual y se pregunta, que es lo que CLAUDE.md pide
-              // para un rótulo del frame que no se entiende: inventarle una
-              // redacción es lo que convierte una entrega en algo que hay que
-              // auditar entera.
-              "Añade una descripción del producto para el propietario."}
-          </p>
-        </div>
+        {/* ── LA DESCRIPCIÓN, Y SOLO SI LA HAY ─────────────────────────
+            EL FRAME NO DIBUJA NINGÚN ESTADO VACÍO. Lo que se lee en él
+            --«Añade una descripción del producto para el propietario.»-- es
+            la descripción GUARDADA de ese producto de ejemplo, no un texto de
+            maqueta. Lo aclaró el dueño el 2026-10-27, y hasta entonces estaba
+            puesto como si fuera el hueco.
+
+            Es exactamente el fallo que `CLAUDE.md` ya tiene escrito con otro
+            nombre: el 2026-10-20 se inventó «Todavía sin abonos» donde el
+            frame tenía un importe. Un estado vacío que nadie dibujó se
+            entrega con la misma seguridad que lo que sí está en el frame.
+
+            SIN DESCRIPCIÓN NO SE PINTA NADA, que es lo que ya hace la hoja de
+            una línea de pedido con esta misma ficha. Un rótulo con un guion
+            debajo ocupa el sitio de algo que sí informa. */}
+        {product.description?.trim() ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">Descripción del producto</span>
+            <p className="text-sm leading-5 break-words whitespace-pre-line">
+              {product.description}
+            </p>
+          </div>
+        ) : null}
 
         <BloqueDePrecios
           titulo="Venta al detal"

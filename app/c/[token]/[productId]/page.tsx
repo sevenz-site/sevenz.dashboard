@@ -5,7 +5,10 @@ import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import {
+  getProductPreviewImageUrl,
+  getPublicProductPhotoUrl,
+} from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
@@ -74,23 +77,54 @@ export async function generateMetadata({
       p_token: token,
       p_product_id: productId,
     });
-    const d = data as { name?: string; description?: string | null } | null;
+    const d = data as {
+      name?: string;
+      description?: string | null;
+      photo_path?: string | null;
+    } | null;
     if (!d?.name) return generico;
+
+    // ── LA IMAGEN ES LA FOTO, SERVIDA POR SUPABASE ───────────────────
+    //
+    // Y no una imagen generada, que es lo que había y lo que falló: pesaba
+    // 1,6 MB y WhatsApp la descartaba. El porqué entero está en
+    // `getProductPreviewImageUrl`.
+    //
+    // SIN FOTO, LA TARJETA DE LA MARCA. Un producto sin foto es el caso
+    // corriente, y un enlace cuya vista previa es un hueco parece un enlace
+    // roto. `/og.png` es la misma que enseñan el catálogo y el saldo.
+    const imagen = d.photo_path
+      ? getProductPreviewImageUrl(d.photo_path)
+      : "/og.png";
 
     // EL TEXTO DEL FRAME, repartido donde el chat lo pinta: el nombre arriba,
     // la descripción debajo, y la línea de Sevenz como nombre del sitio.
     //
     // SIN PRECIO, que es la mitad de la decisión vieja que se conserva.
+    //
+    // `?? null` Y NO `?? undefined`, y la diferencia se vio en una captura:
+    // `undefined` deja que Next herede la descripción del layout raíz, así
+    // que un producto SIN descripción salía en WhatsApp anunciando *«¡Lleva
+    // las cuentas claras de tu negocio sin tanta vaina!»* debajo de su
+    // nombre -- la frase de la marca presentada como si describiera el
+    // bafle. `null` dice «esta página no tiene descripción» y no hereda nada.
+    const descripcion = d.description?.trim() || null;
+
     return {
       title: `${d.name} — Sevenz`,
-      description: d.description ?? undefined,
+      description: descripcion,
       robots: { index: false, follow: false },
       openGraph: {
         title: d.name,
-        description: d.description ?? undefined,
+        // `undefined` AQUI y `null` arriba, y no es incoherencia: dentro de
+        // `openGraph` el tipo no admite `null`, y no hace falta -- este bloque
+        // REEMPLAZA entero al del layout, asi que lo que no se declara no se
+        // emite. Arriba si hace falta, porque `description` a secas sí hereda.
+        description: descripcion ?? undefined,
         siteName: "Sevenz.site ¡Cuentas claras sin tanta vaina!",
         locale: "es_VE",
         type: "website",
+        images: [{ url: imagen, width: 1200, height: 630, alt: d.name }],
       },
       // ── `twitter` TAMBIÉN, Y NO ES REDUNDANTE ──────────────────────
       //
@@ -99,14 +133,11 @@ export async function generateMetadata({
       // solo `openGraph` deja intacto el `twitter` del layout, y WhatsApp
       // --que lee los dos-- enseñaba el logo de Sevenz sobre un producto con
       // foto. Reportado por el dueño el 2026-10-27 con la captura.
-      //
-      // SIN `images` AQUÍ a propósito: la pone `twitter-image.tsx`, al lado
-      // de este archivo, porque la URL de esa imagen lleva un hash que Next
-      // recalcula en cada compilación.
       twitter: {
         card: "summary_large_image",
         title: d.name,
-        description: d.description ?? undefined,
+        description: descripcion ?? undefined,
+        images: [imagen],
       },
     };
   } catch (error) {
