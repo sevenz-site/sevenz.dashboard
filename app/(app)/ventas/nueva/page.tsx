@@ -76,7 +76,11 @@ export default async function NuevaVentaPage({
   if (clienteId) {
     const { data } = await supabase
       .from("clients")
-      .select("id, name, is_walk_in")
+      // `is_flagged` DESDE EL 2026-10-27: es lo que decide si al fiarle se
+      // pregunta antes. Entrando por aquí --desde la ficha del cliente-- no
+      // hay paso de elegir cliente, así que esta consulta es la ÚNICA que
+      // puede traer la marca.
+      .select("id, name, is_walk_in, is_flagged")
       .eq("id", clienteId)
       .eq("owner_id", user.id)
       .is("trashed_at", null)
@@ -89,7 +93,12 @@ export default async function NuevaVentaPage({
       return (
         <NuevaVenta
           clientes={clientes}
-          inicial={{ id: data.id, name: data.name, esMostrador: data.is_walk_in }}
+          inicial={{
+            id: data.id,
+            name: data.name,
+            esMostrador: data.is_walk_in,
+            marcada: data.is_flagged === true,
+          }}
           ownerId={user.id}
           ownerCountry={ownerCountry}
           rateContext={rateContext}
