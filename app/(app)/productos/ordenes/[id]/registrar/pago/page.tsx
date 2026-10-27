@@ -120,15 +120,14 @@ export default async function PagoDeBloquePage({
             precioUnitario: Number(i.unit_price),
             moneda: i.currency as PriceCurrency,
           }))}
-        ficha={
-          coincidencia.kind === "uno"
-            ? {
-                id: coincidencia.cliente.id,
-                name: coincidencia.cliente.name,
-                marcada: coincidencia.cliente.is_flagged,
-              }
-            : null
-        }
+        // TODAS las emparejadas, no la primera: con varias, cuál se usa lo
+        // decide el borrador, y eso solo lo sabe el navegador. Ver `PR-E3`.
+        fichas={(coincidencia.kind === "uno"
+          ? [coincidencia.cliente]
+          : coincidencia.kind === "varios"
+            ? coincidencia.clientes
+            : []
+        ).map((c) => ({ id: c.id, name: c.name, marcada: c.is_flagged }))}
       />
     </div>
   );

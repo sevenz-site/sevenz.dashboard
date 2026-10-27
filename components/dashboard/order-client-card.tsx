@@ -267,24 +267,26 @@ export function OrderClientMatchAlert({
                 está encima del nombre que esta misma línea dice, y repetirlo
                 en prosa no añade nada.
 
-                Y MANDA A «Clientes», NO A «Ver clientes». La primera versión
-                de esta frase, escrita el 2026-10-26, decía «Ábrelas para ver
-                cuál» apuntando al botón «Ver clientes» de la hoja
-                `OrderClientPickerSheet` — que existe como componente y NO está
-                montado en ninguna pantalla desde que el frame del `1/x` lo
-                quitó. O sea que la frase prometía una puerta que no está, que
-                es peor que no decir nada: deja al tendero buscando un botón.
+                LA FRASE HA CAMBIADO DOS VECES EL MISMO DÍA, y las dos
+                razones quedan porque explican dónde está el trabajo:
 
-                `Clientes` sí existe y busca por documento, así que la frase
-                nombra algo que se puede hacer. Lo que falta de verdad es
-                `PR-E3` --poder mirarlas SIN salir del flujo-- y eso es una
-                pantalla, no una frase. */}
+                1. Nació diciendo «Ábrelas para ver cuál», apuntando al botón
+                   «Ver clientes» de `OrderClientPickerSheet` — que existe
+                   como componente y NO está montado en ninguna pantalla desde
+                   que el frame del `1/x` lo quitó. Prometía una puerta que no
+                   estaba.
+                2. Pasó a «Búscalas en Clientes», que era verdad pero mandaba
+                   al tendero FUERA del flujo, a cotejar de memoria.
+
+                Ahora el flujo pregunta: el paso del cliente enseña las fichas
+                con su chip y se elige una (`PR-E3`, arreglado esa noche). La
+                frase puede por fin prometer algo que pasa sola. */}
             {coincidencia.kind === "varios" && marcadas > 0 ? (
               <p className="font-medium">
                 {marcadas === 1
                   ? "Una de esas fichas está marcada como Mala paga."
                   : `${marcadas} de esas fichas están marcadas como Mala paga.`}{" "}
-                Búscalas en Clientes antes de fiar.
+                Al registrar el pedido te preguntamos cuál es.
               </p>
             ) : null}
           </div>

@@ -35,6 +35,8 @@ eso es justo lo que se pierde primero.
 | **PR-F6** | Registrar una moneda y **quitar la que falta** dejaba el pedido pendiente **para siempre** | Quitarla **cierra el pedido** cuando lo que queda vivo ya está vendido, y la pantalla lo dice: «Quitado. El pedido queda registrado» |
 | **PR-F7** | **Borrar la venta** dejaba el pedido sellado para siempre, apuntando a una venta que ya no existe | El sello se **recalcula** al borrar y al **restaurar**: el pedido vuelve a estar pendiente de lo que se borró, y solo de eso |
 | **PR-G3** | Empezar un segundo pedido **pisaba el borrador del primero**, en silencio | Una llave de almacenamiento **por pedido**, y el borrado del detalle acotado al suyo |
+| **PR-E3** | Con **varias fichas** compartiendo los dígitos, el detalle decía «ya existe en varias» y el paso del cliente, dos pantallas después, «no lo encontramos» — y su formulario vacío creaba una ficha MÁS | El paso del cliente **enseña las fichas y pregunta cuál**, con su chip «Mala paga» en la que lo esté |
+| **PR-H1** | Una barra pegada abajo con **las clases copiadas a mano** y sin lo único que el original añade: esconderse con el teclado | Arreglada, y una suite --`qa:barra-de-abajo`-- que lo vigila sin lista de excepciones. **La prueba en un teléfono sigue pendiente** |
 
 **Las dos últimas columnas de `PR-A2` y `PR-E6` crecieron esa misma tarde**, y
 las dos por lo mismo: el dueño leyó este documento y pidió lo que faltaba. Es
@@ -476,11 +478,49 @@ El emparejamiento es **por documento**, y los dígitos **no identifican a una
 persona**: el índice de la migración `033` conserva la letra, así que
 `V-21054832` y `E-21054832` son dos claves. **Dev tiene tres grupos así ahora
 mismo, uno de tres personas.**
-Con varias, el flujo contesta «ninguna» y abre el formulario: la tarjeta ámbar es
-honesta y una verde nombrando a un Jesús concreto sería **confiadamente falsa**.
-**Lo que se perdió el 2026-10-26** y está dicho en voz alta: el botón «Ver
-clientes» desapareció del `1/x` al rehacerse el frame, así que hasta el `4/4` no
-hay dónde mirarlas.
+**LO QUE PASABA HASTA EL 2026-10-26 POR LA NOCHE, y era peor que «no hay dónde
+mirarlas»: las dos pantallas del mismo pedido se CONTRADECÍAN.** El detalle
+decía «El cliente ya existe en varias cuentas de Sevenz» --con su chip «Mala
+paga» cuando alguna lo estaba-- y dos pantallas después, en el paso del
+cliente, la app decía en ámbar «No hemos encontrado este cliente», con el
+formulario vacío.
+
+Y la acción por defecto era la mala: rellenar ese formulario crea **otra ficha
+de la misma persona**, el aviso de mala paga desaparece, y el fiado se le
+apunta a alguien sin historial.
+
+---
+
+#### ARREGLADO: el paso del cliente PREGUNTA
+
+Con varias emparejadas y ninguna elegida, el `3/3` ya no pide datos: enseña las
+fichas --nombre, documento **con su letra**, y el chip «Mala paga» en la que lo
+esté-- y se elige una tocándola. Debajo, la salida para cuando ninguna es:
+«Ninguna: registrar cliente nuevo», que lleva al mismo formulario de siempre
+sin la frase falsa.
+
+**LA LISTA ES `ClientResultList`, LA MISMA con la que se elige cliente al
+cobrar y en Cartera.** No se dibujó otra: una lista de personas y cédulas
+copiada se separa en cuanto alguien retoca una, y equivocarse aquí significa
+apuntarle un fiado a quien no es. Lo único que se le añadió es un `flagged`
+opcional, que los otros dos buscadores no mandan.
+
+**EL CHIP ES LA RAZÓN DE LA PANTALLA, no un adorno:** lo que de verdad
+distingue a estas fichas, para decidir si se fía, es cuál de ellas no paga.
+
+**LA ELECCIÓN VIAJA EN LA URL (`?ficha=`) Y SE COMPRUEBA CONTRA LA LISTA
+EMPAREJADA**, nunca se usa en crudo. Es un id que llega del navegador, así que
+buscarlo dentro de `coincidencia.clientes` --ya filtrada por `owner_id` y por
+los dígitos-- es a la vez la comprobación de propiedad y la de que esa ficha
+tenga algo que ver con este pedido. Un id de otro dueño, o de un cliente
+cualquiera de la cuenta, no está en esa lista: la pantalla vuelve a preguntar.
+Medido con un uuid inventado.
+
+**Y EL PAGO TAMBIÉN TUVO QUE CAMBIAR**, que es la puerta que se habría
+olvidado: su aviso de «mala paga» recibía UNA ficha del servidor, y con varias
+el servidor no sabe cuál es --lo sabe el borrador--. Ahora recibe TODAS y
+empareja por el `fichaId` del borrador. Sin eso, la segunda pasada de un pedido
+de dos monedas se quedaba sin aviso justo en este caso.
 
 ---
 
@@ -861,6 +901,46 @@ tamaño, o sea que apaga la condición que se quiere medir.
 
 ---
 
+#### LO QUE SE PUDO ARREGLAR SIN TELÉFONO, el 2026-10-26
+
+De los tres motivos por los que esto ha fallado, **uno se lee en el código**:
+una pantalla con las clases de `StickyActions` copiadas a mano. Y había una.
+
+`components/public/product-detail.tsx` --el producto del catálogo del cliente, y
+la hoja que el tendero abre desde el pedido-- tenía esas clases copiadas **hasta
+el `pb-[calc(env(safe-area-inset-bottom)+2.5rem)]` carácter por carácter**, su
+campo de «Comentarios» debajo, y ningún `useKeyboardOpen`. Un mes así, sin que
+nadie lo viera.
+
+**NO SE PUDO MONTAR `StickyActions` TAL CUAL**, y conviene saber por qué: su
+contenido va en columna y esa fila va en línea --el «− 00 +» a la izquierda,
+«Agregar $00» a la derecha--, que es la maqueta que el dueño pidió el
+2026-10-25.
+
+**Y NO BASTABA CON ESCONDERLA, QUE ES LA TRAMPA DE ESTE CASO**: el campo de la
+cantidad **vive dentro de esa barra**. Esconderla mientras se teclea en él le
+quitaría al cliente el campo que está rellenando -- un fallo peor que el que se
+arregla. Así que se esconde solo cuando el teclado lo levantó OTRO campo, y eso
+lo dice el propio campo con un `onFocus`/`onBlur`.
+
+**Lo vigila `qa:barra-de-abajo`**, sin lista de excepciones: *un fichero que
+ancla algo al borde inferior y tiene un campo de texto en la misma pantalla
+tiene que saber del teclado*. La condición sale del fichero, así que no hay nada
+que mantener; el día que una pantalla sin campos gane uno, la regla se aplica
+sola.
+
+**UN CAMPO DENTRO DE UN MODAL NO CUENTA**, y eso lo enseñó la primera pasada:
+el carrito del cliente tiene su barra con «Completar orden» y sus cuatro campos
+dentro de un `<Dialog>` que lo tapa entero. Nunca se ven a la vez, así que
+marcarlo habría sido una alarma falsa -- y una alarma falsa entrena a pasar de
+largo.
+
+**LO QUE SIGUE PENDIENTE, dicho sin rodeos:** si el teclado TAPA DE VERDAD cada
+barra, en un teléfono, entrando por cada puerta. Esta suite no lo prueba y no
+puede. Hasta entonces la fila de QA dice «no probado», no «pasa».
+
+---
+
 **`PR-H2` · El botón flotante «Registrar» pisando los botones** 👁 **se MIDE, no se mira**
 Y sin desplazar la página: el flotante es fijo y el contenido no, así que **el
 caso roto es siempre la pantalla corta**. Un `padding` abajo no lo arregla —se
@@ -967,6 +1047,11 @@ Lo que ninguna suite ve. Por pedido:
 9. **Empezar un pedido, dejarlo a medias, abrir OTRO y volver** (`PR-G3`): el
    primero tiene que seguir donde estaba. Y el control: salirse al detalle **de
    ese mismo pedido** sí lo reinicia.
+9 bis. **Un pedido cuyo documento comparten VARIAS fichas** (`PR-E3`): el paso
+   del cliente tiene que ENSEÑARLAS y preguntar, con el chip «Mala paga» en la
+   que lo esté. Elegir una la deja como si hubiera emparejado sola --tarjeta
+   verde, chip, diálogo-- y la venta va a ESA ficha, **sin crear una nueva**.
+   Control: `?ficha=` con un id que no esté en la lista vuelve a preguntar.
 10. **Con el teclado abierto**, en un teléfono de verdad, entrando por cada
     puerta (`PR-H1`).
 
@@ -997,14 +1082,16 @@ ser fichas**. Lo que sigue abierto, por si merece una:
 
 | Id | Qué | Por qué no se hizo |
 |---|---|---|
-| `PR-E3` | **Varias fichas con los mismos dígitos**: no hay dónde mirarlas desde el flujo, y las dos pantallas se CONTRADICEN | El detalle dice «ya existe en varias cuentas» y el paso del cliente, dos pantallas después, dice «no hemos encontrado este cliente» — con un formulario vacío que crearía una tercera ficha |
-| `PR-H1` | **El teclado abierto** tapa la barra de abajo | Solo se puede medir en un teléfono real |
+| `PR-H1` | **El teclado abierto** tapa la barra de abajo | El código está arreglado y vigilado; lo que falta es MEDIRLO en un teléfono, y eso no se puede hacer desde aquí |
 | `PR-H5` | **iPhone** | Lo mismo |
 
-**Cuatro salieron de esta tabla el 2026-10-26**, todas por encargo del dueño al
+**SEIS salieron de esta tabla el 2026-10-26**, todas por encargo del dueño al
 leerla: el filtro **«Descartados»** (`PR-A2`), el chip **«Mala paga»**
-(`PR-E6`), el sello reversible (`PR-F7`) y la llave por pedido (`PR-G3`). Están
-construidas y sus apartados lo cuentan.
+(`PR-E6`), el sello reversible (`PR-F7`), la llave por pedido (`PR-G3`), la
+elección de ficha (`PR-E3`) y la barra copiada a mano (la mitad de `PR-H1` que
+se lee en el código). Están construidas y sus apartados lo cuentan.
+
+**Lo único que queda abierto de este flujo es lo que necesita un teléfono.**
 
 **Y una observación que no es de este flujo pero se vio aquí**: el paso del
 cliente lanza un `Hydration failed` en desarrollo, porque el servidor pinta

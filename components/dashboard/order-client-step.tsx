@@ -22,6 +22,7 @@ import {
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
 import { OrderClientSheetButton } from "@/components/dashboard/order-client-sheet-button";
+import { ClientResultList } from "@/components/dashboard/client-result-list";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,6 +69,21 @@ export function OrderClientStep({
   // and «several»: with several, nothing in the order tells them apart, so
   // the honest screen is the one that asks.
   ficha,
+  // ── LAS FICHAS QUE COMPARTEN LOS DÍGITOS DE ESTE DOCUMENTO ─────────
+  //
+  // Vacío salvo cuando hay VARIAS y el tendero todavía no ha elegido. `PR-E3`,
+  // arreglado el 2026-10-26 por encargo del dueño.
+  //
+  // QUÉ PASABA ANTES, y era peor que «no hay dónde mirarlas»: el detalle del
+  // pedido decía «El cliente ya existe en varias cuentas de Sevenz» --con su
+  // chip «Mala paga» cuando alguna lo estaba-- y DOS PANTALLAS DESPUÉS esta
+  // decía, en ámbar, «No hemos encontrado este cliente», con el formulario
+  // vacío. La misma app, sobre el mismo pedido, diciendo lo contrario.
+  //
+  // Y la acción por defecto era la mala: rellenar ese formulario crea una
+  // TERCERA ficha de la misma persona, el aviso de mala paga desaparece, y el
+  // fiado se le apunta a alguien sin historial.
+  varias,
   // What the customer typed in the cart. It is what prefills the form, and it
   // is the only thing known about them when no ficha matched.
   delPedido,
@@ -91,6 +107,7 @@ export function OrderClientStep({
 }: {
   pedidoId: string;
   ficha: OrderClient | null;
+  varias: OrderClient[];
   delPedido: {
     name: string;
     documentId: string;
@@ -154,9 +171,21 @@ export function OrderClientStep({
   const [whatsapp, setWhatsapp] = useState(() => delBorrador()?.whatsapp || delPedido.whatsapp);
   const [error, setError] = useState<string | null>(null);
 
+  // ── ¿HAY QUE ELEGIR ANTES DE NADA? ────────────────────────────────
+  //
+  // Con varias fichas y ninguna elegida, esta pantalla NO pregunta los datos:
+  // pregunta cuál es. El formulario vendría después, y solo si el tendero dice
+  // que ninguna de las suyas sirve.
+  //
+  // `cuentaSeparada` CUBRE EL OTRO CAMINO: la página lo pone también cuando se
+  // llega con `?nuevo=1` desde aquí, o sea cuando el tendero ya decidió crear
+  // una ficha nueva a pesar de las que hay. Por eso basta con mirarlo.
+  const debeElegir = ficha == null && varias.length > 0 && !cuentaSeparada;
+
   // THE FORM IS SHOWN WHENEVER THERE IS NO FICHA TO CONFIRM, or when the
-  // shopkeeper has asked for a separate account.
-  const conFormulario = ficha == null || cuentaSeparada;
+  // shopkeeper has asked for a separate account -- pero nunca mientras quede
+  // una elección por hacer.
+  const conFormulario = (ficha == null || cuentaSeparada) && !debeElegir;
   const [enviando, setEnviando] = useState(false);
   // ¿Queda algún bloque sin rellenar? Se lee del borrador, que es quien lo
   // sabe, y decide tanto el rótulo del botón como lo que hace.
@@ -182,12 +211,29 @@ export function OrderClientStep({
   const fichaMarcada = ficha != null && !cuentaSeparada && ficha.is_flagged;
   const debeAvisar = fichaMarcada && quedaFiado(lineas, borradorActual);
   const [avisando, setAvisando] = useState(false);
+  // ── SIN `!`, PORQUE HAY UN TERCER ESTADO DESDE HOY ──────────────────
+  //
+  // Era `ficha!.name`, y esa afirmación valía mientras los estados fueran dos:
+  // o había formulario, o había ficha. `PR-E3` añadió un tercero --varias
+  // emparejadas y ninguna elegida todavía-- donde no hay NI formulario NI
+  // ficha, y la pantalla reventaba entera con `Cannot read properties of null`.
+  //
+  // Lo cazó el navegador en la primera pasada, no el compilador: el `!` le
+  // había dicho a TypeScript que se callara. Es el precio de esa marca y la
+  // razón de quitarla en vez de mover la línea.
   const nombreParaElPermiso =
-    (conFormulario ? nombre : ficha!.name).trim() || "tu cliente";
+    (conFormulario ? nombre : (ficha?.name ?? delPedido.name)).trim() ||
+    "tu cliente";
 
   // `yaConfirmado` -- viene del diálogo de «mala paga». Sin él, confirmar
   // volvería a abrir el mismo diálogo para siempre.
   async function finalizar(yaConfirmado = false) {
+    // NADA QUE REGISTRAR MIENTRAS FALTE ELEGIR FICHA. El botón no se dibuja en
+    // ese estado, así que esto no debería poder llamarse -- y por eso mismo
+    // está: las seis líneas de abajo afirman `ficha!` y una ruta nueva que se
+    // las salte reventaría la pantalla, que es justo lo que pasó al construir
+    // `PR-E3`.
+    if (debeElegir) return;
     if (conFormulario) {
       if (nombre.trim() === "") {
         setError("Escribe el nombre del cliente.");
@@ -415,6 +461,56 @@ export function OrderClientStep({
         </div>
       ) : null}
 
+      {/* ── ELEGIR CUÁL DE LAS FICHAS ES — `PR-E3` ────────────────────
+          Reutiliza `ClientResultList`, la MISMA lista con la que el tendero
+          elige cliente al cobrar y en Cartera. No se dibuja otra: una lista de
+          personas y cédulas copiada se separa en cuanto alguien retoca una, y
+          aquí equivocarse significa apuntarle un fiado a quien no es.
+
+          EL CHIP «Mala paga» ES LA RAZÓN DE LA PANTALLA, no un adorno: lo que
+          de verdad distingue a estas fichas, para decidir si se fía, es cuál
+          de ellas no paga. Sin él habría que elegir a ciegas y enterarse en el
+          diálogo del último toque, que es el orden que `PR-E6` evita. */}
+      {debeElegir ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
+            <UserRoundSearch className="mt-px size-4 shrink-0" aria-hidden />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="font-semibold">
+                {varias.length} clientes tuyos tienen ese documento.
+              </p>
+              {/* POR QUÉ PUEDEN SER VARIAS, dicho en una línea: el pedido trae
+                  los dígitos y no siempre la letra, y la letra es lo que
+                  distingue a dos personas con el mismo número. */}
+              <p>
+                El pedido llegó con{" "}
+                {formatDocumentId(delPedido.documentId, delPedido.documentType) ||
+                  "—"}
+                . Elige a quién se le apunta.
+              </p>
+            </div>
+          </div>
+          <ClientResultList
+            results={varias.map((c) => ({
+              id: c.id,
+              name: c.name,
+              documentId: c.document_id,
+              documentType: c.document_type ?? null,
+              flagged: c.is_flagged,
+            }))}
+            // SE ELIGE POR LA URL Y NO POR UN ESTADO DE ESTA PANTALLA: así la
+            // flecha de atrás deshace la elección en vez de salirse del flujo,
+            // y recargar no pierde nada. El servidor comprueba que el id esté
+            // entre los emparejados antes de hacerle caso.
+            onSelect={(id) =>
+              router.push(
+                `/productos/ordenes/${pedidoId}/registrar/cliente?${monedaDeOrigen ? `moneda=${monedaDeOrigen}&` : ""}ficha=${id}`,
+              )
+            }
+          />
+        </div>
+      ) : null}
+
       {/* ── THE FORM, PREFILLED FROM THE ORDER ────────────────────────── */}
       {conFormulario ? (
         <div className="flex flex-col gap-4">
@@ -468,7 +564,10 @@ export function OrderClientStep({
           is the same wording the order's own card uses, on purpose: the
           shopkeeper should not have to work out whether it means the same
           thing. */}
-      {ficha == null && !cuentaSeparada ? (
+      {/* NUNCA MIENTRAS HAYA QUE ELEGIR (`!debeElegir`), y esa condición es
+          el arreglo de `PR-E3`: con varias fichas emparejadas esta frase era
+          FALSA, y contradecía a la tarjeta del detalle dos pantallas antes. */}
+      {ficha == null && !cuentaSeparada && !debeElegir ? (
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
           <UserRoundSearch className="mt-px size-4 shrink-0" aria-hidden />
           <div className="flex min-w-0 flex-col gap-0.5">
@@ -493,7 +592,12 @@ export function OrderClientStep({
           See `MS-4` in the plan for why this matters: Meta requires opt-in
           that can be demonstrated, and a box with no name in it demonstrates
           nothing. */}
-      <label className="flex items-start gap-2 rounded-[10px] border p-2.5 text-xs">
+      {/* NO MIENTRAS SE ELIGE: el permiso nombra a una persona --«Confirmo
+          que ‹nombre› autoriza»-- y mientras no se sepa cuál es, esa frase no
+          tiene sujeto. Sale en cuanto hay ficha o formulario. */}
+      <label
+        className={`${debeElegir ? "hidden" : "flex"} items-start gap-2 rounded-[10px] border p-2.5 text-xs`}
+      >
         <Checkbox
           checked={consiente}
           onCheckedChange={(v) => setConsiente(v === true)}
@@ -519,6 +623,27 @@ export function OrderClientStep({
           Los 40px los pone la barra; `app-main.tsx` deja de sumar los suyos
           en esta ruta, o serían 80. */}
       <StickyActions>
+        {/* ── MIENTRAS SE ELIGE, LA BARRA OFRECE LA SALIDA DE ESCAPE ────
+            Y SOLO ESA. `PR-E3`: con varias fichas emparejadas no hay nada que
+            registrar hasta saber a quién, así que «Registrar y finalizar»
+            aquí sería un botón que no puede cumplir lo que dice. La elección
+            se hace tocando una fila de la lista.
+
+            LO QUE SÍ TIENE QUE HABER es la salida para cuando NINGUNA de
+            ellas es: el cliente del pedido puede ser una cuarta persona con
+            los mismos dígitos. Lleva a `?nuevo=1`, el mismo camino que
+            «Registrar a cuenta separada», y la pantalla pasa a titularse
+            «Nuevo cliente». */}
+        {debeElegir ? (
+          <Button variant="outline" className="h-10 w-full" asChild>
+            <Link
+              href={`/productos/ordenes/${pedidoId}/registrar/cliente?nuevo=1${monedaDeOrigen ? `&moneda=${monedaDeOrigen}` : ""}`}
+            >
+              Ninguna: registrar cliente nuevo
+            </Link>
+          </Button>
+        ) : null}
+
         {/* EL RÓTULO, TRES CASOS Y NO DOS desde el 2026-10-26:
 
             · CORRIGIENDO (se llegó por el lápiz de la tarjeta del cliente):
@@ -534,6 +659,7 @@ export function OrderClientStep({
         {/* ROJO CUANDO VA A FIARLE A UNA MALA PAGA, como el diálogo
             original ponía su propio «Guardar fiado»: el color es la mitad del
             aviso que llega ANTES de tocar. */}
+        {debeElegir ? null : (
         <Button
           className="h-10 w-full"
           variant={debeAvisar ? "destructive" : undefined}
@@ -550,6 +676,7 @@ export function OrderClientStep({
                 ? "Registrar"
                 : "Registrar y finalizar"}
         </Button>
+        )}
         {/* «REGISTRAR A CUENTA SEPARADA», only on the matched screen. The
             shopkeeper is saying «this is not that Pedro», which the document
             match cannot rule out on its own — two people can share the digits

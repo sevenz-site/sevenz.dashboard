@@ -517,7 +517,8 @@ recorridos que de verdad ocurren todos los días.
 
 **Antes de esto corren las suites** --`qa:pedido-registro` (53 controles),
 `qa:pedidos`, `qa:aviso-mala-paga`, `qa:sello-del-pedido`,
-`qa:lineas-borradas`-- que están en la sección 2b y en la 6b. Lo de aquí es lo que **ninguna suite puede ver**: la
+`qa:barra-de-abajo`, `qa:lineas-borradas`-- que están en la sección 2b y en
+la 6b. Lo de aquí es lo que **ninguna suite puede ver**: la
 pantalla.
 
 **Y el detalle entero de los bordes vive en `REGISTRO-DE-PEDIDO-BORDES.md`**,
@@ -566,6 +567,7 @@ la base: era la puerta**.
 | Quitar la moneda que falta **cierra** el pedido | `qa:pedido-registro` 17a-17e · y hacerlo en pantalla | El pedido quedaba pendiente PARA SIEMPRE y su único botón contestaba «Esa parte del pedido ya se registró» |
 | **Borrar la venta** devuelve el pedido a pendiente, y **restaurarla** lo vuelve a sellar | `qa:pedido-registro` 18a-18f · `qa:sello-del-pedido` · y el ciclo entero en pantalla | El pedido se quedaba «Registrado» apuntando a una venta borrada, y el flujo se negaba a volver a entrar |
 | Un pedido a medias **sobrevive** a que se abra otro | hacerlo en pantalla | El segundo pisaba el borrador del primero y la pantalla volvía al paso 1 sin una palabra |
+| Con **varias fichas** del mismo documento, el paso del cliente PREGUNTA cuál | hacerlo en pantalla · control con un `?ficha=` inventado | El detalle decía «ya existe en varias» y dos pantallas después «no lo encontramos», con un formulario que creaba una ficha más |
 
 **Y LOS DESCARTADOS SE TIENEN QUE PODER ENCONTRAR**, desde el 2026-10-26: el
 chip de estado de la lista de Pedidos tiene un cuarto valor, **«Descartado»**,
@@ -1072,7 +1074,7 @@ no escribe nada.
 | **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |
 | `/admin` y métricas | `qa:multi-owner` |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
-| **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, **`qa:sello-del-pedido`**, `qa:lineas-borradas`, `qa:suscripciones` |
+| **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, **`qa:sello-del-pedido`**, **`qa:barra-de-abajo`**, `qa:lineas-borradas`, `qa:suscripciones` |
 
 **Las tres últimas de esa fila leen el CÓDIGO, no la base**, así que tardan un
 segundo y no necesitan servidor. Cada una cierra una avería que no se ve: un

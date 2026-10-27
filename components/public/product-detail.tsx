@@ -5,6 +5,7 @@ import { CircleCheck, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useCarrito } from "@/lib/cart/store";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -275,6 +276,29 @@ export function ProductDetail({
       return String(Math.max(minimo, actual + delta));
     });
 
+  // ── ¿EL TECLADO ESTÁ TAPANDO LA FILA DE ABAJO? ──────────────────────
+  //
+  // El porqué entero está pegado a la fila, más abajo. En una línea: se
+  // esconde con el teclado arriba, SALVO cuando quien lo levantó es su propio
+  // campo de cantidad -- esconderla ahí le quitaría al cliente el campo que
+  // está rellenando.
+  //
+  // CÓMO SE SABE QUE EL FOCO ESTÁ EN LA BARRA: lo dice el propio campo con un
+  // `onFocus`/`onBlur`, no una consulta al DOM.
+  //
+  // La primera versión leía `document.activeElement` y preguntaba si la barra
+  // lo contenía, con una `ref`. Compila y funciona, y el lint de React la
+  // rechaza con razón: leer una `ref` durante la pintura es leer algo que
+  // React no ha sincronizado todavía, así que el resultado depende del orden
+  // en que le toque pintar. Un evento del campo es un dato, no una
+  // suposición.
+  //
+  // UN SOLO CAMPO LO NECESITA porque es el único de la barra que levanta
+  // teclado: los «+» y «−» y «Agregar» son botones.
+  const [focoEnLaCantidad, setFocoEnLaCantidad] = useState(false);
+  const tecladoAbierto = useKeyboardOpen();
+  const barraTapada = tecladoAbierto && !focoEnLaCantidad;
+
   return (
     <div className="flex flex-col gap-5">
       {/* EL DISPONIBLE, SIN CIFRA, igual que la etiqueta del catálogo.
@@ -491,8 +515,29 @@ export function ProductDetail({
           un `fixed` se saldría de ella para pegarse a la ventana.
 
           SE AJUSTA EN LOS DOS SITIOS DE UNA VEZ porque es el mismo
-          componente, que es justo por lo que él pudo pedirlo en una frase. */}
-      {isPreview ? null : (
+          componente, que es justo por lo que él pudo pedirlo en una frase.
+
+          ── Y SE ESCONDE CON EL TECLADO ARRIBA, PERO NO SIEMPRE ───────
+          Añadido el 2026-10-26 (`PR-H1`). Esta barra tenía las clases de
+          `StickyActions` COPIADAS A MANO --hasta el `pb-[calc(...2.5rem)]`
+          carácter por carácter-- y no lo único que el original añade:
+          esconderse cuando el teclado tapa la pantalla. Es el fallo que el
+          dueño ha reportado TRES veces, y la segunda de esas tres fue
+          exactamente esto: una pantalla con las clases copiadas.
+
+          POR QUÉ NO SE PUEDE MONTAR `StickyActions` TAL CUAL: su contenido va
+          en columna (`flex-col gap-4`) y esta fila va en línea --el contador
+          «- 00 +» a la izquierda y «Agregar $00» a la derecha--. Meterla ahí
+          cambiaría la maqueta que el dueño pidió el 2026-10-25.
+
+          Y POR QUÉ NO BASTA CON `useKeyboardOpen` A SECAS, que es la trampa:
+          **el campo de la cantidad vive DENTRO de esta barra**. Esconderla
+          mientras se teclea en él le quitaría al cliente el campo que está
+          rellenando -- un fallo peor que el que se arregla. Así que se mira
+          también DÓNDE está el foco: con el teclado arriba la barra se va
+          solo si quien lo levantó es otro campo, que aquí es el de
+          «Comentarios». */}
+      {isPreview || barraTapada ? null : (
         <div className="sticky bottom-0 -mx-4 flex items-center gap-3 bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
           <div className="flex items-center gap-2">
             <Button
@@ -509,6 +554,12 @@ export function ProductDetail({
               inputMode="numeric"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
+              // ESTE CAMPO MANTIENE LA BARRA EN PIE. Ver `barraTapada`: la
+              // fila se esconde con el teclado arriba, salvo cuando quien lo
+              // levantó es él -- esconderla aquí le quitaría al cliente el
+              // campo que está rellenando.
+              onFocus={() => setFocoEnLaCantidad(true)}
+              onBlur={() => setFocoEnLaCantidad(false)}
               aria-label="Cantidad"
               aria-invalid={porDebajoDelMinimo}
               className={`h-10 w-16 rounded-md border bg-background text-center text-base tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${

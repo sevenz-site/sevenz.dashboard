@@ -85,7 +85,7 @@ export function OrderCurrencyPaymentForm({
   hrefPedido,
   monedas,
   lineasDelPedido,
-  ficha,
+  fichas,
 }: {
   pedidoId: string;
   moneda: PriceCurrency;
@@ -120,10 +120,18 @@ export function OrderCurrencyPaymentForm({
   // Es la regla de `CLAUDE.md`: *«un campo nuevo entra por TODAS las puertas
   // de su acción»*. Las puertas de este registro son dos y esta es la segunda.
   lineasDelPedido: LineaDelPedido[];
-  // La ficha emparejada por documento, con su marca. `null` cuando no hay
+  // LAS FICHAS EMPAREJADAS POR DOCUMENTO, con su marca. Vacío cuando no hay
   // ninguna o hay varias: entonces se crea un cliente nuevo, que no tiene
   // marca que avisar.
-  ficha: { id: string; name: string; marcada: boolean } | null;
+  //
+  // UNA LISTA Y NO UNA SOLA, desde el 2026-10-26 (`PR-E3`). Con varias fichas
+  // compartiendo los dígitos, el tendero elige una en el paso del cliente y
+  // esa elección vive en el BORRADOR, que el servidor no ve. Con una sola
+  // ficha aquí, la segunda pasada de un pedido de dos monedas se quedaba sin
+  // el aviso de «mala paga» justo en ese caso: el servidor mandaba `null`
+  // porque no sabía cuál era. Mandándolas todas, el navegador empareja por el
+  // `fichaId` del borrador, que es quien lo sabe.
+  fichas: { id: string; name: string; marcada: boolean }[];
 }) {
   const [cerrando, setCerrando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,11 +216,14 @@ export function OrderCurrencyPaymentForm({
     //    ANTES DE ESCRIBIR, EL AVISO DE «MALA PAGA»: si la deuda va a una
     //    ficha marcada y queda algo debiendo, se pregunta. Ver el diálogo al
     //    final de este fichero.
-    if (
-      ficha?.marcada === true &&
-      borrador.cliente.fichaId === ficha.id &&
-      quedaFiado(lineasDelPedido, borrador)
-    ) {
+    //    SE RESUELVE CON EL BORRADOR QUE ACABA DE LEERSE, no con el de la
+    //    pintura: entre que la pantalla se dibujó y el tendero tocó el botón,
+    //    el cliente pudo cambiar --el lápiz de la tarjeta lleva al paso del
+    //    cliente y vuelve--. La decisión de avisar se toma con el dato del
+    //    momento, no con el del render.
+    const marcadaAhora =
+      fichas.find((f) => f.id === borrador.cliente?.fichaId)?.marcada === true;
+    if (marcadaAhora && quedaFiado(lineasDelPedido, borrador)) {
       setAvisando(true);
       return;
     }
@@ -222,6 +233,12 @@ export function OrderCurrencyPaymentForm({
   // LO QUE ESCRIBE LA VENTA, aparte para que el diálogo de «mala paga» pueda
   // llamarlo tal cual al confirmar. Una copia dentro del diálogo sería dos
   // caminos que escriben dinero, y uno de los dos se quedaría atrás.
+  // LA FICHA QUE EL BORRADOR DICE, que es la única que importa aquí: el
+  // tendero pudo elegirla entre varias, o haber pedido una cuenta separada
+  // --y entonces no hay ninguna emparejada y no hay nada que avisar--.
+  const fichaDelBorrador =
+    fichas.find((f) => f.id === leerBorrador(pedidoId)?.cliente?.fichaId) ?? null;
+
   async function cerrarVenta(borrador: NonNullable<ReturnType<typeof leerBorrador>>) {
     setCerrando(true);
     setError(null);
@@ -286,7 +303,7 @@ export function OrderCurrencyPaymentForm({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {ficha?.name} está marcado como Mala paga
+              {fichaDelBorrador?.name} está marcado como Mala paga
             </AlertDialogTitle>
             <AlertDialogDescription>
               Revisa el motivo en su historial. ¿Fiarle de todas formas?

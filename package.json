@@ -75,7 +75,8 @@
     "qa:suscripciones": "node qa/suscripciones.mjs",
     "qa:lineas-borradas": "node qa/lineas-borradas.mjs",
     "qa:aviso-mala-paga": "node qa/aviso-mala-paga.mjs",
-    "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs"
+    "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs",
+    "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

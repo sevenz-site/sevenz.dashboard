@@ -38,10 +38,10 @@ export default async function ClienteDelPedidoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ nuevo?: string; moneda?: string }>;
+  searchParams: Promise<{ nuevo?: string; moneda?: string; ficha?: string }>;
 }) {
   const { id } = await params;
-  const { nuevo, moneda } = await searchParams;
+  const { nuevo, moneda, ficha: fichaElegida } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -94,10 +94,25 @@ export default async function ClienteDelPedidoPage({
     ),
   ]);
 
-  // `null` FOR BOTH «none» AND «several». With several fichas sharing these
-  // digits, nothing in the order tells them apart — see `findOrderClient` —
-  // so the honest screen is the one that asks, not one that picks.
-  const ficha = coincidencia.kind === "uno" ? coincidencia.cliente : null;
+  // ── CUÁL DE LAS FICHAS SE VA A USAR ───────────────────────────────
+  //
+  // Con UNA emparejada es esa. Con VARIAS, la que el tendero haya elegido en
+  // la pantalla --que viaja en `?ficha=`-- y `null` mientras no elija: la
+  // pantalla honesta es la que pregunta, no una que elige por él.
+  //
+  // EL PARÁMETRO SE COMPRUEBA CONTRA LA LISTA EMPAREJADA, NUNCA SE USA EN
+  // CRUDO. Es un id que llega del navegador, así que vale la regla de
+  // `CLAUDE.md`: buscarlo dentro de `coincidencia.clientes` --que
+  // `findOrderClient` ya filtró por `owner_id` y por los dígitos del
+  // documento-- es a la vez la comprobación de propiedad y la de que esa
+  // ficha tenga algo que ver con este pedido. Un id de otro dueño, o de un
+  // cliente cualquiera de la cuenta, no está en esa lista y se ignora: la
+  // pantalla vuelve a preguntar en vez de apuntarle el fiado a un desconocido.
+  const varias = coincidencia.kind === "varios" ? coincidencia.clientes : [];
+  const elegida = fichaElegida
+    ? (varias.find((c) => c.id === fichaElegida) ?? null)
+    : null;
+  const ficha = coincidencia.kind === "uno" ? coincidencia.cliente : elegida;
 
   // SPLIT, NOT PASSED RAW. See `partirDocumento`: this column holds «V-2424…»
   // on some rows and bare digits on others, and the form needs the two halves
@@ -129,6 +144,9 @@ export default async function ClienteDelPedidoPage({
       // `undefined` solo en un enlace viejo que no la llevaba.
       monedaDeOrigen={moneda ?? null}
       ficha={ficha}
+      // Vacío salvo cuando hay varias Y ninguna elegida: es lo que pone la
+      // pantalla en modo «elige». Ver `PR-E3`.
+      varias={ficha == null ? varias : []}
       delPedido={{
         name: pedido.customer_name,
         documentId: documento.digits,
@@ -141,7 +159,12 @@ export default async function ClienteDelPedidoPage({
       // ficha the form is already the «new client» form, and honouring
       // `?nuevo=1` there would silently drop the «no encontramos» alert that
       // explains why the shopkeeper is filling it in.
-      cuentaSeparada={ficha != null && nuevo === "1"}
+      //
+      // Y DESDE EL 2026-10-26, TAMBIÉN CON VARIAS SIN ELEGIR: ahí `?nuevo=1`
+      // es la salida de «ninguna de estas es», y significa lo mismo --abrir
+      // una ficha nueva a sabiendas de que hay otras con ese documento--. Sin
+      // esta mitad, ese botón devolvería a la misma lista para siempre.
+      cuentaSeparada={(ficha != null || varias.length > 0) && nuevo === "1"}
       // TODAS las líneas del pedido con su precio: es lo que decide si este
       // registro deja algo debiendo y, con eso, si sale el aviso de «mala
       // paga». Ver `quedaFiado`.
