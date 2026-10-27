@@ -14,7 +14,7 @@ import { isProductDetailRoute } from "@/lib/products/routes";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
-import { useCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
+import { usePantallaVacia } from "@/components/dashboard/pantalla-vacia";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -374,8 +374,8 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // dueño el 2026-10-20: ese estado vacío estrena su propio botón «Crear
   // producto» de ancho completo (frame `1500:9705`), y los dos a la vez son
   // dos controles con la misma etiqueta a cinco centímetros en una pantalla
-  // que solo pide que uses uno. Ver `catalogo-vacio.ts`.
-  const catalogoVacio = useCatalogoVacio();
+  // que solo pide que uses uno. Ver `pantalla-vacia.ts`.
+  const pantallaVacia = usePantallaVacia();
   const agregarHref = "/productos/nuevo";
   const agregarLabel = enCatalogo ? "Crear producto" : "Registrar";
 
@@ -694,10 +694,10 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `enTransaccion` NO entra aquí: esa pantalla se va entera por el
           `return null` de arriba, así que nombrarla otra vez sería una
           condición que no se puede dar. */}
-      {/* `catalogoVacio` se suma a la lista: con el estado vacío del catálogo
+      {/* `pantallaVacia` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
-          `catalogo-vacio.ts`, y el comentario de `catalogoVacio` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !catalogoVacio && !enAbonoRegistrado && !enVentaRegistrada && (
+          `pantalla-vacia.ts`, y el comentario de `pantallaVacia` arriba. */}
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its

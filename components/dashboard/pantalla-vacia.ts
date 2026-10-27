@@ -2,17 +2,25 @@
 
 import { useSyncExternalStore } from "react";
 
-// ¿ESTÁ EL CATÁLOGO ENSEÑANDO SU ESTADO VACÍO?
+// ¿ESTÁ LA PANTALLA ENSEÑANDO SU ESTADO VACÍO?
 //
-// Lo produce `CatalogTable`, que es la única que lo sabe, y lo consume la
-// barra de abajo para esconder su botón flotante de «Crear producto».
+// Lo produce la pantalla, que es la única que lo sabe, y lo consume la barra
+// de abajo para esconder su botón flotante.
 //
-// Instrucción del dueño el 2026-10-20, marcada por él como importante:
-// *«mientras el empty state sea visible en esa pantalla, el botón flotante de
-// "Crear producto" no será visible»*. Y tiene razón: desde ese día el estado
-// vacío lleva su propio botón de ancho completo (frame `1500:9705`), así que
-// con los dos a la vez habría DOS controles con la misma etiqueta a cinco
-// centímetros, en una pantalla cuyo único contenido es pedir que uses uno.
+// ───────────────────────────────────────────────────────────────────────
+// EL DUEÑO LO HA PEDIDO DOS VECES, Y LA SEGUNDA GENERALIZÓ ESTE ARCHIVO
+//
+// 2026-10-20, para el catálogo y marcado por él como importante: *«mientras
+// el empty state sea visible en esa pantalla, el botón flotante de "Crear
+// producto" no será visible»*. Desde ese día el estado vacío lleva su propio
+// botón de ancho completo (frame `1500:9705`), así que con los dos a la vez
+// habría DOS controles con la misma etiqueta a cinco centímetros, en una
+// pantalla cuyo único contenido es pedir que uses uno.
+//
+// 2026-10-27, para Reportes: *«al estar visible el empty state el botón
+// flotante "Registrar" no debe ser visible»*. Mismo razonamiento, otra
+// pantalla -- que es justo por lo que esto dejó de llamarse
+// `catalogo-vacio.ts` y la bandera dejó de hablar del catálogo.
 //
 // ===========================================================================
 // POR QUÉ UN ALMACÉN EXTERNO Y NO UN CONTEXTO
@@ -33,7 +41,7 @@ import { useSyncExternalStore } from "react";
 // ===========================================================================
 // SE APAGA AL DESMONTAR, Y ESO NO ES OPCIONAL
 //
-// Si la bandera se quedara encendida al salir del catálogo, el botón
+// Si la bandera se quedara encendida al salir de la pantalla, el botón
 // flotante desaparecería de TODA la app hasta recargar. Es literalmente el
 // fallo que `revision-en-curso.tsx` cuenta haber medido el 2026-09-21 con
 // una libreta de 23 filas: el dueño sin navegación y sin nada que explique
@@ -41,7 +49,7 @@ import { useSyncExternalStore } from "react";
 let vacio = false;
 const oyentes = new Set<() => void>();
 
-export function marcarCatalogoVacio(v: boolean) {
+export function marcarPantallaVacia(v: boolean) {
   if (vacio === v) return;
   vacio = v;
   for (const o of oyentes) o();
@@ -59,6 +67,6 @@ const leer = () => vacio;
 // se ve; uno que falta deja al tendero sin la acción de la pantalla.
 const leerEnElServidor = () => false;
 
-export function useCatalogoVacio() {
+export function usePantallaVacia() {
   return useSyncExternalStore(subscribe, leer, leerEnElServidor);
 }

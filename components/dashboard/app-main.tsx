@@ -182,7 +182,16 @@ export function AppMain({ children }: { children: React.ReactNode }) {
   // `/productos` A SECAS, sin sus hijos: `/productos/nuevo` y `/productos/
   // <id>/editar` ya entran por `enAsistenteDeVenta` y llevan su propia barra
   // pegada abajo, así que sumarles esto les daría 5,5rem de aire muerto.
-  const conFilaQueSeToca = pathname === "/productos";
+  // Y `/reportes`, desde el 2026-10-27: el dueño lo reportó con una captura
+  // del flotante sentado sobre «Mejores pagadores», que es la última sección
+  // de la pantalla y la que termina de leerse.
+  //
+  // POR QUÉ NO LO CAZÓ EL BARRIDO que sí corrí: en reposo esa sección está
+  // BAJO EL PLIEGUE, así que la medición sin desplazar --que es la que la
+  // regla pide, y por buenas razones-- la da por limpia. El barrido al bajar
+  // sí lo marcó y yo lo descarté como ruido de la cabecera pegajosa. La
+  // lección es que una pantalla LARGA necesita las dos medidas, no una.
+  const conFilaQueSeToca = pathname === "/productos" || pathname === "/reportes";
 
   return (
     <main

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
 import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
 import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
@@ -146,6 +147,10 @@ export default async function ReportesPage({
           lleva -- existencias vivas y órdenes de compra--, así que pintarlos
           con lo que hay sería enseñar cifras que describen el día que se
           registró el producto. */}
+      {/* LAS DOS PESTAÑAS EN CONSTRUCCIÓN SON ESTADO VACÍO, así que el
+          flotante también se aparta en ellas -- la instrucción del dueño del
+          2026-10-27 habla del estado vacío, no de una pantalla concreta. */}
+      {apartado !== "facturacion" ? <MarcarPantallaVacia /> : null}
       {apartado === "inventario" ? (
         <EmptyState
           title="Inventario, en camino"

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, CircleAlert, Eye, EyeOff, Users } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { Button } from "@/components/ui/button";
+import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -190,6 +192,30 @@ export function ReportesFacturacion({
   const hayVentas = libros.some((l) => (datos.ventas[l] ?? 0) > 0);
   const hayCartera = libros.some((l) => (datos.porCobrar[l] ?? 0) > 0);
 
+  // ── CUANDO NO HAY NADA, EL FLOTANTE SE APARTA ──────────────────────
+  //
+  // Encargo del dueño el 2026-10-27: *«al estar visible el empty state el
+  // botón flotante "Registrar" no debe ser visible»*. Es el mismo que ya
+  // pidió para el catálogo el 2026-10-20; el porqué entero está en
+  // `pantalla-vacia.ts`.
+  //
+  // «VACÍA» ES LA PESTAÑA ENTERA, no un bloque suelto: con plazos que contar
+  // o pedidos esperando, la pantalla sí tiene algo que decir y su flotante
+  // sigue haciendo falta.
+  const vacia =
+    !hayCartera &&
+    !hayVentas &&
+    datos.pedidosPorAtender === 0 &&
+    datos.mejoresPagadores.length === 0 &&
+    datos.plazos.porVencer + datos.plazos.vencido + datos.plazos.criticos + datos.plazos.malasPagas + datos.plazos.sinPlazo === 0;
+
+  useEffect(() => {
+    marcarPantallaVacia(vacia);
+    // SE APAGA AL SALIR, y eso no es opcional: una bandera que se queda
+    // encendida esconde el flotante en TODA la app hasta recargar.
+    return () => marcarPantallaVacia(false);
+  }, [vacia]);
+
   return (
     <div className="flex flex-col">
       {/* ══ CARTERA ══════════════════════════════════════════════════ */}
@@ -366,7 +392,20 @@ export function ReportesFacturacion({
           <EmptyState
             title="Todavía nadie"
             subtitle={`Nadie al día registró abonos ${periodoTexto}.`}
-          />
+          >
+            {/* EL ESTADO VACÍO OFRECE LA ACCIÓN, no solo informa. Encargo del
+                dueño el 2026-10-27: *«al seleccionar el botón "Registrar
+                abono" debe abrir el flujo de abono»*.
+
+                VA A `/dashboard?nuevo=abono`, que es la MISMA puerta que usa
+                el botón flotante (ver `register-sheet.tsx`). Enlazar
+                directamente a `/abonos/nuevo` sería una segunda entrada al
+                mismo flujo, y el día que esa puerta cambie una de las dos se
+                queda atrás. */}
+            <Button asChild className="h-10 w-full">
+              <Link href="/dashboard?nuevo=abono">Registrar abono</Link>
+            </Button>
+          </EmptyState>
         ) : (
           <ul className="flex flex-col gap-2">
             {datos.mejoresPagadores.map((m) => (

@@ -82,7 +82,12 @@ export function ReportesFechaFiltro({ rango }: { rango: Rango }) {
           // La misma forma y el mismo borde que los chips que sustituye: el
           // relleno del chip es 1,91:1 contra esta cabecera, así que lo que lo
           // hace visible es el borde, no el fondo.
-          className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] border border-brand-field-border px-4 text-sm text-brand-muted transition-colors outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
+          // `self-start` Y `w-fit`: el chip vive dentro de una columna flex, que
+          // estira a sus hijos a lo ancho por defecto. Sin esto ocupaba la
+          // pantalla entera -- reportado por el dueño el 2026-10-27 con una
+          // captura: *«debe apretar el contenido (hug), no ocupar toda la
+          // pantalla»*.
+          className="flex h-[38px] w-fit shrink-0 self-start items-center gap-2 rounded-[10px] border border-brand-field-border px-4 text-sm text-brand-muted transition-colors outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
         >
           {/* EL CHIP DICE QUÉ RANGO HAY PUESTO, no solo «Fecha». Un filtro que
               no dice su valor obliga a abrirlo para saber qué se está mirando,
