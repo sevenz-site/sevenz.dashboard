@@ -34,6 +34,8 @@
   --color-brand-secondary: var(--brand-secondary);
   --color-brand-field: var(--brand-field);
   --color-brand-field-border: var(--brand-field-border);
+  --color-brand-tab-selected: var(--brand-tab-selected);
+  --color-brand-report: var(--brand-report);
   --color-brand-muted: var(--brand-muted);
   --color-money-due: var(--money-due);
   --color-brand-whatsapp: var(--brand-whatsapp);
@@ -108,6 +110,25 @@
      Measured with `npm run qa:contraste`. */
   --brand-field: #525252;
   --brand-field-border: #a1a1a1;
+  /* EL TAB SELECCIONADO del grupo de Reportes (frame `1502:10299`). Fijo y
+     no `--muted-foreground`, aunque Figma lo llame asi: ese token cambia con
+     el tema y esta cabecera NO se invierte, igual que los dos de arriba. Un
+     token que gira dejaria la pildora seleccionada ilegible en un tema, y
+     nadie lo veria hasta cambiarlo.
+
+     #fafafa sobre #737373 da 4,54:1 -- pasa el 4,5 de WCAG AA para texto
+     normal, con poco margen. El texto va a 16px semibold, que NO cuenta como
+     texto grande (hacen falta 18,66 en negrita), asi que ese 4,5 es el piso
+     que aplica. Quien oscurezca esta pildora tiene que volver a medirlo. */
+  --brand-tab-selected: #737373;
+  /* EL NARANJA DE «POR COBRAR» (frame `1752:14798`, icono `report`). Lo pidio
+     el dueno el 2026-10-27 con el color como requisito: *«el color si debe ser
+     el entregado, si el token de color no existe debes crearlo»*.
+
+     NO ES `--brand` (#f66b02), que es el naranja de la marca: este es mas
+     oscuro y existe para un icono sobre fondo claro, donde el de marca se
+     lava. */
+  --brand-report: #bf4c00;
   /* Secondary text on the dark header: subtitles, the back arrow, the filter
      chips' labels. 5,31:1 against `--brand-primary`, so it clears the 4,5 of
      normal text with a little room.

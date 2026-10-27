@@ -2,17 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import {
-  ReportesClientSearch,
-  ReportesPeriodChips,
-} from "@/components/dashboard/reportes-controls";
+import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
+import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
 import { apartadoDe } from "@/lib/reports/apartados";
+import { rangoDe, textoDelRango } from "@/lib/reports/rango";
 import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
 import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
-import type { LendingPeriod } from "@/lib/lending-charts";
 import type { OwnerCountry } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -50,22 +48,24 @@ import type { OwnerCountry } from "@/lib/types";
 //     pantalla ya tenía, que contestan lo mismo con un toque menos.
 // ═══════════════════════════════════════════════════════════════════════
 
-const PERIOD_LABEL: Record<LendingPeriod, string> = {
-  "7d": "los últimos 7 días",
-  "30d": "los últimos 30 días",
-};
-
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string; cliente?: string; tab?: string }>;
+  searchParams: Promise<{
+    periodo?: string;
+    desde?: string;
+    hasta?: string;
+    cliente?: string;
+    tab?: string;
+  }>;
 }) {
-  const { periodo, cliente, tab } = await searchParams;
+  const { periodo, desde, hasta, cliente, tab } = await searchParams;
   // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
   // estos parámetros van en una URL que el dueño puede compartir o teclear
   // mal, y un informe no vale una pantalla caída.
-  const period: LendingPeriod = periodo === "30d" ? "30d" : "7d";
+  const rango = rangoDe({ desde, hasta, periodo });
   const apartado = apartadoDe(tab);
+  const periodoTexto = textoDelRango(rango);
 
   const supabase = await createClient();
   const {
@@ -102,7 +102,7 @@ export default async function ReportesPage({
       ? await cargarFacturacion({
           supabase,
           ownerId: user!.id,
-          period,
+          rango,
           dosLibros: ownerRate !== null,
           clientId: selected?.id ?? null,
         })
@@ -112,7 +112,7 @@ export default async function ReportesPage({
     <div className="flex flex-1 flex-col gap-4">
       <ScreenHeader
         title="Reportes"
-        subtitle={`Comportamiento de clientes y productos durante ${PERIOD_LABEL[period]}.`}
+        subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
         search={
           <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
         }
@@ -122,7 +122,7 @@ export default async function ReportesPage({
           // apartados arriba y el periodo debajo.
           <div className="flex flex-col gap-3">
             <ReportesTabs activo={apartado} />
-            <ReportesPeriodChips period={period} />
+            <ReportesFechaFiltro rango={rango} />
           </div>
         }
       />
@@ -137,7 +137,7 @@ export default async function ReportesPage({
       ) : null}
 
       {apartado === "facturacion" && facturacion ? (
-        <ReportesFacturacion datos={facturacion} periodoTexto={PERIOD_LABEL[period]} />
+        <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} />
       ) : null}
 
       {/* LOS OTROS DOS APARTADOS DICEN QUÉ VAN A ENSEÑAR, y no se dibujan

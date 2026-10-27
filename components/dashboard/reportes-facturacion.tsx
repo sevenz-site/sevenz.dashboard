@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Eye, EyeOff, Users } from "lucide-react";
+import { ChevronRight, CircleAlert, Eye, EyeOff, Users } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -51,16 +51,24 @@ function TarjetaDeMonto({
   valor,
   libro,
   oculto,
+  icono,
 }: {
   rotulo: string;
   valor: number;
   libro: Libro;
   oculto: boolean;
+  // EL FRAME LE RESERVA UNA COLUMNA A LA DERECHA (el «Icons Container» de
+  // `card_total_debt`, 24px de ancho). Entra como ranura y no como un icono
+  // fijo porque cada tarjeta lleva el suyo.
+  icono?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] border px-3 py-3">
-      <span className="text-xs text-muted-foreground">{rotulo}</span>
-      <Monto valor={valor} libro={libro} oculto={oculto} className="text-xl leading-7" />
+    <div className="flex min-w-0 flex-1 items-start gap-2 rounded-[10px] border px-3 py-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="text-xs text-muted-foreground">{rotulo}</span>
+        <Monto valor={valor} libro={libro} oculto={oculto} className="text-xl leading-7" />
+      </div>
+      {icono ? <span className="shrink-0">{icono}</span> : null}
     </div>
   );
 }
@@ -162,6 +170,9 @@ export function ReportesFacturacion({
   periodoTexto,
 }: {
   datos: Facturacion;
+  // YA VIENE CON SU PREPOSICIÓN DENTRO --«del 28 sep al 27 oct», «el 27 oct»--
+  // así que las frases lo pegan tal cual. Escribir «en {periodoTexto}» daba
+  // «en del 28 sep al 27 oct», que se vio en pantalla el 2026-10-27.
   periodoTexto: string;
 }) {
   // ── EL OJO TACHADO DEL FRAME (nodo `1502:10315`) ──────────────────
@@ -200,7 +211,7 @@ export function ReportesFacturacion({
         {!hayCartera && !hayVentas ? (
           <EmptyState
             title="Todavía no hay nada que resumir"
-            subtitle={`No se registraron ventas ni fiados en ${periodoTexto}.`}
+            subtitle={`No se registraron ventas ni fiados ${periodoTexto}.`}
           />
         ) : (
           <div className="flex flex-col gap-3">
@@ -212,6 +223,12 @@ export function ReportesFacturacion({
                   valor={datos.porCobrar[l] ?? 0}
                   libro={l}
                   oculto={oculto}
+                  // EL ICONO DEL FRAME `1752:14798` es `report` -- una
+                  // admiración dentro de un círculo-- en #BF4C00, que es el
+                  // token `--brand-report` creado para esto. `CircleAlert` de
+                  // lucide es la misma forma; el dueño dijo que los iconos que
+                  // pasó son referenciales y el COLOR es el requisito.
+                  icono={<CircleAlert className="size-4 text-brand-report" aria-hidden />}
                 />
               ))}
             </div>
@@ -249,7 +266,7 @@ export function ReportesFacturacion({
           // Va porque sin él tres barras sin eje se leen como dinero, y el
           // porqué de que NO sean dinero está en el cargador: sumar dólares
           // con euros en una barra es el fallo del 2026-10-20.
-          subtitulo={`Cuántas veces se registró cada cosa en ${periodoTexto}.`}
+          subtitulo={`Cuántas veces se registró cada cosa ${periodoTexto}.`}
         />
         <div className="flex flex-col gap-3">
           <Barras
@@ -290,7 +307,26 @@ export function ReportesFacturacion({
             <span className="text-xl leading-7 text-money-due tabular-nums">
               {datos.pedidosPorAtender}
             </span>
-            <span className="min-w-0 flex-1 text-sm">Pedidos por atender</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-sm">Pedidos por atender</span>
+              {/* EL DINERO QUE ESPERA, y es el motivo de la tarjeta. Encargo
+                  del dueño el 2026-10-27: *«mostrar el dinero pendiente por
+                  atender es un cue visual para incentivar a que atienda los
+                  pedidos»*. Un «3» no dice si vale la pena dejar lo que estás
+                  haciendo; un «$240» sí.
+
+                  EN SU MONEDA MÁS GRANDE Y NO SUMADO: en este producto no hay
+                  tasa de euro a dólar, así que un total único sería inventado.
+                  El porqué entero está en `pendingOrdersMoney`. */}
+              {datos.dineroPorAtender ? (
+                <Monto
+                  valor={datos.dineroPorAtender.amount}
+                  libro={datos.dineroPorAtender.currency as Libro}
+                  oculto={oculto}
+                  className="text-xs text-muted-foreground"
+                />
+              ) : null}
+            </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           </Link>
         </div>
@@ -324,12 +360,12 @@ export function ReportesFacturacion({
           // Quien lea la lista sabe por qué sale ese cliente y no otro, y
           // puede decir que el criterio no le sirve, que es justo lo que un
           // placeholder impide.
-          subtitulo={`Quien más abonó en ${periodoTexto}, entre los que están al día.`}
+          subtitulo={`Quien más abonó ${periodoTexto}, entre los que están al día.`}
         />
         {datos.mejoresPagadores.length === 0 ? (
           <EmptyState
             title="Todavía nadie"
-            subtitle={`Nadie al día registró abonos en ${periodoTexto}.`}
+            subtitle={`Nadie al día registró abonos ${periodoTexto}.`}
           />
         ) : (
           <ul className="flex flex-col gap-2">

@@ -37,7 +37,11 @@ export function ReportesTabs({ activo }: { activo: Apartado }) {
     <div
       role="tablist"
       aria-label="Apartados del informe"
-      className="flex w-full items-center gap-0 rounded-[10px] bg-white/10 p-1"
+      // `bg-brand-field` (#525252) Y `rounded-[14px]`, que es lo que el frame
+      // dibuja en `1502:10300`. Antes era `bg-white/10`, inventado: se parecía
+      // y no era el mismo gris, así que el grupo flotaba más claro sobre la
+      // cabecera de lo que debía.
+      className="flex w-full items-center gap-0 rounded-[14px] bg-brand-field p-1"
     >
       {APARTADOS.map((a) => {
         const siguiente = new URLSearchParams(params.toString());
@@ -51,10 +55,21 @@ export function ReportesTabs({ activo }: { activo: Apartado }) {
             role="tab"
             aria-selected={seleccionado}
             className={cn(
-              "flex-1 rounded-lg px-2 py-1.5 text-center text-base transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+              // 33px de alto, `rounded-[10px]` y 16px semibold: las medidas del
+              // frame, nodo `I1502:10300;1233:5201`.
+              "flex h-[33px] flex-1 items-center justify-center rounded-[10px] px-2 text-center text-base font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40",
               seleccionado
-                ? "bg-white text-brand-primary"
-                : "text-brand-muted hover:text-white",
+                ? // LA PÍLDORA SELECCIONADA ES GRIS CON TEXTO BLANCO, no blanca
+                  // con texto oscuro. Lo reportó el dueño el 2026-10-27 con dos
+                  // capturas, la del frame y la mía al lado.
+                  //
+                  // Y LLEVA BORDE Y SOMBRA, que es lo que la separa del grupo:
+                  // #737373 sobre #525252 son 1,65:1 --medido por `npm run qa:contraste`,
+                  // no citado de memoria--, o sea que el relleno solo
+                  // NO distingue la pestaña activa. Quien quite la sombra deja
+                  // tres pestañas que parecen iguales.
+                  "border border-brand-tab-selected bg-brand-tab-selected text-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"
+                : "text-brand-secondary hover:text-white",
             )}
           >
             {a.etiqueta}

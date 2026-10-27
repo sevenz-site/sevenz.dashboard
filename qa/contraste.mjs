@@ -218,6 +218,23 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
   f("placeholder #DADADA a opacidad completa", ratio(sec, campo), AA_TEXTO,
     "es la razon de no usar placeholder:text-muted-foreground");
   f("lupa y aspa, #DADADA", ratio(sec, campo), AA_NO_TEXTO);
+
+  console.log("");
+  console.log("   el grupo de apartados de Reportes (frame 1502:10299)");
+  // La pildora seleccionada: #fafafa sobre #737373. Entra aqui porque la
+  // cabecera de Reportes NO se invierte con el tema, igual que las dos de
+  // arriba, asi que su contraste es fijo y se puede medir de una vez.
+  //
+  // VA EN LA SUITE Y NO SOLO EN UN COMENTARIO: el numero estaba escrito en
+  // `globals.css` el 2026-10-27 y una cifra que solo vive en prosa es una que
+  // nadie vuelve a comprobar cuando alguien oscurece la pildora.
+  const tabSel = hexASrgb("#737373");       // --brand-tab-selected
+  const casiBlanco = hexASrgb("#fafafa");
+  f("texto del tab seleccionado, #FAFAFA sobre #737373", ratio(casiBlanco, tabSel), AA_TEXTO,
+    "16px semibold NO es texto grande: el piso que aplica es 4,5");
+  f("tab seleccionado contra el grupo #525252", ratio(tabSel, campo), AA_NO_TEXTO,
+    "por eso la pildora lleva sombra: sola no se distingue");
+  f("texto del tab sin seleccionar, #DADADA sobre #525252", ratio(sec, campo), AA_TEXTO);
   // THE PLACEHOLDER CANNOT BE DIMMED. It is what every input in this repo does
   // by default, and here it fails at ANY opacity — even at 80%.
   for (const a of [0.5, 0.6, 0.7, 0.8]) {

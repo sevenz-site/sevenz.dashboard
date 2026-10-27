@@ -118,6 +118,12 @@ export function estaDescartado(order: Pick<CatalogOrderRow, "status">): boolean 
 
 // The number the bell and the Catálogo link both show: orders NOT registered. A `head: true` count
 // so it never drags the rows across just to say how many there are.
+// QUÉ ES «SIN ATENDER», EN UN SITIO. La lista la leen el contador de la
+// campana y el dinero que Reportes enseña a su lado: si cada uno la escribiera,
+// el día que se añada un estado la pantalla diría «5 pedidos» y «$0
+// pendientes» sin que nada falle.
+const ESTADOS_YA_ATENDIDOS = "(registered,discarded)";
+
 export async function countUnregisteredOrders(
   supabase: SupabaseClient,
   ownerId: string,
@@ -126,7 +132,7 @@ export async function countUnregisteredOrders(
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", ownerId)
-    .not("status", "in", "(registered,discarded)");
+    .not("status", "in", ESTADOS_YA_ATENDIDOS);
 
   // A failure counts as zero rather than throwing: this number decorates a
   // link and a bell, and neither is worth taking a screen down for. The real
@@ -136,6 +142,49 @@ export async function countUnregisteredOrders(
     return 0;
   }
   return count ?? 0;
+}
+
+// CUÁNTO DINERO ESPERA EN LOS PEDIDOS SIN ATENDER, en su moneda más grande.
+//
+// Encargo del dueño el 2026-10-27: *«debe mostrar el total del dinero
+// pendiente por atender (la mayor moneda), ya que mostrar el dinero pendiente
+// por atender es un cue visual para incentivar a que atienda los pedidos»*.
+//
+// «LA MAYOR MONEDA» Y NO UNA SUMA, y eso no es una simplificación: en este
+// producto NO existe una tasa de euro a dólar --solo BCV a bolívares-- así que
+// un total único sería una cifra inventada. Es la misma regla que
+// `totalsByCurrency` lleva escrita desde el 2026-10-14.
+//
+// LO QUE CUESTA, dicho entero: con pedidos en dos monedas, la tarjeta enseña
+// SOLO la mayor, así que el dinero que espera es MÁS del que se lee. Preferir
+// eso a inventar un total es deliberado -- una cifra baja de más empuja a
+// atender igual; una inventada no se puede ni comprobar.
+export async function pendingOrdersMoney(
+  supabase: SupabaseClient,
+  ownerId: string,
+): Promise<{ currency: string; amount: number } | null> {
+  const { data: ordenes, error } = await supabase
+    .from("catalog_orders")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .not("status", "in", ESTADOS_YA_ATENDIDOS);
+  if (error || !ordenes?.length) {
+    if (error) console.error("[orders] dinero sin atender:", error.message);
+    return null;
+  }
+
+  const { data: items } = await supabase
+    .from("catalog_order_items")
+    .select("quantity, unit_price, currency")
+    .in("order_id", ordenes.map((o: { id: string }) => o.id))
+    // LAS LÍNEAS BORRADAS NO CUENTAN. El tendero puede quitar una del pedido
+    // antes de registrarlo, y cobrarla aquí diría que espera más dinero del
+    // que el cliente va a pagar.
+    .is("deleted_at", null);
+
+  const porMoneda = totalsByCurrency(items ?? []);
+  if (!porMoneda.length) return null;
+  return porMoneda.reduce((a, b) => (b.amount > a.amount ? b : a));
 }
 
 // WHAT AN ORDER IS WORTH, PER CURRENCY, and never as one total.

@@ -5,8 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { ClientResultList, CLIENT_RESULT_LIMIT } from "@/components/dashboard/client-result-list";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
-import { cn } from "@/lib/utils";
-import type { LendingPeriod } from "@/lib/lending-charts";
 
 // THE TWO CONTROLS OF /reportes, and both of them live in the URL.
 //
@@ -41,44 +39,14 @@ function useParamPush() {
   return { set, isPending };
 }
 
-const PERIODS: { value: LendingPeriod; label: string }[] = [
-  { value: "7d", label: "7 días" },
-  { value: "30d", label: "30 días" },
-];
-
-export function ReportesPeriodChips({ period }: { period: LendingPeriod }) {
-  const { set, isPending } = useParamPush();
-
-  return (
-    <div className="flex gap-2">
-      {PERIODS.map((p) => {
-        const active = p.value === period;
-        return (
-          <button
-            key={p.value}
-            type="button"
-            aria-pressed={active}
-            disabled={isPending}
-            onClick={() => set("periodo", p.value, "replace")}
-            // Same shape as the filter chips on the other three screens, and the
-            // same border: `--brand-field-border` at 1px. The spec drew those in
-            // #525252, which is 1,91:1 against this header — a chip has no fill,
-            // so without a visible edge it is a word floating on a dark block.
-            className={cn(
-              "h-[38px] shrink-0 rounded-[10px] border px-4 text-sm transition-colors",
-              "outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-              active
-                ? "border-white font-medium text-white"
-                : "border-brand-field-border text-brand-muted hover:bg-white/10 hover:text-white",
-            )}
-          >
-            {p.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+// AQUÍ VIVÍAN LOS CHIPS DE 7 Y 30 DÍAS, hasta el 2026-10-27. Los sustituyó el
+// filtro «Fecha» con calendario (`reportes-fecha.tsx`), por encargo del dueño:
+// *«Cambiar filtros 7 días y 30 días por "Fecha"»*. Sus dos atajos siguen
+// existiendo DENTRO de esa hoja, que es donde ahora se eligen.
+//
+// Se borran en vez de dejarlos sin usar: un componente exportado que nadie
+// monta es el que alguien vuelve a montar dentro de un año sin saber que fue
+// reemplazado.
 
 export function ReportesClientSearch({
   clients,

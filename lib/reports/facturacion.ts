@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
-import { lendingFetchWindowStart, type LendingPeriod } from "@/lib/lending-charts";
-import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
+import { diasDelRango, type Rango } from "@/lib/reports/rango";
+import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
 import type { ClientSummary } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -79,6 +79,10 @@ export type Facturacion = {
   serieVentas: PuntoDeVentas[];
   serieTransacciones: PuntoDeTransacciones[];
   pedidosPorAtender: number;
+  // LO QUE ESE DINERO VALE, en su moneda más grande. `null` cuando no hay
+  // pedidos o cuando ninguno tiene líneas vivas. Por qué «la mayor» y no una
+  // suma: ver `pendingOrdersMoney`.
+  dineroPorAtender: { currency: string; amount: number } | null;
   plazos: {
     porVencer: number;
     vencido: number;
@@ -96,39 +100,36 @@ export type Facturacion = {
 const BUCKETS = 7;
 
 const DIA_MS = 24 * 60 * 60 * 1000;
-const DIAS_DEL_PERIODO: Record<LendingPeriod, number> = { "7d": 7, "30d": 30 };
 
 /**
- * Siete cubos sobre la ventana QUE SE DIBUJA, que es lo que el frame pinta en
- * los dos gráficos: con 7 días sale uno por día; con 30, de cuatro en cuatro.
+ * Siete cubos sobre el rango QUE SE DIBUJA, que es lo que el frame pinta en
+ * los dos gráficos.
  *
  * LA VENTANA DE DIBUJO NO ES LA DE DESCARGA, y confundirlas costó un fallo
- * medido el 2026-10-27: `lendingFetchWindowStart` añade DOS DÍAS de holgura a
- * propósito --lo dice su propio comentario-- para que un movimiento pegado al
- * borde no se quede fuera de la consulta. Usarla para repartir los cubos hacía
- * que siete cubos cubrieran NUEVE días, y las etiquetas salían «Dom Lun Mié
- * Jue Vie Dom Lun»: días repetidos y días que faltaban, en una fila de barras
- * que se lee como una semana.
- *
- * Así que se descarga con holgura y se dibuja sobre los N días exactos.
+ * medido el 2026-10-27: se repartían los cubos sobre la ventana de consulta,
+ * que lleva DOS DÍAS de holgura a propósito para que un movimiento pegado al
+ * borde no se quede fuera. Siete cubos cubrían nueve días y las etiquetas
+ * salían «Dom Lun Mié Jue Vie Dom Lun»: días repetidos y días que faltaban,
+ * en una fila de barras que se lee como una semana.
  */
-function cubos(period: LendingPeriod, hasta: Date): { inicio: number; fin: number; etiqueta: string }[] {
-  const dias = DIAS_DEL_PERIODO[period];
-  const desde = hasta.getTime() - dias * DIA_MS;
-  const paso = (dias * DIA_MS) / BUCKETS;
+function cubos(rango: Rango): { inicio: number; fin: number; etiqueta: string }[] {
+  const dias = diasDelRango(rango);
+  const desde = rango.desde.getTime();
+  const total = rango.hasta.getTime() - desde;
+  const paso = total / BUCKETS;
   const nombreDelDia = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const mes = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
   return Array.from({ length: BUCKETS }, (_, i) => {
     const inicio = desde + paso * i;
-    const fin = i === BUCKETS - 1 ? hasta.getTime() + 1 : desde + paso * (i + 1);
+    const fin = i === BUCKETS - 1 ? rango.hasta.getTime() + 1 : desde + paso * (i + 1);
     const d = new Date(inicio);
-    // EL NOMBRE DEL DÍA SOLO SIRVE SI LA BARRA ES UN DÍA. Con 30 días cada
-    // cubo son cuatro, y «Mar» dejaría de significar nada -- es la misma razón
-    // que `computeMonthlyFiadoAbono` ya tenía escrita para rotular «12 oct».
+    // EL NOMBRE DEL DÍA SOLO SIRVE SI LA BARRA ES UN DÍA. Con un rango largo
+    // cada cubo son varios y «Mar» dejaría de significar nada -- es la misma
+    // razón que `computeMonthlyFiadoAbono` ya tenía escrita para rotular
+    // «12 oct». El corte en 8 y no en 7 deja que una semana justa --que es el
+    // rango que más se mira-- siga rotulando con días.
     const etiqueta =
-      period === "7d"
-        ? nombreDelDia[d.getDay()]
-        : `${d.getDate()} ${mes[d.getMonth()]}`;
+      dias <= 8 ? nombreDelDia[d.getDay()] : `${d.getDate()} ${mes[d.getMonth()]}`;
     return { inicio, fin, etiqueta };
   });
 }
@@ -147,22 +148,24 @@ function libroDeMovimiento(currency: string | null): Libro {
 export async function cargarFacturacion({
   supabase,
   ownerId,
-  period,
+  rango,
   /** `true` en un negocio venezolano, que lleva dos libros. */
   dosLibros,
   /** Filtra todo por un cliente, como el `?cliente=` que ya tenía la pantalla. */
   clientId = null,
-  ahora = new Date(),
 }: {
   supabase: SupabaseClient;
   ownerId: string;
-  period: LendingPeriod;
+  rango: Rango;
   dosLibros: boolean;
   clientId?: string | null;
-  ahora?: Date;
 }): Promise<Facturacion> {
-  const desdeIso = lendingFetchWindowStart(period, ahora);
-  const cs = cubos(period, ahora);
+  // DOS DÍAS DE HOLGURA EN LA CONSULTA, y ni uno en el dibujo. Los cubos
+  // reparten el rango exacto; la consulta pide un poco más por los bordes,
+  // que es la misma razón que `lendingFetchWindowStart` ya tenía escrita.
+  const desdeIso = new Date(rango.desde.getTime() - 2 * DIA_MS).toISOString();
+  const hastaIso = new Date(rango.hasta.getTime() + 2 * DIA_MS).toISOString();
+  const cs = cubos(rango);
   const libros: Libro[] = dosLibros ? ["USD", "EUR"] : ["COP"];
 
   // LAS VENTAS SE PIDEN PRIMERO porque sus líneas y sus pagos cuelgan de sus
@@ -173,7 +176,8 @@ export async function cargarFacturacion({
     .select("id, created_at, catalog_order_id, client_id")
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
-    .gte("created_at", desdeIso);
+    .gte("created_at", desdeIso)
+    .lte("created_at", hastaIso);
   if (clientId) qVentas = qVentas.eq("client_id", clientId);
 
   let qMov = supabase
@@ -181,7 +185,8 @@ export async function cargarFacturacion({
     .select("type, amount, currency, created_at, client_id")
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
-    .gte("created_at", desdeIso);
+    .gte("created_at", desdeIso)
+    .lte("created_at", hastaIso);
   if (clientId) qMov = qMov.eq("client_id", clientId);
 
   let qResumen = supabase.from("client_summary").select("*").eq("owner_id", ownerId);
@@ -193,8 +198,14 @@ export async function cargarFacturacion({
   // de saber cuál miente. Además cuenta por `status`, no por fechas, que es el
   // estado actual -- lo correcto aquí: un pedido sin atender lo está hoy,
   // caiga o no dentro de la ventana del informe.
-  const [{ data: ventas }, { data: movimientos }, { data: resumenes }, pedidos] =
-    await Promise.all([qVentas, qMov, qResumen, countUnregisteredOrders(supabase, ownerId)]);
+  const [{ data: ventas }, { data: movimientos }, { data: resumenes }, pedidos, dineroPorAtender] =
+    await Promise.all([
+      qVentas,
+      qMov,
+      qResumen,
+      countUnregisteredOrders(supabase, ownerId),
+      pendingOrdersMoney(supabase, ownerId),
+    ]);
 
   const idsDeVenta = (ventas ?? []).map((v) => v.id as string);
   const deCatalogo = new Set(
@@ -241,14 +252,29 @@ export async function cargarFacturacion({
   for (const li of lineas ?? []) {
     const libro = (li.currency as Libro) ?? "COP";
     if (!libros.includes(libro)) continue;
+
+    // ── LA HOLGURA NO CUENTA EN LOS TOTALES ──────────────────────────
+    //
+    // La consulta pide DOS DÍAS de más por cada punta, para que un movimiento
+    // pegado al borde no se pierda al repartir los cubos. Sumar todo lo
+    // descargado mete esos días en la cifra grande.
+    //
+    // MEDIDO EL 2026-10-27, y es la clase de fallo que no se ve: con el rango
+    // puesto en 20-27 oct la pantalla decía $12.142,00 y la base decía
+    // $11.959,00. Los 183 dólares de diferencia eran ventas de los días de
+    // holgura. No hay error, no hay hueco: solo un informe que no contesta lo
+    // que su propio filtro promete. Se cazó comparando contra la base, no
+    // mirando la pantalla.
+    const cuando = cuandoSeVendio.get(li.sale_id as string);
+    const i = cuando ? cuboDe(cs, cuando) : -1;
+    if (i < 0) continue;
+
     const total = Number(li.quantity) * Number(li.unit_price);
     ventasPorLibro[libro] = (ventasPorLibro[libro] ?? 0) + total;
     if (deCatalogo.has(li.sale_id as string)) {
       catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) + total;
     }
-    const cuando = cuandoSeVendio.get(li.sale_id as string);
-    const i = cuando ? cuboDe(cs, cuando) : -1;
-    if (i >= 0) serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) + total;
+    serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) + total;
   }
 
   // ── TRANSACCIONES: RECUENTOS, no importes. La razón, arriba. ───────
@@ -313,6 +339,10 @@ export async function cargarFacturacion({
     if (m.type !== "payment") continue;
     const libro = libroDeMovimiento(m.currency as string | null);
     if (!libros.includes(libro)) continue;
+    // Fuera del rango no cuenta, por la misma razón que las ventas de arriba:
+    // los dos días de holgura son para los bordes del gráfico, no para las
+    // cifras.
+    if (cuboDe(cs, m.created_at as string) < 0) continue;
     const k = m.client_id as string;
     const antes = pagadoPor.get(k);
     // EL LIBRO ES EL DEL PAGO MÁS GRANDE, no una suma de los dos: sumar
@@ -363,6 +393,7 @@ export async function cargarFacturacion({
     serieVentas,
     serieTransacciones,
     pedidosPorAtender: pedidos,
+    dineroPorAtender,
     plazos,
     mejoresPagadores,
   };
