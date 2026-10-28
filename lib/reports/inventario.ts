@@ -88,7 +88,16 @@ export type Inventario = {
   capital: { currency: string; amount: number } | null;
   /** Igual, pero solo de lo que está por agotarse. */
   capitalPorAgotarse: { currency: string; amount: number } | null;
-  /** Cuántos de los que tienen existencias NO tienen costo escrito. */
+  /**
+   * Cuántos productos vivos NO tienen costo escrito.
+   *
+   * TODOS, no solo los que tienen existencias. Cambió el 2026-10-28 con el
+   * frame `1786:15280`, cuyo texto dice la consecuencia: *«Deben tener ese
+   * dato para poder monitorear el margen»*. Y el margen aplica a cualquier
+   * producto -- tenga existencias o no, se haya vendido o no--, así que
+   * contar solo los que tienen stock daría un número más pequeño que la
+   * frase que lo acompaña.
+   */
   sinCosto: number;
   /**
    * En cuántas monedas distintas hay mercancía.
@@ -161,6 +170,11 @@ export async function cargarInventario({
   const porAgotarsePorMoneda: Record<string, number> = {};
 
   for (const p of productos) {
+    // SOBRE TODOS LOS VIVOS y fuera del `if` de las existencias: ver la nota
+    // del campo. Un producto sin existencias tampoco tiene margen que vigilar
+    // si no lleva costo.
+    if (p.cost == null) sinCosto++;
+
     const cantidad = p.stock_opening == null ? null : Number(p.stock_opening);
     if (cantidad == null) {
       sinContar++;
@@ -175,9 +189,7 @@ export async function cargarInventario({
 
     if (cantidad > 0) {
       const costo = p.cost == null ? null : Number(p.cost);
-      if (costo == null) {
-        sinCosto++;
-      } else {
+      if (costo != null) {
         // `cost_currency_other` es texto libre para una moneda que no está en
         // la lista. Se respeta tal cual en vez de aplanarla a la de la casa:
         // mezclarla sería inventar una conversión que nadie pidió.

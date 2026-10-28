@@ -362,6 +362,49 @@ export function ReportesInventario({
           </div>
         ) : null}
 
+        {/* ══ Y LOS QUE NO TIENEN COSTO, SU PROPIA ALERTA ════════════
+            Frame `1786:15280`, leido el 2026-10-28 en cuanto el puente de
+            escritorio volvio.
+
+            ESTO DESHACE LO QUE HICE UNAS HORAS ANTES. Yo habia ELIMINADO este
+            aviso, porque los puntos 2 y 3 de su lista se contradecian --uno
+            pedia sustituirlo por un frame y el otro borrarlo-- y elegi el
+            inequivoco. El frame, al poder leerse, zanja cual era: sustituirlo.
+
+            Y SU TEXTO CORRIGE EL MIO EN LO QUE IMPORTA. El mio decia que esos
+            productos «no cuentan en la mercancia»; el suyo dice que sin costo
+            no se puede vigilar EL MARGEN. Son dos consecuencias distintas y la
+            suya es la que de verdad duele: el capital en mercancia es una
+            cifra informativa, y el margen es lo que dice si un producto deja
+            dinero.
+
+            POR ESO LA CUENTA CAMBIO TAMBIEN: antes eran «los que tienen
+            existencias y no tienen costo»; ahora son TODOS los que no tienen
+            costo. El margen aplica a un producto tenga o no existencias, asi
+            que la cuenta vieja habria dado un numero mas pequeno que la frase
+            que lo acompana. */}
+        {datos.sinCosto > 0 ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
+            <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <p className="font-semibold">
+                  {datos.sinCosto === 1
+                    ? "1 producto no tiene especificado su costo."
+                    : `${datos.sinCosto} productos no tienen especificado su costo.`}
+                </p>
+                <p>Deben tener ese dato para poder monitorear el margen.</p>
+              </div>
+              <Link
+                href="/productos"
+                className="w-fit text-sm underline-offset-2 hover:underline"
+              >
+                Ver productos
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
         {/* ── LO DE LAS MONEDAS SE QUEDA COMO ESTA, Y SE DICE POR QUE ──
             Su cambio pedia el frame `1786:15280` y ese dia la cuenta de
             Figma habia agotado su cupo de lecturas, asi que NO se pudo
@@ -424,11 +467,33 @@ export function ReportesInventario({
           venta no apunta a ningún producto, así que «más vendidos» estaría
           describiendo solo una parte de lo que vendió -- y nada en pantalla
           lo delataría. */}
+      {/* ── ESTA FRASE DECIA UNA CAUSA QUE LA APP NO PUEDE SABER ──────
+          Decia «se escribieron a mano, sin producto del catalogo». El dueno
+          la cuestiono el 2026-10-28 --*«al registrar un producto durante una
+          venta ya se esta agregando un nuevo producto en el inventario»*-- y
+          al ir a comprobarlo resulto que tiene razon, y mas de lo que decia:
+          **la venta NO PUEDE crear una linea sin producto**. El tipo de
+          entrada de `registrarVenta` exige `productId: string`, y «Agregar
+          producto» crea un producto de verdad antes de meterlo al carrito.
+
+          ENTONCES, ¿DE DONDE SALEN? De `on delete set null`: si un producto
+          se borra EN DURO, sus lineas vendidas pierden la referencia. Un
+          producto mandado a la papelera no cuenta -- conserva su id, asi que
+          sus ventas siguen sumando y la pantalla lo nombra «Producto
+          borrado».
+
+          O sea que la frase vieja afirmaba un origen --el tendero tecleandolo
+          a mano-- que hoy no existe. Las 9 que se veian en dev son filas de
+          fixtures de QA metidas directamente en la base.
+
+          SE QUEDA LA NOTA, con la causa corregida: el caso sigue siendo
+          posible y, cuando ocurra, el ranking estara describiendo menos
+          ventas de las que hubo sin que nada lo delate. */}
       {datos.lineasSueltas > 0 ? (
         <p className="pt-2 text-xs leading-4 text-muted-foreground">
           {datos.lineasSueltas === 1
-            ? "1 línea vendida se escribió a mano, sin producto del catálogo, así que no aparece aquí."
-            : `${datos.lineasSueltas} líneas vendidas se escribieron a mano, sin producto del catálogo, así que no aparecen aquí.`}
+            ? "1 línea vendida es de un producto que ya no está en tu catálogo, así que no aparece en este ranking. Su dinero sí cuenta en Ventas."
+            : `${datos.lineasSueltas} líneas vendidas son de productos que ya no están en tu catálogo, así que no aparecen en este ranking. Su dinero sí cuenta en Ventas.`}
         </p>
       ) : null}
     </div>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+
 import Link from "next/link";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
+import { useHiddenBalances } from "@/hooks/use-hidden-balances";
 import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -40,16 +41,29 @@ import { cn } from "@/lib/utils";
 // haciendo que la cifra de destino sea la misma, no rotulándola.
 //
 // ───────────────────────────────────────────────────────────────────────
-// EL OJO SOLO TAPA EL DINERO
+// EL OJO SOLO TAPA EL DINERO, Y TAPA EL DE TODA LA PANTALLA
 //
 // Lo dibuja el frame en «Ventas» y no en «Pedidos», y tiene sentido: lo que se
 // esconde del cliente que está al otro lado del mostrador es cuánto factura el
 // negocio, no cuántos pedidos tiene sin atender.
 //
-// ES SU PROPIO ESTADO y no el de la tarjeta de «Por cobrar» de arriba: son dos
-// cifras distintas y el tendero puede querer tapar una y no la otra. No se
-// guarda entre visitas a propósito — un ojo que recuerda deja el Inicio en
-// blanco mañana y parece que la app no cargó.
+// ── ESTO DESPLAZA LO QUE YO HABÍA ESCRITO AQUÍ EL 2026-10-28 ──────────
+//
+// Decía: *«ES SU PROPIO ESTADO y no el de la tarjeta de "Por cobrar": son dos
+// cifras distintas y el tendero puede querer tapar una y no la otra»*. El
+// dueño lo corrigió ese mismo día: **cualquiera de los dos ojos tapa las dos
+// cifras**.
+//
+// Y tiene razón por algo que yo no había mirado: este ojo existe para que el
+// cliente que está delante del mostrador NO vea el dinero del negocio. Tapar
+// una tarjeta y dejar la otra con su cifra en verde a dos dedos no esconde
+// nada -- es un gesto que da sensación de privacidad sin darla, que es peor
+// que no tenerlo.
+//
+// Por eso usa `useHiddenBalances`, el mismo almacén que la tarjeta de «Por
+// cobrar» lleva usando desde siempre. Ese sí recuerda entre visitas, en
+// `localStorage`: es lo que ya hacía, y partirlo en dos comportamientos
+// --uno que recuerda y otro que no-- sería un tercer estado que explicar.
 // ═══════════════════════════════════════════════════════════════════════
 
 /** El armazón que las dos comparten: título, icono, cifra, pie y chevron. */
@@ -115,7 +129,7 @@ export function InicioResumenCards({
   tasa: number | null;
   sinAtender: number;
 }) {
-  const [oculto, setOculto] = useState(false);
+  const [oculto, alternarOculto] = useHiddenBalances();
 
   return (
     <div className="flex gap-3.5">
@@ -135,13 +149,13 @@ export function InicioResumenCards({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setOculto((v) => !v);
+              alternarOculto();
             }}
             onKeyDown={(e) => {
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
               e.stopPropagation();
-              setOculto((v) => !v);
+              alternarOculto();
             }}
             className="-m-1 shrink-0 rounded p-1 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
