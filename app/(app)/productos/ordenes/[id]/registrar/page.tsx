@@ -252,6 +252,9 @@ export default async function RegistrarPedidoPage({
             key={`quitada-${moneda}`}
             pedidoId={pedido.id}
             moneda={moneda as PriceCurrency}
+            // SIGUE HABIENDO BLOQUE DE ESA MONEDA: entonces no se elimino el
+            // pedido en esa moneda, solo parte. Ver la tarjeta.
+            bloqueVivo={bloques.some((b) => b.moneda === moneda)}
             cuantosProductos={cuantos}
           />
         ))}

@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Trash2 } from "lucide-react";
 import { aplicarEdicionDeLinea, type LineaDelPedidoParaEditar } from "@/lib/orders/editar-linea";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { formatCantidad } from "@/lib/products/cantidad";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { quitarLineaDelPedido } from "@/app/(app)/productos/ordenes/actions";
 import { cn } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -54,8 +57,13 @@ import { cn } from "@/lib/utils";
 // EL MÍNIMO ES 1 Y NO 0
 //
 // Bajar a cero no es «quitar la línea»: una línea de cero se registraría como
-// una venta de nada. Quitar un producto del pedido es otra acción --vive en la
-// hoja de «Cambiar»-- y mezclarlas haría que el «−» borrara cosas sin decirlo.
+// una venta de nada. Quitar el producto es una acción aparte, y desde el
+// 2026-10-28 la hace la PAPELERA que sustituye al «−» en el mínimo.
+//
+// ESTE COMENTARIO DECÍA OTRA COSA Y ERA FALSO: afirmaba que quitar un
+// producto «vive en la hoja de Cambiar». No vivía en ninguna parte -- esa
+// hoja cambia la moneda y el escalón, y hasta hoy lo único que se podía
+// quitar era una MONEDA entera.
 // ═══════════════════════════════════════════════════════════════════════
 
 const MINIMO = 1;
@@ -70,6 +78,7 @@ export function OrderLineStepper({
   producto,
   rates,
   lineasDelPedido,
+  sePuedeQuitar,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -79,8 +88,20 @@ export function OrderLineStepper({
   producto: ProductoPublico;
   rates: BolivarRates | null;
   lineasDelPedido: LineaDelPedidoParaEditar[];
+  // ── ¿SE PUEDE QUITAR ESTA LINEA? ──────────────────────────────────
+  //
+  // `false` cuando es la unica viva del pedido: entonces la papelera sale
+  // deshabilitada. Un pedido sin nada no se puede registrar y no tiene nada
+  // que ensenar -- es la misma razon por la que no se quita la ultima moneda,
+  // decidida por el dueno el 2026-10-26.
+  //
+  // LO DECIDE LA PAGINA porque la pregunta es sobre el PEDIDO entero y esta
+  // fila solo conoce la suya. La accion del servidor lo vuelve a comprobar:
+  // esto puede ser una pestana vieja.
+  sePuedeQuitar: boolean;
 }) {
   const router = useRouter();
+  const [quitando, startQuitar] = useTransition();
   const borrador = useBorrador(pedidoId);
   const editada = borrador?.editadas?.[lineaId];
   const cantidad = editada?.quantity ?? cantidadPedida;
@@ -120,15 +141,53 @@ export function OrderLineStepper({
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <button
+      {/* ── EN EL MINIMO, LA PAPELERA ────────────────────────────────
+          Encargo del dueno el 2026-10-28: *«cuando el producto es cantidad 1,
+          el boton deshabilitado "−" debe ser boton destructive delete igual
+          que en el carrito»*.
+
+          ES EL MISMO CODIGO QUE EL CARRITO --`variant` destructive/outline,
+          `size-10 rounded-xl`, `Trash2` o `Minus`-- a proposito: lo que pidio
+          es que se vean IGUAL, y dos maquetaciones parecidas escritas aparte
+          se separan en cuanto alguien retoca una.
+
+          UN «−» DESHABILITADO NO DICE NADA. Era lo que habia: en el minimo el
+          boton se apagaba y la unica forma de sacar un producto del pedido
+          era quitar su moneda entera -- que con un solo producto en esa
+          moneda es lo mismo, y con tres se lleva los otros dos por delante.
+
+          SIN DIALOGO, como el carrito. Y aqui ademas tiene vuelta atras: la
+          tarjeta de «Restaurar» aparece debajo. Lo que SI conviene saber es
+          que esa tarjeta devuelve TODO lo quitado de esa moneda, no solo esta
+          linea. */}
+      <Button
         type="button"
-        aria-label="Quitar uno"
-        disabled={cantidad <= MINIMO}
-        onClick={() => guardar(cantidad - 1)}
-        className={cn(caja, "transition-colors active:bg-accent disabled:opacity-40")}
+        variant={cantidad <= MINIMO ? "destructive" : "outline"}
+        size="icon"
+        className="size-10 shrink-0 rounded-xl"
+        disabled={quitando || (cantidad <= MINIMO && !sePuedeQuitar)}
+        aria-label={cantidad <= MINIMO ? "Quitar del pedido" : "Quitar uno"}
+        onClick={() => {
+          if (cantidad > MINIMO) {
+            guardar(cantidad - 1);
+            return;
+          }
+          startQuitar(async () => {
+            const r = await quitarLineaDelPedido(pedidoId, lineaId);
+            if (!r.ok) {
+              toast.error(r.error);
+              return;
+            }
+            router.refresh();
+          });
+        }}
       >
-        <Minus className="size-4" aria-hidden />
-      </button>
+        {cantidad <= MINIMO ? (
+          <Trash2 className="size-4" aria-hidden />
+        ) : (
+          <Minus className="size-4" aria-hidden />
+        )}
+      </Button>
       <input
         type="text"
         inputMode="decimal"

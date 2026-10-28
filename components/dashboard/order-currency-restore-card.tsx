@@ -40,10 +40,14 @@ export function OrderCurrencyRestoreCard({
   pedidoId,
   moneda,
   cuantosProductos,
+  bloqueVivo = false,
 }: {
   pedidoId: string;
   moneda: PriceCurrency;
   cuantosProductos: number;
+  // ¿La moneda sigue teniendo lineas vivas? `true` cuando se quito solo
+  // parte de ella. Lo decide la PAGINA, que es la que conoce los bloques.
+  bloqueVivo?: boolean;
 }) {
   const router = useRouter();
   const [restaurando, startTransition] = useTransition();
@@ -73,8 +77,20 @@ export function OrderCurrencyRestoreCard({
             porque aqui nombra un libro --«el pedido en Euros»-- no una
             cantidad de dinero. Antes iba en minuscula dentro de «lo de
             euros», que era otra frase. */}
+        {/* ── DOS FRASES, PORQUE SON DOS COSAS ─────────────────────
+            «Eliminaste el pedido en Euros» es el texto del frame
+            `1782:14737` y es verdad cuando se quito la moneda ENTERA.
+
+            DESDE QUE SE PUEDE QUITAR UNA SOLA LINEA --2026-10-28, por la
+            papelera del «−»-- hay otro caso: quitar un producto de un bloque
+            de tres deja el bloque VIVO, ahi mismo, con sus otros dos. Decir
+            «eliminaste el pedido en Euros» con el pedido en euros dibujado
+            dos dedos mas arriba no es un matiz: es la tarjeta
+            contradiciendo a la pantalla. */}
         <p className="truncate text-xs font-semibold">
-          Eliminaste el pedido en {nombre}
+          {bloqueVivo
+            ? `Quitaste ${cuantosProductos === 1 ? "un producto" : "productos"} de ${nombre}`
+            : `Eliminaste el pedido en ${nombre}`}
         </p>
         {/* ── LA SEGUNDA LINEA, TAMBIEN DEL FRAME ──────────────────
             «<00> productos eliminados del pedido».
