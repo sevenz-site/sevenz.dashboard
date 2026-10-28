@@ -56,31 +56,11 @@ export function OrderCurrencyBlockCard({
   rates,
   hrefRegistrar,
   sePuedeQuitar,
-  ultimaPorRegistrar = false,
 }: {
   pedidoId: string;
   bloque: BloqueDeMoneda;
   rates: BolivarRates | null;
   hrefRegistrar: string;
-  // ── ¿ES LA ÚLTIMA QUE QUEDA POR REGISTRAR? ────────────────────────
-  //
-  // Solo cambia el ROTULO del botón, y eso basta para cerrar una trampa real.
-  //
-  // REPORTADO POR EL DUEÑO EL 2026-10-28, con esta frase: *«el flujo se rompe,
-  // no se puede completar el pedido»*. Su caso: pedido en dos monedas, pone el
-  // monto de una, quita la otra -- y la pantalla se queda con «Editar» y
-  // «Restaurar» y nada más.
-  //
-  // **NO ESTABA ROTO, y eso se midió**: tocando «Editar» -> «Confirmar y
-  // continuar» -> «Pagar» la venta se registra. Lo que pasa es peor de lo que
-  // parece, porque no avisa: la ÚNICA salida para TERMINAR el pedido es un
-  // botón con un lápiz que promete MODIFICARLO. Nadie lo toca para acabar.
-  //
-  // Por eso el arreglo es el rótulo y no un botón nuevo: un segundo control
-  // que escriba la venta desde aquí sería un segundo camino hacia el dinero
-  // --y tendría que repetir el aviso de mala paga, que ya vive en dos sitios--.
-  // El camino sigue siendo uno; lo que cambia es que ahora dice a dónde va.
-  ultimaPorRegistrar?: boolean;
   // ── ¿SE PUEDE QUITAR ESTA MONEDA? ─────────────────────────────────
   //
   // `false` cuando es la única que le queda al pedido: entonces el botón no
@@ -193,20 +173,18 @@ export function OrderCurrencyBlockCard({
             asChild
           >
             <Link href={hrefRegistrar}>
-              {yaTieneMonto && !ultimaPorRegistrar ? (
-                <Pencil className="size-5" />
-              ) : (
-                <Plus className="size-5" />
-              )}
-              {/* TRES RÓTULOS Y NO DOS. «Editar» solo cuando queda otra
-                  moneda detrás: entonces sí es volver a tocar algo que ya
-                  está puesto. Siendo la última, lo que ese botón hace es
-                  ACABAR el pedido, y decirlo es lo único que faltaba. */}
-              {!yaTieneMonto
-                ? "Registrar"
-                : ultimaPorRegistrar
-                  ? "Registrar y finalizar"
-                  : "Editar"}
+              {yaTieneMonto ? <Pencil className="size-5" /> : <Plus className="size-5" />}
+              {/* ── «EDITAR» SE QUEDA, Y ESO CORRIGE LO DE ESTA MAÑANA ──
+                  El 2026-10-28 puse aquí «Registrar y finalizar» cuando era
+                  la última moneda, para cerrar un camino que no se veía. El
+                  dueño lo revisó ese mismo día con su frame `1782:14792` y
+                  decidió otra cosa, mejor: el botón de ACABAR va abajo, a lo
+                  ancho de la pantalla, y esta tarjeta conserva su «Editar».
+                  Sus palabras: *«mantener el botón de "Editar" para editar el
+                  pedido en esa moneda»*.
+                  Y tiene razón: este botón edita UNA moneda, y acabar es una
+                  acción sobre el PEDIDO. Dos alcances, dos sitios. */}
+              {yaTieneMonto ? "Editar" : "Registrar"}
             </Link>
           </Button>
         ) : (
