@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -62,6 +64,91 @@ const TITULO: Record<ClavePlazo, string> = {
   sinPlazo: "Sin plazo",
 };
 
+// ═══════════════════════════════════════════════════════════════════════
+// LA HOJA VACÍA — frame `1762:14809`
+//
+// Encargo del dueño el 2026-10-27: *«Al seleccionar cualquiera de las
+// opciones: por vencer, plazo vencido, críticos o malas pagas y no hay
+// clientes para mostrar, muestra el empty state»*.
+//
+// ───────────────────────────────────────────────────────────────────────
+// TRES COSAS DEL FRAME QUE NO SE COPIAN TAL CUAL, Y POR QUÉ
+//
+// 1. **EL FRAME DIBUJA DOS BOTONES Y EL SEGUNDO ESTÁ OCULTO.** Comprobado en
+//    Figma: `outlined_button` («Crear producto») tiene `visible: false`, y por
+//    eso el grupo mide 40px y no 96. Va UNO. Es además lo que el dueño ya
+//    decidió el mismo día para el vacío de «Mejores pagadores», cuyo frame
+//    dibujaba dos: *«déjalo afuera»*.
+// 2. **EL FRAME ESCRIBE «Registar».** Errata; se escribe «Registrar».
+// 3. **EL TÍTULO DEL FRAME NO SIEMPRE ES VERDAD, y eso se preguntó antes de
+//    construir.** «Aún no hay clientes, ventas ni abonos registrados» describe
+//    un negocio recién abierto. Una de estas cuatro hojas sale vacía también
+//    cuando el negocio va BIEN --cero malas pagas con cuarenta clientes al día
+//    es la mejor noticia posible-- y ahí esa frase es falsa.
+//
+//    EL PEOR CASO si se copiara tal cual: el tendero con todo en orden abre
+//    «Malas pagas», la app le dice que no ha registrado nada, y lo que concluye
+//    es que perdió sus datos. Un fallo que no revienta y que destruye la
+//    confianza en la pantalla entera.
+//
+//    DECISIÓN DEL DUEÑO ese día, preguntado con el caso delante: **dos textos
+//    según el caso**, mismo diseño y mismo botón. La frase del frame cuando el
+//    negocio de verdad no tiene nada; una frase cierta cuando lo que pasa es
+//    que nadie está en ese estado.
+//
+// ───────────────────────────────────────────────────────────────────────
+// POR DÓNDE SE LLEGA A LA RAMA «NEGOCIO SIN NADA», QUE ES ESTRECHA
+//
+// Y hay que escribirlo o alguien la borrará por muerta. Con cero clientes, la
+// pestaña ENTERA se sustituye por su propio estado vacío --`vacia` en
+// `reportes-facturacion.tsx`-- así que las cuatro tarjetas ni se dibujan y
+// estas hojas no se pueden abrir.
+//
+// La puerta que queda: `vacia` exige además CERO PEDIDOS POR ATENDER, y un
+// pedido del catálogo lo manda alguien que todavía no es cliente. O sea un
+// negocio que publicó su catálogo, recibió pedidos y no ha registrado nada —
+// que es un negocio recién abierto, exactamente el caso del que habla la
+// frase del frame.
+//
+// Comprobado en dev el 2026-10-27 montando ese caso: dueño sin clientes con
+// un pedido esperando. La hoja enseña la frase del frame. El pedido se borró.
+//
+// ───────────────────────────────────────────────────────────────────────
+// Y UN TERCER CASO QUE NO ES NINGUNO DE LOS DOS: EL BUSCADOR
+//
+// Si el tendero escribe «zzz» y no sale nadie, la lista está vacía y el
+// negocio no. Decirle ahí «aún no hay clientes registrados» sería mentir con
+// sus cuarenta clientes en la base. Ese caso conserva su propio mensaje y no
+// ofrece «Registrar» -- lo que hay que hacer es corregir el nombre.
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Lo que se promete que aparecerá aquí, en las palabras de cada tarjeta. */
+const VACIO_CON_NEGOCIO: Record<ClavePlazo, { titulo: string; sub: string }> = {
+  porVencer: {
+    titulo: "Ningún plazo está por vencer",
+    sub: "Aquí aparecerán los clientes a los que se les acerca la fecha de pago.",
+  },
+  vencido: {
+    titulo: "Ningún plazo está vencido",
+    sub: "Aquí aparecerán los clientes que se pasaron de la fecha que acordaron.",
+  },
+  criticos: {
+    titulo: "Ningún cliente está en estado crítico",
+    sub: "Aquí aparecerán los que deben hace más de 30 días sin abonar.",
+  },
+  malasPagas: {
+    // «No has marcado a nadie» Y NO «ningún cliente está en este estado»:
+    // mala paga es una MARCA que pone el tendero, no un estado que la app
+    // calcula, y la frase tiene que decir de quién depende.
+    titulo: "No has marcado a nadie como mala paga",
+    sub: "Aquí aparecerán los clientes que marques como mala paga.",
+  },
+  sinPlazo: {
+    titulo: "Ningún cliente debe sin plazo",
+    sub: "Aquí aparecerán los que deben sin una fecha de pago acordada.",
+  },
+};
+
 const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
 function fecha(iso: string): string {
@@ -106,14 +193,22 @@ function subtitulo(c: ClienteDePlazo, clave: ClavePlazo, ahora: Date): string {
 export function PlazosSheet({
   clave,
   clientes,
+  negocioSinNada,
   children,
 }: {
   clave: ClavePlazo;
   clientes: ClienteDePlazo[];
+  /** `true` solo si el negocio no tiene ni un cliente. Ver `facturacion.ts`. */
+  negocioSinNada: boolean;
   /** La tarjeta que abre la hoja. */
   children: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
+  // LA HOJA PASA A ESTAR CONTROLADA para poder CERRARLA al tocar «Registrar».
+  // Sin esto quedaban dos hojas apiladas y, al volver, la de plazos seguia
+  // abierta detras de una pantalla que ya no tiene nada que ver con ella.
+  const [abierta, setAbierta] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   // SE CONGELA AL ABRIR, no en cada render: `new Date()` dentro del cuerpo
   // haría que «hace 25 días» se recalculara en cada tecla del buscador. No
   // cambiaría el número, pero sí es trabajo por nada en una lista larga.
@@ -130,7 +225,8 @@ export function PlazosSheet({
   }, [clientes, query]);
 
   return (
-    <Sheet>
+    <>
+    <Sheet open={abierta} onOpenChange={setAbierta}>
       <SheetTrigger asChild>{children}</SheetTrigger>
       {/* `max-h-[90svh]` Y NO `vh`: `vh` mide el viewport GRANDE --el que
           habría sin la barra del navegador-- así que en un teléfono con la
@@ -142,11 +238,22 @@ export function PlazosSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-6">
-          <p className="text-sm text-muted-foreground">
-            {clave === "criticos"
-              ? "Debe hace más de 30 días sin abonar."
-              : "Selecciona un cliente."}
-          </p>
+          {/* LA LÍNEA DE ARRIBA DESAPARECE CUANDO NO HAY A QUIÉN ELEGIR.
+              Hasta el 2026-10-27 salía siempre, así que una hoja vacía decía
+              «Selecciona un cliente.» justo encima de «Ningún plazo está por
+              vencer» -- una instrucción imposible contradiciendo al mensaje
+              que está debajo.
+
+              Y en «Críticos» era peor: su línea es la definición del estado,
+              o sea exactamente lo mismo que el subtítulo del estado vacío,
+              escrito dos veces seguidas. */}
+          {visibles.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {clave === "criticos"
+                ? "Debe hace más de 30 días sin abonar."
+                : "Selecciona un cliente."}
+            </p>
+          ) : null}
 
           {/* EL BUSCADOR SOLO SI HAY A QUIÉN BUSCAR. Con tres filas ocupa más
               de lo que ahorra, y con cero deja una hoja que pide filtrar una
@@ -156,12 +263,63 @@ export function PlazosSheet({
           ) : null}
 
           {visibles.length === 0 ? (
-            <EmptyState
-              title={query.trim() ? `No encontramos a «${query.trim()}»` : "Nadie por aquí"}
-              subtitle={
-                query.trim() ? "Revisa el nombre." : "Ningún cliente está en este estado ahora."
-              }
-            />
+            query.trim() ? (
+              // EL BUSCADOR NO ENCONTRÓ A NADIE. Ni la frase del frame ni la
+              // de «nadie en este estado» valen aquí: la lista tiene gente y
+              // lo que falla es el nombre escrito. Sin botón: lo que hay que
+              // hacer es corregirlo, no registrar nada.
+              <EmptyState title={`No encontramos a «${query.trim()}»`} subtitle="Revisa el nombre." />
+            ) : (
+              <EmptyState
+                title={
+                  negocioSinNada
+                    ? "Aún no hay clientes, ventas ni abonos registrados"
+                    : VACIO_CON_NEGOCIO[clave].titulo
+                }
+                subtitle={
+                  negocioSinNada
+                    ? "Registra tu primera transacción para generar tus reportes en esta sección."
+                    : VACIO_CON_NEGOCIO[clave].sub
+                }
+              >
+                {/* ABRE `RegisterSheet`, la MISMA hoja que el botón flotante,
+                    montándola con su propio estado -- que es el patrón que el
+                    estado vacío de esta misma pantalla ya usa.
+
+                    PROBÉ ANTES A ENLAZAR A `/dashboard?nuevo=1` y NO FUNCIONA:
+                    ese marcador lo lee la barra de abajo, que es quien posee
+                    la hoja, así que llegar ahí desde otra pantalla deja el
+                    Inicio tal cual y no abre nada. Medido en el navegador --
+                    navegaba y no pasaba nada más.
+
+                    NINGUNA FLECHA DEL SITEMAP SALE DE ESTE FRAME --se
+                    enumeraron los 173 conectores de la página y ninguno toca
+                    `1762:*`-- así que el destino no estaba dibujado y lo
+                    decidió el dueño el 2026-10-27, preguntado.
+
+                    Y NO ENLAZA A `/ventas/nueva` NI A `/abonos/nuevo`: sería
+                    una segunda entrada al mismo flujo, y el día que esa puerta
+                    cambie una de las dos se queda atrás. Es la misma razón
+                    escrita en el vacío de «Mejores pagadores». */}
+                <Button
+                  type="button"
+                  className="h-10 w-full"
+                  onClick={() => {
+                    setAbierta(false);
+                    // SE ESPERA A QUE LA HOJA SE CIERRE antes de abrir la
+                    // otra. Las dos son dialogos de Radix: abiertas a la vez
+                    // se apilan, y encadenadas en el mismo tick el cierre de
+                    // la primera puede dejar el `pointer-events: none` que
+                    // pone en el `body` -- con la segunda hoja a la vista y
+                    // sin poder tocarla. 220ms es la animacion de salida.
+                    setTimeout(() => setRegistrando(true), 220);
+                  }}
+                >
+                  <Plus aria-hidden="true" />
+                  Registrar
+                </Button>
+              </EmptyState>
+            )
           ) : (
             // LA LISTA SE DESPLAZA DENTRO DE LA HOJA, no la hoja entera: con
             // cuarenta clientes el título y el buscador tienen que quedarse a
@@ -206,5 +364,9 @@ export function PlazosSheet({
         </div>
       </SheetContent>
     </Sheet>
+    {/* FUERA DE LA HOJA DE PLAZOS, a proposito: montada dentro, se
+        desmontaria con ella justo cuando hay que abrirla. */}
+    <RegisterSheet open={registrando} onOpenChange={setRegistrando} />
+    </>
   );
 }

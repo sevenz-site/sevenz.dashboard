@@ -118,6 +118,24 @@ export type Facturacion = {
   // nada y el arreglo es buscar en el servidor.
   clientesPorPlazo: Record<ClavePlazo, ClienteDePlazo[]>;
   mejoresPagadores: MejorPagador[];
+  // ── ¿ESTE NEGOCIO NO HA REGISTRADO NADA, NUNCA? ──────────────────────
+  //
+  // Lo decide qué dice un estado vacío, y por eso es un dato y no una
+  // suposición. El frame `1762:14809` escribe «Aún no hay clientes, ventas ni
+  // abonos registrados», y eso es VERDAD en un negocio recién abierto y
+  // FALSO en uno con cuarenta clientes al día y cero malas pagas -- que es la
+  // mejor noticia posible y donde esa frase se lee como que la app perdió los
+  // datos. Decisión del dueño el 2026-10-27: dos textos según el caso.
+  //
+  // SE MIDE POR LOS CLIENTES Y NO POR LOS MOVIMIENTOS DEL RANGO, que es la
+  // trampa: un negocio con tres años de historia y una semana floja tiene
+  // CERO movimientos en el rango y no está vacío ni de lejos. La lista de
+  // clientes no lleva filtro de fecha, así que contesta la pregunta de
+  // verdad. Y basta con ella: sin un solo cliente no puede haber fiados ni
+  // abonos, y hasta una venta de contado crea su «Mostrador».
+  //
+  // Sale gratis: esa consulta ya se hacía para resolver los ids.
+  negocioSinNada: boolean;
 };
 
 export type ClavePlazo = "porVencer" | "vencido" | "criticos" | "malasPagas" | "sinPlazo";
@@ -535,5 +553,9 @@ export async function cargarFacturacion({
     plazos,
     clientesPorPlazo,
     mejoresPagadores,
+    // SIN EL FILTRO DE CLIENTE, a propósito: `idsDeCliente` ya viene recortado
+    // a uno cuando hay `?cliente=` puesto, y usarlo aquí diría «negocio
+    // vacío» de un negocio entero por el filtro de una pantalla.
+    negocioSinNada: (clientesDelDueno ?? []).length === 0,
   };
 }

@@ -427,17 +427,17 @@ export function ReportesFacturacion({
               se tiñe en otro eje -- roja solo donde el número en sí es la mala
               noticia. Por eso «Malas pagas» lleva icono rojo y cifra normal:
               la marca es grave, pero su cantidad no sube ni baja sola. */}
-          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} clave="porVencer" clientes={datos.clientesPorPlazo.porVencer} Icono={UserRound} colorIcono="text-brand-report" />
-          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} clave="vencido" clientes={datos.clientesPorPlazo.vencido} Icono={UserRoundMinus} colorIcono="text-brand-report" enRojo />
-          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} clave="criticos" clientes={datos.clientesPorPlazo.criticos} Icono={UserRoundMinus} colorIcono="text-destructive" enRojo />
-          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} clave="malasPagas" clientes={datos.clientesPorPlazo.malasPagas} Icono={UserRoundX} colorIcono="text-destructive" />
+          <TarjetaDePlazo rotulo="Por vencer" cuenta={datos.plazos.porVencer} clave="porVencer" clientes={datos.clientesPorPlazo.porVencer} negocioSinNada={datos.negocioSinNada} Icono={UserRound} colorIcono="text-brand-report" />
+          <TarjetaDePlazo rotulo="Plazo vencido" cuenta={datos.plazos.vencido} clave="vencido" clientes={datos.clientesPorPlazo.vencido} negocioSinNada={datos.negocioSinNada} Icono={UserRoundMinus} colorIcono="text-brand-report" enRojo />
+          <TarjetaDePlazo rotulo="Críticos" cuenta={datos.plazos.criticos} clave="criticos" clientes={datos.clientesPorPlazo.criticos} negocioSinNada={datos.negocioSinNada} Icono={UserRoundMinus} colorIcono="text-destructive" enRojo />
+          <TarjetaDePlazo rotulo="Malas pagas" cuenta={datos.plazos.malasPagas} clave="malasPagas" clientes={datos.clientesPorPlazo.malasPagas} negocioSinNada={datos.negocioSinNada} Icono={UserRoundX} colorIcono="text-destructive" />
           {/* LA QUINTA TARJETA NO ESTÁ EN EL FRAME Y SE DIBUJA SI HAY ALGUIEN.
               Un fiado vencido SIN plazo pactado cae en «Sin plazo», que no es
               ninguna de las cuatro de arriba. Sin esta tarjeta esos clientes no
               se cuentan en ninguna parte y las cuatro cifras sugieren que no
               existen -- que es peor que una tarjeta de más. */}
           {datos.plazos.sinPlazo > 0 ? (
-            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} clave="sinPlazo" clientes={datos.clientesPorPlazo.sinPlazo} Icono={UserRound} colorIcono="text-brand-report" />
+            <TarjetaDePlazo rotulo="Sin plazo" cuenta={datos.plazos.sinPlazo} clave="sinPlazo" clientes={datos.clientesPorPlazo.sinPlazo} negocioSinNada={datos.negocioSinNada} Icono={UserRound} colorIcono="text-brand-report" />
           ) : null}
         </div>
       </section>
@@ -501,6 +501,7 @@ function TarjetaDePlazo({
   cuenta,
   clave,
   clientes,
+  negocioSinNada,
   Icono,
   colorIcono,
   enRojo = false,
@@ -509,6 +510,8 @@ function TarjetaDePlazo({
   cuenta: number;
   clave: ClavePlazo;
   clientes: ClienteDePlazo[];
+  /** Decide cual de los dos textos ensena la hoja vacia. */
+  negocioSinNada: boolean;
   Icono: LucideIcon;
   colorIcono: string;
   enRojo?: boolean;
@@ -526,7 +529,7 @@ function TarjetaDePlazo({
   // propio estado vacío, que CONFIRMA la respuesta en vez de dejar al tendero
   // dudando de si tocó bien.
   return (
-    <PlazosSheet clave={clave} clientes={clientes}>
+    <PlazosSheet clave={clave} clientes={clientes} negocioSinNada={negocioSinNada}>
       <button
         type="button"
         className="flex flex-col gap-1 rounded-[10px] border px-3 py-3 text-left transition-colors active:bg-accent"
