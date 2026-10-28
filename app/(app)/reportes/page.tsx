@@ -4,6 +4,7 @@ import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
 import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
+import { ReportesAncla } from "@/components/dashboard/reportes-ancla";
 import { ReportesDescargar } from "@/components/dashboard/reportes-descargar";
 import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
@@ -137,6 +138,10 @@ export default async function ReportesPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* UN ANCLA SOLA BASTA. Si la URL trae `#mas-vendidos` sin su
+          `?tab=inventario`, esto corrige la pestaña -- el fragmento no llega
+          al servidor, asi que no hay otra forma. Ver su propio fichero. */}
+      <ReportesAncla apartado={apartado} />
       <ScreenHeader
         title="Reportes"
         subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}

@@ -161,7 +161,7 @@ export default async function ProductosPage() {
         {/* The card itself is `OrdersCard`, shared with Inicio -- the
             gradient is built from two theme tokens and a second hand-written
             copy of it is a copy that drifts. */}
-        <OrdersCard unattended={ordenesSinAtender} place="catalogo" />
+        <OrdersCard unattended={ordenesSinAtender} />
         {/* SOLO `loadFailed`. Las otras ocho props existían para los dos
             diálogos que esta tabla montaba; desde el 2026-10-20 el alta y la
             edición son rutas propias y cada una pide sus datos. */}

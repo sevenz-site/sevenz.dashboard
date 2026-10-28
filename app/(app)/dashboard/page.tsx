@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
-import { OrdersCard } from "@/components/dashboard/orders-card";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { RegisterButton } from "@/components/dashboard/register-button";
 import { ClientSearchDialog } from "@/components/dashboard/client-search-dialog";
@@ -20,6 +19,9 @@ import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { InicioResumenCards } from "@/components/dashboard/inicio-resumen-cards";
+import { ventasDelPeriodo } from "@/lib/reports/ventas-del-periodo";
+import { rangoDe } from "@/lib/reports/rango";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { HomeHeader } from "@/components/dashboard/home-header";
@@ -117,6 +119,52 @@ export default async function DashboardPage({
       }
     : null;
   const ledger: LedgerDisplay | null = ownerRate ? { rate: ownerRate.effectiveRate } : null;
+
+  // ── LA TARJETA «VENTAS» — frame `1500:9981` ─────────────────────────
+  //
+  // LOS ULTIMOS 30 DIAS, decidido por el dueno el 2026-10-28 preguntandole con
+  // el caso delante: es el periodo con el que Reportes abre, o sea el mismo al
+  // que lleva esta tarjeta. Cualquier otro habria hecho que la cifra CAMBIARA
+  // al tocarla.
+  //
+  // `rangoDe({})` SIN PARAMETROS da exactamente ese rango por defecto, asi que
+  // el dia que Reportes cambie el suyo esta tarjeta lo sigue sola. Escribir
+  // aqui «hace 30 dias» a mano seria la forma de que se separen.
+  const rangoDeVentas = rangoDe({});
+  const ventasPorLibro = await ventasDelPeriodo({
+    supabase,
+    ownerId: user!.id,
+    rango: rangoDeVentas,
+  });
+
+  // EL LIBRO QUE MAS VENDIO, no el que mas debe. La tarjeta habla de ventas, y
+  // en un negocio con dos libros enlos que uno apenas se usa, ensenar el otro
+  // seria ensenar casi cero.
+  //
+  // NO HAY RIESGO DE CONFUNDIR LA MONEDA aunque no sea la misma que la tarjeta
+  // de arriba: el frame dibuja la BANDERA junto a la cifra, que es justo para
+  // lo que esta.
+  const ventasUsd = ventasPorLibro.USD ?? 0;
+  const ventasEur = ventasPorLibro.EUR ?? 0;
+  // `"COP"` Y NO `null` para el negocio colombiano: el libro colombiano se
+  // guarda como `null` en `movements`, pero de cara a la pantalla tiene
+  // nombre, bandera y formato propios. Un `null` aqui obligaria a castearlo
+  // en el componente, que es como se cuela el libro equivocado.
+  const libroDeVentas = !ownerRate
+    ? ("COP" as const)
+    : ventasEur > ventasUsd
+      ? ("EUR" as const)
+      : ("USD" as const);
+  const ventasDelLibro = !ownerRate
+    ? (ventasPorLibro.COP ?? 0)
+    : libroDeVentas === "EUR"
+      ? ventasEur
+      : ventasUsd;
+  const tasaDelLibroDeVentas = !ownerRate
+    ? null
+    : libroDeVentas === "EUR"
+      ? ownerRate.effectiveRate.eur
+      : ownerRate.effectiveRate.usd;
 
   const rows = (summaries ?? []) as ClientSummary[];
   // Capital por cobrar counts every client's debt regardless of flag status —
@@ -345,15 +393,19 @@ export default async function DashboardPage({
 
                 14px between the heading and the card, which is the frame's
                 own spacing and not this screen's usual 8px for a heading. */}
-            <div className="flex flex-col gap-3.5">
-              {/* `font-semibold`, like "Por cobrar" and "Calculadora" on this
-                  same screen. The isolated frame draws it Medium, but the
-                  full-screen mock the owner sent shows the three headings
-                  reading alike, and a lighter one here would look like a
-                  subtitle of the card above it. */}
-              <h2 className="text-base font-semibold">Pedidos</h2>
-              <OrdersCard unattended={ordenesSinAtender} place="inicio" />
-            </div>
+            {/* ── DOS TARJETAS, SIN ENCABEZADO — frame `1500:9981` ──────
+                El `<h2>Pedidos</h2>` que vivia aqui se fue el 2026-10-28, y
+                no por estetica: el frame nuevo pone el titulo DENTRO de cada
+                tarjeta, que es la unica forma que funciona con dos lado a
+                lado -- un encabezado no puede encabezar dos cosas distintas.
+                Dejarlo habria escrito «Pedidos» dos veces seguidas y encima
+                de una tarjeta que dice «Ventas». */}
+            <InicioResumenCards
+              ventas={ventasDelLibro}
+              libro={libroDeVentas}
+              tasa={tasaDelLibroDeVentas}
+              sinAtender={ordenesSinAtender}
+            />
 
             {/* The rate goes AFTER the card, at the owner's request on
                 2026-09-20. It used to go before, on the argument that a card's

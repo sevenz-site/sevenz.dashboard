@@ -272,7 +272,10 @@ export function ReportesFacturacion({
   return (
     <div className="flex flex-col">
       {/* ══ CARTERA ══════════════════════════════════════════════════ */}
-      <section className="flex flex-col">
+      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
+          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
+          `lib/reports/secciones.ts`. */}
+      <section id="cartera" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque
           texto="Cartera"
           accion={
@@ -342,7 +345,10 @@ export function ReportesFacturacion({
       </section>
 
       {/* ══ TRANSACCIONES ════════════════════════════════════════════ */}
-      <section className="flex flex-col">
+      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
+          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
+          `lib/reports/secciones.ts`. */}
+      <section id="transacciones" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque
           texto="Transacciones"
           // EL SUBTÍTULO DICE QUE SON RECUENTOS, y no está en el frame.
@@ -418,7 +424,10 @@ export function ReportesFacturacion({
       </section>
 
       {/* ══ PLAZOS DE PAGO ═══════════════════════════════════════════ */}
-      <section className="flex flex-col">
+      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
+          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
+          `lib/reports/secciones.ts`. */}
+      <section id="plazos" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque texto="Plazos de pago" />
         <div className="grid grid-cols-2 gap-3">
           {/* LOS CUATRO ICONOS Y SUS DOS COLORES salen del frame `1618:12530`,
@@ -443,7 +452,10 @@ export function ReportesFacturacion({
       </section>
 
       {/* ══ MEJORES PAGADORES ════════════════════════════════════════ */}
-      <section className="flex flex-col">
+      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
+          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
+          `lib/reports/secciones.ts`. */}
+      <section id="mejores-pagadores" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque
           texto="Mejores pagadores"
           // EL FRAME DEJA EL CRITERIO SIN DECIDIR --«<Agregar acá el criterio

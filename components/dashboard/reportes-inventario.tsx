@@ -249,6 +249,7 @@ export function ReportesInventario({
   return (
     <div className="flex flex-col">
       {/* ══ MÉTRICAS DEL INVENTARIO ═══════════════════════════════════ */}
+      <span id="metricas-inventario" className="scroll-mt-28" aria-hidden />
       <TituloDeBloque
         texto="Métricas del inventario"
         // EL SUBTÍTULO DEL FRAME HABLA DE ÓRDENES DE COMPRA --«dependen de
@@ -328,6 +329,7 @@ export function ReportesInventario({
       </div>
 
       {/* ══ MARGEN POR PRODUCTO ═══════════════════════════════════════ */}
+      <span id="margen" className="scroll-mt-28" aria-hidden />
       <TituloDeBloque
         texto="Margen por producto"
         subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor."
@@ -349,6 +351,7 @@ export function ReportesInventario({
       />
 
       {/* ══ MÁS VENDIDOS ══════════════════════════════════════════════ */}
+      <span id="mas-vendidos" className="scroll-mt-28" aria-hidden />
       <TituloDeBloque
         texto="Más vendidos"
         subtitulo={`Lo que más salió ${periodoTexto}, en unidades.`}
