@@ -42,9 +42,12 @@ import type { ProveedorEnReporte } from "@/lib/reports/proveedores";
 
 export function ReportesProveedores({
   filas,
+  periodoTexto,
   tasas,
 }: {
   filas: ProveedorEnReporte[];
+  /** «del 29 sep al 28 oct», tal como lo escribe la cabecera de la pantalla. */
+  periodoTexto: string;
   /** Bs por dólar y por euro, para las hojas. `null` en Colombia. */
   tasas: { usd: number; eur: number } | null;
 }) {
@@ -61,8 +64,24 @@ export function ReportesProveedores({
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h2 className="text-base font-semibold">Métricas de proveedores</h2>
+        {/* ── LA SEGUNDA FRASE DICE CÓMO SE CALCULA EL MARGEN ─────────
+            Encargo del dueño el 2026-10-28, con la captura y el subtítulo
+            rodeado en rojo. La primera frase es la del frame y se queda: dice
+            de qué depende esta lista. La segunda dice qué significa la única
+            cifra que el tendero no puede rehacer de cabeza.
+
+            «DE CADA 100 QUE PAGASTE» Y NO «SOBRE EL COSTO», que es lo mismo
+            dicho en contable. Es además la forma en que los dos tenderos lo
+            dijeron cuando se definió el margen en `price.ts`: *«al monto que
+            me costó le aplico un 30 %»*.
+
+            Y ESCRIBIRLA OBLIGÓ A ARREGLAR LA CUENTA: hasta ese día el margen
+            se calculaba sobre la VENTA, así que esta frase habría sido falsa
+            --y la pestaña de al lado llevaba meses diciendo otro número para
+            los mismos productos--. El detalle está en `margenReal`. */}
         <p className="text-sm text-muted-foreground">
-          Dependen del registro del proveedor al momento de crear el producto
+          Dependen del registro del proveedor al momento de crear el producto. El margen dice,
+          de cada 100 que pagaste por sus productos, cuánto ganaste al venderlos {periodoTexto}.
         </p>
       </div>
 
@@ -71,6 +90,7 @@ export function ReportesProveedores({
           <li key={f.clave}>
             <ReportesProductosSheet
               titulo={f.nombre}
+              periodoTexto={periodoTexto}
               tarjetas={[]}
               productos={f.lista}
               vacio={{

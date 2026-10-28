@@ -371,6 +371,7 @@ export function ReportesInventario({
               hoja que abre dijeran cifras distintas, que es peor. */}
           <ReportesProductosSheet
             titulo="Productos disponibles"
+            periodoTexto={periodoTexto}
             encabezado={{
               titulo: "Capital en inventario",
               sub: "Calculado en función del costo de cada producto.",
@@ -395,6 +396,7 @@ export function ReportesInventario({
 
           <ReportesProductosSheet
             titulo="Por agotarse"
+            periodoTexto={periodoTexto}
             tarjetas={tarjetasDeVendido(datos.vendidoPorAgotarse)}
             productos={datos.porAgotarseLista}
             vacio={{
@@ -416,6 +418,7 @@ export function ReportesInventario({
 
         <ReportesProductosSheet
           titulo="Referencias agotadas"
+            periodoTexto={periodoTexto}
           tarjetas={tarjetasDeVendido(datos.vendidoAgotadas)}
           productos={datos.agotadasLista}
           vacio={{

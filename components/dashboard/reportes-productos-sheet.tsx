@@ -77,8 +77,24 @@ export type TarjetaDeDinero = {
   extra?: { rotulo: string; dinero: Dinero | null };
 };
 
+// ═══════════════════════════════════════════════════════════════════════
+// EL SUBTÍTULO DICE CÓMO SE CALCULA LA GANANCIA
+//
+// Encargo del dueño el 2026-10-28, con la captura de «Por agotarse» y el
+// hueco rodeado en rojo: *«agrega descripción de como se calcula la ganancia
+// de cada producto que se menciona en su card»*.
+//
+// POR QUÉ ESTA FRASE Y NO OTRA: «$672,00 de ganancia» es una cifra que el
+// tendero no puede rehacer de cabeza. Podría ser lo que ganaría vendiendo lo
+// que le queda, lo que ganó por unidad, o lo que ganó de verdad -- las tres
+// son lecturas razonables, y de hecho fueron las tres opciones entre las que
+// él eligió. Sin la frase, cada quien elige una distinta.
+//
+// Y LLEVA LAS FECHAS, que es lo que la hace comprobable: sin ellas «lo que te
+// dejó» no dice de cuándo, y la cifra no se puede contrastar con nada.
 export function ReportesProductosSheet({
   titulo,
+  periodoTexto,
   encabezado,
   tarjetas,
   productos,
@@ -87,6 +103,8 @@ export function ReportesProductosSheet({
   children,
 }: {
   titulo: string;
+  /** «del 29 sep al 28 oct», tal como lo escribe la cabecera de la pantalla. */
+  periodoTexto: string;
   /** La banda gris bajo el buscador. Solo la dibuja «Productos disponibles». */
   encabezado?: { titulo: string; sub: string };
   tarjetas: TarjetaDeDinero[];
@@ -118,6 +136,14 @@ export function ReportesProductosSheet({
       <SheetContent side="bottom" className="flex max-h-[90svh] flex-col rounded-t-xl">
         <SheetHeader>
           <SheetTitle>{titulo}</SheetTitle>
+          {/* VA EN LA CABECERA Y NO EN EL CUERPO para que se quede quieto
+              cuando la lista se desplaza: explica lo que se está mirando, así
+              que irse de pantalla al tercer producto es justo cuando deja de
+              servir. */}
+          <p className="text-sm font-normal text-muted-foreground">
+            La ganancia de cada producto es lo que te dejó {periodoTexto}: su precio de venta
+            menos su costo, por las unidades que vendiste.
+          </p>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-6">

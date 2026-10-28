@@ -106,6 +106,16 @@ export function costoEnMonedaDeVenta(
 /** Lo que un producto vendió y lo que dejó, repartido por moneda de venta. */
 export type CuentaDeProducto = {
   ingresos: Record<string, number>;
+  /**
+   * Lo que costó lo vendido, SOLO de las líneas que se pudieron valorar.
+   *
+   * NO ES `ingresos − ganancia`, y por eso se guarda aparte: `ingresos`
+   * incluye las líneas sin costo escrito y `ganancia` no, así que esa resta
+   * daría un costo inflado justo en los productos a los que les falta el
+   * dato. Es el denominador del margen, y un denominador equivocado no se
+   * nota: devuelve un porcentaje perfectamente creíble.
+   */
+  costo: Record<string, number>;
   ganancia: Record<string, number>;
   /** Cuántas de sus líneas no se pudieron valorar. Ver la cabecera. */
   lineasSinCosto: number;
@@ -130,7 +140,7 @@ export function cuentasPorProducto(
     if (!p) continue;
     let c = out.get(l.productId);
     if (!c) {
-      c = { ingresos: {}, ganancia: {}, lineasSinCosto: 0 };
+      c = { ingresos: {}, costo: {}, ganancia: {}, lineasSinCosto: 0 };
       out.set(l.productId, c);
     }
     const ingreso = l.unitPrice * l.quantity;
@@ -145,7 +155,9 @@ export function cuentasPorProducto(
       c.lineasSinCosto++;
       continue;
     }
-    c.ganancia[l.currency] = (c.ganancia[l.currency] ?? 0) + (ingreso - costoUnidad * l.quantity);
+    const costo = costoUnidad * l.quantity;
+    c.costo[l.currency] = (c.costo[l.currency] ?? 0) + costo;
+    c.ganancia[l.currency] = (c.ganancia[l.currency] ?? 0) + (ingreso - costo);
   }
   return out;
 }
@@ -170,9 +182,10 @@ export function monedaPrincipal(ingresos: Record<string, number>): string | null
  * lo que necesita una fila de «Proveedores».
  */
 export function sumarCuentas(cuentas: readonly CuentaDeProducto[]): CuentaDeProducto {
-  const total: CuentaDeProducto = { ingresos: {}, ganancia: {}, lineasSinCosto: 0 };
+  const total: CuentaDeProducto = { ingresos: {}, costo: {}, ganancia: {}, lineasSinCosto: 0 };
   for (const c of cuentas) {
     for (const [m, v] of Object.entries(c.ingresos)) total.ingresos[m] = (total.ingresos[m] ?? 0) + v;
+    for (const [m, v] of Object.entries(c.costo)) total.costo[m] = (total.costo[m] ?? 0) + v;
     for (const [m, v] of Object.entries(c.ganancia)) total.ganancia[m] = (total.ganancia[m] ?? 0) + v;
     total.lineasSinCosto += c.lineasSinCosto;
   }
@@ -180,12 +193,33 @@ export function sumarCuentas(cuentas: readonly CuentaDeProducto[]): CuentaDeProd
 }
 
 /**
- * El margen real de un grupo: lo que dejó entre lo que vendió, en porcentaje.
+ * El margen real de un grupo: lo que ganó SOBRE LO QUE LE COSTÓ, en %.
  *
  * Decisión del dueño el 2026-10-28 para la fila de proveedor, elegida entre
  * tres: *«margen real de las ventas»*, no el porcentaje que él escribió en
  * cada ficha. Sabiendo lo que cuesta: un proveedor cuyos productos no se
  * vendieron en el periodo sale **sin margen** --«—»-- y no en 0 %.
+ *
+ * ───────────────────────────────────────────────────────────────────────
+ * SOBRE EL COSTO Y NO SOBRE LA VENTA, Y ESA ES LA PARTE QUE SE ROMPIÓ
+ *
+ * Esto dividía entre los INGRESOS hasta el 2026-10-28. Daba un número
+ * perfectamente creíble y era otro margen: un producto comprado a 100 y
+ * vendido a 130 salía 23,08 % en vez de 30 %.
+ *
+ * Y 30 es el que dice el resto de la app. `marginFromPrice` --la que lee el
+ * margen de la ficha-- hace `(price − cost) / cost`, y `suggestedPrice` hace
+ * `cost × (1 + pct/100)`, con esta razón escrita al lado desde el principio:
+ * *«El margen es sobre el COSTO, que es como lo dijeron los dos tenderos: "al
+ * monto que me costó le aplico un 30 %". No es margen sobre el precio de
+ * venta, que daría otro número y es la confusión clásica de esta cuenta»*.
+ *
+ * LO CARO NO ERA EL NÚMERO, ERA DÓNDE SALÍA: la pestaña «Proveedores» dice
+ * «Margen: 23,08 %» de Éxito y la pestaña de al lado, «Margen por producto»,
+ * lista esos mismos productos al 30 %. Dos cifras con el mismo nombre
+ * contradiciéndose a un toque de distancia, y nada en pantalla que explique
+ * cuál creer. Salió al ir a escribir el subtítulo que dice cómo se calcula --
+ * que es lo que un texto honesto obliga a comprobar.
  *
  * ───────────────────────────────────────────────────────────────────────
  * UN PORCENTAJE SÍ PUEDE CRUZAR MONEDAS, Y UNA SUMA DE DINERO NO
@@ -196,37 +230,34 @@ export function sumarCuentas(cuentas: readonly CuentaDeProducto[]): CuentaDeProd
  * para pasar de una moneda a otra es el bolívar.
  *
  * `null` cuando no se puede: sin tasas y con más de una moneda en juego, o
- * sin un solo ingreso valorado. Y SOLO SE DIVIDE por los ingresos cuya
- * ganancia se pudo calcular -- si no, un proveedor con la mitad de sus
- * productos sin costo saldría con la mitad del margen que tiene.
+ * sin un solo costo valorado. Y SOLO CUENTAN las líneas cuya ganancia se
+ * pudo calcular, numerador y denominador a la vez -- ver `CuentaDeProducto`.
  */
 export function margenReal(
   c: CuentaDeProducto,
   rates: BolivarRates | null,
 ): number | null {
-  const monedas = Object.keys(c.ganancia).filter((m) => (c.ingresos[m] ?? 0) !== 0);
+  const monedas = Object.keys(c.costo).filter((m) => (c.costo[m] ?? 0) > 0);
   if (!monedas.length) return null;
 
   // Con una sola moneda no hace falta tasa ninguna, que es el caso de un
   // negocio colombiano -- y el de cualquiera que venda solo en dólares.
   if (monedas.length === 1) {
     const m = monedas[0];
-    const ing = c.ingresos[m];
-    if (!(ing > 0)) return null;
-    return (c.ganancia[m] / ing) * 100;
+    return ((c.ganancia[m] ?? 0) / c.costo[m]) * 100;
   }
 
   if (rates == null) return null;
-  let ingBs = 0;
+  let costoBs = 0;
   let ganBs = 0;
   for (const m of monedas) {
     const unidad = priceIn("VES", { amount: 1, currency: m as PriceCurrency }, rates).amount;
     if (unidad == null) return null;
-    ingBs += c.ingresos[m] * unidad;
-    ganBs += c.ganancia[m] * unidad;
+    costoBs += c.costo[m] * unidad;
+    ganBs += (c.ganancia[m] ?? 0) * unidad;
   }
-  if (!(ingBs > 0)) return null;
-  return (ganBs / ingBs) * 100;
+  if (!(costoBs > 0)) return null;
+  return (ganBs / costoBs) * 100;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

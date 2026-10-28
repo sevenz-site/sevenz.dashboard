@@ -249,7 +249,7 @@ export default async function ReportesPage({
         <ReportesInventario datos={inventario} periodoTexto={periodoTexto} tasas={tasas} />
       ) : null}
       {apartado === "proveedores" && proveedores ? (
-        <ReportesProveedores filas={proveedores} tasas={tasas} />
+        <ReportesProveedores filas={proveedores} periodoTexto={periodoTexto} tasas={tasas} />
       ) : null}
     </div>
   );
