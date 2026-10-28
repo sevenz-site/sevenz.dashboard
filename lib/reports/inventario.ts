@@ -1,5 +1,13 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
+import type { BolivarRates } from "@/lib/products/price";
+import {
+  cuentasPorProducto,
+  monedaPrincipal,
+  type CostoDeProducto,
+  type Dinero,
+  type LineaVendida,
+} from "@/lib/reports/ganancia";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LOS DATOS DE LA PESTAÑA «INVENTARIO» — frame `1667:19321`
@@ -65,6 +73,45 @@ export type ProductoEnAviso = {
   unidad: string | null;
   precio: number | null;
   moneda: string | null;
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// UNA FILA DE LAS HOJAS DE LAS TRES TARJETAS
+//
+// Frames `1673:22429` (Productos disponibles), `1748:14380` (Por agotarse) y
+// `1673:22895` (Referencias agotadas). Encargo del dueño el 2026-10-28:
+// *«les falta el botón "Ver más", al seleccionar esos botones deben abrir
+// sheet con los productos acordes a cada card»*.
+//
+// Las tres dibujan la misma tarjeta: foto de 48, nombre, la línea de la
+// ganancia con su bandera, y un chip que cambia --«Disponible: 000» en verde,
+// «Agotado» en rojo-- más la flecha a la ficha.
+export type ProductoDeHoja = {
+  id: string;
+  nombre: string;
+  fotoPath: string | null;
+  /**
+   * Existencias vivas, o `null` si el tendero no las ha anotado.
+   *
+   * NO SE APLANA A CERO, y es la misma regla que la migración `163` dejó
+   * escrita para la columna: un 0 pinta el producto en rojo y «No
+   * disponible» en el catálogo del cliente, y «no lo he contado» no es «no
+   * me queda». En las tres hojas de Inventario nunca es `null` --sus cubos
+   * excluyen lo no contado-- pero la de un proveedor trae TODOS sus
+   * productos, los contados y los que no.
+   *
+   * Salió al probarlo en dev el 2026-10-28: cuatro productos sin cantidad
+   * anotada aparecían como «Agotado» en la hoja de «Sin proveedor».
+   */
+  cantidad: number | null;
+  /**
+   * Lo que dejó en el periodo, en la moneda en la que más se vendió.
+   *
+   * `null` cuando no se puede calcular --sin costo escrito, costo en moneda
+   * «Otra», o sin tasa para cruzarlas--. Se dibuja «—», nunca 0: ver la
+   * cabecera de `ganancia.ts`.
+   */
+  ganancia: Dinero | null;
 };
 
 export type ProductoDeMargen = {
@@ -146,6 +193,25 @@ export type Inventario = {
    * decir por qué.
    */
   fueraDelCatalogo: ProductoEnAviso[];
+
+  // ── LO QUE ENSEÑAN LAS TRES HOJAS ───────────────────────────────────
+  /** Los productos de cada tarjeta, en el orden en que la lista los pinta. */
+  disponiblesLista: ProductoDeHoja[];
+  porAgotarseLista: ProductoDeHoja[];
+  agotadasLista: ProductoDeHoja[];
+  /**
+   * Capital en inventario, TODAS las monedas.
+   *
+   * La tarjeta de la pestaña enseña solo la mayor --sumar monedas está
+   * prohibido en esta app-- pero en una hoja hay sitio para las dos tarjetas
+   * que el frame dibuja, una por moneda. Es la misma cifra, desglosada.
+   */
+  capitalPorMoneda: Dinero[];
+  /** Lo que daría vender al detal lo que hay en la estantería, por moneda. */
+  ventasProyectadas: Dinero[];
+  /** «Total vendido» en el periodo de los de cada tarjeta, por moneda. */
+  vendidoPorAgotarse: Dinero[];
+  vendidoAgotadas: Dinero[];
 };
 
 /** Cuántos productos caben en un gráfico de barras de 312px sin que sea una reja. */
@@ -155,10 +221,17 @@ export async function cargarInventario({
   supabase,
   ownerId,
   rango,
+  rates,
 }: {
   supabase: SupabaseServerClient;
   ownerId: string;
   rango: Rango;
+  /**
+   * Las tasas del día, para poder restar un costo en dólares de una venta en
+   * euros. `null` en un negocio colombiano o con el BCV sin responder: la
+   * ganancia de las líneas cruzadas queda en `null` y se dibuja «—».
+   */
+  rates: BolivarRates | null;
 }): Promise<Inventario> {
   const [resProductos, resDueno, resVentas] = await Promise.all([
     supabase
@@ -211,6 +284,16 @@ export async function cargarInventario({
   });
   const capitalPorMoneda: Record<string, number> = {};
   const porAgotarsePorMoneda: Record<string, number> = {};
+  // ── LOS TRES CUBOS, CON SUS FILAS ────────────────────────────────────
+  //
+  // Se guardan las filas crudas y no `ProductoDeHoja` ya montado porque la
+  // ganancia necesita las ventas, que todavía no se han leído aquí abajo.
+  type Bruto = Record<string, unknown>;
+  const brutos: Record<"disp" | "pocos" | "cero", Bruto[]> = { disp: [], pocos: [], cero: [] };
+  // Lo que daría vender al detal lo que hay en la estantería, por la moneda
+  // BASE de cada precio -- que no tiene por qué ser la del costo, y por eso
+  // se cuenta en su propio montón en vez de mezclarse con el capital.
+  const proyectadasPorMoneda: Record<string, number> = {};
 
   for (const p of productos) {
     // SOBRE TODOS LOS VIVOS y fuera del `if` de las existencias: ver la nota
@@ -230,9 +313,23 @@ export async function cargarInventario({
     // CON EL UMBRAL EN CERO --«no me avises»-- «por agotarse» queda vacío y
     // todo lo que tenga existencias cuenta como disponible. Es justo lo que
     // esa opción promete, así que no hace falta un caso aparte.
-    if (cantidad === 0) agotadas++;
-    else if (cantidad <= umbral) porAgotarse++;
-    else disponibles++;
+    if (cantidad === 0) {
+      agotadas++;
+      brutos.cero.push(p);
+    } else if (cantidad <= umbral) {
+      porAgotarse++;
+      brutos.pocos.push(p);
+    } else {
+      disponibles++;
+      brutos.disp.push(p);
+    }
+
+    if (cantidad > 0 && p.price_retail != null) {
+      const base =
+        (p.base_currency_retail as string | null) ?? (p.base_currency as string | null) ?? "USD";
+      proyectadasPorMoneda[base] =
+        (proyectadasPorMoneda[base] ?? 0) + Number(p.price_retail) * cantidad;
+    }
 
     if (cantidad > 0) {
       const costo = p.cost == null ? null : Number(p.cost);
@@ -279,15 +376,30 @@ export async function cargarInventario({
   let lineasSueltas = 0;
   const fueraDelCatalogo: ProductoEnAviso[] = [];
 
+  // LAS LÍNEAS SE LEEN UNA SOLA VEZ Y CON MONEDA Y PRECIO. Hasta hoy traían
+  // solo `product_id, quantity`, que es lo que «Más vendidos» necesita; las
+  // hojas necesitan además lo que se cobró por cada una para sacar la
+  // ganancia. Una segunda consulta por lo mismo sería un segundo sitio desde
+  // el que esas dos cifras pueden separarse.
+  const vendidas: LineaVendida[] = [];
+
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")
-      .select("product_id, quantity")
+      .select("product_id, quantity, currency, unit_price")
       .in("sale_id", idsDeVenta);
     if (error) throw new Error(`inventario: líneas: ${error.message}`);
 
     const porProducto: Record<string, number> = {};
     for (const l of lineas ?? []) {
+      if (l.product_id) {
+        vendidas.push({
+          productId: l.product_id as string,
+          currency: l.currency as string,
+          unitPrice: Number(l.unit_price),
+          quantity: Number(l.quantity),
+        });
+      }
       // UNA LÍNEA SIN PRODUCTO NO SE PUEDE ATRIBUIR. Pasa con lo que el
       // tendero teclea a mano en una venta, y se cuenta aparte en vez de
       // desaparecer: si son muchas, «más vendidos» está describiendo una
@@ -343,6 +455,50 @@ export async function cargarInventario({
       .slice(0, EN_EL_GRAFICO);
   }
 
+  // ── LAS TRES HOJAS ───────────────────────────────────────────────────
+  //
+  // La ganancia sale de `ganancia.ts`, el mismo sitio del que la saca la
+  // pestaña «Proveedores». Ver allí por qué el costo se convierte y por qué
+  // un `null` no es un cero.
+  const costos: Map<string, CostoDeProducto> = new Map(
+    productos.map((p) => [
+      p.id as string,
+      {
+        costo: p.cost == null ? null : Number(p.cost),
+        monedaCosto: (p.cost_currency as string | null) ?? null,
+      },
+    ]),
+  );
+  const cuentas = cuentasPorProducto(vendidas, costos, rates);
+
+  const comoFila = (p: Record<string, unknown>): ProductoDeHoja => {
+    const c = cuentas.get(p.id as string);
+    const moneda = c ? monedaPrincipal(c.ingresos) : null;
+    // `?? null` Y NO `?? 0`: si esa moneda no tiene ganancia calculada --su
+    // costo falta o está en «Otra»-- la fila dice «—». Un 0 ahí se leería
+    // como «no te dejó nada», que es otra afirmación y es falsa.
+    const monto = c && moneda != null ? (c.ganancia[moneda] ?? null) : null;
+    return {
+      id: p.id as string,
+      nombre: p.name as string,
+      fotoPath: (p.photo_path as string | null) ?? null,
+      cantidad: Number(p.stock_opening ?? 0),
+      ganancia: moneda != null && monto != null ? { currency: moneda, amount: monto } : null,
+    };
+  };
+
+  // LO VENDIDO DE UN GRUPO, por moneda de venta. Es la cifra de las tarjetas
+  // «Total vendido» de las hojas de «Por agotarse» y «Referencias agotadas».
+  const vendidoDe = (filas: Record<string, unknown>[]): Dinero[] => {
+    const acc: Record<string, number> = {};
+    for (const p of filas) {
+      const c = cuentas.get(p.id as string);
+      if (!c) continue;
+      for (const [m, v] of Object.entries(c.ingresos)) acc[m] = (acc[m] ?? 0) + v;
+    }
+    return enFilas(acc);
+  };
+
   return {
     umbral,
     disponibles,
@@ -360,5 +516,27 @@ export async function cargarInventario({
     sinContarLista,
     sinCostoLista,
     fueraDelCatalogo,
+    disponiblesLista: brutos.disp.map(comoFila),
+    porAgotarseLista: brutos.pocos.map(comoFila),
+    agotadasLista: brutos.cero.map(comoFila),
+    capitalPorMoneda: enFilas(capitalPorMoneda),
+    ventasProyectadas: enFilas(proyectadasPorMoneda),
+    vendidoPorAgotarse: vendidoDe(brutos.pocos),
+    vendidoAgotadas: vendidoDe(brutos.cero),
   };
+}
+
+/**
+ * Un montón `{moneda: importe}` pasado a filas ordenadas de mayor a menor.
+ *
+ * ORDENADAS Y NO EN EL ORDEN DEL OBJETO: las claves de un objeto salen en el
+ * orden en que se insertaron, o sea en el orden alfabético de los productos,
+ * que no significa nada. Así la tarjeta de la izquierda es siempre la del
+ * libro con más dinero, en las tres hojas y entre cargas.
+ */
+function enFilas(m: Record<string, number>): Dinero[] {
+  return Object.entries(m)
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([currency, amount]) => ({ currency, amount }));
 }

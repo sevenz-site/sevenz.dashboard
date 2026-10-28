@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { forwardRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Package, PackageMinus, PackageX, TriangleAlert } from "lucide-react";
+import { ChevronRight, Package, PackageMinus, PackageX, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ReportesAvisoSheet } from "@/components/dashboard/reportes-aviso-sheet";
+import {
+  ReportesProductosSheet,
+  type TarjetaDeDinero,
+} from "@/components/dashboard/reportes-productos-sheet";
 import { cn } from "@/lib/utils";
-import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { esMonedaConocida, formatDinero } from "@/lib/reports/ganancia";
 import { guardarUmbralDeStock } from "@/app/(app)/reportes/actions";
 import type { Inventario } from "@/lib/reports/inventario";
 
@@ -70,28 +74,51 @@ function TituloDeBloque({ texto, subtitulo }: { texto: string; subtitulo?: strin
   );
 }
 
-function Tarjeta({
-  rotulo,
-  cuenta,
-  pie,
-  dinero,
-  Icono,
-  colorIcono,
-  ancha = false,
-}: {
-  rotulo: string;
-  cuenta: number;
-  pie: string;
-  dinero: { currency: string; amount: number } | null;
-  Icono: typeof Package;
-  colorIcono: string;
-  ancha?: boolean;
-}) {
+// REENVIA EL REF Y DERRAMA LAS PROPS, y las dos cosas son obligatorias.
+// `SheetTrigger asChild` NO envuelve a su hijo: lo CLONA y le cuelga encima
+// sus handlers y su ref. Un componente que no los acepta se pinta perfecto y
+// no abre nada -- sin error de consola, sin aviso, solo un botón que no hace
+// nada al tocarlo.
+//
+// PASÓ AQUÍ EL 2026-10-28, con las tres tarjetas ya montadas dentro de su
+// hoja: se veía el «Ver todo», se pulsaba, y no ocurría nada. Es la MISMA
+// trampa que `order-product-card.tsx` dejó escrita en octubre, palabra por
+// palabra, y aun así se volvió a pisar. Por eso esta nota está también aquí:
+// la de allá no la lee quien edita este archivo.
+const Tarjeta = forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<"button"> & {
+    rotulo: string;
+    cuenta: number;
+    pie: string;
+    dinero: { currency: string; amount: number } | null;
+    Icono: typeof Package;
+    colorIcono: string;
+    ancha?: boolean;
+  }
+>(function Tarjeta(
+  { rotulo, cuenta, pie, dinero, Icono, colorIcono, ancha = false, className, ...props },
+  ref,
+) {
   return (
-    <div
+    // ── UN BOTON, PORQUE AHORA ABRE UNA HOJA ─────────────────────────
+    //
+    // Encargo del dueno el 2026-10-28. Es `<button>` y no un `<div>` con un
+    // `onClick`: lo segundo no lo alcanza el teclado ni lo anuncia un lector
+    // de pantalla, y aqui la tarjeta ENTERA es el area de toque -- igual que
+    // en `TarjetaDePlazo` de la pestana de al lado, que resolvio esto mismo
+    // el 2026-10-27.
+    //
+    // `text-left` PORQUE UN BOTON CENTRA SU TEXTO por defecto, que es justo
+    // lo que no se nota al escribirlo y se ve raro en pantalla.
+    <button
+      {...props}
+      ref={ref}
+      type="button"
       className={cn(
-        "flex flex-col gap-1 rounded-[10px] border px-3 py-3",
+        "flex flex-col gap-1 rounded-[10px] border px-3 py-3 text-left transition-colors active:bg-accent",
         ancha ? "w-full" : "min-w-0 flex-1",
+        className,
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -108,23 +135,65 @@ function Tarjeta({
         // dolares o pesos colombianos, que usan el mismo simbolo. Es la misma
         // razon por la que la tarjeta «Ventas» del Inicio la lleva.
         <span className="flex items-start gap-1 pt-1 text-xs text-muted-foreground">
-          <CurrencyFlagIcon
-            currency={dinero.currency as PriceCurrency}
-            className="mt-0.5 size-4 shrink-0"
-          />
+          {/* LA BANDERA SOLO SI LA APP CONOCE ESA MONEDA. El costo puede
+              estar en una moneda «Otra», que es texto libre: sin esta guarda
+              `next/image` pinta un `<img>` sin `src`. Armado desde que existe
+              esta tarjeta; salió a la luz el 2026-10-28 al abrir su hoja, con
+              una moneda libre entre las de más dinero. */}
+          {esMonedaConocida(dinero.currency) ? (
+            <CurrencyFlagIcon currency={dinero.currency} className="mt-0.5 size-4 shrink-0" />
+          ) : null}
           {/* ENVUELVE, NO SE RECORTA. Con `truncate` y la bandera delante,
               «$34.665,00 en mercancía» terminaba en «en merc…» a 375px --
               medido en pantalla el 2026-10-28, justo al anadir la bandera--.
               Una cifra de dinero a medias es peor que una cifra en dos
               lineas: la tarjeta tiene alto de sobra y el recorte se come
               precisamente la palabra que dice QUE es esa cifra. */}
-          <span className="min-w-0 tabular-nums">
-            {formatPriceAmount(dinero.amount, dinero.currency as PriceCurrency)} en mercancía
-          </span>
+          <span className="min-w-0 tabular-nums">{formatDinero(dinero)} en mercancía</span>
         </span>
       ) : null}
-    </div>
+
+      {/* ── «VER TODO» VA SIEMPRE, TAMBIÉN EN CERO ───────────────────
+          Es la lección que la pestaña de al lado ya pagó el 2026-10-27: el
+          dueño reportó que a dos de cuatro tarjetas les faltaba el botón, y
+          la razón por la que va en todas es que **cuatro tarjetas iguales de
+          las que unas reaccionan y otras no se leen como que la pantalla
+          está a medio cargar**, no como que están vacías. La hoja en cero
+          enseña su estado vacío, que confirma la respuesta. */}
+      <span className="flex items-center justify-end gap-0.5 pt-1 text-xs">
+        Ver todo
+        <ChevronRight className="size-3.5" aria-hidden />
+      </span>
+    </button>
   );
+});
+
+/**
+ * Las tarjetas de dinero de la hoja de «Productos disponibles».
+ *
+ * UNA POR MONEDA DE COSTO, que es como el frame las dibuja --€ a la
+ * izquierda, $ a la derecha-- y lo que permite no sumarlas. La proyección se
+ * busca por la misma moneda; si ese libro no tiene ningún precio de detal
+ * escrito, la segunda línea sale «—» en vez de cero.
+ *
+ * SE CORTA EN DOS porque es lo que cabe a 375px sin que las cifras se partan.
+ * Un negocio con mercancía en tres monedas ve las dos mayores -- lo dice la
+ * nota «Tienes mercancía en N monedas» que ya vive bajo las tarjetas.
+ */
+function tarjetasDeCapital(datos: Inventario): TarjetaDeDinero[] {
+  return datos.capitalPorMoneda.slice(0, 2).map((d) => ({
+    rotulo: "Capital en inventario",
+    dinero: d,
+    extra: {
+      rotulo: "Ventas proyectadas:",
+      dinero: datos.ventasProyectadas.find((v) => v.currency === d.currency) ?? null,
+    },
+  }));
+}
+
+/** «Total vendido» de las hojas de «Por agotarse» y «Referencias agotadas». */
+function tarjetasDeVendido(filas: { currency: string; amount: number }[]): TarjetaDeDinero[] {
+  return filas.slice(0, 2).map((d) => ({ rotulo: "Total vendido", dinero: d }));
 }
 
 function GraficoDeProductos({
@@ -251,9 +320,12 @@ function AjusteDelUmbral({ umbral }: { umbral: number }) {
 export function ReportesInventario({
   datos,
   periodoTexto,
+  tasas,
 }: {
   datos: Inventario;
   periodoTexto: string;
+  /** Bs por dólar y por euro, para la línea pequeña de las hojas. */
+  tasas: { usd: number; eur: number } | null;
 }) {
   const sinProductos = datos.totalProductos === 0;
 
@@ -283,32 +355,85 @@ export function ReportesInventario({
       />
       <div className="flex flex-col gap-3">
         <div className="flex gap-3">
-          <Tarjeta
-            rotulo="Productos disponibles"
-            cuenta={datos.disponibles}
-            pie="Listas para vender"
-            dinero={datos.capital}
-            Icono={Package}
-            colorIcono="text-brand-sales"
-          />
-          <Tarjeta
-            rotulo="Por agotarse"
-            cuenta={datos.porAgotarse}
-            pie="Revisar demanda"
-            dinero={datos.capitalPorAgotarse}
-            Icono={PackageMinus}
-            colorIcono="text-brand-report"
-          />
+          {/* ── LA HOJA DE «DISPONIBLES» ES LA ÚNICA CON BANDA Y SEGUNDA
+                 LÍNEA — frame `1673:22429` ────────────────────────────
+              Su banda dice «Capital en inventario / Calculado en función del
+              costo de cada producto», y sus tarjetas llevan además «Ventas
+              proyectadas».
+
+              OJO CON UNA COSA, Y SE DICE EN VEZ DE DISIMULARLA: el capital
+              es el de TODA la mercancía en estantería --disponibles Y por
+              agotarse--, mientras la lista de abajo son solo los
+              disponibles. No es un descuido: es la definición que esta
+              pantalla ya tenía escrita (*«Disponibles -> lo que costó la
+              mercancía que está en la estantería»*) y la que su propio chip
+              enseña. Cambiarla aquí haría que el chip de la tarjeta y la
+              hoja que abre dijeran cifras distintas, que es peor. */}
+          <ReportesProductosSheet
+            titulo="Productos disponibles"
+            encabezado={{
+              titulo: "Capital en inventario",
+              sub: "Calculado en función del costo de cada producto.",
+            }}
+            tarjetas={tarjetasDeCapital(datos)}
+            productos={datos.disponiblesLista}
+            vacio={{
+              titulo: "Nada listo para vender",
+              sub: "Aquí aparecerán los productos con existencias por encima de tu aviso.",
+            }}
+            tasas={tasas}
+          >
+            <Tarjeta
+              rotulo="Productos disponibles"
+              cuenta={datos.disponibles}
+              pie="Listas para vender"
+              dinero={datos.capital}
+              Icono={Package}
+              colorIcono="text-brand-sales"
+            />
+          </ReportesProductosSheet>
+
+          <ReportesProductosSheet
+            titulo="Por agotarse"
+            tarjetas={tarjetasDeVendido(datos.vendidoPorAgotarse)}
+            productos={datos.porAgotarseLista}
+            vacio={{
+              titulo: "Nada por agotarse",
+              sub: "Aquí aparecerán los productos que bajen de tu aviso de existencias.",
+            }}
+            tasas={tasas}
+          >
+            <Tarjeta
+              rotulo="Por agotarse"
+              cuenta={datos.porAgotarse}
+              pie="Revisar demanda"
+              dinero={datos.capitalPorAgotarse}
+              Icono={PackageMinus}
+              colorIcono="text-brand-report"
+            />
+          </ReportesProductosSheet>
         </div>
-        <Tarjeta
-          rotulo="Referencias agotadas"
-          cuenta={datos.agotadas}
-          pie="Revisar demanda"
-          dinero={null}
-          Icono={PackageX}
-          colorIcono="text-destructive"
-          ancha
-        />
+
+        <ReportesProductosSheet
+          titulo="Referencias agotadas"
+          tarjetas={tarjetasDeVendido(datos.vendidoAgotadas)}
+          productos={datos.agotadasLista}
+          vacio={{
+            titulo: "No tienes referencias agotadas",
+            sub: "Aquí aparecerán los productos que se queden en cero.",
+          }}
+          tasas={tasas}
+        >
+          <Tarjeta
+            rotulo="Referencias agotadas"
+            cuenta={datos.agotadas}
+            pie="Revisar demanda"
+            dinero={null}
+            Icono={PackageX}
+            colorIcono="text-destructive"
+            ancha
+          />
+        </ReportesProductosSheet>
 
         {/* ── LOS QUE NO ENTRAN EN NINGUNA DE LAS TRES ────────────────
             Es la línea que impide que tres cifras correctas compongan una

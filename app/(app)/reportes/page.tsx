@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
-import { EmptyState } from "@/components/dashboard/empty-state";
 import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
 import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
 import { ReportesAncla } from "@/components/dashboard/reportes-ancla";
@@ -15,6 +14,8 @@ import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion
 import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
 import { cargarInventario } from "@/lib/reports/inventario";
+import { cargarProveedores } from "@/lib/reports/proveedores";
+import { ReportesProveedores } from "@/components/dashboard/reportes-proveedores";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
 import type { OwnerCountry } from "@/lib/types";
@@ -131,9 +132,32 @@ export default async function ReportesPage({
   // de productos, no de clientes. «Cuántas referencias te quedan» no cambia
   // porque estés mirando a una persona, y filtrarlo daría la cifra de todo el
   // negocio con un rótulo que promete lo contrario.
+  // ── LAS TASAS DEL DÍA ────────────────────────────────────────────────
+  //
+  // Hacen falta para restar un costo en dólares de una venta en euros, que
+  // **en dev es más de la mitad de las líneas vendidas** -- medido el
+  // 2026-10-28. Ver la cabecera de `lib/reports/ganancia.ts`.
+  //
+  // SE ARMAN A MANO EN VEZ DE LLAMAR A `getBolivarRates`, y a propósito: esa
+  // función además sale a CriptoYa a buscar el precio del USDT, y aquí no se
+  // usa ninguna cifra en USDT --`sale_lines.currency` solo admite USD, EUR y
+  // COP--. Es el mismo `usdt: null` deliberado de `app/c/[token]/page.tsx`:
+  // una llamada de red por un dato que nadie va a pintar.
+  const rates = ownerRate
+    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur, usdt: null }
+    : null;
+  const tasas = rates ? { usd: rates.usd, eur: rates.eur } : null;
+
   const inventario =
     apartado === "inventario"
-      ? await cargarInventario({ supabase, ownerId: user!.id, rango })
+      ? await cargarInventario({ supabase, ownerId: user!.id, rango, rates })
+      : null;
+
+  // EL FILTRO POR CLIENTE TAMPOCO SE LE PASA, por la misma razón que a
+  // Inventario: un proveedor no cambia porque estés mirando a una persona.
+  const proveedores =
+    apartado === "proveedores"
+      ? await cargarProveedores({ supabase, ownerId: user!.id, rango, rates })
       : null;
 
   return (
@@ -213,15 +237,19 @@ export default async function ReportesPage({
       {/* LAS DOS PESTAÑAS EN CONSTRUCCIÓN SON ESTADO VACÍO, así que el
           flotante también se aparta en ellas -- la instrucción del dueño del
           2026-10-27 habla del estado vacío, no de una pantalla concreta. */}
-      {apartado === "proveedores" ? <MarcarPantallaVacia /> : null}
-      {apartado === "inventario" && inventario ? (
-        <ReportesInventario datos={inventario} periodoTexto={periodoTexto} />
+      {/* EL FLOTANTE SOLO SE APARTA SI DE VERDAD NO HAY NADA. Desde que
+          «Proveedores» pinta su lista ya no es una pantalla vacía, así que
+          marcarla como tal escondería el botón de registrar en una pantalla
+          con contenido. Se deja la marca para el caso que SÍ lo es: un
+          negocio sin un solo producto. */}
+      {apartado === "proveedores" && proveedores && proveedores.length === 0 ? (
+        <MarcarPantallaVacia />
       ) : null}
-      {apartado === "proveedores" ? (
-        <EmptyState
-          title="Proveedores, en camino"
-          subtitle="Aquí irá cada proveedor con cuántos productos le compras y el margen que te dejan."
-        />
+      {apartado === "inventario" && inventario ? (
+        <ReportesInventario datos={inventario} periodoTexto={periodoTexto} tasas={tasas} />
+      ) : null}
+      {apartado === "proveedores" && proveedores ? (
+        <ReportesProveedores filas={proveedores} tasas={tasas} />
       ) : null}
     </div>
   );
