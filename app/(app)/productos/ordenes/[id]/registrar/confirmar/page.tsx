@@ -12,6 +12,7 @@ import {
   ImporteDeLinea,
 } from "@/components/dashboard/order-line-figures";
 import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
+import { OrderLineStepper } from "@/components/dashboard/order-line-stepper";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -67,7 +68,7 @@ export default async function ConfirmarBloquePage({
   // SOLO LAS LÍNEAS CON PRODUCTO: una descatalogada no se puede editar, y su
   // tarjeta ya dice por qué no entra en la venta.
   const lineasVivas = bloque.lineas.filter((l) => l.productId != null);
-  const paraEditar = new Map(
+  const edicionDe = new Map(
     (
       await Promise.all(
         lineasVivas.map(async (l) => {
@@ -180,6 +181,33 @@ export default async function ConfirmarBloquePage({
                   lineaId={linea.id}
                   cantidadPedida={linea.cantidadPedida}
                 />
+                {/* ── «−» Y «+» DEBAJO DEL NOMBRE — frame `1389:8388` ────
+                    Encargo del dueno el 2026-10-28.
+
+                    EN SU PROPIA FILA Y NO AL LADO DEL IMPORTE, que fue mi
+                    primer intento y se vio en pantalla: las tres cajas miden
+                    128px, y con el nombre y el importe en la misma fila a
+                    375px el nombre se partia en dos lineas y la columna de la
+                    izquierda quedaba estrujada. El frame ya lo resuelve asi
+                    -- su fila de arriba lleva foto, nombre y stepper, y el
+                    importe baja a la fila del subtotal.
+
+                    SOLO SI EL PRODUCTO SIGUE EN EL CATALOGO: sin el no hay
+                    precio con el que recalcular, y esa linea ya dice en rojo
+                    que no entra en la venta. */}
+                {edicionDe.get(linea.id) ? (
+                  <div className="pt-2">
+                    <OrderLineStepper
+                      pedidoId={pedido.id}
+                      lineaId={linea.id}
+                      cantidadPedida={linea.cantidadPedida}
+                      moneda={bloque.moneda}
+                      producto={edicionDe.get(linea.id)!.p.producto}
+                      rates={edicionDe.get(linea.id)!.rates}
+                      lineasDelPedido={lineasDelPedido}
+                    />
+                  </div>
+                ) : null}
               </div>
               <ImporteDeLinea
                 pedidoId={pedido.id}
@@ -202,7 +230,7 @@ export default async function ConfirmarBloquePage({
             ) : null}
 
             {(() => {
-              const edicion = paraEditar.get(linea.id);
+              const edicion = edicionDe.get(linea.id);
               if (!edicion) return null;
               return (
                 <OrderLineEditSheet

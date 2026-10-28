@@ -2,12 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { ProductDetail } from "@/components/public/product-detail";
-import { fijarLineaEditada, leerBorrador } from "@/lib/orders/borrador-de-registro";
-import {
-  escalonParaCantidad,
-  precioEnMoneda,
-  type ProductoPublico,
-} from "@/lib/products/public-pricing";
+import { aplicarEdicionDeLinea } from "@/lib/orders/editar-linea";
+import { type ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // STEP 1/2 «EDITA PRODUCTO» — frame `1566:13300`, reached from «Editar» on an
@@ -105,33 +101,19 @@ export function OrderLineEditForm({
         // SE CALCULA AQUÍ Y NO DENTRO porque el borrador no conoce las
         // líneas del pedido: solo esta pantalla, que las recibió del
         // servidor, sabe cuáles son.
-        const previas = leerBorrador(pedidoId)?.editadas ?? {};
-        const vivas = new Set(
-          lineasDelPedido.map((l) =>
-            l.id === lineaId ? currency : String(previas[l.id]?.currency ?? l.moneda),
-          ),
-        );
-        // ── EL PRECIO DE ESA CANTIDAD, CON LAS FUNCIONES DEL SERVIDOR ──
-        //
-        // `escalonParaCantidad` y `precioEnMoneda` son LAS MISMAS que usa
-        // `registrarVenta`. No es ahorro: es la única forma de que la cifra
-        // que el tendero ve aquí y la que se escribe en la venta no puedan
-        // separarse. Si un día cambia la regla de escalones, cambia para las
-        // dos a la vez.
-        //
-        // `null` cuando no hay tasa con la que calcular --un negocio sin BCV
-        // ahora mismo--: entonces no se guarda nada y la pantalla dibuja el
-        // precio sellado. La venta fallará con su propio mensaje, que es más
-        // claro que una cifra inventada aquí.
-        const escalon = escalonParaCantidad(producto, quantity);
-        const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
-        const unitPrice = escalon ? precioEnMoneda(bloque, currency, rates) : null;
-        fijarLineaEditada(
+        // UNA SOLA COPIA, en `lib/orders/editar-linea.ts`. Salió de aquí el
+        // 2026-10-28, cuando la cantidad pasó a poder cambiarse también con
+        // «−» y «+» desde la lista: dos pantallas tocando la misma línea, y
+        // esto mueve dinero.
+        aplicarEdicionDeLinea({
           pedidoId,
           lineaId,
-          { quantity, currency, ...(unitPrice != null ? { unitPrice } : {}) },
-          [...vivas],
-        );
+          quantity,
+          currency,
+          producto,
+          rates,
+          lineasDelPedido,
+        });
 
         // ── QUÉ PASA DESPUÉS, Y AQUÍ HUBO UN FALLO REAL ────────────────
         //
