@@ -238,6 +238,10 @@ export default async function RegistrarPedidoPage({
               // pregunta es sobre el pedido entero y cada tarjeta solo conoce
               // su bloque. La acción del servidor lo vuelve a comprobar.
               sePuedeQuitar={bloques.length > 1}
+              // LA ÚLTIMA QUE QUEDA: su boton dice «Registrar y finalizar» en
+              // vez de «Editar». Con una sola moneda viva, terminar el pedido
+              // es terminar esta. Ver la tarjeta para lo que costaba callarlo.
+              ultimaPorRegistrar={bloques.length === 1}
             />
           ))
         )}
