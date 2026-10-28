@@ -169,6 +169,7 @@ export function PagoCampos({
   // quedaría flotando encima del teclado justo mientras se teclea el dinero
   // --el fallo que el dueño ha reportado tres veces--.
   botonPegadoAbajo = false,
+  avisoSiFiado,
   mostrarTotal = true,
   moneda,
   ownerId,
@@ -194,6 +195,27 @@ export function PagoCampos({
   // would show the same amount twice, one of them with a heading the frame
   // never had.
   botonPegadoAbajo?: boolean;
+  // ── EL AVISO QUE SOLO APLICA SI QUEDA DEBIENDO ──────────────────────
+  //
+  // Encargo del dueno el 2026-10-28: con una ficha de mala paga, al marcar
+  // «Fiado o credito» sale un texto de apoyo SOBRE el boton de pagar.
+  //
+  // LO DIBUJA ESTE COMPONENTE Y NO QUIEN LO LLAMA, por dos razones que son
+  // la misma:
+  //
+  //   1. **La condicion vive aqui.** «De contado» o «Fiado o credito» no es
+  //      un estado del padre: lo deduce `esContado` de lo que hay escrito en
+  //      el campo del monto. Exponerlo hacia fuera serian dos copias de esa
+  //      cuenta, y la de fuera se quedaria atras.
+  //   2. **Tiene que ir DENTRO de `StickyActions`.** `CLAUDE.md` lo tiene
+  //      escrito con sus tres fechas: lo que va pegado abajo --boton, aviso,
+  //      casilla, error-- entra entero, o con el teclado arriba el aviso tapa
+  //      tanto como taparia el boton. La captura del 2026-10-21 era
+  //      exactamente eso.
+  //
+  // Es un nodo y no un texto para que quien llama decida el tono y las
+  // palabras sin que este fichero tenga que conocer el caso.
+  avisoSiFiado?: React.ReactNode;
   mostrarTotal?: boolean;
   // THE SUBMIT LABEL. The sheet in the sale wizard says «Pagar»; the full
   // screen of frame `1564:11028` says «Pagar $00.00», with the figure. One
@@ -734,6 +756,10 @@ export function PagoCampos({
       </div>
 
       <Pie pegado={botonPegadoAbajo}>
+        {/* ENCIMA DEL BOTON Y DENTRO DEL PIE. Fuera del pie se quedaria
+            arriba, lejos del dedo y del momento en que se decide; y en una
+            pantalla que se desplaza, directamente fuera de la vista. */}
+        {!esContado && avisoSiFiado ? avisoSiFiado : null}
       <Button
         type="button"
         className="h-10 w-full"

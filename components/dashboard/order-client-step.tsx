@@ -92,6 +92,7 @@ export function OrderClientStep({
   // matched order: same form as the unmatched case, different title, and no
   // step counter — frame `1542:11888`.
   cuentaSeparada,
+  veniaDeVarias = false,
   // TODAS las monedas del pedido, en el orden en que la pantalla anterior las
   // dibujó, y cuáles quedan sin rellenar. Las dos salen del servidor y del
   // borrador respectivamente, y juntas contestan el rombo del sitemap.
@@ -108,6 +109,15 @@ export function OrderClientStep({
   pedidoId: string;
   ficha: OrderClient | null;
   varias: OrderClient[];
+  // ── ¿HUBO VARIAS FICHAS QUE ELEGIR? ───────────────────────────────
+  //
+  // SEPARADO DE `varias`, y hace falta que lo este: la pagina manda `varias`
+  // VACIO en cuanto hay una elegida --es lo que apaga el selector-- asi que
+  // desde aqui no habria forma de saber que hubo eleccion. Este booleano
+  // sobrevive a esa eleccion.
+  //
+  // Lo unico que decide es a donde vuelve la flecha. Ver `ScreenBackRow`.
+  veniaDeVarias?: boolean;
   delPedido: {
     name: string;
     documentId: string;
@@ -337,7 +347,24 @@ export function OrderClientStep({
           donde empieza el flujo, que con una moneda es el detalle. */}
       <ScreenBackRow
         href={
-          cuentaSeparada
+          // ── CON UNA FICHA ELEGIDA ENTRE VARIAS, VUELVE AL SELECTOR ──
+          //
+          // Reportado por el dueno el 2026-10-28: *«al seleccionar "<" me
+          // regresa a "Registrar pago", pero esta mal, deberia regresarme a
+          // seleccionar nuevamente alguno de los clientes con el documento
+          // duplicado para que el dueno pueda cambiar del cliente si se
+          // equivoco»*.
+          //
+          // Y TIENE RAZON POR ALGO MAS QUE LA COMODIDAD: elegir entre cinco
+          // fichas con el mismo documento es el paso donde de verdad se puede
+          // meter la pata --lo que las distingue es la letra y el chip de
+          // mala paga-- y hasta hoy la flecha SALTABA ese paso. Para cambiar
+          // de ficha habia que retroceder al pago y volver a entrar.
+          //
+          // SOLO CUANDO HUBO ELECCION. Con una sola coincidencia no hubo nada
+          // que elegir, asi que la flecha sigue yendo al pago, que es de
+          // donde se llego.
+          cuentaSeparada || (ficha != null && veniaDeVarias)
             ? `/productos/ordenes/${pedidoId}/registrar/cliente${monedaDeOrigen ? `?moneda=${monedaDeOrigen}` : ""}`
             : monedaDeOrigen
               ? `/productos/ordenes/${pedidoId}/registrar/pago?moneda=${monedaDeOrigen}`
@@ -482,15 +509,26 @@ export function OrderClientStep({
               {/* POR QUÉ PUEDEN SER VARIAS, dicho en una línea: el pedido trae
                   los dígitos y no siempre la letra, y la letra es lo que
                   distingue a dos personas con el mismo número. */}
+              {/* EL TEXTO DEL FRAME `1770:14625`, pedido por el dueno el
+                  2026-10-28: *«El pedido llego con documento 22.356.548.
+                  Selecciona a quien se le apunta»*.
+
+                  SE CONSERVA LA LETRA del documento --«V-21.054.832» y no
+                  «21.054.832»-- aunque el frame escriba solo los digitos: la
+                  letra es justo lo que distingue a dos personas con el mismo
+                  numero, que es la razon por la que esta pantalla existe. */}
               <p>
-                El pedido llegó con{" "}
+                El pedido llegó con documento{" "}
                 {formatDocumentId(delPedido.documentId, delPedido.documentType) ||
                   "—"}
-                . Elige a quién se le apunta.
+                . Selecciona a quién se le apunta.
               </p>
             </div>
           </div>
           <ClientResultList
+            // EL FRAME `1770:14775`: tarjetas, no filas de tabla. Pedido por
+            // el dueno el 2026-10-28.
+            variant="tarjetas"
             results={varias.map((c) => ({
               id: c.id,
               name: c.name,

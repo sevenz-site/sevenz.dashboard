@@ -147,6 +147,9 @@ export default async function ClienteDelPedidoPage({
       // Vacío salvo cuando hay varias Y ninguna elegida: es lo que pone la
       // pantalla en modo «elige». Ver `PR-E3`.
       varias={ficha == null ? varias : []}
+      // SOBREVIVE A LA ELECCION, al reves que `varias`: es lo que le dice a
+      // la flecha de volver que hay un selector detras al que regresar.
+      veniaDeVarias={varias.length > 0}
       delPedido={{
         name: pedido.customer_name,
         documentId: documento.digits,
