@@ -17,10 +17,11 @@ import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
 // peor que no tener nada, porque el siguiente que lea este fichero creerá que
 // describe el Inicio de hoy. Lo nuevo vive en `inicio-resumen-cards.tsx`.
 //
-// WHY THE GRADIENT IS A STYLE ATTRIBUTE and not a utility class: it carries
-// `--accent` and `--background`. Written as literal colours it would be a
-// white card painted over a dark background the day the dark theme is
-// switched on.
+// EL DEGRADADO SE FUE EL 2026-10-28, por decision del dueno y a la vez en las
+// tres tarjetas que lo llevaban. Lo que decia este comentario --por que era un
+// atributo de estilo y no una clase-- ya no aplica, pero queda dicho que
+// existio: era `--accent` a `--background`, tan tenue que en un telefono al
+// sol no se distinguia de un fondo plano.
 //
 // THE ICON'S GREEN IS `#7EC070`, which is `--brand-whatsapp`. That token's own
 // note in `globals.css` says it measures 2,17:1 on white and "works on the
@@ -57,10 +58,15 @@ export function OrdersCard({ unattended }: { unattended: number }) {
   return (
     <Link
       href="/productos/ordenes"
+      // ── SIN GRADIENTE ──────────────────────────────────────────────
+      // Decision del dueno el 2026-10-28, para las tres tarjetas a la vez
+      // --«Ventas» y «Pedidos» del Inicio y la de Pedidos del Catalogo--.
+      // Era `linear-gradient(82.76deg, var(--accent) 0%, var(--background))`,
+      // o sea un degradado tan tenue que en un telefono al sol no se
+      // distingue de un fondo plano: pagaba un atributo de estilo en linea
+      // --que no se puede sobreescribir con una clase-- por algo que casi
+      // nadie ve. El borde es lo que separa la tarjeta del fondo.
       className="flex items-center justify-between gap-3 rounded-[10px] border p-3 drop-shadow-[0px_2px_1px_rgba(0,0,0,0.02)]"
-      style={{
-        backgroundImage: "linear-gradient(82.76deg, var(--accent) 0%, var(--background) 100%)",
-      }}
     >
       <span className="flex min-w-0 flex-1 items-center gap-3">
         {/* EL MISMO DIBUJO QUE LAS NOTIFICACIONES desde el 2026-10-26. Era

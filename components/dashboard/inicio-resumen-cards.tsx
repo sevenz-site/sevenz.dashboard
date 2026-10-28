@@ -75,10 +75,15 @@ function Tarjeta({
       // justa de 338 con 14 de hueco. En vez de clavar los 162 se reparten a
       // partes iguales, para que a 320px --un iPhone SE-- se encojan en vez de
       // salirse.
+      // ── SIN GRADIENTE ──────────────────────────────────────────────
+      // Decision del dueno el 2026-10-28, para las tres tarjetas a la vez
+      // --«Ventas» y «Pedidos» del Inicio y la de Pedidos del Catalogo--.
+      // Era `linear-gradient(82.76deg, var(--accent) 0%, var(--background))`,
+      // o sea un degradado tan tenue que en un telefono al sol no se
+      // distingue de un fondo plano: pagaba un atributo de estilo en linea
+      // --que no se puede sobreescribir con una clase-- por algo que casi
+      // nadie ve. El borde es lo que separa la tarjeta del fondo.
       className="flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] border py-2 pr-2 pl-3 drop-shadow-[0px_2px_1px_rgba(0,0,0,0.02)]"
-      style={{
-        backgroundImage: "linear-gradient(82.76deg, var(--accent) 0%, var(--background) 100%)",
-      }}
     >
       <span className="flex items-center justify-between gap-1">
         <span className="truncate text-base font-medium">{titulo}</span>

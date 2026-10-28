@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Package, PackageMinus, PackageX } from "lucide-react";
+import Link from "next/link";
+import { Package, PackageMinus, PackageX, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { cn } from "@/lib/utils";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
@@ -99,8 +101,26 @@ function Tarjeta({
       <span className="text-2xl tabular-nums">{cuenta}</span>
       <span className="text-xs text-muted-foreground">{pie}</span>
       {dinero ? (
-        <span className="pt-1 text-xs tabular-nums text-muted-foreground">
-          {formatPriceAmount(dinero.amount, dinero.currency as PriceCurrency)} en mercancía
+        // ── CON SU BANDERA ──────────────────────────────────────────
+        // Pedido por el dueno el 2026-10-28. No es adorno: esta cifra es la
+        // de la moneda con MAS dinero dentro --sumar monedas esta prohibido
+        // en esta app-- asi que sin bandera un «$35.070,00» no dice si son
+        // dolares o pesos colombianos, que usan el mismo simbolo. Es la misma
+        // razon por la que la tarjeta «Ventas» del Inicio la lleva.
+        <span className="flex items-start gap-1 pt-1 text-xs text-muted-foreground">
+          <CurrencyFlagIcon
+            currency={dinero.currency as PriceCurrency}
+            className="mt-0.5 size-4 shrink-0"
+          />
+          {/* ENVUELVE, NO SE RECORTA. Con `truncate` y la bandera delante,
+              «$34.665,00 en mercancía» terminaba en «en merc…» a 375px --
+              medido en pantalla el 2026-10-28, justo al anadir la bandera--.
+              Una cifra de dinero a medias es peor que una cifra en dos
+              lineas: la tarjeta tiene alto de sobra y el recorte se come
+              precisamente la palabra que dice QUE es esa cifra. */}
+          <span className="min-w-0 tabular-nums">
+            {formatPriceAmount(dinero.amount, dinero.currency as PriceCurrency)} en mercancía
+          </span>
         </span>
       ) : null}
     </div>
@@ -295,33 +315,62 @@ export function ReportesInventario({
             respuesta falsa. Medido en dev: solo la mitad de los productos
             tiene cantidad escrita, así que un tendero podría leer
             «Disponibles: 11» como su catálogo entero teniendo 21. */}
+        {/* ══ LOS QUE NO ENTRAN EN LAS CUENTAS, EN ALERTA ═════════════
+            Frame `1786:15262`, pedido por el dueno el 2026-10-28: *«Labels
+            debajo de "Referencias agotadas" agregalos en alerta tipo
+            warning»*.
+
+            ERAN TRES PARRAFOS GRISES SEGUIDOS y se veian como letra pequena
+            de un contrato: su captura los lleva rodeados enteros. Un aviso
+            que explica por que una cifra NO es lo que parece tiene que
+            leerse como aviso, no como pie de pagina.
+
+            Y EL TEXTO ES EL DEL FRAME, que dice algo mejor que el mio: el
+            mio contaba el mecanismo («no entran en estas cuentas»), el suyo
+            dice la CONSECUENCIA --que sin ese dato no se pueden vigilar «Por
+            agotarse» ni «Referencias agotadas»--, que es lo que mueve a
+            alguien a rellenarlo.
+
+            LA DEL COSTO SE ELIMINA, por instruccion suya del mismo dia. Lo
+            que se pierde, dicho en voz alta: el capital en mercancia sale
+            mas bajo de lo que es cuando algun producto con existencias no
+            tiene costo, y ya nada en pantalla lo advierte. */}
         {datos.sinContar > 0 ? (
-          <p className="text-xs leading-4 text-muted-foreground">
-            {datos.sinContar === 1
-              ? "1 producto más no tiene cantidad anotada, así que no entra en estas cuentas."
-              : `${datos.sinContar} productos más no tienen cantidad anotada, así que no entran en estas cuentas.`}{" "}
-            Escríbela en su ficha y empezarán a contarse.
-          </p>
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500">
+            <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <p className="font-semibold">
+                  {datos.sinContar === 1
+                    ? "1 producto no tiene cantidad en inventario."
+                    : `${datos.sinContar} productos no tienen cantidad en inventario.`}
+                </p>
+                <p>
+                  Deben tener ese dato para poder monitorear «Por agotarse» y «Referencias
+                  agotadas».
+                </p>
+              </div>
+              {/* EL BOTON DEL FRAME, con su destino: el catalogo es donde se
+                  escribe esa cantidad, en la ficha de cada producto. */}
+              <Link
+                href="/productos"
+                className="w-fit text-sm underline-offset-2 hover:underline"
+              >
+                Ver productos
+              </Link>
+            </div>
+          </div>
         ) : null}
-        {/* Y LO MISMO CON EL COSTO, porque es lo que sostiene el chip de
-            dinero: sin costo escrito, la mercancía de ese producto no suma
-            al capital y la cifra sale más baja de lo que es. */}
-        {/* Y CUANDO HAY MERCANCIA EN VARIAS MONEDAS SE DICE. El chip enseña
-            la moneda con más dinero dentro, porque sumar monedas está
-            prohibido en esta app; sin esta línea, esa cifra se lee como todo
-            el inventario. Medido en dev: tres monedas, y la tarjeta solo
-            podía enseñar una. */}
+
+        {/* ── LO DE LAS MONEDAS SE QUEDA COMO ESTA, Y SE DICE POR QUE ──
+            Su cambio pedia el frame `1786:15280` y ese dia la cuenta de
+            Figma habia agotado su cupo de lecturas, asi que NO se pudo
+            abrir. Escribirlo «con lo que se entiende del enlace» es
+            exactamente lo que `CLAUDE.md` prohibe. Queda pendiente. */}
         {datos.monedasConMercancia > 1 ? (
           <p className="text-xs leading-4 text-muted-foreground">
             Tienes mercancía en {datos.monedasConMercancia} monedas. Arriba se muestra la de mayor
             valor; no se suman entre sí.
-          </p>
-        ) : null}
-        {datos.sinCosto > 0 ? (
-          <p className="text-xs leading-4 text-muted-foreground">
-            {datos.sinCosto === 1
-              ? "1 de los que tienen existencias no tiene costo anotado, así que no cuenta en la mercancía."
-              : `${datos.sinCosto} de los que tienen existencias no tienen costo anotado, así que no cuentan en la mercancía.`}
           </p>
         ) : null}
 
