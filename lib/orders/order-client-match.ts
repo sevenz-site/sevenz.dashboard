@@ -194,13 +194,39 @@ export async function findOrderClient(
       : { kind: "varios", clientes: sameDigits };
   }
 
-  // THE LETTER DECIDES FIRST, and an exact hit is unambiguous by definition:
-  // `033`'s index keys on the whole document, letter included, so there can be
-  // only one ficha per (digits, letter).
-  const exact = sameDigits.find(
+  // ── LA LETRA DECIDE PRIMERO, PERO NO GARANTIZA UNA SOLA FICHA ──────
+  //
+  // ESTE BLOQUE DECÍA LO CONTRARIO HASTA EL 2026-10-28, y lo decía por
+  // escrito: *«an exact hit is unambiguous by definition: 033's index keys on
+  // the whole document, letter included, so there can be only one ficha per
+  // (digits, letter)»*. Hacía `find` y devolvía `uno`.
+  //
+  // **ES FALSO, Y SE MIDIÓ.** El índice de la `033` normaliza `document_id`
+  // --le quita puntos y guiones-- pero **la letra no vive ahí**: vive en
+  // `document_type`, que es otra columna y el índice no la mira. Y en dev ese
+  // índice ni siquiera está vigilando: el ledger dice que la `033` corrió y
+  // aun así la base ACEPTÓ un duplicado al intentarlo. Su propia cabecera
+  // avisa de por qué puede pasar -- el índice no se crea si ya había
+  // duplicados cuando se ejecutó.
+  //
+  // Resultado medido en dev ese día: **cuatro** fichas con `V-21054832`
+  // --«Jesús D», «Jesus», «Jesús», «Jj»--. `find` devolvía la primera que la
+  // base sirviera y la pantalla enseñaba la tarjeta verde de «ya existe»,
+  // SIN ofrecer elegir.
+  //
+  // LO QUE COSTABA: el pedido --y la deuda que deja-- se le apuntaba a una de
+  // las cuatro al azar. No falla nada, no sale ningún aviso, y el tendero no
+  // llega a saber que había otras tres. Lo reportó el dueño al ver la tarjeta
+  // verde donde esperaba la lista.
+  //
+  // CON VARIAS EXACTAS SE PREGUNTA, que es lo que esta función entera existe
+  // para hacer. Y se ofrecen SOLO las de letra exacta: las que no tienen
+  // letra siguen siendo el plan B de más abajo, porque la letra ya decidió.
+  const exactos = sameDigits.filter(
     (c) => (c.document_type ?? "").trim().toUpperCase() === orderLetter,
   );
-  if (exact) return { kind: "uno", cliente: exact };
+  if (exactos.length === 1) return { kind: "uno", cliente: exactos[0] };
+  if (exactos.length > 1) return { kind: "varios", clientes: exactos };
 
   // The order DOES carry a letter and no ficha matches it. The ones WITHOUT a
   // letter are still candidates — nobody ever asked those clients.
