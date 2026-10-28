@@ -47,6 +47,26 @@ import type { Rango } from "@/lib/reports/rango";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
+// ═══════════════════════════════════════════════════════════════════════
+// LOS PRODUCTOS QUE UN AVISO NOMBRA
+//
+// Hasta el 2026-10-28 los avisos solo decían CUÁNTOS eran. El dueño pidió ese
+// dia que su «Ver productos» abriera una hoja con las tarjetas: *«debe mostrar
+// sheet de respectiva alerta con los cards de los productos mencionados»*.
+//
+// Un aviso que dice «6 productos no tienen costo» y no dice CUÁLES obliga a
+// salir al catálogo y cotejar de memoria -- que es el mismo fallo que
+// `order-client-card.tsx` ya documenta: *«mandaba al tendero FUERA del flujo,
+// a cotejar de memoria»*.
+export type ProductoEnAviso = {
+  id: string;
+  nombre: string;
+  fotoPath: string | null;
+  unidad: string | null;
+  precio: number | null;
+  moneda: string | null;
+};
+
 export type ProductoDeMargen = {
   id: string;
   nombre: string;
@@ -113,6 +133,19 @@ export type Inventario = {
   masVendidos: ProductoVendido[];
   /** Cuántas líneas vendidas en el rango no apuntan a un producto del catálogo. */
   lineasSueltas: number;
+  /** Los que no tienen cantidad anotada, para la hoja de su aviso. */
+  sinContarLista: ProductoEnAviso[];
+  /** Los que no tienen costo anotado, para la hoja de su aviso. */
+  sinCostoLista: ProductoEnAviso[];
+  /**
+   * Los del ranking de «Más vendidos» que YA NO ESTÁN en el catálogo.
+   *
+   * Son productos en la papelera: conservan su id, así que sus ventas siguen
+   * contando y aparecen en el ranking, pero no están en la lista de productos
+   * vivos. Hasta hoy la pantalla los dibujaba como «Producto borrado» sin
+   * decir por qué.
+   */
+  fueraDelCatalogo: ProductoEnAviso[];
 };
 
 /** Cuántos productos caben en un gráfico de barras de 312px sin que sea una reja. */
@@ -131,7 +164,7 @@ export async function cargarInventario({
     supabase
       .from("products")
       .select(
-        "id, name, unit, stock_opening, cost, cost_currency, cost_currency_other, margin_retail_pct",
+        "id, name, unit, stock_opening, cost, cost_currency, cost_currency_other, margin_retail_pct, photo_path, price_retail, base_currency_retail, base_currency",
       )
       .eq("owner_id", ownerId)
       .is("trashed_at", null)
@@ -166,6 +199,16 @@ export async function cargarInventario({
   let agotadas = 0;
   let sinContar = 0;
   let sinCosto = 0;
+  const sinContarLista: ProductoEnAviso[] = [];
+  const sinCostoLista: ProductoEnAviso[] = [];
+  const comoAviso = (p: Record<string, unknown>): ProductoEnAviso => ({
+    id: p.id as string,
+    nombre: p.name as string,
+    fotoPath: (p.photo_path as string | null) ?? null,
+    unidad: (p.unit as string | null) ?? null,
+    precio: p.price_retail == null ? null : Number(p.price_retail),
+    moneda: (p.base_currency_retail as string | null) ?? (p.base_currency as string | null) ?? null,
+  });
   const capitalPorMoneda: Record<string, number> = {};
   const porAgotarsePorMoneda: Record<string, number> = {};
 
@@ -173,11 +216,15 @@ export async function cargarInventario({
     // SOBRE TODOS LOS VIVOS y fuera del `if` de las existencias: ver la nota
     // del campo. Un producto sin existencias tampoco tiene margen que vigilar
     // si no lleva costo.
-    if (p.cost == null) sinCosto++;
+    if (p.cost == null) {
+      sinCosto++;
+      sinCostoLista.push(comoAviso(p));
+    }
 
     const cantidad = p.stock_opening == null ? null : Number(p.stock_opening);
     if (cantidad == null) {
       sinContar++;
+      sinContarLista.push(comoAviso(p));
       continue;
     }
     // CON EL UMBRAL EN CERO --«no me avises»-- «por agotarse» queda vacío y
@@ -230,6 +277,7 @@ export async function cargarInventario({
   const idsDeVenta = (resVentas.data ?? []).map((v) => v.id as string);
   let masVendidos: ProductoVendido[] = [];
   let lineasSueltas = 0;
+  const fueraDelCatalogo: ProductoEnAviso[] = [];
 
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
@@ -253,6 +301,32 @@ export async function cargarInventario({
     }
 
     const nombres = new Map(productos.map((p) => [p.id as string, p]));
+
+    // ── LOS DEL RANKING QUE YA NO ESTÁN EN EL CATÁLOGO ─────────────────
+    //
+    // Un producto en la papelera CONSERVA SU ID, así que sus ventas siguen
+    // contando y puede salir en el ranking -- pero no está en `productos`,
+    // que filtra `trashed_at`. Hasta hoy la pantalla lo dibujaba como
+    // «Producto borrado» sin decir por qué ni cuál era.
+    //
+    // SE PIDEN SUS NOMBRES EN UNA SEGUNDA CONSULTA, y solo los del tramo que
+    // se dibuja: traer la papelera entera para nombrar uno o dos sería pagar
+    // una lista larga en cada carga de esta pantalla.
+    const idsDelRanking = Object.entries(porProducto)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, EN_EL_GRAFICO)
+      .map(([id]) => id);
+    const huerfanos = idsDelRanking.filter((id) => !nombres.has(id));
+    if (huerfanos.length) {
+      const { data: fuera, error: eFuera } = await supabase
+        .from("products")
+        .select("id, name, unit, photo_path, price_retail, base_currency_retail, base_currency")
+        .eq("owner_id", ownerId)
+        .in("id", huerfanos);
+      if (eFuera) throw new Error(`inventario: fuera del catálogo: ${eFuera.message}`);
+      for (const p of fuera ?? []) fueraDelCatalogo.push(comoAviso(p));
+    }
+
     masVendidos = Object.entries(porProducto)
       .map(([id, unidades]) => {
         const p = nombres.get(id);
@@ -283,5 +357,8 @@ export async function cargarInventario({
     margen,
     masVendidos,
     lineasSueltas,
+    sinContarLista,
+    sinCostoLista,
+    fueraDelCatalogo,
   };
 }

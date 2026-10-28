@@ -2,13 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Package, PackageMinus, PackageX, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ReportesAvisoSheet } from "@/components/dashboard/reportes-aviso-sheet";
 import { cn } from "@/lib/utils";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { guardarUmbralDeStock } from "@/app/(app)/reportes/actions";
@@ -352,12 +352,18 @@ export function ReportesInventario({
               </div>
               {/* EL BOTON DEL FRAME, con su destino: el catalogo es donde se
                   escribe esa cantidad, en la ficha de cada producto. */}
-              <Link
-                href="/productos"
-                className="w-fit text-sm underline-offset-2 hover:underline"
+              {/* ABRE LA HOJA CON ESOS PRODUCTOS, no el catálogo entero.
+                  Encargo del dueño el 2026-10-28. Mandarlo al catálogo lo
+                  obligaba a cotejar de memoria cuáles eran los cuatro. */}
+              <ReportesAvisoSheet
+                titulo="Sin cantidad en inventario"
+                descripcion="Escribe la cantidad en la ficha de cada uno y empezarán a contarse en «Por agotarse» y «Referencias agotadas»."
+                productos={datos.sinContarLista}
               >
-                Ver productos
-              </Link>
+                <button type="button" className="w-fit text-sm underline-offset-2 hover:underline">
+                  Ver productos
+                </button>
+              </ReportesAvisoSheet>
             </div>
           </div>
         ) : null}
@@ -395,12 +401,15 @@ export function ReportesInventario({
                 </p>
                 <p>Deben tener ese dato para poder monitorear el margen.</p>
               </div>
-              <Link
-                href="/productos"
-                className="w-fit text-sm underline-offset-2 hover:underline"
+              <ReportesAvisoSheet
+                titulo="Sin costo especificado"
+                descripcion="Escribe el costo en la ficha de cada uno para poder monitorear su margen."
+                productos={datos.sinCostoLista}
               >
-                Ver productos
-              </Link>
+                <button type="button" className="w-fit text-sm underline-offset-2 hover:underline">
+                  Ver productos
+                </button>
+              </ReportesAvisoSheet>
             </div>
           </div>
         ) : null}
@@ -467,33 +476,45 @@ export function ReportesInventario({
           venta no apunta a ningún producto, así que «más vendidos» estaría
           describiendo solo una parte de lo que vendió -- y nada en pantalla
           lo delataría. */}
-      {/* ── ESTA FRASE DECIA UNA CAUSA QUE LA APP NO PUEDE SABER ──────
-          Decia «se escribieron a mano, sin producto del catalogo». El dueno
-          la cuestiono el 2026-10-28 --*«al registrar un producto durante una
-          venta ya se esta agregando un nuevo producto en el inventario»*-- y
-          al ir a comprobarlo resulto que tiene razon, y mas de lo que decia:
-          **la venta NO PUEDE crear una linea sin producto**. El tipo de
-          entrada de `registrarVenta` exige `productId: string`, y «Agregar
-          producto» crea un producto de verdad antes de meterlo al carrito.
+      {/* ── LOS DEL RANKING QUE YA NO ESTÁN EN EL CATÁLOGO ────────────
+          Encargo del dueño el 2026-10-28: *«X productos de este ranking ya no
+          están en tu catálogo» + Ver productos. Ese disclaimer solo aparecerá
+          cuando alguno de esos productos pertenezca al top»*.
 
-          ENTONCES, ¿DE DONDE SALEN? De `on delete set null`: si un producto
-          se borra EN DURO, sus lineas vendidas pierden la referencia. Un
-          producto mandado a la papelera no cuenta -- conserva su id, asi que
-          sus ventas siguen sumando y la pantalla lo nombra «Producto
-          borrado».
+          CAMBIA QUÉ SE CUENTA, y por eso esta nota es nueva y no un retoque.
+          La de antes hablaba de LÍNEAS sin producto --que la app ya no puede
+          crear: `registrarVenta` exige `productId`, comprobado ese mismo
+          día-- y esta habla de PRODUCTOS que sí salen en el ranking, con su
+          nombre y sus ventas, pero están en la papelera. Hasta hoy se
+          dibujaban como «Producto borrado» sin decir por qué.
 
-          O sea que la frase vieja afirmaba un origen --el tendero tecleandolo
-          a mano-- que hoy no existe. Las 9 que se veian en dev son filas de
-          fixtures de QA metidas directamente en la base.
+          Y SOLO SI ALGUNO SE VE: `fueraDelCatalogo` se calcula sobre el tramo
+          que el gráfico dibuja, no sobre todas las ventas del rango. Un aviso
+          sobre algo que no está en pantalla es ruido. */}
+      {datos.fueraDelCatalogo.length > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-2 pt-2 text-xs leading-4 text-muted-foreground">
+          <span>
+            {datos.fueraDelCatalogo.length === 1
+              ? "1 producto de este ranking ya no está en tu catálogo"
+              : `${datos.fueraDelCatalogo.length} productos de este ranking ya no están en tu catálogo`}
+          </span>
+          {/* `conFicha={false}`: estos están en la papelera y su ficha
+              devuelve 404. El porqué, entero, en `reportes-aviso-sheet.tsx`.
 
-          SE QUEDA LA NOTA, con la causa corregida: el caso sigue siendo
-          posible y, cuando ocurra, el ranking estara describiendo menos
-          ventas de las que hubo sin que nada lo delate. */}
-      {datos.lineasSueltas > 0 ? (
-        <p className="pt-2 text-xs leading-4 text-muted-foreground">
-          {datos.lineasSueltas === 1
-            ? "1 línea vendida es de un producto que ya no está en tu catálogo, así que no aparece en este ranking. Su dinero sí cuenta en Ventas."
-            : `${datos.lineasSueltas} líneas vendidas son de productos que ya no están en tu catálogo, así que no aparecen en este ranking. Su dinero sí cuenta en Ventas.`}
+              Y POR ESO EL TEXTO MANDA A NOTIFICACIONES, que es el único sitio
+              desde el que hoy se puede devolver un producto al catálogo. Dice
+              «busca su aviso» y no «está ahí» a propósito: esa lista trae los
+              20 más recientes, así que un borrado viejo ya no aparece. */}
+          <ReportesAvisoSheet
+            titulo="Ya no están en tu catálogo"
+            descripcion="Sus ventas siguen contando en este ranking, pero están en la papelera. Para devolverlos al catálogo, busca su aviso en Notificaciones."
+            productos={datos.fueraDelCatalogo}
+            conFicha={false}
+          >
+            <button type="button" className="underline underline-offset-2">
+              Ver productos
+            </button>
+          </ReportesAvisoSheet>
         </p>
       ) : null}
     </div>
