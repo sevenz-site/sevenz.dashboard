@@ -12,6 +12,8 @@ import { apartadoDe } from "@/lib/reports/apartados";
 import { rangoDe, textoDelRango } from "@/lib/reports/rango";
 import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
 import { cargarFacturacion } from "@/lib/reports/facturacion";
+import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
+import { cargarInventario } from "@/lib/reports/inventario";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
 import type { OwnerCountry } from "@/lib/types";
@@ -110,6 +112,9 @@ export default async function ReportesPage({
   // enseñar números, por un parámetro que pudo llegar en un enlace compartido.
   const selected = (clients ?? []).find((c) => c.id === cliente) ?? null;
 
+  // SOLO SE CARGA EL APARTADO QUE SE VA A PINTAR. Es la misma razón por la
+  // que la pestaña vive en la URL: traer los datos de los tres para enseñar
+  // uno es pagar tres consultas por pantalla.
   const facturacion =
     apartado === "facturacion"
       ? await cargarFacturacion({
@@ -121,6 +126,15 @@ export default async function ReportesPage({
         })
       : null;
 
+  // EL FILTRO POR CLIENTE NO SE LE PASA, y no es un olvido: Inventario habla
+  // de productos, no de clientes. «Cuántas referencias te quedan» no cambia
+  // porque estés mirando a una persona, y filtrarlo daría la cifra de todo el
+  // negocio con un rótulo que promete lo contrario.
+  const inventario =
+    apartado === "inventario"
+      ? await cargarInventario({ supabase, ownerId: user!.id, rango })
+      : null;
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       <ScreenHeader
@@ -128,7 +142,22 @@ export default async function ReportesPage({
         subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
         action={<ReportesDescargar />}
         search={
-          <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
+          // ── EL BUSCADOR SOLO EN FACTURACION ─────────────────────────
+          //
+          // Filtra por CLIENTE, y es el unico apartado al que eso le dice
+          // algo. En Inventario la pregunta es «cuantas referencias me
+          // quedan», que no cambia porque estes mirando a una persona: dejarlo
+          // ahi ofrecia un filtro que la pantalla ignoraba en silencio, y
+          // ademas pintaba el aviso «Mostrando solo <nombre>» sobre unas
+          // cifras que eran las del negocio entero.
+          //
+          // EL FRAME DE INVENTARIO PIDE OTRA COSA: su barra dice «Buscar
+          // producto». Es un buscador distinto, sobre otra tabla, y no entra
+          // en esta entrega -- se dice en vez de dejar el de clientes
+          // haciendose pasar por el.
+          apartado === "facturacion" ? (
+            <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
+          ) : null
         }
         filters={
           // LOS DOS EN EL MISMO HUECO porque `ScreenHeader` tiene UNA ranura de
@@ -160,7 +189,7 @@ export default async function ReportesPage({
       {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
           una persona se lee como el del negocio entero, que es la clase de
           error que nadie detecta mirando. */}
-      {selected ? (
+      {selected && apartado === "facturacion" ? (
         <p className="text-sm text-muted-foreground">
           Mostrando solo <span className="font-medium text-foreground">{selected.name}</span>.
         </p>
@@ -179,12 +208,9 @@ export default async function ReportesPage({
       {/* LAS DOS PESTAÑAS EN CONSTRUCCIÓN SON ESTADO VACÍO, así que el
           flotante también se aparta en ellas -- la instrucción del dueño del
           2026-10-27 habla del estado vacío, no de una pantalla concreta. */}
-      {apartado !== "facturacion" ? <MarcarPantallaVacia /> : null}
-      {apartado === "inventario" ? (
-        <EmptyState
-          title="Inventario, en camino"
-          subtitle="Aquí irán el capital en inventario, lo que está por agotarse, el margen por producto y los más vendidos."
-        />
+      {apartado === "proveedores" ? <MarcarPantallaVacia /> : null}
+      {apartado === "inventario" && inventario ? (
+        <ReportesInventario datos={inventario} periodoTexto={periodoTexto} />
       ) : null}
       {apartado === "proveedores" ? (
         <EmptyState
