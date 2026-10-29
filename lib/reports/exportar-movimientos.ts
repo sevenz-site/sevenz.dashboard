@@ -2,6 +2,7 @@ import type { createClient } from "@/lib/supabase/server";
 import type { OwnerCountry } from "@/lib/types";
 import { documento, fila, importe } from "@/lib/reports/csv";
 import { ventanaDelNegocio } from "@/lib/reports/zona-del-negocio";
+import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL FICHERO DE MOVIMIENTOS — fiados y abonos del libro, en CSV
@@ -140,6 +141,15 @@ export function mensajeDelMotivo(motivo: string | null | undefined): string {
 type Libro = "USD" | "EUR" | "COP";
 
 /** `movements.currency` guarda el libro colombiano como `null`. */
+/** Una venta del rango, con el cliente que la hizo. */
+type FilaDeVenta = {
+  id: string;
+  created_at: string;
+  client_id: string;
+  transaction_code: string | null;
+  clients: { name: string; document_id: string | null } | null;
+};
+
 function libroDe(currency: string | null): Libro {
   return (currency as Libro | null) ?? "COP";
 }
@@ -379,8 +389,71 @@ export async function exportarMovimientos({
     timeZone: ventana.zona,
   });
 
+  // ── LAS VENTAS DE CONTADO DE LA VENTANA ─────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-29: *«el archivo debe descargar todo lo
+  // relacionado al tab de facturación, no solo movimientos, con principal
+  // enfoque en las transacciones (de contado, fiado, abonos)»*.
+  //
+  // POR QUÉ NO ESTABAN, y no era un olvido: una venta pagada entera NO ESCRIBE
+  // NADA en `movements` --migración `124`, a propósito, para que el contado no
+  // toque el saldo ni el puntaje--. Este fichero salía de `movements`, así que
+  // el contado no podía estar. La cabecera lo decía: *«NO incluye las ventas
+  // de contado»*. Ahora sí están y esa línea cambia.
+  //
+  // LA REGLA DE QUÉ ES CONTADO NO SE REESCRIBE: se importa `claveDeFila`, la
+  // misma que decide eso en el historial del cliente y en Reportes. Un par
+  // (venta, libro) que dejó cargo es fiado entero y su pago es un abono --ya
+  // cubierto por `movements`--; el que no, es contado.
+  const { data: ventasDelRango } = await supabase
+    .from("sales")
+    .select("id, created_at, client_id, transaction_code, clients!inner(name, document_id, owner_id)")
+    .eq("owner_id", ownerId)
+    .is("deleted_at", null)
+    .gte("created_at", ventana.desdeUtc)
+    .lt("created_at", ventana.hastaExclusivoUtc)
+    .order("created_at");
+
+  const ventas = ((ventasDelRango ?? []) as unknown as FilaDeVenta[]).filter(
+    (v) => !clientId || v.client_id === clientId,
+  );
+  const idsV = ventas.map((v) => v.id);
+
+  const [{ data: pagosV }, { data: cargosV }] = idsV.length
+    ? await Promise.all([
+        supabase.from("sale_payments").select("sale_id, amount, currency").in("sale_id", idsV),
+        supabase
+          .from("movements")
+          .select("sale_id, currency, type")
+          .in("sale_id", idsV)
+          .is("deleted_at", null),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const librosFiados = new Set(
+    (cargosV ?? [])
+      .filter((m) => m.type !== "payment")
+      .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
+  );
+
+  // UNA FILA POR (VENTA, LIBRO), con sus pagos sumados: dos pagos en dólares
+  // de la misma venta --efectivo y transferencia, que es corriente-- son UNA
+  // venta de contado por sus dos importes, no dos.
+  const contadoPorClave = new Map<string, { venta: FilaDeVenta; libro: string; monto: number }>();
+  for (const pg of pagosV ?? []) {
+    const venta = ventas.find((v) => v.id === pg.sale_id);
+    if (!venta) continue;
+    const clave = claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string));
+    if (librosFiados.has(clave)) continue;
+    const libro = libroDe((pg.currency as string) === "COP" ? null : (pg.currency as string));
+    const previo = contadoPorClave.get(clave);
+    if (previo) previo.monto += Number(pg.amount);
+    else contadoPorClave.set(clave, { venta, libro, monto: Number(pg.amount) });
+  }
+  const contado = [...contadoPorClave.values()];
+
   const lineas: string[] = [
-    fila(["Sevenz — Movimientos del negocio"]),
+    fila(["Sevenz — Facturación"]),
     fila(["Negocio", nombreDelNegocio]),
     fila(["Rango", `del ${desde} al ${hasta} (los dos días incluidos)`]),
     fila(["Zona del negocio", `${ventana.zona} (UTC${ventana.desplazamiento}) · país ${country}`]),
@@ -396,7 +469,19 @@ export async function exportarMovimientos({
     // movimiento --`supabase/124_la_venta.sql`, a propósito-- así que este
     // fichero no la trae. Sin esta línea, el tendero suma sus fiados y
     // concluye que le faltan ventas.
-    fila(["Contenido", "Fiados y abonos del libro. NO incluye las ventas de contado."]),
+    // ── QUÉ TRAE, Y LA LÍNEA DECÍA LO CONTRARIO HASTA HOY ───────────
+    //
+    // Decía *«NO incluye las ventas de contado»*, y era verdad: el fichero
+    // salía solo de `movements`, donde una venta pagada entera no escribe
+    // nada. Desde el 2026-10-29 trae las tres, por encargo del dueño.
+    fila([
+      "Contenido",
+      "Las tres transacciones del libro: de contado, fiado y abono.",
+    ]),
+    fila([
+      "Saldo en las filas de contado",
+      "Va vacío a propósito: una venta pagada entera no toca el saldo del cliente ni el del libro.",
+    ]),
     fila([
       "Saldos",
       "Neto del libro: los saldos a favor restan. No es la misma cifra que «Por cobrar» de la pantalla.",
@@ -405,6 +490,7 @@ export async function exportarMovimientos({
       "Movimientos exportados",
       `${filasEnRango.length} (comprobado contra el conteo de la base: ${totalAntes})`,
     ]),
+    fila(["Ventas de contado exportadas", contado.length]),
   ];
   if (clientId) {
     const nombre = filasEnRango[0]?.clients?.name ?? "(sin movimientos en el rango)";
@@ -419,6 +505,11 @@ export async function exportarMovimientos({
     "documento",
     "tipo",
     "moneda",
+    // TRES COLUMNAS DE DINERO Y NO UNA CON SIGNO: es la forma de la libreta
+    // de papel, y la autosuma de Excel sobre `contado` contesta «cuánto
+    // vendí al contado» sin escribir una fórmula. `contado` nació el
+    // 2026-10-29 con el encargo de traer las tres transacciones.
+    "contado",
     "fiado",
     "abono",
     "saldo_del_cliente",
@@ -446,6 +537,10 @@ export async function exportarMovimientos({
         null,
         null,
         libro,
+        // LA COLUMNA `contado` VA VACÍA en las filas de saldo: una venta
+        // pagada entera no entra en el saldo del libro, así que la apertura y
+        // el cierre no la cuentan.
+        null,
         null,
         null,
         null,
@@ -459,7 +554,50 @@ export async function exportarMovimientos({
     );
 
     const delLibro = filasEnRango.filter((f) => libroDe(f.currency) === libro);
-    for (const f of delLibro) {
+    const contadoDelLibro = contado.filter((c) => c.libro === libro);
+
+    // ── LAS TRES SE MEZCLAN POR FECHA ─────────────────────────────────
+    //
+    // Y no en tres bloques: el tendero lee esto como su libreta, y en la
+    // libreta el día 12 va antes que el 13 pase lo que pase. Las de contado
+    // NO mueven `corriente` --no tocan el saldo-- así que la columna del
+    // saldo sigue cuadrando entre las filas que sí lo mueven.
+    type Evento =
+      | { cuando: string; mov: (typeof delLibro)[number] }
+      | { cuando: string; vta: (typeof contadoDelLibro)[number] };
+    const eventos: Evento[] = [
+      ...delLibro.map((m) => ({ cuando: m.created_at, mov: m })),
+      ...contadoDelLibro.map((c) => ({ cuando: c.venta.created_at, vta: c })),
+    ].sort((a, b) => a.cuando.localeCompare(b.cuando));
+
+    for (const ev of eventos) {
+      if ("vta" in ev) {
+        const { venta, monto } = ev.vta;
+        lineas.push(
+          fila([
+            venta.transaction_code,
+            fecha.format(new Date(venta.created_at)),
+            hora.format(new Date(venta.created_at)),
+            venta.clients?.name ?? "",
+            venta.clients?.document_id ?? "",
+            "De contado",
+            libro,
+            importe(monto),
+            null,
+            null,
+            // LOS DOS SALDOS VAN VACÍOS, no en cero: una venta pagada entera
+            // no toca el saldo del cliente ni el del libro. Un 0 aquí se
+            // leería como «su deuda quedó en cero», que es otra cosa.
+            null,
+            null,
+            "",
+            null,
+            venta.id,
+          ]),
+        );
+        continue;
+      }
+      const f = ev.mov;
       const esFiado = f.type === "charge";
       corriente += esFiado ? Number(f.amount) : -Number(f.amount);
       lineas.push(
@@ -473,6 +611,7 @@ export async function exportarMovimientos({
           // tendero, y esas dos palabras no son su vocabulario.
           esFiado ? "Fiado" : "Abono",
           libro,
+          null,
           esFiado ? importe(Number(f.amount)) : null,
           esFiado ? null : importe(Number(f.amount)),
           // DOS COLUMNAS DE DINERO Y NO UNA CON SIGNO: es la forma de la
@@ -499,6 +638,10 @@ export async function exportarMovimientos({
         null,
         null,
         libro,
+        // LA COLUMNA `contado` VA VACÍA en las filas de saldo: una venta
+        // pagada entera no entra en el saldo del libro, así que la apertura y
+        // el cierre no la cuentan.
+        null,
         null,
         null,
         null,
@@ -515,7 +658,10 @@ export async function exportarMovimientos({
   // pasó nada, y eso es algo que la gente necesita demostrar.
   return {
     csv: documento(lineas),
-    nombre: `movimientos-${desde}-a-${hasta}.csv`,
+    // «facturacion» Y NO «movimientos», por encargo del dueño el 2026-10-29:
+    // el fichero dejó de traer solo movimientos --ahora lleva también las
+    // ventas de contado-- y el nombre tiene que decir de qué pestaña sale.
+    nombre: `facturacion-${desde}-a-${hasta}.csv`,
     filas: filasEnRango.length,
   };
 }

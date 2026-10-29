@@ -111,7 +111,7 @@ export async function GET(request: Request) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .slice(0, 40);
-  const completo = `movimientos-${slug || "negocio"}-${r.nombre.replace(/^movimientos-/, "")}`;
+  const completo = `facturacion-${slug || "negocio"}-${r.nombre.replace(/^facturacion-/, "")}`;
 
   return new NextResponse(r.csv, {
     headers: {

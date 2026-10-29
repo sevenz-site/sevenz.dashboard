@@ -211,11 +211,40 @@ const declaradas = Number(
   /Movimientos exportados;(\d+)/.exec(csv)?.[1] ?? -1,
 );
 // Las filas de verdad: todo lo que lleva un uuid en la última columna.
+//
+// SE SEPARAN POR TIPO DESDE EL 2026-10-29, cuando el fichero pasó a traer
+// también las ventas de contado: antes todas las filas con id eran
+// movimientos y bastaba una cuenta. Ahora son dos poblaciones distintas --
+// `movements` y `sales`-- y mezclarlas haría que esta comprobación comparara
+// 112 contra 84 y fallara sin que nada estuviera mal.
 const filasDeDatos = lineas.filter((l) => /;[0-9a-f-]{36}$/.test(l));
+const filasDeMovimiento = filasDeDatos.filter((l) => /;(Fiado|Abono);/.test(l));
+const filasDeContado = filasDeDatos.filter((l) => /;De contado;/.test(l));
 check(
-  "3. las filas del fichero son las que cuenta la base",
-  declaradas === enLaBase && filasDeDatos.length === enLaBase,
-  `base ${enLaBase}, cabecera ${declaradas}, filas con id ${filasDeDatos.length}`,
+  "3. las filas de MOVIMIENTO del fichero son las que cuenta la base",
+  declaradas === enLaBase && filasDeMovimiento.length === enLaBase,
+  `base ${enLaBase}, cabecera ${declaradas}, filas de movimiento ${filasDeMovimiento.length}`,
+);
+
+// ── LAS VENTAS DE CONTADO TIENEN SU PROPIA CUENTA ────────────────────
+//
+// Y su propia parada: una venta pagada entera NO escribe en `movements`, así
+// que si el fichero perdiera estas filas la comprobación de arriba seguiría
+// en verde. Es justo el fallo que la migración `124` hace posible.
+const contadoDeclarado = Number(/Ventas de contado exportadas;(\d+)/.exec(csv)?.[1] ?? -1);
+check(
+  "3c. las ventas de contado del fichero son las que declara su cabecera",
+  contadoDeclarado === filasDeContado.length,
+  `cabecera ${contadoDeclarado}, filas «De contado» ${filasDeContado.length}`,
+);
+
+check(
+  "3d. una fila de contado NO trae saldo, y una de fiado SÍ",
+  // El saldo del libro es la columna 12 de 15. En una venta de contado va
+  // vacía a propósito: no toca el saldo del cliente ni el del libro.
+  filasDeContado.every((l) => l.split(";")[11] === "") &&
+    filasDeMovimiento.every((l) => l.split(";")[11] !== ""),
+  `${filasDeContado.length} de contado sin saldo, ${filasDeMovimiento.length} de movimiento con saldo`,
 );
 
 check(
@@ -260,7 +289,15 @@ function saldoDelFichero(libro, cual) {
   const fin = lineas.findIndex((l, j) => j > i && l.startsWith("Libro;"));
   const bloque = lineas.slice(i, fin < 0 ? undefined : fin);
   const f = bloque.find((l) => l.includes(`;saldo ${cual}`));
-  return f ? cifra(f.split(";")[10]) : null;
+  // ÍNDICE 11 Y NO 10 DESDE EL 2026-10-29: el fichero ganó la columna
+  // `contado` en la posición 8, así que `saldo_del_libro` se corrió uno. Esta
+  // suite leyó el índice viejo durante un commit y devolvió 0 en los cuatro
+  // saldos -- un cero perfectamente creíble, que es por lo que falló en rojo
+  // en vez de pasar en verde. Las columnas, por si vuelve a moverse:
+  // 0 codigo · 1 fecha · 2 hora · 3 cliente · 4 documento · 5 tipo ·
+  // 6 moneda · 7 contado · 8 fiado · 9 abono · 10 saldo_del_cliente ·
+  // 11 saldo_del_libro · 12 descripcion · 13 nota · 14 id
+  return f ? cifra(f.split(";")[11]) : null;
 }
 
 for (const libro of ["USD", "EUR"]) {
