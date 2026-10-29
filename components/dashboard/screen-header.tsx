@@ -145,7 +145,21 @@ export function ScreenHeader({
           The screens that pass real nodes render exactly as before: this
           only decides whether the wrapper exists at all. */}
       {search ? <div className="px-4 py-4">{search}</div> : null}
-      {filters ? <div className="px-4 pb-4">{filters}</div> : null}
+      {/* ── 16px BAJO EL SUBTÍTULO, HAYA BUSCADOR O NO ──────────────────
+          Este envoltorio llevaba `pb-4` y NADA arriba, porque daba por hecho
+          que encima iba el buscador con sus `py-4`. En una pantalla sin
+          buscador los filtros quedaban pegados al subtítulo.
+
+          SE VE DENTRO DE UNA MISMA PANTALLA, que es lo que lo delató: en
+          `/reportes` el buscador solo sale en «Facturación», así que esa
+          pestaña tenía su hueco y las otras dos no. El dueño lo reportó el
+          2026-10-29 con la captura de «Inventario».
+
+          `pt-4` SOLO CUANDO NO HAY BUSCADOR, y no siempre: con él arriba el
+          hueco ya está puesto y sumar otros 16 daría 32. */}
+      {filters ? (
+        <div className={search ? "px-4 pb-4" : "px-4 pt-4 pb-4"}>{filters}</div>
+      ) : null}
       {/* And when neither is there, the bottom padding has to come from
           somewhere: without this the subtitle sits flush against the edge of
           the dark block. */}
