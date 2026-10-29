@@ -60,6 +60,90 @@ export default async function PagoDeBloquePage({
   );
   const ficha = coincidencia.kind === "uno" ? coincidencia.cliente.id : null;
 
+  // ── LAS FICHAS EMPAREJADAS, CON LO QUE HACE FALTA PARA AVISAR ────────
+  //
+  // Encargo del dueno el 2026-10-28: al marcar «Fiado o credito» con una
+  // ficha de mala paga, sale un aviso sobre el boton diciendo CUANDO se
+  // marco y CUANTO debe. Las dos cifras hay que traerlas aqui:
+  //
+  //   · La FECHA sale de `client_flags`, no de `clients`. Esa tabla solo
+  //     guarda el booleano `is_flagged`, que contesta «ahora mismo» y no
+  //     «desde cuando» -- lo dice la propia 038. La fila que vale es la
+  //     ultima SIN levantar (`unflagged_at is null`): un cliente marcado,
+  //     perdonado y vuelto a marcar tiene varias.
+  //
+  //   · La DEUDA sale de `client_summary`, y se toma la del LIBRO DE ESTA
+  //     PANTALLA. Es lo unico defendible: el aviso acompana a un cobro en
+  //     una moneda concreta, y sumar libros esta prohibido en esta app.
+  //     Si debe tambien en otro, eso no es lo que se esta cobrando aqui.
+  const emparejadas =
+    coincidencia.kind === "uno"
+      ? [coincidencia.cliente]
+      : coincidencia.kind === "varios"
+        ? coincidencia.clientes
+        : [];
+  const idsMarcados = emparejadas.filter((c) => c.is_flagged).map((c) => c.id);
+
+  // Solo si hay alguna marcada: sin marcas no hay nada que avisar y estas dos
+  // consultas no tendrian a quien describir.
+  const [resMarcas, resSaldos] = idsMarcados.length
+    ? await Promise.all([
+        supabase
+          .from("client_flags")
+          .select("client_id, flagged_at")
+          .in("client_id", idsMarcados)
+          .is("unflagged_at", null)
+          .order("flagged_at", { ascending: false }),
+        supabase
+          .from("client_summary")
+          .select("client_id, balance, balance_usd, balance_eur")
+          .in("client_id", idsMarcados),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+
+  // SE MIRA EL ERROR. Descartarlo dejaria el aviso sin fecha y sin deuda sin
+  // que nada lo delatara -- que es el fallo que ya costo un dia entero en
+  // Reportes el 2026-10-27. Aqui ademas no se tumba la pantalla: un aviso
+  // incompleto es mejor que no poder cobrar, y el dialogo de mala paga sigue
+  // saliendo igual porque no depende de esto.
+  if (resMarcas.error) console.error("[pago] client_flags", resMarcas.error);
+  if (resSaldos.error) console.error("[pago] client_summary", resSaldos.error);
+
+  // La PRIMERA de cada cliente, que por el `order by` de arriba es la mas
+  // reciente sin levantar.
+  const marcaDe = new Map<string, string>();
+  for (const f of resMarcas.data ?? []) {
+    if (!marcaDe.has(f.client_id as string)) {
+      marcaDe.set(f.client_id as string, f.flagged_at as string);
+    }
+  }
+  const saldoDe = new Map<string, number>();
+  for (const r of resSaldos.data ?? []) {
+    // `bloque.moneda` Y NO EL `moneda` DE LA URL: aquel es el parametro
+    // crudo --puede venir vacio-- y el libro de verdad lo resuelve
+    // `cargarBloque`. Confundirlos daria el saldo colombiano a un negocio
+    // venezolano cada vez que se entra sin `?moneda=`.
+    const v =
+      bloque.moneda === "USD"
+        ? r.balance_usd
+        : bloque.moneda === "EUR"
+          ? r.balance_eur
+          : r.balance;
+    saldoDe.set(r.client_id as string, Number(v ?? 0));
+  }
+
+  const fichas = emparejadas.map((c) => ({
+    id: c.id,
+    name: c.name,
+    marcada: c.is_flagged,
+    // `null` cuando la marca es anterior a `client_flags` (migracion 022) o
+    // la fila falta: el aviso sale sin fecha en vez de inventarse una.
+    marcadaEl: marcaDe.get(c.id) ?? null,
+    // Lo que debe EN EL LIBRO DE ESTA PANTALLA. Cero y negativo --saldo a
+    // favor-- se tratan igual aguas abajo: no se escribe la frase de la deuda.
+    debe: saldoDe.get(c.id) ?? 0,
+  }));
+
 
   const hrefCliente = `/productos/ordenes/${pedido.id}/registrar/cliente?moneda=${bloque.moneda}${ficha ? `&ficha=${ficha}` : ""}`;
 
@@ -122,12 +206,7 @@ export default async function PagoDeBloquePage({
           }))}
         // TODAS las emparejadas, no la primera: con varias, cuál se usa lo
         // decide el borrador, y eso solo lo sabe el navegador. Ver `PR-E3`.
-        fichas={(coincidencia.kind === "uno"
-          ? [coincidencia.cliente]
-          : coincidencia.kind === "varios"
-            ? coincidencia.clientes
-            : []
-        ).map((c) => ({ id: c.id, name: c.name, marcada: c.is_flagged }))}
+        fichas={fichas}
       />
     </div>
   );

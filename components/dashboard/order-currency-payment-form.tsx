@@ -131,7 +131,15 @@ export function OrderCurrencyPaymentForm({
   // el aviso de «mala paga» justo en ese caso: el servidor mandaba `null`
   // porque no sabía cuál era. Mandándolas todas, el navegador empareja por el
   // `fichaId` del borrador, que es quien lo sabe.
-  fichas: { id: string; name: string; marcada: boolean }[];
+  fichas: {
+    id: string;
+    name: string;
+    marcada: boolean;
+    /** Cuándo se marcó, de `client_flags`. `null` si no consta. */
+    marcadaEl?: string | null;
+    /** Lo que debe EN EL LIBRO DE ESTA PANTALLA. 0 o negativo = no debe. */
+    debe?: number;
+  }[];
 }) {
   const [cerrando, setCerrando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -239,6 +247,75 @@ export function OrderCurrencyPaymentForm({
   const fichaDelBorrador =
     fichas.find((f) => f.id === leerBorrador(pedidoId)?.cliente?.fichaId) ?? null;
 
+  // ── EL AVISO SOBRE EL BOTON — encargo del dueno el 2026-10-28 ───────
+  //
+  // *«al marcar "Fiado o credito" deberia aparecer support text error sobre
+  // el boton "Pagar $100.00". Mencionando <nombre del cliente> fue marcado
+  // como mala paga el 00 sept. 0000. Debe $00.00 (el mensaje no bloquea el
+  // registro solo notifica, tampoco reemplaza la modal de alerta de mala
+  // paga, complementa)»*.
+  //
+  // NO BLOQUEA Y NO SUSTITUYE AL DIALOGO: son dos cosas distintas en dos
+  // momentos distintos. Este texto aparece mientras el tendero DECIDE --en
+  // cuanto marca que queda debiendo-- y el dialogo sale al CONFIRMAR. Quitar
+  // el dialogo dejaria la decision sin su ultima parada; quitar el texto
+  // dejaria al tendero enterandose despues de haber elegido.
+  //
+  // TRES BORDES, y los tres salen de datos que pueden faltar:
+  //
+  //   · **Sin ficha elegida todavia** --el pedido empareja con varias y el
+  //     tendero aun no ha pasado por el 3/3-- no hay a quien nombrar, asi que
+  //     no sale nada. El aviso de ese caso ya lo da la tarjeta del 1/x:
+  //     «Una de esas fichas esta marcada como Mala paga».
+  //   · **Sin fecha** (marca anterior a `client_flags`, o fila que falta): se
+  //     escribe la frase sin ella en vez de inventar un dia.
+  //   · **Sin deuda** --cero, o saldo A FAVOR-- se omite esa frase entera.
+  //     «Debe $0,00» bajo un rotulo de mala paga se lee como un fallo, y
+  //     «Debe -$178,00» todavia peor: `CLAUDE.md` ya tiene escrito que un
+  //     saldo a favor no se escribe con un menos.
+  // ── A QUIEN DESCRIBE EL AVISO, QUE NO ES SIEMPRE EL DEL BORRADOR ────
+  //
+  // `fijarCliente` SOLO CORRE EN EL PASO 3/3, y este es el 2/3. O sea que en
+  // la primera pasada el borrador todavia no tiene cliente, y mirar solo ahi
+  // dejaria el aviso sin salir NUNCA la primera vez -- justo cuando el
+  // tendero esta decidiendo si fia. Medido leyendo quien llama a
+  // `fijarCliente`: un unico sitio, `order-client-step.tsx`.
+  //
+  // Asi que:
+  //
+  //   · **Con cliente en el borrador** manda el borrador, incluida su
+  //     respuesta negativa: `fichaId` nulo es «cuenta separada», o sea que la
+  //     ficha emparejada NO es a quien se le fia y no hay nada que avisar.
+  //   · **Sin cliente todavia y UNA sola coincidencia**, esa es. No hay
+  //     ambiguedad posible: el pedido trae un documento que empareja con una
+  //     ficha.
+  //   · **Sin cliente y VARIAS**, no se nombra a nadie. Elegir una seria
+  //     acusar a quien quiza no es, y ese caso ya lo avisa la tarjeta del
+  //     `1/x`: «Una de esas fichas esta marcada como Mala paga».
+  const fichaParaElAviso = leerBorrador(pedidoId)?.cliente
+    ? fichaDelBorrador
+    : fichas.length === 1
+      ? fichas[0]
+      : null;
+
+  const avisoMalaPaga = (() => {
+    if (!fichaParaElAviso?.marcada) return null;
+    const cuando = fichaParaElAviso.marcadaEl
+      ? ` el ${new Intl.DateTimeFormat("es-VE", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }).format(new Date(fichaParaElAviso.marcadaEl))}`
+      : "";
+    const debe = Number(fichaParaElAviso.debe ?? 0);
+    const deuda = debe > 0 ? ` Debe ${formatPriceAmount(debe, moneda)}.` : "";
+    return (
+      <p className="text-xs leading-4 text-destructive" role="status">
+        {fichaParaElAviso.name} fue marcado como mala paga{cuando}.{deuda}
+      </p>
+    );
+  })();
+
   async function cerrarVenta(borrador: NonNullable<ReturnType<typeof leerBorrador>>) {
     setCerrando(true);
     setError(null);
@@ -281,6 +358,7 @@ export function OrderCurrencyPaymentForm({
         // de desplazamiento a 375x812. La hoja del asistente de venta no lo
         // pide, por eso es una prop y no el comportamiento por defecto.
         botonPegadoAbajo
+        avisoSiFiado={avisoMalaPaga}
         onGuardar={guardar}
         // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
         // It is the BLOCK's total and not what is typed into the amount field —

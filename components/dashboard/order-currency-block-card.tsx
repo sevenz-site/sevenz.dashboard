@@ -173,11 +173,17 @@ export function OrderCurrencyBlockCard({
             asChild
           >
             <Link href={hrefRegistrar}>
-              {yaTieneMonto ? (
-                <Pencil className="size-5" />
-              ) : (
-                <Plus className="size-5" />
-              )}
+              {yaTieneMonto ? <Pencil className="size-5" /> : <Plus className="size-5" />}
+              {/* ── «EDITAR» SE QUEDA, Y ESO CORRIGE LO DE ESTA MAÑANA ──
+                  El 2026-10-28 puse aquí «Registrar y finalizar» cuando era
+                  la última moneda, para cerrar un camino que no se veía. El
+                  dueño lo revisó ese mismo día con su frame `1782:14792` y
+                  decidió otra cosa, mejor: el botón de ACABAR va abajo, a lo
+                  ancho de la pantalla, y esta tarjeta conserva su «Editar».
+                  Sus palabras: *«mantener el botón de "Editar" para editar el
+                  pedido en esa moneda»*.
+                  Y tiene razón: este botón edita UNA moneda, y acabar es una
+                  acción sobre el PEDIDO. Dos alcances, dos sitios. */}
               {yaTieneMonto ? "Editar" : "Registrar"}
             </Link>
           </Button>

@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ImageOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronRight, ImageOff } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -94,14 +93,23 @@ export function OrderLineEditSheet({
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-10 w-full"
+      {/* ── «CAMBIAR», NO «EDITAR PEDIDO» — frame `1389:8388` ─────────
+          Pedido por el dueno el 2026-10-28: la cantidad pasa a cambiarse con
+          «−» y «+» en la propia fila, asi que este boton ya no es la puerta
+          a editar la linea: es solo lo que queda detras -- la moneda, el
+          escalon y la ficha del producto.
+          Un boton de ancho completo que dijera «Editar pedido» al lado de un
+          «+» que ya edita el pedido serian dos promesas para una cosa. El
+          frame lo dibuja como un boton de TEXTO con su chevron, en la fila
+          del subtotal. */}
+      <button
+        type="button"
         onClick={() => setAbierta(true)}
+        className="-mr-1 flex shrink-0 items-center gap-1 rounded-md px-1 py-1.5 text-sm outline-none transition-colors active:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Editar pedido
-      </Button>
+        Cambiar
+        <ChevronRight className="size-5 text-muted-foreground" aria-hidden />
+      </button>
 
       <Sheet open={abierta} onOpenChange={setAbierta}>
         {/* `p-0` Y EL PROPIO RELLENO DENTRO, porque la foto llega a los dos

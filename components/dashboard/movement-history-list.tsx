@@ -930,9 +930,30 @@ function FilaDeContado({
   // conversión que nadie hizo. Es la misma regla que ya rige la tarjeta de un
   // abono dentro de su fiado.
   //
-  // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
-  // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
-  // callar.
+  // ── SIN TASA SELLADA, LA DE HOY — encargo del dueño el 2026-10-29 ──
+  //
+  // Hasta hoy la línea NO SE DIBUJABA cuando no había tasa sellada, con este
+  // argumento: *«inventar una es peor que callar»*. Y la tasa falta en un
+  // caso muy concreto -- la venta se cobró en la MISMA moneda del libro, así
+  // que nadie convirtió nada y no hubo tasa que sellar.
+  //
+  // LO QUE SE VEÍA, y es `CT-121`: en el historial de Camilo Camisama, el 23
+  // de octubre, dos filas «De contado» seguidas -- una con «Bs. 11.077,84 Al
+  // día de compra» y la otra, el Alicate de $57, sin nada. Al lado de sus
+  // vecinas parecía un dato que faltaba.
+  //
+  // DECISIÓN DEL DUEÑO ESE DÍA, con el caso delante: se pone la de HOY y se
+  // rotula «hoy», que es exactamente lo que ya hacen el fiado y el abono sin
+  // bolívares tecleados. La razón vieja se queda escrita arriba porque sigue
+  // siendo cierta y es lo que se cede: esa cifra describe una conversión que
+  // nadie hizo. Lo que pesa más para él es que la fila no parezca rota.
+  //
+  // EL RÓTULO LAS DISTINGUE, y es lo único que lo hace: «Al día de compra» es
+  // un hecho --ese dinero cambió de manos así-- y «hoy» es una referencia que
+  // cambia cada día. Sin el rótulo serían la misma línea diciendo dos cosas.
+  //
+  // UN NEGOCIO COLOMBIANO SIGUE SIN LÍNEA: `amount.secondary` es `null` para
+  // él, y no hay bolívares que enseñar.
   // LOS TECLEADOS PRIMERO, y la conversión solo si no los hay. Regla crítica
   // del 2026-10-24: `amount × tasaSellada` devuelve una cifra que nadie
   // escribió — Bs. 100.000 vuelven como Bs. 100.001,87. Ver CLAUDE.md.
@@ -942,6 +963,10 @@ function FilaDeContado({
       : venta.tasaSellada == null
         ? null
         : formatBs(venta.amount * Number(venta.tasaSellada));
+  // La de hoy, cuando no hay sellada. `secondary` ya es esa conversión y sale
+  // del mismo sitio que la de las demás filas, así que no puede separarse.
+  const enBsDeHoy = enBsSellados ?? amount.secondary ?? null;
+  const cuandoEsEsaCifra = enBsSellados ? "Al día de compra" : "hoy";
 
 
   return (
@@ -986,9 +1011,9 @@ function FilaDeContado({
                   entra de lo que sale. */}
               +{amount.primary}
             </span>
-            {enBsSellados ? (
+            {enBsDeHoy ? (
               <span className="font-normal text-muted-foreground">
-                {enBsSellados} Al día de compra
+                {enBsDeHoy} {cuandoEsEsaCifra}
               </span>
             ) : null}
           </div>

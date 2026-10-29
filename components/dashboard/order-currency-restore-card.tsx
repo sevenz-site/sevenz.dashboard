@@ -40,38 +40,70 @@ export function OrderCurrencyRestoreCard({
   pedidoId,
   moneda,
   cuantosProductos,
+  bloqueVivo = false,
 }: {
   pedidoId: string;
   moneda: PriceCurrency;
   cuantosProductos: number;
+  // ¿La moneda sigue teniendo lineas vivas? `true` cuando se quito solo
+  // parte de ella. Lo decide la PAGINA, que es la que conoce los bloques.
+  bloqueVivo?: boolean;
 }) {
   const router = useRouter();
   const [restaurando, startTransition] = useTransition();
 
-  const nombre = currencyName(moneda);
+  // CON MAYUSCULA INICIAL, como el frame `1782:14737` lo escribe: «Eliminaste
+  // el pedido en Euros». `currencyName` devuelve la palabra en minuscula
+  // porque sus otros usos la meten dentro de una frase; aqui nombra un LIBRO,
+  // no una cantidad.
+  const bruto = currencyName(moneda);
+  const nombre = bruto.charAt(0).toUpperCase() + bruto.slice(1);
 
   return (
     // EL BORDE EN ROJO TENUE, como la fila quitada de la libreta: dice que
     // falta algo sin gritarlo. El texto va en el color normal porque lo que
     // está en rojo es el estado, no el dato.
-    <div className="flex items-center gap-2 rounded-xl border border-destructive/40 p-4 text-destructive">
+    // EL FRAME LE DA FONDO, no solo borde: `#ffebeb` con el borde en
+    // `--destructive` entero. `bg-destructive/5` es ese mismo rojo al 5%,
+    // que es el que esta app ya usa para las superficies de aviso -- un
+    // literal aqui seria el mismo color por otro camino, y no giraria con el
+    // tema oscuro.
+    <div className="flex items-center gap-2 rounded-[10px] border border-destructive bg-destructive/5 p-4 text-destructive">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="truncate text-sm font-medium">
-          Quitaste lo de {nombre.toLowerCase()}
-        </p>
-        {/* ── CORTO, Y CON EL VERBO QUE TOCA ───────────────────────
-            Decía «1 producto que no entrarán en la venta»: plural sobre un
-            sujeto singular, y encima tan largo que se cortaba en el teléfono
-            --medido a 375px el 2026-10-26, terminaba en «no entrarán en la
-            ve…»--. Una frase truncada en una tarjeta que avisa de algo que
-            falta no avisa de nada.
+        {/* EL TEXTO DEL FRAME `1782:14737`, pedido por el dueno el
+            2026-10-28: «Eliminaste el pedido en Euros».
 
-            SIN VERBO, ENTONCES: el rótulo de arriba ya dice lo que pasó
-            («Quitaste lo de euros») y esta línea solo cuantifica. */}
-        <p className="truncate text-xs opacity-80">
+            LA MONEDA VA CON MAYUSCULA porque el frame la escribe asi y
+            porque aqui nombra un libro --«el pedido en Euros»-- no una
+            cantidad de dinero. Antes iba en minuscula dentro de «lo de
+            euros», que era otra frase. */}
+        {/* ── DOS FRASES, PORQUE SON DOS COSAS ─────────────────────
+            «Eliminaste el pedido en Euros» es el texto del frame
+            `1782:14737` y es verdad cuando se quito la moneda ENTERA.
+
+            DESDE QUE SE PUEDE QUITAR UNA SOLA LINEA --2026-10-28, por la
+            papelera del «−»-- hay otro caso: quitar un producto de un bloque
+            de tres deja el bloque VIVO, ahi mismo, con sus otros dos. Decir
+            «eliminaste el pedido en Euros» con el pedido en euros dibujado
+            dos dedos mas arriba no es un matiz: es la tarjeta
+            contradiciendo a la pantalla. */}
+        <p className="truncate text-xs font-semibold">
+          {bloqueVivo
+            ? `Quitaste ${cuantosProductos === 1 ? "un producto" : "productos"} de ${nombre}`
+            : `Eliminaste el pedido en ${nombre}`}
+        </p>
+        {/* ── LA SEGUNDA LINEA, TAMBIEN DEL FRAME ──────────────────
+            «<00> productos eliminados del pedido».
+
+            SIGUE SIENDO CORTA A PROPOSITO, que es lo que costo el 2026-10-26:
+            decia «1 producto que no entraran en la venta» --plural sobre un
+            sujeto singular, y tan largo que a 375px terminaba en «no entraran
+            en la ve…»--. Una frase truncada en una tarjeta que avisa de algo
+            que falta no avisa de nada. La del frame cabe. */}
+        <p className="truncate text-xs">
           {cuantosProductos === 1
-            ? "1 producto fuera de la venta"
-            : `${cuantosProductos} productos fuera de la venta`}
+            ? "1 producto eliminado del pedido"
+            : `${cuantosProductos} productos eliminados del pedido`}
         </p>
       </div>
       <Button

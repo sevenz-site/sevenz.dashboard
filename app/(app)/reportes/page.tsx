@@ -1,61 +1,102 @@
-import { ChartColumn } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
-import { ReporteCard } from "@/components/dashboard/reporte-card";
-import { ReporteClienteCard } from "@/components/dashboard/reporte-cliente-card";
+import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
 import {
   ReportesClientSearch,
-  ReportesPeriodChips,
+  ReportesEntitySearch,
 } from "@/components/dashboard/reportes-controls";
-import { readWeeklyLending, hasAnyMovement } from "@/lib/weekly-lending-read";
+import { ReportesAncla } from "@/components/dashboard/reportes-ancla";
+import { ReportesAnalitica } from "@/components/dashboard/reportes-analitica";
+import { ReportesDescargar } from "@/components/dashboard/reportes-descargar";
+import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
+import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
+import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
+import { apartadoDe } from "@/lib/reports/apartados";
+import { etiquetaDelRango, rangoDe, textoDelRango } from "@/lib/reports/rango";
+import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
+import { cargarFacturacion } from "@/lib/reports/facturacion";
+import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
+import { cargarInventario } from "@/lib/reports/inventario";
+import { cargarProveedores } from "@/lib/reports/proveedores";
+import { ReportesProveedores } from "@/components/dashboard/reportes-proveedores";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
-import type { LendingPeriod } from "@/lib/lending-charts";
-import type { ClientSummary, OwnerCountry } from "@/lib/types";
-import { EmptyState } from "@/components/dashboard/empty-state";
+import type { OwnerCountry } from "@/lib/types";
 
-// REPORTES — rebuilt to the Figma spec of 2026-10-04 (frame `1074:30167`).
+// ═══════════════════════════════════════════════════════════════════════
+// REPORTES — reescrita al frame `1502:10283` el 2026-10-27
 //
-// It used to be two bare charts. Now it is one card per ledger, each carrying
-// that currency's capital on top and its own chart underneath, because a chart
-// means something different next to the figure it explains: "fiaste 300 esta
-// semana" reads one way beside "te deben 4.000" and another way alone.
+// Encargo del dueño: *«tendrá tres tabs en versión dark como la sección
+// superior de reportes: Clientes, Inventario y Proveedores»*, con el primero
+// renombrado a **Facturación** al pasar los frames.
 //
-// `CT-7` ("Informes", planned in `../docs/REPORTES-PLAN.md`) is still a bigger
-// thing that will eventually own this route and rewrite this page. Taking the
-// URL now is deliberate — the owner should not have to learn a second one —
-// but nothing here should be built on as if it were CT-7.
+// ───────────────────────────────────────────────────────────────────────
+// QUÉ SE VA DE AQUÍ, DICHO EN VOZ ALTA
 //
-// ─────────────────────────────────────────────────────────────────────────
-// THE TWO CONTROLS LIVE IN THE URL
+// La versión anterior (frame `1074:30167`, del 2026-10-04) era una tarjeta por
+// libro con su gráfico de **Fiado contra Abono**. El frame nuevo no lo dibuja:
+// en su lugar hay un gráfico de **Ventas** por moneda y otro de
+// **Transacciones** por tipo. No es lo mismo, y conviene saber qué se pierde
+// -- la comparación directa entre lo que se fía y lo que se cobra, que ahora
+// hay que leer de las barras de Transacciones.
 //
-// `?periodo=` and `?cliente=`, read here and applied before a single bar is
-// bucketed. The alternative — shipping the movements and filtering in the
-// browser — would put a shop's whole month of rows on a phone so it could throw
-// most of them away.
-const PERIOD_LABEL: Record<LendingPeriod, string> = {
-  "7d": "los últimos 7 días",
-  "30d": "los últimos 30 días",
-};
+// ───────────────────────────────────────────────────────────────────────
+// TRES CONTROLES EN LA URL, no en estado de cliente
+//
+// `?tab=`, `?periodo=` y `?cliente=`. Los dos últimos ya vivían ahí; el
+// primero se suma por la misma razón que ellos: el servidor sabe qué pintar,
+// así que no se cargan los datos de los tres apartados para enseñar uno.
+//
+// ───────────────────────────────────────────────────────────────────────
+// «DESCARGAR» YA ESTÁ, Y A MEDIAS A PROPÓSITO
+//
+// Hasta el 2026-10-27 esta nota decía que el botón del frame `1502:10291` no
+// estaba porque su nota suelta pide `.xlsx`, `.pdf` y envío por correo -- tres
+// dependencias nuevas, cada una con `new-api-risk-review` obligatorio.
+//
+// LO QUE CAMBIÓ es una decisión del dueño ese mismo día: esta entrega es solo
+// lo visible, con **descarga directa al teléfono en `.csv`** y sin correo. El
+// envío, el `.xlsx`, el `.pdf` y el correo mensual por apartado quedan para
+// una segunda entrega, con su propia reseña de dependencias.
+//
+// Y el menú dibuja **una sola fila**, no las dos del frame: Inventario y
+// Proveedores son estado vacío, así que no hay nada que descargar de ellos.
+// La razón entera está en `reportes-descargar.tsx`.
+// ═══════════════════════════════════════════════════════════════════════
 
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string; cliente?: string }>;
+  searchParams: Promise<{
+    producto?: string;
+    proveedor?: string;
+    periodo?: string;
+    desde?: string;
+    hasta?: string;
+    cliente?: string;
+    tab?: string;
+    // Los pone la ruta de descarga al volver aquí tras un fallo. Ver
+    // `app/api/reportes/movimientos/route.ts`.
+    export?: string;
+    motivo?: string;
+  }>;
 }) {
-  const { periodo, cliente } = await searchParams;
-  // Anything that is not one of the two known values falls back to 7 days
-  // rather than erroring: this parameter is in a URL the owner can share, edit
-  // or mistype, and a report is not worth a crash.
-  const period: LendingPeriod = periodo === "30d" ? "30d" : "7d";
+  const { periodo, desde, hasta, cliente, producto, proveedor, tab, export: exportado, motivo } =
+    await searchParams;
+  // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
+  // estos parámetros van en una URL que el dueño puede compartir o teclear
+  // mal, y un informe no vale una pantalla caída.
+  const rango = rangoDe({ desde, hasta, periodo });
+  const apartado = apartadoDe(tab);
+  const periodoTexto = textoDelRango(rango);
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: clients }, { data: summaries }, { data: owner }, ownerRate] = await Promise.all([
+  const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
     supabase
       .from("clients")
       .select("id, name, document_id, document_type")
@@ -63,133 +104,236 @@ export default async function ReportesPage({
       .is("trashed_at", null)
       .is("deleted_at", null)
       .order("name"),
-    supabase.from("client_summary").select("*").eq("owner_id", user!.id),
     supabase.from("owners").select("country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  // Same guard as Inicio, and for the same reason: not knowing the country is
-  // not knowing it is CO. Guessing here would draw a Venezuelan shop the
-  // Colombian chart — which is not an error message, it is an empty chart that
-  // looks like "you had a quiet week".
+  // La misma guarda que Inicio, y por la misma razón: no saber el país no es
+  // saber que es CO. Adivinar aquí le dibujaría a un negocio venezolano el
+  // informe colombiano -- que no es un mensaje de error, es un informe vacío
+  // que parece «tuviste una semana floja».
   const ownerCountry =
     (owner?.country as OwnerCountry | undefined) ?? (await readOwnerCountry(supabase, user!.id));
   if (!ownerCountry) return <OwnerUnavailableDialog />;
 
-  // An unknown or hidden id simply means "no filter". Silently, and on purpose:
-  // the alternative is a 404 on a screen whose job is to show numbers, from a
-  // parameter the owner may have inherited from a shared link.
+  // Un id desconocido u oculto es simplemente «sin filtro». En silencio y a
+  // propósito: la alternativa es un 404 en una pantalla cuyo trabajo es
+  // enseñar números, por un parámetro que pudo llegar en un enlace compartido.
   const selected = (clients ?? []).find((c) => c.id === cliente) ?? null;
-  const scopeIds = selected ? [selected.id] : (clients ?? []).map((c) => c.id);
 
-  const rows = ((summaries ?? []) as ClientSummary[]).filter(
-    (r) => !selected || r.client_id === selected.id,
-  );
-  // Flagged clients count here, exactly as they do in Inicio's capital. The
-  // mark hides someone from a list; it does not stop them owing money.
-  const totalCop = rows.filter((r) => Number(r.balance) > 0).reduce((s, r) => s + Number(r.balance), 0);
-  const totalUsd = rows.filter((r) => Number(r.balance_usd) > 0).reduce((s, r) => s + Number(r.balance_usd), 0);
-  const totalEur = rows.filter((r) => Number(r.balance_eur) > 0).reduce((s, r) => s + Number(r.balance_eur), 0);
+  // SOLO SE CARGA EL APARTADO QUE SE VA A PINTAR. Es la misma razón por la
+  // que la pestaña vive en la URL: traer los datos de los tres para enseñar
+  // uno es pagar tres consultas por pantalla.
+  const facturacion =
+    apartado === "facturacion"
+      ? await cargarFacturacion({
+          supabase,
+          ownerId: user!.id,
+          rango,
+          dosLibros: ownerRate !== null,
+          // PARA EL PUNTAJE de «Mejores pagadores», que necesita el saldo
+          // combinado de un negocio con dos libros. `null` en Colombia.
+          effectiveRate: ownerRate?.effectiveRate ?? null,
+          clientId: selected?.id ?? null,
+        })
+      : null;
 
-  const lending = await readWeeklyLending(supabase, scopeIds, period);
-  // Only asked when the period came back empty: on any other period the answer
-  // changes nothing, and this is a count over the whole movements table.
-  const everAny = lending.anyInPeriod ? true : await hasAnyMovement(supabase, scopeIds);
+  // EL FILTRO POR CLIENTE NO SE LE PASA, y no es un olvido: Inventario habla
+  // de productos, no de clientes. «Cuántas referencias te quedan» no cambia
+  // porque estés mirando a una persona, y filtrarlo daría la cifra de todo el
+  // negocio con un rótulo que promete lo contrario.
+  // ── LAS TASAS DEL DÍA ────────────────────────────────────────────────
+  //
+  // Hacen falta para restar un costo en dólares de una venta en euros, que
+  // **en dev es más de la mitad de las líneas vendidas** -- medido el
+  // 2026-10-28. Ver la cabecera de `lib/reports/ganancia.ts`.
+  //
+  // SE ARMAN A MANO EN VEZ DE LLAMAR A `getBolivarRates`, y a propósito: esa
+  // función además sale a CriptoYa a buscar el precio del USDT, y aquí no se
+  // usa ninguna cifra en USDT --`sale_lines.currency` solo admite USD, EUR y
+  // COP--. Es el mismo `usdt: null` deliberado de `app/c/[token]/page.tsx`:
+  // una llamada de red por un dato que nadie va a pintar.
+  const rates = ownerRate
+    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur, usdt: null }
+    : null;
+  const tasas = rates ? { usd: rates.usd, eur: rates.eur } : null;
 
-  const ledger = ownerRate ? { rate: ownerRate.effectiveRate } : null;
-  const chartSuffix = period === "7d" ? "de la semana" : "de 30 días";
+  // ── LAS LISTAS QUE ALIMENTAN LOS DOS BUSCADORES ──────────────────────
+  //
+  // Se piden solo en su apartado, igual que los datos: traer el catálogo
+  // entero para pintar Facturación sería pagar una consulta por una pantalla
+  // que no la usa.
+  const { data: productosParaBuscar } =
+    apartado === "inventario"
+      ? await supabase
+          .from("products")
+          .select("id, name")
+          .eq("owner_id", user!.id)
+          .is("trashed_at", null)
+          .order("name")
+      : { data: null };
+
+  const inventario =
+    apartado === "inventario"
+      ? await cargarInventario({
+          supabase,
+          ownerId: user!.id,
+          rango,
+          rates,
+          productId: producto ?? null,
+        })
+      : null;
+
+  const productoElegido =
+    (productosParaBuscar ?? []).find((p) => p.id === producto)?.name ?? null;
+
+  // EL FILTRO POR CLIENTE TAMPOCO SE LE PASA, por la misma razón que a
+  // Inventario: un proveedor no cambia porque estés mirando a una persona.
+  // TODOS los proveedores alimentan el buscador, y la lista que se pinta
+  // puede venir acotada a uno. Son dos llamadas a la misma función con el
+  // mismo rango, así que la segunda sale de la caché de `fetch` de Next.
+  const proveedoresTodos =
+    apartado === "proveedores"
+      ? await cargarProveedores({ supabase, ownerId: user!.id, rango, rates })
+      : null;
+  const proveedores = proveedor
+    ? (proveedoresTodos ?? []).filter((f) => f.clave === proveedor)
+    : proveedoresTodos;
+  const proveedorElegido =
+    proveedoresTodos?.find((f) => f.clave === proveedor)?.nombre ?? null;
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* UN ANCLA SOLA BASTA. Si la URL trae `#mas-vendidos` sin su
+          `?tab=inventario`, esto corrige la pestaña -- el fragmento no llega
+          al servidor, asi que no hay otra forma. Ver su propio fichero. */}
+      <ReportesAncla apartado={apartado} />
+      {/* ¿CUÁL DE LOS TRES APARTADOS MIRAN? Su pregunta de negocio entera
+          está en el propio componente. No pinta nada. */}
+      <ReportesAnalitica apartado={apartado} />
       <ScreenHeader
         title="Reportes"
-        /* No subtitle: the spec turns that layer off on this screen, and the
-           period chip right below already says which window the bars cover. */
+        subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
+        action={<ReportesDescargar />}
         search={
-          <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
+          // ── EL BUSCADOR SOLO EN FACTURACION ─────────────────────────
+          //
+          // Filtra por CLIENTE, y es el unico apartado al que eso le dice
+          // algo. En Inventario la pregunta es «cuantas referencias me
+          // quedan», que no cambia porque estes mirando a una persona: dejarlo
+          // ahi ofrecia un filtro que la pantalla ignoraba en silencio, y
+          // ademas pintaba el aviso «Mostrando solo <nombre>» sobre unas
+          // cifras que eran las del negocio entero.
+          //
+          // EL FRAME DE INVENTARIO PIDE OTRA COSA: su barra dice «Buscar
+          // producto». Es un buscador distinto, sobre otra tabla, y no entra
+          // en esta entrega -- se dice en vez de dejar el de clientes
+          // haciendose pasar por el.
+          // ── UN BUSCADOR POR APARTADO — frames `1667:19336` y
+          //    `1749:14598`, encargo del dueño el 2026-10-29 ──────────
+          //
+          // Los tres son la MISMA barra de la cabecera con otro texto. Lo que
+          // cambia es sobre qué buscan y qué parámetro ponen en la URL.
+          //
+          // EL PÁRRAFO DE ABAJO SE QUEDA porque sigue siendo verdad para
+          // Facturación: su buscador filtra por CLIENTE, y eso no le dice
+          // nada a los otros dos apartados. Lo que ha cambiado es que ahora
+          // cada uno tiene el suyo en vez de heredar un filtro que ignoraba.
+          apartado === "facturacion" ? (
+            <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
+          ) : apartado === "inventario" ? (
+            <ReportesEntitySearch
+              items={(productosParaBuscar ?? []).map((p) => ({ id: p.id, nombre: p.name }))}
+              clave="producto"
+              placeholder="Buscar producto"
+              seleccionado={productoElegido}
+              etiquetaQuitar="Quitar el filtro de producto"
+            />
+          ) : (
+            <ReportesEntitySearch
+              items={(proveedoresTodos ?? []).map((f) => ({ id: f.clave, nombre: f.nombre }))}
+              clave="proveedor"
+              placeholder="Buscar proveedor"
+              seleccionado={proveedorElegido}
+              etiquetaQuitar="Quitar el filtro de proveedor"
+            />
+          )
         }
-        filters={<ReportesPeriodChips period={period} />}
+        filters={
+          // LOS DOS EN EL MISMO HUECO porque `ScreenHeader` tiene UNA ranura de
+          // filtros, y el frame los dibuja juntos dentro del bloque oscuro: los
+          // apartados arriba y el periodo debajo.
+          <div className="flex flex-col gap-3">
+            <ReportesTabs activo={apartado} />
+            <ReportesFechaFiltro rango={rango} texto={etiquetaDelRango(rango)} />
+          </div>
+        }
       />
 
-      {/* "Métricas totales" is the spec's own label, and the word "totales" is
-          what makes the filtered state readable: with a client picked it says
-          whose numbers these are instead of quietly showing one person's under
-          a heading that claims to cover everyone. */}
-      <h2 className="text-base font-semibold">
-        {selected ? `Métricas de ${selected.name}` : "Métricas totales"}
-      </h2>
-
-      {/* LA FICHA DEL CLIENTE, encima de sus métricas y solo cuando hay filtro.
-          Sin ella la pantalla contestaba «cómo va Petra» y te dejaba buscarla
-          otra vez por otra pantalla para hacer algo al respecto.
-
-          Va fuera del `if` de abajo a propósito: si Petra no tuvo movimientos en
-          el periodo, su ficha es justo lo que hay que poder abrir. */}
-      {selected && rows[0] ? (
-        <ReporteClienteCard row={rows[0]} ledger={ledger} rateContext={ownerRate} />
+      {/* LA DESCARGA QUE NO SALIÓ SE DICE AQUÍ, y en el sitio donde el tendero
+          acaba de darle al botón. La ruta vuelve con `?export=error&motivo=`
+          en vez de dejar un 500 pelado en una pestaña del teléfono, que no
+          tiene reintento ni app alrededor. Los mensajes viven en un solo
+          sitio -- `MENSAJE_DE_FALLO` -- para que la ruta y esta pantalla no
+          puedan contar versiones distintas del mismo fallo. */}
+      {exportado === "error" ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-1 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2"
+        >
+          <p className="text-sm font-medium">No se pudo descargar</p>
+          <p className="text-sm text-muted-foreground">{mensajeDelMotivo(motivo)}</p>
+        </div>
       ) : null}
 
-      {lending.anyInPeriod ? (
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-          {ownerRate ? (
-            <>
-              <ReporteCard
-                label="Capital por cobrar en USD"
-                balance={totalUsd}
-                currency="USD"
-                ledger={ledger}
-                chartData={lending.usd}
-                chartTitle={`Fiado vs. Abono ${chartSuffix} (USD)`}
-              />
-              <ReporteCard
-                label="Capital por cobrar en Euro"
-                balance={totalEur}
-                currency="EUR"
-                ledger={ledger}
-                chartData={lending.eur}
-                chartTitle={`Fiado vs. Abono ${chartSuffix} (EUR)`}
-              />
-            </>
-          ) : (
-            <ReporteCard
-              label="Capital por cobrar"
-              balance={totalCop}
-              currency={null}
-              ledger={null}
-              chartData={lending.cop}
-              chartTitle={`Fiado vs. Abono ${chartSuffix}`}
-            />
-          )}
-        </div>
-      ) : (
-        /* Two different texts because they are two different situations, and
-           confusing them reads badly in both directions: telling someone who
-           signed up yesterday "nothing in the last 7 days" sounds like a
-           reproach for a week they were not here for, and telling someone with
-           eight months of history "here you will see your activity" sounds like
-           the app lost their data. */
-        /* EL ICONO SE QUEDA, y es el único estado vacío de la app que lleva
-           uno: esta caja sustituye a un GRÁFICO, no a una lista, y sin él el
-           hueco que deja una gráfica se lee como un error de carga. Va dentro
-           del título por eso --`EmptyState` no tiene ranura de icono y no se
-           le añade una para un solo caso--. */
-        <EmptyState
-          className="bg-muted/30"
-          title={
-            <span className="flex flex-col items-center gap-3">
-              <ChartColumn className="size-8 text-muted-foreground" aria-hidden="true" />
-              {everAny
-                ? `${selected ? `${selected.name} no tiene transacciones` : "No hay transacciones"} en ${PERIOD_LABEL[period]}`
-                : "Todavía no hay nada que mostrar"}
-            </span>
-          }
-          subtitle={
-            everAny
-              ? `${selected ? "Su saldo" : "Tu cartera"} sigue igual; aquí solo se ve la transacción del periodo que elijas.`
-              : "En cuanto registres tu primer fiado o abono, aquí verás cuánto diste y cuánto te pagaron."
-          }
-        />
-      )}
+      {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
+          una persona se lee como el del negocio entero, que es la clase de
+          error que nadie detecta mirando. */}
+      {/* UN FILTRO PUESTO SE DICE, en los tres apartados. Sin esto el informe
+          de un solo producto se lee como el del negocio entero -- y en
+          Inventario es peor que en Facturación, porque las tres tarjetas
+          dicen «1» y «0» y eso parece un catálogo vacío. */}
+      {(() => {
+        const nombre =
+          apartado === "facturacion"
+            ? (selected?.name ?? null)
+            : apartado === "inventario"
+              ? productoElegido
+              : proveedorElegido;
+        return nombre ? (
+          <p className="text-sm text-muted-foreground">
+            Mostrando solo <span className="font-medium text-foreground">{nombre}</span>.
+          </p>
+        ) : null;
+      })()}
+
+      {apartado === "facturacion" && facturacion ? (
+        <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} tasas={tasas} />
+      ) : null}
+
+      {/* LOS OTROS DOS APARTADOS DICEN QUÉ VAN A ENSEÑAR, y no se dibujan
+          vacíos ni a medias. Sus frames existen (`1667:19321` y `1749:14583`)
+          y varios de sus bloques dependen de datos que la app todavía no
+          lleva -- existencias vivas y órdenes de compra--, así que pintarlos
+          con lo que hay sería enseñar cifras que describen el día que se
+          registró el producto. */}
+      {/* LAS DOS PESTAÑAS EN CONSTRUCCIÓN SON ESTADO VACÍO, así que el
+          flotante también se aparta en ellas -- la instrucción del dueño del
+          2026-10-27 habla del estado vacío, no de una pantalla concreta. */}
+      {/* EL FLOTANTE SOLO SE APARTA SI DE VERDAD NO HAY NADA. Desde que
+          «Proveedores» pinta su lista ya no es una pantalla vacía, así que
+          marcarla como tal escondería el botón de registrar en una pantalla
+          con contenido. Se deja la marca para el caso que SÍ lo es: un
+          negocio sin un solo producto. */}
+      {apartado === "proveedores" && proveedores && proveedores.length === 0 ? (
+        <MarcarPantallaVacia />
+      ) : null}
+      {apartado === "inventario" && inventario ? (
+        <ReportesInventario datos={inventario} periodoTexto={periodoTexto} tasas={tasas} />
+      ) : null}
+      {apartado === "proveedores" && proveedores ? (
+        <ReportesProveedores filas={proveedores} periodoTexto={periodoTexto} tasas={tasas} />
+      ) : null}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import { formatPriceAmount } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
-import { marcarCatalogoVacio } from "@/components/dashboard/catalogo-vacio";
+import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import {
   isPublished,
@@ -98,13 +98,13 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
   // vacío a la vista, su botón flotante de «Crear producto» sobra, porque esa
   // caja ya trae el suyo.
   //
-  // `marcarCatalogoVacio` NO es `setState`, así que este efecto no choca con
+  // `marcarPantallaVacia` NO es `setState`, así que este efecto no choca con
   // `react-hooks/set-state-in-effect`. Y la limpieza del `return` es lo que
   // evita que el flotante desaparezca del resto de la app al salir de aquí.
   const estadoVacioALaVista = total === 0 && !loadFailed;
   useEffect(() => {
-    marcarCatalogoVacio(estadoVacioALaVista);
-    return () => marcarCatalogoVacio(false);
+    marcarPantallaVacia(estadoVacioALaVista);
+    return () => marcarPantallaVacia(false);
   }, [estadoVacioALaVista]);
 
   const claveDeFiltros = `${query}|${sortBy}|${status}|${minAmount}|${maxAmount}`;

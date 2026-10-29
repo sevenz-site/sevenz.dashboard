@@ -709,6 +709,118 @@ async function pedidoDelDueno(
   return { pedido: data, error: null };
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// QUITAR UNA SOLA LINEA DEL PEDIDO
+//
+// Encargo del dueno el 2026-10-28: *«cuando el producto es cantidad 1, el
+// boton deshabilitado "−" debe ser boton destructive delete igual que en el
+// carrito»*. En el carrito de la venta esa papelera quita la linea; aqui tiene
+// que hacer lo mismo.
+//
+// NO EXISTIA. Hasta hoy solo se podia quitar una MONEDA entera
+// (`quitarMonedaDelPedido`), y el comentario que yo mismo escribi en el
+// stepper decia que quitar un producto «vive en la hoja de Cambiar» -- era
+// FALSO: esa hoja cambia la moneda y el escalon, y no quita nada.
+//
+// ───────────────────────────────────────────────────────────────────────
+// LAS MISMAS GUARDAS QUE QUITAR UNA MONEDA, Y UNA MAS
+//
+// La ultima linea VIVA del pedido no se quita: un pedido sin nada no se
+// puede registrar y no tiene nada que ensenar. Es la misma razon por la que
+// no se quita la ultima moneda, decidida por el dueno el 2026-10-26.
+//
+// Y SE COMPRUEBA AQUI aunque la pantalla ya esconda el boton: esto se puede
+// llamar desde una pestana vieja, o con dos toques seguidos.
+export async function quitarLineaDelPedido(
+  pedidoId: string,
+  lineaId: string,
+): Promise<ResultadoDeQuitarMoneda> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  // LA PROPIEDAD, EN CODIGO. El id del pedido y el de la linea llegan del
+  // navegador, asi que `CLAUDE.md` pide comprobarlo explicitamente y no
+  // fiarlo a RLS.
+  const { pedido, error } = await pedidoDelDueno(supabase, pedidoId, user.id);
+  if (!pedido) return { ok: false, error: error! };
+
+  const { data: vivas, error: errorVivas } = await supabase
+    .from("catalog_order_items")
+    .select("id, currency")
+    .is("deleted_at", null)
+    .eq("order_id", pedido.id);
+  if (errorVivas) {
+    console.error("[pedido] lineas vivas:", errorVivas.message);
+    return { ok: false, error: "No pudimos leer el pedido. Vuelve a intentarlo." };
+  }
+
+  const esta = (vivas ?? []).find((l) => l.id === lineaId);
+  // QUE LA LINEA SEA DE ESTE PEDIDO se comprueba por estar en esta lista, que
+  // ya viene filtrada por `order_id`. Una linea de otro pedido no aparece.
+  if (!esta) return { ok: false, error: "Ese producto ya no está en el pedido." };
+  if ((vivas ?? []).length <= 1) {
+    return {
+      ok: false,
+      error: "Es lo único que queda en el pedido. Si no vas a cobrarlo, no lo registres.",
+    };
+  }
+
+  const { error: errorQuitar } = await supabase
+    .from("catalog_order_items")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", lineaId);
+  if (errorQuitar) {
+    console.error("[pedido] quitar linea:", errorQuitar.message);
+    return { ok: false, error: "No pudimos quitarlo. Vuelve a intentarlo." };
+  }
+
+  // ── Y SI YA NO QUEDA NADA POR COBRAR, EL PEDIDO SE CIERRA ──────────
+  //
+  // La misma mitad que `quitarMonedaDelPedido`, y por la misma razon: quitar
+  // la ultima linea pendiente de un pedido cuyo resto ya se vendio lo dejaba
+  // `new` PARA SIEMPRE, reclamado por la campana en cada apertura. Un aviso
+  // que no se puede apagar es un aviso que se deja de leer.
+  //
+  // SE PREGUNTA A LA BASE OTRA VEZ, no se resta lo que acabamos de quitar:
+  // entre las dos consultas puede haber entrado otra pestana.
+  const { data: tras, error: errorTras } = await supabase
+    .from("catalog_order_items")
+    .select("id, product_id, currency")
+    .is("deleted_at", null)
+    .eq("order_id", pedido.id);
+  if (errorTras) {
+    console.error("[pedido] lineas tras quitar:", errorTras.message);
+    return { ok: true };
+  }
+  const { pendientes, hayVentas } = await monedasPendientes(
+    supabase,
+    pedido.id,
+    tras ?? [],
+  );
+  let pedidoCerrado = false;
+  if (hayVentas && pendientes.length === 0) {
+    const { error: errorSello } = await supabase
+      .from("catalog_orders")
+      .update({ registered_at: new Date().toISOString(), status: "registered" })
+      .eq("id", pedido.id)
+      .eq("owner_id", user.id);
+    if (errorSello) {
+      console.error("[pedido] sello al quitar linea:", errorSello.message, { pedidoId: pedido.id });
+    } else {
+      pedidoCerrado = true;
+    }
+  }
+
+  revalidatePath(`/productos/ordenes/${pedido.id}`, "layout");
+  return { ok: true, pedidoCerrado };
+}
+
 export async function quitarMonedaDelPedido(
   pedidoId: string,
   moneda: string,

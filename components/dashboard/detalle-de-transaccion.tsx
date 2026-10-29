@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { ArrowUpRight, EyeOff, ImageOff, Percent } from "lucide-react";
+import { EyeOff, ImageOff } from "lucide-react";
+import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
@@ -317,7 +318,7 @@ export function DetalleDeTransaccion({
                 distinguen mirándolas, no de un vistazo. Es el mismo par que ya
                 usa la hoja de «Registrar». */}
             {type === "charge" ? (
-              <ArrowUpRight className="size-4 text-destructive" aria-hidden />
+              <IconoDeFiado className="size-4 text-destructive" aria-hidden />
             ) : (
               // AZUL Y NO VERDE, por instrucción del dueño el 2026-10-20.
               //
@@ -331,7 +332,7 @@ export function DetalleDeTransaccion({
               // `DESIGN-SYSTEM.md`. Restoring the previous green literally
               // would bring back a contrast defect that had always been
               // there. The 700 gives 5,36:1.
-              <Percent className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
+              <IconoDeAbono className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
             )}
           </span>
         </Fila>

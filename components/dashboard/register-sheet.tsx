@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Percent, User } from "lucide-react";
+import { ArrowUpRight, User } from "lucide-react";
+import { IconoDeAbono } from "@/components/dashboard/iconos-de-movimiento";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // LAS TRES COSAS QUE EL TENDERO PUEDE REGISTRAR — frame `1389:11227`, encargo
@@ -29,6 +30,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 // frame pide —`call_made` y `call_received` de Material—. Reutilizarlos no es
 // ahorro de trabajo: un tendero que ya aprendió qué flecha es un abono no
 // tiene que volver a aprenderlo aquí.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// ESO LO DESPLAZÓ EL DUEÑO EL 2026-10-29, Y SOLO A MEDIAS
+//
+// «Abono» pasa a `IconoDeAbono` --la mano con monedas, en negro, como pidió--
+// y el párrafo de arriba se queda porque la razón sigue siendo cierta y es lo
+// que se cede: quien aprendió la flecha tiene que aprender otro dibujo.
+//
+// «FIADO O VENTA» CONSERVA SU FLECHA, y no es un olvido. Ese destino es el
+// asistente de venta, que puede acabar en una venta PAGADA ENTERA: ponerle la
+// libreta del fiado diría que solo sirve para fiar, que es justo lo que no
+// hace. Las otras cuatro pantallas donde el icono sí cambió hablan de un
+// fiado ya decidido. Queda dicho por si él quiere cambiarlo también.
 //
 // Y NO LLEVAN COLOR, a diferencia de `TipoButtons`. Ahí el verde y el rojo
 // distinguen dos opciones de la misma pregunta; aquí las tres filas son tres
@@ -78,7 +92,7 @@ const OPCIONES: Opcion[] = [
   // «Venta o fiado» justo encima —una entra, otra sale—, y dos flechas
   // opuestas en una lista de tres se distinguen mirándolas, no de un vistazo.
   // El porcentaje no se parece a nada más de la hoja.
-  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: Percent, marcador: true },
+  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: IconoDeAbono, marcador: true },
 ];
 
 export function RegisterSheet({

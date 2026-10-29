@@ -76,7 +76,10 @@
     "qa:lineas-borradas": "node qa/lineas-borradas.mjs",
     "qa:aviso-mala-paga": "node qa/aviso-mala-paga.mjs",
     "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs",
-    "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs"
+    "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs",
+    "qa:exportacion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/exportar-movimientos.mjs",
+    "qa:inventario": "node qa/inventario-baja.mjs",
+    "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { OrderCurrencyBlockCard } from "@/components/dashboard/order-currency-block-card";
+import { OrderFinishButton } from "@/components/dashboard/order-finish-button";
 import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { OrderRegisteredClientCard } from "@/components/dashboard/order-registered-client-card";
@@ -251,6 +252,9 @@ export default async function RegistrarPedidoPage({
             key={`quitada-${moneda}`}
             pedidoId={pedido.id}
             moneda={moneda as PriceCurrency}
+            // SIGUE HABIENDO BLOQUE DE ESA MONEDA: entonces no se elimino el
+            // pedido en esa moneda, solo parte. Ver la tarjeta.
+            bloqueVivo={bloques.some((b) => b.moneda === moneda)}
             cuantosProductos={cuantos}
           />
         ))}
@@ -295,6 +299,16 @@ export default async function RegistrarPedidoPage({
           atrás; el borrador se queda en el navegador y la base no recibe
           nada). Está dicho en el informe del día para que el dueño decida si
           lo quiere de vuelta bien hecho. */}
+
+      {/* ── «REGISTRAR Y FINALIZAR», ABAJO — frame `1782:14792` ────────
+          Decision del dueno el 2026-10-28. Es un componente de NAVEGADOR
+          porque solo sale cuando la unica moneda viva YA tiene su monto, y
+          ese dato vive en el borrador, que el servidor no ve. */}
+      <OrderFinishButton
+        pedidoId={pedido.id}
+        monedasVivas={bloques.map((b) => b.moneda)}
+        href={`/productos/ordenes/${pedido.id}/registrar/confirmar?moneda=${bloques[0]?.moneda ?? ""}`}
+      />
     </div>
   );
 }

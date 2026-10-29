@@ -218,6 +218,36 @@ console.log("── LA CABECERA DEL INICIO (Entrega 2), sobre --brand-primary #2
   f("placeholder #DADADA a opacidad completa", ratio(sec, campo), AA_TEXTO,
     "es la razon de no usar placeholder:text-muted-foreground");
   f("lupa y aspa, #DADADA", ratio(sec, campo), AA_NO_TEXTO);
+
+  console.log("");
+  console.log("   el grupo de apartados de Reportes (frame 1502:10299)");
+  // La pildora seleccionada: #fafafa sobre #737373. Entra aqui porque la
+  // cabecera de Reportes NO se invierte con el tema, igual que las dos de
+  // arriba, asi que su contraste es fijo y se puede medir de una vez.
+  //
+  // VA EN LA SUITE Y NO SOLO EN UN COMENTARIO: el numero estaba escrito en
+  // `globals.css` el 2026-10-27 y una cifra que solo vive en prosa es una que
+  // nadie vuelve a comprobar cuando alguien oscurece la pildora.
+  const tabSel = hexASrgb("#737373");       // --brand-tab-selected
+  const casiBlanco = hexASrgb("#fafafa");
+  f("texto del tab seleccionado, #FAFAFA sobre #737373", ratio(casiBlanco, tabSel), AA_TEXTO,
+    "16px semibold NO es texto grande: el piso que aplica es 4,5");
+  f("tab seleccionado contra el grupo #525252", ratio(tabSel, campo), AA_NO_TEXTO,
+    "por eso la pildora lleva sombra: sola no se distingue");
+  f("texto del tab sin seleccionar, #DADADA sobre #525252", ratio(sec, campo), AA_TEXTO);
+
+  console.log("");
+  console.log("   los iconos de las cards de Reportes, sobre fondo claro");
+  // Piso 3 y no 4,5: son iconos, no texto (WCAG 1.4.11). Entran aqui porque el
+  // dueno los pidio POR SU COLOR --«el color si debe ser el entregado»-- asi
+  // que ese color es un requisito, y un requisito sin medir es prosa.
+  const blancoFondo = hexASrgb("#ffffff");
+  f("naranja de «Por cobrar» #BF4C00 sobre blanco", ratio(hexASrgb("#bf4c00"), blancoFondo), AA_NO_TEXTO,
+    "--brand-report, frame 1752:14798");
+  f("verde de «Ventas» #007956 sobre blanco", ratio(hexASrgb("#007956"), blancoFondo), AA_NO_TEXTO,
+    "--brand-sales, frames 1752:14744 y 1752:14808");
+  f("rojo de «Criticos» #E7000B sobre blanco", ratio(hexASrgb("#e7000b"), blancoFondo), AA_NO_TEXTO,
+    "--destructive, frame 1618:12530");
   // THE PLACEHOLDER CANNOT BE DIMMED. It is what every input in this repo does
   // by default, and here it fails at ANY opacity — even at 80%.
   for (const a of [0.5, 0.6, 0.7, 0.8]) {

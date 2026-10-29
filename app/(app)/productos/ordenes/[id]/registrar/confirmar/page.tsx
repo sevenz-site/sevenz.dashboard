@@ -5,13 +5,17 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { OrderStepCounter } from "@/components/dashboard/order-step-counter";
 import { cargarBloque } from "@/lib/orders/cargar-bloque";
+import { createClient } from "@/lib/supabase/server";
 import { unicaMonedaDelPedido } from "@/lib/orders/pasos-del-registro";
 import { OrderTotalCard } from "@/components/dashboard/order-total-card";
 import {
   CantidadDeLinea,
   ImporteDeLinea,
 } from "@/components/dashboard/order-line-figures";
+import { quitadasPorMoneda } from "@/lib/orders/pasos-del-registro";
+import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
+import { OrderLineStepper } from "@/components/dashboard/order-line-stepper";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -67,7 +71,21 @@ export default async function ConfirmarBloquePage({
   // SOLO LAS LÍNEAS CON PRODUCTO: una descatalogada no se puede editar, y su
   // tarjeta ya dice por qué no entra en la venta.
   const lineasVivas = bloque.lineas.filter((l) => l.productId != null);
-  const paraEditar = new Map(
+
+  // ── LO QUITADO DE ESTA MONEDA, PARA PODER DEVOLVERLO AQUI ──────────
+  //
+  // La tarjeta de «Restaurar» vivia SOLO en el paso 1/x. Desde que la
+  // papelera quita una linea desde ESTA pantalla (2026-10-28), eso dejaba un
+  // hueco medido en dev: el producto desaparecia delante del tendero y lo
+  // unico que lo devolvia estaba en una pantalla que, con una sola moneda, ni
+  // siquiera se visita -- el flujo la salta.
+  //
+  // Un borrado sin deshacer A LA VISTA no es reversible en la practica,
+  // aunque lo sea en la base.
+  const quitadasDeEsteBloque = (
+    await quitadasPorMoneda(await createClient(), pedido.id)
+  ).get(String(bloque.moneda));
+  const edicionDe = new Map(
     (
       await Promise.all(
         lineasVivas.map(async (l) => {
@@ -180,6 +198,39 @@ export default async function ConfirmarBloquePage({
                   lineaId={linea.id}
                   cantidadPedida={linea.cantidadPedida}
                 />
+                {/* ── «−» Y «+» DEBAJO DEL NOMBRE — frame `1389:8388` ────
+                    Encargo del dueno el 2026-10-28.
+
+                    EN SU PROPIA FILA Y NO AL LADO DEL IMPORTE, que fue mi
+                    primer intento y se vio en pantalla: las tres cajas miden
+                    128px, y con el nombre y el importe en la misma fila a
+                    375px el nombre se partia en dos lineas y la columna de la
+                    izquierda quedaba estrujada. El frame ya lo resuelve asi
+                    -- su fila de arriba lleva foto, nombre y stepper, y el
+                    importe baja a la fila del subtotal.
+
+                    SOLO SI EL PRODUCTO SIGUE EN EL CATALOGO: sin el no hay
+                    precio con el que recalcular, y esa linea ya dice en rojo
+                    que no entra en la venta. */}
+                {edicionDe.get(linea.id) ? (
+                  <div className="pt-2">
+                    <OrderLineStepper
+                      pedidoId={pedido.id}
+                      lineaId={linea.id}
+                      cantidadPedida={linea.cantidadPedida}
+                      moneda={bloque.moneda}
+                      producto={edicionDe.get(linea.id)!.p.producto}
+                      rates={edicionDe.get(linea.id)!.rates}
+                      lineasDelPedido={lineasDelPedido}
+                      // LA ULTIMA LINEA VIVA DEL PEDIDO NO SE QUITA, y la
+                      // cuenta es sobre el PEDIDO entero y no sobre este
+                      // bloque de moneda: quitar la unica linea de euros
+                      // teniendo dolares vivos es legitimo. El servidor lo
+                      // vuelve a comprobar.
+                      sePuedeQuitar={lineasDelPedido.length > 1}
+                    />
+                  </div>
+                ) : null}
               </div>
               <ImporteDeLinea
                 pedidoId={pedido.id}
@@ -202,7 +253,7 @@ export default async function ConfirmarBloquePage({
             ) : null}
 
             {(() => {
-              const edicion = paraEditar.get(linea.id);
+              const edicion = edicionDe.get(linea.id);
               if (!edicion) return null;
               return (
                 <OrderLineEditSheet
@@ -230,6 +281,16 @@ export default async function ConfirmarBloquePage({
           </div>
         );
       })}
+
+      {quitadasDeEsteBloque ? (
+        <OrderCurrencyRestoreCard
+          pedidoId={pedido.id}
+          moneda={bloque.moneda}
+          cuantosProductos={quitadasDeEsteBloque}
+          // AQUI EL BLOQUE SIEMPRE ESTA VIVO: es el que se esta confirmando.
+          bloqueVivo
+        />
+      ) : null}
 
       {/* PEGADO ABAJO Y DENTRO DE `StickyActions`, que es la regla de
           `CLAUDE.md` que el dueño ha tenido que pedir tres veces: con el

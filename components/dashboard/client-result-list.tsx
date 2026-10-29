@@ -2,6 +2,7 @@
 
 import { UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatDocumentId } from "@/lib/format";
 import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
 
@@ -43,16 +44,86 @@ export type ClientResult = {
 // antes de ponerse a recorrer la lista.
 export const CLIENT_RESULT_LIMIT = 8;
 
+// ═══════════════════════════════════════════════════════════════════════
+// DOS FORMAS, UN SOLO COMPONENTE
+//
+// `lista` es la de siempre: filas pegadas dentro de un borde, para colgar de
+// un campo de busqueda mientras se teclea.
+//
+// `tarjetas` es el frame `1770:14775`, pedido por el dueno el 2026-10-28 para
+// la pantalla de documentos repetidos: cada ficha en su propia tarjeta, con el
+// documento debajo del nombre, el chip abajo y un boton «Seleccionar» a la
+// derecha.
+//
+// POR QUE UNA VARIANTE Y NO UN COMPONENTE NUEVO. Este fichero ya dice por que
+// existe: *«dos copias de una lista de personas y cedulas se separan en cuanto
+// alguien retoca una»*. Esa razon no cambia porque una de las dos se vea
+// distinta -- lo que no puede divergir es QUE datos identifican a una persona
+// y como se escriben, y eso sigue viviendo aqui una sola vez.
+//
+// LO QUE CAMBIA DE VERDAD ENTRE LAS DOS, y conviene saberlo antes de tocarlas:
+// en `lista` el control es la FILA ENTERA; en `tarjetas` es el boton, porque
+// es lo que el frame dibuja. El area de toque se encoge --40px de alto en vez
+// de toda la fila-- y a cambio la tarjeta puede llevar tres lineas de datos
+// sin que el dedo tenga que adivinar donde empieza y acaba cada ficha.
 export function ClientResultList({
   results,
   onSelect,
   className,
+  variant = "lista",
 }: {
   results: ClientResult[];
   onSelect: (id: string) => void;
   className?: string;
+  variant?: "lista" | "tarjetas";
 }) {
   if (results.length === 0) return null;
+
+  if (variant === "tarjetas") {
+    return (
+      <ul className={`flex flex-col gap-3 ${className ?? ""}`}>
+        {results.map((c) => (
+          <li
+            key={c.id}
+            // `rounded-[10px]` y `px-4 py-2` son los del frame.
+            className="flex items-center gap-3 rounded-[10px] border px-4 py-2"
+          >
+            <UserRound className="size-6 shrink-0 text-muted-foreground" aria-hidden />
+            {/* `min-w-0` EN LA COLUMNA, o un nombre largo empuja al boton
+                fuera de la tarjeta en vez de recortarse. Es el fallo que
+                `truncate` no arregla solo dentro de un flex. */}
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="truncate text-sm font-medium">{c.name}</span>
+              {c.documentId ? (
+                <span className="truncate text-xs text-muted-foreground">
+                  {formatDocumentId(c.documentId, c.documentType)}
+                </span>
+              ) : null}
+              {/* SOLO SI ESTA MARCADA, que es lo que dice el frame: sus
+                  tarjetas sin chip miden 57px y las marcadas 77. El chip no
+                  es el estado del cliente -- es la marca del tendero. */}
+              {c.flagged ? (
+                <span className="flex">
+                  <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
+                    Mala paga
+                  </Badge>
+                </span>
+              ) : null}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 shrink-0"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onSelect(c.id)}
+            >
+              Seleccionar
+            </Button>
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
   return (
     <ul className={`flex flex-col divide-y rounded-md border ${className ?? ""}`}>
