@@ -12,6 +12,73 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 // Cartera, Transacciones, Plazos de pago y Mejores pagadores.
 //
 // ───────────────────────────────────────────────────────────────────────
+// LAS FÓRMULAS, UNA POR UNA — para auditar sin leer el archivo entero
+//
+// Encargo del dueño el 2026-10-29: *«documenta en el código las fórmulas como
+// quedaron para que en un futuro (…) alguien más pueda auditar sin problema»*.
+//
+// ESTA TABLA DICE LO QUE EL CÓDIGO HACE, no lo que la pantalla promete. Donde
+// las dos cosas no coinciden se dice, porque es justo lo que una auditoría
+// tiene que poder encontrar.
+//
+//   Por cobrar en X
+//     Σ max(0, saldo del cliente en X) sobre `client_summary`.
+//     SIN FILTRO DE FECHA: es el saldo de HOY, acumulado desde siempre.
+//     Un saldo A FAVOR cuenta como 0, no resta (decisión del dueño,
+//     2026-10-29: la cifra responde «cuánto hay que salir a cobrar»).
+//
+//   Ventas en X
+//     Σ `sale_payments.amount` de los pares (venta, libro) que NO dejaron
+//     cargo en `movements`. O sea: lo cobrado de contado. Ver la decisión 1.
+//
+//   Gráfico «Ventas»
+//     Lo mismo, repartido en 7 cubos por la FECHA DE LA VENTA (no la del
+//     pago). La suma de las barras es la cifra de la tarjeta.
+//
+//   Gráfico «Transacciones»
+//     RECUENTOS, no importes. contado = nº de filas de `sale_payments`;
+//     abono = nº de `movements` con type='payment'; fiado = nº del resto.
+//     OJO: una venta cobrada en dos monedas suma 2 a «contado», porque son
+//     dos filas de pago. Cuenta pagos, no ventas.
+//
+//   Transacciones por catálogo en X
+//     Σ cantidad × precio de las `sale_lines` de las ventas que vienen de un
+//     pedido (`catalog_order_id`). INCLUYE fiados y contado, así que puede
+//     salir MAYOR que «Ventas».
+//
+//   Abonos en X
+//     Σ `movements.amount` con type='payment'  +  Σ `sale_payments.amount`
+//     de los pares (venta, libro) que SÍ dejaron cargo.
+//     La segunda mitad es lo que el cliente pagó AL FIAR, que no escribe
+//     movimiento de abono. Disjunto de «Ventas» por construcción.
+//
+//   Fiados en X
+//     Σ `movements.amount` de los que NO son type='payment', en el rango.
+//
+//   Pedidos por atender / Dinero por atender
+//     `countUnregisteredOrders` y `pendingOrdersMoney`, las MISMAS que
+//     alimentan la campana. SIN FILTRO DE FECHA: es el estado de hoy. El
+//     dinero se enseña en la moneda mayor, nunca sumado.
+//
+//   Plazos de pago (4 tarjetas + «sin plazo»)
+//     Recuento de clientes por `estadoDeCliente`, el MISMO juez que pinta el
+//     chip de la lista de clientes. SIN FILTRO DE FECHA. «Mala paga» es una
+//     marca y no un estado, así que un cliente puede salir en dos listas.
+//     El importe que acompaña es el del libro que decidió el estado.
+//
+//   Mejores pagadores
+//     ⚠️ ORDENA POR EL ABONO MÁS GRANDE DE CADA CLIENTE, no por la suma de
+//     sus abonos -- y el subtítulo de la pantalla dice «quien más abonó».
+//     Medido en dev el 2026-10-28: el orden cambia. Un cliente con un abono
+//     de €50 entra por delante de otro con $81 repartidos en cinco.
+//     Está pendiente de decidir si se cambia la cuenta o el rótulo.
+//     Filtra además a los que NO están al día (`sin_deuda`, `a_favor` o
+//     `dentro_del_plazo`), y corta en 5.
+//
+//   TODAS las cifras del rango descartan los DOS DÍAS de holgura que la
+//   consulta pide de más por cada punta. Ver `cubos()`.
+//
+// ───────────────────────────────────────────────────────────────────────
 // LAS TRES DECISIONES QUE EL FRAME NO TOMA, Y AQUÍ HAY QUE TOMAR
 //
 // Un mock dibuja «$2,421.00» y no dice de dónde sale. Las tres están escritas

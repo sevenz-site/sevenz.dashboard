@@ -55,6 +55,32 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 // la diferencia entre el precio de lista y lo que se cobró.
 // ═══════════════════════════════════════════════════════════════════════
 
+// ───────────────────────────────────────────────────────────────────────
+// LAS FÓRMULAS DE «PROVEEDORES», para auditarlas de un vistazo
+//
+//   Productos: N
+//     Productos vivos agrupados por `products.supplier`, ignorando caja y
+//     tildes. «Makro» y «Makro C.A.» siguen siendo dos: el campo es texto
+//     libre y no hay forma de saberlo desde aquí.
+//
+//   Margen: X %
+//     (Σ ganancia ÷ Σ costo) × 100 -- SOBRE EL COSTO, igual que
+//     `marginFromPrice` y `suggestedPrice`. Solo entran las líneas cuya
+//     ganancia se pudo calcular, numerador y denominador a la vez. Con varias
+//     monedas en juego los dos lados se llevan a bolívares, porque un
+//     PORCENTAJE sí puede cruzar monedas aunque una suma de dinero no.
+//     «—» cuando ese proveedor no vendió nada valorable en el periodo. Nunca
+//     0 %, que diría que vende sin ganar nada.
+//
+//   Sin proveedor
+//     Fila propia, siempre la última. No es un proveedor: es el hueco.
+//
+//   Orden
+//     Por número de productos, de mayor a menor. El frame no dice el criterio
+//     --dibuja un «Ordenar por» que la app todavía no tiene-- y este es el
+//     único que no depende de que haya habido ventas.
+// ───────────────────────────────────────────────────────────────────────
+
 export type ProveedorEnReporte = {
   /** La clave normalizada con la que se agrupó. Única, sirve de `key`. */
   clave: string;

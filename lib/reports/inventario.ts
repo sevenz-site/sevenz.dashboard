@@ -53,6 +53,65 @@ import {
 // componen una respuesta falsa.
 // ═══════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════
+// LAS FÓRMULAS DE «INVENTARIO», UNA POR UNA
+//
+// Encargo del dueño el 2026-10-29, para poder auditarlas sin leer el archivo
+// entero. Dice lo que el código HACE.
+//
+//   El umbral es `owners.low_stock_threshold` (5 por defecto), y el tendero
+//   lo cambia en la propia pantalla.
+//
+//   Productos disponibles     productos vivos con cantidad > umbral
+//   Por agotarse              0 < cantidad <= umbral
+//   Referencias agotadas      cantidad === 0
+//   (sin cantidad anotada)    cantidad NULL -> NO cuenta en ninguna de las
+//                             tres. Es el aviso «N productos no tienen
+//                             cantidad». Un NULL no es un cero: ver la
+//                             migración 163.
+//
+//   «$X en mercancía» (Disponibles)
+//     Σ costo × cantidad de TODO lo que tiene existencias --disponibles Y por
+//     agotarse--, agrupado por `cost_currency`, enseñando la moneda mayor.
+//     Solo cuenta lo que tiene costo escrito.
+//   «$X en mercancía» (Por agotarse)
+//     Lo mismo, restringido a 0 < cantidad <= umbral.
+//   Referencias agotadas
+//     SIN cifra de dinero, a propósito: con cantidad cero, cualquier valor
+//     de ese inventario es cero.
+//
+//   Ventas proyectadas (hoja de Disponibles)
+//     Σ price_retail × cantidad, por la moneda BASE del precio.
+//     ⚠️ NO describe el mismo conjunto que «Capital»: el capital solo cuenta
+//     productos CON costo y se agrupa por la moneda del COSTO; la proyección
+//     cuenta los que tienen precio y se agrupa por la del PRECIO. Medido en
+//     dev: de cinco productos con existencias, solo uno cae en los dos lados
+//     de la misma tarjeta. Leer «de 34.665 saco 47.740» como el margen de esa
+//     mercancía es incorrecto. Pendiente de decidir.
+//
+//   Margen por producto
+//     `products.margin_retail_pct` -- EL PORCENTAJE QUE EL TENDERO ESCRIBIÓ,
+//     no uno calculado de las ventas. Es el único que existe para un producto
+//     que aún no se ha vendido. Top 6, de mayor a menor.
+//
+//   Más vendidos
+//     Σ `sale_lines.quantity` por producto, de las ventas del rango. Top 6.
+//     UNIDADES, no dinero.
+//
+//   «N productos de este ranking ya no están en tu catálogo»
+//     Los ids del tramo dibujado que no están entre los productos vivos --o
+//     sea, los que están en la papelera--.
+//
+//   Total vendido (hojas de Por agotarse y Agotadas)
+//     Σ unit_price × quantity de las líneas de ESOS productos, por la moneda
+//     de la línea.
+//
+//   «$X de ganancia» (en las tarjetas de producto de las hojas)
+//     Σ (unit_price − costo convertido a la moneda de la línea) × quantity,
+//     enseñado en la moneda donde más vendió. La conversión y sus tres casos
+//     de `null` están en `lib/reports/ganancia.ts`.
+// ═══════════════════════════════════════════════════════════════════════
+
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 // ═══════════════════════════════════════════════════════════════════════

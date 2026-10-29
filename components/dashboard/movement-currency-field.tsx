@@ -3,7 +3,7 @@
 import { parseMoneyInput } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type React from "react";
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -504,14 +504,17 @@ export function TipoButtons({
       nombre: "Cargo",
       aclara: "(fía)",
       color: "text-destructive",
-      Flecha: ArrowUpRight,
+      // `Flecha` CONSERVA SU NOMBRE y ya no es una flecha. Renombrarlo tocaría
+      // cada uso en este archivo sin cambiar nada de lo que se ve; lo que
+      // importa --de dónde sale el dibujo-- está en el import.
+      Flecha: IconoDeFiado,
     },
     {
       value: "payment" as const,
       nombre: "Abono",
       aclara: "(paga)",
       color: "text-money-in",
-      Flecha: ArrowDownLeft,
+      Flecha: IconoDeAbono,
     },
   ];
   return (

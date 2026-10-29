@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowDownLeft, ArrowUpRight, ImageOff, Undo2 } from "lucide-react";
+import { ImageOff, Undo2 } from "lucide-react";
+import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -133,9 +134,9 @@ export function MovementDeletionDialog({
               <span className="inline-flex items-center gap-1.5">
                 {notification.type === "charge" ? "Cargo (fía)" : "Abono (paga)"}
                 {notification.type === "charge" ? (
-                  <ArrowUpRight className="size-3.5 text-destructive" aria-hidden />
+                  <IconoDeFiado className="size-3.5 text-destructive" aria-hidden />
                 ) : (
-                  <ArrowDownLeft className="size-3.5 text-money-in" aria-hidden />
+                  <IconoDeAbono className="size-3.5 text-money-in" aria-hidden />
                 )}
               </span>
             </Fila>

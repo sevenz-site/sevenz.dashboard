@@ -18,7 +18,8 @@
 // sheet, the other a full screen with its own «1/2 · 2/2» chrome.
 
 import { useState } from "react";
-import { Check, ChevronDown, Percent, X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
+import { IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { Button } from "@/components/ui/button";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -460,7 +461,7 @@ export function PagoCampos({
                 {
                   valor: "credito" as const,
                   texto: "Fiado o crédito",
-                  Icono: Percent,
+                  Icono: IconoDeFiado,
                 },
               ].map(({ valor, texto, Icono }) => {
                 const activo = (valor === "contado") === esContado;
@@ -485,11 +486,18 @@ export function PagoCampos({
                       ) : null}
                     </span>
                     {texto}
-                    {/* EL GLIFO DE CADA CHIP, del frame: un visto para el
-                            contado y un porcentaje para el crédito. En rojo el
+                    {/* EL GLIFO DE CADA CHIP: un visto para el contado y la
+                            libreta del fiado para el crédito. En rojo el
                             segundo porque es el que deja deuda — el mismo
                             criterio con el que el resto de la app pinta un
-                            cargo. */}
+                            cargo.
+
+                            ERA UN PORCENTAJE hasta el 2026-10-29, que es el
+                            glifo del frame. Lo cambió el dueño ese día al
+                            unificar el icono del fiado en toda la app: ver
+                            `iconos-de-movimiento.tsx`. El % además era el
+                            MISMO dibujo que marcaba el abono en la hoja de
+                            «Registrar» -- dos cosas opuestas con un glifo. */}
                     <Icono
                       className={`size-4 shrink-0 ${valor === "credito" ? "text-destructive" : "text-money-in"}`}
                       aria-hidden="true"

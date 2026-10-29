@@ -102,11 +102,28 @@ export function ReportesFechaFiltro({ rango }: { rango: Rango }) {
         </SheetHeader>
 
         <div className="flex flex-col gap-4 px-4 pb-6">
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => atajo(7)}>
+          {/* ── CUATRO ATAJOS, EN DOS FILAS — encargo del dueño el 2026-10-29
+              *«debe mostrar opciones: Hoy; Últimos 7 días, Últimos 15 días;
+              Últimos 30 días»*.
+
+              `grid-cols-2` Y NO UNA FILA DE CUATRO: a 375px «Últimos 30 días»
+              ya ocupa media pantalla él solo, así que cuatro en línea parten
+              el texto en dos renglones cada uno. Dos y dos caben enteros.
+
+              `atajo(1)` ES HOY: la cuenta es `hasta − (días − 1)`, así que con
+              1 el desde y el hasta son el mismo día. No hace falta un caso
+              aparte, y tenerlo sería un segundo sitio donde «hoy» se define. */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="outline" onClick={() => atajo(1)}>
+              Hoy
+            </Button>
+            <Button type="button" variant="outline" onClick={() => atajo(7)}>
               Últimos 7 días
             </Button>
-            <Button type="button" variant="outline" className="flex-1" onClick={() => atajo(30)}>
+            <Button type="button" variant="outline" onClick={() => atajo(15)}>
+              Últimos 15 días
+            </Button>
+            <Button type="button" variant="outline" onClick={() => atajo(30)}>
               Últimos 30 días
             </Button>
           </div>

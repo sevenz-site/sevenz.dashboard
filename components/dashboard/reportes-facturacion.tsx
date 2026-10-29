@@ -6,8 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   CircleDollarSign,
-  HandCoins,
-  NotebookPen,
   Eye,
   EyeOff,
   Package,
@@ -17,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
 import { RegisterSheet } from "@/components/dashboard/register-sheet";
@@ -328,7 +327,7 @@ export function ReportesFacturacion({
                 que casi nadie le debe. Lo del periodo lo contestan «Fiados»
                 y «Abonos», más abajo. */}
             <p className="text-xs leading-4 text-muted-foreground">
-              Es lo que te deben hoy en total. No cambia con el periodo que elijas.
+              Total de lo que te deben. No cambia con el periodo que elijas.
             </p>
             <div className="flex gap-3">
               {libros.map((l) => (
@@ -449,7 +448,7 @@ export function ReportesFacturacion({
                 valor={datos.abonos[l] ?? 0}
                 libro={l}
                 oculto={oculto}
-                icono={<HandCoins className="size-4 text-sky-600" aria-hidden />}
+                icono={<IconoDeAbono className="size-4 text-sky-600" aria-hidden />}
               />
             ))}
           </div>
@@ -469,7 +468,7 @@ export function ReportesFacturacion({
                 valor={datos.fiados[l] ?? 0}
                 libro={l}
                 oculto={oculto}
-                icono={<NotebookPen className="size-4 text-destructive" aria-hidden />}
+                icono={<IconoDeFiado className="size-4 text-destructive" aria-hidden />}
               />
             ))}
           </div>
