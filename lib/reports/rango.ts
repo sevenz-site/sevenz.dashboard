@@ -103,9 +103,61 @@ export function diasDelRango({ desde, hasta }: Rango): number {
 
 const MES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-/** «del 28 sep al 27 oct», para el subtítulo y para el chip. */
-export function textoDelRango(r: Rango): string {
-  const corto = (d: Date) => `${d.getDate()} ${MES_CORTO[d.getMonth()]}`;
-  if (aISO(r.desde) === aISO(r.hasta)) return `el ${corto(r.desde)}`;
+const corto = (d: Date) => `${d.getDate()} ${MES_CORTO[d.getMonth()]}`;
+
+/**
+ * «del 28 sep al 27 oct», para el subtítulo y para el chip.
+ *
+ * ───────────────────────────────────────────────────────────────────────
+ * SE CALCULA UNA SOLA VEZ, EN EL SERVIDOR, Y VIAJA COMO TEXTO
+ *
+ * Hasta el 2026-10-29 esta función se llamaba DOS veces: en `page.tsx` --un
+ * componente de servidor-- para el subtítulo, y otra vez dentro de
+ * `reportes-fecha.tsx`, que es de CLIENTE, para el chip.
+ *
+ * Y eso no es solo trabajo repetido: `Rango` son dos `Date`, que cruzan la
+ * frontera serializados como instantes UTC y se reviven en el NAVEGADOR. Las
+ * dos llamadas usan `getDate()`, así que la del servidor lee la fecha en la
+ * zona del servidor y la del cliente en la del navegador. Cuando no coinciden
+ * --y no tienen por qué: el proceso de Node puede arrancar con otra `TZ`--
+ * **el chip y el subtítulo dicen rangos distintos de la misma pantalla**.
+ *
+ * Es el fallo que el dueño reportó dos veces: pulsaba «Hoy» y el chip seguía
+ * diciendo «del 28 oct al 29 oct». No se pudo reproducir con las dos zonas
+ * iguales, que es exactamente lo que se espera de un fallo así.
+ *
+ * Ahora `page.tsx` lo calcula y se lo pasa al chip ya escrito. Una sola
+ * respuesta, imposible de contradecir.
+ *
+ * ───────────────────────────────────────────────────────────────────────
+ * «HOY» EN VEZ DE LA FECHA, cuando el rango es el día corriente
+ *
+ * Pedido por el dueño el 2026-10-29 como la salida al fallo de arriba:
+ * *«si puedes cambiar el label por "Hoy"»*. Y es mejor rótulo aunque el
+ * fallo no existiera: el atajo se llama «Hoy» y el chip debe confirmar lo
+ * que se acaba de pulsar, no obligar a comprobar la fecha mentalmente.
+ */
+export function textoDelRango(r: Rango, ahora: Date = new Date()): string {
+  if (aISO(r.desde) === aISO(r.hasta)) {
+    return aISO(r.desde) === aISO(ahora) ? "hoy" : `el ${corto(r.desde)}`;
+  }
+  return `del ${corto(r.desde)} al ${corto(r.hasta)}`;
+}
+
+/**
+ * Lo mismo, pero para el CHIP del filtro, que no es una frase.
+ *
+ * SON DOS TEXTOS PORQUE SE LEEN EN DOS SITIOS DISTINTOS. El subtítulo los
+ * encaja en una oración --«Comportamiento de clientes y productos hoy»-- y el
+ * chip va suelto, así que no lleva ni artículo ni minúscula inicial: «Hoy»,
+ * «29 oct», «del 30 sep al 29 oct». Es lo que el dueño pidió el 2026-10-29
+ * como salida: *«muestra solo la fecha de hoy "00 sept"»*.
+ *
+ * SALEN DE LA MISMA COMPARACIÓN, así que no pueden decir días distintos.
+ */
+export function etiquetaDelRango(r: Rango, ahora: Date = new Date()): string {
+  if (aISO(r.desde) === aISO(r.hasta)) {
+    return aISO(r.desde) === aISO(ahora) ? "Hoy" : corto(r.desde);
+  }
   return `del ${corto(r.desde)} al ${corto(r.hasta)}`;
 }

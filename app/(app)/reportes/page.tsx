@@ -9,7 +9,7 @@ import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
 import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
 import { apartadoDe } from "@/lib/reports/apartados";
-import { rangoDe, textoDelRango } from "@/lib/reports/rango";
+import { etiquetaDelRango, rangoDe, textoDelRango } from "@/lib/reports/rango";
 import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
 import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
@@ -194,7 +194,7 @@ export default async function ReportesPage({
           // apartados arriba y el periodo debajo.
           <div className="flex flex-col gap-3">
             <ReportesTabs activo={apartado} />
-            <ReportesFechaFiltro rango={rango} />
+            <ReportesFechaFiltro rango={rango} texto={etiquetaDelRango(rango)} />
           </div>
         }
       />

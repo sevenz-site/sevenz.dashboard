@@ -218,13 +218,24 @@ const Tarjeta = forwardRef<
  * nota «Tienes mercancía en N monedas» que ya vive bajo las tarjetas.
  */
 function filasDeCapital(datos: Inventario): FilaDeDinero[] {
-  const fila = (rotulo: string, ds: { currency: string; amount: number }[]): FilaDeDinero => ({
+  const fila = (
+    rotulo: string,
+    ds: { currency: string; amount: number }[],
+    nota?: string,
+  ): FilaDeDinero => ({
     rotulo,
-    tarjetas: ds.slice(0, 2).map((d) => ({ rotulo, dinero: d })),
+    tarjetas: ds.slice(0, 2).map((d) => ({ rotulo, dinero: d, nota })),
   });
   return [
+    // LA DEL CAPITAL YA LA DA LA BANDA GRIS de encima --«Calculado en función
+    // del costo de cada producto»-- así que repetirla dentro de la tarjeta
+    // sería decir lo mismo dos veces en cuatro centímetros.
     fila("Capital en inventario", datos.capitalPorMoneda),
-    fila("Ventas proyectadas", datos.ventasProyectadas),
+    fila(
+      "Ventas proyectadas",
+      datos.ventasProyectadas,
+      "Precio de venta × unidades que te quedan.",
+    ),
   ];
 }
 

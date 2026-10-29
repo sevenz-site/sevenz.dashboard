@@ -14,7 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { aISO, textoDelRango, type Rango } from "@/lib/reports/rango";
+import { aISO, type Rango } from "@/lib/reports/rango";
 
 // EL FILTRO «FECHA» DE REPORTES — frame `1502:10303`.
 //
@@ -45,11 +45,24 @@ import { aISO, textoDelRango, type Rango } from "@/lib/reports/rango";
 // esto son tres. Por eso quedan los dos atajos arriba, que cubren lo que el
 // tendero mira casi siempre.
 
-export function ReportesFechaFiltro({ rango }: { rango: Rango }) {
+export function ReportesFechaFiltro({
+  rango,
+  // ── EL RÓTULO LLEGA ESCRITO DESDE EL SERVIDOR ─────────────────────
+  //
+  // Y no se recalcula aquí. El porqué entero está en `textoDelRango`: las dos
+  // `Date` de `rango` se reviven en el navegador, así que calcular el texto a
+  // este lado lo leía en la zona horaria del NAVEGADOR mientras el subtítulo
+  // de la misma pantalla lo leía en la del SERVIDOR. Dos rótulos para un solo
+  // rango.
+  texto,
+}: {
+  rango: Rango;
+  texto: string;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const [abierta, setAbierta] = useState(false);
-  const [, startTransition] = useTransition();
+  const [aplicando, startTransition] = useTransition();
   const [elegido, setElegido] = useState<DateRange | undefined>({
     from: rango.desde,
     to: rango.hasta,
@@ -63,8 +76,21 @@ export function ReportesFechaFiltro({ rango }: { rango: Rango }) {
     // llevaría dos respuestas a la misma pregunta y la de atrás ganaría el día
     // que alguien quitara una de las dos nuevas.
     next.delete("periodo");
-    setAbierta(false);
-    startTransition(() => router.replace(`/reportes?${next.toString()}`));
+    // ── SE NAVEGA PRIMERO Y SE CIERRA DESPUÉS ───────────────────────
+    //
+    // Era al revés. Cerrar una hoja de Radix dispara su animación de salida y
+    // la devolución del foco, y encadenar la navegación detrás de eso dejaba
+    // un hueco en el que la pantalla seguía enseñando el rango ANTERIOR. El
+    // dueño lo leyó como «"Hoy" sigue mostrando dos días» -- y yo mismo caí
+    // en la misma lectura al probarlo, mirando antes de que llegara.
+    //
+    // `isPending` SE USA AHORA y antes se descartaba: el chip se apaga
+    // mientras el informe viaja, así que un toque que tarda se ve que tardó
+    // en vez de parecer que no hizo nada.
+    startTransition(() => {
+      router.replace(`/reportes?${next.toString()}`);
+      setAbierta(false);
+    });
   }
 
   function atajo(dias: number) {
@@ -87,12 +113,14 @@ export function ReportesFechaFiltro({ rango }: { rango: Rango }) {
           // pantalla entera -- reportado por el dueño el 2026-10-27 con una
           // captura: *«debe apretar el contenido (hug), no ocupar toda la
           // pantalla»*.
-          className="flex h-[38px] w-fit shrink-0 self-start items-center gap-2 rounded-[10px] border border-brand-field-border px-4 text-sm text-brand-muted transition-colors outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
+          className={`flex h-[38px] w-fit shrink-0 self-start items-center gap-2 rounded-[10px] border border-brand-field-border px-4 text-sm text-brand-muted transition-colors outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 ${
+            aplicando ? "opacity-60" : ""
+          }`}
         >
           {/* EL CHIP DICE QUÉ RANGO HAY PUESTO, no solo «Fecha». Un filtro que
               no dice su valor obliga a abrirlo para saber qué se está mirando,
               y esta pantalla entera depende de esa respuesta. */}
-          <span className="font-medium text-white">{textoDelRango(rango)}</span>
+          <span className="font-medium text-white">{texto}</span>
           <ChevronDown className="size-4" aria-hidden />
         </button>
       </SheetTrigger>

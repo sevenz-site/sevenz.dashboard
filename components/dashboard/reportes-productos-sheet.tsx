@@ -73,6 +73,15 @@ import { esMonedaConocida, formatDinero, type Dinero } from "@/lib/reports/ganan
 export type TarjetaDeDinero = {
   rotulo: string;
   dinero: Dinero;
+  /**
+   * La línea pequeña que dice CÓMO sale esa cifra, dentro de la tarjeta.
+   *
+   * Encargo del dueño el 2026-10-29 para «Ventas proyectadas»: *«agrega
+   * disclaimer de como la estás calculando DENTRO del card»*. Dentro y no
+   * debajo: la tarjeta vive al lado de otra con otra fórmula, y una nota
+   * suelta bajo las dos no dice a cuál se refiere.
+   */
+  nota?: string;
 };
 
 // ── UNA FILA POR CONCEPTO, NO DOS CIFRAS EN LA MISMA TARJETA ──────────
@@ -244,6 +253,12 @@ function TarjetaDinero({
       <span className="text-xs text-muted-foreground">{t.rotulo}</span>
       <Importe d={t.dinero} grande />
       <LineaEnBs d={t.dinero} tasas={tasas} />
+      {t.nota ? (
+        // `leading-3.5` Y NO EL DE POR DEFECTO: a 165px de ancho esta nota cae
+        // en dos o tres renglones, y con el interlineado normal la tarjeta
+        // crecía lo bastante como para descolocar a su pareja de al lado.
+        <span className="pt-0.5 text-[11px] leading-3.5 text-muted-foreground">{t.nota}</span>
+      ) : null}
     </div>
   );
 }
