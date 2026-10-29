@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
+import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
 import type { ClientStatus, ClientSummary } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -17,11 +18,26 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 // aquí porque el día que una cifra no cuadre con lo que el tendero espera, lo
 // primero que hay que poder leer es qué se decidió que significaba.
 //
-// 1. «VENTAS» ES LO VENDIDO, no lo cobrado. Sale de `sale_lines`
-//    --cantidad x precio, por moneda-- así que una venta fiada entera cuenta
-//    igual que una pagada entera. Es la única lectura de la palabra «ventas»
-//    que no habla de la forma de pago, que es justo lo que el bloque de abajo
-//    separa.
+// 1. «VENTAS» ES LO COBRADO DE CONTADO. Decisión del dueño el 2026-10-29,
+//    al auditar cómo se calculaba cada métrica: *«son todas las transacciones
+//    de tipo De contado»*.
+//
+//    ESTO DESPLAZA LO QUE DECÍA AQUÍ, y la razón vieja se queda escrita
+//    porque sigue siendo cierta y es lo que se cede: «Ventas» era LO VENDIDO
+//    --`sale_lines`, cantidad × precio-- o sea la única lectura de la palabra
+//    que no habla de la forma de pago. Era decisión mía, del 2026-10-27, no
+//    suya.
+//
+//    LO QUE CUESTA, medido en dev antes de cambiarlo: la cifra cae un 88 %,
+//    de $13.161,50 a $1.556,00. No es una pérdida de datos -- es otra
+//    pregunta. El subtítulo de la tarjeta lo dice, porque una caída así sin
+//    explicación se lee como que la app se rompió.
+//
+//    Y DEJA UN AGUJERO QUE HAY QUE TAPAR: el abono que el cliente paga AL
+//    FIAR no es contado --su libro dejó cargo-- ni está por cobrar --ya se
+//    pagó--. Por eso existen las tarjetas «Abonos en X», que lo recogen. La
+//    invariante que lo prueba: `ventas + abonos` = todo lo que entró por caja
+//    en el periodo.
 //
 // 2. EL GRÁFICO DE TRANSACCIONES CUENTA TRANSACCIONES, NO DINERO. Y esto es
 //    una parada de seguridad, no una preferencia: sus tres series --contado,
@@ -88,7 +104,31 @@ export type MejorPagador = {
 export type Facturacion = {
   libros: Libro[];
   porCobrar: Partial<Record<Libro, number>>;
+  /**
+   * Lo cobrado de contado en el periodo. Ver la decisión 1 de la cabecera.
+   *
+   * SON LOS PAGOS DE LOS LIBROS SIN CARGO, no las líneas vendidas: un par
+   * (venta, libro) que dejó cargo en `movements` es fiado entero, y sus pagos
+   * se van a `abonos`.
+   */
   ventas: Partial<Record<Libro, number>>;
+  /**
+   * Lo que el cliente pagó sobre una deuda: los abonos posteriores MÁS lo que
+   * pagó al fiar.
+   *
+   * LAS DOS MITADES, y la segunda sorprende: un fiado con abono inicial
+   * escribe un cargo por LO QUE QUEDA y guarda lo pagado en `sale_payments`,
+   * sin escribir ningún movimiento de abono. Así que contar solo
+   * `movements.type = 'payment'` dejaba ese dinero fuera de toda la pantalla.
+   * Decisión del dueño el 2026-10-29, preguntado con la cifra delante.
+   *
+   * NO PUEDE HABER DOBLE CONTEO: un pago va a `ventas` si su libro no dejó
+   * cargo y a `abonos` si lo dejó. Los dos conjuntos son disjuntos por
+   * construcción, no por un filtro que alguien pueda quitar.
+   */
+  abonos: Partial<Record<Libro, number>>;
+  /** Lo fiado en el periodo: la suma de los cargos, por libro. */
+  fiados: Partial<Record<Libro, number>>;
   ventasPorCatalogo: Partial<Record<Libro, number>>;
   serieVentas: PuntoDeVentas[];
   serieTransacciones: PuntoDeTransacciones[];
@@ -303,12 +343,39 @@ export async function cargarFacturacion({
 
   // `in()` con una lista vacía devuelve todo en PostgREST, así que se corta
   // aquí: sin ventas no hay líneas ni pagos que pedir.
-  const [{ data: lineas }, { data: pagos }] = idsDeVenta.length
+  const [{ data: lineas }, { data: pagos }, { data: cargosDeVenta }] = idsDeVenta.length
     ? await Promise.all([
         supabase.from("sale_lines").select("sale_id, quantity, unit_price, currency").in("sale_id", idsDeVenta),
         supabase.from("sale_payments").select("sale_id, amount, currency, created_at").in("sale_id", idsDeVenta),
+        // ── QUÉ LIBRO DE QUÉ VENTA QUEDÓ FIADO ─────────────────────────
+        //
+        // SE PREGUNTA POR `sale_id` Y NO POR FECHA, aunque `movimientos` de
+        // arriba ya traiga cargos: aquella consulta lleva el filtro del rango
+        // y el de cliente, y aquí hace falta la respuesta EXACTA para cada
+        // venta descargada. Un cargo que cayera fuera de esa ventana por un
+        // segundo convertiría un fiado en una venta de contado.
+        supabase
+          .from("movements")
+          .select("sale_id, currency, type")
+          .in("sale_id", idsDeVenta)
+          .is("deleted_at", null),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
+
+  // LA MISMA CLAVE QUE EL HISTORIAL DEL CLIENTE, importada y no reescrita:
+  // `claveDeFila` es lo que decide allí si una venta sale como «De contado» o
+  // como «Fiado», y dos definiciones de «contado» en la misma app es cómo una
+  // pantalla acaba contradiciendo a la otra.
+  //
+  // UN CARGO BORRADO NO CUENTA (`deleted_at is null`): si el tendero retira el
+  // fiado de una venta mixta, ese libro pasa a ser lo que ahora es -- una
+  // venta pagada. Se acepta a propósito; la alternativa sería que la cifra
+  // dependiera de algo que ya no existe.
+  const librosFiados = new Set(
+    (cargosDeVenta ?? [])
+      .filter((m) => m.type !== "payment")
+      .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
+  );
 
   // ── CARTERA ────────────────────────────────────────────────────────
   const porCobrar: Partial<Record<Libro, number>> = {};
@@ -335,9 +402,27 @@ export async function cargarFacturacion({
     return p;
   });
 
+  const abonosPorLibro: Partial<Record<Libro, number>> = {};
+  const fiadosPorLibro: Partial<Record<Libro, number>> = {};
+  for (const l of libros) {
+    abonosPorLibro[l] = 0;
+    fiadosPorLibro[l] = 0;
+  }
+
+  // ── «TRANSACCIONES POR CATÁLOGO» SIGUE SIENDO LO VENDIDO ────────────
+  //
+  // Es lo único que queda saliendo de `sale_lines`, y es deliberado:
+  // *«debe calcular el total de monto transaccionado a través de los pedidos
+  // registrados, incluyendo fiados y de contado»* (dueño, 2026-10-29).
+  //
+  // CONSECUENCIA QUE HAY QUE DECIR EN LA PANTALLA: esta cifra puede salir
+  // MAYOR que «Ventas», porque aquella ya no cuenta los fiados. En dev son
+  // $1.729,00 contra $1.556,00. Las dos son correctas y juntas se leen como un
+  // error, así que el subtítulo de la tarjeta explica qué cuenta cada una.
   for (const li of lineas ?? []) {
     const libro = (li.currency as Libro) ?? "COP";
     if (!libros.includes(libro)) continue;
+    if (!deCatalogo.has(li.sale_id as string)) continue;
 
     // ── LA HOLGURA NO CUENTA EN LOS TOTALES ──────────────────────────
     //
@@ -352,15 +437,36 @@ export async function cargarFacturacion({
     // que su propio filtro promete. Se cazó comparando contra la base, no
     // mirando la pantalla.
     const cuando = cuandoSeVendio.get(li.sale_id as string);
+    if (!cuando || cuboDe(cs, cuando) < 0) continue;
+
+    catalogoPorLibro[libro] =
+      (catalogoPorLibro[libro] ?? 0) + Number(li.quantity) * Number(li.unit_price);
+  }
+
+  // ── «VENTAS» Y LA MITAD DE «ABONOS»: LOS PAGOS DE LA CAJA ───────────
+  //
+  // Cada pago va a un sitio u otro según si SU LIBRO quedó fiado. Los dos
+  // montones son disjuntos por construcción, así que ningún pago se cuenta
+  // dos veces ni se pierde.
+  //
+  // EL CUBO ES EL DE LA FECHA DE LA VENTA, no el del pago. Son el mismo
+  // instante --estos pagos se escriben al registrar la venta-- y usar el de
+  // la venta es lo que hace que la tarjeta y su gráfico sumen lo mismo aunque
+  // algún día dejen de serlo.
+  for (const pg of pagos ?? []) {
+    const libro = (pg.currency as Libro) ?? "COP";
+    if (!libros.includes(libro)) continue;
+    const cuando = cuandoSeVendio.get(pg.sale_id as string);
     const i = cuando ? cuboDe(cs, cuando) : -1;
     if (i < 0) continue;
 
-    const total = Number(li.quantity) * Number(li.unit_price);
-    ventasPorLibro[libro] = (ventasPorLibro[libro] ?? 0) + total;
-    if (deCatalogo.has(li.sale_id as string)) {
-      catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) + total;
+    const monto = Number(pg.amount);
+    if (librosFiados.has(claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string)))) {
+      abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
+      continue;
     }
-    serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) + total;
+    ventasPorLibro[libro] = (ventasPorLibro[libro] ?? 0) + monto;
+    serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) + monto;
   }
 
   // ── TRANSACCIONES: RECUENTOS, no importes. La razón, arriba. ───────
@@ -380,8 +486,17 @@ export async function cargarFacturacion({
     if (!libros.includes(libro)) continue;
     const i = cuboDe(cs, m.created_at as string);
     if (i < 0) continue;
-    if (m.type === "payment") serieTransacciones[i].abono += 1;
-    else serieTransacciones[i].fiado += 1;
+    // EL RECUENTO Y EL DINERO EN LA MISMA PASADA. Un segundo bucle sobre las
+    // mismas filas es un segundo sitio desde el que la barra del gráfico y la
+    // cifra de la tarjeta pueden separarse.
+    const monto = Number(m.amount);
+    if (m.type === "payment") {
+      serieTransacciones[i].abono += 1;
+      abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
+    } else {
+      serieTransacciones[i].fiado += 1;
+      fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) + monto;
+    }
   }
 
   // ── PLAZOS DE PAGO ─────────────────────────────────────────────────
@@ -545,6 +660,8 @@ export async function cargarFacturacion({
     libros,
     porCobrar,
     ventas: ventasPorLibro,
+    abonos: abonosPorLibro,
+    fiados: fiadosPorLibro,
     ventasPorCatalogo: catalogoPorLibro,
     serieVentas,
     serieTransacciones,

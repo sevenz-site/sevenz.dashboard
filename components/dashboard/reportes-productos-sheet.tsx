@@ -90,11 +90,16 @@ export type TarjetaDeDinero = {
 // son lecturas razonables, y de hecho fueron las tres opciones entre las que
 // él eligió. Sin la frase, cada quien elige una distinta.
 //
-// Y LLEVA LAS FECHAS, que es lo que la hace comprobable: sin ellas «lo que te
-// dejó» no dice de cuándo, y la cifra no se puede contrastar con nada.
+// EL TEXTO ES SUYO, PALABRA POR PALABRA, y lo dictó el 2026-10-29. Sustituye
+// al que yo había escrito, que llevaba las fechas del periodo («lo que te
+// dejó del 30 sep al 29 oct»).
+//
+// LO QUE SE PIERDE AL QUITARLAS, dicho para que conste y no para discutirlo:
+// la frase ya no dice DE CUÁNDO es esa ganancia, así que la cifra no se puede
+// contrastar contra nada sin mirar el selector de fechas de la cabecera. Sigue
+// siendo del periodo elegido; simplemente la frase ya no lo repite.
 export function ReportesProductosSheet({
   titulo,
-  periodoTexto,
   encabezado,
   tarjetas,
   productos,
@@ -103,8 +108,6 @@ export function ReportesProductosSheet({
   children,
 }: {
   titulo: string;
-  /** «del 29 sep al 28 oct», tal como lo escribe la cabecera de la pantalla. */
-  periodoTexto: string;
   /** La banda gris bajo el buscador. Solo la dibuja «Productos disponibles». */
   encabezado?: { titulo: string; sub: string };
   tarjetas: TarjetaDeDinero[];
@@ -141,8 +144,8 @@ export function ReportesProductosSheet({
               que irse de pantalla al tercer producto es justo cuando deja de
               servir. */}
           <p className="text-sm font-normal text-muted-foreground">
-            La ganancia de cada producto es lo que te dejó {periodoTexto}: su precio de venta
-            menos su costo, por las unidades que vendiste.
+            La ganancia es la diferencia entre el precio de venta menos el precio de costo
+            multiplicado por las unidades que vendiste
           </p>
         </SheetHeader>
 

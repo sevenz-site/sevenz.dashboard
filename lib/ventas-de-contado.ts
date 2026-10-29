@@ -115,7 +115,12 @@ export type LineaCruda = {
 // `COP` ES EL LIBRO NULO. Es la misma traducción que hace `registrarVenta` con
 // `libroDeMoneda`, repetida aquí y no importada de allí porque aquella vive en
 // un fichero `"use server"` y traerla arrastraría medio Next a esta función.
-function libro(moneda: string): LedgerCurrency | null {
+//
+// SE EXPORTA DESDE EL 2026-10-29, cuando Reportes pasó a calcular «Ventas»
+// como lo cobrado de contado: esa cifra necesita exactamente esta traducción
+// para construir la misma clave. Una tercera copia de dos líneas es
+// justamente cómo las tres se separan sin que nada avise.
+export function libroDeVenta(moneda: string): LedgerCurrency | null {
   return moneda === "USD" || moneda === "EUR" ? moneda : null;
 }
 
@@ -149,7 +154,7 @@ export function filasDeContado(
   const lineasPorVentaYLibro = new Map<string, SaleLineRow[]>();
   for (const l of lineas) {
     if (!porVenta.has(l.sale_id)) continue;
-    const clave = `${l.sale_id}|${libro(l.currency) ?? ""}`;
+    const clave = `${l.sale_id}|${libroDeVenta(l.currency) ?? ""}`;
     const lista = lineasPorVentaYLibro.get(clave) ?? [];
     lista.push({
       name: l.name,
@@ -168,7 +173,7 @@ export function filasDeContado(
   const mezclados = new Set<string>();
   for (const p of pagos) {
     if (!porVenta.has(p.sale_id)) continue;
-    const clave = `${p.sale_id}|${libro(p.currency) ?? ""}`;
+    const clave = `${p.sale_id}|${libroDeVenta(p.currency) ?? ""}`;
     sumas.set(clave, (sumas.get(clave) ?? 0) + Number(p.amount));
     // LA TASA DEL PRIMER PAGO DE ESE LIBRO, y no una media de todos. Los
     // pagos de una misma venta se sellan en el mismo instante, así que son la

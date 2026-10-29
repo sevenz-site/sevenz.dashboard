@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
+import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LO QUE SE VENDIÓ EN UN PERIODO, POR LIBRO
@@ -67,19 +68,52 @@ export async function ventasDelPeriodo({
   // sería el libro de otro negocio.
   if (!ids.length) return {};
 
-  const { data: lineas, error: errorLineas } = await supabase
-    .from("sale_lines")
-    .select("quantity, unit_price, currency")
-    .in("sale_id", ids);
-  if (errorLineas) throw new Error(`ventas: líneas: ${errorLineas.message}`);
+  // ── LO COBRADO DE CONTADO, NO LO VENDIDO ─────────────────────────────
+  //
+  // Cambió el 2026-10-29 con la decisión del dueño sobre qué significa
+  // «Ventas» --*«son todas las transacciones de tipo De contado»*--. Antes
+  // esto sumaba `sale_lines` (cantidad × precio, con los fiados dentro).
+  //
+  // CAMBIA AQUÍ PORQUE NO PUEDE NO CAMBIAR: esta es la SEGUNDA
+  // implementación de la misma cifra, la del Inicio, y la tarjeta del Inicio
+  // enlaza a Reportes. Si solo cambiara Reportes, el tendero tocaría la
+  // tarjeta y el número cambiaría delante de sus ojos. Es exactamente lo que
+  // `npm run qa:ventas-inicio` existe para impedir.
+  const [{ data: pagos, error: errorPagos }, { data: cargos, error: errorCargos }] =
+    await Promise.all([
+      supabase.from("sale_payments").select("sale_id, amount, currency").in("sale_id", ids),
+      // Los cargos dicen qué par (venta, libro) quedó fiado. Sin filtro de
+      // fecha a propósito: la pregunta es sobre ESTAS ventas, no sobre el
+      // periodo, y un cargo que cayera un segundo fuera convertiría un fiado
+      // en una venta de contado.
+      supabase
+        .from("movements")
+        .select("sale_id, currency, type")
+        .in("sale_id", ids)
+        .is("deleted_at", null),
+    ]);
+  if (errorPagos) throw new Error(`ventas: pagos: ${errorPagos.message}`);
+  if (errorCargos) throw new Error(`ventas: cargos: ${errorCargos.message}`);
+
+  const librosFiados = new Set(
+    (cargos ?? [])
+      .filter((m) => m.type !== "payment")
+      .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
+  );
 
   const porLibro: Partial<Record<Libro, number>> = {};
-  for (const l of lineas ?? []) {
+  for (const pg of pagos ?? []) {
+    // Un pago de un libro que dejó cargo es un ABONO dentro de un fiado, no
+    // una venta de contado. Esa mitad la enseña Reportes en su propia
+    // tarjeta; aquí simplemente no cuenta.
+    if (librosFiados.has(claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string)))) {
+      continue;
+    }
     // El libro colombiano se guarda como `null` en `movements` y como `'COP'`
-    // en `sale_lines`. Aquí llega ya como 'COP', pero el `?? "COP"` cubre una
-    // fila sin moneda sin dejarla fuera de la cuenta en silencio.
-    const libro = ((l.currency as Libro | null) ?? "COP") as Libro;
-    porLibro[libro] = (porLibro[libro] ?? 0) + Number(l.quantity) * Number(l.unit_price);
+    // en `sale_payments`. Aquí llega ya como 'COP', pero el `?? "COP"` cubre
+    // una fila sin moneda sin dejarla fuera de la cuenta en silencio.
+    const libro = ((pg.currency as Libro | null) ?? "COP") as Libro;
+    porLibro[libro] = (porLibro[libro] ?? 0) + Number(pg.amount);
   }
   return porLibro;
 }

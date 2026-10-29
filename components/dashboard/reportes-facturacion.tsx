@@ -6,9 +6,11 @@ import {
   ChevronRight,
   CircleAlert,
   CircleDollarSign,
+  HandCoins,
+  NotebookPen,
   Eye,
   EyeOff,
-  Package2,
+  Package,
   UserRound,
   UserRoundMinus,
   UserRoundX,
@@ -314,6 +316,20 @@ export function ReportesFacturacion({
                 />
               ))}
             </div>
+            {/* ── ESTA CIFRA NO DEPENDE DEL PERIODO, Y HAY QUE DECIRLO ───
+                Está dibujada debajo de un selector de fechas que no la toca:
+                es el saldo de HOY, acumulado desde siempre.
+
+                EL DUEÑO ESTUVO A PUNTO DE CAMBIARLO el 2026-10-29 --pidió
+                que respetara el periodo-- y lo reabrió al ver la medición:
+                con el rango de 30 días la tarjeta de euros pasaba de
+                €5.456,21 a €431,76, porque €5.224,45 de deuda viva nació
+                antes. El peor caso es un tendero que abre Reportes y cree
+                que casi nadie le debe. Lo del periodo lo contestan «Fiados»
+                y «Abonos», más abajo. */}
+            <p className="text-xs leading-4 text-muted-foreground">
+              Es lo que te deben hoy en total. No cambia con el periodo que elijas.
+            </p>
             <div className="flex gap-3">
               {libros.map((l) => (
                 <TarjetaDeMonto
@@ -329,6 +345,12 @@ export function ReportesFacturacion({
                 />
               ))}
             </div>
+            {/* QUÉ CUENTA «VENTAS», porque dejó de contar lo mismo el
+                2026-10-29 y la cifra cae un 88 %. Una bajada así sin una
+                línea que la explique se lee como que la app perdió datos. */}
+            <p className="text-xs leading-4 text-muted-foreground">
+              Solo lo que cobraste de contado. Lo que fiaste está más abajo, en «Fiados».
+            </p>
             <Barras
               oculto={oculto}
               puntos={datos.serieVentas.map((p) => ({
@@ -376,17 +398,84 @@ export function ReportesFacturacion({
                 key={l}
                 rotulo={
                   libros.length > 1
-                    ? `Ventas por catálogo en ${NOMBRE_DEL_LIBRO[l]}`
-                    : "Ventas por catálogo"
+                    ? `Transacciones por catálogo en ${NOMBRE_DEL_LIBRO[l]}`
+                    : "Transacciones por catálogo"
                 }
                 valor={datos.ventasPorCatalogo[l] ?? 0}
                 libro={l}
                 oculto={oculto}
-                // `package_2` en #007956 -- frame `1752:14808`.
-                icono={<Package2 className="size-4 text-brand-sales" aria-hidden />}
+                // ── EL ICONO ES EL DE «CATÁLOGO» DE LA BARRA DE ABAJO ────
+                //
+                // Encargo del dueño el 2026-10-29. SE APARTA DEL FRAME a
+                // propósito: `1752:14808` especifica `package_2`, y aquí va
+                // `Package`, que es el que `mobile-nav.tsx` usa para la
+                // pestaña «Catálogo». El verde se queda.
+                //
+                // Por qué pesa más que el frame: esta tarjeta habla de lo que
+                // entró por el catálogo, y el tendero llega al catálogo por
+                // ese icono. Dos dibujos distintos para la misma cosa en la
+                // misma pantalla le piden aprenderse dos.
+                icono={<Package className="size-4 text-brand-sales" aria-hidden />}
               />
             ))}
           </div>
+          {/* ── POR QUÉ PUEDE SALIR MAYOR QUE «VENTAS» ──────────────────
+              Esta cuenta TODO lo que pasó por pedidos --fiado y contado,
+              decisión del dueño el 2026-10-29-- y «Ventas» ya solo cuenta el
+              contado. En dev son $1.729,00 contra $1.556,00: la parte mayor
+              que el todo. Las dos son correctas; juntas y sin esta línea se
+              leen como un error de la app. */}
+          <p className="text-xs leading-4 text-muted-foreground">
+            Todo lo que se movió por pedidos del catálogo, fiado y de contado. Por eso puede
+            ser mayor que «Ventas».
+          </p>
+
+          {/* ── ABONOS Y FIADOS — encargo del dueño el 2026-10-29 ───────
+              Van aquí, encima de «Pedidos por atender», y en este orden,
+              que es el de la leyenda del gráfico de este mismo bloque:
+              «De contado · Abono · Fiado». El contado ya tiene su tarjeta
+              arriba, en Cartera, con el rótulo «Ventas».
+
+              LOS COLORES DE LOS ICONOS SON LOS DE ESAS SERIES --sky para el
+              abono, destructive para el fiado-- y no unos nuevos: es el
+              único lenguaje visual que la pantalla ya tiene para estas dos
+              cosas. Las FORMAS son propuestas: estas dos tarjetas no están
+              en ningún frame, las pidió él hoy. */}
+          <div className="flex gap-3">
+            {libros.map((l) => (
+              <TarjetaDeMonto
+                key={l}
+                rotulo={libros.length > 1 ? `Abonos en ${NOMBRE_DEL_LIBRO[l]}` : "Abonos"}
+                valor={datos.abonos[l] ?? 0}
+                libro={l}
+                oculto={oculto}
+                icono={<HandCoins className="size-4 text-sky-600" aria-hidden />}
+              />
+            ))}
+          </div>
+          {/* LO QUE PAGÓ AL FIAR TAMBIÉN CUENTA AQUÍ, y es la mitad que
+              sorprende: un fiado con abono inicial no escribe movimiento de
+              abono --escribe un cargo por lo que queda-- así que sin esto
+              ese dinero no salía en ninguna tarjeta de la pantalla. */}
+          <p className="text-xs leading-4 text-muted-foreground">
+            Lo que tus clientes pagaron de sus deudas, incluido lo que abonaron al momento de
+            fiar.
+          </p>
+          <div className="flex gap-3">
+            {libros.map((l) => (
+              <TarjetaDeMonto
+                key={l}
+                rotulo={libros.length > 1 ? `Fiados en ${NOMBRE_DEL_LIBRO[l]}` : "Fiados"}
+                valor={datos.fiados[l] ?? 0}
+                libro={l}
+                oculto={oculto}
+                icono={<NotebookPen className="size-4 text-destructive" aria-hidden />}
+              />
+            ))}
+          </div>
+          <p className="text-xs leading-4 text-muted-foreground">
+            Lo que fiaste {periodoTexto}. «Por cobrar», arriba, es lo que te deben en total.
+          </p>
           {/* UNA SOLA TARJETA DE PEDIDOS, y el frame dibuja dos idénticas.
               No es una por moneda: un pedido sin atender no tiene moneda
               todavía --nadie ha decidido cómo se cobra--. Dos tarjetas con el
