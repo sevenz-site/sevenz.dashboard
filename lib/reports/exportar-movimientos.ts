@@ -48,6 +48,53 @@ import { ventanaDelNegocio } from "@/lib/reports/zona-del-negocio";
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /** Los códigos de fallo. La ruta y la pantalla leen la misma tabla. */
+// ═══════════════════════════════════════════════════════════════════════
+// LAS CIFRAS DEL FICHERO, UNA POR UNA — para auditarlo sin leerlo entero
+//
+// Encargo del dueño el 2026-10-29, cerrando el hueco que la auditoría dejó:
+// las tres pantallas tenían su tabla y el FICHERO no, aunque es el que se
+// abre en Excel y se discute con cifras delante.
+//
+//   Las filas de movimiento
+//     Una por `movements` del rango, del dueño, sin borrar. Van tal cual
+//     salen de la base: fecha, cliente, tipo, importe, moneda, descripción.
+//     NO se recalcula nada -- el fichero es una copia, no un informe.
+//
+//   Saldo inicial (una fila por moneda, antes de las demás)
+//     El `running_balance` de la ÚLTIMA fila viva de esa moneda ANTES del
+//     rango. Si no hubo ninguna, la fila lo dice --«sin movimientos
+//     anteriores»-- en vez de escribir un cero que parecería un saldo.
+//
+//     POR QUÉ ES OBLIGATORIO, y no cosmético: `running_balance` es
+//     acumulativo desde el principio de los tiempos. Exportar «solo marzo»
+//     sin esta fila da un fichero que arranca en $70.000 sin decir de dónde
+//     sale, y quien lo sume de arriba abajo obtiene otra cosa. Lo fija
+//     `REPORTES-PLAN.md` como condición dura.
+//
+//   Saldo final (una fila por moneda, al terminar)
+//     El `running_balance` de la última fila viva de esa moneda DENTRO del
+//     rango; si no hubo ninguna, el saldo inicial sigue vigente y la fila lo
+//     dice. Cuadra con el saldo que la app enseña en la ficha del cliente,
+//     porque sale de la misma columna.
+//
+//   El recuento, y su parada dura
+//     El fichero escribe cuántas filas trae Y contra qué conteo se comprobó.
+//     El paginador pide el total a la base ANTES y DESPUÉS de leer: si los
+//     dos no coinciden --alguien registró algo a mitad-- o si lo paginado no
+//     llega a ese total, NO SE ENTREGA NADA. PostgREST corta en 1.000 filas
+//     en silencio, y medio fichero que parece entero es peor que ninguno.
+//
+//   El rango impreso en la cabecera
+//     Resuelto en la zona del NEGOCIO (`zona-del-negocio.ts`), no en la de
+//     quien ejecuta. Va escrito en el fichero para que una cifra discutida se
+//     pueda comprobar en vez de discutirse.
+//
+//     ⚠️ LA PANTALLA NO USA ESA ZONA: `rango.ts` resuelve en la del proceso
+//     que lo ejecuta, que en el servidor puede ser UTC. Así que el fichero y
+//     la pantalla pueden cubrir ventanas distintas de hasta cinco horas en
+//     cada punta. Está abierto.
+// ═══════════════════════════════════════════════════════════════════════
+
 export type MotivoDeFallo =
   | "rango"
   | "lectura"

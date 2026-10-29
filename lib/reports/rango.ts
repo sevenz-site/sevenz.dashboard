@@ -62,6 +62,23 @@ function finDelDia(d: Date): Date {
  * absurdo cae en el de por defecto en vez de dejar la pantalla en blanco: esta
  * URL se comparte y se teclea, y un informe no vale una pantalla caída.
  */
+/**
+ * ⚠️ RESUELVE EN LA ZONA DE QUIEN EJECUTA, Y ESO ESTÁ ABIERTO
+ *
+ * `inicioDelDia` y `finDelDia` usan los constructores locales, así que la
+ * ventana depende del huso del proceso. En un componente de servidor eso es
+ * el huso del SERVIDOR, que en Vercel es UTC -- no el del negocio.
+ *
+ * QUIÉN SÍ LO HACE BIEN: el fichero descargable, que resuelve con
+ * `zona-del-negocio.ts` a partir de `owners.country`. Su cabecera explica por
+ * qué: *«En pantalla eso desplaza unas barras. En un fichero que se guarda y
+ * se discute, es una cifra que no se puede defender»*.
+ *
+ * CONSECUENCIA PRÁCTICA: la pantalla y el CSV pueden cubrir ventanas que se
+ * diferencian hasta en cinco horas por cada punta. No se ha cerrado porque
+ * arreglarlo pide que la pantalla conozca el país antes de resolver el rango,
+ * y hoy lo lee después.
+ */
 export function rangoDe(
   params: { desde?: string; hasta?: string; periodo?: string },
   ahora: Date = new Date(),

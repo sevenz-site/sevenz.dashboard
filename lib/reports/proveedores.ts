@@ -129,11 +129,22 @@ export async function cargarProveedores({
   ownerId,
   rango,
   rates,
+  proveedorClave = null,
 }: {
   supabase: SupabaseServerClient;
   ownerId: string;
   rango: Rango;
   rates: BolivarRates | null;
+  /**
+   * Acota el apartado a un proveedor, por su clave normalizada.
+   *
+   * SE FILTRA AL FINAL Y NO EN LA CONSULTA, al contrario que el de productos:
+   * la clave es el nombre normalizado --sin caja ni tildes-- y esa
+   * normalización vive en JavaScript, no en Postgres. Filtrar en la consulta
+   * exigiría repetirla en SQL, que es el segundo sitio desde el que «Makro» y
+   * «MAKRO» volverían a ser dos proveedores.
+   */
+  proveedorClave?: string | null;
 }): Promise<ProveedorEnReporte[]> {
   const [resProductos, resVentas] = await Promise.all([
     supabase
@@ -247,11 +258,13 @@ export async function cargarProveedores({
   // tiene-- y este es el único que no depende de que haya habido ventas: por
   // margen, un catálogo sin vender saldría en orden alfabético disfrazado de
   // ranking.
-  filas.sort((a, b) => {
+  const visibles = proveedorClave ? filas.filter((f) => f.clave === proveedorClave) : filas;
+
+  visibles.sort((a, b) => {
     if (a.sinProveedor !== b.sinProveedor) return a.sinProveedor ? 1 : -1;
     if (b.productos !== a.productos) return b.productos - a.productos;
     return a.nombre.localeCompare(b.nombre, "es");
   });
 
-  return filas;
+  return visibles;
 }

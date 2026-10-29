@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Download, FileUser, PackageSearch, Truck } from "lucide-react";
+import { track } from "@/lib/mixpanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +61,30 @@ import { aISO, rangoDe } from "@/lib/reports/rango";
 // pegando el enlace, en vez de reconstruir la pantalla que lo produjo.
 // ═══════════════════════════════════════════════════════════════════════
 
+/**
+ * ¿DESCARGAN LOS INFORMES, Y CUÁL?
+ *
+ * Encargo del dueño el 2026-10-29, y es **el más caro de los cuatro** si se
+ * contesta mal.
+ *
+ * QUÉ DECIDE: la parte B del plan --el `.xlsx`, el `.pdf` y el correo
+ * semanal-- se construye sobre el supuesto de que el tendero quiere llevarse
+ * estos datos. Son **tres dependencias nuevas**, cada una con su
+ * `new-api-risk-review` obligatorio, más un proveedor de correo y un cron.
+ *
+ *   · Si se descarga poco o nada, ese trabajo no se justifica y lo honesto es
+ *     quitarlo del plan, no construirlo y descubrirlo después.
+ *   · Si se descarga mucho pero solo facturación, el `.xlsx` empieza por ahí
+ *     y el inventario puede esperar.
+ *   · Y si alguien descarga el mismo informe cada semana, eso ES la señal del
+ *     correo semanal: ya está haciendo a mano lo que el cron haría solo.
+ *
+ * SE MANDA EN EL MISMO GESTO QUE ABRE LA RUTA y no en el servidor, aunque la
+ * ruta sea de servidor y pudiera hacerlo: el `<a>` provoca una descarga, no
+ * una navegación, así que el servidor ve la petición pero la PANTALLA no se
+ * entera de nada. Medir en la ruta contaría también cualquier reintento del
+ * navegador, que en una descarga no es raro.
+ */
 export function ReportesDescargar() {
   const params = useSearchParams();
 
@@ -127,7 +152,10 @@ export function ReportesDescargar() {
           {/* `prefetch={false}` no aplica: esto no es un `Link` de Next a
               propósito. Un `Link` haría navegación de cliente y la respuesta
               de descarga no es una página -- tiene que salir del navegador. */}
-          <a href={`/api/reportes/movimientos?${query.toString()}`}>
+          <a
+            href={`/api/reportes/movimientos?${query.toString()}`}
+            onClick={() => track("Report Export Downloaded", { que: "facturacion" })}
+          >
             <FileUser aria-hidden="true" />
             Descargar facturación
           </a>
@@ -145,13 +173,19 @@ export function ReportesDescargar() {
             Facturación y quiere el inventario no tiene por qué cambiar de
             apartado para pedirlo. Las tres respetan el rango puesto. */}
         <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
-          <a href={`/api/reportes/catalogo?que=inventario&${query.toString()}`}>
+          <a
+            href={`/api/reportes/catalogo?que=inventario&${query.toString()}`}
+            onClick={() => track("Report Export Downloaded", { que: "inventario" })}
+          >
             <PackageSearch aria-hidden="true" />
             Descargar inventario
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
-          <a href={`/api/reportes/catalogo?que=proveedores&${query.toString()}`}>
+          <a
+            href={`/api/reportes/catalogo?que=proveedores&${query.toString()}`}
+            onClick={() => track("Report Export Downloaded", { que: "proveedores" })}
+          >
             <Truck aria-hidden="true" />
             Descargar proveedores
           </a>

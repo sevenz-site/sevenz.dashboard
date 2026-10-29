@@ -60,6 +60,38 @@ import { formatBsAmount } from "@/lib/exchange-rate/format";
 // una diferencia que nunca existió como cifra escrita.
 // ═══════════════════════════════════════════════════════════════════════
 
+// ───────────────────────────────────────────────────────────────────────
+// LAS DOS FÓRMULAS DE ESTE ARCHIVO, PARA AUDITARLAS DE UN VISTAZO
+//
+//   Ganancia de un producto (la línea «$X de ganancia»)
+//     Por cada línea vendida suya en el rango:
+//       ingreso  = unit_price × quantity
+//       costo    = costoEnMonedaDeVenta(producto, moneda de la línea) × quantity
+//       ganancia = ingreso − costo
+//     Se acumula POR MONEDA DE VENTA y se enseña en la que más ingresos tuvo.
+//     Una línea cuyo costo no se puede expresar en su moneda suma a los
+//     ingresos y NO a la ganancia, y se cuenta en `lineasSinCosto`.
+//
+//   Margen de un grupo (la fila de un proveedor)
+//     margen % = (Σ ganancia ÷ Σ costo) × 100     ← SOBRE EL COSTO
+//     Solo entran las líneas cuya ganancia se pudo calcular, numerador y
+//     denominador a la vez. Con varias monedas los dos lados se llevan a
+//     bolívares: un PORCENTAJE sí puede cruzar monedas aunque una suma de
+//     dinero no.
+//
+//   Cuándo es `null`, y nunca cero
+//     1. El producto no tiene costo escrito.
+//     2. Su costo está en una moneda «Otra», texto libre sin tasa.
+//     3. No hay tasas y las dos monedas no coinciden (Colombia, o el BCV
+//        caído). `priceIn` ya devuelve `null` para COP contra cualquier otra.
+//
+//   La tasa es la de HOY
+//     `sale_lines` no guarda la suya. Una venta en euros de hace tres semanas
+//     se compara contra un costo en dólares convertido con la tasa de hoy. Se
+//     acepta porque es un indicador de reporte y no un recibo; el detalle
+//     está más abajo.
+// ───────────────────────────────────────────────────────────────────────
+
 /** Una línea vendida, con lo mínimo que hace falta para la cuenta. */
 export type LineaVendida = {
   productId: string;

@@ -551,7 +551,10 @@ export function ReportesFacturacion({
           // Quien lea la lista sabe por qué sale ese cliente y no otro, y
           // puede decir que el criterio no le sirve, que es justo lo que un
           // placeholder impide.
-          subtitulo={`Quien más abonó ${periodoTexto}, entre los que están al día.`}
+          // YA NO LLEVA EL PERIODO, porque la lista ya no depende de él: el
+          // puntaje mide toda la historia del cliente. Prometer un rango que
+          // no se aplica es la clase de rótulo que hace dudar de la cifra.
+          subtitulo="Tus clientes con mejor puntaje de crédito, de toda su historia contigo."
         />
         {datos.mejoresPagadores.length === 0 ? (
           <EmptyState
@@ -560,7 +563,11 @@ export function ReportesFacturacion({
             // últimos 7 días», que aquí depende del rango que el tendero haya
             // elegido.
             title="Aún no hay clientes calificados"
-            subtitle={`Nadie al día registró abonos ${periodoTexto}.`}
+            // TAMPOCO LLEVA PERIODO, por lo mismo que el subtítulo de
+            // arriba. Y dice la razón de verdad: el puntaje necesita fiados
+            // CERRADOS para existir, así que un negocio joven --o uno que
+            // solo vende de contado-- no tiene a nadie que calificar.
+            subtitle="Un cliente califica cuando ha cerrado algún fiado. Todavía no hay ninguno con historial suficiente."
           >
             {/* EL ESTADO VACÍO OFRECE LA ACCIÓN, no solo informa. Encargo del
                 dueño el 2026-10-27: *«al seleccionar el botón "Registrar
@@ -584,7 +591,21 @@ export function ReportesFacturacion({
                   className="flex items-center gap-3 rounded-[10px] border border-l-4 border-l-money-in px-3 py-3 transition-colors active:bg-accent"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.nombre}</span>
-                  <Monto valor={m.pagado} libro={m.libro} oculto={oculto} className="text-sm" />
+                  {/* ── EL PUNTAJE Y SU NIVEL, NO UN IMPORTE ─────────────
+                      Desde el 2026-10-29 esta lista ordena por puntaje de
+                      crédito, así que la cifra de al lado tiene que ser la
+                      que la ordena. Un importe al lado de un orden que no
+                      sale de él es la contradicción que esta tarjeta ya
+                      tuvo: ordenaba por el abono más grande y decía «quien
+                      más abonó».
+
+                      NO SE OCULTA CON EL OJO, y es deliberado: `oculto`
+                      tapa DINERO, y un puntaje no lo es. Esconderlo no
+                      protege nada y dejaría la fila sin su única cifra. */}
+                  <span className="flex shrink-0 flex-col items-end">
+                    <span className="text-sm font-medium tabular-nums">{m.puntaje}</span>
+                    <span className="text-xs text-muted-foreground">{m.nivel}</span>
+                  </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                 </Link>
               </li>

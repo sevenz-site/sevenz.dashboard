@@ -302,10 +302,20 @@ export async function cargarInventario({
   ownerId,
   rango,
   rates,
+  productId = null,
 }: {
   supabase: SupabaseServerClient;
   ownerId: string;
   rango: Rango;
+  /**
+   * Acota TODO el apartado a un producto, igual que `?cliente=` acota
+   * Facturación. Decisión del dueño el 2026-10-29 al pedir el buscador.
+   *
+   * CON UNO ELEGIDO LAS TRES TARJETAS DICEN 1 Y 0, y es lo que un filtro de
+   * uno significa: son un recuento de productos. La pantalla lo explica con
+   * su línea «Mostrando solo X».
+   */
+  productId?: string | null;
   /**
    * Las tasas del día, para poder restar un costo en dólares de una venta en
    * euros. `null` en un negocio colombiano o con el BCV sin responder: la
@@ -313,15 +323,20 @@ export async function cargarInventario({
    */
   rates: BolivarRates | null;
 }): Promise<Inventario> {
-  const [resProductos, resDueno, resVentas] = await Promise.all([
-    supabase
-      .from("products")
+  // EL FILTRO SE APLICA A LA CONSULTA, no al pintar: así todo lo que se
+  // deriva de `productos` --los tres cubos, el capital, el margen, las
+  // listas-- queda acotado sin un `if` repartido por la función.
+  const qProductos = supabase
+    .from("products")
       .select(
         "id, name, unit, stock_opening, cost, cost_currency, cost_currency_other, margin_retail_pct, photo_path, price_retail, base_currency_retail, base_currency",
       )
-      .eq("owner_id", ownerId)
-      .is("trashed_at", null)
-      .order("name"),
+    .eq("owner_id", ownerId)
+    .is("trashed_at", null)
+    .order("name");
+
+  const [resProductos, resDueno, resVentas] = await Promise.all([
+    productId ? qProductos.eq("id", productId) : qProductos,
     supabase.from("owners").select("low_stock_threshold").eq("id", ownerId).single(),
     supabase
       .from("sales")
@@ -487,6 +502,9 @@ export async function cargarInventario({
   // ganancia. Una segunda consulta por lo mismo sería un segundo sitio desde
   // el que esas dos cifras pueden separarse.
   const vendidas: LineaVendida[] = [];
+  // CON UN PRODUCTO ELEGIDO, sus líneas también. Sin esto «Más vendidos»
+  // seguiría listando el catálogo entero bajo un rótulo que promete uno.
+  const esDelFiltro = (id: string) => !productId || id === productId;
 
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
@@ -497,7 +515,7 @@ export async function cargarInventario({
 
     const porProducto: Record<string, number> = {};
     for (const l of lineas ?? []) {
-      if (l.product_id) {
+      if (l.product_id && esDelFiltro(l.product_id as string)) {
         vendidas.push({
           productId: l.product_id as string,
           currency: l.currency as string,
@@ -513,6 +531,7 @@ export async function cargarInventario({
         lineasSueltas++;
         continue;
       }
+      if (!esDelFiltro(l.product_id as string)) continue;
       porProducto[l.product_id as string] =
         (porProducto[l.product_id as string] ?? 0) + Number(l.quantity);
     }

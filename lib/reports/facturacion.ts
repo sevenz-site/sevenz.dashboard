@@ -3,6 +3,8 @@ import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
+import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
+import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ClientStatus, ClientSummary } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -36,10 +38,15 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //     pago). La suma de las barras es la cifra de la tarjeta.
 //
 //   Gráfico «Transacciones»
-//     RECUENTOS, no importes. contado = nº de filas de `sale_payments`;
-//     abono = nº de `movements` con type='payment'; fiado = nº del resto.
-//     OJO: una venta cobrada en dos monedas suma 2 a «contado», porque son
-//     dos filas de pago. Cuenta pagos, no ventas.
+//     RECUENTOS, no importes.
+//       contado = nº de pares (venta, libro) que NO dejaron cargo. Es la
+//                 misma definición de «de contado» que usa la tarjeta
+//                 «Ventas» y que el historial del cliente. Una venta mixta
+//                 suma 1 aquí Y 1 en fiado, porque son dos tarjetas en el
+//                 historial. Los pedidos del catálogo entran solos: se
+//                 registran creando una venta normal.
+//       abono   = nº de `movements` con type='payment'.
+//       fiado   = nº de `movements` que no son 'payment'.
 //
 //   Transacciones por catálogo en X
 //     Σ cantidad × precio de las `sale_lines` de las ventas que vienen de un
@@ -67,13 +74,12 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //     El importe que acompaña es el del libro que decidió el estado.
 //
 //   Mejores pagadores
-//     ⚠️ ORDENA POR EL ABONO MÁS GRANDE DE CADA CLIENTE, no por la suma de
-//     sus abonos -- y el subtítulo de la pantalla dice «quien más abonó».
-//     Medido en dev el 2026-10-28: el orden cambia. Un cliente con un abono
-//     de €50 entra por delante de otro con $81 repartidos en cinco.
-//     Está pendiente de decidir si se cambia la cuenta o el rótulo.
-//     Filtra además a los que NO están al día (`sin_deuda`, `a_favor` o
-//     `dentro_del_plazo`), y corta en 5.
+//     Orden por PUNTAJE DE CRÉDITO, de mayor a menor, los 5 primeros.
+//     El puntaje sale de `computeCreditScoresForClients`, el mismo que
+//     Cartera; mide toda la historia del cliente, así que esta tarjeta NO
+//     depende del rango elegido. Quedan fuera los «Sin historial»: un cliente
+//     sin fiados cerrados no es un buen pagador, es un desconocido.
+//     A igualdad de puntaje manda el nombre, para que el orden sea estable.
 //
 //   TODAS las cifras del rango descartan los DOS DÍAS de holgura que la
 //   consulta pide de más por cada punta. Ver `cubos()`.
@@ -161,11 +167,10 @@ export type ClienteDePlazo = {
 export type MejorPagador = {
   clientId: string;
   nombre: string;
-  /** Lo que ese cliente ha pagado dentro de la ventana, en su libro. */
-  pagado: number;
-  libro: Libro;
-  /** Cuántos de sus fiados cerró sin pasarse del plazo. */
-  aTiempo: number;
+  /** Su puntaje de crédito, 0-1000. Es lo que ordena la lista. */
+  puntaje: number;
+  /** El nivel que acompaña al puntaje: «Excelente», «Bueno»… */
+  nivel: string;
 };
 
 export type Facturacion = {
@@ -317,6 +322,14 @@ export async function cargarFacturacion({
   rango,
   /** `true` en un negocio venezolano, que lleva dos libros. */
   dosLibros,
+  /**
+   * La tasa efectiva del dueño, para el PUNTAJE de «Mejores pagadores».
+   *
+   * Solo la usa el saldo combinado que entra en el puntaje, que es como
+   * `computeCreditScoresForClients` la pide desde Cartera. `null` en un
+   * negocio colombiano, que lleva un solo libro.
+   */
+  effectiveRate = null,
   /** Filtra todo por un cliente, como el `?cliente=` que ya tenía la pantalla. */
   clientId = null,
 }: {
@@ -324,6 +337,7 @@ export async function cargarFacturacion({
   ownerId: string;
   rango: Rango;
   dosLibros: boolean;
+  effectiveRate?: EffectiveRate | null;
   clientId?: string | null;
 }): Promise<Facturacion> {
   // DOS DÍAS DE HOLGURA EN LA CONSULTA, y ni uno en el dibujo. Los cubos
@@ -560,9 +574,39 @@ export async function cargarFacturacion({
     fiado: 0,
   }));
 
-  for (const p of pagos ?? []) {
-    const i = cuboDe(cs, p.created_at as string);
-    if (i >= 0) serieTransacciones[i].contado += 1;
+  // ── «DE CONTADO» CUENTA VENTAS, NO FILAS DE PAGO ───────────────────
+  //
+  // Decisión del dueño el 2026-10-29: *«debe ser todo lo vendido "De contado"
+  // por cualquier flujo (ventas, pedidos, etc)»*.
+  //
+  // CONTABA `sale_payments` A PELO, y eso mentía por los dos lados:
+  //
+  //   · Una venta cobrada en DOS MONEDAS --o en efectivo y transferencia--
+  //     son dos filas de pago, así que sumaba 2 por una sola venta.
+  //   · Y el abono que el cliente paga AL FIAR también es una fila de pago,
+  //     así que un fiado sumaba 1 a «De contado».
+  //
+  // AHORA CUENTA PARES (VENTA, LIBRO) SIN CARGO, que es exactamente lo que
+  // esta app llama «De contado» desde la decisión del dueño del 2026-10-20, y
+  // lo mismo que ya suma la tarjeta «Ventas». Una pantalla no puede tener dos
+  // definiciones de contado.
+  //
+  // UNA VENTA MIXTA SUMA 1 AQUÍ Y 1 EN «FIADO», y es lo correcto: en el
+  // historial del cliente esa compra sale como DOS tarjetas independientes.
+  //
+  // «POR CUALQUIER FLUJO» YA ESTABA CUBIERTO: un pedido del catálogo se
+  // registra creando una venta normal --con su `catalog_order_id`-- así que
+  // entra por `sales` como cualquier otra. No hay un segundo sitio donde
+  // mirar.
+  const contadoYaContado = new Set<string>();
+  for (const pg of pagos ?? []) {
+    const clave = claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string));
+    if (librosFiados.has(clave) || contadoYaContado.has(clave)) continue;
+    const cuando = cuandoSeVendio.get(pg.sale_id as string);
+    const i = cuando ? cuboDe(cs, cuando) : -1;
+    if (i < 0) continue;
+    contadoYaContado.add(clave);
+    serieTransacciones[i].contado += 1;
   }
   for (const m of movimientos ?? []) {
     const libro = libroDeMovimiento(m.currency as string | null);
@@ -677,66 +721,62 @@ export async function cargarFacturacion({
     });
   }
 
-  // ── MEJORES PAGADORES ──────────────────────────────────────────────
+  // ── MEJORES PAGADORES: POR PUNTAJE DE CRÉDITO ──────────────────────
   //
-  // EL FRAME NO DEFINE EL CRITERIO --dice literalmente «<Agregar acá el
-  // criterio objetivo…>»-- así que éste es propuesto, y la pantalla lo
-  // ESCRIBE en su subtítulo en vez de dejarlo implícito: quien lo lea sabe por
-  // qué sale ese cliente y no otro.
+  // Decisión del dueño el 2026-10-29: *«debería rankear por lo que tienen
+  // mejor score crediticio "Puntaje de crédito"»*.
   //
-  // «Quien más ha pagado en la ventana, contando solo a quien ya cerró algún
-  // fiado dentro de plazo». Las dos mitades hacen falta: sin la segunda gana
-  // quien compró mucho una vez y aún no ha pagado nada; sin la primera, el
-  // orden lo decide el azar entre todos los que van al día.
-  const pagadoPor = new Map<string, { monto: number; libro: Libro }>();
-  for (const m of movimientos ?? []) {
-    if (m.type !== "payment") continue;
-    const libro = libroDeMovimiento(m.currency as string | null);
-    if (!libros.includes(libro)) continue;
-    // Fuera del rango no cuenta, por la misma razón que las ventas de arriba:
-    // los dos días de holgura son para los bordes del gráfico, no para las
-    // cifras.
-    if (cuboDe(cs, m.created_at as string) < 0) continue;
-    const k = m.client_id as string;
-    const antes = pagadoPor.get(k);
-    // EL LIBRO ES EL DEL PAGO MÁS GRANDE, no una suma de los dos: sumar
-    // dólares y euros aquí es el mismo fallo que el gráfico de arriba evita.
-    if (!antes || Number(m.amount) > antes.monto) {
-      pagadoPor.set(k, { monto: Number(m.amount), libro });
-    }
-  }
-
-  const nombres = new Map(
-    (resumenes ?? []).map((r) => [r.client_id as string, r.name as string]),
-  );
-  const alDia = new Set(
-    ((resumenes ?? []) as ClientSummary[])
-      .filter((r) => {
-        const { status } = estadoDeCliente({
-          fila: r,
-          saldos: {
-            cop: Number(r.balance ?? 0),
-            usd: Number(r.balance_usd ?? 0),
-            eur: Number(r.balance_eur ?? 0),
-          },
-          saldoCombinado: Number(r.balance ?? 0),
-          dosLibros,
-        });
-        return status === "sin_deuda" || status === "a_favor" || status === "dentro_del_plazo";
-      })
-      .map((r) => r.client_id as string),
+  // ───────────────────────────────────────────────────────────────────
+  // QUÉ SUSTITUYE, Y POR QUÉ ESTABA MAL
+  //
+  // Ordenaba por «lo que ha pagado en la ventana» -- y ni siquiera eso: se
+  // quedaba con el ABONO MÁS GRANDE de cada cliente, no con la suma. Medido
+  // en dev el 2026-10-28: un cliente con un solo abono de €50 entraba por
+  // delante de otro con $81 repartidos en cinco. El subtítulo decía «quien
+  // más abonó» y la lista decía otra cosa.
+  //
+  // ───────────────────────────────────────────────────────────────────
+  // NO DEPENDE DEL PERIODO, Y ESO ES PARTE DE LA DECISIÓN
+  //
+  // El puntaje mide TODA la historia del cliente: su puntualidad, su
+  // antigüedad y los ciclos que ha cerrado. Recortarlo al rango elegido sería
+  // otra cosa --y con «Hoy» puesto la lista saldría vacía casi siempre--. Así
+  // que esta tarjeta deja de moverse con el selector de fechas, igual que
+  // «Por cobrar», y el subtítulo de la pantalla lo dice.
+  //
+  // LOS «SIN HISTORIAL» QUEDAN FUERA. Un cliente sin cargos cerrados no es un
+  // buen pagador: es un desconocido. Dejarlo entrar pondría arriba a quien
+  // nunca ha debido nada por delante de quien lleva dos años pagando a
+  // tiempo.
+  //
+  // ES EL MISMO `computeCreditScoresForClients` QUE CARTERA, importado y no
+  // reescrito. Dos cuentas del mismo puntaje se separan, y esta app ya pagó
+  // esa lección con `CT-124`: la base respetaba el fiado que el tendero
+  // elegía y el puntaje pagaba el más viejo.
+  //
+  // LO QUE CUESTA: esa función lee los movimientos de TODOS los clientes del
+  // dueño sin filtro de fecha, porque un puntaje de por vida no se puede
+  // calcular con una ventana. Con los 468 movimientos que producción tiene
+  // entre todos no se nota; el día que un solo negocio tenga decenas de
+  // miles, esto es lo primero que hay que paginar.
+  const puntajes = await computeCreditScoresForClients(
+    supabase,
+    (resumenes ?? []) as ClientSummary[],
+    effectiveRate,
   );
 
-  const mejoresPagadores: MejorPagador[] = [...pagadoPor.entries()]
-    .filter(([id]) => alDia.has(id) && nombres.has(id))
-    .map(([id, v]) => ({
-      clientId: id,
-      nombre: nombres.get(id)!,
-      pagado: v.monto,
-      libro: v.libro,
-      aTiempo: 0,
+  const mejoresPagadores: MejorPagador[] = ((resumenes ?? []) as ClientSummary[])
+    .map((r) => ({ r, p: puntajes[r.client_id] }))
+    .filter(({ p }) => p != null && p.tier !== "Sin historial")
+    .map(({ r, p }) => ({
+      clientId: r.client_id,
+      nombre: r.name,
+      puntaje: p.score,
+      nivel: p.tier,
     }))
-    .sort((a, b) => b.pagado - a.pagado)
+    // A IGUALDAD DE PUNTAJE manda el nombre, y no el orden de la consulta:
+    // dos empatados saldrían en un orden distinto en cada carga.
+    .sort((a, b) => b.puntaje - a.puntaje || a.nombre.localeCompare(b.nombre, "es"))
     .slice(0, 5);
 
   return {

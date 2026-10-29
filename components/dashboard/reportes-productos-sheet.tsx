@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { track } from "@/lib/mixpanel";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
@@ -117,6 +118,20 @@ export type FilaDeDinero = { rotulo: string; tarjetas: TarjetaDeDinero[] };
 // la frase ya no dice DE CUÁNDO es esa ganancia, así que la cifra no se puede
 // contrastar contra nada sin mirar el selector de fechas de la cabecera. Sigue
 // siendo del periodo elegido; simplemente la frase ya no lo repite.
+/**
+ * ¿USAN LAS HOJAS DE DETALLE, O SE QUEDAN EN LAS TARJETAS?
+ *
+ * Encargo del dueño el 2026-10-29. QUÉ DECIDE: estas cinco hojas son la mitad
+ * del trabajo de Inventario. Si casi nadie las abre, las cifras que viven
+ * dentro --el capital por moneda, la proyección, la ganancia por producto--
+ * tienen que subir a la tarjeta o dejar de calcularse; y si se abren mucho,
+ * entonces la tarjeta es solo una puerta y puede simplificarse.
+ *
+ * EL `titulo` IDENTIFICA LA HOJA porque es lo único estable que tienen: las
+ * tres de las tarjetas y las dos de los bloques son el mismo componente, y
+ * una hoja de proveedor lleva el nombre del proveedor. Por eso la propiedad
+ * se llama `hoja` y no `tipo`: dice qué leyó el tendero en el título.
+ */
 export function ReportesProductosSheet({
   titulo,
   encabezado,
@@ -164,7 +179,11 @@ export function ReportesProductosSheet({
   }, [productos, query]);
 
   return (
-    <Sheet>
+    <Sheet
+      onOpenChange={(abierta) => {
+        if (abierta) track("Report Sheet Opened", { hoja: titulo });
+      }}
+    >
       <SheetTrigger asChild>{children}</SheetTrigger>
       {/* `max-h-[90svh]` Y NO `vh`: `vh` mide el viewport GRANDE --el que
           habría sin la barra del navegador-- así que en un teléfono con la

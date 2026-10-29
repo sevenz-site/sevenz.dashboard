@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { aISO, type Rango } from "@/lib/reports/rango";
+import { track } from "@/lib/mixpanel";
 
 // EL FILTRO «FECHA» DE REPORTES — frame `1502:10303`.
 //
@@ -93,7 +94,26 @@ export function ReportesFechaFiltro({
     });
   }
 
+  /**
+   * ¿MIRAN EL DÍA, LA SEMANA O EL MES?
+   *
+   * Encargo del dueño el 2026-10-29. QUÉ DECIDE: hoy el informe abre con 30
+   * días **por suposición mía**, no por medición -- lo elegí porque es lo que
+   * el subtítulo del frame prometía. Si resulta que el tendero mira sobre
+   * todo los 7 días, cada visita empieza con dos toques de más; si mira
+   * «Hoy», el gráfico de siete cubos no es la forma correcta de enseñárselo.
+   *
+   * `atajo` DISTINGUE EL PRESET DEL CALENDARIO, que es la mitad del valor: si
+   * casi nadie usa el calendario, los cuatro atajos bastan y esa hoja puede
+   * encogerse; si lo usan mucho, el rango libre es una necesidad real y no
+   * una cortesía.
+   */
+  function registrarRango(atajo: string) {
+    track("Report Range Changed", { atajo });
+  }
+
   function atajo(dias: number) {
+    registrarRango(dias === 1 ? "hoy" : `${dias}d`);
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - (dias - 1) * 24 * 60 * 60 * 1000);
     setElegido({ from: desde, to: hasta });
@@ -177,6 +197,7 @@ export function ReportesFechaFiltro({
               // SIN SEGUNDA FECHA, EL RANGO ES ESE DÍA. Es lo que el tendero
               // acaba de decir con su único toque; pedirle un segundo toque
               // para ver un día suelto sería trabajo sin motivo.
+              registrarRango("calendario");
               aplicar(elegido.from, elegido.to ?? elegido.from);
             }}
           >

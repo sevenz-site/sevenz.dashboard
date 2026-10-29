@@ -2,8 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
-import { ReportesClientSearch } from "@/components/dashboard/reportes-controls";
+import {
+  ReportesClientSearch,
+  ReportesEntitySearch,
+} from "@/components/dashboard/reportes-controls";
 import { ReportesAncla } from "@/components/dashboard/reportes-ancla";
+import { ReportesAnalitica } from "@/components/dashboard/reportes-analitica";
 import { ReportesDescargar } from "@/components/dashboard/reportes-descargar";
 import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
@@ -65,6 +69,8 @@ export default async function ReportesPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    producto?: string;
+    proveedor?: string;
     periodo?: string;
     desde?: string;
     hasta?: string;
@@ -76,7 +82,8 @@ export default async function ReportesPage({
     motivo?: string;
   }>;
 }) {
-  const { periodo, desde, hasta, cliente, tab, export: exportado, motivo } = await searchParams;
+  const { periodo, desde, hasta, cliente, producto, proveedor, tab, export: exportado, motivo } =
+    await searchParams;
   // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
   // estos parámetros van en una URL que el dueño puede compartir o teclear
   // mal, y un informe no vale una pantalla caída.
@@ -124,6 +131,9 @@ export default async function ReportesPage({
           ownerId: user!.id,
           rango,
           dosLibros: ownerRate !== null,
+          // PARA EL PUNTAJE de «Mejores pagadores», que necesita el saldo
+          // combinado de un negocio con dos libros. `null` en Colombia.
+          effectiveRate: ownerRate?.effectiveRate ?? null,
           clientId: selected?.id ?? null,
         })
       : null;
@@ -148,17 +158,49 @@ export default async function ReportesPage({
     : null;
   const tasas = rates ? { usd: rates.usd, eur: rates.eur } : null;
 
+  // ── LAS LISTAS QUE ALIMENTAN LOS DOS BUSCADORES ──────────────────────
+  //
+  // Se piden solo en su apartado, igual que los datos: traer el catálogo
+  // entero para pintar Facturación sería pagar una consulta por una pantalla
+  // que no la usa.
+  const { data: productosParaBuscar } =
+    apartado === "inventario"
+      ? await supabase
+          .from("products")
+          .select("id, name")
+          .eq("owner_id", user!.id)
+          .is("trashed_at", null)
+          .order("name")
+      : { data: null };
+
   const inventario =
     apartado === "inventario"
-      ? await cargarInventario({ supabase, ownerId: user!.id, rango, rates })
+      ? await cargarInventario({
+          supabase,
+          ownerId: user!.id,
+          rango,
+          rates,
+          productId: producto ?? null,
+        })
       : null;
+
+  const productoElegido =
+    (productosParaBuscar ?? []).find((p) => p.id === producto)?.name ?? null;
 
   // EL FILTRO POR CLIENTE TAMPOCO SE LE PASA, por la misma razón que a
   // Inventario: un proveedor no cambia porque estés mirando a una persona.
-  const proveedores =
+  // TODOS los proveedores alimentan el buscador, y la lista que se pinta
+  // puede venir acotada a uno. Son dos llamadas a la misma función con el
+  // mismo rango, así que la segunda sale de la caché de `fetch` de Next.
+  const proveedoresTodos =
     apartado === "proveedores"
       ? await cargarProveedores({ supabase, ownerId: user!.id, rango, rates })
       : null;
+  const proveedores = proveedor
+    ? (proveedoresTodos ?? []).filter((f) => f.clave === proveedor)
+    : proveedoresTodos;
+  const proveedorElegido =
+    proveedoresTodos?.find((f) => f.clave === proveedor)?.nombre ?? null;
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -166,6 +208,9 @@ export default async function ReportesPage({
           `?tab=inventario`, esto corrige la pestaña -- el fragmento no llega
           al servidor, asi que no hay otra forma. Ver su propio fichero. */}
       <ReportesAncla apartado={apartado} />
+      {/* ¿CUÁL DE LOS TRES APARTADOS MIRAN? Su pregunta de negocio entera
+          está en el propio componente. No pinta nada. */}
+      <ReportesAnalitica apartado={apartado} />
       <ScreenHeader
         title="Reportes"
         subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
@@ -184,9 +229,35 @@ export default async function ReportesPage({
           // producto». Es un buscador distinto, sobre otra tabla, y no entra
           // en esta entrega -- se dice en vez de dejar el de clientes
           // haciendose pasar por el.
+          // ── UN BUSCADOR POR APARTADO — frames `1667:19336` y
+          //    `1749:14598`, encargo del dueño el 2026-10-29 ──────────
+          //
+          // Los tres son la MISMA barra de la cabecera con otro texto. Lo que
+          // cambia es sobre qué buscan y qué parámetro ponen en la URL.
+          //
+          // EL PÁRRAFO DE ABAJO SE QUEDA porque sigue siendo verdad para
+          // Facturación: su buscador filtra por CLIENTE, y eso no le dice
+          // nada a los otros dos apartados. Lo que ha cambiado es que ahora
+          // cada uno tiene el suyo en vez de heredar un filtro que ignoraba.
           apartado === "facturacion" ? (
             <ReportesClientSearch clients={clients ?? []} selectedName={selected?.name ?? null} />
-          ) : null
+          ) : apartado === "inventario" ? (
+            <ReportesEntitySearch
+              items={(productosParaBuscar ?? []).map((p) => ({ id: p.id, nombre: p.name }))}
+              clave="producto"
+              placeholder="Buscar producto"
+              seleccionado={productoElegido}
+              etiquetaQuitar="Quitar el filtro de producto"
+            />
+          ) : (
+            <ReportesEntitySearch
+              items={(proveedoresTodos ?? []).map((f) => ({ id: f.clave, nombre: f.nombre }))}
+              clave="proveedor"
+              placeholder="Buscar proveedor"
+              seleccionado={proveedorElegido}
+              etiquetaQuitar="Quitar el filtro de proveedor"
+            />
+          )
         }
         filters={
           // LOS DOS EN EL MISMO HUECO porque `ScreenHeader` tiene UNA ranura de
@@ -218,11 +289,23 @@ export default async function ReportesPage({
       {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
           una persona se lee como el del negocio entero, que es la clase de
           error que nadie detecta mirando. */}
-      {selected && apartado === "facturacion" ? (
-        <p className="text-sm text-muted-foreground">
-          Mostrando solo <span className="font-medium text-foreground">{selected.name}</span>.
-        </p>
-      ) : null}
+      {/* UN FILTRO PUESTO SE DICE, en los tres apartados. Sin esto el informe
+          de un solo producto se lee como el del negocio entero -- y en
+          Inventario es peor que en Facturación, porque las tres tarjetas
+          dicen «1» y «0» y eso parece un catálogo vacío. */}
+      {(() => {
+        const nombre =
+          apartado === "facturacion"
+            ? (selected?.name ?? null)
+            : apartado === "inventario"
+              ? productoElegido
+              : proveedorElegido;
+        return nombre ? (
+          <p className="text-sm text-muted-foreground">
+            Mostrando solo <span className="font-medium text-foreground">{nombre}</span>.
+          </p>
+        ) : null;
+      })()}
 
       {apartado === "facturacion" && facturacion ? (
         <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} />

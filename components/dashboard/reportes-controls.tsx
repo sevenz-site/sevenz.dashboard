@@ -132,3 +132,117 @@ export function ReportesClientSearch({
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// EL BUSCADOR DE «INVENTARIO» Y EL DE «PROVEEDORES»
+//
+// Frames `1667:19336` y `1749:14598`: la MISMA barra de la cabecera que ya
+// usa Facturación, con otro texto dentro. Encargo del dueño el 2026-10-29.
+//
+// ───────────────────────────────────────────────────────────────────────
+// FILTRAN LA PESTAÑA ENTERA, no solo las listas
+//
+// Decisión suya ese día, elegida entre tres. Es lo mismo que hace el de
+// clientes: eliges un producto y TODO Inventario pasa a hablar de él. La
+// pregunta que contesta es «¿cómo va este producto?», no «¿dónde está?».
+//
+// CONSECUENCIA QUE HAY QUE SABER: con un producto elegido las tres tarjetas
+// dicen 1/0/0 o 0/1/0 -- son un recuento de productos y solo queda uno. No es
+// un fallo; es lo que un filtro de uno significa. La línea «Mostrando solo X»
+// de la pantalla es lo único que lo explica, igual que en Facturación.
+//
+// ───────────────────────────────────────────────────────────────────────
+// UN SOLO COMPONENTE PARA LOS DOS, Y NO UNA COPIA DEL DE CLIENTES
+//
+// El de clientes no vale tal cual: busca además por documento y su lista de
+// resultados pinta cédula y tipo. Éste busca por nombre y ya. Lo que sí
+// comparte es `SearchField` y el retardo del `onBlur`, que son los dos sitios
+// donde este patrón ya se rompió una vez.
+// ═══════════════════════════════════════════════════════════════════════
+
+const RESULTADOS = 8;
+
+export function ReportesEntitySearch({
+  items,
+  clave,
+  placeholder,
+  seleccionado,
+  etiquetaQuitar,
+}: {
+  items: { id: string; nombre: string }[];
+  /** El parámetro de la URL: `producto` o `proveedor`. */
+  clave: string;
+  placeholder: string;
+  /** El nombre de lo elegido, o `null`. Ver el de clientes: con algo elegido
+   *  el campo deja de ser un buscador y pasa a ser una etiqueta con salida. */
+  seleccionado: string | null;
+  etiquetaQuitar: string;
+}) {
+  const { set } = useParamPush();
+  const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const q = query.trim().toLowerCase();
+  const results = q === "" ? [] : items.filter((i) => i.nombre.toLowerCase().includes(q)).slice(0, RESULTADOS);
+
+  if (seleccionado) {
+    return (
+      <div className="flex h-[50px] w-full items-center justify-between gap-2 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-3 pl-4">
+        <span className="truncate text-[17px] text-brand-secondary">{seleccionado}</span>
+        <button
+          type="button"
+          onClick={() => {
+            setQuery("");
+            set(clave, null, "push");
+          }}
+          aria-label={etiquetaQuitar}
+          className="shrink-0 rounded text-brand-secondary outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/40"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <SearchField
+        tone="dark"
+        value={query}
+        onChange={setQuery}
+        placeholder={placeholder}
+        onFocus={() => setFocused(true)}
+        // EL MISMO RETARDO que el de clientes, y por la misma razón: tocar un
+        // resultado desenfoca el campo, y desmontar la lista en ese instante
+        // hace que el toque aterrice en lo que ocupe su sitio.
+        onBlur={() => setTimeout(() => setFocused(false), 150)}
+      />
+      {focused && q !== "" ? (
+        <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-md">
+          {results.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              Sin resultados para &quot;{query.trim()}&quot;.
+            </p>
+          ) : (
+            <ul>
+              {results.map((i) => (
+                <li key={i.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      set(clave, i.id, "push");
+                    }}
+                    className="w-full truncate px-3 py-3 text-left text-sm transition-colors hover:bg-accent"
+                  >
+                    {i.nombre}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}

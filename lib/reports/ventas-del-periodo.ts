@@ -38,6 +38,24 @@ import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
 // separaron una vez y nadie se entera hasta que alguien las compara.
 // ═══════════════════════════════════════════════════════════════════════
 
+// ───────────────────────────────────────────────────────────────────────
+// LA FÓRMULA, PARA AUDITARLA SIN LEER EL ARCHIVO
+//
+//   Ventas del periodo (la tarjeta «Ventas» del Inicio)
+//     Σ `sale_payments.amount` de los pares (venta, libro) que NO dejaron
+//     cargo en `movements`, de las ventas del rango. O sea: lo cobrado de
+//     contado, por libro.
+//
+//   ES LA MISMA CIFRA QUE «Ventas» DE REPORTES, calculada aquí por segunda
+//   vez a propósito --Reportes la saca en el mismo recorrido con el que arma
+//   sus gráficos-- y atada a ella por `npm run qa:ventas-inicio`, que falla
+//   si difieren un céntimo. La tarjeta del Inicio ENLAZA a Reportes: si las
+//   dos se separaran, el tendero tocaría la tarjeta y el número cambiaría.
+//
+//   LO QUE NO CUENTA: los fiados, y el abono que el cliente paga al fiar.
+//   Eso último sale en «Abonos» de Reportes y no tiene tarjeta en el Inicio.
+// ───────────────────────────────────────────────────────────────────────
+
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type Libro = "USD" | "EUR" | "COP";
