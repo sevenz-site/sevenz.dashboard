@@ -278,8 +278,24 @@ function cubos(rango: Rango): { inicio: number; fin: number; etiqueta: string }[
     // razón que `computeMonthlyFiadoAbono` ya tenía escrita para rotular
     // «12 oct». El corte en 8 y no en 7 deja que una semana justa --que es el
     // rango que más se mira-- siga rotulando con días.
+    //
+    // ── Y CON UN SOLO DÍA LA BARRA ES UNA HORA, NO UN DÍA ──────────────
+    //
+    // El atajo «Hoy», que nació el 2026-10-29, parte 24 horas en los mismos 7
+    // cubos. Con la regla de arriba los siete salían rotulados «Jue»: siete
+    // etiquetas idénticas bajo siete barras distintas, que es peor que no
+    // tener etiqueta -- sugiere que la fila es de siete jueves.
+    //
+    // SE ROTULA LA HORA DE INICIO DEL CUBO, redondeada. Con 24 h entre 7
+    // cubos cada uno dura 3 h 26 min, así que las horas no salen redondas
+    // --0, 3, 7, 10, 14, 17, 21-- y eso es correcto: son los cortes de
+    // verdad, no una rejilla inventada.
     const etiqueta =
-      dias <= 8 ? nombreDelDia[d.getDay()] : `${d.getDate()} ${mes[d.getMonth()]}`;
+      dias === 1
+        ? `${d.getHours()}h`
+        : dias <= 8
+          ? nombreDelDia[d.getDay()]
+          : `${d.getDate()} ${mes[d.getMonth()]}`;
     return { inicio, fin, etiqueta };
   });
 }

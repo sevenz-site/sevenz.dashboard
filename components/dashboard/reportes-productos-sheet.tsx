@@ -73,9 +73,19 @@ import { esMonedaConocida, formatDinero, type Dinero } from "@/lib/reports/ganan
 export type TarjetaDeDinero = {
   rotulo: string;
   dinero: Dinero;
-  /** La segunda línea, bajo un separador. Solo la hoja de «Disponibles». */
-  extra?: { rotulo: string; dinero: Dinero | null };
 };
+
+// ── UNA FILA POR CONCEPTO, NO DOS CIFRAS EN LA MISMA TARJETA ──────────
+//
+// Decisión del dueño el 2026-10-29. Antes «Capital en inventario» y «Ventas
+// proyectadas» compartían tarjeta, emparejadas por moneda.
+//
+// Y ESO ESCONDÍA DINERO: el capital se agrupa por la moneda del COSTO y la
+// proyección por la del PRECIO. Su alicate cuesta en dólares y se vende en
+// euros, así que la tarjeta de dólares buscaba una proyección en dólares que
+// no existe y escribía «—» -- con €17,52 de proyección real sin enseñar en
+// ninguna parte. En filas separadas cada cifra sale en su propia moneda.
+export type FilaDeDinero = { rotulo: string; tarjetas: TarjetaDeDinero[] };
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL SUBTÍTULO DICE CÓMO SE CALCULA LA GANANCIA
@@ -101,7 +111,7 @@ export type TarjetaDeDinero = {
 export function ReportesProductosSheet({
   titulo,
   encabezado,
-  tarjetas,
+  filas,
   productos,
   vacio,
   tasas,
@@ -110,7 +120,8 @@ export function ReportesProductosSheet({
   titulo: string;
   /** La banda gris bajo el buscador. Solo la dibuja «Productos disponibles». */
   encabezado?: { titulo: string; sub: string };
-  tarjetas: TarjetaDeDinero[];
+  /** Las filas de tarjetas de dinero. Vacío en la hoja de un proveedor. */
+  filas: FilaDeDinero[];
   productos: ProductoDeHoja[];
   /** Qué decir cuando la lista está vacía. */
   vacio: { titulo: string; sub: string };
@@ -169,13 +180,15 @@ export function ReportesProductosSheet({
             </div>
           ) : null}
 
-          {tarjetas.length ? (
-            <div className="flex gap-3">
-              {tarjetas.map((t) => (
-                <TarjetaDinero key={`${t.rotulo}-${t.dinero.currency}`} t={t} tasas={tasas} />
-              ))}
-            </div>
-          ) : null}
+          {filas.map((f) =>
+            f.tarjetas.length ? (
+              <div key={f.rotulo} className="flex gap-3">
+                {f.tarjetas.map((t) => (
+                  <TarjetaDinero key={`${t.rotulo}-${t.dinero.currency}`} t={t} tasas={tasas} />
+                ))}
+              </div>
+            ) : null,
+          )}
 
           {visibles.length === 0 ? (
             query.trim() ? (
@@ -215,22 +228,9 @@ function TarjetaDinero({
 }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] border p-3">
-      <span className="truncate text-xs text-muted-foreground">{t.rotulo}</span>
+      <span className="text-xs text-muted-foreground">{t.rotulo}</span>
       <Importe d={t.dinero} grande />
       <LineaEnBs d={t.dinero} tasas={tasas} />
-      {t.extra ? (
-        <>
-          <span className="my-1 h-px bg-border" aria-hidden />
-          <span className="text-xs text-muted-foreground">{t.extra.rotulo}</span>
-          {t.extra.dinero ? (
-            <Importe d={t.extra.dinero} />
-          ) : (
-            // «—» Y NO «$0,00»: sin precio de detal escrito no se proyecta
-            // nada, y un cero ahí diría que vender el inventario no da dinero.
-            <span className="text-sm text-muted-foreground">—</span>
-          )}
-        </>
-      ) : null}
     </div>
   );
 }

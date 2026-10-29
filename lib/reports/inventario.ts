@@ -62,8 +62,10 @@ import {
 //   El umbral es `owners.low_stock_threshold` (5 por defecto), y el tendero
 //   lo cambia en la propia pantalla.
 //
-//   Productos disponibles     productos vivos con cantidad > umbral
-//   Por agotarse              0 < cantidad <= umbral
+//   Productos disponibles     productos vivos con cantidad > 0
+//   Por agotarse              0 < cantidad <= umbral  -> SUBCONJUNTO del
+//                             anterior: el mismo producto cuenta en las dos
+//                             tarjetas, así que NO se suman entre sí
 //   Referencias agotadas      cantidad === 0
 //   (sin cantidad anotada)    cantidad NULL -> NO cuenta en ninguna de las
 //                             tres. Es el aviso «N productos no tienen
@@ -71,9 +73,10 @@ import {
 //                             migración 163.
 //
 //   «$X en mercancía» (Disponibles)
-//     Σ costo × cantidad de TODO lo que tiene existencias --disponibles Y por
-//     agotarse--, agrupado por `cost_currency`, enseñando la moneda mayor.
-//     Solo cuenta lo que tiene costo escrito.
+//     Σ costo × cantidad de todo lo que tiene existencias, agrupado por
+//     `cost_currency`, enseñando la moneda mayor. Solo cuenta lo que tiene
+//     costo escrito -- un producto sin costo no suma nada aunque tenga
+//     existencias, que es por qué la cifra puede parecer corta.
 //   «$X en mercancía» (Por agotarse)
 //     Lo mismo, restringido a 0 < cantidad <= umbral.
 //   Referencias agotadas
@@ -81,13 +84,17 @@ import {
 //     de ese inventario es cero.
 //
 //   Ventas proyectadas (hoja de Disponibles)
-//     Σ price_retail × cantidad, por la moneda BASE del precio.
-//     ⚠️ NO describe el mismo conjunto que «Capital»: el capital solo cuenta
-//     productos CON costo y se agrupa por la moneda del COSTO; la proyección
-//     cuenta los que tienen precio y se agrupa por la del PRECIO. Medido en
-//     dev: de cinco productos con existencias, solo uno cae en los dos lados
-//     de la misma tarjeta. Leer «de 34.665 saco 47.740» como el margen de esa
-//     mercancía es incorrecto. Pendiente de decidir.
+//     Σ price_retail × cantidad, por la moneda BASE del precio. Es decir, lo
+//     que entraría si se vendiera todo lo que hay -- la definición que el
+//     dueño dio por su cuenta el 2026-10-29: *«número de productos en
+//     inventario × precio de venta»*.
+//
+//     VA EN SU PROPIA FILA DE TARJETAS, separada del capital, y eso es una
+//     decisión suya del mismo día. El capital se agrupa por la moneda del
+//     COSTO y la proyección por la del PRECIO, y no tienen por qué coincidir:
+//     su alicate cuesta en dólares y se vende en euros, así que emparejarlas
+//     dejaba la tarjeta de dólares diciendo «—» con €17,52 sin enseñar.
+//     En filas separadas cada cifra sale en su moneda y ninguna se pierde.
 //
 //   Margen por producto
 //     `products.margin_retail_pct` -- EL PORCENTAJE QUE EL TENDERO ESCRIBIÓ,
@@ -372,15 +379,36 @@ export async function cargarInventario({
     // CON EL UMBRAL EN CERO --«no me avises»-- «por agotarse» queda vacío y
     // todo lo que tenga existencias cuenta como disponible. Es justo lo que
     // esa opción promete, así que no hace falta un caso aparte.
+    // ── «DISPONIBLES» ES TODO LO QUE TIENE EXISTENCIAS ─────────────────
+    //
+    // Decisión del dueño el 2026-10-29, con su caso delante: *«si un producto
+    // está por debajo del umbral igual está listo para vender, debería contar
+    // todo lo que está disponible en inventario»*.
+    //
+    // ERA `cantidad > umbral` HASTA HOY, y eso producía una pantalla que se
+    // contradecía: su catálogo tenía un alicate con 3 unidades y un umbral de
+    // 5, así que la tarjeta decía «Productos disponibles: 0» con «$15,00 en
+    // mercancía» justo debajo. Cero productos y quince dólares de ellos.
+    //
+    // CONSECUENCIA QUE HAY QUE SABER PARA LEER LA PANTALLA: «Por agotarse» ya
+    // NO es un grupo aparte, es un SUBCONJUNTO de «disponibles». Las dos
+    // tarjetas cuentan el mismo alicate, y 1 + 1 no son dos productos. Por eso
+    // hay una línea debajo que lo dice; sin ella las cifras se suman de cabeza
+    // y dan un catálogo que no existe.
+    //
+    // Y LO QUE GANA, que es lo que él pedía: la cifra de dinero de esa tarjeta
+    // --que siempre contó toda la mercancía en estantería-- por fin describe
+    // exactamente a los productos que la tarjeta cuenta.
     if (cantidad === 0) {
       agotadas++;
       brutos.cero.push(p);
-    } else if (cantidad <= umbral) {
-      porAgotarse++;
-      brutos.pocos.push(p);
     } else {
       disponibles++;
       brutos.disp.push(p);
+      if (cantidad <= umbral) {
+        porAgotarse++;
+        brutos.pocos.push(p);
+      }
     }
 
     if (cantidad > 0 && p.price_retail != null) {

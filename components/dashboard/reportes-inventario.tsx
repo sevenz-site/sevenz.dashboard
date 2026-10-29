@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { formatCantidad } from "@/lib/products/cantidad";
 import { ReportesAvisoSheet } from "@/components/dashboard/reportes-aviso-sheet";
 import {
   ReportesProductosSheet,
-  type TarjetaDeDinero,
+  type FilaDeDinero,
 } from "@/components/dashboard/reportes-productos-sheet";
 import { cn } from "@/lib/utils";
 import { esMonedaConocida, formatDinero } from "@/lib/reports/ganancia";
@@ -180,20 +181,20 @@ const Tarjeta = forwardRef<
  * Un negocio con mercancía en tres monedas ve las dos mayores -- lo dice la
  * nota «Tienes mercancía en N monedas» que ya vive bajo las tarjetas.
  */
-function tarjetasDeCapital(datos: Inventario): TarjetaDeDinero[] {
-  return datos.capitalPorMoneda.slice(0, 2).map((d) => ({
-    rotulo: "Capital en inventario",
-    dinero: d,
-    extra: {
-      rotulo: "Ventas proyectadas:",
-      dinero: datos.ventasProyectadas.find((v) => v.currency === d.currency) ?? null,
-    },
-  }));
+function filasDeCapital(datos: Inventario): FilaDeDinero[] {
+  const fila = (rotulo: string, ds: { currency: string; amount: number }[]): FilaDeDinero => ({
+    rotulo,
+    tarjetas: ds.slice(0, 2).map((d) => ({ rotulo, dinero: d })),
+  });
+  return [
+    fila("Capital en inventario", datos.capitalPorMoneda),
+    fila("Ventas proyectadas", datos.ventasProyectadas),
+  ];
 }
 
 /** «Total vendido» de las hojas de «Por agotarse» y «Referencias agotadas». */
-function tarjetasDeVendido(filas: { currency: string; amount: number }[]): TarjetaDeDinero[] {
-  return filas.slice(0, 2).map((d) => ({ rotulo: "Total vendido", dinero: d }));
+function filasDeVendido(ds: { currency: string; amount: number }[]): FilaDeDinero[] {
+  return [{ rotulo: "Total vendido", tarjetas: ds.slice(0, 2).map((d) => ({ rotulo: "Total vendido", dinero: d })) }];
 }
 
 function GraficoDeProductos({
@@ -375,11 +376,15 @@ export function ReportesInventario({
               titulo: "Capital en inventario",
               sub: "Calculado en función del costo de cada producto.",
             }}
-            tarjetas={tarjetasDeCapital(datos)}
+            filas={filasDeCapital(datos)}
             productos={datos.disponiblesLista}
+            // AHORA SOLO SALE SI NO HAY NADA EN ESTANTERÍA, porque
+            // «disponibles» pasó a ser todo lo que tiene existencias. Antes
+            // salía con el almacén lleno si todo estaba por debajo del aviso,
+            // que es lo que el dueño reportó el 2026-10-29 como confuso.
             vacio={{
-              titulo: "Nada listo para vender",
-              sub: "Aquí aparecerán los productos con existencias por encima de tu aviso.",
+              titulo: "No tienes nada en existencias",
+              sub: "Aquí aparecerán tus productos en cuanto les anotes cuántas unidades te quedan.",
             }}
             tasas={tasas}
           >
@@ -395,7 +400,7 @@ export function ReportesInventario({
 
           <ReportesProductosSheet
             titulo="Por agotarse"
-            tarjetas={tarjetasDeVendido(datos.vendidoPorAgotarse)}
+            filas={filasDeVendido(datos.vendidoPorAgotarse)}
             productos={datos.porAgotarseLista}
             vacio={{
               titulo: "Nada por agotarse",
@@ -416,7 +421,7 @@ export function ReportesInventario({
 
         <ReportesProductosSheet
           titulo="Referencias agotadas"
-          tarjetas={tarjetasDeVendido(datos.vendidoAgotadas)}
+          filas={filasDeVendido(datos.vendidoAgotadas)}
           productos={datos.agotadasLista}
           vacio={{
             titulo: "No tienes referencias agotadas",
@@ -434,6 +439,22 @@ export function ReportesInventario({
             ancha
           />
         </ReportesProductosSheet>
+
+        {/* ── LAS TRES CIFRAS NO SE SUMAN, Y HAY QUE DECIRLO ───────────
+            Desde el 2026-10-29 «Por agotarse» es un SUBCONJUNTO de
+            «disponibles» --un producto con 3 unidades y un aviso en 5 está
+            disponible Y por agotarse--, así que el mismo producto cuenta en
+            las dos tarjetas.
+
+            SIN ESTA LÍNEA, 1 y 1 se leen como dos productos. Es el mismo
+            problema que la nota de las monedas que va justo debajo: tres
+            cifras correctas componiendo una respuesta falsa. */}
+        {datos.porAgotarse > 0 ? (
+          <p className="text-xs leading-4 text-muted-foreground">
+            «Por agotarse» ya está contado dentro de «Productos disponibles»: son los que
+            tienes, pero con {formatCantidad(datos.umbral)} unidades o menos.
+          </p>
+        ) : null}
 
         {/* ── LOS QUE NO ENTRAN EN NINGUNA DE LAS TRES ────────────────
             Es la línea que impide que tres cifras correctas compongan una

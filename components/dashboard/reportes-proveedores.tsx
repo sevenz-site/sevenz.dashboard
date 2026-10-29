@@ -90,7 +90,7 @@ export function ReportesProveedores({
           <li key={f.clave}>
             <ReportesProductosSheet
               titulo={f.nombre}
-              tarjetas={[]}
+              filas={[]}
               productos={f.lista}
               vacio={{
                 titulo: "Sin productos",
