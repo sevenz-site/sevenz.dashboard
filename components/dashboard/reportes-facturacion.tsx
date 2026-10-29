@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { formatBs } from "@/lib/exchange-rate/format";
 import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
@@ -66,17 +67,59 @@ function Monto({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// LA EQUIVALENCIA EN BOLÍVARES DE UNA TARJETA
+//
+// Encargo del dueño el 2026-10-29: *«ninguna card de facturación tiene su
+// equivalencia en bolívares, agrégalos»*. Y era cierto -- la llevaban el
+// Inicio, las filas del historial y las hojas de Inventario, y las siete
+// tarjetas de esta pestaña no.
+//
+// «HOY» Y NO UNA TASA SELLADA, porque estas cifras no son una transacción:
+// son un total que se recalcula en cada carga. El mismo rótulo que ya usa la
+// tarjeta de capital del Inicio, y la misma palabra que distingue una
+// referencia de un hecho en el historial.
+//
+// SE TAPA CON EL OJO, al contrario que el puntaje de «Mejores pagadores»:
+// esto SÍ es dinero, y taparlo a medias --la cifra oculta y su equivalencia a
+// la vista-- no taparía nada.
+//
+// EL LIBRO COLOMBIANO NO LA LLEVA. `tasas` es `null` para él y no hay
+// bolívares que enseñar; su propia moneda ya es la de la casa.
+function EnBolivares({
+  valor,
+  libro,
+  oculto,
+  tasas,
+}: {
+  valor: number;
+  libro: Libro;
+  oculto: boolean;
+  tasas: { usd: number; eur: number } | null;
+}) {
+  if (!tasas) return null;
+  const tasa = libro === "USD" ? tasas.usd : libro === "EUR" ? tasas.eur : null;
+  if (tasa == null || !(tasa > 0)) return null;
+  return (
+    <span className="truncate text-xs text-muted-foreground tabular-nums">
+      {oculto ? "•••••" : `${formatBs(valor * tasa)} hoy`}
+    </span>
+  );
+}
+
 function TarjetaDeMonto({
   rotulo,
   valor,
   libro,
   oculto,
+  tasas,
   icono,
 }: {
   rotulo: string;
   valor: number;
   libro: Libro;
   oculto: boolean;
+  tasas: { usd: number; eur: number } | null;
   // EL FRAME LE RESERVA UNA COLUMNA A LA DERECHA (el «Icons Container» de
   // `card_total_debt`, 24px de ancho). Entra como ranura y no como un icono
   // fijo porque cada tarjeta lleva el suyo.
@@ -87,6 +130,7 @@ function TarjetaDeMonto({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-xs text-muted-foreground">{rotulo}</span>
         <Monto valor={valor} libro={libro} oculto={oculto} className="text-xl leading-7" />
+        <EnBolivares valor={valor} libro={libro} oculto={oculto} tasas={tasas} />
       </div>
       {icono ? <span className="shrink-0">{icono}</span> : null}
     </div>
@@ -188,8 +232,16 @@ function TituloDeBloque({
 export function ReportesFacturacion({
   datos,
   periodoTexto,
+  tasas,
 }: {
   datos: Facturacion;
+  /**
+   * Bs por dólar y por euro, para la segunda línea de cada tarjeta.
+   *
+   * `null` en un negocio colombiano, que no tiene bolívares: entonces ninguna
+   * tarjeta dibuja esa línea, igual que ninguna fila del historial la dibuja.
+   */
+  tasas: { usd: number; eur: number } | null;
   // YA VIENE CON SU PREPOSICIÓN DENTRO --«del 28 sep al 27 oct», «el 27 oct»--
   // así que las frases lo pegan tal cual. Escribir «en {periodoTexto}» daba
   // «en del 28 sep al 27 oct», que se vio en pantalla el 2026-10-27.
@@ -306,6 +358,7 @@ export function ReportesFacturacion({
                   valor={datos.porCobrar[l] ?? 0}
                   libro={l}
                   oculto={oculto}
+                  tasas={tasas}
                   // EL ICONO DEL FRAME `1752:14798` es `report` -- una
                   // admiración dentro de un círculo-- en #BF4C00, que es el
                   // token `--brand-report` creado para esto. `CircleAlert` de
@@ -337,6 +390,7 @@ export function ReportesFacturacion({
                   valor={datos.ventas[l] ?? 0}
                   libro={l}
                   oculto={oculto}
+                  tasas={tasas}
                   // `paid` en #007956 -- frame `1752:14744`. `CircleDollarSign`
                   // de lucide es la misma moneda; el dueño dijo que los iconos
                   // que pasó son referenciales y el COLOR es el requisito.
@@ -403,6 +457,7 @@ export function ReportesFacturacion({
                 valor={datos.ventasPorCatalogo[l] ?? 0}
                 libro={l}
                 oculto={oculto}
+                tasas={tasas}
                 // ── EL ICONO ES EL DE «CATÁLOGO» DE LA BARRA DE ABAJO ────
                 //
                 // Encargo del dueño el 2026-10-29. SE APARTA DEL FRAME a
@@ -448,6 +503,7 @@ export function ReportesFacturacion({
                 valor={datos.abonos[l] ?? 0}
                 libro={l}
                 oculto={oculto}
+                tasas={tasas}
                 icono={<IconoDeAbono className="size-4 text-sky-600" aria-hidden />}
               />
             ))}
@@ -468,6 +524,7 @@ export function ReportesFacturacion({
                 valor={datos.fiados[l] ?? 0}
                 libro={l}
                 oculto={oculto}
+                tasas={tasas}
                 icono={<IconoDeFiado className="size-4 text-destructive" aria-hidden />}
               />
             ))}

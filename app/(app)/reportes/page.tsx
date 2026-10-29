@@ -308,7 +308,7 @@ export default async function ReportesPage({
       })()}
 
       {apartado === "facturacion" && facturacion ? (
-        <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} />
+        <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} tasas={tasas} />
       ) : null}
 
       {/* LOS OTROS DOS APARTADOS DICEN QUÉ VAN A ENSEÑAR, y no se dibujan

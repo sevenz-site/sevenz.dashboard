@@ -715,6 +715,10 @@ function FilaDeContado({
       : venta.rate_used == null
         ? null
         : formatBs(venta.amount * Number(venta.rate_used));
+  // La de hoy, cuando no hay sellada. `secondary` ya es esa conversión y sale
+  // del mismo sitio que la de las demás filas, así que no puede separarse.
+  const enBsDeHoy = enBsSellados ?? amount.secondary ?? null;
+  const cuandoEsEsaCifra = enBsSellados ? "Al día de compra" : "hoy";
 
 
   return (
@@ -742,9 +746,9 @@ function FilaDeContado({
                   entra de lo que sale. */}
               +{amount.primary}
             </span>
-            {enBsSellados ? (
+            {enBsDeHoy ? (
               <span className="font-normal text-muted-foreground">
-                {enBsSellados} Al día de compra
+                {enBsDeHoy} {cuandoEsEsaCifra}
               </span>
             ) : null}
           </div>
