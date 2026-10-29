@@ -278,6 +278,20 @@ export type Inventario = {
   /** «Total vendido» en el periodo de los de cada tarjeta, por moneda. */
   vendidoPorAgotarse: Dinero[];
   vendidoAgotadas: Dinero[];
+  /**
+   * Los productos con margen escrito, para la hoja de «Margen por producto»
+   * (frame `1746:14845`). TODOS, no el tramo que el gráfico dibuja.
+   */
+  margenLista: ProductoDeHoja[];
+  /**
+   * Lo vendido en el rango, para la hoja de «Más vendidos» (frame
+   * `1747:14327`). TODOS, y en el mismo orden que el gráfico: por unidades.
+   *
+   * INCLUYE LOS QUE YA NO ESTÁN EN EL CATÁLOGO, con su nombre resuelto. Un
+   * producto en la papelera conserva sus ventas, y esconderlas haría que la
+   * lista no cuadrara con el gráfico de al lado.
+   */
+  masVendidosLista: ProductoDeHoja[];
 };
 
 /** Cuántos productos caben en un gráfico de barras de 312px sin que sea una reja. */
@@ -462,6 +476,10 @@ export async function cargarInventario({
   let masVendidos: ProductoVendido[] = [];
   let lineasSueltas = 0;
   const fueraDelCatalogo: ProductoEnAviso[] = [];
+  // Los que están en la papelera pero siguen teniendo ventas en el rango.
+  const borrados = new Map<string, Record<string, unknown>>();
+  /** El orden del gráfico: por unidades vendidas, de más a menos. */
+  let idsPorUnidades: string[] = [];
 
   // LAS LÍNEAS SE LEEN UNA SOLA VEZ Y CON MONEDA Y PRECIO. Hasta hoy traían
   // solo `product_id, quantity`, que es lo que «Más vendidos» necesita; las
@@ -515,15 +533,22 @@ export async function cargarInventario({
       .sort((a, b) => b[1] - a[1])
       .slice(0, EN_EL_GRAFICO)
       .map(([id]) => id);
-    const huerfanos = idsDelRanking.filter((id) => !nombres.has(id));
+    // SE PIDEN TODOS LOS HUÉRFANOS, no solo los del tramo dibujado: la hoja
+    // de «Más vendidos» los lista enteros y necesita sus nombres y sus fotos.
+    // El aviso de debajo del gráfico sigue contando solo los del tramo.
+    const huerfanos = [...new Set(Object.keys(porProducto))].filter((id) => !nombres.has(id));
+    const delRanking = new Set(idsDelRanking);
     if (huerfanos.length) {
       const { data: fuera, error: eFuera } = await supabase
         .from("products")
-        .select("id, name, unit, photo_path, price_retail, base_currency_retail, base_currency")
+        .select("id, name, unit, photo_path, price_retail, base_currency_retail, base_currency, stock_opening")
         .eq("owner_id", ownerId)
         .in("id", huerfanos);
       if (eFuera) throw new Error(`inventario: fuera del catálogo: ${eFuera.message}`);
-      for (const p of fuera ?? []) fueraDelCatalogo.push(comoAviso(p));
+      for (const p of fuera ?? []) {
+        borrados.set(p.id as string, p);
+        if (delRanking.has(p.id as string)) fueraDelCatalogo.push(comoAviso(p));
+      }
     }
 
     masVendidos = Object.entries(porProducto)
@@ -540,6 +565,10 @@ export async function cargarInventario({
       })
       .sort((a, b) => b.unidades - a.unidades)
       .slice(0, EN_EL_GRAFICO);
+
+    idsPorUnidades = Object.entries(porProducto)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
   }
 
   // ── LAS TRES HOJAS ───────────────────────────────────────────────────
@@ -547,6 +576,12 @@ export async function cargarInventario({
   // La ganancia sale de `ganancia.ts`, el mismo sitio del que la saca la
   // pestaña «Proveedores». Ver allí por qué el costo se convierte y por qué
   // un `null` no es un cero.
+  // El índice de los vivos por id. `nombres` hace lo mismo pero vive dentro
+  // del `if (idsDeVenta.length)`, así que no se puede usar aquí abajo.
+  const vivos = new Map<string, Record<string, unknown>>(
+    productos.map((p) => [p.id as string, p]),
+  );
+
   const costos: Map<string, CostoDeProducto> = new Map(
     productos.map((p) => [
       p.id as string,
@@ -610,6 +645,20 @@ export async function cargarInventario({
     ventasProyectadas: enFilas(proyectadasPorMoneda),
     vendidoPorAgotarse: vendidoDe(brutos.pocos),
     vendidoAgotadas: vendidoDe(brutos.cero),
+    // ── LAS DOS LISTAS DE LAS HOJAS DE ABAJO ──────────────────────────
+    //
+    // Cada una en el MISMO orden que su gráfico --margen de mayor a menor,
+    // ventas de más a menos unidades-- pero sin el corte de seis. Si la hoja
+    // ordenara por su cuenta, el cuarto del gráfico podría no ser el cuarto
+    // de la lista y nadie sabría cuál creer.
+    margenLista: productos
+      .filter((p) => p.margin_retail_pct != null)
+      .sort((a, b) => Number(b.margin_retail_pct) - Number(a.margin_retail_pct))
+      .map(comoFila),
+    masVendidosLista: idsPorUnidades
+      .map((id) => vivos.get(id) ?? borrados.get(id))
+      .filter((p): p is Record<string, unknown> => p != null)
+      .map(comoFila),
   };
 }
 

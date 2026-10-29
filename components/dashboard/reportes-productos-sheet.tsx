@@ -113,6 +113,7 @@ export function ReportesProductosSheet({
   encabezado,
   filas,
   productos,
+  conChip = false,
   vacio,
   tasas,
   children,
@@ -123,6 +124,18 @@ export function ReportesProductosSheet({
   /** Las filas de tarjetas de dinero. Vacío en la hoja de un proveedor. */
   filas: FilaDeDinero[];
   productos: ProductoDeHoja[];
+  // ── ¿LA TARJETA LLEVA EL CHIP DE EXISTENCIAS? ─────────────────────
+  //
+  // SOLO DOS DE LOS CINCO FRAMES LO DIBUJAN: «Productos disponibles»
+  // (`1673:22429`, chip verde «Disponible: 000») y «Referencias agotadas»
+  // (`1673:22895`, chip rojo «Agotado»). «Por agotarse», «Margen por
+  // producto» y «Más vendidos» llevan la tarjeta sin chip.
+  //
+  // Lo llevaban las cinco hasta el 2026-10-29, cuando el dueño pidió ceñirse
+  // al Figma. LO QUE SE PIERDE, y se dice en voz alta: en «Por agotarse» el
+  // chip era justo la cifra que esa hoja viene a contestar --cuántas
+  // unidades quedan-- y ahora hay que entrar a la ficha para verla.
+  conChip?: boolean;
   /** Qué decir cuando la lista está vacía. */
   vacio: { titulo: string; sub: string };
   /** Bs por dólar y por euro, para la línea pequeña. `null` en Colombia. */
@@ -208,7 +221,7 @@ export function ReportesProductosSheet({
             <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
               {visibles.map((p) => (
                 <li key={p.id}>
-                  <FilaDeProducto p={p} />
+                  <FilaDeProducto p={p} conChip={conChip} />
                 </li>
               ))}
             </ul>
@@ -278,7 +291,7 @@ function LineaEnBs({
   );
 }
 
-function FilaDeProducto({ p }: { p: ProductoDeHoja }) {
+function FilaDeProducto({ p, conChip }: { p: ProductoDeHoja; conChip: boolean }) {
   const foto = p.fotoPath ? getPublicProductPhotoUrl(p.fotoPath) : null;
   // TRES ESTADOS Y NO DOS. «Sin cantidad anotada» es gris y no rojo a
   // propósito: el rojo dice «no te queda», que es una afirmación sobre la
@@ -320,21 +333,23 @@ function FilaDeProducto({ p }: { p: ProductoDeHoja }) {
           // en moneda «Otra», o sin tasa para cruzar las dos monedas.
           <span className="truncate text-xs text-muted-foreground">Sin ganancia calculable</span>
         )}
-        <span
-          className={`inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${
-            sinContar
-              ? CLIENT_STATUS_BADGE_CLASS.sin_deuda
+        {conChip ? (
+          <span
+            className={`inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${
+              sinContar
+                ? CLIENT_STATUS_BADGE_CLASS.sin_deuda
+                : agotado
+                  ? CLIENT_STATUS_BADGE_CLASS.critico
+                  : CLIENT_STATUS_BADGE_CLASS.a_favor
+            }`}
+          >
+            {sinContar
+              ? "Sin cantidad anotada"
               : agotado
-                ? CLIENT_STATUS_BADGE_CLASS.critico
-                : CLIENT_STATUS_BADGE_CLASS.a_favor
-          }`}
-        >
-          {sinContar
-            ? "Sin cantidad anotada"
-            : agotado
-              ? "Agotado"
-              : `Disponible: ${formatCantidad(p.cantidad as number)}`}
-        </span>
+                ? "Agotado"
+                : `Disponible: ${formatCantidad(p.cantidad as number)}`}
+          </span>
+        ) : null}
       </span>
 
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />

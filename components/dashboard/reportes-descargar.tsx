@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Download, FileUser } from "lucide-react";
+import { Download, FileUser, PackageSearch, Truck } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,8 +110,19 @@ export function ReportesDescargar() {
           «Descargar facturación», que no cabe: medido en pantalla, parte en
           dos líneas y se sale de la fila de 36. Un menú que se ajusta a su
           contenido dice lo mismo sin romperse; forzar los 174 habría sido
-          copiar el número y perder la forma. */}
-      <DropdownMenuContent align="end" className="rounded-2xl p-2">
+          copiar el número y perder la forma.
+
+          ── `w-auto` NO ES UN RETOQUE: SIN ÉL EL MENÚ SALE CORTADO ──────
+          El primitivo `DropdownMenuContent` trae
+          `w-(--radix-dropdown-menu-trigger-width)`, o sea que se ajusta al
+          ancho del DISPARADOR. Aquí el disparador es «Descargar ⬇», unos
+          110px, así que el menú nacía de 110px con un rótulo de 170 y un
+          `overflow-x-hidden` encima: en pantalla se leía «Descargar fa…».
+          Lo reportó el dueño el 2026-10-29 con la captura.
+
+          Es decir, el párrafo de arriba describía una intención que el
+          primitivo no dejaba cumplir. Ahora sí se cumple. */}
+      <DropdownMenuContent align="end" className="w-auto rounded-2xl p-2">
         <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
           {/* `prefetch={false}` no aplica: esto no es un `Link` de Next a
               propósito. Un `Link` haría navegación de cliente y la respuesta
@@ -119,6 +130,30 @@ export function ReportesDescargar() {
           <a href={`/api/reportes/movimientos?${query.toString()}`}>
             <FileUser aria-hidden="true" />
             Descargar facturación
+          </a>
+        </DropdownMenuItem>
+        {/* ── UNA OPCIÓN POR APARTADO — encargo del dueño el 2026-10-29 ──
+            *«debe mostrar las opciones de cada tab»*.
+
+            NACIERON HOY Y NO ANTES por una razón que caducó: hasta el
+            2026-10-28 Inventario y Proveedores eran estado vacío, y una fila
+            que descargara una pantalla sin construir habría entregado un
+            fichero de ceros. `CT-58` dice que un control muerto se lee como
+            que la app está rota; uno que entrega un fichero falso es peor.
+
+            SALEN SIEMPRE, no solo en su pestaña: el tendero que está en
+            Facturación y quiere el inventario no tiene por qué cambiar de
+            apartado para pedirlo. Las tres respetan el rango puesto. */}
+        <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
+          <a href={`/api/reportes/catalogo?que=inventario&${query.toString()}`}>
+            <PackageSearch aria-hidden="true" />
+            Descargar inventario
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
+          <a href={`/api/reportes/catalogo?que=proveedores&${query.toString()}`}>
+            <Truck aria-hidden="true" />
+            Descargar proveedores
           </a>
         </DropdownMenuItem>
       </DropdownMenuContent>

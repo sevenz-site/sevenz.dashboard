@@ -66,14 +66,50 @@ const COLORES = [
   "bg-muted-foreground",
 ];
 
-function TituloDeBloque({ texto, subtitulo }: { texto: string; subtitulo?: string }) {
+function TituloDeBloque({
+  texto,
+  subtitulo,
+  accion,
+}: {
+  texto: string;
+  subtitulo?: string;
+  /** El «Ver todo» de la derecha. Su flecha existe en el sitemap. */
+  accion?: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-1 pt-3 pb-2.5">
-      <h2 className="text-base font-medium">{texto}</h2>
-      {subtitulo ? <p className="text-xs leading-4 text-muted-foreground">{subtitulo}</p> : null}
+    <div className="flex items-start justify-between gap-3 pt-3 pb-2.5">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-base font-medium">{texto}</h2>
+        {subtitulo ? <p className="text-xs leading-4 text-muted-foreground">{subtitulo}</p> : null}
+      </div>
+      {accion ? <span className="shrink-0 pt-0.5">{accion}</span> : null}
     </div>
   );
 }
+
+// ── EL «VER TODO» DE UNA CABECERA DE BLOQUE ──────────────────────────
+//
+// Mismo gesto y mismo rótulo que el de las tres tarjetas de arriba, y por la
+// misma razón que allí: dos palabras distintas para el mismo gesto en una
+// pantalla se leen como dos cosas.
+//
+// REENVIA EL REF Y DERRAMA LAS PROPS -- `SheetTrigger asChild` clona a su
+// hijo. El porqué entero está en el comentario de `Tarjeta`, más abajo.
+const VerTodo = forwardRef<HTMLButtonElement, React.ComponentPropsWithoutRef<"button">>(
+  function VerTodo(props, ref) {
+    return (
+      <button
+        {...props}
+        ref={ref}
+        type="button"
+        className="flex items-center gap-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Ver todo
+        <ChevronRight className="size-3.5" aria-hidden />
+      </button>
+    );
+  },
+);
 
 // REENVIA EL REF Y DERRAMA LAS PROPS, y las dos cosas son obligatorias.
 // `SheetTrigger asChild` NO envuelve a su hijo: lo CLONA y le cuelga encima
@@ -378,6 +414,7 @@ export function ReportesInventario({
             }}
             filas={filasDeCapital(datos)}
             productos={datos.disponiblesLista}
+            conChip
             // AHORA SOLO SALE SI NO HAY NADA EN ESTANTERÍA, porque
             // «disponibles» pasó a ser todo lo que tiene existencias. Antes
             // salía con el almacén lleno si todo estaba por debajo del aviso,
@@ -423,6 +460,7 @@ export function ReportesInventario({
           titulo="Referencias agotadas"
           filas={filasDeVendido(datos.vendidoAgotadas)}
           productos={datos.agotadasLista}
+          conChip
           vacio={{
             titulo: "No tienes referencias agotadas",
             sub: "Aquí aparecerán los productos que se queden en cero.",
@@ -579,7 +617,28 @@ export function ReportesInventario({
       <span id="margen" className="scroll-mt-28" aria-hidden />
       <TituloDeBloque
         texto="Margen por producto"
+        // EL SUBTÍTULO NO ES EL DEL FRAME, y se dice. `1746:14845` escribe
+        // «Dependen del registro del margen y órdenes de compras
+        // completadas», y las órdenes de compra NO EXISTEN en esta app:
+        // copiarlo prometería una pantalla que no está. Es la misma razón por
+        // la que el subtítulo del bloque de arriba tampoco es el suyo.
         subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor."
+        accion={
+          datos.margenLista.length ? (
+            <ReportesProductosSheet
+              titulo="Margen por producto"
+              filas={[]}
+              productos={datos.margenLista}
+              vacio={{
+                titulo: "Todavía no has anotado márgenes",
+                sub: "Escribe el margen en la ficha de un producto y aquí lo verás.",
+              }}
+              tasas={tasas}
+            >
+              <VerTodo />
+            </ReportesProductosSheet>
+          ) : null
+        }
       />
       <GraficoDeProductos
         filas={datos.margen.map((m) => ({
@@ -602,6 +661,24 @@ export function ReportesInventario({
       <TituloDeBloque
         texto="Más vendidos"
         subtitulo={`Lo que más salió ${periodoTexto}, en unidades.`}
+        accion={
+          datos.masVendidosLista.length ? (
+            // SU FRAME --`1747:14327`-- NO LLEVA SUBTÍTULO NI TARJETAS DE
+            // DINERO: solo el título, el buscador y la lista.
+            <ReportesProductosSheet
+              titulo="Más vendidos"
+              filas={[]}
+              productos={datos.masVendidosLista}
+              vacio={{
+                titulo: "Todavía no hay ventas en este periodo",
+                sub: "Aquí aparecerán los productos que vendas dentro del rango que elijas.",
+              }}
+              tasas={tasas}
+            >
+              <VerTodo />
+            </ReportesProductosSheet>
+          ) : null
+        }
       />
       <GraficoDeProductos
         filas={datos.masVendidos.map((v) => ({
