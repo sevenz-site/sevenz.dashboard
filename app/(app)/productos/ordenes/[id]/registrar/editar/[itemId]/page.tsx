@@ -6,7 +6,8 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { OrderLineEditForm } from "@/components/dashboard/order-line-edit-form";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { createClient } from "@/lib/supabase/server";
-import { formatCantidad } from "@/lib/products/cantidad";
+import { StockBadge } from "@/components/stock-badge";
+import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import type { PriceCurrency } from "@/lib/products/price";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
@@ -52,6 +53,11 @@ export default async function EditarLineaPage({
 
   if (error) console.error("[orders] editar linea:", error.message);
   if (!order) notFound();
+
+  // El umbral del aviso de existencias, para el chip de debajo del nombre.
+  // Va DESPUÉS del `notFound`: una pantalla que no se va a pintar no tiene por
+  // qué pagar una consulta.
+  const umbralDeStock = await loadLowStockThreshold(supabase, user!.id);
   const pedido = order as CatalogOrderRow;
 
   // THE HARD STOP: an order that is already a sale cannot be walked again.
@@ -140,11 +146,7 @@ export default async function EditarLineaPage({
 
       <div className="flex flex-col gap-0.5">
         <h2 className="text-2xl font-normal">{producto.name}</h2>
-        {producto.stock != null ? (
-          <span className="w-fit rounded-full bg-money-in/10 px-1.5 text-xs text-money-in">
-            Disponible: {formatCantidad(producto.stock)}
-          </span>
-        ) : null}
+        <StockBadge quantity={producto.stock} threshold={umbralDeStock} />
         {producto.unit ? (
           <p className="text-xs text-muted-foreground">{producto.unit}</p>
         ) : null}

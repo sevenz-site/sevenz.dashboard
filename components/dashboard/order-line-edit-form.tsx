@@ -74,6 +74,7 @@ export function OrderLineEditForm({
 
   return (
     <ProductDetail
+      mostrarDisponible={false}
       // TOKEN VACÍO A PROPÓSITO, the same reason `ProductSheet` passes one:
       // with `alAgregar` set, neither the customer's cart nor the link back to
       // the public catalogue is reached, and passing the business's real token

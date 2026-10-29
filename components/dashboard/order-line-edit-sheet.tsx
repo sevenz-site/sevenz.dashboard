@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { StockBadge } from "@/components/stock-badge";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ChevronRight, ImageOff } from "lucide-react";
@@ -12,7 +13,6 @@ import {
 } from "@/components/ui/sheet";
 import { OrderLineEditForm } from "@/components/dashboard/order-line-edit-form";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
-import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -53,10 +53,13 @@ export function OrderLineEditSheet({
   moneda,
   rates,
   monedasDelLibro,
+  umbralDeStock,
 }: {
   pedidoId: string;
   lineaId: string;
   lineasDelPedido: { id: string; moneda: string }[];
+  /** `owners.low_stock_threshold`. Llega de la pantalla y no se lee aquí: esta hoja es cliente, y el dato es del servidor. */
+  umbralDeStock: number;
   productId: string;
   producto: ProductoPublico;
   nombre: string;
@@ -153,11 +156,10 @@ export function OrderLineEditSheet({
           <div className="flex flex-col gap-4 px-4 pt-4 pb-0">
             <div className="flex flex-col gap-0.5">
               <h2 className="text-2xl font-normal">{nombre}</h2>
-              {stock != null ? (
-                <span className="w-fit rounded-full bg-money-in/10 px-1.5 text-xs text-money-in">
-                  Disponible: {formatCantidad(stock)}
-                </span>
-              ) : null}
+              {/* MISMO CHIP QUE LA TARJETA QUE ABRE ESTA HOJA, ahora de
+                  verdad: hasta el 2026-10-29 eran dos pastillas escritas por
+                  separado que coincidían por casualidad. */}
+              <StockBadge quantity={stock} threshold={umbralDeStock} />
               {unidad ? (
                 <p className="text-xs text-muted-foreground">{unidad}</p>
               ) : null}

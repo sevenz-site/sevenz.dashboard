@@ -166,6 +166,10 @@ type SharedProductDetail = {
   // own inside its block, and THAT is the one that prices it.
   base_currency: PriceCurrency;
   stock: number | null;
+  // El umbral del negocio, desde la migración `164`. Ver la nota larga en
+  // `app/c/[token]/page.tsx`: lo que decide con él es `StockBadge`, el mismo
+  // componente que pinta la tarjeta de la que se llega aquí.
+  low_stock_threshold: number | null;
   wholesale_min_quantity: number | null;
   retail: BloqueCrudo | null;
   wholesale: BloqueCrudo | null;
@@ -334,6 +338,9 @@ export default async function ProductoPublicoPage({
           }}
           rates={rates}
           stock={detalle.stock}
+          // `?? 0` y no `?? 5`: sin la `164` corrida, nada se pone ámbar, que
+          // es como se comportaba ayer. Mismo criterio que el catálogo.
+          umbralDeStock={Number(detalle.low_stock_threshold ?? 0)}
           /* EN LA VISTA PREVIA EL TENDERO SOLO MIRA. Decisión del dueño el
              2026-10-17: «el dueño solo puede ver la pantalla del listado de
              productos y detalle de producto, el resto del flujo no». */

@@ -44,12 +44,15 @@ export function ReportesProveedores({
   filas,
   periodoTexto,
   tasas,
+  umbral,
 }: {
   filas: ProveedorEnReporte[];
   /** «del 29 sep al 28 oct», tal como lo escribe la cabecera de la pantalla. */
   periodoTexto: string;
   /** Bs por dólar y por euro, para las hojas. `null` en Colombia. */
   tasas: { usd: number; eur: number } | null;
+  /** `owners.low_stock_threshold`, so a supplier's sheet grades its products the same way Inventario does. Travelling from the page rather than being re-read here keeps the two tabs from ever disagreeing mid-render. */
+  umbral: number;
 }) {
   if (!filas.length) {
     return (
@@ -89,6 +92,7 @@ export function ReportesProveedores({
         {filas.map((f) => (
           <li key={f.clave}>
             <ReportesProductosSheet
+              umbral={umbral}
               titulo={f.nombre}
               filas={[]}
               productos={f.lista}

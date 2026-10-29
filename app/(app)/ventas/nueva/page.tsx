@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/products/availability";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NuevaVenta } from "@/components/dashboard/nueva-venta";
@@ -43,10 +44,14 @@ export default async function NuevaVentaPage({
   // cliente nuevo sin salir de la venta.
   const { data: owner } = await supabase
     .from("owners")
-    .select("country")
+    .select("country, low_stock_threshold")
     .eq("id", user.id)
     .maybeSingle();
   const ownerCountry = (owner?.country as OwnerCountry | null) ?? null;
+  // EL UMBRAL VIAJA CON EL PAÍS, en la misma fila que ya se pide. Lo usa el
+  // chip de existencias de la hoja de producto del paso 2, que desde el
+  // 2026-10-29 se pone ámbar cuando quedan pocas unidades.
+  const umbralDeStock = Number(owner?.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD);
 
   // DE `client_summary` Y NO DE `clients`, desde el 2026-10-18: la tarjeta del
   // paso 4 es la MISMA que la de Clientes (frame `1411:12272`), y esa enseña
@@ -92,6 +97,7 @@ export default async function NuevaVentaPage({
     if (data) {
       return (
         <NuevaVenta
+          umbralDeStock={umbralDeStock}
           clientes={clientes}
           inicial={{
             id: data.id,
@@ -109,6 +115,7 @@ export default async function NuevaVentaPage({
 
   return (
     <NuevaVenta
+      umbralDeStock={umbralDeStock}
       clientes={clientes}
       inicial={null}
       ownerId={user.id}

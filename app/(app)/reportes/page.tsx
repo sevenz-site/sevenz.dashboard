@@ -19,6 +19,7 @@ import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
 import { cargarInventario } from "@/lib/reports/inventario";
 import { cargarProveedores } from "@/lib/reports/proveedores";
+import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { ReportesProveedores } from "@/components/dashboard/reportes-proveedores";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -196,6 +197,14 @@ export default async function ReportesPage({
     apartado === "proveedores"
       ? await cargarProveedores({ supabase, ownerId: user!.id, rango, rates })
       : null;
+
+  // EL UMBRAL, SOLO PARA PROVEEDORES. Inventario ya trae el suyo dentro de
+  // `cargarInventario`; esta pestaña no carga nada de inventario y aun así sus
+  // hojas listan productos, que desde el 2026-10-29 se gradúan con él. Las dos
+  // leen la MISMA columna, así que no pueden discrepar: lo que se evita con el
+  // condicional es una consulta por una pestaña que no la va a usar.
+  const umbralDeStock =
+    apartado === "proveedores" ? await loadLowStockThreshold(supabase, user!.id) : 0;
   const proveedores = proveedor
     ? (proveedoresTodos ?? []).filter((f) => f.clave === proveedor)
     : proveedoresTodos;
@@ -332,7 +341,12 @@ export default async function ReportesPage({
         <ReportesInventario datos={inventario} periodoTexto={periodoTexto} tasas={tasas} />
       ) : null}
       {apartado === "proveedores" && proveedores ? (
-        <ReportesProveedores filas={proveedores} periodoTexto={periodoTexto} tasas={tasas} />
+        <ReportesProveedores
+          filas={proveedores}
+          periodoTexto={periodoTexto}
+          tasas={tasas}
+          umbral={umbralDeStock}
+        />
       ) : null}
     </div>
   );

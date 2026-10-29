@@ -15,10 +15,11 @@ import {
 import { quitadasPorMoneda } from "@/lib/orders/pasos-del-registro";
 import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { OrderLineEditSheet } from "@/components/dashboard/order-line-edit-sheet";
+import { StockBadge } from "@/components/stock-badge";
+import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { OrderLineStepper } from "@/components/dashboard/order-line-stepper";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { formatCantidad } from "@/lib/products/cantidad";
 
 // STEP `2/4 Confirmar pedido` — frame `1652:12831`, read with the desktop
 // bridge on 2026-10-25.
@@ -52,8 +53,15 @@ export default async function ConfirmarBloquePage({
 }) {
   const { id } = await params;
   const { moneda } = await searchParams;
-  const { pedido, bloque, bloques, rates, productosPorId, items, quitadas } =
+  const { pedido, bloque, bloques, rates, productosPorId, items, quitadas, ownerId } =
     await cargarBloque(id, moneda);
+
+  // EL UMBRAL DEL AVISO DE EXISTENCIAS. `cargarBloque` ya comprobó que este
+  // pedido es de quien lo mira, así que su `ownerId` sirve sin volver a
+  // preguntar por la sesión. Desde el 2026-10-29 el chip de al lado del
+  // nombre se pone ámbar cuando quedan pocas unidades, y sin este número no
+  // sabría cuántas son «pocas» para este negocio.
+  const umbralDeStock = await loadLowStockThreshold(await createClient(), ownerId);
 
 
   const comentarioDe = new Map(items.map((i) => [i.id, i.comment]));
@@ -177,10 +185,13 @@ export default async function ConfirmarBloquePage({
                     «Disponible: —» afirma que se midió y salió vacío. */}
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium">{linea.nombre}</p>
-                  {producto != null && stock != null ? (
-                    <span className="w-fit rounded-full bg-money-in/10 px-1.5 text-xs text-money-in">
-                      Disponible: {formatCantidad(stock)}
-                    </span>
+                  {/* EL CHIP ES AHORA `StockBadge`, el mismo de las otras
+                      siete pantallas. Lo que había aquí era una pastilla
+                      verde rellena, sin borde y con su propia tonalidad --un
+                      tercer dibujo de la misma cifra-- y decía verde para
+                      CUALQUIER cantidad, cero incluido. */}
+                  {producto != null ? (
+                    <StockBadge quantity={stock} threshold={umbralDeStock} />
                   ) : null}
                 </div>
                 {producto == null ? (
@@ -257,6 +268,7 @@ export default async function ConfirmarBloquePage({
               if (!edicion) return null;
               return (
                 <OrderLineEditSheet
+                  umbralDeStock={umbralDeStock}
                   pedidoId={pedido.id}
                   lineaId={linea.id}
                   lineasDelPedido={lineasDelPedido}

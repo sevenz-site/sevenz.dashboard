@@ -17,8 +17,7 @@ import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatCantidad } from "@/lib/products/cantidad";
-import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
+import { StockBadge } from "@/components/stock-badge";
 import type { ProductoDeHoja } from "@/lib/reports/inventario";
 import { esMonedaConocida, formatDinero, type Dinero } from "@/lib/reports/ganancia";
 
@@ -138,6 +137,7 @@ export function ReportesProductosSheet({
   filas,
   productos,
   conChip = false,
+  umbral,
   vacio,
   tasas,
   children,
@@ -160,6 +160,8 @@ export function ReportesProductosSheet({
   // chip era justo la cifra que esa hoja viene a contestar --cuántas
   // unidades quedan-- y ahora hay que entrar a la ficha para verla.
   conChip?: boolean;
+  /** `owners.low_stock_threshold`. Needed even when `conChip` is false: it costs nothing and keeps the two sheets that do draw it from being special-cased by their callers. */
+  umbral: number;
   /** Qué decir cuando la lista está vacía. */
   vacio: { titulo: string; sub: string };
   /** Bs por dólar y por euro, para la línea pequeña. `null` en Colombia. */
@@ -249,7 +251,7 @@ export function ReportesProductosSheet({
             <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
               {visibles.map((p) => (
                 <li key={p.id}>
-                  <FilaDeProducto p={p} conChip={conChip} />
+                  <FilaDeProducto p={p} conChip={conChip} umbral={umbral} />
                 </li>
               ))}
             </ul>
@@ -325,14 +327,23 @@ function LineaEnBs({
   );
 }
 
-function FilaDeProducto({ p, conChip }: { p: ProductoDeHoja; conChip: boolean }) {
+function FilaDeProducto({
+  p,
+  conChip,
+  umbral,
+}: {
+  p: ProductoDeHoja;
+  conChip: boolean;
+  /** `owners.low_stock_threshold`: what «running low» means for this shop. */
+  umbral: number;
+}) {
   const foto = p.fotoPath ? getPublicProductPhotoUrl(p.fotoPath) : null;
-  // TRES ESTADOS Y NO DOS. «Sin cantidad anotada» es gris y no rojo a
-  // propósito: el rojo dice «no te queda», que es una afirmación sobre la
-  // estantería; aquí lo que falta es el DATO, y confundirlos manda al tendero
-  // a reponer algo que a lo mejor tiene de sobra.
-  const sinContar = p.cantidad == null;
-  const agotado = !sinContar && (p.cantidad as number) <= 0;
+  // LOS ESTADOS SE DECIDEN EN `StockBadge` desde el 2026-10-29, y con ellos se
+  // fue de aquí la razón que los separaba — que sigue siendo cierta y está
+  // escrita en `lib/products/availability.ts`: «Sin cantidad anotada» es gris y
+  // no rojo porque el rojo afirma algo sobre la estantería, y aquí lo que falta
+  // es el DATO. Confundirlos manda al tendero a reponer algo que tiene de
+  // sobra.
 
   return (
     <Link
@@ -367,22 +378,13 @@ function FilaDeProducto({ p, conChip }: { p: ProductoDeHoja; conChip: boolean })
           // en moneda «Otra», o sin tasa para cruzar las dos monedas.
           <span className="truncate text-xs text-muted-foreground">Sin ganancia calculable</span>
         )}
+        {/* THE FOURTH STATE ARRIVED ON 2026-10-29 and the three written here
+            by hand could not express it: at or below the owner's alert
+            threshold the chip is amber with its figure. `showUncounted`
+            keeps this sheet's own exception — naming the products nobody
+            counted is half of what it is for. */}
         {conChip ? (
-          <span
-            className={`inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${
-              sinContar
-                ? CLIENT_STATUS_BADGE_CLASS.sin_deuda
-                : agotado
-                  ? CLIENT_STATUS_BADGE_CLASS.critico
-                  : CLIENT_STATUS_BADGE_CLASS.a_favor
-            }`}
-          >
-            {sinContar
-              ? "Sin cantidad anotada"
-              : agotado
-                ? "Agotado"
-                : `Disponible: ${formatCantidad(p.cantidad as number)}`}
-          </span>
+          <StockBadge quantity={p.cantidad} threshold={umbral} showUncounted />
         ) : null}
       </span>
 
