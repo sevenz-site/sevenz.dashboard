@@ -324,13 +324,29 @@ export function NewClientForm({
               «Sin especificar», como el frame. */}
           <PlazoPagoSelect
             value={plazo}
+            // LAS CUOTAS NO SE BORRAN AL QUITAR EL PLAZO. Se borraban hasta el
+            // 2026-10-30; desde que Cuotas ofrece todas sus opciones también sin
+            // plazo, el aviso de `CuotasSelect` dice que falta el plazo, y tirar
+            // en silencio lo que el tendero eligió sería peor que avisarle.
+            //
+            // Y EL ERROR DEL GUARDADO SE BORRA AL TOCAR UNO DE LOS DOS: el
+            // servidor rechaza cuotas sin plazo con «elige primero el plazo», y
+            // esa frase seguía debajo del formulario con el plazo ya elegido.
+            // Medido en dev el 2026-10-30.
             onValueChange={(v) => {
               setPlazo(v);
-              // Sin plazo no hay nada que repartir (migración `118`).
-              if (!v || v === "sin_especificar") setCuotas("sin_especificar");
+              setError(null);
             }}
           />
-          <CuotasSelect value={cuotas} onValueChange={setCuotas} plazoDias={plazoDias} sinEspecificar />
+          <CuotasSelect
+            value={cuotas}
+            onValueChange={(v) => {
+              setCuotas(v);
+              setError(null);
+            }}
+            plazoDias={plazoDias}
+            sinEspecificar
+          />
 
           <div className="flex flex-col gap-1">
             <Label>Foto (opcional)</Label>

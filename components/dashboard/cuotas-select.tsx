@@ -52,35 +52,24 @@ export function CuotasSelect({
   // distingue las dos; lo que cambia es lo que el tendero declara.
   //
   // Y CON ÉL EL CAMPO SE VE AUNQUE NO HAYA PLAZO, porque el frame lo dibuja
-  // así: con el plazo «Sin especificar» solo ofrece «Sin especificar», que es
-  // lo único que la base admite sin plazo (migración `118`). En el resto de
-  // pantallas sigue escondiéndose, como explica la cabecera.
+  // así. En el resto de pantallas sigue escondiéndose, como explica la cabecera.
+  //
+  // CON TODAS LAS OPCIONES, TAMBIÉN SIN PLAZO — encargo del dueño el
+  // 2026-10-30: además de «Sin especificar», las mismas que un fiado. Hasta
+  // ese día, sin plazo solo ofrecía «Sin especificar», que es lo único que la
+  // base admite sin plazo (migración `118`). Ahora se pueden elegir y, si se
+  // eligen cuotas sin plazo, el aviso de abajo lo dice en rojo y el servidor
+  // rechaza el guardado con la misma frase (`leerDeudaAntigua`). Callarse y
+  // guardar sin cuotas habría tirado lo que el tendero eligió sin decírselo.
   sinEspecificar?: boolean;
 }) {
   if (plazoDias === null && !sinEspecificar) return null;
-
-  if (plazoDias === null) {
-    return (
-      <div className="flex flex-col gap-2">
-        <Label>Cuotas</Label>
-        <Select value="sin_especificar" onValueChange={onValueChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sin_especificar">Sin especificar</SelectItem>
-          </SelectContent>
-        </Select>
-        <input type="hidden" name="cuotas" value="sin_especificar" />
-      </div>
-    );
-  }
 
   const cuotas = Number(value) || 1;
   // The division lives in `formatCadaCuantosDias`, which carries why it never
   // rounds. The saved movement's card shows the DATES instead of the interval
   // (`lib/cuotas.ts`) -- same rule, and here there is no date to show yet.
-  const cadaCuantos = formatCadaCuantosDias(plazoDias, cuotas);
+  const cadaCuantos = plazoDias === null ? null : formatCadaCuantosDias(plazoDias, cuotas);
 
   return (
     <div className="flex flex-col gap-2">
@@ -103,7 +92,11 @@ export function CuotasSelect({
       {/* EL AVISO QUE PIDIÓ EL DUEÑO. Con pago único no se enseña: ahí no hay
           ningún reparto que explicar, y una línea que dice lo obvio entrena a
           no leer las que sí importan. */}
-      {cuotas > 1 ? (
+      {cuotas > 1 && plazoDias === null ? (
+        <p className="text-xs text-destructive">
+          Para repartir la deuda en cuotas, elige primero el plazo de pago.
+        </p>
+      ) : cuotas > 1 ? (
         <p className="text-xs text-muted-foreground">
           Las cuotas se reparten dentro del plazo: {cuotas} cuotas en {plazoDias} días es una
           cuota cada {cadaCuantos}.
