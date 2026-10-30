@@ -41,14 +41,33 @@ import type { AssistantNote } from "@/lib/reports/assistant/fallback";
 // de 12 es un resumen algo mejor a cambio de una pantalla que parece colgada.
 // ═══════════════════════════════════════════════════════════════════════
 
-export const runtimeModelos = [
-  "gemini-3.5-flash-lite",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite",
-] as const;
+// ───────────────────────────────────────────────────────────────────────
+// LA CADENA, MEDIDA Y NO HEREDADA
+//
+// `/api/extract` usa cuatro modelos y esta empezó copiando tres de ellos. El
+// 2026-10-30, con el prompt REAL de 3.308 caracteres y la clave de dev, dos
+// pasadas por cada uno:
+//
+//   gemini-3.5-flash-lite    1.011 ms · 1.046 ms
+//   gemini-3-flash-preview  18.031 ms · se agotó a los 40.000
+//   gemini-3.1-flash-lite    1.565 ms · 1.654 ms
+//
+// El del medio se va. No es que fuera lento de más: es que estaba el SEGUNDO,
+// así que cada vez que el primero fallaba se comía el presupuesto entero y la
+// cadena no llegaba nunca al tercero --que contesta en segundo y medio--. El
+// síntoma era «se agotó el tiempo» en los tres, y la causa era uno.
+//
+// SE MIDIÓ PORQUE EL LOG LO PIDIÓ. Hasta ese día los fallos transitorios se
+// reintentaban en silencio, así que lo único observable era una ruta que
+// tardaba 16 segundos y devolvía el texto de respaldo sin decir por qué.
+// ───────────────────────────────────────────────────────────────────────
+export const runtimeModelos = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"] as const;
 
-const PRESUPUESTO_MS = 12_000;
-const INTENTO_MAX_MS = 6_000;
+// Con los dos respondiendo en torno a 1,5 s, 8 s por intento es cinco veces el
+// tiempo medido: holgura para un mal minuto de Google sin que un modelo
+// atascado se lleve el turno del siguiente.
+const PRESUPUESTO_MS = 18_000;
+const INTENTO_MAX_MS = 8_000;
 
 export type ResultadoIA =
   | { ok: true; note: AssistantNote; modelo: string }
@@ -93,10 +112,17 @@ export async function generarNota(f: FactsForTheModel): Promise<ResultadoIA> {
     } catch (e) {
       if (e instanceof ErrorDeTiempo) {
         ultimo = "timeout";
+        console.error(`[asistente] ${modelo}: se agotó el tiempo`);
         continue;
       }
       if (e instanceof ErrorTransitorio) {
+        // SE REGISTRA, aunque se reintente. Antes se tragaba en silencio y el
+        // resultado era una ruta que tardaba 16 segundos, devolvía el texto de
+        // respaldo y no dejaba ni una línea de por qué: imposible distinguir
+        // «Google está saturado» de «esta clave no puede con estos modelos».
+        // Un reintento callado no es prudencia, es borrar la prueba.
         ultimo = e.message;
+        console.error(`[asistente] ${modelo}: ${e.message}`);
         continue;
       }
       // Una credencial rechazada o un 4xx no se arreglan cambiando de modelo.

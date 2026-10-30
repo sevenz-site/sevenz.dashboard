@@ -48,9 +48,24 @@ export type Veredicto =
  */
 const PERMITIDOS = new Set(["30", "7"]);
 
-/** Pulls out anything that reads as a figure: 1.234,56 · 45 · 12% */
+/**
+ * Pulls out anything that reads as a figure: 1.234,56 · 45 · 12%
+ *
+ * UN NÚMERO TERMINA EN DÍGITO, y esa es la mitad importante del patrón.
+ *
+ * La primera versión era `\d[\d.,]*`, que es codicioso con los separadores y
+ * se tragaba la PUNTUACIÓN de la frase: en «te fiaron €793,82, y además…» el
+ * token salía como `793,82,` --con la coma de la oración pegada-- y eso no casa
+ * jamás con el hecho `793,82`.
+ *
+ * QUÉ COSTÓ, el 2026-10-30, en la primera llamada real a Gemini: dos resúmenes
+ * perfectamente correctos rechazados por «inventar» cifras que estaban en los
+ * hechos, y el tendero viendo el texto de respaldo. El guardia contra números
+ * falsos estaba produciendo acusaciones falsas, que es peor que no tenerlo: un
+ * rechazo se registra como caída y manda a mirar al sitio equivocado.
+ */
 function cifras(texto: string): string[] {
-  return texto.match(/\d[\d.,]*/g) ?? [];
+  return texto.match(/\d[\d.,]*\d|\d/g) ?? [];
 }
 
 export function validarNota(bruto: unknown, f: FactsForTheModel): Veredicto {

@@ -2,6 +2,19 @@ import { formatDinero } from "@/lib/reports/ganancia";
 import type { FactsForTheModel, MoneyByLedger } from "@/lib/reports/assistant/facts";
 import { MAX_CHARS } from "@/lib/reports/assistant/fallback";
 
+/**
+ * Lo que se le PIDE al modelo, por debajo del tope real de 450.
+ *
+ * Medido el 2026-10-30 en la primera tanda real: pidiéndole 450 escribió 465 y
+ * la respuesta se tiró entera. Un modelo no cuenta caracteres, los estima; la
+ * holgura es lo que convierte una estimación corta en un texto válido en vez de
+ * en un resumen perdido.
+ *
+ * El tope DURO sigue siendo `MAX_CHARS` y se comprueba en `validate.ts`: esto
+ * no lo relaja, solo deja de rozarlo.
+ */
+const PRESUPUESTO_SUGERIDO = MAX_CHARS - 60;
+
 // ═══════════════════════════════════════════════════════════════════════
 // WHAT THE MODEL IS TOLD, AND THE SHORT LIST OF THINGS IT MAY WRITE
 //
@@ -73,7 +86,21 @@ export function hechosEnTexto(f: FactsForTheModel): Hecho[] {
   add("Productos disponibles", f.stock.available);
   add(`Productos por agotarse (${f.stock.threshold} unidades o menos)`, f.stock.runningLow);
   add("Referencias agotadas", f.stock.outOfStock);
-  add("De los más vendidos, cuántos están por agotarse", f.stock.bestSellersRunningLow);
+  // LA ETIQUETA DICE LA FRASE ENTERA, no un recuento suelto.
+  //
+  // Era «De los más vendidos, cuántos están por agotarse» y el 2026-10-30 el
+  // modelo la juntó con la de arriba: escribió «los 3 productos por agotarse
+  // QUE ESTÁN ENTRE LOS MÁS VENDIDOS» cuando por agotarse hay 3 y entre los
+  // más vendidos solo 1.
+  //
+  // Y ESO LA VALIDACIÓN NO LO CAZA, que es lo que lo hace peligroso: el `3` es
+  // una cifra legítima de los hechos, así que pasa. Lo que estaba mal era la
+  // AFIRMACIÓN, no el número, y comprobar afirmaciones no se puede. Lo único
+  // que lo evita es no dejar dos etiquetas que se puedan encadenar.
+  add(
+    "Productos que están A LA VEZ entre los más vendidos y por agotarse",
+    f.stock.bestSellersRunningLow,
+  );
 
   add(`Vendido por catálogo en los últimos ${f.windowDays} días`, dineroPorLibro(f.catalogSales));
   add("Pedidos del catálogo sin atender", f.unhandledOrders);
@@ -108,6 +135,7 @@ ${hechos}
 
 REGLAS QUE NO PUEDES ROMPER:
 
+0. LO DE LA IZQUIERDA DE CADA DOS PUNTOS ES UNA DESCRIPCIÓN PARA TI, NO TEXTO PARA COPIAR. Copia los VALORES, nunca las etiquetas. Escribe frases normales, como se las dirías a alguien en el mostrador. Mal: «Tienes por cobrar hoy en total: $60,00 y hay clientes con el plazo vencido: 2». Bien: «Tienes $60,00 por cobrar y 2 clientes con el plazo vencido».
 1. NO CALCULES NADA. No sumes, no restes, no dividas, no saques porcentajes ni promedios. Solo puedes copiar las cifras de la lista de arriba, exactamente como están escritas, con sus símbolos y sus puntos y comas.
 2. NO INVENTES NINGÚN NÚMERO. Si una cifra no está en la lista, no existe y no la puedes mencionar. Tampoco inventes fechas.
 3. NUNCA SUMES DOS MONEDAS. Si hay dólares y euros, se nombran por separado o no se nombran.
@@ -124,7 +152,7 @@ EN QUÉ ORDEN ELEGIR QUÉ DECIR. Solo caben tres recomendaciones, así que si va
 
 Si no hay nada preocupante, escribe igual pero de lo bueno, y no inventes recomendaciones para rellenar: deja la lista vacía.
 
-LARGO: el resumen más las recomendaciones, juntos, no pueden pasar de ${MAX_CHARS} caracteres. Es un límite duro. Escribe menos si hace falta.
+LARGO: el resumen más las recomendaciones, juntos, tienen que caber en ${PRESUPUESTO_SUGERIDO} caracteres. Cuéntalos. Es mejor decir menos que pasarte.
 
 Contesta SOLO con este JSON, sin nada más:
 {"summary": "una o dos frases de diagnóstico", "recommendations": ["...", "...", "..."]}`;

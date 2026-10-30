@@ -48,6 +48,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { buildFacts, assistantWindow, ASSISTANT_WINDOW_DAYS } from "../lib/reports/assistant/facts.ts";
 import { buildFallbackNote, noteLength, trimToBudget, MAX_CHARS } from "../lib/reports/assistant/fallback.ts";
+import { validarNota } from "../lib/reports/assistant/validate.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -227,6 +228,39 @@ try {
     "8b. y el texto real de un negocio de verdad cabe",
     noteLength(buildFallbackNote(hechos)) <= MAX_CHARS,
     `${noteLength(buildFallbackNote(hechos))} caracteres`,
+  );
+
+  // ── 8c-8e. LA VALIDACIÓN DE CIFRAS, Y MI PROPIO FALLO ──────────────
+  //
+  // La 8d es la que importa y nació de un fallo real, no de imaginarlo: el
+  // 2026-10-30, en la PRIMERA llamada de verdad a Gemini, el validador
+  // rechazó dos resúmenes correctos por «inventar» cifras que sí estaban en
+  // los hechos. El patrón era codicioso con los separadores y se tragaba la
+  // coma de la frase --«€793,82, y además…» daba el token `793,82,`--.
+  //
+  // Un guardia contra números falsos produciendo acusaciones falsas es peor
+  // que no tenerlo: cada rechazo se apunta como caída del asistente y manda a
+  // mirar a Google cuando el problema está aquí.
+  const hechosReales = hechos;
+
+  check(
+    "8c. una cifra que NO está en los hechos se rechaza",
+    validarNota({ summary: "Tienes $999.999,99 por cobrar.", recommendations: [] }, hechosReales).ok === false,
+    "rechazada",
+  );
+
+  const conComa = `Te fiaron ${(hechosReales.lent.EUR ?? hechosReales.lent.USD ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}, y eso pesa.`;
+  const vComa = validarNota({ summary: conComa, recommendations: [] }, hechosReales);
+  check(
+    "8d. una cifra REAL seguida de coma NO se rechaza (mi fallo del 2026-10-30)",
+    vComa.ok === true,
+    vComa.ok ? conComa : vComa.detalle,
+  );
+
+  check(
+    "8e. y un texto que parece nombrar a alguien se rechaza",
+    validarNota({ summary: "Cóbrale al cliente Pedro.", recommendations: [] }, hechosReales).ok === false,
+    "rechazado",
   );
 
   // ── 9. UN NEGOCIO SIN NADA NO LLAMA AL MODELO ───────────────────────
