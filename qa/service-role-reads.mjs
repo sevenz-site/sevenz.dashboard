@@ -81,10 +81,33 @@ for (const root of ROOTS) {
     // fuera una tabla. Era un falso positivo, y un detector que afirma lo que
     // no mide es peor que no tenerlo: la siguiente alarma verdadera se lee como
     // esta.
+    // ── SE MIRA QUÉ CLIENTE, NO QUÉ FICHERO ──────────────────────────
+    //
+    // Hasta el 2026-10-30 esto marcaba TODOS los `.from()` de cualquier
+    // fichero que mencionara `createServiceClient`. En uno que use los DOS
+    // clientes --la ruta del asistente lee la nota del tendero con SU sesión y
+    // la escribe con la de servicio-- eso acusaba a la lectura correcta.
+    //
+    // Y UN FALSO POSITIVO AQUÍ CUESTA MÁS QUE EN OTRO SITIO, por lo mismo que
+    // dice la nota de `.storage` de arriba: la siguiente alarma verdadera se
+    // lee como esta. Es la razón por la que aquel caso también se excluyó.
+    //
+    // SE MIRA DE QUIÉN CUELGA CADA `.from(`, con trabajo de cadenas y sin
+    // construir ninguna expresión: el identificador que va justo antes. Si es
+    // uno de los nombres a los que se asignó el cliente de servicio --o la
+    // llamada escrita en una línea-- cuenta; si no, es otro cliente.
+    const nombres = [];
+    for (const a of src.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?createServiceClient\s*\(/g)) {
+      nombres.push(a[1]);
+    }
+
     for (const m of src.matchAll(/(\.storage)?\.from\(\s*["'`]([a-z_]+)["'`]/g)) {
       if (m[1]) continue;
       const table = m[2];
       if (ALLOWED_TABLES.has(table)) continue;
+      const antes = src.slice(0, m.index).trimEnd();
+      const raiz = /([\w$]+)$/.exec(antes)?.[1] ?? "";
+      if (!nombres.includes(raiz) && !antes.endsWith("createServiceClient()")) continue;
       const line = src.slice(0, m.index).split("\n").length;
       offenders.push({ file: path.relative(projectRoot, file), line, table });
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { StockBadge } from "@/components/stock-badge";
 import { CircleCheck, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -102,6 +103,8 @@ export function ProductDetail({
   producto,
   rates,
   stock,
+  umbralDeStock = 0,
+  mostrarDisponible = true,
   isPreview = false,
   volverAlCatalogo,
   alAgregar,
@@ -109,6 +112,21 @@ export function ProductDetail({
 }: {
   token: string;
   productId: string;
+  /** El «avísame cuando queden N o menos» del negocio, desde la migración `164`. Cero --el valor por defecto-- = nada se pone ámbar, que es como se comportaba esta pantalla antes de ella. */
+  umbralDeStock?: number;
+  /**
+   * `false` cuando quien monta esta ficha YA dibuja su propio chip de
+   * existencias encima. Lo pasan las dos pantallas del tendero que reutilizan
+   * este componente --la hoja de producto de una venta y la de editar una
+   * línea de pedido--, que tienen el suyo junto al título.
+   *
+   * Hasta el 2026-10-29 esas dos enseñaban las dos cosas: la pastilla con la
+   * cifra y, unos píxeles más abajo, un «Disponible» en negrita que no añadía
+   * nada. Se veía como un descuido y lo era; lo que lo hacía invisible es que
+   * los dos dibujos eran distintos. Al unificar el chip quedaban dos píldoras
+   * idénticas pegadas, que es lo que obligó a mirarlo.
+   */
+  mostrarDisponible?: boolean;
   producto: ProductoPublico;
   // LA VISTA PREVIA DEL TENDERO MIRA Y NO TOCA. Decisión del dueño el
   // 2026-10-17: «el dueño solo puede ver la pantalla del listado de productos
@@ -313,10 +331,8 @@ export function ProductDetail({
 
           Sigue sin bloquear: el número no lo mantiene nadie (`CT-59`), así que
           se deja pedir de más y solo se avisa. */}
-      {stock != null ? (
-        <p className="text-sm font-semibold">
-          {stock === 0 ? "No disponible" : "Disponible"}
-        </p>
+      {mostrarDisponible ? (
+        <StockBadge quantity={stock} threshold={umbralDeStock} audience="customer" />
       ) : null}
 
       {bloque == null ? (

@@ -6,6 +6,13 @@ import { ChevronRight, Package, PackageMinus, PackageX, TriangleAlert } from "lu
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -301,58 +308,129 @@ function GraficoDeProductos({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// «AVÍSAME CUANDO QUEDEN ‹N› O MENOS»
+//
+// Era un campo numérico libre hasta el 2026-10-29, cuando el dueño pidió un
+// desplegable: *«cambiar input (…) por dropdown con opciones: 1; 2; 3; 4; 5;
+// 6; 12; 24; otro. Otro abre input editable»*.
+//
+// POR QUÉ UNA LISTA Y NO UN CAMPO, dicho por si algún día alguien quiere
+// volver: un campo numérico en una frase invita a teclear, y teclear aquí
+// abre un teclado en mitad de una pantalla de lectura. Las ocho cifras que
+// eligió no son arbitrarias — son la docena y la docena doble, que es como se
+// compra en una bodega.
+//
+// ───────────────────────────────────────────────────────────────────────
+// EL CERO NO ESTÁ EN LA LISTA Y SIGUE SIENDO VÁLIDO
+//
+// Cero significa «no me avises» (ver `guardarUmbralDeStock`), y la base lo
+// acepta. No se le dio opción propia porque no lo pidió; se llega por «Otro»,
+// y el campo lo dice en su pie para que no haya que adivinarlo.
+//
+// Y UN VALOR GUARDADO QUE NO ESTÉ EN LA LISTA ABRE «Otro» SOLO. Un negocio
+// que tuviera un 7 de antes vería «Otro» con su 7 dentro, no la lista
+// reseteada a 5 — que sería la pantalla cambiándole un ajuste por haberla
+// abierto.
+// ═══════════════════════════════════════════════════════════════════════
+const OPCIONES_DEL_UMBRAL = [1, 2, 3, 4, 5, 6, 12, 24];
+const OTRO = "otro";
+
 function AjusteDelUmbral({ umbral }: { umbral: number }) {
   const router = useRouter();
-  const [valor, setValor] = useState(String(umbral));
+  const enLaLista = OPCIONES_DEL_UMBRAL.includes(umbral);
+  const [opcion, setOpcion] = useState(enLaLista ? String(umbral) : OTRO);
+  const [otro, setOtro] = useState(enLaLista ? "" : String(umbral));
   const [guardando, startTransition] = useTransition();
-  const cambiado = valor.trim() !== String(umbral);
+
+  // `null` = lo que hay escrito no es un número guardable, así que no se
+  // ofrece el botón. Es la misma cuenta que hará el servidor, hecha antes para
+  // no mandar un viaje que ya se sabe que vuelve con un error.
+  const elegido = (() => {
+    if (opcion !== OTRO) return Number(opcion);
+    const n = Number(otro.trim());
+    if (otro.trim() === "" || !Number.isFinite(n) || !Number.isInteger(n)) return null;
+    return n >= 0 && n <= 10000 ? n : null;
+  })();
+  const cambiado = elegido != null && elegido !== umbral;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2.5">
-      <label htmlFor="umbral-stock" className="text-xs text-muted-foreground">
-        Avísame cuando queden
-      </label>
-      <Input
-        id="umbral-stock"
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={10000}
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        // `h-9 w-20` Y NO UN CAMPO DE ANCHO COMPLETO: es un número de dos
-        // cifras dentro de una frase, y un campo largo lo convierte en un
-        // formulario.
-        //
-        // Y 16px DE TIPOGRAFÍA COMO MÍNIMO --`text-base`--: Safari en iPhone
-        // hace zoom al enfocar cualquier campo por debajo de eso, y entonces
-        // la pantalla se queda ampliada. Está en `CLAUDE.md`.
-        className="h-9 w-20 text-base tabular-nums"
-      />
-      <span className="text-xs text-muted-foreground">o menos.</span>
+    <div className="flex flex-col gap-2 rounded-[10px] border px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="umbral-stock" className="text-xs text-muted-foreground">
+          Avísame cuando queden
+        </label>
+        <Select
+          value={opcion}
+          onValueChange={(v) => {
+            setOpcion(v);
+            // AL ABRIR «Otro» SE ARRANCA DEL VALOR VIGENTE y no en blanco: el
+            // tendero suele venir a subirlo o bajarlo un poco, y un campo
+            // vacío le pide recordar en cuánto lo tenía.
+            if (v === OTRO && otro.trim() === "") setOtro(String(umbral));
+          }}
+        >
+          {/* `w-24` Y NO ANCHO COMPLETO, por lo mismo que tenía el campo: es
+              un número de dos cifras dentro de una frase, y un control largo
+              la convierte en un formulario. */}
+          <SelectTrigger id="umbral-stock" size="sm" className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OPCIONES_DEL_UMBRAL.map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {n}
+              </SelectItem>
+            ))}
+            <SelectItem value={OTRO}>Otro</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">o menos.</span>
+      </div>
+
+      {opcion === OTRO ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            aria-label="Otra cantidad para el aviso"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={10000}
+            value={otro}
+            onChange={(e) => setOtro(e.target.value)}
+            // 16px DE TIPOGRAFÍA COMO MÍNIMO --`text-base`--: Safari en iPhone
+            // hace zoom al enfocar cualquier campo por debajo de eso y la
+            // pantalla se queda ampliada. Está en `CLAUDE.md`.
+            className="h-9 w-24 text-base tabular-nums"
+          />
+          <span className="text-xs text-muted-foreground">
+            Escribe 0 si no quieres que te avisemos.
+          </span>
+        </div>
+      ) : null}
+
       {cambiado ? (
         <Button
           type="button"
           size="sm"
-          className="h-9"
+          className="h-9 w-fit"
           disabled={guardando}
           onClick={() =>
             startTransition(async () => {
-              const r = await guardarUmbralDeStock(Number(valor));
+              const r = await guardarUmbralDeStock(elegido);
               if (!r.ok) {
                 toast.error(r.error);
                 return;
               }
-              // `router.refresh()` Y NO SOLO EL `revalidatePath` DE LA ACCION.
+              // `router.refresh()` Y NO SOLO EL `revalidatePath` DE LA ACCIÓN.
               // Medido el 2026-10-27: al bajar el umbral de 5 a 2, la base
-              // guardaba el 2 y las tres tarjetas seguian diciendo 2/6/0
+              // guardaba el 2 y las tres tarjetas seguían diciendo 2/6/0
               // cuando ya eran 3/5/0. Un ajuste que dice «Listo» y no mueve
               // ninguna cifra se lee como que no hace nada -- y el tendero
               // deja de tocarlo.
               //
-              // `revalidatePath` invalida la cache del servidor; lo que vuelve
-              // a pedir el arbol es esto. Es el patron que `order-more-menu`
-              // ya usa.
+              // Y DESDE EL 2026-10-29 REFRESCA ADEMÁS LOS CHIPS de las otras
+              // siete pantallas, que ahora se gradúan con este mismo número.
               router.refresh();
               toast.success("Listo, te avisaremos con ese número");
             })
@@ -418,6 +496,7 @@ export function ReportesInventario({
               enseña. Cambiarla aquí haría que el chip de la tarjeta y la
               hoja que abre dijeran cifras distintas, que es peor. */}
           <ReportesProductosSheet
+            umbral={datos.umbral}
             titulo="Productos disponibles"
             encabezado={{
               titulo: "Capital en inventario",
@@ -447,6 +526,7 @@ export function ReportesInventario({
           </ReportesProductosSheet>
 
           <ReportesProductosSheet
+            umbral={datos.umbral}
             titulo="Por agotarse"
             filas={filasDeVendido(datos.vendidoPorAgotarse)}
             productos={datos.porAgotarseLista}
@@ -468,6 +548,7 @@ export function ReportesInventario({
         </div>
 
         <ReportesProductosSheet
+          umbral={datos.umbral}
           titulo="Referencias agotadas"
           filas={filasDeVendido(datos.vendidoAgotadas)}
           productos={datos.agotadasLista}
@@ -637,6 +718,7 @@ export function ReportesInventario({
         accion={
           datos.margenLista.length ? (
             <ReportesProductosSheet
+              umbral={datos.umbral}
               titulo="Margen por producto"
               filas={[]}
               productos={datos.margenLista}
@@ -677,6 +759,7 @@ export function ReportesInventario({
             // SU FRAME --`1747:14327`-- NO LLEVA SUBTÍTULO NI TARJETAS DE
             // DINERO: solo el título, el buscador y la lista.
             <ReportesProductosSheet
+              umbral={datos.umbral}
               titulo="Más vendidos"
               filas={[]}
               productos={datos.masVendidosLista}

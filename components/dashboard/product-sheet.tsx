@@ -1,11 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { StockBadge } from "@/components/stock-badge";
 import { ImageOff } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ProductDetail } from "@/components/public/product-detail";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -40,9 +40,12 @@ export function ProductSheet({
   rates,
   monedasPermitidas,
   onAgregar,
+  umbralDeStock,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** `owners.low_stock_threshold`, traído desde el servidor: esta hoja es cliente y no puede leerlo. */
+  umbralDeStock: number;
   producto: {
     id: string;
     name: string;
@@ -104,11 +107,7 @@ export function ProductSheet({
                 acaba de abrir, y sin él avisa por consola. Que además sea el
                 nombre del producto es lo correcto, no un apaño. */}
             <SheetTitle className="text-2xl font-normal">{producto.name}</SheetTitle>
-            {producto.stock != null ? (
-              <span className="w-fit rounded-full bg-money-in/10 px-1.5 text-xs text-money-in">
-                Disponible: {formatCantidad(producto.stock)}
-              </span>
-            ) : null}
+            <StockBadge quantity={producto.stock} threshold={umbralDeStock} />
             {producto.unit ? (
               <p className="text-xs text-muted-foreground">{producto.unit}</p>
             ) : null}
@@ -122,6 +121,7 @@ export function ProductSheet({
           ) : null}
 
           <ProductDetail
+            mostrarDisponible={false}
             // TOKEN VACÍO A PROPÓSITO. Solo lo usan el carrito del cliente
             // (`useCarrito`) y el enlace de vuelta al catálogo público, y con
             // `alAgregar` puesto no se llega a ninguno: `useCarrito` LEE al

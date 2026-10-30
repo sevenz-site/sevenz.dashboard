@@ -4,6 +4,7 @@ import { MetricCharts } from "@/components/admin/metric-charts";
 import { MetricFilters } from "@/components/admin/metric-filters";
 import { ServiceHealth } from "@/components/admin/service-health";
 import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
+import { getSaludDelAsistente } from "@/lib/admin/asistente-salud";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import {
@@ -122,7 +123,7 @@ export default async function AdminMetricsPage({
   };
   const bucket: Bucket = sp.bucket === "day" || sp.bucket === "month" ? sp.bucket : "week";
 
-  const [summary, totals, trend, byOwner, owners, credit, health, cronWhatsapp] =
+  const [summary, totals, trend, byOwner, owners, credit, health, cronWhatsapp, asistente] =
     await Promise.all([
       getCurrencySummary(filters),
       getTotals(filters),
@@ -136,6 +137,11 @@ export default async function AdminMetricsPage({
       // "¿corrió el cron en septiembre?" no significa nada útil; la única
       // pregunta es si corrió HOY.
       getSaludDelCronWhatsapp(),
+      // SIN `filters`, por lo mismo que el cron: esto no es una métrica de
+      // negocio sino el pulso de una tubería, y «¿se cayó el asistente en
+      // septiembre?» no se puede hacer nada con ello. La ventana la fija la
+      // propia función en 7 días.
+      getSaludDelAsistente(),
     ]);
 
   const movementsTotal = summary.reduce((s, r) => s + Number(r.movements_total), 0);
@@ -312,6 +318,22 @@ export default async function AdminMetricsPage({
           hint={cronWhatsapp.detalle}
           alert={cronWhatsapp.estado === "fail"}
           explica="Cuándo corrió por última vez la tanda de avisos por WhatsApp a los dueños, y cuántos mensajes salieron en los últimos 7 días. La cifra grande son los envíos de la semana; lo que hay que mirar es la línea de abajo. Se pone en rojo cuando pasan más de 26 horas sin una corrida, porque el cron va una vez al día: eso significa que dejó de dispararse, y nadie se entera por otra vía hasta que un dueño dice que no le llega nada. Un cero en envíos NO es una alarma por sí solo — puede que ningún dueño tenga los avisos activos, o que sea lunes y solo toque el resumen."
+        />
+
+        {/* LAS CAÍDAS DEL ASISTENTE — encargo del dueño el 2026-10-29.
+            Va al lado del cron y no en el panel de salud de arriba a
+            propósito: aquello son SONDAS, que llaman al servicio y dicen si
+            contesta ahora. Esto es un RECUENTO, y la diferencia importa
+            porque el asistente está hecho para que su caída sea invisible —
+            al tendero le sale un texto escrito a mano, sin ningún error en
+            pantalla. Una sonda puede decir «Gemini responde» todos los días y
+            tapar que a treinta negocios les falló esta mañana. */}
+        <Stat
+          label="Caídas del asistente"
+          value={asistente.total === 0 ? "—" : `${asistente.caidas}`}
+          hint={asistente.detalle}
+          alert={asistente.alarma}
+          explica="Cuántos resúmenes del asistente de Reportes se tuvieron que resolver con el texto escrito a mano en lugar de con la IA, en los últimos 7 días. La cifra grande son las caídas; la línea de abajo dice de cuántos resúmenes y por qué motivo, que es lo que decide qué hacer: «cuota agotada» significa que el nivel gratuito de Gemini tocó techo y toca pasar a pago; «Gemini falló» es de Google y no hay nada que tocar aquí; «se agotó el tiempo» es que nuestro presupuesto de 12 segundos se quedó corto; «cifra inventada» es que el modelo escribió un número que no estaba en los datos y la app lo rechazó —el fallo funcionó—; y «sin clave» es que falta la variable de entorno. Se pone en rojo cuando más de un tercio de la semana se cayó, y solo con cinco resúmenes o más: con menos, un único fallo daría porcentajes que no significan nada."
         />
       </div>
 

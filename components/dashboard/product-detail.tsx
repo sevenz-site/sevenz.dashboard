@@ -23,9 +23,9 @@ import {
   TarjetaDePublicacion,
 } from "@/components/dashboard/product-detail-rows";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
+import { StockBadge } from "@/components/stock-badge";
 import { trashProduct } from "@/app/(app)/productos/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { CLIENT_STATUS_BADGE_CLASS } from "@/lib/types";
 import type { ProductRow } from "@/lib/products/catalog";
 // `formatPriceAmount` Y NO UN FORMATEADOR PROPIO: es la misma regla que la
 // cabecera de `product-detail-rows.tsx` deja escrita. Dos fichas del mismo
@@ -76,12 +76,15 @@ export function ProductDetail({
   rates,
   businessName,
   catalogToken,
+  lowStockThreshold,
 }: {
   product: ProductRow;
   // null en un negocio colombiano: no hay equivalencias que calcular.
   rates: BolivarRates | null;
   businessName: string;
   catalogToken: string | null;
+  /** `owners.low_stock_threshold`, so the chip knows what «running low» means here. */
+  lowStockThreshold: number;
 }) {
   const router = useRouter();
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
@@ -178,18 +181,18 @@ export function ProductDetail({
         <div className="flex flex-col gap-1.5">
           <h1 className="text-2xl leading-8 break-words">{product.name}</h1>
           {/* «Disponible: 00» — nodo `1730:14438`.
-              SOLO SI HAY CIFRA. `stock_opening` es la existencia de APERTURA y
-              nada la mueve todavía (ver su comentario en `lib/products/
-              catalog.ts`), así que en un producto sin ese dato el chip diría
-              «Disponible: —», que no informa de nada y ocupa el sitio de algo
-              que sí. */}
-          {product.stock_opening != null ? (
-            <span
-              className={`inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border px-1.5 py-px text-xs leading-4 ${CLIENT_STATUS_BADGE_CLASS.a_favor}`}
-            >
-              Disponible: {product.stock_opening}
-            </span>
-          ) : null}
+              THE CHIP AND ITS COLOUR NOW COME FROM `StockBadge`, shared with
+              the other seven screens that draw it. What used to be here was
+              the green pill, hardcoded, for every quantity — which is how the
+              owner ended up looking at a green «Disponible: 0» on 2026-10-29
+              and asking for this. A product at or below his alert threshold
+              now reads amber, and zero reads red.
+
+              THE «SOLO SI HAY CIFRA» RULE SURVIVES, inside the badge: a
+              product nobody counts renders nothing rather than «Disponible:
+              —», which informs no one and takes the place of something that
+              would. */}
+          <StockBadge quantity={product.stock_opening} threshold={lowStockThreshold} />
         </div>
 
         <div className="flex flex-col">

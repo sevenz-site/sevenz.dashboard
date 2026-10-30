@@ -172,6 +172,7 @@ export function NuevaVenta({
   ownerId,
   ownerCountry,
   rateContext,
+  umbralDeStock,
 }: {
   // La lista del buscador del paso 3, sin el mostrador: se elige con su propio
   // botón y no buscándolo por nombre.
@@ -182,6 +183,8 @@ export function NuevaVenta({
   // pregunta todavía: ver el comentario de los tres pasos, abajo.
   inicial: Elegido | null;
   ownerId: string;
+  /** `owners.low_stock_threshold`, para el chip de existencias de la hoja de producto. */
+  umbralDeStock: number;
   // Para pintar los saldos de la tarjeta del paso 4 en el libro del negocio.
   // `null` en uno colombiano: no hay equivalencias que enseñar.
   rateContext: OwnerRateContext | null;
@@ -536,6 +539,7 @@ export function NuevaVenta({
           onAgregar={(l) => setLineas((xs) => agregar(xs, l))}
           onIrAlCarrito={() => setPaso(2)}
           ownerId={ownerId}
+          umbralDeStock={umbralDeStock}
         />
       ) : null}
 
@@ -707,6 +711,7 @@ function PasoProducto({
   onAgregar,
   onIrAlCarrito,
   ownerId,
+  umbralDeStock,
 }: {
   catalogo: ProductosParaVenta | null;
   onCatalogo: (c: ProductosParaVenta) => void;
@@ -715,6 +720,8 @@ function PasoProducto({
   onIrAlCarrito: () => void;
   // Para el diálogo de alta de producto, que lo pide.
   ownerId: string;
+  /** `owners.low_stock_threshold`, para el chip de existencias de la hoja. */
+  umbralDeStock: number;
 }) {
   const [query, setQuery] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -881,6 +888,7 @@ function PasoProducto({
       {detalle ? (
         <ProductSheet
           key={detalle.id}
+          umbralDeStock={umbralDeStock}
           open
           onOpenChange={(abierto: boolean) => !abierto && setDetalle(null)}
           producto={detalle}

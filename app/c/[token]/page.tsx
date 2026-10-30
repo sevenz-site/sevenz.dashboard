@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { StockBadge } from "@/components/stock-badge";
 import Image from "next/image";
 import Link from "next/link";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -97,6 +98,13 @@ type SharedProduct = {
 };
 
 type SharedCatalog = {
+  // EL UMBRAL DEL NEGOCIO --«avísame cuando queden N o menos»--, desde la
+  // migración `164`. Es lo único que separa «quedan pocas» de «hay de sobra»
+  // en esta cuadrícula, y viaja como un escalar porque es del NEGOCIO y no del
+  // producto. La decisión de qué hacer con él no está aquí: la toma
+  // `lib/products/availability.ts`, la misma que gradúa las ocho pantallas del
+  // tendero, para que las dos caras no puedan discrepar.
+  low_stock_threshold: number | null;
   business_name: string | null;
   owner_logo_path: string | null;
   // YA NO SE PINTA. Hasta el 2026-10-15 esta pagina tenia un boton
@@ -205,6 +213,13 @@ export default async function CatalogoPublicoPage({
   // pruebe tokens al azar no aprende nada de la diferencia. El detalle real ya
   // quedo en `console.error` y nunca viaja en la respuesta.
   if (!shared) return <EnlaceInvalido />;
+
+  // EL UMBRAL DEL AVISO, ya resuelto para toda la cuadrícula. `?? 0` y no `?? 5`
+  // a propósito: si la migración `164` todavía no corrió en este entorno la
+  // clave llega indefinida, y un cero hace que NADA se ponga ámbar -- que es
+  // exactamente lo que esta página hacía ayer. Un 5 inventado pondría en ámbar
+  // productos de un negocio que nunca eligió ese número.
+  const umbralDeStock = Number(shared.low_stock_threshold ?? 0);
 
   const logoUrl = shared.owner_logo_path
     ? getPublicLogoUrl(shared.owner_logo_path)
@@ -489,15 +504,21 @@ export default async function CatalogoPublicoPage({
                           {formatPriceAmount(p.price, p.base_currency)}
                         </span>
 
-                        <span
-                          className={`mt-2 w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${
-                            p.stock === 0
-                              ? "border-red-200 bg-red-50 text-red-700"
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          {p.stock === 0 ? "No disponible" : "Disponible"}
-                        </span>
+                        {/* LA ETIQUETA ES AHORA `StockBadge`, compartida con
+                            la ficha de este mismo producto y con las ocho
+                            pantallas del tendero. Antes eran clases escritas
+                            aquí a mano, fuera de la paleta del sistema --el
+                            mismo error que `chip-de-estado.tsx` documenta--.
+
+                            `audience="customer"` ES LA DECISIÓN DEL 2026-10-15
+                            llevada dentro del componente: sin cifra, salvo
+                            cuando quedan pocas. */}
+                        <StockBadge
+                          quantity={p.stock}
+                          threshold={umbralDeStock}
+                          audience="customer"
+                          className="mt-2"
+                        />
                       </div>
                     </Link>
                   </li>

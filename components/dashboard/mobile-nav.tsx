@@ -523,6 +523,35 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // sin ir a buscar la otra bandera.
   const enVentaRegistrada = /^\/ventas\/(?!nueva$)[^/]+$/.test(pathname);
 
+  // ── REPORTES SE QUEDA SIN FLOTANTE, DESDE EL 2026-10-29 ─────────────
+  //
+  // Decisión del dueño, puesta a elegir con la medición delante. El asistente
+  // que estrenó esa pantalla termina en dos botones de 40px --«Poco» y
+  // «Mucho»-- y el flotante cae justo encima: él ocupa `y 652-708` y los
+  // pulgares `625-665`.
+  //
+  // LA MEDICIÓN QUE LO DECIDIÓ, porque mirarla no bastaba: el CENTRO de cada
+  // pulgar sigue recibiendo su toque, así que el botón no está muerto. Lo que
+  // queda debajo es la PALABRA --«Poco» y «Mucho» viven en `645-661`-- y
+  // `elementFromPoint` sobre ellas devuelve «Registrar». Se apunta a la
+  // palabra, no al hueco de encima.
+  //
+  // Y NO HABÍA ARREGLO DE MAQUETACIÓN. El flotante es fijo y la altura del
+  // banner depende de lo largo que salga el resumen ese día, así que unos días
+  // taparía y otros no: una lotería es peor que un fallo constante, porque el
+  // constante se reporta.
+  //
+  // LA BARRA SE QUEDA. Reportes es una de las cuatro pestañas y quitarle la
+  // navegación sería dejar al tendero sin salida. Por eso esto va aquí, en la
+  // lista del flotante, y no en el `return null` de arriba, que se lleva las
+  // dos cosas.
+  //
+  // PRECEDENTE EN LOS DOS SENTIDOS, y conviene saberlo si algún día se
+  // reabre: el 2026-10-26 el flotante se quitó de la ficha del producto por
+  // esto mismo, y el 2026-10-24 el dueño lo devolvió a las pantallas de éxito
+  // sabiendo que allí tapa botones en reposo.
+  const enReportes = pathname === "/reportes";
+
   // EL DETALLE DE UNA TRANSACCIÓN: NI BARRA NI BOTÓN.
   //
   // Decisión del dueño el 2026-10-20, con una captura y la barra rodeada en
@@ -697,7 +726,7 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `pantallaVacia` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `pantalla-vacia.ts`, y el comentario de `pantallaVacia` arriba. */}
-      {!enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && (
+      {!enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && !enReportes && (
       <button
         type="button"
         // Its own marker, not the one the page CTA uses. The tour finds its
