@@ -129,7 +129,7 @@ export async function deleteMovement(
   // `confirmImport` and fixed both; this one was missed.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, clients!inner(owner_id)")
+    .select("id, client_id, type, transaction_code, clients!inner(owner_id)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .is("deleted_at", null)
@@ -167,10 +167,30 @@ export async function deleteMovement(
     abonosBorrados = (abonos ?? []).map((a) => a.id as string);
   }
 
-  const { error: deleteError } = await supabase
-    .from("movements")
-    .update({ deleted_at: borradoEn })
-    .eq("id", movementId);
+  // ── UN ABONO REPARTIDO SE BORRA ENTERO ─────────────────────────────
+  //
+  // Decisión del dueño el 2026-10-30: un reparto de USD 20 en cuatro fiados es
+  // UNA transacción —el historial lo enseña como una tarjeta y su ficha como un
+  // reparto— así que borrarla borra las cuatro líneas, de los dos libros si
+  // cruzó monedas. Borrar solo la línea por la que se entró dejaría la tarjeta
+  // en $15 sin que nada dijera cuál se fue.
+  //
+  // LAS LÍNEAS SON LAS DEL MISMO CÓDIGO, que es la regla con la que el
+  // historial las junta (`lib/history/group-payments.ts`). Con
+  // `client_id` explícito y solo abonos, por lo mismo que arriba.
+  //
+  // Y TODAS CON EL MISMO `deleted_at`, a propósito: es lo que
+  // `restoreMovement` usa para devolver juntas las que se fueron juntas.
+  let borrar = supabase.from("movements").update({ deleted_at: borradoEn });
+  borrar =
+    movement.type === "payment" && movement.transaction_code
+      ? borrar
+          .eq("client_id", movement.client_id)
+          .eq("type", "payment")
+          .eq("transaction_code", movement.transaction_code as string)
+          .is("deleted_at", null)
+      : borrar.eq("id", movementId);
+  const { error: deleteError } = await borrar;
 
   if (deleteError) {
     return { error: mensajeDeError("eliminar la transacción", deleteError, "deleteMovement") };
@@ -186,6 +206,13 @@ export async function deleteMovement(
   // UNA FILA POR MOVIMIENTO BORRADO. Ver la cabecera: dos avisos separados en
   // Notificaciones, porque restaurar los dos juntos exigiría guardar que se
   // borraron juntos y esta tabla no lo guarda.
+  //
+  // UN REPARTO ES LA EXCEPCIÓN Y LLEVA UNA SOLA FILA, la de la línea por la que
+  // se borró. Pedido por el dueño el 2026-10-30: *«debería aparecer
+  // notificación de restaurar de una única transacción a restaurar porque el
+  // dueño realizó solo una transacción, no 4»*. Lo que aquí no se guarda —que
+  // se borraron juntas— lo dice el `deleted_at` compartido, y
+  // `getNotifications` suma sus líneas para que el aviso diga el total.
   const { error: notifyError } = await supabase.from("movement_deletions").insert(
     [movementId, ...abonosBorrados].map((id) => ({
       movement_id: id,
@@ -223,7 +250,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, sale_id, clients!inner(owner_id)")
+    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
@@ -273,13 +300,29 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
     }
   }
 
-  const { error: restoreError } = await supabase
-    .from("movements")
-    .update({ deleted_at: null })
-    .eq("id", movementId);
+  // UN REPARTO VUELVE ENTERO: las líneas de su código que se borraron en el
+  // MISMO acto, reconocidas por compartir `deleted_at` (ver `deleteMovement`).
+  // Una línea que se borró en otro momento —con su fiado, por ejemplo— no
+  // vuelve por este aviso: tiene el suyo.
+  let restaurar = supabase.from("movements").update({ deleted_at: null });
+  restaurar =
+    movement.type === "payment" && movement.transaction_code
+      ? restaurar
+          .eq("client_id", movement.client_id)
+          .eq("type", "payment")
+          .eq("transaction_code", movement.transaction_code as string)
+          .eq("deleted_at", movement.deleted_at as string)
+      : restaurar.eq("id", movementId);
+  const { data: restauradas, error: restoreError } = await restaurar.select("id");
 
   if (restoreError) {
     return { error: mensajeDeError("restaurar la transacción", restoreError, "restoreMovement") };
+  }
+  // UN UPDATE QUE NO TOCA NADA NO ES UN ÉXITO. Desde que este filtro es más que
+  // un id —el reparto, 2026-10-30— puede dejar de casar, y entonces la pantalla
+  // diría «Transacción restaurada» con el dinero todavía fuera del saldo.
+  if (!restauradas || restauradas.length === 0) {
+    return { error: "No pudimos restaurar esa transacción. Inténtalo de nuevo." };
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {

@@ -108,6 +108,7 @@ export function DetalleAcciones({
   // tendero a un callejón sin salida.
   puedePagar,
   abonosDirigidos = 0,
+  lineasDelReparto = 1,
 }: {
   movementId: string;
   clientId: string;
@@ -117,6 +118,10 @@ export function DetalleAcciones({
   // nadie ha pagado nada, y entonces el diálogo no pregunta nada: una casilla
   // sobre «sus abonos» cuando no hay ninguno es una pregunta sin respuesta.
   abonosDirigidos?: number;
+  // CUÁNTAS LÍNEAS TIENE ESTE ABONO, si es un reparto. Más de una cambia lo que
+  // el diálogo promete: se borra el abono entero (decisión del dueño el
+  // 2026-10-30) y vuelve con un solo aviso en Notificaciones.
+  lineasDelReparto?: number;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
@@ -231,8 +236,9 @@ export function DetalleAcciones({
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se recalculará el saldo de este cliente y el capital por cobrar. Podrás restaurarlo
-              después desde Notificaciones.
+              {lineasDelReparto > 1
+                ? `Se eliminará el abono completo, con su reparto en ${lineasDelReparto} fiados. Se recalculará el saldo de este cliente y podrás restaurarlo después desde Notificaciones.`
+                : "Se recalculará el saldo de este cliente y el capital por cobrar. Podrás restaurarlo después desde Notificaciones."}
             </AlertDialogDescription>
           </AlertDialogHeader>
 

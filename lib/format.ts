@@ -18,6 +18,15 @@ export function formatDate(iso: string): string {
   );
 }
 
+// «30 de agosto de 2026», the date as the history cards draw it -- frames
+// `1861:15468`, `1861:15490` and `1861:15513` (owner's request of
+// 2026-10-30). The detail screens keep the short `formatDate`.
+export function formatDateLong(iso: string): string {
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric" }).format(
+    new Date(iso),
+  );
+}
+
 export function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",

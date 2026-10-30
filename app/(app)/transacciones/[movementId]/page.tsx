@@ -16,6 +16,7 @@ import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
+import type { PaymentLine } from "@/components/dashboard/payment-summary";
 import type { LedgerCurrency, Movement } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -321,6 +322,91 @@ export default async function TransaccionPage({
     }));
   }
 
+  // ── TODAS LAS LÍNEAS DE ESTE ABONO ───────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-30: un abono repartido es UNA transacción, y
+  // su ficha enseña a qué fiados fue. Las líneas se buscan por el CÓDIGO de
+  // transacción y la moneda, que es la misma regla con la que el historial las
+  // junta en una tarjeta (`lib/history/group-payments.ts`): la tarjeta y la
+  // ficha no pueden discrepar sobre qué es «este abono».
+  //
+  // POR LIBRO: un reparto en bolívares que cruzó dólares y euros tiene una
+  // tarjeta por libro, y cada una abre su parte. Igual que una venta mixta.
+  //
+  // `client_id` EXPLÍCITO, la regla de CLAUDE.md: el código no es de nadie en
+  // particular, y sin ese filtro la RLS sería lo único entre esta ficha y las
+  // líneas de otro cliente.
+  let lineasDelAbono: PaymentLine[] | undefined;
+  let lineasDelReparto = 1;
+  if (m.type === "payment") {
+    const consulta = supabase
+      .from("movements")
+      .select("id, amount, created_at, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id")
+      .eq("client_id", cliente.id)
+      .eq("type", "payment")
+      .is("deleted_at", null);
+    const conCodigo = m.transaction_code
+      ? consulta.eq("transaction_code", m.transaction_code as string)
+      : consulta.eq("id", m.id);
+    const { data: filas } = await (m.currency == null
+      ? conCodigo.is("currency", null)
+      : conCodigo.eq("currency", m.currency)
+    )
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+    const lineas = filas ?? [];
+    // EL BORRADO SE LLEVA TODAS LAS LÍNEAS DEL CÓDIGO, de los dos libros si
+    // cruzó monedas: fue UN pago. Por eso este recuento no filtra la moneda.
+    if (m.transaction_code) {
+      const { count } = await supabase
+        .from("movements")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", cliente.id)
+        .eq("type", "payment")
+        .eq("transaction_code", m.transaction_code as string)
+        .is("deleted_at", null);
+      lineasDelReparto = Math.max(1, count ?? lineas.length);
+    }
+
+    const idsDeFiados = [
+      ...new Set(lineas.map((l) => l.applies_to_movement_id as string | null).filter((x): x is string => !!x)),
+    ];
+    const fiados = new Map<string, { created_at: string; plazo_dias: number | null; cuotas: number | null; amount: number }>();
+    if (idsDeFiados.length > 0) {
+      const { data: fs } = await supabase
+        .from("movements")
+        .select("id, created_at, plazo_dias, cuotas, amount")
+        .in("id", idsDeFiados)
+        .eq("client_id", cliente.id)
+        .is("deleted_at", null);
+      for (const f of fs ?? []) {
+        fiados.set(f.id as string, {
+          created_at: f.created_at as string,
+          plazo_dias: (f.plazo_dias as number | null) ?? null,
+          cuotas: (f.cuotas as number | null) ?? null,
+          amount: Number(f.amount),
+        });
+      }
+    }
+
+    lineasDelAbono = lineas.map((l): PaymentLine => {
+      const aplicaA = (l.applies_to_movement_id as string | null) ?? null;
+      const f = aplicaA ? fiados.get(aplicaA) : undefined;
+      return {
+        movementId: l.id as string,
+        amount: Number(l.amount),
+        entryCurrency: (l.entry_currency ?? null) as PaymentLine["entryCurrency"],
+        entryAmount: l.entry_amount == null ? null : Number(l.entry_amount),
+        exchangeRateUsed: l.exchange_rate_used == null ? null : Number(l.exchange_rate_used),
+        fiado: f
+          ? { fecha: f.created_at, plazoDias: f.plazo_dias, cuotas: f.cuotas, amount: f.amount }
+          : null,
+        fiadoDeleted: aplicaA != null && f == null,
+        hrefDelFiado: f && aplicaA ? `/transacciones/${aplicaA}` : null,
+      };
+    });
+  }
+
   // ── CON QUÉ SE COMPARTE ──────────────────────────────────────────────
   //
   // EL SALDO YA NO VIAJA. Hasta el 2026-10-30 el mensaje decía «tu saldo
@@ -360,6 +446,9 @@ export default async function TransaccionPage({
           // calculado arriba para la propia ficha, así que no cuesta otra
           // consulta; `?? []` cubre el caso de un abono, donde no se pide.
           abonosDirigidos={(abonosRecibidos ?? []).length}
+          // CUÁNTAS LÍNEAS SE VAN SI SE BORRA ESTE ABONO: un reparto se borra
+          // entero (decisión del dueño el 2026-10-30), y el diálogo lo dice.
+          lineasDelReparto={lineasDelReparto}
         />
       </div>
 
@@ -391,6 +480,7 @@ export default async function TransaccionPage({
         fiadoBorrado={m.type === "payment" && m.applies_to_movement_id != null && fiadoAplicado == null}
         hrefDelFiado={fiadoAplicado ? `/transacciones/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        lineasDelAbono={lineasDelAbono}
         abonoInicial={abonoInicial}
         abonoInicialBs={abonoInicialBs}
         // ESTA PANTALLA ES DEL DUEÑO: sus tarjetas de abono llevan el «⋮» con

@@ -43,6 +43,7 @@
     "qa:precio-publico": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/precio-publico.mjs",
     "qa:precio-vista-previa": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/precio-vista-previa.mjs",
     "qa:codigo-parcial": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/codigo-parcial.mjs",
+    "qa:agrupar-abonos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/agrupar-abonos.mjs",
     "qa:catalogo-enlace": "node qa/catalogo-en-el-enlace.mjs",
     "qa:orden": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/orden.mjs",
     "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",

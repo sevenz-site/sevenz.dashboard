@@ -10,6 +10,7 @@ import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
+import { PaymentSummary, type PaymentLine } from "@/components/dashboard/payment-summary";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatDate, formatPlazoDias } from "@/lib/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -120,6 +121,17 @@ export type DatosDelDetalle = {
   // `/transacciones/<id>` en la del tendero y `/s/<token>/t/<id>` en la del
   // cliente. `null` deja las tarjetas sin enlace, como estaban.
   hrefDeUnAbono?: ((movementId: string) => string) | null;
+  // ── LAS LÍNEAS DE UN ABONO, TODAS ───────────────────────────────────
+  //
+  // Encargo del dueño el 2026-10-30 (screen «Abono V9», `1864:15646`): un
+  // abono repartido es UNA transacción y su ficha enseña el reparto entero.
+  // Con esto, un abono se dibuja con `PaymentSummary` —que explica qué cambió
+  // y por qué— en vez del resumen en caja de `1580:11677`. Un abono sin
+  // repartir llega con una sola línea.
+  //
+  // OPCIONAL a propósito: sin él, la ficha de un abono se dibuja como hasta
+  // hoy, que es lo que pasa en cualquier superficie que todavía no lo mande.
+  lineasDelAbono?: PaymentLine[];
   // ── ¿ESTA PANTALLA PUEDE EDITAR? ────────────────────────────────────
   //
   // `false` en la del CLIENTE. Lo reportó el dueño el 2026-10-21: sus
@@ -156,7 +168,12 @@ export function DetalleDeTransaccion({
   abonoInicialBs = null,
   abonosRecibidos,
   hrefDeUnAbono = null,
+  lineasDelAbono,
 }: DatosDelDetalle) {
+  // EL ABONO CON SU REPARTO, frame V9. Cuando es así, tres cosas de esta ficha
+  // no se dibujan: «Tipo» arriba (vive dentro del resumen), el resumen en caja,
+  // y el grupo de plazo y cuotas, que era el de UN fiado. Ver `PaymentSummary`.
+  const conReparto = type === "payment" && lineasDelAbono != null && lineasDelAbono.length > 0;
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
 // ── UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS ────────────────────
   //
@@ -309,6 +326,7 @@ export function DetalleDeTransaccion({
     <dl className="flex flex-col gap-4">
       <Grupo>
         <Fila nombre="Fecha">{formatDate(createdAt)}</Fila>
+        {conReparto ? null : (
         <Fila nombre="Tipo">
           <span className="inline-flex items-center gap-1.5">
             {type === "charge" ? "Fiado / Crédito" : "Abono"}
@@ -336,6 +354,7 @@ export function DetalleDeTransaccion({
             )}
           </span>
         </Fila>
+        )}
         {/* AQUÍ ESTUVO «Moneda registrada», retirada el 2026-10-20 a petición
             del dueño: *«Campo moneda registrada no va, eliminalo»*.
 
@@ -352,9 +371,17 @@ export function DetalleDeTransaccion({
             `equivalente` para decidir si enseñan bolívares o divisa. */}
       </Grupo>
 
-      {/* LA TARJETA DEL RESUMEN. El frame la dibuja con su marco y su título:
+      {conReparto ? (
+        <PaymentSummary
+          createdAt={createdAt}
+          currency={currency}
+          ledger={ledger}
+          lines={lineasDelAbono}
+        />
+      ) : (
+      /* LA TARJETA DEL RESUMEN. El frame la dibuja con su marco y su título:
           «Resumen de abono» cuando es un pago, «Resumen de compra en X» cuando
-          es un fiado. */}
+          es un fiado. */
       <div className="flex flex-col gap-1.5 rounded-[10px] border p-2.5">
         <p className="py-2 text-sm leading-5">
           {/* LOS DOS NOMBRAN SU LIBRO desde el 2026-10-24 — frame
@@ -647,7 +674,9 @@ export function DetalleDeTransaccion({
           </span>
         </div>
       </div>
+      )}
 
+      {conReparto ? null : (
       <Grupo>
         <Fila nombre="Plazo de pago">{formatPlazoDias(acuerdo.plazoDias)}</Fila>
         {/* UN PAGO ÚNICO TAMBIÉN ES UNA CUOTA, Y TIENE FECHA. Reportado por
@@ -685,6 +714,7 @@ export function DetalleDeTransaccion({
           />
         ) : null}
       </Grupo>
+      )}
 
       <Grupo>
         <dt className="text-xs leading-5 text-muted-foreground">Descripción</dt>

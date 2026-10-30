@@ -154,6 +154,13 @@ export function MovementDeletionDialog({
             <Fila nombre="Monto">
               <span className="tabular-nums">{monto}</span>
             </Fila>
+            {/* UN REPARTO SE BORRÓ Y VUELVE ENTERO, y el aviso lo dice: sin
+                esta fila, «Abono $20» no avisa de que restaurarlo devuelve
+                cuatro líneas a cuatro fiados. No está en ningún frame: este
+                diálogo no tiene uno. */}
+            {notification.lineasDelReparto > 1 ? (
+              <Fila nombre="Repartido en">{`${notification.lineasDelReparto} fiados`}</Fila>
+            ) : null}
             {tasa ? (
               <Fila nombre="Tasa del día">
                 <span className="tabular-nums">{tasa}</span>
