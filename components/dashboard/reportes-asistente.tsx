@@ -108,6 +108,34 @@ export function ReportesAsistente() {
             <span className="text-sm leading-5">Asistente</span>
           </div>
 
+          {/* ── LA PREGUNTA QUE EL RESUMEN CONTESTA ──────────────────
+              Encargo del dueño el 2026-10-30: *«agreguemos la pregunta
+              "¿Cómo va la semana? Reporte diario", ayudará al dueño a tener
+              contexto acerca del reporte generado»*, con la captura y el
+              recuadro en rojo.
+
+              ESTO NO ESTÁ EN EL FRAME `1804:15424`, y se dice en voz alta:
+              es un añadido suyo posterior, no algo que yo deduje del diseño.
+
+              VA DENTRO DEL PLEGABLE y no encima, porque describe el informe,
+              no el bloque: plegado, lo que queda es «Asistente», que es lo
+              que el frame dibuja.
+
+              Y SE PINTA TAMBIÉN MIENTRAS CARGA, antes que el texto. Es lo
+              único que explica qué se está preparando durante los segundos
+              del esqueleto; ponerlo después dejaría tres rayas grises sin
+              decir de qué son.
+
+              «Reporte diario» EN GRIS Y NO COMO PARTE DE LA PREGUNTA: son dos
+              cosas distintas --lo que contesta y cada cuánto se rehace-- y el
+              dueño las escribió juntas en una línea. El color las separa sin
+              inventar puntuación que él no puso. */}
+          {abierto ? (
+            <p className="text-xs leading-4">
+              ¿Cómo va la semana? <span className="text-muted-foreground">Reporte diario</span>
+            </p>
+          ) : null}
+
           {abierto ? (
             nota ? (
               <div className="flex flex-col gap-0 text-xs leading-4">
