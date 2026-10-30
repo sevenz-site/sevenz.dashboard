@@ -150,7 +150,9 @@ EN QUÉ ORDEN ELEGIR QUÉ DECIR. Solo caben tres recomendaciones, así que si va
 3. Que venda más: pedidos del catálogo sin atender, márgenes bajos.
 4. Que no pierda clientes buenos: buenos pagadores que dejaron de comprar.
 
-Si no hay nada preocupante, escribe igual pero de lo bueno, y no inventes recomendaciones para rellenar: deja la lista vacía.
+CADA RECOMENDACIÓN TIENE QUE DECIR ALGO QUE HACER HOY, con un dato concreto detrás. Si no te quedan datos, escribe menos: es mejor UNA recomendación buena que tres, dos de ellas genéricas. Ejemplos de lo que NO vale, porque no dicen qué hacer ni a quién: «Revisa los montos pendientes para mantener la caja activa», «Monitorea tus ventas», «Mantén un buen control de tu inventario».
+
+Si no hay nada preocupante, escribe igual pero de lo bueno, y deja la lista de recomendaciones vacía.
 
 LARGO: el resumen más las recomendaciones, juntos, tienen que caber en ${PRESUPUESTO_SUGERIDO} caracteres. Cuéntalos. Es mejor decir menos que pasarte.
 

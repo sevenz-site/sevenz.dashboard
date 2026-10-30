@@ -298,9 +298,14 @@ function Esqueleto() {
  * oración («fiaste $6.687,95 y €793,82») y el símbolo solo no basta cuando el
  * dólar y el peso colombiano comparten el `$`.
  *
- * LA BANDERA VA DESPUÉS DE LA CIFRA, como en las tarjetas de Reportes y en la
- * ficha del producto, y con `whitespace-nowrap` para que no se quede sola al
- * final de una línea.
+ * LA BANDERA VA A LA IZQUIERDA DE LA CIFRA. Lo pidió el dueño el 2026-10-30, y
+ * coincide con la costumbre de esta misma pantalla: las hojas de Reportes
+ * pintan la bandera ANTES del importe (`reportes-productos-sheet.tsx`). La
+ * ficha del producto lo hace al revés, así que la app tiene las dos formas; lo
+ * que manda aquí es la pestaña en la que este bloque vive.
+ *
+ * `whitespace-nowrap` para que la bandera no se quede sola al final de una
+ * línea, separada de la cifra que explica.
  */
 function ConBanderas({ frase }: { frase: string }) {
   return (
@@ -308,8 +313,8 @@ function ConBanderas({ frase }: { frase: string }) {
       {partirPorImportes(frase).map((t, i) =>
         t.moneda ? (
           <span key={i} className="inline-flex items-center gap-1 whitespace-nowrap">
-            {t.texto}
             <CurrencyFlagIcon currency={t.moneda} className="size-3.5 shrink-0" />
+            {t.texto}
           </span>
         ) : (
           <span key={i}>{t.texto}</span>
