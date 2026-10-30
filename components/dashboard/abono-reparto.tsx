@@ -40,6 +40,8 @@ import {
   deudaDelLibro,
   repartirEnBolivares,
   deudaEnBolivares,
+  resolveSplitUnits,
+  sumFixedLines,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -215,18 +217,47 @@ export function AbonoReparto({
   const [ahora] = useState(() => new Date());
 
   // ═══════════════════════════════════════════════════════════════════════
-  // ¿ESTE ABONO CRUZA LIBROS?
+  // EL SEGUNDO ESTADO DE ESTA PANTALLA — frame `1564:11211`
+  //
+  // La 1/2 nace con un campo: el tendero escribe el billete y el reparto cae
+  // por gravedad. En cuanto paga UN fiado a mano, cambia: el campo se
+  // sustituye por un buscador y el total pasa a ser la suma de lo que él vaya
+  // fijando, fiado por fiado.
+  //
+  // Encargo del dueño el 2026-10-22 y confirmado al preguntárselo el
+  // 2026-10-23: *«Es el SEGUNDO estado, tras pagar el primero»*. No sustituye
+  // a la 1/2 — convive con ella.
+  //
+  // SE DEDUCE, NO SE GUARDA: hay líneas fijadas y no hay monto escrito. Ese
+  // par solo lo produce `fijarEnBorrador`, que limpia el campo al volver de
+  // pagar un fiado. Una bandera aparte en el borrador diría lo mismo y podría
+  // desincronizarse de los dos datos que la producen.
+  //
+  // SE DECLARA AQUÍ ARRIBA, antes de las unidades, porque decide una de ellas.
+  const modoSeleccion = monto.trim() === "" && Object.keys(aMano).length > 0;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ¿ESTE ABONO CRUZA LIBROS, Y EN QUÉ UNIDAD VA SU TOTAL?
   //
   // Encargo del dueño el 2026-10-23: con «Bolívares» elegido y un cliente que
   // debe en euros Y en dólares, el billete cae sobre los fiados más críticos
   // «sin importar moneda».
   //
-  // CON UN SOLO LIBRO NO CAMBIA NADA, y por eso la condición lleva
-  // `libros.length > 1`: un cliente que solo debe dólares, pagando en
-  // bolívares, sigue por el camino de siempre. No es una optimización — es que
-  // «cruzar» un solo libro no significa nada, y meterlo por la rama nueva
-  // cambiaría su aritmética (la ida y vuelta de la conversión) sin que nadie
-  // lo haya pedido.
+  // LAS DOS RESPUESTAS SALEN DE `resolveSplitUnits`, en `lib/abonos/reparto.ts`,
+  // y de una sola llamada a propósito: la tabla entera de casos y lo que costó
+  // separarlas están escritos allí. Resumen de por qué no es un ternario aquí:
+  // la aritmética y la etiqueta del total vivían en dos expresiones a cien
+  // líneas de distancia, se separaron, y un reparto de Bs. 10.000 se guardó
+  // como $0,01 en producción el 2026-10-29.
+  //
+  // LO QUE DESPLAZA, dicho para que no se redescubra: aquí estaba escrito que
+  // con un solo libro no se cruza nunca —*«meterlo por la rama nueva cambiaría
+  // su aritmética (la ida y vuelta de la conversión) sin que nadie lo haya
+  // pedido»*, 2026-10-23—. Sigue valiendo para el monto TECLEADO EN EL CAMPO,
+  // que ya viene en bolívares. No vale en el segundo estado, donde el total es
+  // la suma de cifras que el tendero escribió en bolívares fiado por fiado:
+  // contarlo en la moneda del libro no es «el camino de siempre», es una suma
+  // en dólares con etiqueta de bolívares.
   //
   // ═══════════════════════════════════════════════════════════════════════
   // QUÉ FIADOS SALEN EN LA LISTA: LO DECIDE LA MONEDA ELEGIDA ARRIBA
@@ -250,25 +281,11 @@ export function AbonoReparto({
   // que el tendero deduce sin que nadie se la explique. Esa es la razón, y es
   // también la razón de que esté escrita aquí: desde fuera la lista filtrada
   // se lee como fiados que faltan.
-  const cruzaLibros = enBolivares && libros.length > 1;
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // EL SEGUNDO ESTADO DE ESTA PANTALLA — frame `1564:11211`
-  //
-  // La 1/2 nace con un campo: el tendero escribe el billete y el reparto cae
-  // por gravedad. En cuanto paga UN fiado a mano, cambia: el campo se
-  // sustituye por un buscador y el total pasa a ser la suma de lo que él vaya
-  // fijando, fiado por fiado.
-  //
-  // Encargo del dueño el 2026-10-22 y confirmado al preguntárselo el
-  // 2026-10-23: *«Es el SEGUNDO estado, tras pagar el primero»*. No sustituye
-  // a la 1/2 — convive con ella.
-  //
-  // SE DEDUCE, NO SE GUARDA: hay líneas fijadas y no hay monto escrito. Ese
-  // par solo lo produce `fijarEnBorrador`, que limpia el campo al volver de
-  // pagar un fiado. Una bandera aparte en el borrador diría lo mismo y podría
-  // desincronizarse de los dos datos que la producen.
-  const modoSeleccion = monto.trim() === "" && Object.keys(aMano).length > 0;
+  const { crossesLedgers: cruzaLibros, totalInBolivars } = resolveSplitUnits({
+    enBolivares,
+    numeroDeLibros: libros.length,
+    porLinea: modoSeleccion,
+  });
 
   // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
   // con la tasa que él mismo sella, que es la que se guarda; estas son para
@@ -347,21 +364,23 @@ export function AbonoReparto({
     // Se suma en la UNIDAD DEL REPARTO —bolívares si cruza libros, la moneda
     // del libro si no— por lo mismo que todo lo demás de esta pantalla: una
     // sola unidad para el tope, el reparto y el rótulo del botón.
+    // LA SUMA VIVE EN `lib/`, no aquí, y no es por limpieza: aquí dentro no se
+    // podía poner en rojo. El fallo del 2026-10-29 fue que esta suma y la
+    // etiqueta del payload contestaban a lo mismo en dos sitios distintos, así
+    // que la prueba que lo caza tiene que sumar como suma la pantalla — y para
+    // eso tiene que poder llamarla. Ver `sumFixedLines`.
     if (modoSeleccion) {
-      return delLibro.reduce((suma, f) => {
-        const puesto = aMano[f.movementId];
-        if (puesto == null) return suma;
-        const topado = Math.max(0, Math.min(puesto, f.pending));
-        if (!cruzaLibros) return suma + topado;
-        // SU CIFRA PRIMERO Y LA CONVERSIÓN DESPUÉS. Sumando conversiones, dos
-        // líneas de Bs. 100.000 daban un botón de Bs. 200.005,87 — ver
-        // `aManoBs`. La conversión solo entra cuando ese fiado se fijó en la
-        // moneda del libro, donde no hay bolívar tecleado que respetar.
-        const suyos = aManoBs[f.movementId];
-        if (suyos != null && Math.abs(puesto - f.pending) > 0.005) return suma + suyos;
-        if (suyos != null && puesto <= f.pending) return suma + suyos;
-        return suma + (aBolivares(topado, (f.currency ?? null) as LedgerCurrency | null) ?? 0);
-      }, 0);
+      return sumFixedLines({
+        fiados: delLibro.map((f) => ({
+          movementId: f.movementId,
+          pendiente: f.pending,
+          currency: (f.currency ?? null) as LedgerCurrency | null,
+        })),
+        aMano,
+        aManoBs,
+        crossesLedgers: cruzaLibros,
+        aBolivares,
+      });
     }
     if (cruzaLibros) return montoNum;
     if (!enBolivares) return montoNum;
@@ -687,10 +706,16 @@ export function AbonoReparto({
         // mismas entradas y topa cada línea contra lo que su fiado debe. Esto
         // le dice cuánto es el billete, no cómo se reparte.
         montoTecleado: modoSeleccion ? enElLibro : montoNum,
-        monedaTecleada:
-          enBolivares || (modoSeleccion && cruzaLibros)
-            ? "VES"
-            : ((libro ?? "COP") as PriceCurrency),
+        // LA UNIDAD DE LA LÍNEA DE ARRIBA, Y DE LA MISMA FUENTE QUE ELLA.
+        //
+        // AQUÍ SE VIO EL FALLO del 2026-10-29. Esto decía `enBolivares ||
+        // (modoSeleccion && cruzaLibros)`, y en el segundo estado con un solo
+        // libro daba «VES» sobre un `enElLibro` que venía en dólares: Bs.
+        // 10.000 tecleados se guardaron como **$0,01**, sin un error en
+        // pantalla. Ahora las dos respuestas salen de `resolveSplitUnits`, que
+        // también es quien pone `cruzaLibros` — así `enElLibro` no puede
+        // contarse en una unidad y etiquetarse en otra.
+        monedaTecleada: totalInBolivars ? "VES" : ((libro ?? "COP") as PriceCurrency),
         aMano,
         // Lo tecleado en bolívares por fiado, para que el servidor guarde SU
         // cifra y no una reconversión.

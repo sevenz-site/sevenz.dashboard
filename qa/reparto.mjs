@@ -19,6 +19,7 @@ import {
   deudaDelLibro,
   repartirEnBolivares,
   deudaEnBolivares,
+  resolveSplitUnits,
 } from "../lib/abonos/reparto.ts";
 import { vencimientoEfectivo, porGravedad } from "../lib/estado-del-plazo.ts";
 
@@ -418,6 +419,88 @@ const tres = [
       `multi ${multi.lineas.map((l) => l.asignado).join(", ")} · simple ${simple.lineas.map((l) => l.asignado).join(", ")}`,
     );
   }
+}
+
+// ── 7. LA UNIDAD DEL REPARTO, QUE ES LO QUE SE GUARDÓ MAL ────────────────
+//
+// Esto es la regresión del 2026-10-29, medida en PRODUCCIÓN: un abono de
+// Bs. 10.000 repartido a mano entre dos fiados en dólares se guardó como
+// $0,01 y el saldo del cliente bajó un céntimo. La pantalla dijo
+// «registrado con éxito» y no hubo ni un error.
+//
+// Y ESTO ES LO QUE NO LO CAZÓ, que es la mitad que importa: `qa:abono-accion`
+// prueba la acción del servidor, que hizo exactamente lo que se le pidió;
+// esta misma suite probaba la aritmética, que también estaba bien. El fallo
+// vivía en la línea que une las dos, dentro de un `.tsx` que ninguna suite
+// monta. Por eso la decisión salió del componente a `resolveSplitUnits` — no
+// por elegancia: para que exista algo que se pueda poner en rojo.
+{
+  const caso = (enBolivares, numeroDeLibros, porLinea) =>
+    resolveSplitUnits({ enBolivares, numeroDeLibros, porLinea });
+
+  // EL CASO ROTO. Bolívares, un solo libro, y el total fijado fiado por fiado.
+  const roto = caso(true, 1, true);
+  check(
+    "bolívares + un libro + por línea: el total va en bolívares",
+    roto.totalInBolivars === true,
+    `totalInBolivars=${roto.totalInBolivars}`,
+  );
+  check(
+    "y se cuenta cruzando libros, que es la aritmética que suma en bolívares",
+    roto.crossesLedgers === true,
+    `crossesLedgers=${roto.crossesLedgers}`,
+  );
+
+  // LO QUE NO SE PUEDE ROMPER AL ARREGLARLO: el camino del campo con un solo
+  // libro sigue sin cruzar. Lo dice el comentario de `abono-reparto.tsx` del
+  // 2026-10-23 y se midió correcto en producción el 2026-10-29 —Bs. 5.000 se
+  // guardaron como $5,62 con «Bs. 5.000,00» intacto en la fila.
+  const campoUnLibro = caso(true, 1, false);
+  check(
+    "bolívares + un libro + monto en el campo: NO cruza libros",
+    campoUnLibro.crossesLedgers === false,
+    `crossesLedgers=${campoUnLibro.crossesLedgers}`,
+  );
+  check(
+    "pero su total SÍ va en bolívares: el campo ya es bolívares",
+    campoUnLibro.totalInBolivars === true,
+  );
+
+  // Dos libros: cruza siempre, se teclee donde se teclee. Encargo del dueño
+  // del 2026-10-23.
+  check("bolívares + dos libros + campo: cruza", caso(true, 2, false).crossesLedgers === true);
+  check("bolívares + dos libros + por línea: cruza", caso(true, 2, true).crossesLedgers === true);
+
+  // Sin bolívares no se cruza nunca y el total va en el libro. Con euros no se
+  // paga una deuda en dólares: decisión del 2026-10-22, que la del 2026-10-23
+  // no cambió.
+  for (const libros of [1, 2]) {
+    for (const porLinea of [false, true]) {
+      const r = caso(false, libros, porLinea);
+      check(
+        `sin bolívares (${libros} libro(s), ${porLinea ? "por línea" : "campo"}): ni cruza ni va en Bs`,
+        r.crossesLedgers === false && r.totalInBolivars === false,
+      );
+    }
+  }
+
+  // LA INVARIANTE, y es la que de verdad vigila esto: contar en bolívares y
+  // etiquetar en bolívares son la misma respuesta. El fallo fue exactamente
+  // que dejaron de serlo — se cruzaba en una unidad y se etiquetaba en otra.
+  let incoherentes = 0;
+  for (const enBolivares of [false, true]) {
+    for (const libros of [1, 2, 3]) {
+      for (const porLinea of [false, true]) {
+        const r = caso(enBolivares, libros, porLinea);
+        if (r.crossesLedgers && !r.totalInBolivars) incoherentes++;
+      }
+    }
+  }
+  check(
+    "nunca se cruza en bolívares con un total etiquetado en otra moneda",
+    incoherentes === 0,
+    `${incoherentes} combinación(es) incoherentes`,
+  );
 }
 
 const fallos = filas.filter((f) => !f.pasa).length;
