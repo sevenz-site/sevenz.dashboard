@@ -630,6 +630,45 @@ Y vale igual al revés: **una acción que empieza a leer un campo nuevo tiene qu
 decir qué formularios se lo van a mandar**, porque los que no lo hagan van a
 guardar `null` sin quejarse.
 
+### Un valor visual que sale en más de una pantalla NACE en un componente
+
+**Pedido por el dueño el 2026-10-29**, después de encargar dos barridos del
+mismo tipo en un solo día: *«será el ícono que usaremos para todas las partes
+del app (…) actualízalo en toda la app»* por la mañana, y *«aplica también para
+el catálogo, pedidos, reportes, vista del cliente»* por la tarde.
+
+**La regla**: un chip, un icono, una etiqueta de estado o cualquier cifra con
+formato propio que vaya a aparecer en **dos pantallas o más** se escribe UNA vez
+—componente para el dibujo, función en `lib/` para la decisión— y las pantallas
+lo importan. Nunca se copian sus clases. Si al montarlo en la segunda pantalla
+le falta algo, **se le añade al componente**, no a la copia.
+
+**Por qué no basta con «hazlo consistente».** Copiado, cada sitio queda correcto
+por separado y el conjunto se desalinea sin que nada avise:
+
+| Qué | Qué costó |
+|---|---|
+| **`chip-de-estado.tsx`**, 2026-10-21 | «Plazo vencido» salía ROJO en el historial y ÁMBAR en la leyenda. Rojo estaba reservado a «Crítico», así que un fiado de un día de retraso se leía con la misma alarma que uno de mes y medio — en la pantalla donde se decide a quién cobrar primero |
+| **Los iconos del dinero**, 2026-10-29 | El mismo glifo `%` marcaba el abono y el fiado. Cambiarlo fue un barrido por cinco pantallas en vez de una línea |
+| **El chip «Disponible»**, 2026-10-29 | Ocho pantallas, **dos tonalidades de verde distintas** —cuatro usaban una pastilla rellena fuera de la paleta— y ninguna sabía del umbral. Además, dos enseñaban el dato **dos veces**: la pastilla con la cifra y, debajo, un «Disponible» que no añadía nada. Invisible mientras los dos dibujos eran distintos |
+
+**La señal de que esto está pasando** es un `grep` por el texto de la etiqueta
+que devuelve más de un fichero con las clases escritas a mano. Si sale eso,
+**antes de tocar nada se recoge en un componente**, y luego se hace el cambio
+pedido. Es más trabajo esa vez y menos todas las siguientes.
+
+**Y la decisión va aparte del dibujo.** El componente pinta; la regla de cuándo
+pinta cada cosa vive en `lib/` y la comparten las dos caras de la app.
+`lib/products/availability.ts` es el ejemplo: el tendero y el cliente gradúan el
+mismo producto con la misma función, así que no pueden contradecirse delante del
+cliente. Calcularla en SQL para una cara y en TypeScript para la otra es la
+trampa de `CT-124`, que estuvo meses acreditando pagos puntuales a fiados que
+nadie había pagado.
+
+**Es la hermana de la regla de arriba.** Aquella mira las puertas de ENTRADA de
+un dato —qué formularios escriben en la misma acción—; esta mira las de SALIDA
+—qué pantallas enseñan el mismo dato—. Las dos fallan igual de callado.
+
 ## Quien escribe varios movimientos de golpe, recalcula el saldo
 
 **Toda función que inserte MÁS DE UN movimiento en la misma transacción tiene
