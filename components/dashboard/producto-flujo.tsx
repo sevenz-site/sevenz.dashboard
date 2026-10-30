@@ -950,14 +950,14 @@ export function ProductoFlujo({
                 <div className="flex flex-col gap-3 border-t pt-3">
                   <PublishCheck
                     id="pub_mayor"
-                    label="Incluir precio al mayor"
+                    label="Mostrar precio al mayor"
                     checked={pubWholesale}
                     disabled={saving}
                     onChange={setPubWholesale}
                   />
                   <PublishCheck
                     id="pub_detal"
-                    label="Incluir precio al detal"
+                    label="Mostrar precio al detal"
                     checked={pubRetail}
                     disabled={saving}
                     onChange={setPubRetail}
