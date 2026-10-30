@@ -238,7 +238,14 @@ try {
   );
 
   // ── 10-12. LA TABLA ─────────────────────────────────────────────────
-  const hoy = new Date().toISOString().slice(0, 10);
+  // UNA FECHA CENTINELA Y NO HOY.
+  //
+  // La clave primaria es (owner_id, day), así que usar HOY hacía que la suite
+  // chocara con la nota que la propia app acaba de generar al abrir Reportes
+  // --y entonces fallaba por existir, no por estar rota--. Una fecha que
+  // ningún día real va a ocupar deja la prueba independiente de si alguien
+  // miró la pantalla antes de correrla.
+  const hoy = "2019-01-01";
   const { error: e1 } = await admin
     .from("report_assistant_notes")
     .insert({ owner_id: dueno.id, day: hoy, summary: "QA ASISTENTE", recommendations: ["uno"] });
@@ -269,13 +276,13 @@ try {
 
   const { error: e3 } = await admin
     .from("report_assistant_notes")
-    .insert({ owner_id: dueno.id, day: "2020-01-01", summary: "QA ASISTENTE sin motivo", degraded: true });
+    .insert({ owner_id: dueno.id, day: "2019-01-02", summary: "QA ASISTENTE sin motivo", degraded: true });
   exigeTabla(
     "12. una caída sin motivo se rechaza (la tarjeta de /admin contaría fantasmas)",
     "23514",
     e3,
   );
-  if (hayTabla && !e3) escritas.push({ owner_id: dueno.id, day: "2020-01-01" });
+  if (hayTabla && !e3) escritas.push({ owner_id: dueno.id, day: "2019-01-02" });
 
   const { error: e4 } = await admin
     .from("report_assistant_notes")
@@ -306,6 +313,7 @@ try {
   const { data: suya, error: e5 } = await comoDueno
     .from("report_assistant_notes")
     .select("summary")
+    .eq("owner_id", dueno.id)
     .eq("day", hoy)
     .maybeSingle();
   check(
@@ -320,6 +328,20 @@ try {
     .eq("owner_id", dueno.id)
     .eq("day", hoy);
   check("14. y puede calificarla: `update` es un permiso aparte de `select`", !e6, e6?.message);
+
+  // ── EL PERMISO DE `service_role` NO SE PUEDE COMPROBAR AQUÍ ───────
+  //
+  // La ruta escribe la nota con el cliente de SERVICIO. En dev ese rol tiene
+  // permisos sobre todo --la migración `045` lo dejó así a propósito-- y en
+  // PRODUCCIÓN los tiene revocados sobre las tablas de clientes. Así que un
+  // `grant` que faltara pasaría esta suite entera y fallaría para todos los
+  // tenderos el día del despliegue.
+  //
+  // Intentar la escritura aquí no lo distingue: sale bien con grant y sin él.
+  // Lo único que lo contesta es preguntárselo a PRODUCCIÓN, y está escrito en
+  // la sección de verificación del informe como una consulta que corre el
+  // dueño. La migración `165` concede el permiso explícitamente para que haya
+  // algo que comprobar.
 
   const { data: ajenas, error: e7 } = await comoDueno
     .from("report_assistant_notes")

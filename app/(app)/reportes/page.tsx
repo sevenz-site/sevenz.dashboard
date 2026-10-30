@@ -12,6 +12,7 @@ import { ReportesDescargar } from "@/components/dashboard/reportes-descargar";
 import { ReportesFechaFiltro } from "@/components/dashboard/reportes-fecha";
 import { mensajeDelMotivo } from "@/lib/reports/exportar-movimientos";
 import { ReportesTabs } from "@/components/dashboard/reportes-tabs";
+import { ReportesAsistente } from "@/components/dashboard/reportes-asistente";
 import { apartadoDe } from "@/lib/reports/apartados";
 import { etiquetaDelRango, rangoDe, textoDelRango } from "@/lib/reports/rango";
 import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion";
@@ -294,6 +295,21 @@ export default async function ReportesPage({
           <p className="text-sm text-muted-foreground">{mensajeDelMotivo(motivo)}</p>
         </div>
       ) : null}
+
+      {/* EL ASISTENTE, ENCIMA DE TODO Y DEBAJO DEL AVISO DE DESCARGA.
+          Resume los TRES apartados, así que no pertenece a ninguno y va fuera
+          de ellos -- y se queda igual al cambiar de pestaña, que es lo que lo
+          distingue de todo lo demás de esta pantalla.
+
+          DEBAJO del aviso de «No se pudo descargar» a propósito: ese aviso es
+          la respuesta a un botón que el tendero acaba de pulsar, y empujarlo
+          150px hacia abajo con un bloque que no pidió haría que pareciera que
+          no pasó nada.
+
+          SE CARGA SOLO. No recibe props ni espera a los cargadores de la
+          página: pide su resumen al montarse. Es lo que mantiene a Reportes
+          abriendo tan rápido como antes de que existiera. */}
+      <ReportesAsistente />
 
       {/* CON UN CLIENTE ELEGIDO, LA PANTALLA LO DICE. Sin esto el informe de
           una persona se lee como el del negocio entero, que es la clase de

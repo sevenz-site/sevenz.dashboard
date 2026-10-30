@@ -143,6 +143,39 @@ create policy "owner rates own assistant note"
 revoke all on public.report_assistant_notes from anon;
 grant select, update on public.report_assistant_notes to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- AND service_role NEEDS ITS OWN GRANT. EXPLICITLY. THIS IS THE PRODUCTION-ONLY
+-- FAILURE THIS FILE EXISTS TO AVOID.
+--
+-- The note is WRITTEN by the server with the service client, not by the
+-- shopkeeper's session: that is what stops any session from inventing its own
+-- shop's summary. And `lib/supabase/service.ts` says, in its own words, the
+-- thing dev can never show you:
+--
+--     «In production, SELECT is revoked from service_role on the customer
+--      tables, so this client cannot read owners or movements directly no
+--      matter what RLS says (…) Adding a third caller means checking the
+--      grants in production, not just in dev.»
+--
+-- Confirmed on 2026-10-29 against production's own grant listing: service_role
+-- holds only REFERENCES, TRIGGER and TRUNCATE on every customer table there.
+-- Migration `045` says that difference is deliberate -- loose in dev, strict in
+-- production -- which is exactly why a missing grant here would pass every dev
+-- suite and then fail for every shopkeeper on the day it shipped.
+--
+-- THREE VERBS AND NOT `all`: the server reads the day's note, writes it, and
+-- replaces a degraded one on a retry. It never deletes. Granting `delete` would
+-- hand a wider power to the one client that bypasses RLS, for a verb no code
+-- path uses.
+--
+-- WRITTEN OUT RATHER THAN LEFT TO A DEFAULT, even where the default would do
+-- it: a table whose behaviour depends on `alter default privileges` is a table
+-- that breaks the day somebody tightens them, and this repo has already tripped
+-- over exactly that -- see `045`, which had to close defaults that were
+-- re-opening every newly created table.
+-- ---------------------------------------------------------------------------
+grant select, insert, update on public.report_assistant_notes to service_role;
+
 comment on table public.report_assistant_notes is
   'El resumen que el asistente de /reportes escribe una vez al día por negocio, sobre una ventana fija de 7 días. La clave primaria (owner_id, day) es lo que garantiza que solo se genere uno al día: sin ella la pantalla pagaría veinte consultas y una llamada a Gemini en cada carga. Las filas con degraded = true son las que no pudo generar la IA y se resolvieron con el texto escrito a mano; son las que cuenta la tarjeta de caídas de /admin.';
 
@@ -155,6 +188,6 @@ comment on column public.report_assistant_notes.rating is
 insert into public.schema_migrations (key, description)
 values (
   '165_el_asistente_guarda_su_informe',
-  'La tabla donde el asistente de /reportes guarda su resumen diario. Clave primaria (owner_id, day): uno al día por negocio, garantizado por la base y no por el código, porque resumir los tres apartados cuesta unas veinte consultas. Guarda también el texto de respaldo marcado como degraded, que es lo que cuenta la tarjeta de caídas de /admin. Lleva RLS y su grant a authenticated: la 108 escribió la política y olvidó el permiso, y el dueño recibía 42501 en cada lectura.'
+  'La tabla donde el asistente de /reportes guarda su resumen diario. Clave primaria (owner_id, day): uno al día por negocio, garantizado por la base y no por el código, porque resumir los tres apartados cuesta unas veinte consultas. Guarda también el texto de respaldo marcado como degraded, que es lo que cuenta la tarjeta de caídas de /admin. Lleva RLS y su grant a authenticated (la 108 escribió la política y olvidó el permiso, y el dueño recibía 42501 en cada lectura) y, explícito, el de service_role, que es quien escribe la nota: en producción ese rol tiene revocado el SELECT sobre las tablas de clientes, así que sin esta línea el asistente funcionaría en dev y fallaría para todos el día que saliera.'
 )
 on conflict (key) do nothing;

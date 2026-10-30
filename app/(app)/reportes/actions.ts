@@ -44,3 +44,43 @@ export async function guardarUmbralDeStock(
   revalidatePath("/reportes");
   return { ok: true };
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// EL PULGAR DEL ASISTENTE
+//
+// La nota la escribe el servidor con la clave de servicio; lo único que la
+// sesión del tendero puede cambiar es esta columna, y la política de RLS de la
+// migración `165` está escrita para eso.
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function calificarAsistente(
+  rating: "useful" | "not_useful",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
+
+  if (rating !== "useful" && rating !== "not_useful") {
+    return { ok: false, error: "Calificación no válida." };
+  }
+
+  // `.eq("owner_id", user.id)` AUNQUE LA POLÍTICA YA LO HAGA: es la regla de
+  // `CLAUDE.md` sobre comprobar la propiedad en código. RLS es el respaldo, no
+  // la única línea de defensa.
+  //
+  // Y LA FECHA SE CALCULA AQUÍ, no llega del navegador: un `day` que mandara
+  // el cliente dejaría calificar la nota de cualquier otro día.
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase
+    .from("report_assistant_notes")
+    .update({ rating })
+    .eq("owner_id", user.id)
+    .eq("day", hoy);
+  if (error) {
+    console.error("[calificarAsistente]", error);
+    return { ok: false, error: "No pudimos guardar tu respuesta." };
+  }
+  return { ok: true };
+}

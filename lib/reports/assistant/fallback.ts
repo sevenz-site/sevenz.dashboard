@@ -94,6 +94,18 @@ function losCuantos(n: number, elSingular: string, losMuchos: string): string {
   return n === 1 ? elSingular : `${losMuchos.replace("N", String(n))}`;
 }
 
+/**
+ * «A», «A y B», «A, B y C».
+ *
+ * Unir con `", y "` daba «tienes X por cobrar, y 19 clientes llevan…, y en
+ * estos 7 días fiaste…»: en español la conjunción va SOLO antes del último.
+ * Salió al leer el primer resumen real en pantalla, no de pensarlo.
+ */
+function enumerar(partes: string[]): string {
+  if (partes.length <= 1) return partes[0] ?? "";
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
+}
+
 /** Writes a per-ledger amount without ever summing two currencies. */
 function dinero(m: MoneyByLedger): string {
   const partes = Object.entries(m)
@@ -220,7 +232,7 @@ function buildSummary(f: FactsForTheModel, todoEnOrden: boolean): string {
   }
   if (!partes.length) partes.push(`tu negocio se mantiene estable`);
 
-  const frase = `${partes.join(", y ")}.`;
+  const frase = `${enumerar(partes)}.`;
   // THE CONFIDENCE CAVEAT, never a recommendation -- see the header.
   return f.gaps.productsWithoutCost > 0
     ? `${frase} Ojo: ${cuantos(f.gaps.productsWithoutCost, "producto no tiene", "productos no tienen")} ` +
