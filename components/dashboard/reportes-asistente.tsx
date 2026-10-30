@@ -54,7 +54,12 @@ import { cn } from "@/lib/utils";
 // componente es cómo nacen las paletas que no coinciden.
 // ═══════════════════════════════════════════════════════════════════════
 
-type Nota = { summary: string; recommendations: string[]; degraded: boolean };
+type Nota = {
+  summary: string;
+  recommendations: string[];
+  degraded: boolean;
+  rating: "useful" | "not_useful" | null;
+};
 
 export function ReportesAsistente() {
   const [nota, setNota] = useState<Nota | null>(null);
@@ -72,7 +77,13 @@ export function ReportesAsistente() {
     pedido.current = true;
     fetch("/api/reportes/asistente")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d: Nota) => setNota(d))
+      .then((d: Nota) => {
+        setNota(d);
+        // EL PULGAR QUE YA DIO, SI LO DIO. Sin esto el componente nace sin
+        // memoria y vuelve a preguntar por una nota que el tendero ya
+        // calificó: no era «una vez al día», era una vez por visita.
+        if (d.rating) setCalificacion(d.rating);
+      })
       .catch(() => setFallo(true));
   }, []);
 

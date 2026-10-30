@@ -57,7 +57,18 @@ export const dynamic = "force-dynamic";
 const INTENTOS_POR_DIA = 3;
 const UN_DIA = 86_400;
 
-type Respuesta = AssistantNote & { degraded: boolean };
+type Respuesta = AssistantNote & {
+  degraded: boolean;
+  /**
+   * El pulgar que el tendero ya dio a ESTA nota, si lo dio.
+   *
+   * Sin este campo el componente nace sin memoria y vuelve a preguntar «¿qué
+   * tan útil te parece?» en cada recarga, por una nota que ya calificó. No era
+   * «una vez al día»: era una vez por visita. Lo destapó el dueño el
+   * 2026-10-30 preguntando cada cuánto aparecía.
+   */
+  rating: "useful" | "not_useful" | null;
+};
 
 export async function GET() {
   const supabase = await createClient();
@@ -72,7 +83,7 @@ export async function GET() {
   // ── 1. ¿YA HAY NOTA DE HOY? ───────────────────────────────────────
   const { data: guardada } = await supabase
     .from("report_assistant_notes")
-    .select("summary, recommendations, degraded")
+    .select("summary, recommendations, degraded, rating")
     .eq("owner_id", user.id)
     .eq("day", hoy)
     .maybeSingle();
@@ -107,7 +118,7 @@ export async function GET() {
     // modelo, y marcarlo como caída del asistente ensuciaría la tarjeta de
     // /admin con una avería que no es la suya.
     console.error("[asistente] no se pudieron construir los hechos:", e instanceof Error ? e.message : e);
-    return NextResponse.json({ summary: "", recommendations: [], degraded: true }, { status: 200 });
+    return NextResponse.json({ summary: "", recommendations: [], degraded: true, rating: null }, { status: 200 });
   }
 
   // UN NEGOCIO SIN NADA NO LLAMA AL MODELO. No hay nada que resumir, y gastar
@@ -115,27 +126,33 @@ export async function GET() {
   if (hechos.empty) {
     const note = buildFallbackNote(hechos);
     await guardar(service, user.id, hoy, note, { degraded: false, modelo: null, motivo: null });
-    return NextResponse.json({ ...note, degraded: false });
+    return NextResponse.json({ ...note, degraded: false, rating: null });
   }
 
   // ── 3. GEMINI ─────────────────────────────────────────────────────
   const r = await generarNota(hechos);
   if (r.ok) {
     await guardar(service, user.id, hoy, r.note, { degraded: false, modelo: r.modelo, motivo: null });
-    return NextResponse.json({ ...r.note, degraded: false });
+    return NextResponse.json({ ...r.note, degraded: false, rating: null });
   }
 
   registrarCaida(user.id, r.motivo, r.detalle);
   const note = buildFallbackNote(hechos);
   await guardar(service, user.id, hoy, note, { degraded: true, modelo: null, motivo: r.motivo });
-  return NextResponse.json({ ...note, degraded: true });
+  return NextResponse.json({ ...note, degraded: true, rating: null });
 }
 
-function aRespuesta(fila: { summary: string; recommendations: string[] | null; degraded: boolean }): Respuesta {
+function aRespuesta(fila: {
+  summary: string;
+  recommendations: string[] | null;
+  degraded: boolean;
+  rating?: string | null;
+}): Respuesta {
   return {
     summary: fila.summary,
     recommendations: fila.recommendations ?? [],
     degraded: fila.degraded,
+    rating: (fila.rating as "useful" | "not_useful" | null) ?? null,
   };
 }
 
@@ -184,10 +201,10 @@ async function notaDeRespaldo(
     });
     const note = buildFallbackNote(hechos);
     await guardar(service, ownerId, hoy, note, { degraded: true, modelo: null, motivo });
-    return { ...note, degraded: true };
+    return { ...note, degraded: true, rating: null };
   } catch (e) {
     console.error("[asistente] respaldo:", e instanceof Error ? e.message : e);
-    return { summary: "", recommendations: [], degraded: true };
+    return { summary: "", recommendations: [], degraded: true, rating: null };
   }
 }
 
@@ -218,6 +235,20 @@ async function guardar(
       degraded: meta.degraded,
       model: meta.modelo,
       failure_reason: meta.motivo,
+      // CADA REGENERACIÓN VUELVE A PREGUNTAR. Decisión del dueño el
+      // 2026-10-30: el pie aparece *«con cada regeneración del reporte»*.
+      //
+      // Y ESO NO ES LO MISMO QUE «UNA VEZ AL DÍA», que es donde yo lo tenía.
+      // Dentro del mismo día una nota degradada se reintenta y puede ser
+      // reemplazada por la de la IA: si el tendero ya había calificado el
+      // texto de respaldo, vería el texto nuevo con un «Gracias» puesto --
+      // habiendo calificado otra cosa. El pulgar vale para el texto que
+      // juzgó, no para el día.
+      //
+      // Se escribe aquí y no en una condición porque `guardar` SOLO se llama
+      // cuando de verdad se (re)genera: una nota buena de hoy sale antes, por
+      // el `return` de arriba, sin pasar por aquí.
+      rating: null,
     },
     { onConflict: "owner_id,day" },
   );
