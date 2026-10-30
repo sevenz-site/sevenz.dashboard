@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { deleteMovement, getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
-import { mensajeDeSaldo, type DatosParaCompartir } from "@/lib/share-balance";
+import { mensajeDeTransaccion, type DatosParaCompartir } from "@/lib/share-balance";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 
@@ -45,25 +45,30 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // menú «⋮» y el botón «Compartir» de abajo, que el dueño pidió que se
 // repitieran. Dos copias de esta función es exactamente como acaban mandando
 // mensajes distintos.
-async function compartirSaldo(compartir: DatosParaCompartir | null) {
+async function compartirTransaccion(compartir: DatosParaCompartir | null, movementId: string) {
   if (!compartir) return;
   try {
     // El dueño no tiene el enlace a mano y hay que pedirlo. El cliente lo
     // tiene en la barra de direcciones — y además no podría pedirlo, porque
     // crearlo solo responde a un dueño con sesión.
-    let url: string;
+    //
+    // EL ENLACE LLEVA A ESTA TRANSACCIÓN y no al perfil del cliente —encargo
+    // del dueño el 2026-10-30—. Antes terminaba en `/s/<token>` y quien lo
+    // abría tenía que encontrar él la transacción de la que se hablaba.
+    let token: string;
     if (compartir.enlace.de === "cliente") {
-      url = `${window.location.origin}/s/${compartir.enlace.token}`;
+      token = compartir.enlace.token;
     } else {
       const result = await getOrCreateShareLink(compartir.enlace.clientId);
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      url = `${window.location.origin}/s/${result.token}`;
+      token = result.token;
     }
+    const url = `${window.location.origin}/s/${token}/t/${movementId}`;
 
-    const mensaje = mensajeDeSaldo(compartir.clientName, compartir.balanceText, url);
+    const mensaje = mensajeDeTransaccion(compartir.clientName, compartir.transactionCode, url);
 
     // `navigator.share` no existe en el escritorio de casi nadie. Portapapeles
     // como respaldo, con el mensaje entero y no solo el enlace: lo que se pega
@@ -130,7 +135,7 @@ export function DetalleAcciones({
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
 
-  const handleShare = () => compartirSaldo(compartir);
+  const handleShare = () => compartirTransaccion(compartir, movementId);
 
   async function handleDelete() {
     if (guardia()) return;
@@ -324,7 +329,7 @@ export function DetalleBotones({
           type="button"
           variant="outline"
           className="h-10 w-full"
-          onClick={() => void compartirSaldo(compartir)}
+          onClick={() => void compartirTransaccion(compartir, movementId)}
         >
           <Share2 className="size-5" aria-hidden />
           Compartir

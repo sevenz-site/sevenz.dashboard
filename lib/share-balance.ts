@@ -28,10 +28,31 @@ export type OrigenDelEnlace =
 
 export type DatosParaCompartir = {
   clientName: string;
-  // El saldo de HOY del cliente entero, no el de este movimiento. El mensaje
-  // dice "tu saldo actual", y el saldo que arrastra un movimiento es el que
-  // había justo después de él — que en un cliente con movimientos posteriores
-  // ya no es el actual.
-  balanceText: string;
+  // El código de la transacción que se comparte. Va en el mensaje para que el
+  // cliente pueda citarlo, y es lo que el tendero teclea en el buscador de
+  // Inicio para volver a encontrarla. Nulo en una transacción anterior a los
+  // códigos: el mensaje sale igual, sin esa mención.
+  transactionCode: string | null;
   enlace: OrigenDelEnlace;
 };
+
+// EL MENSAJE CON EL QUE SE COMPARTE UNA TRANSACCIÓN, y no el saldo.
+//
+// Encargo del dueño el 2026-10-30, a partir de comentarios de usuarios: el
+// «Compartir» de la ficha de una transacción mandaba el enlace al PERFIL del
+// cliente, así que quien lo recibía aterrizaba en su saldo y tenía que buscar
+// él la transacción de la que se hablaba. Ahora el enlace es el de esa
+// transacción (`/s/<token>/t/<movimiento>`).
+//
+// POR ESO EL TEXTO CAMBIÓ TAMBIÉN. El de `mensajeDeSaldo` dice «tu saldo actual
+// es …. Puedes verlo aquí», y con este enlace sería falso: la página que se abre
+// enseña UNA transacción, no el saldo. `mensajeDeSaldo` se queda intacto para
+// el botón de compartir del perfil del cliente, que sí manda al saldo.
+export function mensajeDeTransaccion(
+  clientName: string,
+  transactionCode: string | null,
+  url: string,
+): string {
+  const de = transactionCode ? `tu transacción ${transactionCode}` : "tu transacción";
+  return `Hola ${clientName}, aquí está el detalle de ${de}: ${url}`;
+}

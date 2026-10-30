@@ -135,6 +135,8 @@ type AbonoDirigidoJson = {
 // enseña — y ahí está toda la autorización: no hace falta comprobar de quién es
 // la fila, porque la única forma de llegar a ella es que la función la haya
 // entregado para ese token.
+const LIMITE = 2000;
+
 export default async function DetalleDelClientePage({
   params,
   searchParams,
@@ -154,7 +156,22 @@ export default async function DetalleDelClientePage({
   await searchParams;
   const supabase = await createClient();
 
-  const { data } = await supabase.rpc("get_shared_balance", { p_token: token });
+  // ── PIDE MÁS DE 50, Y DESDE EL 2026-10-30 ES UN BORDE QUE SE PISA ─────
+  //
+  // `get_shared_balance` acota a 50 movimientos por defecto, que es lo que
+  // enseña la lista. Esta pantalla resuelve UNA fila, y la fila que busca puede
+  // ser más vieja que esa ventana: antes solo se llegaba aquí desde la lista, o
+  // desde «Ver todo el historial» con el mismo problema; ahora el tendero
+  // comparte el enlace de CUALQUIER transacción, y una de hace seis meses daba
+  // 404 sobre el enlace que él acababa de mandar.
+  //
+  // El mismo número y la misma razón que `v/[saleId]/[moneda]/page.tsx`, que ya
+  // lo aprendió. `p_limit` existe desde la migración 036, así que esto no
+  // necesita nada en la base.
+  const { data } = await supabase.rpc("get_shared_balance", {
+    p_token: token,
+    p_limit: LIMITE,
+  });
   if (!data) notFound();
 
   const shared = data as {

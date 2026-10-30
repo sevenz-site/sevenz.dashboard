@@ -12,7 +12,7 @@ import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transacc
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import type { SaleLineRow } from "@/lib/sale-lines";
-import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
@@ -322,19 +322,14 @@ export default async function TransaccionPage({
   }
 
   // ── CON QUÉ SE COMPARTE ──────────────────────────────────────────────
-  const { data: resumen } = await supabase
-    .from("client_summary")
-    .select("balance, balance_usd, balance_eur")
-    .eq("client_id", cliente.id)
-    .maybeSingle();
+  //
+  // EL SALDO YA NO VIAJA. Hasta el 2026-10-30 el mensaje decía «tu saldo
+  // actual es …» porque el enlace llevaba al perfil del cliente; ahora lleva a
+  // ESTA transacción y el mensaje habla de ella (ver `mensajeDeTransaccion`).
+  // La consulta a `client_summary` que armaba ese texto se fue con él.
   const compartir: DatosParaCompartir = {
     clientName: cliente.name,
-    balanceText: formatBalanceSummary(
-      Number(resumen?.balance ?? 0),
-      Number(resumen?.balance_usd ?? 0),
-      Number(resumen?.balance_eur ?? 0),
-      ledger,
-    ),
+    transactionCode: (m.transaction_code as string | null) ?? null,
     enlace: { de: "dueño", clientId: cliente.id },
   };
 
