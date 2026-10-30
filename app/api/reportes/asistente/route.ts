@@ -242,32 +242,21 @@ async function guardar(
   note: AssistantNote,
   meta: { degraded: boolean; modelo: string | null; motivo: string | null },
 ) {
-  const { error } = await service.from("report_assistant_notes").upsert(
-    {
-      owner_id: ownerId,
-      day: hoy,
-      summary: note.summary,
-      recommendations: note.recommendations,
-      degraded: meta.degraded,
-      model: meta.modelo,
-      failure_reason: meta.motivo,
-      // CADA REGENERACIÓN VUELVE A PREGUNTAR. Decisión del dueño el
-      // 2026-10-30: el pie aparece *«con cada regeneración del reporte»*.
-      //
-      // Y ESO NO ES LO MISMO QUE «UNA VEZ AL DÍA», que es donde yo lo tenía.
-      // Dentro del mismo día una nota degradada se reintenta y puede ser
-      // reemplazada por la de la IA: si el tendero ya había calificado el
-      // texto de respaldo, vería el texto nuevo con un «Gracias» puesto --
-      // habiendo calificado otra cosa. El pulgar vale para el texto que
-      // juzgó, no para el día.
-      //
-      // Se escribe aquí y no en una condición porque `guardar` SOLO se llama
-      // cuando de verdad se (re)genera: una nota buena de hoy sale antes, por
-      // el `return` de arriba, sin pasar por aquí.
-      rating: null,
-    },
-    { onConflict: "owner_id,day" },
-  );
+  // POR UNA FUNCIÓN Y NO POR LA TABLA. `qa:service-role` lo rechazó y con
+  // razón: producción le revoca `select` a `service_role` sobre las tablas de
+  // clientes, así que una escritura directa funciona en dev y no allí --el
+  // fallo que tumbó `/admin` el 2026-09-05--. Una `security definer` no
+  // necesita ningún permiso de tabla, así que no hay nada que comparar entre
+  // entornos. Migración `166`.
+  const { error } = await service.rpc("upsert_report_assistant_note", {
+    p_owner_id: ownerId,
+    p_day: hoy,
+    p_summary: note.summary,
+    p_recommendations: note.recommendations,
+    p_degraded: meta.degraded,
+    p_model: meta.modelo,
+    p_failure_reason: meta.motivo,
+  });
   // NO SE PROPAGA. Si no se puede guardar, el tendero ya tiene su texto; lo
   // único que se pierde es no tener que regenerarlo mañana.
   if (error) console.error("[asistente] no se pudo guardar la nota:", error.message);

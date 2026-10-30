@@ -69,14 +69,18 @@ const ETIQUETA: Record<string, string> = {
 };
 
 export async function getSaludDelAsistente(): Promise<SaludDelAsistente> {
+  // POR UNA FUNCIÓN Y NO POR LA TABLA, por lo mismo que la escritura de la
+  // ruta: producción le revoca `select` a `service_role` sobre las tablas de
+  // clientes, y leerla de frente es exactamente lo que tumbó `/admin` el
+  // 2026-09-05. Migración `166`.
+  //
+  // Y AGREGA EN SQL: esta consulta cruza a TODOS los negocios, así que traerse
+  // las filas para contarlas aquí sería sacar el resumen de cada uno de la
+  // base para no usarlo.
   const supabase = createServiceClient();
-  const desde = new Date();
-  desde.setDate(desde.getDate() - (DIAS - 1));
-
   const { data, error } = await supabase
-    .from("report_assistant_notes")
-    .select("degraded, failure_reason")
-    .gte("day", desde.toISOString().slice(0, 10));
+    .rpc("admin_report_assistant_health", { p_days: DIAS })
+    .single<{ total: number; failures: number; by_reason: { reason: string; times: number }[] }>();
 
   if (error) {
     // NO SE DISTINGUE «la tabla no está» de «la consulta falló», y da igual:
@@ -86,33 +90,29 @@ export async function getSaludDelAsistente(): Promise<SaludDelAsistente> {
     return { total: 0, caidas: 0, porMotivo: [], alarma: false, detalle: "Sin datos" };
   }
 
-  const filas = data ?? [];
-  const caidas = filas.filter((f) => f.degraded);
-  const cuenta = new Map<string, number>();
-  for (const f of caidas) {
-    const m = (f.failure_reason as string | null) ?? "sin motivo";
-    cuenta.set(m, (cuenta.get(m) ?? 0) + 1);
-  }
-  const porMotivo = [...cuenta.entries()]
-    .map(([motivo, veces]) => ({ motivo: ETIQUETA[motivo] ?? motivo, veces }))
-    .sort((a, b) => b.veces - a.veces);
+  const total = Number(data?.total ?? 0);
+  const caidas = Number(data?.failures ?? 0);
+  const porMotivo = (data?.by_reason ?? []).map((r) => ({
+    motivo: ETIQUETA[r.reason] ?? r.reason,
+    veces: Number(r.times),
+  }));
 
-  const detalle = filas.length
-    ? caidas.length
-      ? `${caidas.length} de ${filas.length} resúmenes en ${DIAS} días · ${porMotivo
+  const detalle = total
+    ? caidas
+      ? `${caidas} de ${total} resúmenes en ${DIAS} días · ${porMotivo
           .map((p) => `${p.veces} ${p.motivo}`)
           .join(", ")}`
-      : `${filas.length} resúmenes en ${DIAS} días, ninguno caído`
+      : `${total} resúmenes en ${DIAS} días, ninguno caído`
     : `Nadie ha abierto Reportes en ${DIAS} días`;
 
   return {
-    total: filas.length,
-    caidas: caidas.length,
+    total,
+    caidas,
     porMotivo,
     // CON MENOS DE CINCO RESÚMENES NO SE ENCIENDE NADA. Un negocio que entró
     // una vez y le falló daría el 100 %, y una alarma que salta con una
     // muestra de uno enseña a ignorarla.
-    alarma: filas.length >= 5 && caidas.length / filas.length > UMBRAL_DE_ALARMA,
+    alarma: total >= 5 && caidas / total > UMBRAL_DE_ALARMA,
     detalle,
   };
 }
