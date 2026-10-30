@@ -49,6 +49,7 @@ import { readFileSync } from "node:fs";
 import { buildFacts, assistantWindow, ASSISTANT_WINDOW_DAYS } from "../lib/reports/assistant/facts.ts";
 import { buildFallbackNote, noteLength, trimToBudget, MAX_CHARS } from "../lib/reports/assistant/fallback.ts";
 import { validarNota } from "../lib/reports/assistant/validate.ts";
+import { partirPorImportes } from "../lib/reports/assistant/importes.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -261,6 +262,40 @@ try {
     "8e. y un texto que parece nombrar a alguien se rechaza",
     validarNota({ summary: "Cóbrale al cliente Pedro.", recommendations: [] }, hechosReales).ok === false,
     "rechazado",
+  );
+
+  // ── 8f-8h. LAS BANDERAS DE LOS IMPORTES ───────────────────────────
+  //
+  // El dueno pidio el 2026-10-30 que cada saldo del resumen lleve su bandera.
+  // Como la nota se guarda COMO TEXTO, la moneda se deduce de como la escribio
+  // la app, y lo unico que separa un peso colombiano de un dolar es un ESPACIO
+  // detras del `$`. De ahi que esto tenga pruebas propias.
+  const frase = "Tienes $11.852,69 y €5.456,21 por cobrar, $ 60.000,00 en pesos y Bs. 1.000,50.";
+  const trozos = partirPorImportes(frase);
+  const monedas = trozos.filter((t) => t.moneda).map((t) => `${t.texto}=${t.moneda}`);
+  check(
+    "8f. cada importe se reconoce con su moneda, y el espacio separa el peso del dolar",
+    monedas.join(" ") === "$11.852,69=USD €5.456,21=EUR $ 60.000,00=COP Bs. 1.000,50=VES",
+    monedas.join(" "),
+  );
+
+  // LA QUE MAS VALE DE LAS TRES: una funcion que parte texto y se come un
+  // trozo lo hace en silencio, y lo que se perderia aqui es media frase del
+  // informe de alguien.
+  check(
+    "8g. y no se pierde ni un caracter de la frase",
+    trozos.map((t) => t.texto).join("") === frase,
+    `${trozos.map((t) => t.texto).join("").length} de ${frase.length} caracteres`,
+  );
+
+  check(
+    "8h. una frase sin dinero sale entera y sin banderas",
+    (() => {
+      const f = "Tienes 14 clientes con el plazo vencido.";
+      const t = partirPorImportes(f);
+      return t.map((x) => x.texto).join("") === f && t.every((x) => !x.moneda);
+    })(),
+    "sin falsos positivos",
   );
 
   // ── 9. UN NEGOCIO SIN NADA NO LLAMA AL MODELO ───────────────────────

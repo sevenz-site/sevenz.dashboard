@@ -68,6 +68,20 @@ type Respuesta = AssistantNote & {
    * 2026-10-30 preguntando cada cuánto aparecía.
    */
   rating: "useful" | "not_useful" | null;
+  /**
+   * El negocio no tiene nada registrado todavía.
+   *
+   * La pantalla lo usa para NO preguntar «¿qué tan útil te parece este
+   * reporte?» debajo de un texto que dice que no hay nada que reportar --
+   * petición del dueño el 2026-10-30.
+   *
+   * EN UNA NOTA GUARDADA SE DEDUCE DE DOS COLUMNAS, y conviene saber por qué
+   * no hay una tercera: el camino del negocio vacío es el ÚNICO que guarda
+   * `degraded = false` con `model` nulo. Un resumen de la IA siempre deja su
+   * modelo, y uno de respaldo siempre va degradado. Añadir una columna para
+   * algo que las dos que hay ya distinguen sería una migración por comodidad.
+   */
+  empty: boolean;
 };
 
 export async function GET() {
@@ -83,7 +97,7 @@ export async function GET() {
   // ── 1. ¿YA HAY NOTA DE HOY? ───────────────────────────────────────
   const { data: guardada } = await supabase
     .from("report_assistant_notes")
-    .select("summary, recommendations, degraded, rating")
+    .select("summary, recommendations, degraded, rating, model")
     .eq("owner_id", user.id)
     .eq("day", hoy)
     .maybeSingle();
@@ -118,7 +132,7 @@ export async function GET() {
     // modelo, y marcarlo como caída del asistente ensuciaría la tarjeta de
     // /admin con una avería que no es la suya.
     console.error("[asistente] no se pudieron construir los hechos:", e instanceof Error ? e.message : e);
-    return NextResponse.json({ summary: "", recommendations: [], degraded: true, rating: null }, { status: 200 });
+    return NextResponse.json({ summary: "", recommendations: [], degraded: true, rating: null, empty: false }, { status: 200 });
   }
 
   // UN NEGOCIO SIN NADA NO LLAMA AL MODELO. No hay nada que resumir, y gastar
@@ -126,20 +140,20 @@ export async function GET() {
   if (hechos.empty) {
     const note = buildFallbackNote(hechos);
     await guardar(service, user.id, hoy, note, { degraded: false, modelo: null, motivo: null });
-    return NextResponse.json({ ...note, degraded: false, rating: null });
+    return NextResponse.json({ ...note, degraded: false, rating: null, empty: true });
   }
 
   // ── 3. GEMINI ─────────────────────────────────────────────────────
   const r = await generarNota(hechos);
   if (r.ok) {
     await guardar(service, user.id, hoy, r.note, { degraded: false, modelo: r.modelo, motivo: null });
-    return NextResponse.json({ ...r.note, degraded: false, rating: null });
+    return NextResponse.json({ ...r.note, degraded: false, rating: null, empty: false });
   }
 
   registrarCaida(user.id, r.motivo, r.detalle);
   const note = buildFallbackNote(hechos);
   await guardar(service, user.id, hoy, note, { degraded: true, modelo: null, motivo: r.motivo });
-  return NextResponse.json({ ...note, degraded: true, rating: null });
+  return NextResponse.json({ ...note, degraded: true, rating: null, empty: false });
 }
 
 function aRespuesta(fila: {
@@ -147,12 +161,14 @@ function aRespuesta(fila: {
   recommendations: string[] | null;
   degraded: boolean;
   rating?: string | null;
+  model?: string | null;
 }): Respuesta {
   return {
     summary: fila.summary,
     recommendations: fila.recommendations ?? [],
     degraded: fila.degraded,
     rating: (fila.rating as "useful" | "not_useful" | null) ?? null,
+    empty: !fila.degraded && !fila.model,
   };
 }
 
@@ -201,10 +217,10 @@ async function notaDeRespaldo(
     });
     const note = buildFallbackNote(hechos);
     await guardar(service, ownerId, hoy, note, { degraded: true, modelo: null, motivo });
-    return { ...note, degraded: true, rating: null };
+    return { ...note, degraded: true, rating: null, empty: false };
   } catch (e) {
     console.error("[asistente] respaldo:", e instanceof Error ? e.message : e);
-    return { summary: "", recommendations: [], degraded: true, rating: null };
+    return { summary: "", recommendations: [], degraded: true, rating: null, empty: false };
   }
 }
 

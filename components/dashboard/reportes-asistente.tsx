@@ -6,6 +6,8 @@ import { ChevronUp, ThumbsDown, ThumbsUp } from "lucide-react";
 import { track } from "@/lib/mixpanel";
 import { calificarAsistente } from "@/app/(app)/reportes/actions";
 import { cn } from "@/lib/utils";
+import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { partirPorImportes } from "@/lib/reports/assistant/importes";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL ASISTENTE — frame `1804:15424`
@@ -59,6 +61,7 @@ type Nota = {
   recommendations: string[];
   degraded: boolean;
   rating: "useful" | "not_useful" | null;
+  empty: boolean;
 };
 
 export function ReportesAsistente() {
@@ -139,7 +142,9 @@ export function ReportesAsistente() {
           {abierto ? (
             nota ? (
               <div className="flex flex-col gap-0 text-xs leading-4">
-                <p className="whitespace-pre-wrap">{nota.summary}</p>
+                <p className="whitespace-pre-wrap">
+                  <ConBanderas frase={nota.summary} />
+                </p>
                 {nota.recommendations.length ? (
                   <>
                     <p className="mt-4">Recomendaciones:</p>
@@ -148,7 +153,7 @@ export function ReportesAsistente() {
                     <ul className="list-disc">
                       {nota.recommendations.map((r) => (
                         <li key={r} className="ms-[18px]">
-                          {r}
+                          <ConBanderas frase={r} />
                         </li>
                       ))}
                     </ul>
@@ -177,7 +182,12 @@ export function ReportesAsistente() {
       {/* EL PIE SOLO CUANDO HAY ALGO QUE CALIFICAR. Preguntar «¿qué tan útil
           te parece?» debajo de un esqueleto es preguntar por algo que todavía
           no se ha leído. */}
-      {abierto && nota ? (
+      {/* SIN DATOS NO SE PREGUNTA. Decisión del dueño el 2026-10-30:
+          preguntar «¿qué tan útil te parece este reporte?» debajo de un texto
+          que dice que todavía no hay nada que reportar es preguntar por algo
+          que no existe -- y la respuesta, cualquiera que fuese, no diría nada
+          sobre el asistente. */}
+      {abierto && nota && !nota.empty ? (
         <div className="flex w-full items-center justify-between border-t pt-2">
           <span className="text-xs leading-4 text-muted-foreground">
             {calificacion ? "Gracias, lo tendremos en cuenta." : "¿Qué tan útil te parece este reporte?"}
@@ -276,5 +286,35 @@ function Esqueleto() {
       <span className="h-3 w-4/5 animate-pulse rounded bg-muted" />
       <span className="h-3 w-2/3 animate-pulse rounded bg-muted" />
     </div>
+  );
+}
+
+/**
+ * La frase, con la bandera de cada importe pegada a su cifra.
+ *
+ * Encargo del dueño el 2026-10-30 -- es la costumbre de toda la app: ninguna
+ * cifra de dinero se enseña sin decir de qué moneda es. Aquí hace más falta
+ * que en ningún otro sitio, porque el resumen mezcla dos libros en la misma
+ * oración («fiaste $6.687,95 y €793,82») y el símbolo solo no basta cuando el
+ * dólar y el peso colombiano comparten el `$`.
+ *
+ * LA BANDERA VA DESPUÉS DE LA CIFRA, como en las tarjetas de Reportes y en la
+ * ficha del producto, y con `whitespace-nowrap` para que no se quede sola al
+ * final de una línea.
+ */
+function ConBanderas({ frase }: { frase: string }) {
+  return (
+    <>
+      {partirPorImportes(frase).map((t, i) =>
+        t.moneda ? (
+          <span key={i} className="inline-flex items-center gap-1 whitespace-nowrap">
+            {t.texto}
+            <CurrencyFlagIcon currency={t.moneda} className="size-3.5 shrink-0" />
+          </span>
+        ) : (
+          <span key={i}>{t.texto}</span>
+        ),
+      )}
+    </>
   );
 }
