@@ -78,7 +78,7 @@ const check = (nombre, pasa, detalle) => {
   console.log(`${pasa ? "PASS" : "FAIL"}  ${nombre}${detalle ? `  — ${detalle}` : ""}`);
 };
 
-const escritas = [];
+let comoDueno = null;
 
 try {
   // ── El negocio de prueba: el que más variedad tiene ──────────────────
@@ -315,56 +315,55 @@ try {
   // ningún día real va a ocupar deja la prueba independiente de si alguien
   // miró la pantalla antes de correrla.
   const hoy = "2019-01-01";
-  const { error: e1 } = await admin
-    .from("report_assistant_notes")
-    .insert({ owner_id: dueno.id, day: hoy, summary: "QA ASISTENTE", recommendations: ["uno"] });
-  if (!e1) escritas.push({ owner_id: dueno.id, day: hoy });
+
+  // ── SE ESCRIBE POR LA FUNCIÓN, COMO LA APP ────────────────────────
+  //
+  // Hasta la migración `166` esto insertaba en la tabla con la clave de
+  // servicio. La `166` le revocó ese permiso --porque producción se lo revoca
+  // y el código no podía depender de él-- y la suite se puso roja, que es la
+  // migración haciendo su trabajo.
+  //
+  // Pasar por `upsert_report_assistant_note` no es un apaño para que vuelva al
+  // verde: es MEJOR prueba. Ahora ejercita exactamente el camino que usa la
+  // app, incluido el `security definer` que lo hace posible sin permiso de
+  // tabla. Antes probaba un camino que ningún código recorre.
+  const escribir = (day, extra = {}) =>
+    admin.rpc("upsert_report_assistant_note", {
+      p_owner_id: dueno.id,
+      p_day: day,
+      p_summary: "QA ASISTENTE",
+      p_recommendations: ["uno"],
+      p_degraded: false,
+      p_model: "prueba",
+      p_failure_reason: null,
+      ...extra,
+    });
+
+  const { error: e1 } = await escribir(hoy);
   check("10. se puede guardar la nota del día", !e1, e1?.message);
 
   // ── LA TRAMPA QUE ESTA SUITE YA PISÓ UNA VEZ ──────────────────────
   //
-  // Las tres comprobaciones de abajo esperan un RECHAZO. Si la tabla no
-  // existe, PostgREST también rechaza --con `PGRST205`-- y las tres salían
-  // en verde con la migración sin correr: un detector que confirma lo que
-  // quiere oír. Así que el rechazo tiene que ser EL SUYO, por código, y la
-  // falta de tabla se reporta como lo que es.
-  const RECHAZO_POR_FALTA_DE_TABLA = "PGRST205";
-  const hayTabla = e1?.code !== RECHAZO_POR_FALTA_DE_TABLA;
-  const exigeTabla = (nombre, codigoEsperado, error) => {
-    if (!hayTabla) {
-      check(nombre, false, "la migración 165 no está corrida en dev — no se puede comprobar");
+  // Las comprobaciones de abajo esperan un RECHAZO. Si la función no existe,
+  // PostgREST también rechaza --con `PGRST202`-- y salían en verde con la
+  // migración sin correr: un detector que confirma lo que quiere oír. Así que
+  // el rechazo tiene que ser EL SUYO, por código.
+  const SIN_FUNCION = "PGRST202";
+  const hayFuncion = e1?.code !== SIN_FUNCION;
+  const exige = (nombre, codigoEsperado, error) => {
+    if (!hayFuncion) {
+      check(nombre, false, "la migración 166 no está corrida en dev — no se puede comprobar");
       return;
     }
     check(nombre, error?.code === codigoEsperado, error?.code ?? "LA ACEPTÓ");
   };
 
-  const { error: e2 } = await admin
-    .from("report_assistant_notes")
-    .insert({ owner_id: dueno.id, day: hoy, summary: "QA ASISTENTE segunda", recommendations: [] });
-  exigeTabla("11. y la base rechaza una SEGUNDA del mismo día", "23505", e2);
-
-  const { error: e3 } = await admin
-    .from("report_assistant_notes")
-    .insert({ owner_id: dueno.id, day: "2019-01-02", summary: "QA ASISTENTE sin motivo", degraded: true });
-  exigeTabla(
-    "12. una caída sin motivo se rechaza (la tarjeta de /admin contaría fantasmas)",
-    "23514",
-    e3,
-  );
-  if (hayTabla && !e3) escritas.push({ owner_id: dueno.id, day: "2019-01-02" });
-
-  const { error: e4 } = await admin
-    .from("report_assistant_notes")
-    .update({ rating: "mucho" })
-    .eq("owner_id", dueno.id)
-    .eq("day", hoy);
-  exigeTabla(
-    "12b. y una calificación en español se rechaza: los valores guardados son en inglés",
-    "23514",
-    e4,
-  );
-
-  // ── 13-14. COMO EL DUEÑO, CON SU SESIÓN ─────────────────────────────
+  // ── LA SESIÓN DEL DUEÑO, ARRIBA ───────────────────────────────────
+  //
+  // Se crea aquí y no más abajo porque desde la `166` es el ÚNICO cliente que
+  // puede LEER esta tabla: a la clave de servicio se le revocó el `select`,
+  // igual que en producción. Contar filas, leer la nota y calificarla pasan
+  // todas por aquí.
   const { data: u } = await admin.auth.admin.getUserById(dueno.id);
   const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     auth: { persistSession: false },
@@ -374,10 +373,44 @@ try {
     type: "magiclink",
     token_hash: link.properties.hashed_token,
   });
-  const comoDueno = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  comoDueno = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     auth: { persistSession: false },
     global: { headers: { Authorization: `Bearer ${ses.session.access_token}` } },
   });
+
+  // UNA SOLA FILA POR DÍA. La función hace `upsert`, así que la segunda
+  // llamada REEMPLAZA en vez de fallar -- y lo que se comprueba es justo eso:
+  // que la clave primaria impide que existan dos.
+  await escribir(hoy, { p_summary: "QA ASISTENTE reescrita" });
+  const { count: cuantas } = await comoDueno
+    .from("report_assistant_notes")
+    .select("owner_id", { count: "exact", head: true })
+    .eq("day", hoy);
+  check(
+    "11. una segunda escritura REEMPLAZA, nunca duplica",
+    hayFuncion && cuantas === 1,
+    `${cuantas} fila(s) para ese día`,
+  );
+
+  const { error: e3 } = await escribir("2019-01-02", { p_degraded: true, p_failure_reason: null });
+  exige(
+    "12. una caída sin motivo se rechaza (la tarjeta de /admin contaría fantasmas)",
+    "23514",
+    e3,
+  );
+
+  // LA CALIFICACIÓN EN ESPAÑOL, POR LA PUERTA DEL DUEÑO, que es la única que
+  // escribe en esa columna: `authenticated` tiene `update` y nada más.
+  const { error: e4 } = await comoDueno
+    .from("report_assistant_notes")
+    .update({ rating: "mucho" })
+    .eq("owner_id", dueno.id)
+    .eq("day", hoy);
+  exige(
+    "12b. y una calificación en español se rechaza: los valores guardados son en inglés",
+    "23514",
+    e4,
+  );
 
   const { data: suya, error: e5 } = await comoDueno
     .from("report_assistant_notes")
@@ -387,7 +420,7 @@ try {
     .maybeSingle();
   check(
     "13. el dueño LEE su propia nota (política + grant, la trampa de la 108)",
-    !e5 && suya?.summary === "QA ASISTENTE",
+    !e5 && suya?.summary === "QA ASISTENTE reescrita",
     e5 ? `${e5.code}: ${e5.message}` : suya?.summary,
   );
 
@@ -424,14 +457,38 @@ try {
     e7 ? `${e7.code}: ${e7.message}` : `${(ajenas ?? []).length} filas ajenas`,
   );
 } finally {
-  for (const f of escritas) {
-    await admin.from("report_assistant_notes").delete().eq("owner_id", f.owner_id).eq("day", f.day);
+  // ── LA LIMPIEZA CAMBIÓ CON LA `166`, Y DECIRLO ES LA MITAD ────────
+  //
+  // Antes esta suite borraba sus filas con la clave de servicio. La `166` le
+  // revocó ese permiso --igual que producción-- así que **nada puede borrar
+  // una nota**: ni el servidor, que solo escribe por la función, ni el
+  // tendero, que solo tiene `select` y `update`. Es deliberado: una nota es
+  // un apunte diario de 24 filas al día en el peor caso, y no hay ningún
+  // camino de la app que deba borrarlas.
+  //
+  // ASÍ QUE LA SUITE DEJA SUS DOS FILAS CENTINELA, en 2019, y las reescribe
+  // en cada corrida en vez de acumularlas. Lo que NO puede dejar es una nota
+  // con la fecha de HOY, que sería basura mezclada con las de verdad.
+  //
+  // Y SE CUENTA COMO EL DUEÑO. Contarlo con la clave de servicio daba 42501,
+  // `count` llegaba nulo, y `null ?? 0 === 0` pintaba un PASS diciendo «no
+  // queda nada» con la fila delante. Un detector que confirma lo que quiere
+  // oír -- el mismo fallo que esta suite ya cazó en las comprobaciones 11 y 12.
+  const ahora = new Date().toISOString().slice(0, 10);
+  if (comoDueno) {
+    const { count, error } = await comoDueno
+      .from("report_assistant_notes")
+      .select("owner_id", { count: "exact", head: true })
+      .like("summary", "QA ASISTENTE%")
+      .eq("day", ahora);
+    check(
+      "15. limpieza: la suite no dejó ninguna nota con la fecha de hoy",
+      !error && (count ?? -1) === 0,
+      error ? `${error.code}: ${error.message}` : `quedan ${count}`,
+    );
+  } else {
+    check("15. limpieza: la suite no dejó ninguna nota con la fecha de hoy", false, "sin sesión de dueño");
   }
-  const { count } = await admin
-    .from("report_assistant_notes")
-    .select("owner_id", { count: "exact", head: true })
-    .like("summary", "QA ASISTENTE%");
-  check("15. limpieza: no queda nada de la prueba en dev", (count ?? 0) === 0, `quedan ${count ?? 0}`);
 
   const pasan = filas.filter((f) => f.pasa).length;
   console.log(`\n${pasan}/${filas.length} pasan.`);
