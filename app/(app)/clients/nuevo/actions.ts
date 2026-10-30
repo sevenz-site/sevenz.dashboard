@@ -11,6 +11,115 @@ import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { trackServer } from "@/lib/mixpanel-server";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { DOCUMENT_SOURCE } from "@/lib/types";
+import { createServiceClient } from "@/lib/supabase/service";
+import { parseMoneyInput } from "@/lib/products/price";
+import {
+  resolveMovementRateSnapshot,
+  type MovementRateSnapshot,
+} from "@/lib/exchange-rate/resolve-movement-rate";
+
+// ===========================================================================
+// THE OLD DEBT -- owner's request of 2026-10-30
+//
+// The case it exists for: a shopkeeper moving his notebook into Sevenz by hand
+// registers a client who ALREADY owes him something, without having sold
+// anything inside the app. Screen «Información de deuda» (frame `1868:16119`),
+// step 2/2 of «Nuevo cliente».
+//
+// IT IS STORED AS A FIADO, and that was asked, not assumed (owner's answer of
+// 2026-10-30): a `charge` with today's date, its own plazo and cuotas, photo
+// and description. So it adds to the balance, gets paid with an abono and is
+// judged by its term exactly like any fiado -- no new type, no migration.
+//
+// NO BOLIVARS: the owner chose dollars or euros only (2026-10-30), so the amount
+// typed IS the amount stored, in that book. A Colombian business has one book
+// and no selector.
+//
+// ZERO OR EMPTY MEANS «NO OLD DEBT», and then no movement is written at all: a
+// `0.00` fiado would be a row that says nothing and shows up in the history.
+type DeudaAntigua = {
+  amount: number;
+  plazoDias: number | null;
+  cuotas: number | null;
+  photoPath: string | null;
+  description: string | null;
+  sello: MovementRateSnapshot;
+};
+
+async function leerDeudaAntigua(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  formData: FormData,
+): Promise<{ ok: true; deuda: DeudaAntigua | null } | { ok: false; error: string }> {
+  const texto = String(formData.get("deuda_monto") ?? "").trim();
+  if (!texto) return { ok: true, deuda: null };
+  const leido = parseMoneyInput(texto);
+  if (leido == null || !Number.isFinite(leido) || leido < 0) {
+    return { ok: false, error: "Escribe la deuda antigua con números, o déjala en cero." };
+  }
+  const amount = Math.round(leido * 100) / 100;
+  if (amount === 0) return { ok: true, deuda: null };
+
+  // «Sin especificar» travels as its own word and means no term at all.
+  const plazoTexto = String(formData.get("plazo_dias") ?? "").trim();
+  let plazoDias: number | null = null;
+  if (plazoTexto && plazoTexto !== "sin_especificar") {
+    const n = Number(plazoTexto);
+    // The same 1-365 range as the database (migration 054).
+    if (!Number.isInteger(n) || n < 1 || n > 365) {
+      return { ok: false, error: "Escribe el plazo en días, entre 1 y 365." };
+    }
+    plazoDias = n;
+  }
+
+  // ONE CUOTA AND «SIN ESPECIFICAR» ARE THE SAME ROW: null, which the database
+  // reads as a single payment at the end of the term (migration 118).
+  const cuotasTexto = String(formData.get("cuotas") ?? "").trim();
+  let cuotas: number | null = null;
+  if (cuotasTexto && cuotasTexto !== "sin_especificar" && cuotasTexto !== "1") {
+    const n = Number(cuotasTexto);
+    if (!Number.isInteger(n) || n < 2 || n > 36) {
+      return { ok: false, error: "Elige en cuántas cuotas se paga." };
+    }
+    // The database refuses cuotas without a term (migration 118). Said here in
+    // words instead of letting the insert fail with a constraint name.
+    if (plazoDias == null) {
+      return {
+        ok: false,
+        error: "Para repartir la deuda en cuotas, elige primero el plazo de pago.",
+      };
+    }
+    cuotas = n;
+  }
+
+  // The photo is uploaded by the browser; only a path inside the owner's own
+  // folder is accepted -- the same check as `app/(app)/clients/[id]/actions.ts`.
+  const photoPath = String(formData.get("deuda_photo_path") ?? "").trim() || null;
+  if (photoPath && !photoPath.startsWith(`${ownerId}/`)) {
+    return { ok: false, error: "No pudimos adjuntar esa foto. Vuelve a subirla." };
+  }
+
+  const monedaTexto = String(formData.get("deuda_moneda") ?? "").trim();
+  const moneda = monedaTexto === "USD" || monedaTexto === "EUR" ? monedaTexto : null;
+  // THE SAME DOOR EVERY MOVEMENT GOES THROUGH: it decides the book (null for a
+  // Colombian business, refused for a Venezuelan one with no currency) and
+  // seals the day's rate for the audit columns.
+  const resolucion = await resolveMovementRateSnapshot(supabase, ownerId, moneda);
+  if (!resolucion.ok) return { ok: false, error: resolucion.error };
+
+  const descripcion = String(formData.get("deuda_descripcion") ?? "").trim().slice(0, 500);
+  return {
+    ok: true,
+    deuda: {
+      amount,
+      plazoDias,
+      cuotas,
+      photoPath,
+      description: descripcion || null,
+      sello: resolucion.snapshot,
+    },
+  };
+}
 
 // UN CLIENTE, Y NADA MÁS. Frame `1389:8313`, encargo del dueño del 2026-10-18.
 //
@@ -42,7 +151,56 @@ export type ResultadoAlta =
   | { ok: true; clientId: string }
   | { ok: false; error: string; duplicado?: { id: string; name: string } };
 
+// ── PASO 1/2: COMPROBAR SIN CREAR ────────────────────────────────────
+//
+// Desde el 2026-10-30 «Nuevo cliente» tiene dos pantallas (frames `1868:15815`
+// y `1868:16119`) y el cliente se crea al final, en la segunda. Pero lo que
+// puede fallar de la primera —el nombre, la cédula, una cédula que ya es de
+// alguien— tiene que decirse AL PULSAR «Continuar», no una pantalla después:
+// enterarse en el paso 2 de que la cédula está repetida obliga a volver atrás
+// sin saber a qué.
+//
+// Es la misma comprobación que `registrarCliente`, la MISMA función
+// (`comprobarCliente`), y el alta la vuelve a hacer al guardar: entre una
+// pantalla y otra puede haber entrado otro cliente con esa cédula.
+export async function validarCliente(formData: FormData): Promise<ResultadoAlta> {
+  const r = await comprobarCliente(formData);
+  return r.ok ? { ok: true, clientId: "" } : r;
+}
+
 export async function registrarCliente(formData: FormData): Promise<ResultadoAlta> {
+  const comprobado = await comprobarCliente(formData);
+  if (!comprobado.ok) return comprobado;
+  const { supabase, user, name, whatsapp, address, documentId, documentTypeRaw, documentCountry } =
+    comprobado;
+
+  // ── LA DEUDA SE LEE ANTES DE CREAR NADA ──────────────────────────────
+  //
+  // Una deuda mal escrita se rechaza con el cliente todavía sin crear: si se
+  // validara después, el tendero se quedaría con un cliente guardado a medias y
+  // al reintentar chocaría con su propia cédula.
+  const leida = await leerDeudaAntigua(supabase, user.id, formData);
+  if (!leida.ok) return { ok: false, error: leida.error };
+  const deuda = leida.deuda;
+
+  return crearCliente({ supabase, user, name, whatsapp, address, documentId, documentTypeRaw, documentCountry, deuda, formData });
+}
+
+type ClienteComprobado = {
+  ok: true;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  user: { id: string; email?: string };
+  name: string;
+  whatsapp: string;
+  address: string;
+  documentId: string;
+  documentTypeRaw: string;
+  documentCountry: string | null;
+};
+
+async function comprobarCliente(
+  formData: FormData,
+): Promise<ClienteComprobado | Extract<ResultadoAlta, { ok: false }>> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -112,12 +270,48 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
   );
   if (duplicado && !confirmado) {
     return {
-      ok: false,
+      ok: false as const,
       error: mensajeDeDuplicado(duplicado),
       duplicado: { id: duplicado.id, name: duplicado.name },
     };
   }
 
+  return {
+    ok: true as const,
+    supabase,
+    user,
+    name,
+    whatsapp,
+    address,
+    documentId,
+    documentTypeRaw,
+    documentCountry,
+  };
+}
+
+async function crearCliente({
+  supabase,
+  user,
+  name,
+  whatsapp,
+  address,
+  documentId,
+  documentTypeRaw,
+  documentCountry,
+  deuda,
+  formData,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  user: { id: string; email?: string };
+  name: string;
+  whatsapp: string;
+  address: string;
+  documentId: string;
+  documentTypeRaw: string;
+  documentCountry: string | null;
+  deuda: DeudaAntigua | null;
+  formData: FormData;
+}): Promise<ResultadoAlta> {
   const { data: nuevo, error } = await supabase
     .from("clients")
     .insert({
@@ -144,6 +338,53 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
 
   if (error || !nuevo) {
     return { ok: false, error: mensajeDeError("crear el cliente", error, "registrarCliente") };
+  }
+
+  // ── LA DEUDA ANTIGUA, COMO UN FIADO DE ESTE CLIENTE ──────────────────
+  //
+  // Una sola fila y la más nueva del libro, así que el disparador le pone su
+  // `running_balance` bien sin recalcular nada (CLAUDE.md, «Quien escribe
+  // varios movimientos de golpe, recalcula el saldo»: aquí es uno).
+  if (deuda) {
+    const { error: errorDeuda } = await supabase.from("movements").insert({
+      client_id: nuevo.id,
+      created_by: user.id,
+      type: "charge",
+      amount: deuda.amount,
+      currency: deuda.sello.currency,
+      description: deuda.description,
+      source: "manual",
+      photo_path: deuda.photoPath,
+      plazo_dias: deuda.plazoDias,
+      cuotas: deuda.cuotas,
+      rate_mode_used: deuda.sello.rateModeUsed,
+      exchange_rate_used: deuda.sello.exchangeRateUsed,
+      official_bcv_rate_at_time: deuda.sello.officialBcvRateAtTime,
+      entry_currency: deuda.sello.entryCurrency,
+      entry_amount: deuda.sello.entryCurrency ? deuda.amount : null,
+      rate_usd_at_time: deuda.sello.rateUsdAtTime,
+      rate_eur_at_time: deuda.sello.rateEurAtTime,
+    });
+    if (errorDeuda) {
+      // SIN LA DEUDA, EL CLIENTE TAMPOCO SE QUEDA. Se pidió como una sola cosa,
+      // y un cliente creado a medias haría que el reintento chocara con su
+      // propia cédula. Se borra con la clave de servicio porque el dueño no
+      // puede borrar clientes (la papelera es un ocultado, migración `061`), y
+      // con el dueño y el id explícitos: solo alcanza la ficha que esta misma
+      // llamada acaba de crear.
+      const { error: errorDeshacer } = await createServiceClient()
+        .from("clients")
+        .delete()
+        .eq("id", nuevo.id)
+        .eq("owner_id", user.id);
+      if (errorDeshacer) {
+        console.error("[registrarCliente] no se pudo deshacer el cliente:", errorDeshacer.message);
+      }
+      return {
+        ok: false,
+        error: mensajeDeError("guardar la deuda antigua", errorDeuda, "registrarCliente"),
+      };
+    }
   }
 
   // EN EL SERVIDOR Y NO EN EL NAVEGADOR, como todo lo que cuenta: en septiembre

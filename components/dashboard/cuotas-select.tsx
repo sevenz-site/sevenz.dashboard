@@ -38,13 +38,43 @@ export function CuotasSelect({
   value,
   onValueChange,
   plazoDias,
+  sinEspecificar = false,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   // El plazo que hay elegido ahora mismo, en días. null = «sin especificar».
   plazoDias: number | null;
+  // «SIN ESPECIFICAR» COMO OPCIÓN, SOLO EN LA DEUDA ANTIGUA — decisión del
+  // dueño el 2026-10-30, frame `1868:16119`: *«Cuotas tendrá la opción "Sin
+  // especificar" solo en este flujo»*. Quien pasa a mano una libreta muchas
+  // veces no sabe en cuántas partes se pactó, y «Pago único» afirmaría algo
+  // que no sabe. Se guarda igual que «Pago único» —null— porque la base no
+  // distingue las dos; lo que cambia es lo que el tendero declara.
+  //
+  // Y CON ÉL EL CAMPO SE VE AUNQUE NO HAYA PLAZO, porque el frame lo dibuja
+  // así: con el plazo «Sin especificar» solo ofrece «Sin especificar», que es
+  // lo único que la base admite sin plazo (migración `118`). En el resto de
+  // pantallas sigue escondiéndose, como explica la cabecera.
+  sinEspecificar?: boolean;
 }) {
-  if (plazoDias === null) return null;
+  if (plazoDias === null && !sinEspecificar) return null;
+
+  if (plazoDias === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Label>Cuotas</Label>
+        <Select value="sin_especificar" onValueChange={onValueChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sin_especificar">Sin especificar</SelectItem>
+          </SelectContent>
+        </Select>
+        <input type="hidden" name="cuotas" value="sin_especificar" />
+      </div>
+    );
+  }
 
   const cuotas = Number(value) || 1;
   // The division lives in `formatCadaCuantosDias`, which carries why it never
@@ -60,6 +90,7 @@ export function CuotasSelect({
           <SelectValue placeholder="Elige cuántas cuotas" />
         </SelectTrigger>
         <SelectContent>
+          {sinEspecificar ? <SelectItem value="sin_especificar">Sin especificar</SelectItem> : null}
           <SelectItem value="1">Pago único</SelectItem>
           {Array.from({ length: MAXIMO - 1 }, (_, i) => i + 2).map((n) => (
             <SelectItem key={n} value={String(n)}>

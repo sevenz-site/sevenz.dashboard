@@ -43,5 +43,9 @@ export default async function NuevoClientePage() {
   // LA TASA YA NO HACE FALTA AQUÍ: la hoja de la cuenta duplicada se fue el
   // 2026-10-18 y en su lugar hay un enlace que navega a la ficha del cliente,
   // que trae la suya.
-  return <NewClientForm ownerCountry={(owner?.country as OwnerCountry | null) ?? null} />;
+  // `ownerId` para la foto de la deuda antigua: se sube a la carpeta del dueño
+  // en `attachments`, que es la única ruta que el servidor acepta.
+  return (
+    <NewClientForm ownerCountry={(owner?.country as OwnerCountry | null) ?? null} ownerId={user.id} />
+  );
 }
