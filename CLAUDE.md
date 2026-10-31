@@ -778,6 +778,49 @@ Vale en los dos historiales **y en la ficha de la transacción**, que es donde
 se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
 `Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
 
+## Una deuda antigua no tiene compra: ninguna pantalla le dibuja una
+
+**Pedido por el dueño el 2026-10-31**, a la segunda vez que salió el mismo
+asunto: el 2026-10-30 se le preguntó por la fila «+€0,00 al día de la compra»
+que aparecía en una deuda antigua, y el 2026-10-31 la mandó quitar con el frame
+`1894:15287` delante.
+
+**La regla**: el fiado con que nace un cliente nuevo —la deuda que ya traía
+antes de Sevenz— **no es una venta**. No se compró nada en ningún momento que
+la app conozca. Así que en ninguna pantalla lleva nada que hable de una compra:
+
+- **ni productos** («Qué se llevó»);
+- **ni la tarjeta del pago «al día de la compra»**, que es la primera de
+  «Abonos relacionados» en un fiado normal — en una deuda antigua dibujaba
+  «+€0,00» por un momento que nunca pasó;
+- **ni ninguna otra que se invente después**: un ticket, un «vendido por», un
+  margen.
+
+Su tipo es «Deuda antigua», no «Fiado / Crédito», en el detalle. **En el
+historial sigue diciendo «Fiado»**, decisión del dueño ese mismo día.
+
+### Cómo se sabe que lo es: la marca, nunca la ausencia de venta
+
+`movements.is_old_debt` (migración `167`). **No vale «un fiado sin
+`sale_id`»**: así son también todos los fiados escritos antes del flujo de venta
+(2026-10-21) y los que entran por la foto de una libreta. En dev, el día que se
+escribió esto, había **191 fiados sin venta y solo 4 eran deudas antiguas**.
+Deducirlo de la ausencia de venta rotula como «Deuda antigua» los fiados de
+septiembre y les quita sus abonos, en las dos vistas y sin que nada se vea raro.
+
+**Y viaja por las dos caras**: la del dueño la lee de `movements`, la del
+cliente de `get_shared_balance`, que construye su JSON campo a campo. Una
+pantalla nueva que necesite saberlo del lado del cliente tiene que comprobar que
+la función lo devuelve, no suponerlo.
+
+### Lo que esto cuesta, y está aceptado
+
+Los abonos dirigidos a una deuda antigua **no se listan en su detalle**, porque
+se quitó la sección entera. Siguen contando —en «Total por cobrar» y en la
+columna «Estado» de las cuotas— y el comentario de
+`detalle-de-transaccion.tsx` lo dice. Quien quiera devolver la lista tiene que
+devolverla **sin** la tarjeta de la compra, no la sección tal cual.
+
 ## Todo encargo del app del dueño se pregunta para la vista del cliente
 
 **Pedido por el dueño el 2026-10-23**: *«todo requerimiento que te solicite
