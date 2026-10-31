@@ -6,7 +6,6 @@ import { ChevronUp, ThumbsDown, ThumbsUp } from "lucide-react";
 import { track } from "@/lib/mixpanel";
 import { calificarAsistente } from "@/app/(app)/reportes/actions";
 import { cn } from "@/lib/utils";
-import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { partirPorImportes } from "@/lib/reports/assistant/importes";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -135,7 +134,12 @@ export function ReportesAsistente() {
               inventar puntuación que él no puso. */}
           {abierto ? (
             <p className="text-xs leading-4">
-              ¿Cómo va la semana? <span className="text-muted-foreground">Reporte diario</span>
+              {/* SEMIBOLD, TWO WEIGHTS ABOVE THE REGULAR BODY -- the owner's
+                  request of 2026-10-31, together with «Recomendaciones» and
+                  the amounts. «Reporte diario» stays regular and grey: it says
+                  how often, not what. */}
+              <span className="font-semibold">¿Cómo va la semana?</span>{" "}
+              <span className="text-muted-foreground">Reporte diario</span>
             </p>
           ) : null}
 
@@ -143,17 +147,17 @@ export function ReportesAsistente() {
             nota ? (
               <div className="flex flex-col gap-0 text-xs leading-4">
                 <p className="whitespace-pre-wrap">
-                  <ConBanderas frase={nota.summary} />
+                  <ConImportes frase={nota.summary} />
                 </p>
                 {nota.recommendations.length ? (
                   <>
-                    <p className="mt-4">Recomendaciones:</p>
+                    <p className="mt-4 font-semibold">Recomendaciones:</p>
                     {/* `ms-[18px]` Y `list-disc` SON DEL FRAME, no una elección:
                         la viñeta y su sangría están especificadas. */}
                     <ul className="list-disc">
                       {nota.recommendations.map((r) => (
                         <li key={r} className="ms-[18px]">
-                          <ConBanderas frase={r} />
+                          <ConImportes frase={r} />
                         </li>
                       ))}
                     </ul>
@@ -290,30 +294,29 @@ function Esqueleto() {
 }
 
 /**
- * La frase, con la bandera de cada importe pegada a su cifra.
+ * La frase, con cada importe en semibold.
  *
- * Encargo del dueño el 2026-10-30 -- es la costumbre de toda la app: ninguna
- * cifra de dinero se enseña sin decir de qué moneda es. Aquí hace más falta
- * que en ningún otro sitio, porque el resumen mezcla dos libros en la misma
- * oración («fiaste $6.687,95 y €793,82») y el símbolo solo no basta cuando el
- * dólar y el peso colombiano comparten el `$`.
+ * THE FLAGS ARE GONE AND THE AMOUNTS ARE MARKED INSTEAD -- the owner's
+ * request of 2026-10-31: «Elimina las banderas de los saldos en el asistente,
+ * marca los saldos». Semibold is two weights above the regular body, as he
+ * asked.
  *
- * LA BANDERA VA A LA IZQUIERDA DE LA CIFRA. Lo pidió el dueño el 2026-10-30, y
- * coincide con la costumbre de esta misma pantalla: las hojas de Reportes
- * pintan la bandera ANTES del importe (`reportes-productos-sheet.tsx`). La
- * ficha del producto lo hace al revés, así que la app tiene las dos formas; lo
- * que manda aquí es la pestaña en la que este bloque vive.
+ * WHAT THIS DISPLACES, kept here in case it is ever reversed: on 2026-10-30
+ * he had asked for a flag before every amount, because the summary mixes two
+ * books in one sentence and «$» is both the dollar and the Colombian peso.
+ * The symbol is enough on its own because a business is EITHER Venezuelan
+ * («$» dollar, «€» euro, «Bs.» bolívar) OR Colombian (pesos only), so the
+ * two «$» never meet in the same summary.
  *
- * `whitespace-nowrap` para que la bandera no se quede sola al final de una
- * línea, separada de la cifra que explica.
+ * `whitespace-nowrap` so an amount never breaks across lines between its
+ * symbol and its digits.
  */
-function ConBanderas({ frase }: { frase: string }) {
+function ConImportes({ frase }: { frase: string }) {
   return (
     <>
       {partirPorImportes(frase).map((t, i) =>
         t.moneda ? (
-          <span key={i} className="inline-flex items-center gap-1 whitespace-nowrap">
-            <CurrencyFlagIcon currency={t.moneda} className="size-3.5 shrink-0" />
+          <span key={i} className="whitespace-nowrap font-semibold">
             {t.texto}
           </span>
         ) : (
