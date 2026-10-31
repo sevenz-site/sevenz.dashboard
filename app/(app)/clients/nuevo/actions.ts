@@ -11,7 +11,6 @@ import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { trackServer } from "@/lib/mixpanel-server";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { DOCUMENT_SOURCE } from "@/lib/types";
-import { createServiceClient } from "@/lib/supabase/service";
 import { parseMoneyInput } from "@/lib/products/price";
 import {
   resolveMovementRateSnapshot,
@@ -366,19 +365,31 @@ async function crearCliente({
       rate_eur_at_time: deuda.sello.rateEurAtTime,
     });
     if (errorDeuda) {
-      // SIN LA DEUDA, EL CLIENTE TAMPOCO SE QUEDA. Se pidió como una sola cosa,
-      // y un cliente creado a medias haría que el reintento chocara con su
-      // propia cédula. Se borra con la clave de servicio porque el dueño no
-      // puede borrar clientes (la papelera es un ocultado, migración `061`), y
-      // con el dueño y el id explícitos: solo alcanza la ficha que esta misma
-      // llamada acaba de crear.
-      const { error: errorDeshacer } = await createServiceClient()
+      // WITHOUT THE DEBT, THE CLIENT DOES NOT STAY EITHER. It was asked for as
+      // one thing, and a half-created client would make the retry run into its
+      // own cédula.
+      //
+      // DELETED WITH THE OWNER'S OWN SESSION, NOT THE SERVICE KEY. Production
+      // revokes SELECT from `service_role` on the customer tables, and a
+      // DELETE with a WHERE needs SELECT on the columns it filters by — so the
+      // service-key version worked in dev and would have failed every time in
+      // production, leaving exactly the half-created client this exists to
+      // prevent (caught by `qa:service-role` on 2026-10-30). The owner can
+      // delete their own clients: policy "owners delete own clients" in
+      // `061`, and the `delete` grant to `authenticated` that `045`
+      // aligned with production. Filtered by id AND owner, so it only reaches
+      // the row this call just created, which has no movements yet.
+      const { data: deshecho, error: errorDeshacer } = await supabase
         .from("clients")
         .delete()
         .eq("id", nuevo.id)
-        .eq("owner_id", user.id);
-      if (errorDeshacer) {
-        console.error("[registrarCliente] no se pudo deshacer el cliente:", errorDeshacer.message);
+        .eq("owner_id", user.id)
+        .select("id");
+      if (errorDeshacer || !deshecho?.length) {
+        console.error(
+          "[registrarCliente] no se pudo deshacer el cliente:",
+          errorDeshacer?.message ?? "0 filas borradas",
+        );
       }
       return {
         ok: false,
