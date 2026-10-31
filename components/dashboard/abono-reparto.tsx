@@ -42,6 +42,7 @@ import {
   deudaEnBolivares,
   resolveSplitUnits,
   sumFixedLines,
+  absorbPinnedCents,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -330,6 +331,20 @@ export function AbonoReparto({
     [delLibro],
   );
 
+  // THE NOTE DECIDES THE TOTAL (owner's decision of 2026-10-30), in the
+  // one-ledger state: pinned lines typed in bolivars add up to the conversion
+  // of their bolivars together. The server runs the same function on the raw
+  // `aMano` it receives, so the button and what gets stored agree. Not in the
+  // crossing state: `repartirEnBolivares` does it there, and adjusting the
+  // pinned figures would make it stop recognising the typed bolivars.
+  const aManoAjustado = useMemo(
+    () =>
+      cruzaLibros || !libro
+        ? aMano
+        : absorbPinnedCents({ fiados: paraRepartir, aMano, aManoBs, ahora, fromBolivars: desdeBolivares }),
+    [cruzaLibros, libro, aMano, aManoBs, paraRepartir, ahora, desdeBolivares],
+  );
+
   // LA DEUDA, EN LA UNIDAD EN QUE SE ESTÁ REPARTIENDO: bolívares si se cruza,
   // la moneda del libro si no.
   const deuda = cruzaLibros
@@ -376,7 +391,7 @@ export function AbonoReparto({
           pendiente: f.pending,
           currency: (f.currency ?? null) as LedgerCurrency | null,
         })),
-        aMano,
+        aMano: aManoAjustado,
         aManoBs,
         crossesLedgers: cruzaLibros,
         aBolivares,
@@ -388,7 +403,7 @@ export function AbonoReparto({
     // `amount` es `number | null`: null cuando falta la tasa. Cae a 0, que
     // deja el botón apagado — mejor que convertir con una tasa inventada.
     return priceIn(libro, { amount: montoNum, currency: "VES" }, rates).amount ?? 0;
-  }, [modoSeleccion, delLibro, aMano, aManoBs, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
+  }, [modoSeleccion, delLibro, aManoAjustado, aManoBs, aBolivares, cruzaLibros, enBolivares, montoNum, libro, rates]);
 
   const excede = enElLibro - deuda > 0.005;
 
@@ -421,8 +436,8 @@ export function AbonoReparto({
         sinAsignar: r.sinAsignarBs,
       };
     }
-    return repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano, ahora });
-  }, [cruzaLibros, excede, enElLibro, paraRepartir, aMano, aManoBs, ahora, aBolivares, desdeBolivares]);
+    return repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano: aManoAjustado, ahora });
+  }, [cruzaLibros, excede, enElLibro, paraRepartir, aMano, aManoAjustado, aManoBs, ahora, aBolivares, desdeBolivares]);
 
   // EL BORRADOR SE GUARDA EN CUANTO CAMBIA ALGO, no al salir: salir puede ser
   // un gesto de «atrás» del sistema, y entonces no hay dónde enganchar el
@@ -883,7 +898,15 @@ export function AbonoReparto({
     // esta tarjeta abona, y entonces manda la conversión de lo que de verdad
     // le toca.
     const suyos = aManoBs[f.movementId];
-    const sigueEntero = suyos != null && Math.abs((aMano[f.movementId] ?? 0) - toca) <= 0.005;
+    // WHOLE, AFTER THE CENT (owner's decision of 2026-10-30): the line that
+    // absorbs the note's rounding cent is still the one he typed. Crossing,
+    // that is read from its bolivars, which absorbing never touches; in one
+    // ledger, against the adjusted pin -- the same check the server makes.
+    const sigueEntero =
+      suyos != null &&
+      (cruzaLibros
+        ? Math.abs((asignadoBs.get(f.movementId) ?? 0) - suyos) <= 0.005
+        : Math.abs((aManoAjustado[f.movementId] ?? 0) - toca) <= 0.005);
     // ── Y SI NO LA FIJÓ A MANO, SU TROZO DEL BILLETE ──────────────────
     //
     // Tecleando Bs. 1.000 sobre un fiado que debe de sobra, la tarjeta decía

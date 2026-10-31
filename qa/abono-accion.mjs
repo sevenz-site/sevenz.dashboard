@@ -29,7 +29,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 // LA MISMA FUNCION QUE USA LA PANTALLA. Ver la fila 9 y por que se importa en
 // vez de escribir las banderas a mano.
-import { resolveSplitUnits, sumFixedLines } from "../lib/abonos/reparto.ts";
+import { resolveSplitUnits, sumFixedLines, absorbPinnedCents } from "../lib/abonos/reparto.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -774,6 +774,126 @@ try {
             `A €${por.get(fA)?.amount}/Bs ${por.get(fA)?.entry_amount} · B €${por.get(fB)?.amount}/Bs ${por.get(fB)?.entry_amount}`,
           );
         }
+      }
+    }
+
+    // 11. MANDA EL BILLETE, CONTRA LA ACCIÓN DE VERDAD
+    //
+    // Owner's decision of 2026-10-30, after production abono HDXR320 stored
+    // $11,24 for a Bs. 10.000 note split by hand as 5.000 + 5.000. Both states
+    // of the screen are walked, each the way the screen builds its request:
+    // the bolivar chip (`repartirEnBolivares` on the server) and the ledger's
+    // own chip with every line typed in bolivars (`absorbPinnedCents` before
+    // `repartir`). In both the total must be the note and each line must keep
+    // the bolivars that were typed for it.
+    if (tasa) {
+      const conDos = async (moneda, a, b, etiqueta) => {
+        const { data: c } = await admin
+          .from("clients")
+          .insert({ owner_id: ve.id, name: `${MARCA} billete ${etiqueta}` })
+          .select("id")
+          .single();
+        creados.clientes.push(c.id);
+        const cargo = async (monto, dias) => {
+          const { data } = await admin
+            .from("movements")
+            .insert({ client_id: c.id, created_by: ve.id, type: "charge", amount: monto, currency: moneda, plazo_dias: 15, created_at: hace(dias) })
+            .select("id")
+            .single();
+          return data.id;
+        };
+        return { id: c.id, fA: await cargo(a, 5), fB: await cargo(b, 2) };
+      };
+      const lineasDe = async (groupId) => {
+        const { data: ls } = await admin
+          .from("movements")
+          .select("amount, applies_to_movement_id, entry_amount, entry_currency")
+          .eq("payment_group_id", groupId);
+        return ls ?? [];
+      };
+      const suma = (ls) => Math.round(ls.reduce((acc, l) => acc + Number(l.amount), 0) * 100) / 100;
+
+      // 11a-b. BOLIVAR CHIP, two dollar fiados: production's case.
+      {
+        const rate = Number(tasa.usd);
+        const enLibro = (bs) => Math.round((bs / rate) * 100) / 100;
+        const c = await conDos("USD", 7.37, 19.5, "bolivares");
+        const unidades = resolveSplitUnits({ enBolivares: true, numeroDeLibros: 1, porLinea: true });
+        const aMano = { [c.fA]: enLibro(5000), [c.fB]: enLibro(5000) };
+        const aManoBs = { [c.fA]: 5000, [c.fB]: 5000 };
+        const total = sumFixedLines({
+          fiados: [
+            { movementId: c.fA, pendiente: 7.37, currency: "USD" },
+            { movementId: c.fB, pendiente: 19.5, currency: "USD" },
+          ],
+          aMano,
+          aManoBs,
+          crossesLedgers: unidades.crossesLedgers,
+          aBolivares: (monto) => Math.round(monto * rate * 100) / 100,
+        });
+        const r = await llamarEn(c.id, {
+          clienteId: c.id,
+          libro: "USD",
+          cruzaLibros: unidades.crossesLedgers,
+          montoTecleado: total,
+          monedaTecleada: unidades.totalInBolivars ? "VES" : "USD",
+          aMano,
+          aManoBs,
+        });
+        const ls = r?.ok ? await lineasDe(r.groupId) : [];
+        check(
+          "11a. chip en Bs, Bs 5.000 + 5.000 en dólares: se guarda el billete entero",
+          r?.ok === true && suma(ls) === enLibro(10000),
+          r?.ok ? `guardado ${suma(ls)} · billete ${enLibro(10000)} · líneas ${ls.map((l) => l.amount).join(" + ")}` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+        );
+        check(
+          "11b. y cada línea conserva sus Bs. 5.000 tecleados",
+          ls.length === 2 && ls.every((l) => Number(l.entry_amount) === 5000 && l.entry_currency === "VES"),
+          ls.map((l) => `${l.entry_currency} ${l.entry_amount}`).join(" · "),
+        );
+      }
+
+      // 11c-d. LEDGER CHIP (euros), every line typed in bolivars. The screen
+      // adjusts the pins before summing, and sends the raw pins.
+      {
+        const rate = Number(tasa.eur);
+        const enLibro = (bs) => Math.round((bs / rate) * 100) / 100;
+        const c = await conDos("EUR", 20, 20, "euros");
+        const unidades = resolveSplitUnits({ enBolivares: false, numeroDeLibros: 1, porLinea: true });
+        const fiados = [
+          { movementId: c.fA, createdAt: hace(5), plazoDias: 15, cuotas: null, amount: 20, pendiente: 20, currency: "EUR" },
+          { movementId: c.fB, createdAt: hace(2), plazoDias: 15, cuotas: null, amount: 20, pendiente: 20, currency: "EUR" },
+        ];
+        const aMano = { [c.fA]: enLibro(5000), [c.fB]: enLibro(5000) };
+        const aManoBs = { [c.fA]: 5000, [c.fB]: 5000 };
+        const ajustado = absorbPinnedCents({ fiados, aMano, aManoBs, fromBolivars: (bs) => bs / rate });
+        const total = sumFixedLines({
+          fiados,
+          aMano: ajustado,
+          aManoBs,
+          crossesLedgers: unidades.crossesLedgers,
+          aBolivares: (monto) => Math.round(monto * rate * 100) / 100,
+        });
+        const r = await llamarEn(c.id, {
+          clienteId: c.id,
+          libro: "EUR",
+          cruzaLibros: unidades.crossesLedgers,
+          montoTecleado: total,
+          monedaTecleada: unidades.totalInBolivars ? "VES" : "EUR",
+          aMano,
+          aManoBs,
+        });
+        const ls = r?.ok ? await lineasDe(r.groupId) : [];
+        check(
+          "11c. chip en euros, líneas en Bs 5.000 + 5.000: se guarda el billete y lo que dijo el botón",
+          r?.ok === true && suma(ls) === enLibro(10000) && suma(ls) === total,
+          r?.ok ? `guardado €${suma(ls)} · botón €${total} · billete €${enLibro(10000)} · líneas ${ls.map((l) => l.amount).join(" + ")}` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+        );
+        check(
+          "11d. y la línea que absorbe el céntimo no pierde sus Bs tecleados",
+          ls.length === 2 && ls.every((l) => Number(l.entry_amount) === 5000 && l.entry_currency === "VES"),
+          ls.map((l) => `${l.entry_currency} ${l.entry_amount}`).join(" · "),
+        );
       }
     }
   }
