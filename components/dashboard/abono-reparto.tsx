@@ -406,6 +406,9 @@ export function AbonoReparto({
         montoBs: excede ? 0 : enElLibro,
         fiados: paraRepartir,
         aMano,
+        // LOS MISMOS BOLÍVARES TECLEADOS QUE MANDA AL SERVIDOR, para que esta
+        // pantalla y lo que se guarda repartan igual (R-1.2, 2026-10-30).
+        aManoBs,
         ahora,
         aBolivares,
         desdeBolivares,
@@ -419,7 +422,7 @@ export function AbonoReparto({
       };
     }
     return repartir({ monto: excede ? 0 : enElLibro, fiados: paraRepartir, aMano, ahora });
-  }, [cruzaLibros, excede, enElLibro, paraRepartir, aMano, ahora, aBolivares, desdeBolivares]);
+  }, [cruzaLibros, excede, enElLibro, paraRepartir, aMano, aManoBs, ahora, aBolivares, desdeBolivares]);
 
   // EL BORRADOR SE GUARDA EN CUANTO CAMBIA ALGO, no al salir: salir puede ser
   // un gesto de «atrás» del sistema, y entonces no hay dónde enganchar el

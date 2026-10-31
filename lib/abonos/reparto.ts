@@ -235,6 +235,7 @@ export function repartirEnBolivares({
   montoBs,
   fiados,
   aMano = {},
+  aManoBs = {},
   ahora = new Date(),
   aBolivares,
   desdeBolivares,
@@ -243,6 +244,25 @@ export function repartirEnBolivares({
   fiados: FiadoParaRepartirMulti[];
   // movementId → importe fijado a mano, EN LA MONEDA DE SU FIADO.
   aMano?: Record<string, number>;
+  // ── LOS BOLÍVARES QUE SE TECLEARON PARA ESA LÍNEA, SI SE TECLEARON ──
+  //
+  // movementId → bolívares. Cuando están, SON el tope de la línea en este
+  // reparto, y no `aBolivares(aMano)`.
+  //
+  // POR QUÉ, y es un fallo medido (R-1.2, 2026-10-30): `aMano` es esos
+  // bolívares pasados al libro y redondeados al céntimo —Bs 6.000 ÷ 992,80 =
+  // €6,0435 → €6,04— y volver a convertirlo da Bs 5.996,51. Cuando el
+  // redondeo iba hacia abajo, las partes sumaban menos que el billete, sobraban
+  // unos bolívares sin asignar y la acción rechazaba el abono entero con «No
+  // pudimos repartir todo el abono». Con dos fiados en dólares y cifras de
+  // Bs 500 a 9.000 en cada uno, pasaba en 636 de 1.225 combinaciones.
+  //
+  // SOLO SI SIGUEN DICIENDO LO MISMO QUE `aMano`: la línea vale si esos
+  // bolívares, pasados al libro, dan la cifra fijada (al medio céntimo). Si el
+  // tendero cambió la cifra después, los bolívares viejos no describen la
+  // línea y se ignoran — es la misma regla que `sigueEnteraLaSuya` aplica al
+  // guardar.
+  aManoBs?: Record<string, number>;
   ahora?: Date;
   // LAS CONVERSIONES ENTRAN COMO FUNCIONES y no como un objeto de tasas. Dos
   // razones, y la segunda es la que manda: así esta función no tiene que
@@ -270,8 +290,15 @@ export function repartirEnBolivares({
   // dentro y no fuera porque cierra sobre `quedaBs`, que es lo que el reparto
   // va gastando — sacarla exigiría devolver el resto y volver a asignarlo, que
   // es justo donde se cuelan los céntimos.
-  const colocar = (f: FiadoParaRepartirMulti, topeEnSuLibro: number, aManoFlag: boolean) => {
-    const enBs = aBolivares(topeEnSuLibro, f.currency);
+  const colocar = (
+    f: FiadoParaRepartirMulti,
+    topeEnSuLibro: number,
+    aManoFlag: boolean,
+    // Los bolívares tecleados para esta línea, ya validados: mandan sobre la
+    // conversión de `topeEnSuLibro`. Ver `aManoBs` arriba.
+    topeEnBs: number | null = null,
+  ) => {
+    const enBs = topeEnBs ?? aBolivares(topeEnSuLibro, f.currency);
     if (enBs == null) {
       lineas.set(f.movementId, vacia(f, aManoFlag));
       return;
@@ -297,7 +324,11 @@ export function repartirEnBolivares({
   for (const f of porOrden) {
     const puesto = aMano[f.movementId];
     if (puesto == null) continue;
-    colocar(f, Math.max(0, Math.min(puesto, f.pendiente)), true);
+    const tope = Math.max(0, Math.min(puesto, f.pendiente));
+    const bs = aManoBs[f.movementId];
+    const enSuLibro = bs != null && bs > 0 ? desdeBolivares(bs, f.currency) : null;
+    const bsValidos = enSuLibro != null && Math.abs(enSuLibro - tope) <= HOLGURA ? bs : null;
+    colocar(f, tope, true, bsValidos);
   }
 
   // Y EL RESTO BAJA POR GRAVEDAD HASTA AGOTARSE, cruzando libros.

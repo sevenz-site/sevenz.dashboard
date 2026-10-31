@@ -503,6 +503,133 @@ const tres = [
   );
 }
 
+// ── 8. LO TECLEADO EN BOLÍVARES ES EL TOPE DE SU LÍNEA (R-1.2) ───────────
+//
+// Encontrado en la regresión del 2026-10-30. Un reparto a mano en bolívares
+// topaba cada línea con `aBolivares(aMano)`, y `aMano` es lo tecleado pasado al
+// libro y redondeado al céntimo. Cuando ese redondeo iba hacia abajo —Bs 6.000
+// a 992,80 son €6,0435 → €6,04 → Bs 5.996,51— sobraban bolívares sin asignar y
+// la acción rechazaba el abono entero. Pasaba en el 52 % de las combinaciones
+// de un barrido de dos fiados, así que no era un borde: era la mitad del uso.
+//
+// LA FILA 9 DE `qa:abono-accion` NO LO VEÍA porque su ejemplo, en dólares,
+// redondeaba hacia arriba. Por eso aquí va el caso en euros que lo destapó Y
+// un barrido entero: una fila suelta acierta o falla por la suerte del
+// redondeo; el barrido no.
+{
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const fiadosDe = (moneda, a = 13, b = 19.5) => [
+    { movementId: "A", createdAt: "2026-10-25T00:00:00Z", plazoDias: 15, cuotas: null, amount: a, pendiente: a, currency: moneda },
+    { movementId: "B", createdAt: "2026-10-28T00:00:00Z", plazoDias: 15, cuotas: null, amount: b, pendiente: b, currency: moneda },
+  ];
+  const conTasa = (t) => ({ aBolivares: (m) => r2(m * t), desdeBolivares: (bs) => r2(bs / t) });
+
+  {
+    const t = 992.80018713;
+    const r = repartirEnBolivares({
+      montoBs: 10000,
+      fiados: fiadosDe("EUR"),
+      aMano: { A: r2(4000 / t), B: r2(6000 / t) },
+      aManoBs: { A: 4000, B: 6000 },
+      ...conTasa(t),
+    });
+    check(
+      "8a. euros, Bs 4.000 + 6.000 a mano: no sobra ni un bolívar",
+      r.sinAsignarBs <= 0.005,
+      `sin asignar Bs ${r.sinAsignarBs}`,
+    );
+    const a = r.lineas.find((l) => l.movementId === "A");
+    const b = r.lineas.find((l) => l.movementId === "B");
+    check(
+      "8b. y cada línea guarda lo que la pantalla enseñó: €4,03 y €6,04",
+      a?.asignado === 4.03 && b?.asignado === 6.04 && a?.asignadoBs === 4000 && b?.asignadoBs === 6000,
+      `A ${a?.asignado}/${a?.asignadoBs} · B ${b?.asignado}/${b?.asignadoBs}`,
+    );
+  }
+
+  {
+    // EL BARRIDO: dos fiados de $20, Bs 500 a 9.000 en cada uno, de 250 en 250.
+    // Antes del arreglo: 636 rechazos de 1.225.
+    const t = 889.2553;
+    let rechaza = 0;
+    let total = 0;
+    for (let a = 500; a <= 9000; a += 250) {
+      for (let b = 500; b <= 9000; b += 250) {
+        total++;
+        const r = repartirEnBolivares({
+          montoBs: a + b,
+          fiados: fiadosDe("USD", 20, 20),
+          aMano: { A: r2(a / t), B: r2(b / t) },
+          aManoBs: { A: a, B: b },
+          ...conTasa(t),
+        });
+        if (r.sinAsignarBs > 0.005) rechaza++;
+      }
+    }
+    check("8c. barrido de 1.225 repartos a mano en Bs: ninguno deja bolívares sin asignar", rechaza === 0, `${rechaza} de ${total}`);
+  }
+
+  {
+    // UN BOLÍVAR VIEJO NO MANDA. Si el tendero fijó Bs 4.000 y luego cambió la
+    // línea a €3 a mano, esos Bs 4.000 ya no describen la línea: se ignoran y
+    // la línea toma sus €3, como antes del arreglo.
+    const t = 992.80018713;
+    const r = repartirEnBolivares({
+      montoBs: r2(3 * t),
+      fiados: fiadosDe("EUR"),
+      aMano: { A: 3 },
+      aManoBs: { A: 4000 },
+      ...conTasa(t),
+    });
+    const a = r.lineas.find((l) => l.movementId === "A");
+    check(
+      "8d. unos bolívares que ya no corresponden a la cifra fijada se ignoran",
+      a?.asignado === 3 && Math.abs(a.asignadoBs - r2(3 * t)) < 0.01,
+      `A €${a?.asignado} · Bs ${a?.asignadoBs}`,
+    );
+  }
+
+  {
+    // EL MISMO FALLO CRUZANDO LIBROS, que es la variante que YA estaba en
+    // producción antes de este arreglo: un fiado en dólares y otro en euros,
+    // cada uno con sus bolívares tecleados.
+    const tUsd = 889.2553;
+    const tEur = 992.80018713;
+    let rechaza = 0;
+    let total = 0;
+    for (let a = 500; a <= 9000; a += 500) {
+      for (let b = 500; b <= 9000; b += 500) {
+        total++;
+        const r = repartirEnBolivares({
+          montoBs: a + b,
+          fiados: [
+            { movementId: "U", createdAt: "2026-10-25T00:00:00Z", plazoDias: 15, cuotas: null, amount: 20, pendiente: 20, currency: "USD" },
+            { movementId: "E", createdAt: "2026-10-28T00:00:00Z", plazoDias: 15, cuotas: null, amount: 20, pendiente: 20, currency: "EUR" },
+          ],
+          aMano: { U: r2(a / tUsd), E: r2(b / tEur) },
+          aManoBs: { U: a, E: b },
+          aBolivares: (m, c) => r2(m * (c === "USD" ? tUsd : tEur)),
+          desdeBolivares: (bs, c) => r2(bs / (c === "USD" ? tUsd : tEur)),
+        });
+        if (r.sinAsignarBs > 0.005) rechaza++;
+      }
+    }
+    check("8f. a mano cruzando dólares y euros: ninguno deja bolívares sin asignar", rechaza === 0, `${rechaza} de ${total}`);
+  }
+
+  {
+    // SIN BOLÍVARES TECLEADOS, IGUAL QUE SIEMPRE: el arreglo no toca el
+    // reparto que no los trae.
+    const t = 889.2553;
+    const sin = repartirEnBolivares({ montoBs: 9000, fiados: fiadosDe("USD", 20, 20), ...conTasa(t) });
+    const conVacio = repartirEnBolivares({ montoBs: 9000, fiados: fiadosDe("USD", 20, 20), aManoBs: {}, ...conTasa(t) });
+    check(
+      "8e. sin bolívares por línea el reparto automático no cambia",
+      JSON.stringify(sin) === JSON.stringify(conVacio),
+    );
+  }
+}
+
 const fallos = filas.filter((f) => !f.pasa).length;
 console.log(`\n${fallos} FALLO(S) de ${filas.length}`);
 process.exit(fallos === 0 ? 0 : 1);

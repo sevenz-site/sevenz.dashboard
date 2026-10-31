@@ -701,6 +701,81 @@ try {
         }
       }
     }
+
+    // 10. LO MISMO EN EUROS, QUE ES DONDE LA FILA 9 NO MIRABA
+    //
+    // R-1.2, regresión del 2026-10-30: con la tasa del euro, Bs 6.000 pasan al
+    // libro como €6,04, que vuelven como Bs 5.996,51, y la acción rechazaba el
+    // abono con «No pudimos repartir todo el abono». La fila 9 pasaba porque en
+    // dólares sus cifras redondeaban hacia arriba. Esta fila usa las cifras que
+    // lo destaparon y va contra la acción de verdad.
+    {
+      const { data: eu } = await admin
+        .from("clients")
+        .insert({ owner_id: ve.id, name: `${MARCA} euros a mano` })
+        .select("id")
+        .single();
+      creados.clientes.push(eu.id);
+      const cargoEur = async (monto, dias) => {
+        const { data } = await admin
+          .from("movements")
+          .insert({ client_id: eu.id, created_by: ve.id, type: "charge", amount: monto, currency: "EUR", plazo_dias: 15, created_at: hace(dias) })
+          .select("id")
+          .single();
+        return data.id;
+      };
+      const fA = await cargoEur(13, 5);
+      const fB = await cargoEur(19.5, 2);
+
+      if (!tasa) {
+        check("10. hay tasa con la que probar el reparto en euros", false, "no hay tasa en dev");
+      } else {
+        const rate = Number(tasa.eur);
+        const enLibro = (bs) => Math.round((bs / rate) * 100) / 100;
+        const unidades = resolveSplitUnits({ enBolivares: true, numeroDeLibros: 1, porLinea: true });
+        const aMano = { [fA]: enLibro(4000), [fB]: enLibro(6000) };
+        const aManoBs = { [fA]: 4000, [fB]: 6000 };
+        const total = sumFixedLines({
+          fiados: [
+            { movementId: fA, pendiente: 13, currency: "EUR" },
+            { movementId: fB, pendiente: 19.5, currency: "EUR" },
+          ],
+          aMano,
+          aManoBs,
+          crossesLedgers: unidades.crossesLedgers,
+          aBolivares: (monto) => Math.round(monto * rate * 100) / 100,
+        });
+        const r = await llamarEn(eu.id, {
+          clienteId: eu.id,
+          libro: "EUR",
+          cruzaLibros: unidades.crossesLedgers,
+          montoTecleado: total,
+          monedaTecleada: unidades.totalInBolivars ? "VES" : "EUR",
+          aMano,
+          aManoBs,
+        });
+        check(
+          "10a. un reparto a mano en Bs en un libro de EUROS se guarda",
+          r?.ok === true,
+          r?.ok ? `grupo ${String(r.groupId).slice(0, 8)}…` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+        );
+        if (r?.ok) {
+          const { data: ls } = await admin
+            .from("movements")
+            .select("amount, applies_to_movement_id, entry_amount")
+            .eq("payment_group_id", r.groupId);
+          const por = new Map((ls ?? []).map((l) => [l.applies_to_movement_id, l]));
+          check(
+            "10b. con €4,03 y €6,04, y los Bs tecleados en cada línea",
+            Number(por.get(fA)?.amount) === enLibro(4000) &&
+              Number(por.get(fB)?.amount) === enLibro(6000) &&
+              Number(por.get(fA)?.entry_amount) === 4000 &&
+              Number(por.get(fB)?.entry_amount) === 6000,
+            `A €${por.get(fA)?.amount}/Bs ${por.get(fA)?.entry_amount} · B €${por.get(fB)?.amount}/Bs ${por.get(fB)?.entry_amount}`,
+          );
+        }
+      }
+    }
   }
 } catch (e) {
   check("ERROR: la corrida se detuvo", false, e instanceof Error ? e.message : String(e));
