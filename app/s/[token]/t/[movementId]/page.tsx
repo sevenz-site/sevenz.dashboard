@@ -35,6 +35,10 @@ type SharedMovement = {
   running_balance: number;
   plazo_dias: number | null;
   cuotas: number | null;
+  // Migration 167. Optional for the same reason as the others: while code
+  // and database are out of step it is absent, and the fiado is drawn as an
+  // ordinary one.
+  is_old_debt?: boolean;
   // Y el de la `132`: lo que ESTE fiado todavía debe. Opcional por lo mismo
   // que `abono_inicial` más abajo — durante un despliegue el código y la base
   // no coinciden— y ausente cae al `running_balance`, que es lo que esta
@@ -402,6 +406,7 @@ export default async function DetalleDelClientePage({
         }))}
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}
+        deudaAntigua={m.is_old_debt === true}
         createdAt={m.created_at}
         // EL PENDIENTE DEL FIADO, NO EL SALDO CON EL QUE SE REGISTRÓ.
         // Reportado por el dueño el 2026-10-21: *«da la impresión de que no se

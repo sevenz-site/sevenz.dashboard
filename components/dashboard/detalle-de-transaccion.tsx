@@ -59,6 +59,13 @@ export type DatosDelDetalle = {
   ownerNote?: string | null;
   plazoDias: number | null;
   cuotas: number | null;
+  // THE OLD DEBT A NEW CLIENT IS BORN WITH -- frame `1894:15287`, the
+  // owner's request of 2026-10-31. Its type reads «Deuda antigua», it has no
+  // products and no «Abonos relacionados». (Its «Cuotas —» row is no longer
+  // its own: every fiado with no plazo draws one since the same day.)
+  // Marked in the database (migration 167), never inferred from «no sale»:
+  // every fiado typed before the sale flow has no sale either.
+  deudaAntigua?: boolean;
   productos?: SaleLineRow[];
   createdAt: string;
   runningBalance: number;
@@ -153,6 +160,7 @@ export function DetalleDeTransaccion({
   ownerNote = null,
   plazoDias,
   cuotas,
+  deudaAntigua = false,
   productos = [],
   createdAt,
   runningBalance,
@@ -330,7 +338,7 @@ export function DetalleDeTransaccion({
         {conReparto ? null : (
         <Fila nombre="Tipo">
           <span className="inline-flex items-center gap-1.5">
-            {type === "charge" ? "Fiado / Crédito" : "Abono"}
+            {type === "payment" ? "Abono" : deudaAntigua ? "Deuda antigua" : "Fiado / Crédito"}
             {/* EL «%» DEL ABONO Y LA FLECHA DEL FIADO, como los frames. El
                 abono llevaba una flecha hacia abajo hasta el 2026-10-19, y era
                 la misma familia que la del fiado: dos flechas opuestas se
@@ -398,7 +406,9 @@ export function DetalleDeTransaccion({
             del resumen del abono se debe mostrar el card del fiado al que se le
             abonó, al seleccionar el card se debe abrir el detalle de ese
             fiado»*. Es la MISMA tarjeta de la pantalla 1/3. */}
-        {productos.length > 0 ? (
+        {/* NOTHING WAS BOUGHT IN AN OLD DEBT, so no products -- the frame
+            drops them. It has no sale anyway; the guard says it on purpose. */}
+        {productos.length > 0 && !deudaAntigua ? (
           <ProductosDelMovimiento
             productos={productos}
             formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
@@ -436,7 +446,13 @@ export function DetalleDeTransaccion({
             tendero sin saber si se abonó algo que no se guardó. Es la misma
             razón por la que la fila «Abonó» dibujaba su cero, y por eso esa
             fila se queda sin trabajo y desaparece. */}
-        {type === "charge" ? (
+        {/* NO «Abonos relacionados» IN AN OLD DEBT -- frame `1894:15287`.
+            Its first card is the payment made «al día de la compra», and an
+            old debt has no purchase: it drew a «+€0,00» row for a moment that
+            never happened. The cost, said out loud: abonos aimed at this
+            debt are not listed here. They still count -- in «Total por
+            cobrar» and in the «Estado» column of the cuotas table below. */}
+        {deudaAntigua ? null : type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
             {/* «Abonos relacionados», EN 14 REGULAR — frame `1510:9784`, nodo
                 `1510:9786`. Encargo del dueño el 2026-10-23, y el nombre no
@@ -680,6 +696,19 @@ export function DetalleDeTransaccion({
       {conReparto ? null : (
       <Grupo>
         <Fila nombre="Plazo de pago">{formatPlazoDias(acuerdo.plazoDias)}</Fila>
+        {/* «Cuotas —» IN EVERY FIADO WITH NO PLAZO. Asked for the old debt on
+            2026-10-31 -- frame `1894:15287`, «igual al plazo de pago cuando no
+            se registra» -- and extended by the owner the same day to every
+            fiado: «Sí agrega al fiado normal sin plazo el campo de cuota con
+            "-"». With a plazo, `CuotasTable` below already draws its own
+            «Cuotas» row («3 cuotas», or «Pago único»), so this one only covers
+            the case where that table is not drawn at all. Writing it whenever
+            it was an old debt printed «Cuotas» twice -- seen on 2026-10-31 in
+            the first screenshot, with a test that had passed.
+
+            ONLY A FIADO, as he said it. An abono draws the plazo of the fiado
+            it paid, and that case was not part of the request. */}
+        {type === "charge" && acuerdo.plazoDias == null ? <Fila nombre="Cuotas">—</Fila> : null}
         {/* UN PAGO ÚNICO TAMBIÉN ES UNA CUOTA, Y TIENE FECHA. Reportado por
             el dueño el 2026-10-21: *«cuando la cuota es "Pago único" no se
             está mostrando en el detalle del fiado la fecha de la cuota, esta

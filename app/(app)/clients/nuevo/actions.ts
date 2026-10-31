@@ -356,6 +356,10 @@ async function crearCliente({
       photo_path: deuda.photoPath,
       plazo_dias: deuda.plazoDias,
       cuotas: deuda.cuotas,
+      // Migration 167: what makes the detail screens draw it as «Deuda
+      // antigua». Without it this row is indistinguishable from any fiado
+      // typed before the sale flow existed.
+      is_old_debt: true,
       rate_mode_used: deuda.sello.rateModeUsed,
       exchange_rate_used: deuda.sello.exchangeRateUsed,
       official_bcv_rate_at_time: deuda.sello.officialBcvRateAtTime,
