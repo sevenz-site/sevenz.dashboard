@@ -27,6 +27,7 @@ import {
 import { hideClientPermanently, restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { clientHref } from "@/lib/client-origin";
 import { formatDate } from "@/lib/format";
+import { useZonaDelNegocio } from "@/components/fecha";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
@@ -47,6 +48,7 @@ export function PapeleraTable({
   rateContext?: OwnerRateContext | null;
 }) {
   const router = useRouter();
+  const zona = useZonaDelNegocio();
   // The client currently being hidden for good, or null. Held as the row
   // itself rather than a boolean, so the confirmation can name the person
   // without a second lookup.
@@ -186,7 +188,7 @@ export function PapeleraTable({
                   balanceEur={balanceEur}
                   ledger={ledger}
                   note={
-                    row.trashed_at ? `En la papelera desde ${formatDate(row.trashed_at)}` : undefined
+                    row.trashed_at ? `En la papelera desde ${formatDate(row.trashed_at, zona)}` : undefined
                   }
                 />
               </div>

@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 
@@ -128,7 +128,7 @@ export function CuotasTable({
             {filas.map((c) => (
               <tr key={c.numero} className="text-xs leading-4">
                 <td className="py-1 tabular-nums">{c.numero}</td>
-                <td className="py-1">{formatDate(c.fecha.toISOString())}</td>
+                <td className="py-1"><Fecha iso={c.fecha.toISOString()} /></td>
                 <td className="py-1 text-right tabular-nums">{formatearMonto(c.monto)}</td>
                 <td className="py-1 text-right">
                   <ChipDeEstado estado={c.estado} />

@@ -13,7 +13,8 @@ import { restoreClient } from "@/app/(app)/clients/[id]/actions";
 import { restoreProduct } from "@/app/(app)/productos/actions";
 import Link from "next/link";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
-import { formatCurrency, formatDateTime, formatDocumentId } from "@/lib/format";
+import { formatCurrency, formatDocumentId } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 
 // The notification rows themselves, shared by the desktop header's popover
 // and the phone's own /notificaciones page — the two differ in how they fetch
@@ -77,7 +78,7 @@ export function NotificationList({
                   <div className="min-w-0">
                     <p className="font-medium">{n.clientName} abrió su saldo</p>
                     <p className="text-xs text-muted-foreground">
-                      Cédula: {formatDocumentId(n.documentId, n.documentType)} · {formatDateTime(n.occurredAt)}
+                      Cédula: {formatDocumentId(n.documentId, n.documentType)} · <Fecha iso={n.occurredAt} formato="hora" />
                     </p>
                   </div>
                 </>
@@ -88,7 +89,7 @@ export function NotificationList({
                     <div className="min-w-0">
                       <p className="truncate font-medium">{n.fileName} procesada</p>
                       <p className="text-xs text-muted-foreground">
-                        {n.movementsCount ?? 0} movimientos encontrados · {formatDateTime(n.occurredAt)}
+                        {n.movementsCount ?? 0} movimientos encontrados · <Fecha iso={n.occurredAt} formato="hora" />
                       </p>
                     </div>
                   </>
@@ -98,7 +99,7 @@ export function NotificationList({
                     <div className="min-w-0">
                       <p className="truncate font-medium">{n.fileName} falló</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {n.errorMessage || "No se pudo procesar"} · {formatDateTime(n.occurredAt)}
+                        {n.errorMessage || "No se pudo procesar"} · <Fecha iso={n.occurredAt} formato="hora" />
                       </p>
                     </div>
                   </>
@@ -120,7 +121,7 @@ export function NotificationList({
                           esta línea, que es la que se lee sin abrir nada. */}
                       {n.type === "charge" ? "Fiado" : "Abono"} ·{" "}
                       {n.currency ? formatDisplayCurrency(n.amount, n.currency) : formatCurrency(n.amount)} ·{" "}
-                      {formatDateTime(n.occurredAt)}
+                      <Fecha iso={n.occurredAt} formato="hora" />
                     </p>
                     <Button
                       type="button"
@@ -185,7 +186,7 @@ export function NotificationList({
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {n.itemCount} {n.itemCount === 1 ? "producto" : "productos"} ·{" "}
-                      {formatDateTime(n.occurredAt)}
+                      <Fecha iso={n.occurredAt} formato="hora" />
                     </p>
                     {/* «RESTAURAR» AQUÍ, QUE ES LA OTRA MITAD DEL ENCARGO
                         --*«debe mandar la notificación y ofrecer
@@ -269,7 +270,7 @@ function ClientHideRow({
       />
       <div className="min-w-0 flex-1">
         <p className="font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{formatDateTime(n.occurredAt)}</p>
+        <p className="text-xs text-muted-foreground"><Fecha iso={n.occurredAt} formato="hora" /></p>
         {n.canRestore ? (
           <Button
             type="button"
@@ -340,7 +341,7 @@ function ProductHideRow({
       />
       <div className="min-w-0 flex-1">
         <p className="font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{formatDateTime(n.occurredAt)}</p>
+        <p className="text-xs text-muted-foreground"><Fecha iso={n.occurredAt} formato="hora" /></p>
         {n.canRestore ? (
           <Button
             type="button"

@@ -11,7 +11,9 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate, formatPlazoDias } from "@/lib/format";
+import { formatPlazoDias } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
+import type { ReactNode } from "react";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -165,7 +167,7 @@ export default async function ConfirmarFiadoPage({
 
       {/* ── LA CABECERA DE TRES FILAS ───────────────────────────────── */}
       <div className="flex flex-col">
-        <Fila etiqueta="Fecha" valor={formatDate(mov.created_at as string)} />
+        <Fila etiqueta="Fecha" valor={<Fecha iso={mov.created_at as string} />} />
         <Fila etiqueta="Tipo" valor="Fiado / Crédito" />
         {/* AQUÍ HABÍA UNA FILA «Moneda de pago» Y SE RETIRÓ EL 2026-10-19.
             Decisión del dueño: *«es redundante, ya abajo especifica la moneda
@@ -313,7 +315,7 @@ function Fila({
   bandera,
 }: {
   etiqueta: string;
-  valor: string;
+  valor: ReactNode;
   pie?: string;
   bandera?: PriceCurrency | "VES";
 }) {

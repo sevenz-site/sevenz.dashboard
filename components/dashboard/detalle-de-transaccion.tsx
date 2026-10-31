@@ -12,7 +12,8 @@ import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import { PaymentSummary, type PaymentLine } from "@/components/dashboard/payment-summary";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate, formatPlazoDias } from "@/lib/format";
+import { formatPlazoDias } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
@@ -325,7 +326,7 @@ export function DetalleDeTransaccion({
   return (
     <dl className="flex flex-col gap-4">
       <Grupo>
-        <Fila nombre="Fecha">{formatDate(createdAt)}</Fila>
+        <Fila nombre="Fecha"><Fecha iso={createdAt} /></Fila>
         {conReparto ? null : (
         <Fila nombre="Tipo">
           <span className="inline-flex items-center gap-1.5">
@@ -622,7 +623,7 @@ export function DetalleDeTransaccion({
                 <span className="flex min-w-0 flex-col items-end">
                   <span className="truncate text-sm">{tituloDelFiado}</span>
                   <span className="text-xs text-muted-foreground">
-                    {formatDate(fiadoAplicado.fecha)}
+                    <Fecha iso={fiadoAplicado.fecha} />
                   </span>
                 </span>
                 <ChevronRight className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import type { EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 
 // UN ABONO, COMO TARJETA. El reflejo de `TarjetaDeFiado`.
@@ -149,7 +149,7 @@ export function TarjetaDeAbono({
           a 375px lo que sobra es el nombre largo de una fecha, nunca la
           cifra. */}
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-        <span className="text-sm">{formatDate(abono.fecha)}</span>
+        <span className="text-sm"><Fecha iso={abono.fecha} /></span>
         {chip}
       </div>
       <div className="flex shrink-0 flex-col items-end">

@@ -1,3 +1,4 @@
+import { ZonaDelNegocioProvider } from "@/components/fecha";
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
@@ -351,6 +352,7 @@ export default async function DetalleDelClientePage({
       : undefined;
 
   return (
+    <ZonaDelNegocioProvider country={shared.owner_country}>
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
       {/* LA BARRA DE ARRIBA, SOLO CON LA FLECHA. El «⋮» del frame es del dueño;
           aquí no hay ninguna acción que ofrecer. */}
@@ -439,5 +441,6 @@ export default async function DetalleDelClientePage({
         // ofrecerle una puerta que no abre.
       />
     </div>
+    </ZonaDelNegocioProvider>
   );
 }

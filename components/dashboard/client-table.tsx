@@ -40,7 +40,8 @@ import type { CreditScoreResult } from "@/lib/credit-score";
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { formatBalanceSummary } from "@/lib/exchange-rate/movement-display";
 import { clientHref } from "@/lib/client-origin";
-import { formatDate, formatDocumentId } from "@/lib/format";
+import { formatDocumentId } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   CLIENT_STATUS_BADGE_CLASS,
@@ -345,7 +346,7 @@ export function ClientTable({
                           )}
                         </TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">
-                          {row.last_payment_at ? formatDate(row.last_payment_at) : "Nunca"}
+                          {row.last_payment_at ? <Fecha iso={row.last_payment_at} /> : "Nunca"}
                           <span className="ml-1 text-xs">({row.days_since_payment}d)</span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
