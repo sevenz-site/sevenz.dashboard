@@ -241,6 +241,81 @@ try {
     JSON.stringify(segunda),
   );
 
+  // ── 8. THE DAY IS COUNTED IN THE BUSINESS'S ZONE (migration 168) ────
+  //
+  // Until 168 the due day and «today» were both taken in Bogota for every
+  // business. A Venezuelan cuota due between 00:00 and 00:59 Caracas is still
+  // the previous day in Bogota, so the reminder went out a day early and named
+  // that earlier date, while the screens (zone of the business since PL-1)
+  // named the real one. Measured in dev on 2026-10-31.
+  //
+  // A1 and A2 each fail against the old function, in opposite directions: A1
+  // was not sent on its day, A2 was sent a day early. CO is the control -- a
+  // Colombian business was already counted in its own zone and must not move.
+  // Only the list is read: nothing here is sent, so checks 4 and 5 above keep
+  // looking at their own messages.
+  const ZONA = "QA Zona Recordatorio ";
+  const diaEn = (iso, tz) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+  const masDias = (ymd, n) => {
+    const d = new Date(ymd + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const { data: ve } = await admin.from("owners").select("id").eq("country", "VE").limit(1).single();
+  const { data: co } = await admin.from("owners").select("id").eq("country", "CO").limit(1).single();
+  const hoyVE = diaEn(new Date().toISOString(), "America/Caracas");
+  const hoyCO = diaEn(new Date().toISOString(), "America/Bogota");
+  // Plazo of 4 days, so the reminder goes 1 day before (the 25% floor).
+  const casosZona = [
+    ["A1", ve.id, "USD", "584129912911", `${masDias(hoyVE, 1)}T04:30:00Z`, masDias(hoyVE, 1)],
+    ["A2", ve.id, "USD", "584129912912", `${masDias(hoyVE, 2)}T04:30:00Z`, null],
+    ["CO", co.id, null, "573009912913", `${masDias(hoyCO, 2)}T04:30:00Z`, masDias(hoyCO, 1)],
+  ];
+  for (const [nombre, owner, moneda, tel, vence] of casosZona) {
+    await admin.from("client_whatsapp_consents").delete().eq("phone", tel);
+    const { data: c } = await admin
+      .from("clients")
+      .insert({ owner_id: owner, name: ZONA + nombre, whatsapp: tel })
+      .select("id")
+      .single();
+    creados.push([c.id, tel]);
+    await admin.from("movements").insert({
+      client_id: c.id,
+      created_by: owner,
+      type: "charge",
+      amount: 100,
+      currency: moneda,
+      source: "manual",
+      plazo_dias: 4,
+      created_at: new Date(new Date(vence).getTime() - 4 * 864e5).toISOString(),
+    });
+    await admin.rpc("record_owner_declared_whatsapp_consent", {
+      p_client_id: c.id,
+      p_owner_id: owner,
+      p_consent_text: "QA recordatorio acepta.",
+      p_source: "owner_movement_form",
+    });
+  }
+  const { data: listaZona } = await admin.rpc("whatsapp_destinatarios_plazo");
+  const deZona = (n) => (listaZona ?? []).find((r) => r.client_name === ZONA + n);
+  const [, , , , venceA1] = casosZona[0];
+  check(
+    "8a. VE, vence MAÑANA a las 00:30 de Caracas: le toca HOY, con la fecha de Caracas",
+    deZona("A1")?.due_date === masDias(hoyVE, 1),
+    `en pantalla ${diaEn(venceA1, "America/Caracas")} · la base ${deZona("A1")?.due_date ?? "no lo manda hoy"}`,
+  );
+  check(
+    "8b. VE, vence PASADO MAÑANA a las 00:30: hoy NO le toca (antes salía un día antes)",
+    !deZona("A2"),
+    deZona("A2") ? `lo manda hoy con ${deZona("A2").due_date}` : "no le toca hoy",
+  );
+  check(
+    "8c. CO, control: se cuenta en Bogotá, como siempre",
+    deZona("CO")?.due_date === masDias(hoyCO, 1),
+    `la base ${deZona("CO")?.due_date ?? "no lo manda hoy"}`,
+  );
+
   check(
     "6. ningún mensaje salió de verdad a Kapso",
     true,
@@ -257,7 +332,11 @@ try {
     .from("clients")
     .select("id", { count: "exact", head: true })
     .like("name", `${PREFIJO}%`);
-  check("7. limpieza: no queda nada de la prueba en dev", count === 0, `quedan ${count}`);
+  const { count: zona } = await admin
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .like("name", "QA Zona Recordatorio %");
+  check("7. limpieza: no queda nada de la prueba en dev", count === 0 && zona === 0, `quedan ${count} + ${zona}`);
 
   const fallos = filas.filter((f) => !f.pasa).length;
   console.log(`\n${filas.length - fallos}/${filas.length} pasan.`);
