@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 
@@ -398,6 +400,10 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+  // A BLOCKED ACCOUNT DOES NOT WRITE PRODUCTS (migration 170, plan of
+  // 2026-10-31). The policy is the lock; this is the sign: asking first makes
+  // the answer the paused-account message, not «No pudimos guardar».
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const checked = validate(input);
   if ("error" in checked) return { error: checked.error };
@@ -425,6 +431,7 @@ export async function updateProduct(
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
   if (!ok) return { error: "No encontramos ese producto." };
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const checked = validate(input);
   if ("error" in checked) return { error: checked.error };
@@ -458,6 +465,7 @@ export async function setProductPublished(
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
   if (!ok) return { error: "No encontramos ese producto." };
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const { error } = await supabase
     .from("products")
@@ -494,6 +502,7 @@ export async function trashProduct(productId: string): Promise<ProductResult> {
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
   if (!ok) return { error: "No encontramos ese producto." };
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const { error } = await supabase
     .from("products")
@@ -530,6 +539,7 @@ export async function restoreProduct(productId: string): Promise<ProductResult> 
   const { supabase, user, ok } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
   if (!ok) return { error: "No encontramos ese producto." };
+  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const { error } = await supabase
     .from("products")

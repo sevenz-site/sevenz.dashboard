@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -612,6 +613,7 @@ export function ProductoFlujo({
         : await createProduct(input);
 
       if (result.error) {
+        if (avisarCuentaPausada(result.error)) return;
         setError(result.error);
         return;
       }
@@ -1104,6 +1106,7 @@ export function ProductoFlujo({
               onClick={() =>
                 startTransition(async () => {
                   const r = await trashProduct(product!.id);
+                  if (avisarCuentaPausada(r.error)) return;
                   if (r.error) return setError(r.error);
                   // SALE DE LA PANTALLA, que antes era cerrar el diálogo.
                   salir();

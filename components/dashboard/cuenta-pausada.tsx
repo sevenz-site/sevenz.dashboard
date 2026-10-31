@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { PauseCircle } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import {
@@ -55,8 +56,12 @@ const TITULO = "Tu cuenta está pausada";
 // Es una decisión tomada, no un descuido: no lo "arregles" devolviendo la
 // palabra aquí. Si algún día se rehacen las plantillas, las dos vuelven a
 // coincidir y entonces sí conviene volver a calcarlo.
+// Widened on 2026-10-31 (migration 170): the block now covers sales,
+// clients, products and orders too, so «no puedes registrar fiados ni abonos»
+// stopped being the whole truth. The catalogue still taking orders is said
+// out loud, because otherwise a paused owner would assume it went dark.
 const CUERPO =
-  "Por ahora no puedes registrar fiados ni abonos. Lo que te deben y el historial siguen aquí, y el enlace que les mandaste a tus clientes sigue funcionando.";
+  "Por ahora no puedes registrar ventas, fiados, abonos, clientes ni pedidos, ni crear o publicar productos. Lo que te deben y el historial siguen aquí, el enlace que les mandaste a tus clientes sigue funcionando y tu catálogo sigue recibiendo pedidos.";
 // El correo va DENTRO del mensaje, no como algo que pedirle después.
 //
 // Quien recibe ese WhatsApp llega con un número de teléfono y nada más, y la
@@ -234,6 +239,25 @@ export function CuentaPausada() {
           <WhatsappIcon className="size-4" />
           Escríbenos para reactivarla
         </a>
+      </Button>
+    </div>
+  );
+}
+
+// THE DOOR OF A WRITE FLOW, for a blocked account -- plan of 2026-10-31, phase
+// B. Until then a blocked owner could walk a whole sale, abono or order flow
+// and only be refused at «Registrar y finalizar» (PR-A9 in
+// REGISTRO-DE-PEDIDO-BORDES.md), with the cart already filled in. Now the
+// layout of each flow renders this instead of the flow.
+//
+// WITH A WAY BACK, on purpose: these flows are full-screen and have no app
+// header, so without the button the owner would be stuck on a dead screen.
+export function PantallaCuentaPausada() {
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <CuentaPausada />
+      <Button asChild className="h-10 w-full sm:w-fit">
+        <Link href="/dashboard">Volver al inicio</Link>
       </Button>
     </div>
   );

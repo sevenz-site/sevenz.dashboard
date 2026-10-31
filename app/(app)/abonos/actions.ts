@@ -381,6 +381,11 @@ function mensajeDelCodigo(
       return "No encontramos uno de esos fiados.";
     case "sin_sesion":
       return "Tu sesión se cerró. Vuelve a entrar.";
+    // Migration 170: `registrar_abono_repartido` now refuses a blocked
+    // account. The same text as every other blocked write, so the screen opens
+    // the paused-account dialog instead of a generic error.
+    case "cuenta_pausada":
+      return MENSAJE_CUENTA_PAUSADA;
     default:
       return "No pudimos guardar el abono. Vuelve a intentarlo.";
   }

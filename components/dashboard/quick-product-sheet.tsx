@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { createProduct } from "@/app/(app)/productos/actions";
 import {
@@ -165,6 +166,7 @@ export function QuickProductSheet({
         photoPath,
         description: descripcion.trim() || null,
       });
+      if (avisarCuentaPausada(r.error)) return;
       if (r.error || !r.id) {
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
