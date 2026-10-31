@@ -7,6 +7,7 @@ import { FilterChip } from "@/components/dashboard/client-filters";
 import { OrdersList, type OrderWithItems } from "@/components/dashboard/orders-list";
 import { estaDescartado, isUnregistered } from "@/lib/orders/catalog-orders";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { foldForSearch } from "@/lib/search/fold";
 
 // EL BUSCADOR Y EL CHIP DE ESTADO DE PEDIDOS.
 //
@@ -69,20 +70,10 @@ function useOrdersFilters(): OrdersFilterState {
   return value;
 }
 
-// ACCENT-INSENSITIVE, AND THAT IS A DEPARTURE FROM THE OTHER TWO SEARCHES.
-//
-// Clientes and Catálogo compare with a plain `toLowerCase().includes()`, so
-// "Maria" does not find "María" there. This screen is the one place where the
-// two people are different: the CUSTOMER typed the name, on their own phone,
-// and the SHOPKEEPER types the search. Nobody can be expected to guess
-// whether a stranger wrote the accent, so here the accent is removed from
-// both sides before comparing.
-function plano(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
-}
+// ACCENT-INSENSITIVE. This screen was the first to do it: the CUSTOMER typed
+// the name on their own phone and the SHOPKEEPER types the search, so nobody
+// can guess whether the accent was written. Since 2026-10-31 every search box
+// in the app does the same, through `foldForSearch`.
 
 export function OrdersFilterProvider({
   orders,
@@ -95,7 +86,7 @@ export function OrdersFilterProvider({
   const [status, setStatus] = useState<StatusFilter>("todos");
 
   const visible = useMemo(() => {
-    const q = plano(query.trim());
+    const q = foldForSearch(query.trim());
 
     return orders.filter((o) => {
       // EL DESCARTE MANDA ANTES QUE CUALQUIER OTRO ESTADO. Preguntarlo
@@ -110,7 +101,7 @@ export function OrdersFilterProvider({
       // The name is what the owner asked to search by. The document goes in
       // with it because it is the other column on this screen, and a
       // shopkeeper holding a cédula will try it before the name.
-      return plano(o.customer_name).includes(q) || plano(o.customer_document).includes(q);
+      return foldForSearch(o.customer_name).includes(q) || foldForSearch(o.customer_document).includes(q);
     });
   }, [orders, query, status]);
 

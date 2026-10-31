@@ -38,6 +38,7 @@ import {
   ClientResultList,
   CLIENT_RESULT_LIMIT,
 } from "@/components/dashboard/client-result-list";
+import { foldForSearch } from "@/lib/search/fold";
 
 type ClientOption = {
   id: string;
@@ -233,10 +234,11 @@ function ClientSearchDialogBody({
   // que la lista es la pregunta; en el camino de alta el campo vacío era la
   // invitación a escribir, y ese camino ya no pasa por aquí.
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    // Accent- and case-blind since 2026-10-31, the same rule as the home search.
+    const q = foldForSearch(query.trim());
     if (!q) return clients.slice(0, CLIENT_RESULT_LIMIT);
     return clients
-      .filter((c) => c.name.toLowerCase().includes(q) || c.document_id?.toLowerCase().includes(q))
+      .filter((c) => foldForSearch(c.name).includes(q) || (c.document_id ? foldForSearch(c.document_id).includes(q) : false))
       .slice(0, CLIENT_RESULT_LIMIT);
   }, [clients, query]);
 

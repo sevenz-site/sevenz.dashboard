@@ -20,6 +20,7 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import { StockBadge } from "@/components/stock-badge";
 import type { ProductoDeHoja } from "@/lib/reports/inventario";
 import { esMonedaConocida, formatDinero, type Dinero } from "@/lib/reports/ganancia";
+import { foldForSearch } from "@/lib/search/fold";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LA HOJA DE UNA TARJETA DE INVENTARIO — frames `1673:22429`,
@@ -172,12 +173,11 @@ export function ReportesProductosSheet({
   const [query, setQuery] = useState("");
 
   const visibles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldForSearch(query.trim());
     if (!q) return productos;
-    // `toLowerCase().includes()`, igual que el catálogo, la lista de clientes
-    // y la hoja de plazos. No se "mejora" aquí: dos búsquedas distintas en la
-    // misma app es un fallo que nadie atribuye a la búsqueda.
-    return productos.filter((p) => p.nombre.toLowerCase().includes(q));
+    // `foldForSearch`, like every other search box: two different searches
+    // in one app is a bug nobody attributes to the search.
+    return productos.filter((p) => foldForSearch(p.nombre).includes(q));
   }, [productos, query]);
 
   return (

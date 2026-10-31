@@ -99,6 +99,7 @@ import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { NOMBRE, PagoCampos, type Registro } from "@/components/dashboard/pago-campos";
+import { foldForSearch } from "@/lib/search/fold";
 
 // EL ASISTENTE DE UNA VENTA — sitemap `1269:6051`, encargo del dueño del
 // 2026-10-17.
@@ -1789,8 +1790,8 @@ function PasoCliente({
   // antes: aquí debajo hay un formulario entero, y veinte filas de clientes
   // empujándolo fuera de la pantalla convertirían el alta en algo que hay que
   // buscar. Las coincidencias aparecen al escribir.
-  const texto = query.trim().toLowerCase();
-  const encontrados = texto === "" ? [] : clientes.filter((c) => c.name.toLowerCase().includes(texto));
+  const texto = foldForSearch(query.trim());
+  const encontrados = texto === "" ? [] : clientes.filter((c) => foldForSearch(c.name).includes(texto));
 
   // ── YA ELEGIDO ──────────────────────────────────────────────────────
   //

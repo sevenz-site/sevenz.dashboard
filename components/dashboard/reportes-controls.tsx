@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { ClientResultList, CLIENT_RESULT_LIMIT } from "@/components/dashboard/client-result-list";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
+import { foldForSearch } from "@/lib/search/fold";
 
 // THE TWO CONTROLS OF /reportes, and both of them live in the URL.
 //
@@ -62,12 +63,12 @@ export function ReportesClientSearch({
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
 
-  const q = query.trim().toLowerCase();
+  const q = foldForSearch(query.trim());
   const results =
     q === ""
       ? []
       : clients
-          .filter((c) => c.name.toLowerCase().includes(q) || (c.document_id ?? "").includes(q))
+          .filter((c) => foldForSearch(c.name).includes(q) || foldForSearch(c.document_id).includes(q))
           .slice(0, CLIENT_RESULT_LIMIT)
           .map((c) => ({
             id: c.id,
@@ -182,8 +183,8 @@ export function ReportesEntitySearch({
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
 
-  const q = query.trim().toLowerCase();
-  const results = q === "" ? [] : items.filter((i) => i.nombre.toLowerCase().includes(q)).slice(0, RESULTADOS);
+  const q = foldForSearch(query.trim());
+  const results = q === "" ? [] : items.filter((i) => foldForSearch(i.nombre).includes(q)).slice(0, RESULTADOS);
 
   if (seleccionado) {
     return (

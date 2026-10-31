@@ -523,7 +523,7 @@ export default async function SharedBalancePage({
           previa del tendero. El catálogo que se abre DESDE aquí sí tendrá la
           suya, porque ahí sí hay a dónde volver.
 
-          EL SUBTÍTULO ES EL NOMBRE DEL CLIENTE Y NADA MÁS. La cédula estuvo
+          EL CLIENTE VA COMO TÍTULO, SIN CÉDULA (antes era el subtítulo). La cédula estuvo
           ahí y cualquiera con el enlace podía leerla — un enlace compartido
           viaja por grupos de WhatsApp y reenvíos, así que su público real es
           más ancho que el cliente al que se le mandó. Nombre más cédula es
@@ -534,8 +534,14 @@ export default async function SharedBalancePage({
       <PublicHeader
         logoUrl={logoUrl}
         logoIsRemote={Boolean(shared.owner_logo_path)}
-        title={shared.business_name}
-        subtitle={`Cliente: ${shared.client_name}`}
+        // THE CLIENT ON TOP, THE SHOP BELOW -- the owner's request of
+        // 2026-10-31, with a screenshot: this page is the client's, so their
+        // name is the title and the business that keeps the account is the
+        // line under it. Until then it was the other way round, with
+        // «Cliente: …» as the subtitle. A business with no name leaves the
+        // subtitle empty, and PublicHeader then draws no line at all.
+        title={shared.client_name}
+        subtitle={shared.business_name || undefined}
         actions={
           <ShareSettings
             token={token}

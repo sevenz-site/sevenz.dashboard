@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EstadoChip } from "@/components/admin/estado-chip";
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
 import type { Cuenta } from "@/lib/admin/subscriptions";
+import { foldForSearch } from "@/lib/search/fold";
 
 function fecha(iso: string | null): string {
   if (!iso) return "—";
@@ -219,7 +220,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
       if (plan !== "todos" && c.plan_code !== plan) return false;
       if (!q) return true;
       return (
-        c.business_name.toLowerCase().includes(q) || (c.email ?? "").toLowerCase().includes(q)
+        foldForSearch(c.business_name).includes(q) || foldForSearch(c.email).includes(q)
       );
     });
   }, [cuentas, busqueda, estado, plan]);

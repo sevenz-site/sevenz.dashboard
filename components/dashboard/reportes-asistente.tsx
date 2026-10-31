@@ -294,7 +294,7 @@ function Esqueleto() {
 }
 
 /**
- * La frase, con cada importe en semibold.
+ * La frase, con cada importe al mismo peso que el texto.
  *
  * THE FLAGS ARE GONE AND THE AMOUNTS ARE MARKED INSTEAD -- the owner's
  * request of 2026-10-31: «Elimina las banderas de los saldos en el asistente,
@@ -308,15 +308,21 @@ function Esqueleto() {
  * («$» dollar, «€» euro, «Bs.» bolívar) OR Colombian (pesos only), so the
  * two «$» never meet in the same summary.
  *
+ * AND THE SEMIBOLD WAS UNDONE THE SAME DAY: «Las cifras del reporte generado
+ * por AI en el asistente que quede en el mismo peso del resto del contenido»
+ * (the owner, 2026-10-31, afternoon). The flags stay gone; the amounts go back
+ * to the weight of the sentence. «¿Cómo va la semana?» and «Recomendaciones:»
+ * keep their semibold -- he named the figures only.
+ *
  * `whitespace-nowrap` so an amount never breaks across lines between its
- * symbol and its digits.
+ * symbol and its digits, which is why the amounts are still split out.
  */
 function ConImportes({ frase }: { frase: string }) {
   return (
     <>
       {partirPorImportes(frase).map((t, i) =>
         t.moneda ? (
-          <span key={i} className="whitespace-nowrap font-semibold">
+          <span key={i} className="whitespace-nowrap">
             {t.texto}
           </span>
         ) : (
