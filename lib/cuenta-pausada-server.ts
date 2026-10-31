@@ -37,3 +37,23 @@ export async function sesionPausada(): Promise<boolean> {
   if (!user) return false;
   return !(await puedeEscribir(supabase, user.id));
 }
+
+export type MotivoDeBloqueo = "bloqueada" | "prueba_vencida" | "pago_vencido";
+
+// WHY the signed-in owner cannot write, or null if they can (migration 171).
+// The layout uses it so the dialog can say «tu prueba terminó» instead of only
+// «cuenta pausada».
+//
+// IF THE FUNCTION IS NOT THERE YET -- the code reached production before the
+// migration -- it falls back to `puedeEscribir`, and a block reads as a manual
+// one. Same reasoning as above: this is the sign, not the lock.
+export async function motivoDeBloqueo(
+  supabase: SupabaseServerClient,
+  ownerId: string,
+): Promise<MotivoDeBloqueo | null> {
+  const { data, error } = await supabase.rpc("mi_motivo_de_bloqueo");
+  if (!error) {
+    return data === "bloqueada" || data === "prueba_vencida" || data === "pago_vencido" ? data : null;
+  }
+  return (await puedeEscribir(supabase, ownerId)) ? null : "bloqueada";
+}

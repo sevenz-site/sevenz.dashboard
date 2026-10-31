@@ -4,6 +4,7 @@ import { enviarAtencionSemanal } from "@/lib/whatsapp/cartera-attention";
 import { diaIsoEnColombia } from "@/lib/whatsapp/send";
 import { registrarLatido } from "@/lib/whatsapp/latido";
 import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
 
@@ -43,6 +44,24 @@ export async function GET(request: Request) {
 
   const dia = diaIsoEnColombia();
 
+  // THE ACCOUNTS WHOSE TRIAL OR PAID PERIOD RAN OUT (migration 171, plan of
+  // 2026-10-31). The block itself does not wait for this: `owner_puede_escribir`
+  // already reads the dates. This only turns the state into bloqueada and
+  // writes the history row, so /admin says what the rule already does.
+  //
+  // HERE AND NOT IN A CRON OF ITS OWN: Vercel Hobby allows two, and both are
+  // taken. It runs FIRST so an account blocked today is already «paused» when
+  // the recipients are chosen below. And a failure here is logged and nothing
+  // more: the WhatsApp batch must not depend on it.
+  let bloqueadasHoy: number | null = null;
+  try {
+    const { data, error } = await createServiceClient().rpc("bloquear_vencidas");
+    if (error) console.error("cron whatsapp: bloquear_vencidas:", error.message);
+    else bloqueadasHoy = Number(data ?? 0);
+  } catch (e) {
+    console.error("cron whatsapp: bloquear_vencidas:", e);
+  }
+
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.
     const resumen = await enviarResumenSemanal();
@@ -79,6 +98,7 @@ export async function GET(request: Request) {
       },
       atencion,
       recordatorios,
+      bloqueadasHoy,
     };
 
     // EL LATIDO, y va aquí aunque no se haya enviado nada. Una tanda sin

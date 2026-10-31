@@ -43,7 +43,14 @@ import {
 //
 // "Pausada" y no "bloqueada" ni "suspendida": lo que tiene que entender es que
 // esto se revierte hablando, no que le cerraron la puerta.
-const TITULO = "Tu cuenta está pausada";
+//
+// THREE TEXTS SINCE 2026-10-31 (migration 171), one per reason, and that does
+// not contradict «no dice por qué» above: that rule is about the INTERNAL note
+// written in /admin, which is still never shown. «Your trial ended» and «your
+// plan is overdue» are facts the owner already knows -- they come from dates he
+// was told -- and naming them turns «why can't I write?» into «I know what to
+// do». A manual block keeps the old, reason-less text.
+export type MotivoDeBloqueo = "bloqueada" | "prueba_vencida" | "pago_vencido";
 // YA NO ES IDÉNTICO AL DE LA PLANTILLA DE WHATSAPP, y es a propósito.
 //
 // Este párrafo estaba calcado del cuerpo de `cartera_pausada`, la plantilla
@@ -62,6 +69,27 @@ const TITULO = "Tu cuenta está pausada";
 // out loud, because otherwise a paused owner would assume it went dark.
 const CUERPO =
   "Por ahora no puedes registrar ventas, fiados, abonos, clientes ni pedidos, ni crear o publicar productos. Lo que te deben y el historial siguen aquí, el enlace que les mandaste a tus clientes sigue funcionando y tu catálogo sigue recibiendo pedidos.";
+
+const TEXTOS: Record<MotivoDeBloqueo, { titulo: string; cuerpo: string; boton: string; ayuda: string }> = {
+  bloqueada: {
+    titulo: "Tu cuenta está pausada",
+    cuerpo: CUERPO,
+    boton: "Escríbenos para reactivarla",
+    ayuda: "aparece pausada y necesito reactivarla",
+  },
+  prueba_vencida: {
+    titulo: "Terminó tu prueba gratis",
+    cuerpo: `Tus 3 meses de prueba terminaron. ${CUERPO}`,
+    boton: "Escríbenos para activar tu plan",
+    ayuda: "terminó su prueba gratis y quiero activar mi plan",
+  },
+  pago_vencido: {
+    titulo: "Tu plan está vencido",
+    cuerpo: `No tenemos registrado el pago de tu plan. ${CUERPO}`,
+    boton: "Escríbenos para reactivarla",
+    ayuda: "tiene el plan vencido y necesito reactivarla",
+  },
+};
 // El correo va DENTRO del mensaje, no como algo que pedirle después.
 //
 // Quien recibe ese WhatsApp llega con un número de teléfono y nada más, y la
@@ -71,33 +99,39 @@ const CUERPO =
 //
 // Sin correo se manda la frase sin él, que es rara pero se entiende, en vez de
 // "mi cuenta undefined de Sevenz".
-function mensajeDeAyuda(correo: string | null): string {
-  return correo
-    ? `Hola, mi cuenta ${correo} de Sevenz aparece pausada y necesito reactivarla.`
-    : "Hola, mi cuenta de Sevenz aparece pausada y necesito reactivarla.";
+function mensajeDeAyuda(correo: string | null, motivo: MotivoDeBloqueo): string {
+  const ayuda = TEXTOS[motivo].ayuda;
+  return correo ? `Hola, mi cuenta ${correo} de Sevenz ${ayuda}.` : `Hola, mi cuenta de Sevenz ${ayuda}.`;
 }
 
-type CuentaPausadaValor = { pausada: boolean; correo: string | null };
+type CuentaPausadaValor = { pausada: boolean; correo: string | null; motivo: MotivoDeBloqueo };
 
 const CuentaPausadaContext = createContext<CuentaPausadaValor>({
   pausada: false,
   correo: null,
+  motivo: "bloqueada",
 });
 
-function enlaceDeWhatsapp(correo: string | null): string {
-  return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(mensajeDeAyuda(correo))}`;
+function enlaceDeWhatsapp(correo: string | null, motivo: MotivoDeBloqueo): string {
+  return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(mensajeDeAyuda(correo, motivo))}`;
 }
 
 export function CuentaPausadaProvider({
   pausada,
   correo,
+  motivo,
   children,
 }: {
   pausada: boolean;
   // El correo con el que entra, para que el WhatsApp diga de qué cuenta habla.
   correo: string | null;
+  // Why, when it is paused. Absent or null reads as a manual block, which is
+  // also what the code says until migration 171 has run.
+  motivo?: MotivoDeBloqueo | null;
   children: React.ReactNode;
 }) {
+  const motivoFinal: MotivoDeBloqueo = motivo ?? "bloqueada";
+  const textos = TEXTOS[motivoFinal];
   // Abierto DE ENTRADA si la cuenta está pausada, como valor inicial y no
   // desde un efecto. Además de ahorrarse un render de más, el servidor y el
   // navegador pintan lo mismo.
@@ -128,7 +162,7 @@ export function CuentaPausadaProvider({
 
   // Memorizado para que el contexto no cambie de identidad en cada render y
   // vuelva a dibujar todo lo que cuelga de él — que aquí es la app entera.
-  const valor = useMemo(() => ({ pausada, correo }), [pausada, correo]);
+  const valor = useMemo(() => ({ pausada, correo, motivo: motivoFinal }), [pausada, correo, motivoFinal]);
 
   return (
     <CuentaPausadaContext.Provider value={valor}>
@@ -138,16 +172,16 @@ export function CuentaPausadaProvider({
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <PauseCircle className="size-5 shrink-0 text-destructive" aria-hidden />
-              {TITULO}
+              {textos.titulo}
             </AlertDialogTitle>
-            <AlertDialogDescription>{CUERPO}</AlertDialogDescription>
+            <AlertDialogDescription>{textos.cuerpo}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             {/* WhatsApp primero: es la única de las dos que arregla algo. */}
             <Button variant="outline" asChild>
-              <a href={enlaceDeWhatsapp(correo)} target="_blank" rel="noopener noreferrer">
+              <a href={enlaceDeWhatsapp(correo, motivoFinal)} target="_blank" rel="noopener noreferrer">
                 <WhatsappIcon className="size-4" />
-                Escríbenos para reactivarla
+                {textos.boton}
               </a>
             </Button>
             <AlertDialogAction onClick={cerrar}>Entendido</AlertDialogAction>
@@ -222,22 +256,23 @@ export function useGuardiaAlAbrir(quiereAbrir: boolean): boolean {
 // consulta de "¿puede escribir?" además de la del layout, y dos lecturas de lo
 // mismo en la misma carga es una de más.
 export function CuentaPausada() {
-  const { pausada, correo } = useCuentaPausada();
+  const { pausada, correo, motivo } = useCuentaPausada();
   if (!pausada) return null;
+  const textos = TEXTOS[motivo];
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
       <div className="flex items-start gap-2">
         <PauseCircle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
         <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-destructive">{TITULO}</p>
-          <p className="text-sm text-muted-foreground">{CUERPO}</p>
+          <p className="text-sm font-medium text-destructive">{textos.titulo}</p>
+          <p className="text-sm text-muted-foreground">{textos.cuerpo}</p>
         </div>
       </div>
       <Button asChild variant="outline" className="w-fit">
-        <a href={enlaceDeWhatsapp(correo)} target="_blank" rel="noopener noreferrer">
+        <a href={enlaceDeWhatsapp(correo, motivo)} target="_blank" rel="noopener noreferrer">
           <WhatsappIcon className="size-4" />
-          Escríbenos para reactivarla
+          {textos.boton}
         </a>
       </Button>
     </div>

@@ -9,6 +9,7 @@ import {
   darDemo,
   desbloquear,
   guardarComprobante,
+  marcarPrueba,
   registrarPago,
   subirComprobante,
   type Periodicidad,
@@ -212,5 +213,25 @@ export async function accionDesbloquear(
   if (error) return { error, ok: false };
 
   revalidatePath("/admin/cuentas");
+  return { error: null, ok: true };
+}
+
+// TEST BUSINESS ON / OFF (migration 171, plan of 2026-10-31). A test business
+// is left out of the metrics by default; it is NOT exempt from the block.
+export async function accionMarcarPrueba(
+  _prev: AccionState,
+  formData: FormData,
+): Promise<AccionState> {
+  const { email } = await requireSuperadmin();
+
+  const ownerId = String(formData.get("owner_id") ?? "");
+  const esPrueba = String(formData.get("es_prueba") ?? "") === "1";
+  if (!ownerId) return { error: "Falta el negocio.", ok: false };
+
+  const { error } = await marcarPrueba(ownerId, esPrueba, email);
+  if (error) return { error, ok: false };
+
+  revalidatePath("/admin/cuentas");
+  revalidatePath("/admin");
   return { error: null, ok: true };
 }

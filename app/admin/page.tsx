@@ -19,6 +19,7 @@ import {
   getOrders,
   getOwnerOptions,
   getTotals,
+  sinNegociosDePrueba,
   getTransactions,
   getTrend,
   type Bucket,
@@ -146,6 +147,7 @@ export default async function AdminMetricsPage({
     to?: string;
     bucket?: string;
     seccion?: string;
+    pruebas?: string;
   }>;
 }) {
   // Repeated here even though app/admin/layout.tsx already calls it. Next
@@ -158,7 +160,7 @@ export default async function AdminMetricsPage({
 
   const sp = await searchParams;
 
-  const filters: Filters = {
+  const elegidos: Filters = {
     country: sp.country === "CO" || sp.country === "VE" ? sp.country : null,
     currency:
       sp.currency === "COP" || sp.currency === "USD" || sp.currency === "EUR" ? sp.currency : null,
@@ -178,13 +180,18 @@ export default async function AdminMetricsPage({
   const seccion = seccionDe(sp.seccion);
 
   const owners = await getOwnerOptions();
+  // Test businesses out unless `?pruebas=1` (the owner's decision of
+  // 2026-10-31). See `sinNegociosDePrueba`.
+  const incluirPruebas = sp.pruebas === "1";
+  const filters = sinNegociosDePrueba(elegidos, owners, incluirPruebas);
+  const pruebasFuera = filters !== elegidos;
 
   // Qué parte de la plataforma se está mirando, en una frase. Se arma de los
   // filtros que de verdad recortan el conjunto: país, moneda y negocio. Las
   // fechas quedan fuera a propósito — acotan CUÁNDO, no A QUIÉN, y meterlas
   // aquí haría una frase larguísima para la pregunta que esta línea responde.
   const recortes: string[] = [];
-  const negociosElegidos = filters.ownerIds ?? [];
+  const negociosElegidos = elegidos.ownerIds ?? [];
   if (negociosElegidos.length > 0) {
     recortes.push(
       negociosElegidos.length === 1
@@ -194,7 +201,9 @@ export default async function AdminMetricsPage({
   }
   if (filters.country) recortes.push(filters.country === "VE" ? "Venezuela" : "Colombia");
   if (filters.currency) recortes.push(filters.currency);
-  const alcance = recortes.length === 0 ? "Todos los negocios" : `Filtrado: ${recortes.join(" · ")}`;
+  const alcance =
+    (recortes.length === 0 ? "Todos los negocios" : `Filtrado: ${recortes.join(" · ")}`) +
+    (pruebasFuera ? ", sin los negocios de prueba" : "");
 
   return (
     <div className="flex flex-col gap-6">
@@ -219,7 +228,7 @@ export default async function AdminMetricsPage({
       {seccion === "pedidos" ? <SeccionPedidos filters={filters} /> : null}
       {seccion === "clientes" ? <SeccionClientes filters={filters} /> : null}
       {seccion === "negocios" ? <SeccionNegocios filters={filters} /> : null}
-      {seccion === "salud" ? <SeccionSalud filters={filters} filtrado={recortes.length > 0} /> : null}
+      {seccion === "salud" ? <SeccionSalud filters={filters} filtrado={recortes.length > 0 || pruebasFuera} /> : null}
     </div>
   );
 }

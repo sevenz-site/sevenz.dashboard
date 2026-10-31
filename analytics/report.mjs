@@ -63,7 +63,7 @@ const projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(
 // Imported after the env is in place. createServiceClient reads process.env
 // when it is called rather than at import time, so a static import would also
 // work — this is explicit so the ordering cannot be broken by accident later.
-const { getCurrencySummary, getTotals, getAverageCreditScore, getOwnerOptions } = await import(
+const { getCurrencySummary, getTotals, getAverageCreditScore, getOwnerOptions, sinNegociosDePrueba } = await import(
   "../lib/admin/metrics.ts"
 );
 
@@ -76,7 +76,13 @@ const { getCurrencySummary, getTotals, getAverageCreditScore, getOwnerOptions } 
 // both ends as calendar days, in the zone of each business, the same as the
 // date picker on /admin. Before that it was exclusive, and the example above
 // said «--to 2026-09-01» for August; that same command now includes 1 Sept.
-const filters = { country, ownerIds: ownerId ? [ownerId] : [], from, to, currency: null };
+// Test businesses out by default, as on /admin (2026-10-31); `--incluir-pruebas`
+// puts them back.
+const filters = sinNegociosDePrueba(
+  { country, ownerIds: ownerId ? [ownerId] : [], from, to, currency: null },
+  await getOwnerOptions(),
+  args.includes("--incluir-pruebas"),
+);
 
 const money = (n) =>
   Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
