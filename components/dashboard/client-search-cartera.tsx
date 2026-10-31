@@ -14,6 +14,8 @@ import {
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { track } from "@/lib/mixpanel";
 import { clientHref } from "@/lib/client-origin";
+import { TransactionResultList } from "@/components/dashboard/transaction-result-list";
+import { useTransactionSearch } from "@/components/dashboard/use-transaction-search";
 
 // El buscador de Cartera: campo arriba del todo y las coincidencias justo
 // debajo, con la misma lista que el diálogo de "Agregar movimiento".
@@ -67,8 +69,23 @@ import { clientHref } from "@/lib/client-origin";
 // when there is text. The alternative was a white placeholder (7,80:1), which
 // would leave it BRIGHTER than the value: the opposite of what it means.
 
+// «Buscar cliente o transacción» DESDE EL 2026-10-30. Pedido por el dueño a
+// partir de comentarios de usuarios: el mismo campo tiene que encontrar también
+// una transacción por su código. El rótulo lo dice para que nadie tenga que
+// adivinar que el campo hace las dos cosas.
+//
+// LAS TRANSACCIONES SALEN DEBAJO DE LOS CLIENTES, en su propio grupo con título
+// y no mezcladas: un código y un nombre no se parecen, y una fila sola que
+// dice «Fiado · Pedro» entre cuatro Pedros se leería como un cliente más.
+//
+// SOLO SE PIDEN CON FORMA DE CÓDIGO (cuatro letras o más, ver
+// `useTransactionSearch`), así que buscar a alguien por su nombre no cuesta una
+// petición. Y LA LISTA DE ABAJO NO CAMBIA: sigue filtrándose por nombre con lo
+// que se teclee, así que al escribir un código se queda sin clientes. Es el
+// efecto que este componente ya documenta —vaciar el campo devuelve la
+// cartera— y aquí se nota más; el grupo de transacciones es el que contesta.
 export function ClientSearchCartera({
-  placeholder = "Buscar cliente",
+  placeholder = "Buscar cliente o transacción",
 }: {
   placeholder?: string;
 }) {
@@ -93,6 +110,7 @@ export function ClientSearchCartera({
   // futuro olvida esto; las dos cosas hacen falta y no son la misma: esta
   // apaga al instante, aquélla es la red.
   useEffect(() => () => setBuscando(false), [setBuscando]);
+  const transactions = useTransactionSearch(filters?.controls.nameQuery ?? "");
 
   if (!filters) return null;
 
@@ -175,10 +193,28 @@ export function ClientSearchCartera({
               router.push(clientHref(id, "cartera"));
             }}
           />
-          {results.length === 0 ? (
-            <p className="rounded-md border px-3 py-4 text-center text-sm text-muted-foreground">
-              Sin resultados para &quot;{query}&quot;.
-            </p>
+          <TransactionResultList
+            results={transactions.results}
+            onSelect={(r) => router.push(r.href)}
+          />
+          {/* «SIN RESULTADOS» SOLO CUANDO NADIE TIENE NADA QUE DECIR: ni los
+              clientes, ni las transacciones, ni una respuesta que todavía viene
+              de camino. Con un código a medio contestar, decir que no hay nada
+              y retractarse medio segundo después es peor que esperar. */}
+          {results.length === 0 && transactions.results.length === 0 ? (
+            transactions.pending ? (
+              <p className="rounded-md border px-3 py-4 text-center text-sm text-muted-foreground">
+                Buscando transacciones…
+              </p>
+            ) : transactions.failed ? (
+              <p className="rounded-md border px-3 py-4 text-center text-sm text-muted-foreground">
+                No pudimos buscar transacciones ahora. Inténtalo de nuevo.
+              </p>
+            ) : (
+              <p className="rounded-md border px-3 py-4 text-center text-sm text-muted-foreground">
+                Sin resultados para &quot;{query}&quot;.
+              </p>
+            )
           ) : null}
         </div>
       ) : null}

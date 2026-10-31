@@ -12,6 +12,7 @@ import {
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
+import { previewPriceLine } from "@/lib/products/preview-price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
 
@@ -47,8 +48,12 @@ import { IconoVolver } from "@/components/dashboard/screen-chrome";
 // (`1732:14757`): ahora el tendero ELIGE mandarlo, que es exactamente lo que
 // el párrafo de arriba pedía.
 //
-// Y LA MITAD DEL MIEDO VIEJO SIGUE CUBIERTA: el frame no dibuja ningún precio.
-// «Qué vende» pasa a verse; «a cómo» no.
+// Y LA OTRA MITAD DEL MIEDO VIEJO, EL PRECIO, SE QUITÓ EL 2026-10-30. El frame
+// no dibujaba ninguno y por eso la vista previa decía «qué vende» y no «a
+// cómo». A partir de comentarios de usuarios el dueño pidió que lo lleve, y el
+// frame ahora dibuja una fila con las banderas y el importe en dólares y en
+// euros. Lo que cuesta, y por qué es el mismo precio que ya ve cualquiera que
+// abra el enlace, está en `lib/products/preview-price.ts`.
 //
 // `robots: noindex` SE QUEDA. Compartir por WhatsApp y salir en Google son dos
 // cosas distintas, y los rastreadores de los chats no miran esa etiqueta.
@@ -81,6 +86,16 @@ export async function generateMetadata({
       name?: string;
       description?: string | null;
       photo_path?: string | null;
+      base_currency?: PriceCurrency;
+      wholesale_min_quantity?: number | null;
+      retail?: BloqueCrudo | null;
+      wholesale?: BloqueCrudo | null;
+      owner_country?: string | null;
+      rate_mode?: string | null;
+      current_bcv_usd?: number | null;
+      current_bcv_eur?: number | null;
+      custom_rate_usd?: number | null;
+      custom_rate_eur?: number | null;
     } | null;
     if (!d?.name) return generico;
 
@@ -100,7 +115,27 @@ export async function generateMetadata({
     // EL TEXTO DEL FRAME, repartido donde el chat lo pinta: el nombre arriba,
     // la descripción debajo, y la línea de Sevenz como nombre del sitio.
     //
-    // SIN PRECIO, que es la mitad de la decisión vieja que se conserva.
+    // EL PRECIO VA PRIMERO, en la misma línea que la descripción: el chat solo
+    // pinta título, descripción y sitio, así que la fila del frame entre el
+    // nombre y la descripción no tiene otro sitio donde caer. Va antes para que
+    // lo recorte la descripción larga y no al revés.
+    //
+    // LAS MISMAS TASAS QUE LA PÁGINA, y por el mismo camino: la del tendero si
+    // la fijó, la del BCV si no, y ninguna fuera de Venezuela. Sin la de USDT,
+    // que la página trae de un tercero y un rastreador no debe disparar.
+    const tasas =
+      d.owner_country === "VE" && d.current_bcv_usd != null && d.current_bcv_eur != null
+        ? d.rate_mode === "CUSTOM" && d.custom_rate_usd && d.custom_rate_eur
+          ? { usd: d.custom_rate_usd, eur: d.custom_rate_eur }
+          : { usd: d.current_bcv_usd, eur: d.current_bcv_eur }
+        : null;
+    const precio = previewPriceLine({
+      retail: d.retail ?? null,
+      wholesale: d.wholesale ?? null,
+      wholesale_min_quantity: d.wholesale_min_quantity ?? null,
+      base_currency: d.base_currency ?? "USD",
+      rates: tasas,
+    });
     //
     // `?? null` Y NO `?? undefined`, y la diferencia se vio en una captura:
     // `undefined` deja que Next herede la descripción del layout raíz, así
@@ -108,7 +143,14 @@ export async function generateMetadata({
     // las cuentas claras de tu negocio sin tanta vaina!»* debajo de su
     // nombre -- la frase de la marca presentada como si describiera el
     // bafle. `null` dice «esta página no tiene descripción» y no hereda nada.
-    const descripcion = d.description?.trim() || null;
+    const descripcionPropia = d.description?.trim() || null;
+    // Precio en su propia línea y la descripción debajo. Si el chat colapsa el
+    // salto, se lee igual: el precio es lo primero en los dos casos.
+    const descripcion =
+      precio && descripcionPropia
+        ? `${precio}
+${descripcionPropia}`
+        : (precio ?? descripcionPropia);
 
     return {
       title: `${d.name} — Sevenz`,

@@ -11,6 +11,8 @@ import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transacc
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
+import type { PaymentLine } from "@/components/dashboard/payment-summary";
+import { paymentGroupKey } from "@/lib/history/group-payments";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -135,6 +137,8 @@ type AbonoDirigidoJson = {
 // enseña — y ahí está toda la autorización: no hace falta comprobar de quién es
 // la fila, porque la única forma de llegar a ella es que la función la haya
 // entregado para ese token.
+const LIMITE = 2000;
+
 export default async function DetalleDelClientePage({
   params,
   searchParams,
@@ -154,7 +158,22 @@ export default async function DetalleDelClientePage({
   await searchParams;
   const supabase = await createClient();
 
-  const { data } = await supabase.rpc("get_shared_balance", { p_token: token });
+  // ── PIDE MÁS DE 50, Y DESDE EL 2026-10-30 ES UN BORDE QUE SE PISA ─────
+  //
+  // `get_shared_balance` acota a 50 movimientos por defecto, que es lo que
+  // enseña la lista. Esta pantalla resuelve UNA fila, y la fila que busca puede
+  // ser más vieja que esa ventana: antes solo se llegaba aquí desde la lista, o
+  // desde «Ver todo el historial» con el mismo problema; ahora el tendero
+  // comparte el enlace de CUALQUIER transacción, y una de hace seis meses daba
+  // 404 sobre el enlace que él acababa de mandar.
+  //
+  // El mismo número y la misma razón que `v/[saleId]/[moneda]/page.tsx`, que ya
+  // lo aprendió. `p_limit` existe desde la migración 036, así que esto no
+  // necesita nada en la base.
+  const { data } = await supabase.rpc("get_shared_balance", {
+    p_token: token,
+    p_limit: LIMITE,
+  });
   if (!data) notFound();
 
   const shared = data as {
@@ -276,6 +295,61 @@ export default async function DetalleDelClientePage({
         }))
       : undefined;
 
+  // ── TODAS LAS LÍNEAS DE ESTE ABONO, IGUAL QUE EN LA DEL TENDERO ──────
+  //
+  // Encargo del dueño el 2026-10-30, preguntado para esta vista: igual en las
+  // dos. Las líneas son las de la misma clave con la que el historial las
+  // junta (`paymentGroupKey`: código de transacción y libro), sacadas del
+  // mismo payload que ya autorizó `get_shared_balance` — aquí no se consulta
+  // nada por un id de la URL.
+  //
+  // EL FIADO DE CADA LÍNEA sale del mapa `fiados_abonados` de la `128`, que
+  // se resuelve en SQL contra la tabla entera; si no está, de la lista, y si
+  // tampoco, es que se borró.
+  const lineasDelAbono: PaymentLine[] | undefined =
+    m.type === "payment"
+      ? movimientos
+          .filter(
+            (x) =>
+              x.type === "payment" &&
+              paymentGroupKey({ ...x, transaction_code: x.transaction_code ?? null }) ===
+                paymentGroupKey({ ...m, transaction_code: m.transaction_code ?? null }),
+          )
+          .sort((a, b) =>
+            a.created_at === b.created_at ? a.id.localeCompare(b.id) : a.created_at.localeCompare(b.created_at),
+          )
+          .map((l): PaymentLine => {
+            const aplicaA = l.applies_to_movement_id ?? null;
+            const delMapa = aplicaA ? (shared.fiados_abonados ?? {})[aplicaA] : undefined;
+            const deLaLista = aplicaA ? movimientos.find((x) => x.id === aplicaA && x.type === "charge") : undefined;
+            const fiado = delMapa
+              ? {
+                  fecha: delMapa.fecha,
+                  plazoDias: delMapa.plazo_dias,
+                  cuotas: delMapa.cuotas,
+                  amount: Number(delMapa.amount),
+                }
+              : deLaLista
+                ? {
+                    fecha: deLaLista.created_at,
+                    plazoDias: deLaLista.plazo_dias,
+                    cuotas: deLaLista.cuotas,
+                    amount: Number(deLaLista.amount),
+                  }
+                : null;
+            return {
+              movementId: l.id,
+              amount: Number(l.amount),
+              entryCurrency: l.entry_currency,
+              entryAmount: l.entry_amount == null ? null : Number(l.entry_amount),
+              exchangeRateUsed: l.exchange_rate_used == null ? null : Number(l.exchange_rate_used),
+              fiado,
+              fiadoDeleted: aplicaA != null && fiado == null,
+              hrefDelFiado: fiado && aplicaA ? `/s/${token}/t/${aplicaA}` : null,
+            };
+          })
+      : undefined;
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
       {/* LA BARRA DE ARRIBA, SOLO CON LA FLECHA. El «⋮» del frame es del dueño;
@@ -352,6 +426,7 @@ export default async function DetalleDelClientePage({
         fiadoAplicado={fiadoAplicado}
         hrefDelFiado={fiadoAplicado ? `/s/${token}/t/${fiadoAplicado.movementId}` : null}
         abonosRecibidos={abonosRecibidos}
+        lineasDelAbono={lineasDelAbono}
         abonoInicial={Number(m.abono_inicial ?? 0)}
         // Los bolívares que se teclearon al comprar — migración `152`. Sin
         // ellos la tarjeta enseñaría la reconversión, y el cliente vería una

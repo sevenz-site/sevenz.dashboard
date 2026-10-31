@@ -27,6 +27,9 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+// LA MISMA FUNCION QUE USA LA PANTALLA. Ver la fila 9 y por que se importa en
+// vez de escribir las banderas a mano.
+import { resolveSplitUnits, sumFixedLines } from "../lib/abonos/reparto.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -420,8 +423,10 @@ try {
       .limit(1)
       .maybeSingle();
 
-    const llamar = async (cuerpo) => {
-      const res = await fetch(`${BASE}/abonos/nuevo?cliente=${dos.id}`, {
+    // DOS FORMAS DE LA MISMA LLAMADA: `llamarEn` nombra el cliente y `llamar`
+    // es el atajo para el de dos libros, que es el de casi todas las filas.
+    const llamarEn = async (clienteId, cuerpo) => {
+      const res = await fetch(`${BASE}/abonos/nuevo?cliente=${clienteId}`, {
         method: "POST",
         headers: {
           "Next-Action": accionReparto,
@@ -434,6 +439,7 @@ try {
       const i = texto.indexOf('{"ok":');
       return i >= 0 ? JSON.parse(texto.slice(i, texto.indexOf("}", i) + 1)) : { crudo: texto };
     };
+    const llamar = (cuerpo) => llamarEn(dos.id, cuerpo);
 
     // ── 8a. TECLEANDO DÓLARES NO SE PUEDE CRUZAR ───────────────────────
     //
@@ -543,6 +549,233 @@ try {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 9. UN SOLO LIBRO, REPARTIDO A MANO EN BOLÍVARES
+    //
+    // LA REGRESIÓN DEL 2026-10-29, medida en PRODUCCIÓN: el tendero tecleó
+    // Bs. 10.000, los repartió a mano entre dos fiados en dólares, y la app
+    // guardó **$0,01**. El saldo del cliente bajó un céntimo. Ningún error,
+    // ningún rojo, «¡Transacción registrada con éxito!».
+    //
+    // LA CAUSA estaba en la pantalla, no aquí: mandaba `montoTecleado` con la
+    // suma EN DÓLARES y `monedaTecleada: "VES"`. El servidor hizo lo correcto
+    // con lo que le llegó.
+    //
+    // POR ESO ESTA FILA CONSTRUYE EL PAYLOAD CON `resolveSplitUnits`, la misma
+    // función que usa el componente, en vez de escribir las banderas a mano
+    // como hacen las filas 7 y 8. Ahí está el valor: las suites de este repo
+    // probaban el servidor (verde) y la aritmética (verde) mientras la línea
+    // que las une estaba rota. Escribiendo `cruzaLibros: true` aquí a mano,
+    // esta fila también habría pasado en verde con el fallo dentro.
+    {
+      const { data: uno } = await admin
+        .from("clients")
+        .insert({ owner_id: ve.id, name: `${MARCA} un libro` })
+        .select("id")
+        .single();
+      creados.clientes.push(uno.id);
+
+      const cargoUsd = async (monto, dias) => {
+        const { data } = await admin
+          .from("movements")
+          .insert({
+            client_id: uno.id,
+            created_by: ve.id,
+            type: "charge",
+            amount: monto,
+            currency: "USD",
+            plazo_dias: 15,
+            created_at: hace(dias),
+          })
+          .select("id")
+          .single();
+        return data.id;
+      };
+
+      const fiadoA = await cargoUsd(13, 5);
+      const fiadoB = await cargoUsd(19.5, 2);
+
+      if (!tasa) {
+        check("9. hay tasa con la que probar el reparto a mano", false, "no hay tasa en dev");
+      } else {
+        const rate = Number(tasa.usd);
+        // LO QUE EL TENDERO TECLEA EN CADA FIADO, en bolívares. Es `aManoBs`.
+        const bsA = 4000;
+        const bsB = 6000;
+        const billete = bsA + bsB;
+        // Y lo que esos bolívares valen en el libro, que es lo que la pantalla
+        // pone en `aMano`: la cifra con la que el reparto topa cada línea.
+        const enLibro = (bs) => Math.round((bs / rate) * 100) / 100;
+
+        // ── EL PAYLOAD, COMO LO ARMA LA PANTALLA ──────────────────────
+        const unidades = resolveSplitUnits({
+          enBolivares: true,
+          numeroDeLibros: 1,
+          porLinea: true,
+        });
+        check(
+          "9a. con un libro y reparto a mano en bolívares, el total va en Bs",
+          unidades.totalInBolivars === true && unidades.crossesLedgers === true,
+          `cruza=${unidades.crossesLedgers} · enBs=${unidades.totalInBolivars}`,
+        );
+
+        const aMano = { [fiadoA]: enLibro(bsA), [fiadoB]: enLibro(bsB) };
+        const aManoBs = { [fiadoA]: bsA, [fiadoB]: bsB };
+
+        // EL TOTAL, SUMADO COMO LO SUMA LA PANTALLA. No se escribe `billete`
+        // aquí a mano, y esa es toda la diferencia entre una prueba que caza
+        // esto y una que no: la primera versión de esta fila ponía el billete
+        // directamente y PASABA EN VERDE con el código roto, porque el fallo
+        // nunca estuvo en la etiqueta sola — estuvo en que la suma y la
+        // etiqueta contestaban en dos sitios. Medido el 2026-10-29.
+        const total = sumFixedLines({
+          fiados: [
+            { movementId: fiadoA, pendiente: 13, currency: "USD" },
+            { movementId: fiadoB, pendiente: 19.5, currency: "USD" },
+          ],
+          aMano,
+          aManoBs,
+          crossesLedgers: unidades.crossesLedgers,
+          aBolivares: (monto) => Math.round(monto * rate * 100) / 100,
+        });
+        check(
+          "9a-bis. el total se suma en bolívares, no en dólares con etiqueta de bolívares",
+          Math.abs(total - billete) < 1,
+          `total ${total} · billete ${billete}`,
+        );
+
+        const r = await llamarEn(uno.id, {
+          clienteId: uno.id,
+          libro: "USD",
+          cruzaLibros: unidades.crossesLedgers,
+          montoTecleado: total,
+          monedaTecleada: unidades.totalInBolivars ? "VES" : "USD",
+          aMano,
+          aManoBs,
+        });
+        check(
+          "9b. el reparto a mano en un solo libro se guarda",
+          r?.ok === true,
+          r?.ok ? `grupo ${String(r.groupId).slice(0, 8)}…` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+        );
+
+        if (r?.ok) {
+          const { data: filasR } = await admin
+            .from("movements")
+            .select("amount, applies_to_movement_id, entry_currency, entry_amount")
+            .eq("payment_group_id", r.groupId);
+
+          // LA FILA QUE MIDE EL FALLO. Con el bug, esto daba 0,01.
+          const totalUsd = (filasR ?? []).reduce((acc, f) => acc + Number(f.amount), 0);
+          const esperado = enLibro(billete);
+          check(
+            "9c. lo guardado es el billete entero, no un céntimo",
+            Math.abs(totalUsd - esperado) < 0.05,
+            `guardado $${totalUsd.toFixed(2)} · esperado $${esperado.toFixed(2)}`,
+          );
+
+          check(
+            "9d. se escriben las DOS líneas, no una",
+            (filasR ?? []).length === 2,
+            `${filasR?.length ?? 0} línea(s)`,
+          );
+
+          // Y LA CIFRA DEL TENDERO, INTACTA. Es la regla del 2026-10-24: lo
+          // que él escribió se guarda tal cual, nunca una reconversión.
+          const porF = new Map((filasR ?? []).map((f) => [f.applies_to_movement_id, f]));
+          check(
+            "9e. cada línea guarda los bolívares que él tecleó en ESE fiado",
+            Number(porF.get(fiadoA)?.entry_amount) === bsA &&
+              Number(porF.get(fiadoB)?.entry_amount) === bsB &&
+              porF.get(fiadoA)?.entry_currency === "VES" &&
+              porF.get(fiadoB)?.entry_currency === "VES",
+            `A ${porF.get(fiadoA)?.entry_amount} · B ${porF.get(fiadoB)?.entry_amount}`,
+          );
+
+          const sumaB = (filasR ?? []).reduce((acc, f) => acc + Number(f.entry_amount ?? 0), 0);
+          check(
+            "9f. y las partes suman el billete, al bolívar",
+            Math.abs(sumaB - billete) < 0.05,
+            `suma Bs. ${sumaB} · billete Bs. ${billete}`,
+          );
+        }
+      }
+    }
+
+    // 10. LO MISMO EN EUROS, QUE ES DONDE LA FILA 9 NO MIRABA
+    //
+    // R-1.2, regresión del 2026-10-30: con la tasa del euro, Bs 6.000 pasan al
+    // libro como €6,04, que vuelven como Bs 5.996,51, y la acción rechazaba el
+    // abono con «No pudimos repartir todo el abono». La fila 9 pasaba porque en
+    // dólares sus cifras redondeaban hacia arriba. Esta fila usa las cifras que
+    // lo destaparon y va contra la acción de verdad.
+    {
+      const { data: eu } = await admin
+        .from("clients")
+        .insert({ owner_id: ve.id, name: `${MARCA} euros a mano` })
+        .select("id")
+        .single();
+      creados.clientes.push(eu.id);
+      const cargoEur = async (monto, dias) => {
+        const { data } = await admin
+          .from("movements")
+          .insert({ client_id: eu.id, created_by: ve.id, type: "charge", amount: monto, currency: "EUR", plazo_dias: 15, created_at: hace(dias) })
+          .select("id")
+          .single();
+        return data.id;
+      };
+      const fA = await cargoEur(13, 5);
+      const fB = await cargoEur(19.5, 2);
+
+      if (!tasa) {
+        check("10. hay tasa con la que probar el reparto en euros", false, "no hay tasa en dev");
+      } else {
+        const rate = Number(tasa.eur);
+        const enLibro = (bs) => Math.round((bs / rate) * 100) / 100;
+        const unidades = resolveSplitUnits({ enBolivares: true, numeroDeLibros: 1, porLinea: true });
+        const aMano = { [fA]: enLibro(4000), [fB]: enLibro(6000) };
+        const aManoBs = { [fA]: 4000, [fB]: 6000 };
+        const total = sumFixedLines({
+          fiados: [
+            { movementId: fA, pendiente: 13, currency: "EUR" },
+            { movementId: fB, pendiente: 19.5, currency: "EUR" },
+          ],
+          aMano,
+          aManoBs,
+          crossesLedgers: unidades.crossesLedgers,
+          aBolivares: (monto) => Math.round(monto * rate * 100) / 100,
+        });
+        const r = await llamarEn(eu.id, {
+          clienteId: eu.id,
+          libro: "EUR",
+          cruzaLibros: unidades.crossesLedgers,
+          montoTecleado: total,
+          monedaTecleada: unidades.totalInBolivars ? "VES" : "EUR",
+          aMano,
+          aManoBs,
+        });
+        check(
+          "10a. un reparto a mano en Bs en un libro de EUROS se guarda",
+          r?.ok === true,
+          r?.ok ? `grupo ${String(r.groupId).slice(0, 8)}…` : (r?.error ?? JSON.stringify(r).slice(0, 140)),
+        );
+        if (r?.ok) {
+          const { data: ls } = await admin
+            .from("movements")
+            .select("amount, applies_to_movement_id, entry_amount")
+            .eq("payment_group_id", r.groupId);
+          const por = new Map((ls ?? []).map((l) => [l.applies_to_movement_id, l]));
+          check(
+            "10b. con €4,03 y €6,04, y los Bs tecleados en cada línea",
+            Number(por.get(fA)?.amount) === enLibro(4000) &&
+              Number(por.get(fB)?.amount) === enLibro(6000) &&
+              Number(por.get(fA)?.entry_amount) === 4000 &&
+              Number(por.get(fB)?.entry_amount) === 6000,
+            `A €${por.get(fA)?.amount}/Bs ${por.get(fA)?.entry_amount} · B €${por.get(fB)?.amount}/Bs ${por.get(fB)?.entry_amount}`,
+          );
+        }
+      }
+    }
   }
 } catch (e) {
   check("ERROR: la corrida se detuvo", false, e instanceof Error ? e.message : String(e));

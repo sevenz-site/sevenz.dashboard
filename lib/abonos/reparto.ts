@@ -235,6 +235,7 @@ export function repartirEnBolivares({
   montoBs,
   fiados,
   aMano = {},
+  aManoBs = {},
   ahora = new Date(),
   aBolivares,
   desdeBolivares,
@@ -243,6 +244,25 @@ export function repartirEnBolivares({
   fiados: FiadoParaRepartirMulti[];
   // movementId → importe fijado a mano, EN LA MONEDA DE SU FIADO.
   aMano?: Record<string, number>;
+  // ── LOS BOLÍVARES QUE SE TECLEARON PARA ESA LÍNEA, SI SE TECLEARON ──
+  //
+  // movementId → bolívares. Cuando están, SON el tope de la línea en este
+  // reparto, y no `aBolivares(aMano)`.
+  //
+  // POR QUÉ, y es un fallo medido (R-1.2, 2026-10-30): `aMano` es esos
+  // bolívares pasados al libro y redondeados al céntimo —Bs 6.000 ÷ 992,80 =
+  // €6,0435 → €6,04— y volver a convertirlo da Bs 5.996,51. Cuando el
+  // redondeo iba hacia abajo, las partes sumaban menos que el billete, sobraban
+  // unos bolívares sin asignar y la acción rechazaba el abono entero con «No
+  // pudimos repartir todo el abono». Con dos fiados en dólares y cifras de
+  // Bs 500 a 9.000 en cada uno, pasaba en 636 de 1.225 combinaciones.
+  //
+  // SOLO SI SIGUEN DICIENDO LO MISMO QUE `aMano`: la línea vale si esos
+  // bolívares, pasados al libro, dan la cifra fijada (al medio céntimo). Si el
+  // tendero cambió la cifra después, los bolívares viejos no describen la
+  // línea y se ignoran — es la misma regla que `sigueEnteraLaSuya` aplica al
+  // guardar.
+  aManoBs?: Record<string, number>;
   ahora?: Date;
   // LAS CONVERSIONES ENTRAN COMO FUNCIONES y no como un objeto de tasas. Dos
   // razones, y la segunda es la que manda: así esta función no tiene que
@@ -270,8 +290,15 @@ export function repartirEnBolivares({
   // dentro y no fuera porque cierra sobre `quedaBs`, que es lo que el reparto
   // va gastando — sacarla exigiría devolver el resto y volver a asignarlo, que
   // es justo donde se cuelan los céntimos.
-  const colocar = (f: FiadoParaRepartirMulti, topeEnSuLibro: number, aManoFlag: boolean) => {
-    const enBs = aBolivares(topeEnSuLibro, f.currency);
+  const colocar = (
+    f: FiadoParaRepartirMulti,
+    topeEnSuLibro: number,
+    aManoFlag: boolean,
+    // Los bolívares tecleados para esta línea, ya validados: mandan sobre la
+    // conversión de `topeEnSuLibro`. Ver `aManoBs` arriba.
+    topeEnBs: number | null = null,
+  ) => {
+    const enBs = topeEnBs ?? aBolivares(topeEnSuLibro, f.currency);
     if (enBs == null) {
       lineas.set(f.movementId, vacia(f, aManoFlag));
       return;
@@ -297,7 +324,11 @@ export function repartirEnBolivares({
   for (const f of porOrden) {
     const puesto = aMano[f.movementId];
     if (puesto == null) continue;
-    colocar(f, Math.max(0, Math.min(puesto, f.pendiente)), true);
+    const tope = Math.max(0, Math.min(puesto, f.pendiente));
+    const bs = aManoBs[f.movementId];
+    const enSuLibro = bs != null && bs > 0 ? desdeBolivares(bs, f.currency) : null;
+    const bsValidos = enSuLibro != null && Math.abs(enSuLibro - tope) <= HOLGURA ? bs : null;
+    colocar(f, tope, true, bsValidos);
   }
 
   // Y EL RESTO BAJA POR GRAVEDAD HASTA AGOTARSE, cruzando libros.
@@ -334,4 +365,125 @@ export function deudaEnBolivares(
   aBolivares: (monto: number, moneda: LedgerCurrency | null) => number | null,
 ): number {
   return redondear(fiados.reduce((s, f) => s + (aBolivares(f.pendiente, f.currency) ?? 0), 0));
+}
+
+// ===========================================================================
+// WHICH UNIT THE SPLIT IS COUNTED IN -- AND THE ONE THAT TRAVELS
+//
+// Two booleans that must never disagree, and the day they did it cost real
+// money. Measured in production on 2026-10-29: the split screen sent
+// `montoTecleado: 11.25` --a figure in DOLLARS-- labelled
+// `monedaTecleada: "VES"`. The server did exactly as told, read 11,25 as
+// bolivares, converted them, and stored **one cent** against the Bs. 10.000
+// the shopkeeper had in his hand. Nothing errored: the screen said
+// "registrado con exito" and the debt moved by $0,01.
+//
+// ---------------------------------------------------------------------------
+// WHY THEY ARE RESOLVED TOGETHER AND NOT SEPARATELY
+//
+// `cruzaLibros` picks the ARITHMETIC (bolivars across every ledger, or the
+// ledger's own currency) and `totalInBolivars` declares the UNIT the total is
+// written in. Computed apart, in two expressions a hundred lines from each
+// other, they drifted -- which is the whole bug. Returned from one place they
+// cannot, and the table in `qa/reparto.mjs` is what holds that.
+//
+// ---------------------------------------------------------------------------
+// THE FOUR CASES, AND WHY THE THIRD ONE IS NEW
+//
+//   chip  | ledgers | total written    | crosses | in Bs | why
+//   ------+---------+------------------+---------+-------+---------------------
+//   Bs    |    1    | in the field     |  false  | true  | the field IS bolivars
+//   Bs    |   2+    | in the field     |  true   | true  | owner's 2026-10-23
+//   Bs    |    1    | fixed line by line| true   | true  | <- the fix
+//   other |   any   | either           |  false  | false | the ledger's own
+//
+// Row 3 is the one that changes, and it displaces half of a decision written
+// in `abono-reparto.tsx` on 2026-10-23: *"con un solo libro no cambia nada (...)
+// meterlo por la rama nueva cambiaria su aritmetica (la ida y vuelta de la
+// conversion) sin que nadie lo haya pedido"*. That reasoning was right about
+// the case it was written for --an amount typed into the field, which is
+// already bolivars and needs no crossing-- and it does not survive the
+// screen's SECOND state, where the total is the sum of per-fiado figures the
+// shopkeeper typed in bolivars. There, counting in the ledger's currency is
+// not "the old path": it is a sum in dollars wearing a bolivar label.
+//
+// AND IT BUYS THE HARD STOP, which is the real reason to prefer this over
+// merely relabelling the payload. `armarRepartoCruzandoLibros` refuses to
+// write when the per-line bolivars do not add up to the note -- the guard
+// added on 2026-10-24 after Bs. 200.000 was stored as Bs. 200.005,87. The
+// single-ledger branch has no equivalent for a total it never received in
+// bolivars, so relabelling alone would have fixed this instance and left the
+// next one just as silent.
+export function resolveSplitUnits({
+  enBolivares,
+  numeroDeLibros,
+  porLinea,
+}: {
+  /** The currency chip reads "Bolivares". */
+  enBolivares: boolean;
+  /** How many ledgers this client actually owes in. */
+  numeroDeLibros: number;
+  /**
+   * The screen's second state: no amount field, the total is the sum of what
+   * the shopkeeper fixed fiado by fiado.
+   */
+  porLinea: boolean;
+}): { crossesLedgers: boolean; totalInBolivars: boolean } {
+  return {
+    crossesLedgers: enBolivares && (numeroDeLibros > 1 || porLinea),
+    // WITHOUT EXCEPTION, and that is the point: once the total is always
+    // counted in the unit the chip names, the unit that travels is just the
+    // chip. The bug existed because this answer was derived twice.
+    totalInBolivars: enBolivares,
+  };
+}
+
+// ===========================================================================
+// THE TOTAL WHEN THERE IS NO FIELD: THE SUM OF THE LINES ALREADY FIXED
+//
+// The screen's second state has no amount box. The total is whatever the
+// shopkeeper has pinned fiado by fiado, and **this sum is where the unit is
+// decided** -- which is why it lives out here next to `resolveSplitUnits`
+// instead of inside a `useMemo`.
+//
+// That is the whole lesson of 2026-10-29. The label was fixed by one line in
+// the payload, but the defect was never only the label: it was that the sum
+// and the label answered the same question in two places. A regression test
+// that builds its own total in bolivars proves nothing -- it was tried, and
+// it passed against the broken code. Only a test that sums the way the screen
+// sums can go red.
+//
+// `crossesLedgers` FROM `resolveSplitUnits`, always. Passing a hand-written
+// boolean here would re-open the exact gap this function closes.
+export function sumFixedLines({
+  fiados,
+  aMano,
+  aManoBs,
+  crossesLedgers,
+  aBolivares,
+}: {
+  fiados: { movementId: string; pendiente: number; currency?: LedgerCurrency | null }[];
+  /** What was pinned on each fiado, in that fiado's own ledger currency. */
+  aMano: Record<string, number>;
+  /** And what he typed in bolivars for it, when he typed it that way. */
+  aManoBs: Record<string, number>;
+  crossesLedgers: boolean;
+  aBolivares: (monto: number, moneda: LedgerCurrency | null) => number | null;
+}): number {
+  return fiados.reduce((suma, f) => {
+    const puesto = aMano[f.movementId];
+    if (puesto == null) return suma;
+    const topado = Math.max(0, Math.min(puesto, f.pendiente));
+    // NOT CROSSING: every line is already in the one ledger's currency, so the
+    // sum is too, and no rate is involved.
+    if (!crossesLedgers) return suma + topado;
+    // HIS FIGURE FIRST, THE CONVERSION ONLY AFTER. Summing conversions turned
+    // two lines of Bs. 100.000 into a button reading Bs. 200.005,87 on
+    // 2026-10-24; the conversion is only for a line he pinned in the ledger's
+    // own currency, where there is no typed bolivar figure to respect.
+    const suyos = aManoBs[f.movementId];
+    if (suyos != null && Math.abs(puesto - f.pendiente) > 0.005) return suma + suyos;
+    if (suyos != null && puesto <= f.pendiente) return suma + suyos;
+    return suma + (aBolivares(topado, (f.currency ?? null) as LedgerCurrency | null) ?? 0);
+  }, 0);
 }

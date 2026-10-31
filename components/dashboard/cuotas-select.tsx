@@ -38,19 +38,38 @@ export function CuotasSelect({
   value,
   onValueChange,
   plazoDias,
+  sinEspecificar = false,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   // El plazo que hay elegido ahora mismo, en días. null = «sin especificar».
   plazoDias: number | null;
+  // «SIN ESPECIFICAR» COMO OPCIÓN, SOLO EN LA DEUDA ANTIGUA — decisión del
+  // dueño el 2026-10-30, frame `1868:16119`: *«Cuotas tendrá la opción "Sin
+  // especificar" solo en este flujo»*. Quien pasa a mano una libreta muchas
+  // veces no sabe en cuántas partes se pactó, y «Pago único» afirmaría algo
+  // que no sabe. Se guarda igual que «Pago único» —null— porque la base no
+  // distingue las dos; lo que cambia es lo que el tendero declara.
+  //
+  // Y CON ÉL EL CAMPO SE VE AUNQUE NO HAYA PLAZO, porque el frame lo dibuja
+  // así. En el resto de pantallas sigue escondiéndose, como explica la cabecera.
+  //
+  // CON TODAS LAS OPCIONES, TAMBIÉN SIN PLAZO — encargo del dueño el
+  // 2026-10-30: además de «Sin especificar», las mismas que un fiado. Hasta
+  // ese día, sin plazo solo ofrecía «Sin especificar», que es lo único que la
+  // base admite sin plazo (migración `118`). Ahora se pueden elegir y, si se
+  // eligen cuotas sin plazo, el aviso de abajo lo dice en rojo y el servidor
+  // rechaza el guardado con la misma frase (`leerDeudaAntigua`). Callarse y
+  // guardar sin cuotas habría tirado lo que el tendero eligió sin decírselo.
+  sinEspecificar?: boolean;
 }) {
-  if (plazoDias === null) return null;
+  if (plazoDias === null && !sinEspecificar) return null;
 
   const cuotas = Number(value) || 1;
   // The division lives in `formatCadaCuantosDias`, which carries why it never
   // rounds. The saved movement's card shows the DATES instead of the interval
   // (`lib/cuotas.ts`) -- same rule, and here there is no date to show yet.
-  const cadaCuantos = formatCadaCuantosDias(plazoDias, cuotas);
+  const cadaCuantos = plazoDias === null ? null : formatCadaCuantosDias(plazoDias, cuotas);
 
   return (
     <div className="flex flex-col gap-2">
@@ -60,6 +79,7 @@ export function CuotasSelect({
           <SelectValue placeholder="Elige cuántas cuotas" />
         </SelectTrigger>
         <SelectContent>
+          {sinEspecificar ? <SelectItem value="sin_especificar">Sin especificar</SelectItem> : null}
           <SelectItem value="1">Pago único</SelectItem>
           {Array.from({ length: MAXIMO - 1 }, (_, i) => i + 2).map((n) => (
             <SelectItem key={n} value={String(n)}>
@@ -72,7 +92,11 @@ export function CuotasSelect({
       {/* EL AVISO QUE PIDIÓ EL DUEÑO. Con pago único no se enseña: ahí no hay
           ningún reparto que explicar, y una línea que dice lo obvio entrena a
           no leer las que sí importan. */}
-      {cuotas > 1 ? (
+      {cuotas > 1 && plazoDias === null ? (
+        <p className="text-xs text-destructive">
+          Para repartir la deuda en cuotas, elige primero el plazo de pago.
+        </p>
+      ) : cuotas > 1 ? (
         <p className="text-xs text-muted-foreground">
           Las cuotas se reparten dentro del plazo: {cuotas} cuotas en {plazoDias} días es una
           cuota cada {cadaCuantos}.

@@ -502,6 +502,16 @@ async function armarRepartoCruzandoLibros(
     montoBs,
     fiados,
     aMano: entrada.aMano ?? {},
+    // LOS BOLÍVARES TECLEADOS POR LÍNEA, como tope de esa línea (R-1.2,
+    // 2026-10-30): sin ellos, la vuelta al libro redondeada dejaba bolívares
+    // sin asignar y el abono se rechazaba la mitad de las veces. Llegan del
+    // navegador, así que solo pasan números positivos; la función además
+    // descarta los que ya no corresponden a la cifra fijada.
+    aManoBs: Object.fromEntries(
+      Object.entries(entrada.aManoBs ?? {}).filter(
+        ([, v]) => typeof v === "number" && Number.isFinite(v) && v > 0,
+      ),
+    ),
     aBolivares,
     desdeBolivares,
   });

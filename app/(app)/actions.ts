@@ -92,6 +92,9 @@ export type NotificationItem =
       runningBalance: number;
       movementCreatedAt: string;
       restored: boolean;
+      // Cuántas líneas tenía el abono si era un reparto; 1 en todo lo demás.
+      // El aviso es uno solo y vuelve entero (2026-10-30).
+      lineasDelReparto: number;
     }
   | {
       id: string;
@@ -177,7 +180,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         // currency y el rastro de bolivares no estaban aqui, y esa ausencia era el
         // fallo: sin currency, la ficha formateaba TODO como pesos colombianos y
         // un movimiento de 45 euros se leia "$ 45,00".
-        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, cuotas, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used)",
+        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, cuotas, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used, transaction_code, deleted_at)",
       )
       .eq("owner_id", user.id)
       .order("deleted_at", { ascending: false })
@@ -273,8 +276,71 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       entry_currency: MovementCurrencyCode | null;
       entry_amount: number | null;
       exchange_rate_used: number | null;
+      transaction_code: string | null;
+      deleted_at: string | null;
     } | null;
   }[];
+
+  // ── UN REPARTO BORRADO ES UN AVISO, CON SU TOTAL ─────────────────────
+  //
+  // Desde el 2026-10-30 `deleteMovement` borra un abono repartido entero y
+  // deja UNA fila en `movement_deletions`, la de la línea por la que se borró
+  // (decisión del dueño). Esa fila sola diría «Abono $5» de un pago de $20, así
+  // que aquí se juntan sus líneas hermanas: mismo código, mismo cliente y el
+  // MISMO `deleted_at`, que es como se reconoce lo que se borró en un acto.
+  //
+  // EL TOTAL ES EL DEL LIBRO DE ESA LÍNEA. Si el reparto cruzó dólares y euros,
+  // sumarlos no daría ninguna cifra; los bolívares tecleados sí describen el
+  // pago entero, y la tasa y el equivalente se callan porque ninguno solo lo
+  // describe.
+  type Hermana = {
+    client_id: string;
+    transaction_code: string;
+    deleted_at: string;
+    currency: string | null;
+    amount: number;
+    entry_currency: string | null;
+    entry_amount: number | null;
+  };
+  const repartosBorrados = new Map<string, Hermana[]>();
+  const conCodigo = deletionRows.filter(
+    (r) => r.movements?.type === "payment" && r.movements.transaction_code && r.movements.deleted_at,
+  );
+  if (conCodigo.length > 0) {
+    const { data: hermanas, error: hermanasError } = await supabase
+      .from("movements")
+      .select("client_id, transaction_code, deleted_at, currency, amount, entry_currency, entry_amount")
+      .eq("type", "payment")
+      .in("client_id", [...new Set(conCodigo.map((r) => r.client_id))])
+      .in("transaction_code", [...new Set(conCodigo.map((r) => r.movements!.transaction_code!))])
+      .not("deleted_at", "is", null);
+    if (hermanasError) console.error("getNotifications: split payment lines query failed", hermanasError);
+    for (const h of (hermanas ?? []) as Hermana[]) {
+      const clave = `${h.client_id}|${h.transaction_code}|${new Date(h.deleted_at).getTime()}`;
+      const lista = repartosBorrados.get(clave);
+      if (lista) lista.push(h);
+      else repartosBorrados.set(clave, [h]);
+    }
+  }
+  const repartoDe = (r: (typeof deletionRows)[number]) => {
+    const mv = r.movements;
+    if (!mv || mv.type !== "payment" || !mv.transaction_code || !mv.deleted_at) return null;
+    const lineas =
+      repartosBorrados.get(`${r.client_id}|${mv.transaction_code}|${new Date(mv.deleted_at).getTime()}`) ?? [];
+    if (lineas.length < 2) return null;
+    const delLibro = lineas.filter((l) => (l.currency ?? null) === (mv.currency ?? null));
+    const todasEnBs = lineas.every((l) => l.entry_currency === "VES" && l.entry_amount != null);
+    const cruzaLibros = delLibro.length !== lineas.length;
+    return {
+      lineas: lineas.length,
+      amount: Math.round(delLibro.reduce((s, l) => s + Number(l.amount), 0) * 100) / 100,
+      entryCurrency: todasEnBs ? ("VES" as const) : null,
+      entryAmount: todasEnBs
+        ? Math.round(lineas.reduce((s, l) => s + Number(l.entry_amount), 0) * 100) / 100
+        : null,
+      cruzaLibros,
+    };
+  };
 
   // Mismo casteo que `deletionRows` y por el mismo motivo: sin tipos generados
   // supabase-js infiere todo embed como array, y `product_id` es una FK simple
@@ -408,6 +474,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       .map((r): NotificationItem => {
         const client = clientById.get(r.client_id);
         const movement = r.movements!;
+        const reparto = repartoDe(r);
         return {
           id: r.id,
           kind: "movement_deleted",
@@ -415,11 +482,12 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           movementId: movement.id,
           clientName: client?.name ?? "Cliente",
           type: movement.type,
-          amount: movement.amount,
+          amount: reparto ? reparto.amount : movement.amount,
           currency: movement.currency,
-          entryCurrency: movement.entry_currency,
-          entryAmount: movement.entry_amount,
-          exchangeRateUsed: movement.exchange_rate_used,
+          entryCurrency: reparto ? reparto.entryCurrency : movement.entry_currency,
+          entryAmount: reparto ? reparto.entryAmount : movement.entry_amount,
+          exchangeRateUsed: reparto?.cruzaLibros ? null : movement.exchange_rate_used,
+          lineasDelReparto: reparto?.lineas ?? 1,
           description: movement.description,
           plazoDias: movement.plazo_dias,
           cuotas: movement.cuotas,

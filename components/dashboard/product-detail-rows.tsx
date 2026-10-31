@@ -159,8 +159,8 @@ export function TarjetaDePublicacion({
     return (
       <div className="flex flex-col gap-5 rounded-[14px] border px-3 py-3.5">
         <FilaDeInterruptor marcado={publicando} etiqueta="Publicar producto en catálogo" />
-        <FilaDeInterruptor marcado={alMayor} etiqueta="Incluir precio al mayor" />
-        <FilaDeInterruptor marcado={alDetal} etiqueta="Incluir precio al detal" />
+        <FilaDeInterruptor marcado={alMayor} etiqueta="Mostrar precio al mayor" />
+        <FilaDeInterruptor marcado={alDetal} etiqueta="Mostrar precio al detal" />
       </div>
     );
   }
@@ -170,8 +170,8 @@ export function TarjetaDePublicacion({
       <FilaDeInterruptor marcado={publicando} etiqueta="Publicar producto en catálogo" />
       {publicando ? (
         <div className="flex flex-col gap-4">
-          <FilaDeControl marcado={alMayor} etiqueta="Incluir precio al mayor" />
-          <FilaDeControl marcado={alDetal} etiqueta="Incluir precio al detal" />
+          <FilaDeControl marcado={alMayor} etiqueta="Mostrar precio al mayor" />
+          <FilaDeControl marcado={alDetal} etiqueta="Mostrar precio al detal" />
         </div>
       ) : null}
     </div>

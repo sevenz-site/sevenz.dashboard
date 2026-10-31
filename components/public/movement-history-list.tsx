@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
 import {
   Pagination,
   PaginationContent,
@@ -9,7 +8,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import Link from "next/link";
 import {
   FiltrosDelHistorial,
   tituloDeListaVacia,
@@ -18,12 +16,12 @@ import {
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
-import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
+import type { EstadoDelChip } from "@/components/dashboard/chip-de-estado";
+import { HistoryCard } from "@/components/dashboard/history-card";
+import { groupPayments } from "@/lib/history/group-payments";
 import { vencimientoEfectivo } from "@/lib/estado-del-plazo";
 import { getClientStatus } from "@/lib/types";
-import { formatDate, truncateText } from "@/lib/format";
-import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatBs } from "@/lib/exchange-rate/format";
 // `getBalanceLabel` left this file on 2026-10-22 with the abono's own
 // «A favor / Debe» line: tier 2 writes «Por cobrar» for both types, which the
@@ -244,8 +242,14 @@ export function MovementHistoryList({
   }
 
 
+  // UN REPARTO ES UNA FILA, con la MISMA regla que la lista del tendero
+  // (`lib/history/group-payments.ts`): agrupa por código de transacción, que
+  // este payload sí trae desde la migración 148. Encargo del dueño el
+  // 2026-10-30, y preguntado para esta vista: igual en las dos.
   const filas: Fila[] = [
-    ...movements.map((m): Fila => ({ clase: "movimiento", fecha: m.created_at, m })),
+    ...groupPayments(movements).map(
+      ({ row: m }): Fila => ({ clase: "movimiento", fecha: m.created_at, m }),
+    ),
     ...ventasDeContado.map((v): Fila => ({ clase: "contado", fecha: v.created_at, v })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -423,202 +427,49 @@ export function MovementHistoryList({
           cierra. */}
       <ul className="flex flex-col gap-2">
         {pagedMovements.map((fila) => {
+          // LA MISMA TARJETA QUE LA DEL TENDERO — `HistoryCard`, frames
+          // `1861:15468`, `1861:15490` y `1861:15513`, 2026-10-30. Lo único
+          // propio de esta vista es a dónde abre cada una.
           if (fila.clase === "contado") {
+            const v = fila.v;
             return (
-              <FilaDeContado
-                key={`venta-${fila.v.sale_id}-${fila.v.currency ?? "cop"}`}
-                venta={fila.v}
-                token={token}
+              <HistoryCard
+                key={`venta-${v.sale_id}-${v.currency ?? "cop"}`}
+                kind="contado"
+                productos={v.lineas.map((l) => l.name)}
+                createdAt={v.created_at}
+                amount={Number(v.amount)}
+                currency={v.currency}
                 ledger={ledger}
+                href={`/s/${token}/v/${v.sale_id}/${(v.currency ?? "cop").toLowerCase()}`}
               />
             );
           }
           const m = fila.m;
-          const amount = formatLedgerAmount(m.amount, m.currency, ledger);
-          // Lo mismo que en la lista del dueño, y por un motivo que aqui pesa
-          // mas: el cliente y el comercio tienen que ver EL MISMO numero. Si el
-          // dueño anota Bs. 900 y el cliente abre su enlace y lee 899,09, eso
-          // es justo la discusion que esta app existe para evitar.
-          const bsTecleados =
-            m.entry_currency === "VES" && m.entry_amount != null ? formatBs(Number(m.entry_amount)) : null;
-          // WHAT THIS FIADO STILL OWES, not the client's running balance.
-          //
-          // With the abonos gone from the list, `running_balance` stops being
-          // readable: it is the balance in that book AFTER each movement, so
-          // the client would see a $50 fiado at «Saldo: $120» and below it a
-          // $30 fiado at «Saldo: $80» — a balance going DOWN after a new debt,
-          // with the rows that explain it no longer on screen.
-          //
-          // The same swap was made on the owner's list the same day, and it
-          // was found there the hard way: one row said $89.72 while the card
-          // above it said $68.59, and nothing said which figure to charge.
-          //
-          // `pending` arrives with migration `132`. Until it has run the key
-          // is missing, and `?? null` keeps the line off rather than printing
-          // a zero that would read as «paid».
-          // «POR COBRAR» MEANS THE SAME THING IN BOTH ROWS — frames
-          // `1548:11075` (fiado) and `1548:11049` (abono), 2026-10-22. The
-          // long reasoning is in the shopkeeper's list; the short version is
-          // that the label used to measure this fiado's debt in one row and
-          // the client's whole balance in the other.
-          //
-          // Both now look at the same fiado: its own when the row is a fiado,
-          // and the one it paid when the row is an abono. An undirected abono
-          // has no fiado to report on and so gets no second tier.
-          const { fiadoDeLaFila, cifraPorCobrar, chipDeLaFila } = pieDeLaFila(m);
-          const porCobrar =
-            cifraPorCobrar == null
-              ? null
-              : formatLedgerAmount(Math.abs(cifraPorCobrar), m.currency, ledger);
-
-          // THE TOP FIGURE IS THE TRANSACTION'S OWN, and its grey line says
-          // when that figure is from: an abono typed in bolívares shows THOSE
-          // bolívares, which are that day's; otherwise it falls back to
-          // today's conversion and says so.
-          // ── WHAT TO CALL THIS ROW ────────────────────────────────────
-          //
-          // The sale's product names first, then whatever the shopkeeper
-          // typed. It used to be the description alone, which worked because
-          // the write path copied the product names INTO it when he typed
-          // nothing — he had that removed on 2026-10-22, so the names now come
-          // from where they live.
-          //
-          // AN ABONO IS NAMED AFTER THE FIADO IT PAID, same as before.
-          //
-          // Rows written before that day still carry the copied name in their
-          // description, and that is why the fallback stays: it is not a
-          // fallback for a bug, it is the only name those rows have.
-          const nombreDeLaFila =
-            (fiadoDeLaFila?.productos ?? []).map((l) => l.name).join(", ") ||
-            fiadoDeLaFila?.description ||
-            m.description ||
-            null;
-
-          const bsDeArriba = bsTecleados ?? amount.secondary;
-          const cuandoEsEsaCifra = bsTecleados ? "Al día del abono" : "hoy";
-
+          const { cifraPorCobrar, chipDeLaFila } = pieDeLaFila(m);
+          // The sale's product names first, then what the shopkeeper typed;
+          // rows before 2026-10-22 carry the name copied into `description`.
+          const productos =
+            m.type === "charge"
+              ? (m.productos ?? []).length > 0
+                ? (m.productos ?? []).map((l) => l.name)
+                : m.description
+                  ? [m.description]
+                  : []
+              : [];
           return (
-          <li key={m.id} className="overflow-hidden rounded-[10px] border">
-            {/* AN ABONO OPENS THE FIADO IT PAID, not its own detail — same as
-                the shopkeeper's list, asked for on 2026-10-22. From there its
-                own card leads to the abono's detail.
-
-                `?? m.id` IS NOT REDUNDANT: an undirected abono has no fiado to
-                open, so it falls back to its own page. They all predate
-                2026-10-14. */}
-            <Link
-              // CADA FILA A SU PROPIA FICHA, igual que en la pantalla del
-              // tendero desde el 2026-10-23: un abono abre el detalle del
-              // abono, no el de su fiado. El camino al fiado está dentro, en
-              // «Fiado relacionado». Decisión del dueño, preguntada ese día
-              // para esta vista: la misma pantalla, sin sus acciones.
+            <HistoryCard
+              key={m.id}
+              kind={m.type === "charge" ? "fiado" : "abono"}
+              productos={productos}
+              createdAt={m.created_at}
+              amount={Number(m.amount)}
+              currency={m.currency}
+              ledger={ledger}
               href={`/s/${token}/t/${m.id}`}
-              className="flex w-full flex-col gap-1.5 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-            >
-              {/* ── TIER 1: WHAT IT WAS, WHEN, AND FOR HOW MUCH ───────── */}
-              <div className="flex w-full items-center justify-between gap-3">
-                {/* `shrink-0 whitespace-nowrap`, COMO EL FRAME `1512:10061`: su
-                    columna izquierda no se encoge y la derecha es la que cede.
-                    Era al revés —`min-w-0` aquí— y con la línea «Bs. … Al día
-                    de compra», que es mucho más larga que los bolívares
-                    sueltos de antes, el nombre salía «De conta…» y la fecha
-                    caía en tres renglones. Lo que puede partirse sin perder
-                    nada es la cifra de la derecha; el qué y el cuándo, no. */}
-                <div className="shrink-0 whitespace-nowrap">
-                  <p className="truncate text-sm font-medium">
-                    {truncateText(
-                      `${m.type === "charge" ? "Fiado" : "Abono"}${
-                        nombreDeLaFila ? ` · ${nombreDeLaFila}` : ""
-                      }`,
-                      34,
-                    )}
-                  </p>
-                  {/* SU PROPIA FECHA, que es también la que ordena la lista.
-                      Ver arriba por qué dejó de ser la del último abono. */}
-                  <p className="text-xs text-muted-foreground">{formatDate(m.created_at)}</p>
-                  {/* EL CHIP «Pagado» ESTUVO AQUÍ y bajó al pie el
-                      2026-10-23, al sitio del chip «A favor», en la misma
-                      sesión que el de la lista del tendero — que es la única
-                      forma de que estas dos pantallas sigan pareciéndose.
-                      Ver el pie de esta misma fila. */}
-                  {/* THE ABONO'S OWN «Por cobrar» LINE LIVED HERE, small and
-                      tucked under the date. It moves to tier 2, which the
-                      2026-10-22 frames give to both types alike. */}
-                </div>
-                {/* TIER 1 RIGHT: THE TRANSACTION'S OWN AMOUNT — frames
-                    `1548:11075` and `1548:11049`. Flag, amount, and its
-                    bolívares underneath. Red on a fiado, green on an abono.
-
-                    THE SIGN FOLLOWS THE TILL, NOT THE DEBT. The owner's
-                    correction of 2026-10-22: *«Abonos y ventas con signo
-                    positivo "+" y fiados con signos negativos "-"»*.
-
-                    IT IS THE OPPOSITE OF WHAT WAS HERE, and both readings
-                    hold, which is why it had to be asked: the old one tracked
-                    the DEBT (lending raises it, paying lowers it) and this one
-                    tracks the shopkeeper's MONEY (an abono and a sale come in,
-                    a fiado leaves the shelf and does not come back until they
-                    pay). The second wins because it agrees with the colour:
-                    green for what comes in, red for what goes out. The sign
-                    now says the same thing as the colour instead of the
-                    opposite.
-
-                    IT WAS DECIDED THE OTHER WAY HOURS EARLIER, the same day
-                    and over these same frames. Written down so nobody "fixes"
-                    it back by reading only the debt argument. */}
-                <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                  <div
-                    className={`flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium ${m.type === "charge" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}
-                  >
-                    <span className="flex items-center gap-1">
-                      {m.currency ? (
-                        <CurrencyFlagIcon currency={m.currency} className="size-3.5 shrink-0" />
-                      ) : null}
-                      {m.type === "charge" ? "-" : "+"}
-                      {amount.primary}
-                    </span>
-                    {bsDeArriba ? (
-                      <span className="font-normal text-muted-foreground">
-                        {bsDeArriba} {cuandoEsEsaCifra}
-                      </span>
-                    ) : null}
-                  </div>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </div>
-              </div>
-
-              {/* ── TIER 2: «Por cobrar» ────────────────────────────────
-                  Frames `1548:11075` and `1548:11049`, which give it to both
-                  types alike: label on the left; flag, 16px semibold figure
-                  and today's bolívares on the right, above a dividing line.
-
-                  «hoy» AND NOT THE SEALED RATE: this is a LIVE debt, so the
-                  question is what it is worth now. The amount above is
-                  historical, which is why its own line says when it is from. */}
-              {porCobrar ? (
-                <div className="flex w-full items-start justify-between gap-3 border-t pt-2">
-                  <span className="text-sm text-muted-foreground">Por cobrar</span>
-                  <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
-                    <span className="flex items-center gap-1 text-base font-semibold">
-                      {m.currency ? (
-                        <CurrencyFlagIcon currency={m.currency} className="size-4 shrink-0" />
-                      ) : null}
-                      {porCobrar.primary}
-                    </span>
-                    {porCobrar.secondary ? (
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {porCobrar.secondary} hoy
-                      </span>
-                    ) : null}
-                    {/* EL CHIP QUE EXPLICA ESTA CIFRA, y nunca dos a la vez.
-                        El porqué largo está en la lista del tendero. */}
-                    {chipDeLaFila ? <ChipDeEstado estado={chipDeLaFila} /> : null}
-                  </span>
-                </div>
-              ) : null}
-            </Link>
-
-          </li>
+              porCobrar={cifraPorCobrar}
+              chip={chipDeLaFila}
+            />
           );
         })}
       </ul>
@@ -667,94 +518,6 @@ type Fila =
   | { clase: "movimiento"; fecha: string; m: SharedMovement }
   | { clase: "contado"; fecha: string; v: SharedVentaDeContado };
 
-// UNA VENTA DE CONTADO EN EL HISTORIAL DEL CLIENTE — migración `131`, `CT-104`.
-//
-// ===========================================================================
-// POR QUÉ ESTA FILA IMPORTA MÁS AQUÍ QUE EN LA PANTALLA DEL TENDERO
-//
-// Hasta la `131` el cliente pagaba su compra entera, se llevaba lo suyo, abría
-// su enlace a comprobar... y la compra no estaba. El tendero sí la veía. Los
-// dos mirando la misma cuenta y leyendo cosas distintas es exactamente lo que
-// esta app existe para evitar.
-//
-// VERDE Y SIN SIGNO, como en la lista del tendero y por la misma razón: el
-// fiado (rojo, «+») SUBE la deuda, el abono (azul, «−») la BAJA, y el contado
-// NO LA TOCA. Un «+» o un «−» aquí prometerían un movimiento del saldo que no
-// ocurre, y a quien lo lee es a quien le toca pagarlo.
-//
-// `emerald-700` y no el `600`: medido contra blanco, el 600 da 3,67:1 y el
-// piso de `DESIGN-SYSTEM.md` son 4,5. El 700 da 5,37:1.
-function FilaDeContado({
-  venta,
-  token,
-  ledger,
-}: {
-  venta: SharedVentaDeContado;
-  token: string;
-  ledger: LedgerDisplay | null;
-}) {
-  const amount = formatLedgerAmount(venta.amount, venta.currency, ledger);
-  // Qué se llevó, en una línea. Es lo que la fila de un fiado pone después de
-  // «Fiado · », y aquí es lo único que identifica la compra.
-  const que = venta.lineas.map((l) => l.name).join(", ");
-
-  // LOS BOLÍVARES SELLADOS, NO LOS DE HOY — frame `1512:10061`, que escribe
-  // «Bs. … Al día de compra». Esa venta se pagó entera en su día, así que su
-  // equivalencia es la de aquel día: decir lo que «son» hoy describe una
-  // conversión que nadie hizo. Es la misma regla que ya rige la tarjeta de un
-  // abono dentro de su fiado.
-  //
-  // Sin tasa sellada no se dibuja la línea. Un negocio colombiano no tiene
-  // ninguna, y lo anterior al sellado tampoco: inventar una es peor que
-  // callar.
-  const enBsSellados =
-    venta.entry_currency === "VES" && venta.entry_amount != null
-      ? // LOS TECLEADOS MANDAN, igual que en la pantalla del tendero. Regla
-        // crítica del 2026-10-24: la reconversión devuelve otra cifra.
-        formatBs(Number(venta.entry_amount))
-      : venta.rate_used == null
-        ? null
-        : formatBs(venta.amount * Number(venta.rate_used));
-  // La de hoy, cuando no hay sellada. `secondary` ya es esa conversión y sale
-  // del mismo sitio que la de las demás filas, así que no puede separarse.
-  const enBsDeHoy = enBsSellados ?? amount.secondary ?? null;
-  const cuandoEsEsaCifra = enBsSellados ? "Al día de compra" : "hoy";
-
-
-  return (
-    <li className="overflow-hidden rounded-[10px] border">
-      <Link
-        href={`/s/${token}/v/${venta.sale_id}/${(venta.currency ?? "cop").toLowerCase()}`}
-        className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-      >
-        <div className="shrink-0 whitespace-nowrap">
-          <p className="truncate text-sm font-medium">
-            {truncateText(`De contado${que ? ` · ${que}` : ""}`, 34)}
-          </p>
-          <p className="text-xs text-muted-foreground">{formatDate(venta.created_at)}</p>
-        </div>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-          <div className="flex min-w-0 flex-col items-end text-right tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
-            <span className="flex items-center gap-1">
-              {venta.currency ? (
-                <CurrencyFlagIcon currency={venta.currency} className="size-3.5 shrink-0" />
-              ) : null}
-              {/* EL «+» DE UNA VENTA DE CONTADO — corrección del dueño el
-                  2026-10-22: *«Abonos y ventas con signo positivo "+"»*. Iba
-                  sin signo, que era el único de los tres tipos que no decía
-                  nada; ahora las tres filas lo llevan y el signo separa lo que
-                  entra de lo que sale. */}
-              +{amount.primary}
-            </span>
-            {enBsDeHoy ? (
-              <span className="font-normal text-muted-foreground">
-                {enBsDeHoy} {cuandoEsEsaCifra}
-              </span>
-            ) : null}
-          </div>
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-        </div>
-      </Link>
-    </li>
-  );
-}
+// AQUÍ VIVÍA `FilaDeContado`. Se fue el 2026-10-30 a
+// `components/dashboard/history-card.tsx`, la tarjeta que comparten las dos
+// vistas, igual que el resto del dibujo de esta lista.
