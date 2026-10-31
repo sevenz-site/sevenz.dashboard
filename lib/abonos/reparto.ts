@@ -154,6 +154,110 @@ function redondear(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ===========================================================================
+// THE NOTE DECIDES THE LEDGER TOTAL, NOT THE SUM OF ITS LINES
+//
+// Owner's decision of 2026-10-30, asked as a straight choice: «Manda el
+// billete». Bs. 10.000 split by hand as 5.000 + 5.000 between two dollar
+// fiados converted each half on its own -- 5.000 ÷ 889,25 = 5,6227 -> $5,62,
+// twice -- and stored $11,24, while the same note split automatically stored
+// $11,25. Measured in production that day (abono HDXR320). The rounding runs
+// both ways: Bs. 5.000 + 5.000 into euros gives €5,04 + €5,04 = €10,08,
+// against €10,07 for the whole note.
+//
+// So within one ledger, the lines must add up to the conversion of the
+// bolivars they took TOGETHER, and the difference goes to the LAST line that
+// has room for it under its `pendiente` -- the same "last one absorbs the
+// rest" rule `calcularCuotas` and the bolivar figures of a split follow.
+//
+// The cost, accepted with the decision: the line that absorbs it no longer
+// reads as the exact conversion of its own bolivars (Bs. 5.000 -> $5,63). The
+// bolivars themselves are never touched: they are what the shopkeeper typed.
+//
+// ONLY LINES WHOSE BOLIVARS STILL DESCRIBE THEM take part. A line cut down by
+// its `pendiente` converts to more than it holds, and counting its bolivars
+// would push real money onto another fiado instead of a rounding cent.
+//
+// `lines` must already be in a stable order -- the caller's split order --
+// because "last" has to mean the same line on the screen and on the server.
+export function absorbLedgerCents(
+  lines: { movementId: string; asignado: number; bs: number; pendiente: number }[],
+  fromBolivars: (bs: number) => number | null,
+): Map<string, number> {
+  const result = new Map(lines.map((l) => [l.movementId, l.asignado]));
+  const exact = lines.filter((l) => {
+    if (!(l.asignado > HOLGURA) || !(l.bs > 0)) return false;
+    const own = fromBolivars(l.bs);
+    return own != null && Math.abs(own - l.asignado) <= HOLGURA;
+  });
+  if (exact.length < 2) return result;
+  const converted = fromBolivars(redondear(exact.reduce((acc, l) => acc + l.bs, 0)));
+  if (converted == null) return result;
+  // Rounded to the cent BEFORE comparing: the screen converts with `priceIn`,
+  // which does not round, and the server does. Unrounded, the two could move
+  // the cent to different lines.
+  const total = redondear(converted);
+  const diff = redondear(total - exact.reduce((acc, l) => acc + l.asignado, 0));
+  if (Math.abs(diff) <= HOLGURA) return result;
+  for (let i = exact.length - 1; i >= 0; i--) {
+    const next = redondear(exact[i].asignado + diff);
+    if (next > HOLGURA && next <= exact[i].pendiente + 1e-9) {
+      result.set(exact[i].movementId, next);
+      break;
+    }
+  }
+  return result;
+}
+
+// The same rule for the screen's state that splits in ONE ledger's currency
+// while each pinned line was typed in bolivars. There the pinned figures ARE
+// the split, so they are adjusted BEFORE splitting, by this one function on
+// both sides: the button, the total that travels and what gets stored are
+// then the same number, and the server still recognises each line as the one
+// the shopkeeper typed (it compares the stored amount with the pinned one).
+//
+// Ordered by `porGravedad`, the order `repartir` places lines in, so the
+// screen and the server pick the same "last" line.
+export function absorbPinnedCents({
+  fiados,
+  aMano,
+  aManoBs,
+  ahora = new Date(),
+  fromBolivars,
+}: {
+  fiados: (FiadoParaRepartir & { currency?: LedgerCurrency | null })[];
+  aMano: Record<string, number>;
+  aManoBs: Record<string, number>;
+  ahora?: Date;
+  fromBolivars: (bs: number, currency: LedgerCurrency | null) => number | null;
+}): Record<string, number> {
+  const adjusted = { ...aMano };
+  const byLedger = new Map<string, { currency: LedgerCurrency | null; lines: { movementId: string; asignado: number; bs: number; pendiente: number }[] }>();
+  for (const f of [...fiados].sort(porGravedad(ahora))) {
+    const pinned = aMano[f.movementId];
+    const bs = aManoBs[f.movementId];
+    if (pinned == null || bs == null) continue;
+    const currency = (f.currency ?? null) as LedgerCurrency | null;
+    const key = currency ?? "COP";
+    const group = byLedger.get(key) ?? { currency, lines: [] };
+    group.lines.push({
+      movementId: f.movementId,
+      asignado: Math.max(0, Math.min(pinned, f.pendiente)),
+      bs,
+      pendiente: f.pendiente,
+    });
+    byLedger.set(key, group);
+  }
+  for (const { currency, lines } of byLedger.values()) {
+    const fixed = absorbLedgerCents(lines, (bs) => fromBolivars(bs, currency));
+    for (const l of lines) {
+      const value = fixed.get(l.movementId);
+      if (value != null && value !== l.asignado) adjusted[l.movementId] = value;
+    }
+  }
+  return adjusted;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // EL REPARTO QUE CRUZA LIBROS
 //
@@ -339,6 +443,28 @@ export function repartirEnBolivares({
       continue;
     }
     colocar(f, f.pendiente, false);
+  }
+
+  // THE NOTE DECIDES EACH LEDGER'S TOTAL (owner's decision of 2026-10-30):
+  // see `absorbLedgerCents`. Bolivars per line are left exactly as placed.
+  const porLibro = new Map<string, FiadoParaRepartirMulti[]>();
+  for (const f of porOrden) {
+    const key = f.currency ?? "COP";
+    porLibro.set(key, [...(porLibro.get(key) ?? []), f]);
+  }
+  for (const delLibro of porLibro.values()) {
+    const moneda = delLibro[0].currency;
+    const ajustadas = absorbLedgerCents(
+      delLibro.map((f) => {
+        const l = lineas.get(f.movementId)!;
+        return { movementId: f.movementId, asignado: l.asignado, bs: l.asignadoBs, pendiente: f.pendiente };
+      }),
+      (bs) => desdeBolivares(bs, moneda),
+    );
+    for (const [id, asignado] of ajustadas) {
+      const l = lineas.get(id)!;
+      if (l.asignado !== asignado) lineas.set(id, { ...l, asignado });
+    }
   }
 
   const enOrden = porOrden.map((f) => lineas.get(f.movementId)!);

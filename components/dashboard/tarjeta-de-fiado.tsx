@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 
 // UN FIADO, COMO TARJETA. La misma en los dos sitios que la dibujan.
@@ -145,7 +145,7 @@ export function TarjetaDeFiado({
     <>
       <div className="flex min-w-0 flex-col gap-1">
         <span className="truncate text-sm font-medium">{titulo}</span>
-        <span className="text-xs text-muted-foreground">{formatDate(fiado.fecha)}</span>
+        <span className="text-xs text-muted-foreground"><Fecha iso={fiado.fecha} /></span>
         {/* LO QUE DE VERDAD DECIDE CUÁL SE ELIGE. Va aquí abajo, en el tamaño
             pequeño del frame, pero es la cifra nueva: lo que queda de ESTE
             fiado, no lo que fue. */}

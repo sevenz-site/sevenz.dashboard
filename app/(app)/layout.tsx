@@ -1,3 +1,4 @@
+import { ZonaDelNegocioProvider } from "@/components/fecha";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -38,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const [{ data: owner }, unreadCount, importUsage, puedeRegistrar] = await Promise.all([
-    supabase.from("owners").select("business_name, onboarding_completed_at, plan").eq("id", user.id).single(),
+    supabase.from("owners").select("business_name, onboarding_completed_at, plan, country").eq("id", user.id).single(),
     getUnreadNotificationCount(),
     getImportUsageForOwner(supabase, user.id),
     // Si la cuenta esta pausada. Va en el layout y no en la cartera porque
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   return (
+    <ZonaDelNegocioProvider country={owner?.country ?? null}>
     <CuentaPausadaProvider pausada={!puedeRegistrar} correo={user.email ?? null}>
     <ImportProvider initialUsage={importUsage}>
     <SearchFocusProvider>
@@ -104,5 +106,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     </SearchFocusProvider>
     </ImportProvider>
     </CuentaPausadaProvider>
+    </ZonaDelNegocioProvider>
   );
 }

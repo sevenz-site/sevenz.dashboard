@@ -19,6 +19,7 @@ import {
   deudaDelLibro,
   repartirEnBolivares,
   deudaEnBolivares,
+  absorbPinnedCents,
   type FiadoParaRepartir,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
@@ -747,7 +748,32 @@ export async function registrarAbonoRepartido(
   }
 
   // ── EL REPARTO ──────────────────────────────────────────────────────
-  const reparto = repartir({ monto: total, fiados: delLibro, aMano: entrada.aMano ?? {} });
+  // WHAT HE TYPED IN BOLIVARS PER FIADO, cleaned here because it comes from
+  // the browser. Read before splitting now, not after: the pinned figures are
+  // adjusted with it first. See the longer note further down.
+  const suyosPorFiado: Record<string, number> = {};
+  for (const [k, v] of Object.entries(entrada.aManoBs ?? {})) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) suyosPorFiado[k] = v;
+  }
+
+  // THE NOTE DECIDES THE TOTAL (owner's decision of 2026-10-30): pinned lines
+  // typed in bolivars add up to the conversion of their bolivars together,
+  // not to the sum of each line converted alone. The screen runs the same
+  // function before sending, so `total` already carries the adjusted sum.
+  const libroDelReparto = entrada.libro;
+  const aManoAjustado = libroDelReparto
+    ? absorbPinnedCents({
+        fiados: delLibro.map((d) => ({ ...d, currency: libroDelReparto })),
+        aMano: entrada.aMano ?? {},
+        aManoBs: suyosPorFiado,
+        fromBolivars: (bs) => {
+          const c = convertirDesdeBolivares(bs, libroDelReparto, sello);
+          return "error" in c ? null : c.monto;
+        },
+      })
+    : (entrada.aMano ?? {});
+
+  const reparto = repartir({ monto: total, fiados: delLibro, aMano: aManoAjustado });
   const lineas = reparto.lineas.filter((l) => l.asignado > HOLGURA);
 
   if (lineas.length === 0) return { ok: false, error: "Escribe cuánto te pagó." };
@@ -782,11 +808,6 @@ export async function registrarAbonoRepartido(
   // Encontrado el 2026-10-24 probando el arreglo del reparto que sí cruza
   // libros, y es el mismo fallo visto desde el otro lado: allí la cifra
   // volvía cambiada, aquí no vuelve.
-  const suyosPorFiado: Record<string, number> = {};
-  for (const [k, v] of Object.entries(entrada.aManoBs ?? {})) {
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) suyosPorFiado[k] = v;
-  }
-
   const bsPorLinea: number[] = [];
   if (tecleadoEnBs != null) {
     let acumulado = 0;
@@ -804,7 +825,7 @@ export async function registrarAbonoRepartido(
     // Su cifra solo vale mientras la línea abone exactamente lo que él fijó.
     const sigueEnteraLaSuya = (l: { movementId: string; asignado: number }) =>
       suyosPorFiado[l.movementId] != null &&
-      Math.abs((entrada.aMano?.[l.movementId] ?? 0) - l.asignado) <= HOLGURA;
+      Math.abs((aManoAjustado[l.movementId] ?? 0) - l.asignado) <= HOLGURA;
 
     lineasRpc = lineas.map((l, i) => ({
       fiado_id: l.movementId,

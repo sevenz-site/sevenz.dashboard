@@ -1,4 +1,4 @@
-import { formatDateTime } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 
 // DE DÓNDE VINO ESTA TRANSACCIÓN Y CUÁNTO SE TARDÓ EN ATENDERLA.
 //
@@ -41,12 +41,12 @@ export function CatalogOrderTrace({
   return (
     <div className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3">
       <p className="text-xs leading-5 text-muted-foreground">
-        Transacción recibida desde el catálogo el {formatDateTime(recibidoEl)}.
+        Transacción recibida desde el catálogo el <Fecha iso={recibidoEl} formato="hora" />.
       </p>
       {registradoEl ? (
         <>
           <p className="text-xs leading-5 text-muted-foreground">
-            Registrada desde el catálogo el {formatDateTime(registradoEl)}
+            Registrada desde el catálogo el <Fecha iso={registradoEl} formato="hora" />
           </p>
           <p className="text-xs leading-5 text-muted-foreground">
             Tiempo de respuesta: {tiempoDeRespuesta(recibidoEl, registradoEl)}

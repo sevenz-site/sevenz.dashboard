@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { ChipDeEstado, type EstadoDelChip } from "@/components/dashboard/chip-de-estado";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { formatDateLong } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import type { PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
 
@@ -110,7 +110,7 @@ export function HistoryCard({
       <div className="flex w-full items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="truncate text-sm leading-5">{titulo}</p>
-          <p className="text-xs leading-4 text-muted-foreground">{formatDateLong(createdAt)}</p>
+          <p className="text-xs leading-4 text-muted-foreground"><Fecha iso={createdAt} formato="larga" /></p>
         </div>
         <div className={`flex shrink-0 items-center ${kind === "fiado" ? "gap-2" : "gap-1"}`}>
           <span className={`flex items-center gap-1 whitespace-nowrap tabular-nums ${estiloMonto}`}>

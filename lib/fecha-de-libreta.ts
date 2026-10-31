@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────────────────
 // LA FECHA QUE LA IA LEYÓ EN LA PÁGINA
@@ -65,7 +65,7 @@ export function fechaDeLaLibreta(date: string | null): string | null {
   const bruto = date?.trim();
   if (!bruto) return null;
   const d = diaLeido(date);
-  return d ? formatDate(d.toISOString()) : bruto;
+  return d ? formatCalendarDate(d.toISOString()) : bruto;
 }
 
 // Lo que va en un `<input type="date">`, que solo entiende "YYYY-MM-DD".

@@ -24,7 +24,7 @@ import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScore } from "@/lib/credit-score";
 import { CLIENT_ORIGINS, clientOriginFrom } from "@/lib/client-origin";
-import { formatDateTime } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -753,10 +753,10 @@ async function ClientFlagHistory({ clientId }: { clientId: string }) {
           <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
             <div className="min-w-0">
               <p className="text-sm">{f.reason}</p>
-              <p className="text-xs text-muted-foreground">Marcado: {formatDateTime(f.flagged_at)}</p>
+              <p className="text-xs text-muted-foreground">Marcado: <Fecha iso={f.flagged_at} formato="hora" /></p>
             </div>
             {f.unflagged_at ? (
-              <span className="text-xs text-muted-foreground">Desmarcado: {formatDateTime(f.unflagged_at)}</span>
+              <span className="text-xs text-muted-foreground">Desmarcado: <Fecha iso={f.unflagged_at} formato="hora" /></span>
             ) : (
               <Badge variant="outline" className={MALA_PAGA_BADGE_CLASS}>
                 Activo

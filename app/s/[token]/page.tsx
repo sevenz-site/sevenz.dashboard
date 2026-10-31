@@ -1,3 +1,4 @@
+import { ZonaDelNegocioProvider } from "@/components/fecha";
 import type { Metadata } from "next";
 import { ordenarHistorial } from "@/lib/orden-del-historial";
 import { notFound } from "next/navigation";
@@ -473,6 +474,7 @@ export default async function SharedBalancePage({
   })();
 
   return (
+    <ZonaDelNegocioProvider country={shared.owner_country}>
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
       {/* ONE QUESTION PER VISIT. The two dialogs are mounted together, by a
           client component, because the rule that orders them needs to remember
@@ -753,5 +755,6 @@ export default async function SharedBalancePage({
         {rateContext ? <ExchangeRateLegalDisclaimer /> : null}
       </div>
     </div>
+    </ZonaDelNegocioProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { ZonaDelNegocioProvider } from "@/components/fecha";
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
@@ -10,7 +11,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SharedVentaDeContado } from "@/components/public/movement-history-list";
 import type { SaleLineRow } from "@/lib/sale-lines";
@@ -133,6 +134,7 @@ export default async function VentaDeContadoDelClientePage({
         : null;
 
   return (
+    <ZonaDelNegocioProvider country={shared.owner_country}>
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col gap-4 px-4 pb-10">
       {/* LA FILA DE VOLVER. Esta pantalla no lleva cabecera de app --el
           cliente no tiene menú ni sesión-- así que la flecha es la única
@@ -150,7 +152,7 @@ export default async function VentaDeContadoDelClientePage({
 
       <dl className="flex flex-col gap-4">
         <Grupo>
-          <Fila nombre="Fecha">{formatDate(venta.created_at)}</Fila>
+          <Fila nombre="Fecha"><Fecha iso={venta.created_at} /></Fila>
         </Grupo>
 
         <div className="flex flex-col gap-1.5 rounded-xl border p-4">
@@ -219,5 +221,6 @@ export default async function VentaDeContadoDelClientePage({
         </Grupo>
       </dl>
     </div>
+    </ZonaDelNegocioProvider>
   );
 }

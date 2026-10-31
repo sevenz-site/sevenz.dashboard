@@ -3,6 +3,11 @@ import type { PriceCurrency } from "@/lib/products/price";
 // ═══════════════════════════════════════════════════════════════════════
 // RECONOCER LOS IMPORTES DENTRO DE LA FRASE, PARA PONERLES SU BANDERA
 //
+// SINCE 2026-10-31 THE AMOUNTS ARE MARKED IN SEMIBOLD, NOT FLAGGED -- the
+// owner's request; see `ConImportes` in `reportes-asistente.tsx`. The
+// currency each amount resolves to is still computed and still tested: it is
+// what tells an amount from any other number in the sentence.
+//
 // Encargo del dueño el 2026-10-30: *«en los saldos del reporte del asistente
 // se debe incluir las banderas en los saldos que se mencionan»*. Es la
 // costumbre de toda la app -- ninguna cifra de dinero aparece sin decir de qué

@@ -12,22 +12,45 @@ export function formatCurrency(amount: number): string {
   return currencyFormatter.format(amount);
 }
 
-export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" }).format(
-    new Date(iso),
-  );
+// ===========================================================================
+// EVERY DATE OF AN INSTANT IS DRAWN IN THE BUSINESS'S ZONE -- PL-1
+//
+// These three took no `timeZone` until 2026-10-30, so Intl used the zone of
+// whoever ran them: UTC on Vercel, the owner's on his phone. The server's HTML
+// and the hydrated page disagreed by a day from 8 p.m. in Venezuela (7 p.m.
+// in Colombia) to midnight. Measured in production that night: an abono
+// registered at 10:49 p.m. on 30 October read «31 de oct», and its fiados,
+// from the 29th, read «30». Open as PL-1 since 2026-09-17.
+//
+// The owner chose the business's zone on 2026-10-30 (Caracas for VE, Bogotá
+// for CO, `zonaDelNegocio`), over one fixed zone for everyone. `zona` is
+// REQUIRED on purpose: optional, a forgotten caller would silently go back to
+// the runtime's zone -- which is the bug. Components get it from
+// `useZonaDelNegocio` or render `<Fecha>` (components/fecha.tsx).
+//
+// A CALENDAR DAY IS NOT AN INSTANT: see `formatCalendarDate` below.
+export function formatDate(iso: string, zona: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: zona,
+  }).format(new Date(iso));
 }
 
 // «30 de agosto de 2026», the date as the history cards draw it -- frames
 // `1861:15468`, `1861:15490` and `1861:15513` (owner's request of
 // 2026-10-30). The detail screens keep the short `formatDate`.
-export function formatDateLong(iso: string): string {
-  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric" }).format(
-    new Date(iso),
-  );
+export function formatDateLong(iso: string, zona: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: zona,
+  }).format(new Date(iso));
 }
 
-export function formatDateTime(iso: string): string {
+export function formatDateTime(iso: string, zona: string): string {
   return new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "short",
@@ -35,11 +58,30 @@ export function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: zona,
+  }).format(new Date(iso));
+}
+
+// A CALENDAR DAY -- «2026-11-02», the day a forecast BCV rate applies -- has
+// no time of day and no zone. `new Date("2026-11-02")` is midnight UTC, so
+// drawing it in Caracas would show the 1st. It is drawn in UTC, where that
+// midnight still belongs to the day it names.
+export function formatCalendarDate(ymd: string): string {
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? `${ymd}T00:00:00Z` : ymd;
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(iso));
 }
 
 // ===========================================================================
 // LA FECHA DE UN RECIBO, EN LA ZONA DEL NEGOCIO
+//
+// (Since 2026-10-30 the paragraph below describes how things WERE: `formatDate`
+// and `formatDateTime` now take the zone too -- see PL-1 at the top of this
+// file. What it says about receipts is still the reason this one exists.)
 //
 // `formatDate` y `formatDateTime` no fijan zona, así que usan la de quien las
 // ejecuta. Eso vale en una pantalla del tendero --su propio teléfono-- y es

@@ -465,6 +465,9 @@ export default async function TransaccionPage({
         ownerNote={m.owner_note}
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}
+        // Migration 167. `=== true` so a database without the column yet
+        // draws an ordinary fiado instead of guessing.
+        deudaAntigua={m.is_old_debt === true}
         productos={productos}
         createdAt={m.created_at}
         runningBalance={pendienteDelFiado ?? Number(m.running_balance)}

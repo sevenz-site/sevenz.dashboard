@@ -27,6 +27,7 @@ import {
   type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
+import { useZonaDelNegocio } from "@/components/fecha";
 import {
   formatPriceAmount,
   type BolivarRates,
@@ -141,6 +142,7 @@ export function OrderCurrencyPaymentForm({
     debe?: number;
   }[];
 }) {
+  const zona = useZonaDelNegocio();
   const [cerrando, setCerrando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [avisando, setAvisando] = useState(false);
@@ -305,6 +307,8 @@ export function OrderCurrencyPaymentForm({
           day: "numeric",
           month: "short",
           year: "numeric",
+          // In the business's zone, like every date since PL-1 (2026-10-30).
+          timeZone: zona,
         }).format(new Date(fichaParaElAviso.marcadaEl))}`
       : "";
     const debe = Number(fichaParaElAviso.debe ?? 0);

@@ -20,6 +20,8 @@ import {
   repartirEnBolivares,
   deudaEnBolivares,
   resolveSplitUnits,
+  absorbLedgerCents,
+  absorbPinnedCents,
 } from "../lib/abonos/reparto.ts";
 import { vencimientoEfectivo, porGravedad } from "../lib/estado-del-plazo.ts";
 
@@ -627,6 +629,165 @@ const tres = [
       "8e. sin bolívares por línea el reparto automático no cambia",
       JSON.stringify(sin) === JSON.stringify(conVacio),
     );
+  }
+}
+
+// ── 9. MANDA EL BILLETE, NO LA SUMA DE SUS LÍNEAS ─────────────────────────
+//
+// Owner's decision of 2026-10-30 («Manda el billete»), after production abono
+// HDXR320: Bs. 10.000 split by hand as 5.000 + 5.000 between two dollar fiados
+// stored $5,62 + $5,62 = $11,24, while the same note split automatically
+// stored $11,25. Within one ledger the lines now add up to the conversion of
+// their bolivars together, and the last line with room absorbs the cent. The
+// bolivars per line never change: they are what the shopkeeper typed.
+{
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const fiadosDe = (moneda, a, b) => [
+    { movementId: "A", createdAt: "2026-10-25T00:00:00Z", plazoDias: 15, cuotas: null, amount: a, pendiente: a, currency: moneda },
+    { movementId: "B", createdAt: "2026-10-28T00:00:00Z", plazoDias: 15, cuotas: null, amount: b, pendiente: b, currency: moneda },
+  ];
+  const conTasa = (t) => ({ aBolivares: (m) => r2(m * t), desdeBolivares: (bs) => r2(bs / t) });
+  const suma = (lineas) => r2(lineas.reduce((acc, l) => acc + l.asignado, 0));
+  const tUsd = 889.2553;
+  const tEur = 992.80018713;
+
+  {
+    // THE PRODUCTION CASE, with that day's fiados: Libro $7,37 and Camiseta $19,50.
+    const r = repartirEnBolivares({
+      montoBs: 10000,
+      fiados: fiadosDe("USD", 7.37, 19.5),
+      aMano: { A: r2(5000 / tUsd), B: r2(5000 / tUsd) },
+      aManoBs: { A: 5000, B: 5000 },
+      ahora: AHORA,
+      ...conTasa(tUsd),
+    });
+    const a = r.lineas.find((l) => l.movementId === "A");
+    const b = r.lineas.find((l) => l.movementId === "B");
+    check(
+      "9a. Bs 5.000 + 5.000 a mano en dólares: se guarda $11,25 (el billete), no $11,24",
+      suma(r.lineas) === r2(10000 / tUsd) && suma(r.lineas) === 11.25,
+      `A ${a?.asignado} · B ${b?.asignado} · total ${suma(r.lineas)}`,
+    );
+    check(
+      "9b. y los bolívares de cada línea siguen siendo los tecleados",
+      a?.asignadoBs === 5000 && b?.asignadoBs === 5000 && r.sinAsignarBs <= 0.005,
+      `A Bs ${a?.asignadoBs} · B Bs ${b?.asignadoBs}`,
+    );
+  }
+
+  {
+    // THE SWEEP, bolivar state: every combination adds up to the note, no line
+    // goes over what its fiado owes, and no line moves more than one cent.
+    let malos = 0;
+    let total = 0;
+    for (let a = 500; a <= 9000; a += 250) {
+      for (let b = 500; b <= 9000; b += 250) {
+        total++;
+        const r = repartirEnBolivares({
+          montoBs: a + b,
+          fiados: fiadosDe("USD", 20, 20),
+          aMano: { A: r2(a / tUsd), B: r2(b / tUsd) },
+          aManoBs: { A: a, B: b },
+          ahora: AHORA,
+          ...conTasa(tUsd),
+        });
+        const la = r.lineas.find((l) => l.movementId === "A");
+        const lb = r.lineas.find((l) => l.movementId === "B");
+        const ok =
+          suma(r.lineas) === r2((a + b) / tUsd) &&
+          la.asignado <= 20 && lb.asignado <= 20 &&
+          Math.abs(la.asignado - r2(a / tUsd)) <= 0.0101 &&
+          Math.abs(lb.asignado - r2(b / tUsd)) <= 0.0101 &&
+          la.asignadoBs === a && lb.asignadoBs === b &&
+          r.sinAsignarBs <= 0.005;
+        if (!ok) malos++;
+      }
+    }
+    check("9c. barrido de 1.225 repartos en Bs: todos suman el billete, sin pasarse ni mover más de un céntimo", malos === 0, `${malos} de ${total}`);
+  }
+
+  {
+    // A LINE AT ITS CAP DOES NOT TAKE THE CENT: the other one does. B owes
+    // exactly what its bolivars buy ($5,62), so the +0,01 goes to A.
+    const r = repartirEnBolivares({
+      montoBs: 10000,
+      fiados: fiadosDe("USD", 20, 5.62),
+      aMano: { A: 5.62, B: 5.62 },
+      aManoBs: { A: 5000, B: 5000 },
+      ahora: AHORA,
+      ...conTasa(tUsd),
+    });
+    const a = r.lineas.find((l) => l.movementId === "A");
+    const b = r.lineas.find((l) => l.movementId === "B");
+    check("9d. la línea al tope no se pasa: el céntimo cae en la otra", b?.asignado === 5.62 && a?.asignado === 5.63, `A ${a?.asignado} · B ${b?.asignado}`);
+  }
+
+  {
+    // A LINE CUT DOWN BY ITS PENDIENTE IS LEFT OUT: its bolivars describe more
+    // than it holds, and counting them would move real money, not a cent.
+    const out = absorbLedgerCents(
+      [
+        { movementId: "A", asignado: 3, bs: 5000, pendiente: 3 },
+        { movementId: "B", asignado: 5.62, bs: 5000, pendiente: 20 },
+      ],
+      (bs) => bs / tUsd,
+    );
+    check("9e. una línea recortada no le pasa dinero a la otra", out.get("A") === 3 && out.get("B") === 5.62, `A ${out.get("A")} · B ${out.get("B")}`);
+  }
+
+  {
+    // THE ONE-LEDGER STATE, the euro case of the same day: Bs 5.000 + 5.000
+    // into euros is €5,04 + €5,04 = €10,08 line by line, €10,07 as a note.
+    const adj = absorbPinnedCents({
+      fiados: fiadosDe("EUR", 20, 20),
+      aMano: { A: r2(5000 / tEur), B: r2(5000 / tEur) },
+      aManoBs: { A: 5000, B: 5000 },
+      ahora: AHORA,
+      fromBolivars: (bs) => bs / tEur,
+    });
+    const total = r2(adj.A + adj.B);
+    check("9f. un libro, euros: las líneas fijadas en Bs suman €10,07, no €10,08", total === r2(10000 / tEur) && total === 10.07, `A ${adj.A} · B ${adj.B}`);
+    // And `repartir` places them exactly, so the server's whole-line check
+    // (stored amount == adjusted pin) recognises both as typed in bolivars.
+    const r = repartir({ monto: total, fiados: fiadosDe("EUR", 20, 20), aMano: adj, ahora: AHORA });
+    check(
+      "9g. y repartir las coloca tal cual: ninguna línea pierde su cifra tecleada",
+      r.lineas.every((l) => l.asignado === adj[l.movementId]) && r.sinAsignar <= 0.005,
+      r.lineas.map((l) => `${l.movementId} ${l.asignado}`).join(" · "),
+    );
+  }
+
+  {
+    // THE SWEEP, one-ledger state.
+    let malos = 0;
+    let total = 0;
+    for (let a = 500; a <= 9000; a += 250) {
+      for (let b = 500; b <= 9000; b += 250) {
+        total++;
+        const aMano = { A: r2(a / tEur), B: r2(b / tEur) };
+        const adj = absorbPinnedCents({
+          fiados: fiadosDe("EUR", 20, 20),
+          aMano,
+          aManoBs: { A: a, B: b },
+          ahora: AHORA,
+          fromBolivars: (bs) => bs / tEur,
+        });
+        const r = repartir({ monto: r2(adj.A + adj.B), fiados: fiadosDe("EUR", 20, 20), aMano: adj, ahora: AHORA });
+        const ok =
+          r2(adj.A + adj.B) === r2((a + b) / tEur) &&
+          Math.abs(adj.A - aMano.A) <= 0.0101 && Math.abs(adj.B - aMano.B) <= 0.0101 &&
+          r.lineas.every((l) => l.asignado === adj[l.movementId]) && r.sinAsignar <= 0.005;
+        if (!ok) malos++;
+      }
+    }
+    check("9h. barrido de 1.225 en un libro: todos suman el billete y se colocan tal cual", malos === 0, `${malos} de ${total}`);
+  }
+
+  {
+    // WITHOUT TYPED BOLIVARS NOTHING MOVES: pins in the ledger's own currency
+    // are his figures, not conversions.
+    const adj = absorbPinnedCents({ fiados: fiadosDe("EUR", 20, 20), aMano: { A: 5.04, B: 5.04 }, aManoBs: {}, ahora: AHORA, fromBolivars: (bs) => bs / tEur });
+    check("9i. sin bolívares tecleados lo fijado no cambia", adj.A === 5.04 && adj.B === 5.04);
   }
 }
 

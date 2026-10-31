@@ -453,7 +453,10 @@ try {
   // esta exige que la consulta haya SALIDO BIEN además de volver vacía.
   check(
     "14b. y no ve las de ningún otro negocio",
-    hayTabla && !e7 && (ajenas ?? []).length === 0,
+    // `hayTabla` stood here until 2026-10-31: the variable was removed in
+    // 7fc8823 and this line kept using it, so the suite crashed right here
+    // and 14b never ran. `!e7` is what proves the query succeeded.
+    !e7 && (ajenas ?? []).length === 0,
     e7 ? `${e7.code}: ${e7.message}` : `${(ajenas ?? []).length} filas ajenas`,
   );
 } finally {

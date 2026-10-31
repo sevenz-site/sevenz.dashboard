@@ -18,7 +18,8 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { restoreMovement } from "@/app/(app)/dashboard/actions";
 import type { NotificationItem } from "@/app/(app)/actions";
-import { formatCurrency, formatDateTime, formatPlazoDias } from "@/lib/format";
+import { formatCurrency, formatPlazoDias } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { formatBs, formatDisplayCurrency, formatRateEquivalence } from "@/lib/exchange-rate/format";
 import type { MovementCurrencyCode } from "@/lib/types";
@@ -129,7 +130,7 @@ export function MovementDeletionDialog({
         <dl className="flex flex-col gap-4">
           <Grupo>
             <Fila nombre="Cliente">{notification.clientName}</Fila>
-            <Fila nombre="Fecha">{formatDateTime(notification.movementCreatedAt)}</Fila>
+            <Fila nombre="Fecha"><Fecha iso={notification.movementCreatedAt} formato="hora" /></Fila>
             <Fila nombre="Tipo">
               <span className="inline-flex items-center gap-1.5">
                 {notification.type === "charge" ? "Cargo (fía)" : "Abono (paga)"}
@@ -218,7 +219,7 @@ export function MovementDeletionDialog({
           </Grupo>
 
           <Grupo>
-            <Fila nombre="Eliminado">{formatDateTime(notification.occurredAt)}</Fila>
+            <Fila nombre="Eliminado"><Fecha iso={notification.occurredAt} formato="hora" /></Fila>
           </Grupo>
         </dl>
 

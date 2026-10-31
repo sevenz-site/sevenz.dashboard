@@ -6,7 +6,7 @@ import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { estadosDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import type { PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -164,7 +164,7 @@ export function PaymentSummary({
           const bs = bsPorLinea[i];
           const izquierda = l.fiado ? (
             <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-              <span className="text-sm">{formatDate(l.fiado.fecha)}</span>
+              <span className="text-sm"><Fecha iso={l.fiado.fecha} /></span>
               {estado ? <ChipDeEstado estado={estado} /> : null}
             </span>
           ) : (

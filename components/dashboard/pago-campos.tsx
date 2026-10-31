@@ -37,7 +37,8 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
-import { formatDate } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
 import {
   formatAmountForInput,
@@ -658,7 +659,7 @@ export function PagoCampos({
                 checked={usarPrevista}
                 onCheckedChange={(v) => setUsarPrevista(v === true)}
               />
-              Aplicar tasa BCV prevista para el {formatDate(prevista.fecha)}
+              Aplicar tasa BCV prevista para el {formatCalendarDate(prevista.fecha)}
             </label>
           ) : null}
 
@@ -723,7 +724,7 @@ export function PagoCampos({
                 <div key={c.numero} className="flex items-center gap-2 text-xs">
                   <span className="w-4 tabular-nums">{c.numero}</span>
                   <span className="min-w-0 flex-1">
-                    {c.vence ? formatDate(c.vence) : "—"}
+                    {c.vence ? <Fecha iso={c.vence} /> : "—"}
                   </span>
                   <span className="flex-1 text-right tabular-nums">
                     {formatPriceAmount(c.monto, moneda)}

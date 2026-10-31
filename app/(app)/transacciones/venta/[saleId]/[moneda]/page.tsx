@@ -13,7 +13,7 @@ import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-mov
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { formatDate } from "@/lib/format";
+import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -222,7 +222,7 @@ export default async function VentaDeContadoPage({
 
       <dl className="flex flex-col gap-4">
         <Grupo>
-          <Fila nombre="Fecha">{formatDate(venta.created_at as string)}</Fila>
+          <Fila nombre="Fecha"><Fecha iso={venta.created_at as string} /></Fila>
         </Grupo>
 
         {/* LA TARJETA SE SEPARA CON UNA LÍNEA, no con un recuadro — frame

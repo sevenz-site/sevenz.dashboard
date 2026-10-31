@@ -36,6 +36,10 @@ export type Movement = {
   // payment, and that is every row stored before 2026-10-16. Only a charge with
   // a plazo can carry it -- the check constraint refuses anything else.
   cuotas: number | null;
+  // The old debt a new client is born with (migration `167`). Optional:
+  // until that migration has run the column is absent, and the row is drawn
+  // as an ordinary fiado.
+  is_old_debt?: boolean;
   // LA VENTA DE LA QUE NACIÓ, si nació de una (migración `124`). null en todo
   // lo registrado antes del 2026-10-17 y en lo que entra por la libreta.
   //
