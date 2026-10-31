@@ -115,7 +115,16 @@ export function MetricFilters({
 
       {hasFilters ? (
         <div>
-          <Button variant="outline" size="sm" onClick={() => router.push("/admin", { scroll: false })}>
+          {/* Clearing the filters keeps the section: «Limpiar filtros» on the
+              Pedidos tab should leave you on Pedidos, not on the first tab. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const seccion = params.get("seccion");
+              router.push(seccion ? `/admin?seccion=${seccion}` : "/admin", { scroll: false });
+            }}
+          >
             Limpiar filtros
           </Button>
         </div>

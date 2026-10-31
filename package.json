@@ -82,6 +82,7 @@
     "qa:sello-del-pedido": "node qa/sello-del-pedido.mjs",
     "qa:barra-de-abajo": "node qa/barra-de-abajo.mjs",
     "qa:exportacion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/exportar-movimientos.mjs",
+    "qa:admin-metricas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/admin-metricas.mjs",
     "qa:asistente": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/asistente-reportes.mjs",
     "qa:inventario": "node qa/inventario-baja.mjs",
     "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs"

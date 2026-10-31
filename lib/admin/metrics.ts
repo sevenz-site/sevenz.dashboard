@@ -163,6 +163,67 @@ export async function getByOwner(f: MetricFilters): Promise<OwnerRow[]> {
   return (data ?? []) as OwnerRow[];
 }
 
+// ── METRICS BY FLOW (migration 169, plan of 2026-10-31) ─────────────────
+//
+// One row per (kind, origin, currency) and never a cross-currency sum: the
+// owner's answer of 2026-10-31 was «una cifra por moneda». A COUNT may be
+// added up across currencies -- it counts operations, not money -- and the
+// page does that; an amount never is.
+
+export type TransactionKind = "contado" | "fiado" | "abono";
+
+export type TransactionRow = {
+  kind: TransactionKind;
+  // contado: venta · fiado: venta | deuda_antigua | libreta | manual ·
+  // abono: abono | al_vender. See the header of migration 169.
+  origin: string;
+  currency: string;
+  tx_count: number;
+  amount: number;
+};
+
+export type OrderRow = {
+  status: "registrado" | "pendiente";
+  // null for a pending order: it has not been paid either way yet.
+  kind: "contado" | "fiado" | null;
+  currency: string;
+  orders: number;
+  amount: number;
+};
+
+export type OwnerMoneyRow = {
+  owner_id: string;
+  currency: string;
+  charges: number;
+  payments: number;
+  charge_total: number;
+  payment_total: number;
+};
+
+export async function getTransactions(f: MetricFilters): Promise<TransactionRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_transactions", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_transactions: ${error.message}`);
+  return (data ?? []) as TransactionRow[];
+}
+
+export async function getOrders(f: MetricFilters): Promise<OrderRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_orders", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_orders: ${error.message}`);
+  return (data ?? []) as OrderRow[];
+}
+
+// «Por negocio» money, per currency. `admin_metrics_by_owner` still gives the
+// counts and the last activity; its money columns add dollars to euros when no
+// currency filter is set, so the page reads the amounts from here instead.
+export async function getByOwnerMoney(f: MetricFilters): Promise<OwnerMoneyRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_by_owner_money", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_by_owner_money: ${error.message}`);
+  return (data ?? []) as OwnerMoneyRow[];
+}
+
 // Every read below goes through a SECURITY DEFINER function rather than
 // touching a table directly.
 //

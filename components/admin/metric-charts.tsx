@@ -22,13 +22,18 @@ const growthConfig = {
   clients_created: { label: "Clientes nuevos", color: "var(--color-sky-500)" },
 } satisfies ChartConfig;
 
+// THE YEAR IS ALWAYS PRINTED -- the owner's request of 2026-10-31. Day and
+// week labels used to read «26 ago.» with no year, and notebook-photo fiados
+// carry their notebook's date (some from 2024), so «26 ago.» next to «20 jul.»
+// looked like an axis out of order when it was 2024 next to 2026. Two digits
+// for day and week to keep the ticks short; the month bucket keeps all four.
 function formatBucket(iso: string, bucket: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat("es-VE", {
     day: bucket === "month" ? undefined : "numeric",
     month: "short",
-    year: bucket === "month" ? "numeric" : undefined,
+    year: bucket === "month" ? "numeric" : "2-digit",
     timeZone: "UTC",
   }).format(d);
 }
