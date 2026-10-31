@@ -300,7 +300,7 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            placeholder="20"
+            placeholder="19.50"
             defaultValue={cuenta.precio_pactado_usd ?? ""}
             className="w-32"
           />
@@ -408,7 +408,7 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
                 min="0"
                 step="0.01"
                 inputMode="decimal"
-                placeholder="20"
+                placeholder="19.50"
                 defaultValue={cuenta.precio_pactado_usd ?? ""}
                 className="w-32"
               />
@@ -468,7 +468,7 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            placeholder="20"
+            placeholder="19.50"
             defaultValue={cuenta.precio_pactado_usd ?? ""}
             className="w-32"
             required
