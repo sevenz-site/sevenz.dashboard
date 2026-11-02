@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Copy, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { PaymentMethodDialog } from "@/components/dashboard/payment-method-dialog";
 import { deletePaymentMethod, type PaymentMethod } from "@/app/(app)/profile/actions";
 import { renderFormattedText, toWhatsappText } from "@/lib/format-text";
+import { copyText } from "@/lib/copy-text";
 
 // Mirrors PAYMENT_METHODS_LIMIT in profile/actions.ts: "Agregar" disappears at
 // this count instead of letting the owner type a method the server refuses.
@@ -98,15 +100,13 @@ export function PaymentMethodsCard({ initialMethods }: { initialMethods: Payment
   );
 }
 
+// `copyText` falls back to execCommand when the Clipboard API is refused
+// (measured in this environment's browser pane on 2026-11-02, and the same
+// happens in in-app WebViews). If both fail, the text is still on screen.
 async function copyMethod(body: string) {
-  try {
-    await navigator.clipboard.writeText(toWhatsappText(body));
-    toast.success("Método de pago copiado");
-  } catch {
-    // Clipboard can be refused (an old in-app browser, a permissions prompt
-    // dismissed). The text is on screen, so the owner still has a way out.
-    toast.error("No pudimos copiarlo. Mantén pulsado el texto para copiarlo a mano.");
-  }
+  const ok = await copyText(toWhatsappText(body));
+  if (ok) toast.success("Método de pago copiado", PROFILE_TOAST);
+  else toast.error("No pudimos copiarlo. Mantén pulsado el texto para copiarlo a mano.", PROFILE_TOAST);
 }
 
 function PaymentMethodRow({
@@ -142,11 +142,11 @@ function PaymentMethodRow({
     const result = await deletePaymentMethod(method.id);
     setDeleting(false);
     if (result.error) {
-      toast.error(result.error);
+      toast.error(result.error, PROFILE_TOAST);
       return;
     }
     setConfirmingDelete(false);
-    toast.success("Método de pago eliminado");
+    toast.success("Método de pago eliminado", PROFILE_TOAST);
     onDeleted();
   }
 
@@ -181,26 +181,23 @@ function PaymentMethodRow({
             <MoreVertical className="size-4" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
+        {/* No `preventDefault` on the items: the menu is non-modal, so letting
+            it close is safe, and keeping it open left it floating over the
+            dialog it had just opened (seen on 2026-11-02). */}
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => copyMethod(method.body)}>
             <Copy className="size-4" />
             Copiar
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              setEditing(true);
-            }}
+            onSelect={() => setEditing(true)}
           >
             <Pencil className="size-4" />
             Editar
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
-            onSelect={(e) => {
-              e.preventDefault();
-              setConfirmingDelete(true);
-            }}
+            onSelect={() => setConfirmingDelete(true)}
           >
             <Trash2 className="size-4" />
             Eliminar

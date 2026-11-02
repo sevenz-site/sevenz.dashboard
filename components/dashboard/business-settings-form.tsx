@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
@@ -82,11 +83,11 @@ export function BusinessSettingsForm({
     const result = await updateBusinessSettings(initialState, formData);
     if (result.error) {
       setError(result.error);
-      toast.error(result.error);
+      toast.error(result.error, PROFILE_TOAST);
       return false;
     }
     setError(null);
-    toast.success("Cambios guardados");
+    toast.success("Cambios guardados", PROFILE_TOAST);
     setIsDirty(false);
     setDirty(false);
     router.refresh();
@@ -132,11 +133,18 @@ export function BusinessSettingsForm({
 
         <div className="flex flex-col gap-4">
           <Label>Logo del negocio (opcional)</Label>
+          {/* A logo change is a pending change like any field's: it marks the
+              form dirty and is applied by "Guardar cambios" (see LogoUploader).
+              Deleting fires no change event, so the dirty mark is explicit. */}
           <LogoUploader
             ownerId={owner.id}
+            savedPath={owner.logo_path}
             initialPreviewUrl={logoUrl}
             value={logoPath}
-            onChange={setLogoPath}
+            onChange={(path) => {
+              setLogoPath(path);
+              markDirty();
+            }}
           />
         </div>
 

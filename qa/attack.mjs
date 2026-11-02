@@ -88,11 +88,14 @@ try {
   const { data: oB } = await svc.from("catalog_orders").insert({ owner_id: B.id, customer_name: "Pedido de B", customer_document: "1234567", customer_whatsapp: "584121112233", customer_whatsapp_raw: "04121112233" }).select("id").single();
   await svc.from("client_flags").insert({ owner_id: B.id, client_id: cB.id, reason: "x" });
   const { data: linkB } = await svc.from("catalog_share_links").insert({ owner_id: B.id }).select("token").single();
+  // Migration 179. Without a row of B's, "A reads 0 rows of B" would pass on
+  // an empty table and prove nothing.
+  await svc.from("owner_payment_methods").insert({ owner_id: B.id, body: "Pago móvil de B" });
   const { data: cA } = await svc.from("clients").insert({ owner_id: A.id, name: "Cliente de A" }).select("id").single();
   const { data: mA } = await svc.from("movements").insert({ client_id: cA.id, created_by: A.id, type: "charge", amount: 50, currency: "USD", source: "manual" }).select("id").single();
 
   // Anything that comes back holding one of these leaked the victim.
-  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "12345678", tokB, B.email, "ZZ Attack b"];
+  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "12345678", tokB, B.email, "ZZ Attack b", "Pago móvil de B"];
   const filtra = (x) => { const t = JSON.stringify(x ?? ""); return SECRETOS.find((s) => t.includes(s)) ?? null; };
   const DE_B = { owner: ["owner_id", B.id], id: ["id", B.id], client: ["client_id", cB.id], sale: ["sale_id", sB.id], product: ["product_id", pB.id], order: ["order_id", oB.id] };
 

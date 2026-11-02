@@ -141,6 +141,7 @@ const puedeEntrar = async (email, password) => {
   const { error } = await c.auth.signInWithPassword({ email, password });
   return !error;
 };
+const perfilA = { business_name: "ZZ Actions a", first_name: "a", last_name: "zz", whatsapp: "04121112255", address: "", tax_id: "", country: "VE" };
 const fd = (o) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.append(k, String(v)); return f; };
 
 try {
@@ -284,27 +285,35 @@ try {
     { clave: P("import/actions.ts#confirmImport"), fase: 2, ataques: [["escribe en el cliente de B desde una libreta", A.cookie, () => [[{ client_id: ctx.cB, client_name: "zz", type: "charge", amount: 7, description: "zz", document_id: null, whatsapp: null, currency: "USD" }]]]], control: null, hermana: P("ventas/actions.ts#datosDelCliente"), sinControl: "manda un evento a Mixpanel al salir bien; su ataque se juzga solo en la base (B intacto)" },
 
     // ── FASE 2: the owner's own account, mass assignment, strangers ──
-    { clave: P("profile/actions.ts#updateBusinessSettings"), fase: 2, ataques: [["se cambia el país (solo lo cambia Sevenz)", A.cookie, () => [null, fd({ business_name: "ZZ Actions a", first_name: "a", last_name: "zz", whatsapp: "04121112255", address: "", tax_id: "", logo_path: "", payment_info: "", country: "CO" })]],
-      // Finding 10's second door: the hidden logo_path field of "Mi negocio".
-      ["pone como logo el archivo de B desde el formulario", A.cookie, () => [null, fd({ business_name: "ZZ Actions a", first_name: "a", last_name: "zz", whatsapp: "04121112255", address: "", tax_id: "", logo_path: `${B.id}/logo.png`, payment_info: "", country: "VE" })]]], control: [A.cookie, () => [null, fd({ business_name: "ZZ Actions a", first_name: "a", last_name: "zz", whatsapp: "04121112255", address: "", tax_id: "", logo_path: `${A.id}/logo-1730000000000.jpg`, payment_info: "", country: "VE" })]],
+    // The logo travels in this form since 2026-11-02 (updateLogo/deleteLogo
+    // are gone), so every logo attack goes through it. Finding 10: a path into
+    // B's folder, plainly or by climbing out of A's with `../`, must not be
+    // stored; and saving with no logo must not delete B's file even when A's
+    // row already points at it (the cleanup only touches A's own folder).
+    { clave: P("profile/actions.ts#updateBusinessSettings"), fase: 2, ataques: [
+      ["se cambia el país (solo lo cambia Sevenz)", A.cookie, () => [null, fd({ ...perfilA, logo_path: "", country: "CO" })]],
+      ["pone como logo el archivo de B desde el formulario", A.cookie, () => [null, fd({ ...perfilA, logo_path: `${B.id}/logo.png` })]],
+      ["llega a la carpeta de B saliendo de la suya (../)", A.cookie, () => [null, fd({ ...perfilA, logo_path: `${A.id}/../${B.id}/logo.png` })]],
+      ["guarda sin logo con su fila apuntando al de B (lo borraría al limpiar)", A.cookie, async () => {
+        await svc.from("owners").update({ logo_path: `${B.id}/logo.png` }).eq("id", A.id);
+        return [null, fd({ ...perfilA, logo_path: "" })];
+      }]],
+      control: [A.cookie, () => [null, fd({ ...perfilA, logo_path: `${A.id}/logo-1730000000000.jpg` })]],
       // The control saves the owner's OWN logo path and checks it stuck: the
       // finding-10 filter must not drop a legitimate logo on every save.
-      exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("logo_path").eq("id", A.id).single()).data.logo_path === `${A.id}/logo-1730000000000.jpg`, juzgar: async () => { const { data } = await svc.from("owners").select("country,logo_path").eq("id", A.id).single(); return data.country === "VE" && !String(data.logo_path ?? "").includes(B.id); } },
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("logo_path").eq("id", A.id).single()).data.logo_path === `${A.id}/logo-1730000000000.jpg`,
+      juzgar: async () => {
+        const { data } = await svc.from("owners").select("country,logo_path").eq("id", A.id).single();
+        const { data: files } = await svc.storage.from("logos").list(B.id);
+        return data.country === "VE" && !String(data.logo_path ?? "").includes(B.id) && (files ?? []).some((o) => o.name === "logo.png");
+      } },
     { clave: P("productos/actions.ts#createProduct"), fase: 2, ataques: [["crea un producto con owner_id de B", A.cookie, () => [{ ...productoBase("ZZ plantado"), owner_id: B.id }]]], control: [A.cookie, () => [productoBase("ZZ propio")]] },
     { clave: P("productos/actions.ts#updateProduct"), fase: 2, ataques: [["edita el producto de B", A.cookie, () => [ctx.pB, productoBase("HACKED")]]], control: [A.cookie, () => [ctx.pA, productoBase("Producto de A")]] },
     ...[["actions.ts#getNotifications"], ["actions.ts#getUnreadNotificationCount"], ["actions.ts#completeOnboarding"], ["productos/actions.ts#getOrCreateCatalogLink"], ["ventas/actions.ts#resolverMostrador"],
-        ["profile/actions.ts#registrarPreguntaAvisos"], ["profile/actions.ts#deleteLogo"]].map(([k]) => ({
+        ["profile/actions.ts#registrarPreguntaAvisos"]].map(([k]) => ({
       clave: P(k), fase: 2, ataques: [["un anónimo la llama", null, () => []]], control: [A.cookie, () => []],
     })),
     { clave: P("actions.ts#recordImportNotification"), fase: 2, ataques: [["un anónimo la llama", null, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]]], control: [A.cookie, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]] },
-    { clave: P("profile/actions.ts#updateLogo"), fase: 2, ataques: [["pone como logo un archivo de la carpeta de B", A.cookie, () => [`${B.id}/logo.png`]], ["llega a la carpeta de B saliendo de la suya (../)", A.cookie, () => [`${A.id}/../${B.id}/logo.png`]]], control: [A.cookie, () => [`${A.id}/logo-1730000000000.jpg`]], juzgar: async () => !String((await svc.from("owners").select("logo_path").eq("id", A.id).single()).data.logo_path ?? "").includes(B.id) },
-    // Finding 10 (2026-11-02), fixed the same day: updateLogo and
-    // updateBusinessSettings used to store whatever logo path the browser
-    // sent. This row checks the half that would hurt most: even after trying
-    // to point at B's file, deleteLogo must not be able to remove it.
-    { clave: P("profile/actions.ts#deleteLogo"), fase: 2, orden: 50, ataques: [["borra el logo de B tras apuntarlo como propio", A.cookie, async () => { await llamar(P("profile/actions.ts#updateLogo"), [`${B.id}/logo.png`], A.cookie); return []; }]],
-      control: null, hermana: P("profile/actions.ts#guardarAvisosWhatsapp"), sinControl: "su control es guardarAvisosWhatsapp (misma página, sin argumentos de dueño)",
-      juzgar: async () => { const { data } = await svc.storage.from("logos").list(B.id); return (data ?? []).some((o) => o.name === "logo.png"); } },
     { clave: P("profile/actions.ts#changePassword"), fase: 2, ataques: [["un anónimo la llama", null, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]]], control: [A.cookie, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]] },
     { clave: P("profile/actions.ts#guardarAvisosWhatsapp"), fase: 2, ataques: [["un anónimo la llama", null, () => [false, "zz"]]], control: [A.cookie, () => [false, "zz"]] },
     // Payment methods (migration 179, 2026-11-02). The controls run with A's
@@ -339,7 +348,13 @@ try {
     // Judged by what matters: can anyone sign in with the new password. The
     // success path redirects, and the page it lands on carries texts that
     // made a response-based check unreliable.
-    { clave: "app/reset-password/actions.ts#resetPassword", fase: 2, ataques: [["un anónimo cambia una contraseña sin el enlace del correo", null, () => [null, fd({ new_password: "zzZZ1234!a", confirm_password: "zzZZ1234!a" })]]],
+    // `orden: 98`, right before logout: its control CHANGES A's password,
+    // which ends A's other sessions. Every row that still uses `A.cookie`
+    // must run before it -- until 2026-11-02 the deleteLogo attack (orden 50)
+    // ran after it with a dead session and was counted as blocked without
+    // ever reaching the action, until deletePaymentMethod's control hit the
+    // same wall and came back "307 /login".
+    { clave: "app/reset-password/actions.ts#resetPassword", fase: 2, orden: 98, ataques: [["un anónimo cambia una contraseña sin el enlace del correo", null, () => [null, fd({ new_password: "zzZZ1234!a", confirm_password: "zzZZ1234!a" })]]],
       juzgar: async () => !(await puedeEntrar(A.email, "zzZZ1234!a")),
       control: ["RECUPERACION", () => [null, fd({ new_password: "zzZZ1234!y", confirm_password: "zzZZ1234!y" })]], exitoAsync: async () => puedeEntrar(A.email, "zzZZ1234!y") },
   ];

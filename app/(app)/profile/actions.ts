@@ -43,55 +43,10 @@ function isOwnLogoPath(ownerId: string, path: string): boolean {
   return /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(file) && !file.includes("..");
 }
 
-// Saves the logo path as soon as the file lands in storage, so uploading is
-// self-contained — otherwise the file exists but nothing points at it until
-// the whole profile form is submitted.
-export async function updateLogo(logoPath: string): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
-
-  if (logoPath && !isOwnLogoPath(user.id, logoPath)) {
-    return { error: "No pudimos guardar el logo. Vuelve a subirlo." };
-  }
-
-  const { error } = await supabase
-    .from("owners")
-    .update({ logo_path: logoPath || null })
-    .eq("id", user.id);
-
-  if (error) return { error: mensajeDeError("guardar el logo", error, "logo") };
-
-  revalidatePath("/profile");
-  return { error: null };
-}
-
-export async function deleteLogo(): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
-
-  const { data: owner } = await supabase
-    .from("owners")
-    .select("logo_path")
-    .eq("id", user.id)
-    .single();
-
-  const { error } = await supabase.from("owners").update({ logo_path: null }).eq("id", user.id);
-  if (error) return { error: mensajeDeError("borrar el logo", error, "logo") };
-
-  if (owner?.logo_path) {
-    await supabase.storage.from("logos").remove([owner.logo_path]);
-  }
-
-  revalidatePath("/profile");
-  revalidatePath("/dashboard");
-  return { error: null };
-}
+// `updateLogo` and `deleteLogo` lived here until 2026-11-02 and wrote the logo
+// on the spot, outside "Guardar cambios". The owner deleted his logo, left
+// without saving, and found it gone. The logo now travels in the form's hidden
+// `logo_path` field and `updateBusinessSettings` applies it; see LogoUploader.
 
 // Saves the "Datos del negocio" and "Tasa de cambio" sections together —
 // they used to be two separate forms with two separate save buttons, which
@@ -157,6 +112,10 @@ export async function updateBusinessSettings(
   const logoUpdate =
     !logoPath ? { logo_path: null } : isOwnLogoPath(user.id, logoPath) ? { logo_path: logoPath } : {};
 
+  // The logo being replaced or removed, read BEFORE the update so its file can
+  // be cleaned up once the new value is saved.
+  const { data: before } = await supabase.from("owners").select("logo_path").eq("id", user.id).single();
+
   const { error } = await supabase
     .from("owners")
     .update({
@@ -178,6 +137,17 @@ export async function updateBusinessSettings(
 
   if (error) {
     return { error: mensajeDeGuardado(error), success: false };
+  }
+
+  // Remove the replaced file only after the new value is saved: deleting first
+  // and then failing the update would leave the owner pointing at nothing.
+  // `isOwnLogoPath` on the OLD value too: a row that ever pointed into another
+  // business's folder (finding 10) must not be able to delete that file.
+  const previous = before?.logo_path ?? null;
+  if ("logo_path" in logoUpdate && previous && previous !== logoUpdate.logo_path && isOwnLogoPath(user.id, previous)) {
+    const { error: removeError } = await supabase.storage.from("logos").remove([previous]);
+    // Not the owner's problem: his logo is saved; at worst an unused file stays.
+    if (removeError) console.error("updateBusinessSettings: remove old logo", removeError);
   }
 
   revalidatePath("/profile");
