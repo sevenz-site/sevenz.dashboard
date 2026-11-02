@@ -228,7 +228,10 @@ try {
   const e5 = (await A.db.from("movements").insert({ client_id: cA.id, type: "charge", amount: 5, currency: "XYZ", source: "manual" })).error;
   rec("A · libro", "moneda inventada", e5 ? "BLOQUEADO" : "VULN", e5?.code);
   const e4 = (await A.db.from("movements").insert({ client_id: cA.id, type: "payment", amount: 5000, currency: "USD", source: "manual" })).error;
-  rec("A · libro", "abono mayor que la deuda escrito directo a la tabla", e4 ? "BLOQUEADO" : "DECISIÓN", e4?.code ?? "hallazgo 6 de la auditoría: la regla solo vive en la acción del servidor");
+  // Finding 6, closed by migration 180 on 2026-11-02: the database itself
+  // refuses a payment larger than the ledger's debt (SZ001). Until then this
+  // row was a DECISIÓN; `qa:ledger-console` holds the full set.
+  rec("A · libro", "abono mayor que la deuda escrito directo a la tabla", e4 ? "BLOQUEADO" : "VULN", e4?.code);
 
   // ── 6. A blocked owner ───────────────────────────────────────────────
   await svc.from("subscriptions").update({ estado: "bloqueada", bloqueo_motivo: "prueba_vencida" }).eq("owner_id", A.id);

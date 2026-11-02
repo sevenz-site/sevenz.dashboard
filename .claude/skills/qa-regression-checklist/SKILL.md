@@ -221,6 +221,20 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
   nacieron de ella, y el saldo del cliente vuelve a lo que era. **Ninguna
   suite cubre esto todavía** (`CT-123`): hay que montarlo a mano, y es la
   acción que ya tuvo un fallo de dinero silencioso (`CT-122`).
+- **Una venta que FALLA A MEDIAS se deshace entera** — `npm run qa:sale-rollback`,
+  desde el 2026-11-02 y **parada dura en cada lanzamiento**. `registrarVenta`
+  escribe la venta en cuatro pasos y, si uno falla, borra del todo lo que ya
+  había escrito. Ese camino nunca lo había recorrido ninguna suite, y desde la
+  migración `180` la base **rechaza borrar del todo** cualquier fila de dinero
+  de más de 10 minutos: un deshacer que dejara de funcionar dejaría al cliente
+  debiendo una venta que la pantalla dio por fallida, y el tendero la volvería
+  a registrar. La suite provoca el fallo de verdad —en el pago, y en el segundo
+  fiado de una venta de dos monedas— con el disparador de la migración `181`,
+  que **existe solo en dev** y salta ante la descripción «QA PROVOCAR FALLO»;
+  luego lee en la base que no quedó ni la venta, ni sus líneas, ni el fiado ya
+  escrito, ni cambio de saldo, y que al cliente se le puede seguir vendiendo.
+  **Necesita `npm run dev` corriendo.** Si su control 0 falla, la `181` no está
+  en dev y todo lo demás sería un verde falso.
 - **El MOSTRADOR no puede quedar fiado.** Es el cliente que la app crea sola
   para una venta sin cliente; si pudiera deber, habría una deuda a nombre de
   nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
@@ -1034,6 +1048,7 @@ funcionalidades»*.
 | `npm run qa:attack-coverage` | Compara lo que el repo construye con lo que el ataque conoce (`qa/attack-surface.mjs`). Rojo = una pieza nueva sin clasificar, o una función cuya exposición cambió | Nada: un segundo, sin base. Va en la sección 1 |
 | `npm run qa:attack` | El ataque. Con la clave anónima (la que va en el JavaScript público) y la sesión de un dueño A contra un dueño B, recorre **todas** las tablas y **todas** las funciones `SECURITY DEFINER` de la lista, más los escenarios fijos: escribir en lo de otro, regalarle filas a otro, escalar plan o prueba, falsear el libro, una cuenta bloqueada, archivos ajenos, pedido del catálogo falsificado, crons sin clave, páginas ajenas por URL, inyección, XSS guardado y cabeceras. Termina comprobando en la base que B quedó intacto | **Dev** y `npm run dev` corriendo (trampa 1 de la sección 0). Se niega a correr contra otro proyecto |
 | `npm run qa:ledger-integrity` | El libro escrito a mano (migración `177`): `running_balance` y `created_by` | Dev |
+| `npm run qa:ledger-console` | El libro desde la **consola del navegador** (migración `180`): con la sesión de un dueño escribiendo directo a las tablas, intenta un abono mayor que la deuda, editar un fiado (monto, tipo, cliente, bolívares tecleados), fecharlo atrás, borrar del todo un movimiento, una venta o un cliente con deudas, y añadir un pago a una venta ya cerrada. **La mitad son controles**: fiar, cobrar hasta el último céntimo, papelera y restaurar, el recálculo, Colombia, borrar lo recién escrito, y **dos abonos a la vez** (entra uno solo). Sin ellos, cerrar el libro del todo pasaría la prueba | **Dev**, sin servidor: la consola habla con Supabase, no con Next |
 | `npm run qa:attack-actions` | Las **acciones de servidor** llamadas por HTTP, como lo haría alguien con la consola del navegador: cabecera `next-action` y argumentos inventados. Fase 1, las que solo protege el código (`/admin`, `/s`, `/c`): sin sesión, con la de un dueño normal y con un token falso. Fase 2, las del dueño: A con los ids de B. **Cada ataque lleva su control positivo** —la misma acción, con permiso, tiene que funcionar— y el veredicto se lee en una foto de B tomada en la base antes y después | **Dev** y `npm run dev` corriendo. Visita todas las páginas al empezar para que el servidor registre sus acciones. No manda WhatsApp, correos, Gemini ni Mixpanel |
 
 **Cómo se lee `qa:attack`**: `BLOQUEADO` es el ataque fallando, `VULN` es el
@@ -1059,6 +1074,8 @@ enseñárselo. Por cada tipo de cambio, esto es lo que se añade, y se añade
 | Un **bucket** | Su fila en `MANIFEST.buckets`; con eso ya se prueba subir y listar en la carpeta de otro | `qa/attack-surface.mjs` |
 | Algo que la **cuenta bloqueada** no debe hacer | Su intento en «A bloqueada» | `qa/attack.mjs` sección 6 |
 | Un **dato del libro** que la app calcula y no se escribe a mano | Que el dueño lo escriba, y comprobar **en la base** que no quedó | `qa/ledger-integrity.mjs` |
+| Una **tabla de dinero nueva**, o una columna nueva en `movements`, `sales`, `sale_lines` o `sale_payments` | Que el dueño la edite, la feche atrás y la borre del todo por consola, **y el control** de que la pantalla la sigue escribiendo. Si la app necesita editarla después de escribirla, la regla 1 de la `180` tiene que exceptuarla a propósito, con su línea de por qué | `qa/ledger-console.mjs` y la migración que la crea |
+| Una **función nueva que escriba dinero** | Si es `security definer`, queda fuera de las reglas de la `180` por cómo está declarada: entonces **valida ella misma** lo que la regla validaría (un abono ≤ deuda, nada de borrar del todo) y lo prueba su propia suite | `qa/attack-surface.mjs` (`MANIFEST.definers`) y su suite |
 
 **Y el informe lo dice por escrito**, en la fila 5b: qué casos nuevos se
 añadieron, o «ninguno, porque el diff no trae superficie nueva», con el
@@ -1136,6 +1153,27 @@ sí (registro, entrada y recuperación de contraseña); el **abuso de coste** de
   specifically to prevent a repeat of a deploy going out before its
   migrations ran — do not treat it as optional or skip it because the diff
   "looks small."
+- **Las reglas del libro (migración `180`) salen a producción OBSERVANDO, y se
+  encienden aparte.** La `180` crea el interruptor `ledger_rules.enforce` en
+  `false`: cada regla decide, apunta en `ledger_rule_hits` lo que habría
+  rechazado, y deja pasar. El lanzamiento que la lleve **no cambia nada para
+  el tendero**. El encendido es un segundo paso, días después, con esta
+  consulta de solo lectura en **producción** (`rabmiyqodnvnrwiartuj`) dando
+  **cero filas de la app**:
+
+  ```sql
+  select at, table_name, rule, owner_id, detail
+  from public.ledger_rule_hits order by at desc limit 50;
+  ```
+
+  y entonces `update public.ledger_rules set enforce = true, updated_at = now()
+  where id;`. La misma fila a `false` es el interruptor de vuelta: segundos,
+  sin desplegar nada. **Y el registro solo se llena observando**: en vigor, el
+  rechazo es una excepción que deshace la transacción entera, apunte incluido
+  (medido en dev el 2026-11-02: cero filas tras 24 ataques rechazados). La
+  `181` es **solo dev**: enciende el interruptor e instala el fallo provocado
+  de `qa:sale-rollback`; en producción va únicamente su apunte en el ledger,
+  como no-op, por la regla de `CLAUDE.md` sobre migraciones de un solo entorno.
 - **A new `SECURITY DEFINER` function closes with ALL three roles named**:
   `revoke execute on function … from public, anon, authenticated;` and then
   `grant … to` exactly who needs it. On Supabase a new function is granted to

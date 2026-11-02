@@ -75,6 +75,13 @@ function esFalloDeRed(error: unknown): boolean {
 function porCodigo(e: ErrorConCodigo): string | null {
   const texto = `${e.message ?? ""} ${e.details ?? ""}`;
 
+  // Our own rules in the database (migration 180 onwards) raise with an
+  // SZxxx SQLSTATE and a message already written for the shopkeeper, in
+  // Spanish. It passes through as-is: it is ours, not the engine's.
+  if (typeof e.code === "string" && /^SZ\d{3}$/.test(e.code) && e.message) {
+    return e.message;
+  }
+
   switch (e.code) {
     case "23505":
       // Clave repetida. La única que un dueño encuentra de verdad es la cédula:

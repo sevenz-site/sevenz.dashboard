@@ -91,6 +91,8 @@
     "qa:admin-metricas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/admin-metricas.mjs",
     "qa:asistente": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/asistente-reportes.mjs",
     "qa:inventario": "node qa/inventario-baja.mjs",
+    "qa:ledger-console": "node qa/ledger-console.mjs",
+    "qa:sale-rollback": "node qa/sale-rollback.mjs",
     "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs"
   },
   "dependencies": {

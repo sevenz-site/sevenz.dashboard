@@ -175,6 +175,10 @@ export const MANIFEST = {
     client_whatsapp_consents: { via: "none" },
     clients: { via: "owner" },
     import_notifications: { via: "owner" },
+    // 180: the switch and the log of the ledger rules. No session may touch
+    // either; the triggers reach them through definer helpers.
+    ledger_rule_hits: { via: "none" },
+    ledger_rules: { via: "none" },
     link_opens: { via: "client" },
     movement_deletions: { via: "client" },
     movement_rejections: { via: "none" },
@@ -247,6 +251,19 @@ export const MANIFEST = {
     claim_rate_limit_slot: "service",
     // Finding 8, closed by 178: only SECURITY DEFINER triggers call it.
     generar_codigo_transaccion: "service",
+    // 180, the ledger rules. The log is written only by this one, which no
+    // session may execute.
+    ledger_rule_hit: "service",
+    // 180: the insert guard runs as the caller and asks whether the rules are
+    // on, so any owner may execute it. It returns a boolean and nothing else.
+    // Revoking it from `authenticated` refused every direct fiado and abono
+    // with 42501 in dev (caught by qa:ledger-console on 2026-11-02).
+    ledger_rules_enforced: "owner",
+    // 180: granted to `authenticated` because the trigger functions run as the
+    // caller and need it to log and refuse. Called over RPC instead of from a
+    // trigger it does nothing (`pg_trigger_depth() = 0`), so an owner cannot
+    // fill the log or raise anything with it.
+    ledger_refuse: "owner",
     catalog_link_owner: "service",
     claim_rate_limit_quota: "service",
     client_whatsapp_consent_state: "service",
