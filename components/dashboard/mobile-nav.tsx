@@ -703,7 +703,8 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // back arrow on top and "Guardar cambios" pinned at the bottom, and no
   // navigation bar; with both, two bars would stack at the bottom of the
   // phone. Same treatment as every other screen whose buttons live in
-  // `StickyActions`. AppMain's `hasBar` mirrors this line.
+  // `StickyActions`. Confirmed by the owner the same day («sí»), asked as a
+  // straight question. AppMain's `hasBar` mirrors this line.
   if (onClientDetail || enAsistenteDeVenta || enTransaccion || enPedidoConcreto || enMiNegocio)
     return null;
 

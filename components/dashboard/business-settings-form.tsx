@@ -243,6 +243,8 @@ export function BusinessSettingsForm({
         </div>
 
         <div className="flex flex-col gap-2">
+          {/* Lowercase "(opcional)" like every other optional field; the frame
+              says "(Opcional)". Owner's decision, 2026-11-02. */}
           <Label htmlFor="tax_id">RIF/NIT (opcional)</Label>
           <Input id="tax_id" name="tax_id" defaultValue={owner.tax_id ?? ""} placeholder="Escribe RIF o NIT" />
         </div>
