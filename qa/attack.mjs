@@ -45,7 +45,8 @@ const anon = createClient(URL_, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { per
 
 const R = [];
 // BLOQUEADO = the attack failed · VULN = it worked · DECISIÓN = allowed on
-// purpose or waiting for the owner, reported but not failing.
+// purpose or waiting for the owner, reported but not failing · SIN PROBAR =
+// the attack did not run, which fails like VULN.
 const rec = (area, ataque, verdict, detalle = "") => {
   R.push({ area, ataque, verdict });
   if (verdict !== "BLOQUEADO" || process.argv.includes("--todo"))
@@ -191,18 +192,30 @@ try {
   }
 
   // ── 4. A against its own limits ──────────────────────────────────────
-  for (const [n, f] of [
+  // The labels only document what is attempted: the verdict is read in the
+  // database afterwards, never from each response (section 0 of the skill,
+  // trap 1 — the database accepts some writes and neutralises them). What the
+  // counter guards against is the false green: if the attempts stop running,
+  // the database stays untouched and the check below would pass having tried
+  // nothing. Fewer than ESCALADAS attempts reports SIN PROBAR, which fails.
+  const ESCALADAS = 6;
+  let escaladasIntentadas = 0;
+  for (const [, f] of [
     ["subirse a Pro", () => A.db.from("owners").update({ plan: "pro" }).eq("id", A.id)],
     ["cambiarse de país", () => A.db.from("owners").update({ country: "CO" }).eq("id", A.id)],
     ["alargarse la prueba", () => A.db.from("subscriptions").update({ demo_termina_el: "2099-01-01T00:00:00Z" }).eq("owner_id", A.id)],
     ["marcarse como pagada", () => A.db.from("subscriptions").update({ estado: "activa", periodo_termina_el: "2099-01-01T00:00:00Z" }).eq("owner_id", A.id)],
     ["borrar su historial de suscripción", () => A.db.from("subscription_events").delete().eq("owner_id", A.id)],
     ["apuntarse un pago falso", () => A.db.from("subscription_events").insert({ owner_id: A.id, motivo: "pago falso", monto_usd: 19.5 })],
-  ]) await f();
+  ]) {
+    await f();
+    escaladasIntentadas++;
+  }
   const { data: oA } = await svc.from("owners").select("plan, country").eq("id", A.id).single();
   const { data: subA } = await svc.from("subscriptions").select("estado, demo_termina_el, periodo_termina_el").eq("owner_id", A.id).single();
   const { count: pagosFalsos } = await svc.from("subscription_events").select("id", { count: "exact", head: true }).eq("owner_id", A.id).eq("motivo", "pago falso");
-  rec("A · escalar", "plan, país, prueba, pago y historial (leído en la base)", oA.plan !== "pro" && oA.country === "VE" && subA.estado === "demo" && !String(subA.demo_termina_el).startsWith("2099") && !subA.periodo_termina_el && !pagosFalsos ? "BLOQUEADO" : "VULN", JSON.stringify({ ...oA, ...subA, pagosFalsos }));
+  if (escaladasIntentadas !== ESCALADAS) rec("A · escalar", "plan, país, prueba, pago y historial", "SIN PROBAR", `solo se intentaron ${escaladasIntentadas} de ${ESCALADAS}`);
+  else rec("A · escalar", "plan, país, prueba, pago y historial (leído en la base)", oA.plan !== "pro" && oA.country === "VE" && subA.estado === "demo" && !String(subA.demo_termina_el).startsWith("2099") && !subA.periodo_termina_el && !pagosFalsos ? "BLOQUEADO" : "VULN", JSON.stringify({ ...oA, ...subA, pagosFalsos }));
 
   // ── 5. The ledger written by hand (177) ──────────────────────────────
   await A.db.from("movements").update({ running_balance: 777 }).eq("id", mA.id);
@@ -219,6 +232,9 @@ try {
 
   // ── 6. A blocked owner ───────────────────────────────────────────────
   await svc.from("subscriptions").update({ estado: "bloqueada", bloqueo_motivo: "prueba_vencida" }).eq("owner_id", A.id);
+  // Finding 5 -- a blocked account may still create a client's link and edit
+  // its own business details -- stays as it is: owner's decision on
+  // 2026-11-02 («queda como está»). Those two rows report DECISIÓN, not VULN.
   for (const [n, f, decision] of [
     ["fiado", () => A.db.from("movements").insert({ client_id: cA.id, type: "charge", amount: 1, currency: "USD", source: "manual" }).select("id")],
     ["cliente nuevo", () => A.db.from("clients").insert({ owner_id: A.id, name: "bloq" }).select("id")],
@@ -226,8 +242,8 @@ try {
     ["borrar un movimiento", () => A.db.from("movements").update({ deleted_at: new Date().toISOString() }).eq("id", mA.id).select("id")],
     ["producto nuevo", () => A.db.from("products").insert({ owner_id: A.id, name: "bloq", base_currency: "USD", price_retail: 1 }).select("id")],
     ["venta", () => A.db.from("sales").insert({ owner_id: A.id, client_id: cA.id }).select("id")],
-    ["crear el enlace de un cliente", () => A.db.from("share_links").insert({ client_id: cA.id, token: `zzattackB${stamp}` }).select("id"), "hallazgo 5: compartir es leer"],
-    ["editar los datos del negocio", () => A.db.from("owners").update({ business_name: "ZZ Attack a" }).eq("id", A.id).select("id"), "hallazgo 5"],
+    ["crear el enlace de un cliente", () => A.db.from("share_links").insert({ client_id: cA.id, token: `zzattackB${stamp}` }).select("id"), "hallazgo 5: compartir es leer (decisión del dueño, 2026-11-02)"],
+    ["editar los datos del negocio", () => A.db.from("owners").update({ business_name: "ZZ Attack a" }).eq("id", A.id).select("id"), "hallazgo 5 (decisión del dueño, 2026-11-02)"],
   ]) {
     const { data, error } = await f();
     const paso = !error && data?.length > 0;
@@ -327,7 +343,9 @@ try {
   const { count } = await svc.from("owners").select("id", { count: "exact", head: true }).ilike("business_name", "ZZ Attack%");
   const vuln = R.filter((r) => r.verdict === "VULN").length;
   const dec = R.filter((r) => r.verdict === "DECISIÓN").length;
+  // SIN PROBAR fails like VULN: an attack that did not run is not a pass.
+  const sin = R.filter((r) => r.verdict === "SIN PROBAR").length;
   console.log(`\nLimpieza: quedan ${count} negocios de ataque en dev.`);
-  console.log(`${R.length} ataques · ${R.length - vuln - dec} bloqueados · ${vuln} VULN · ${dec} por decisión del dueño`);
-  process.exit(vuln === 0 ? 0 : 1);
+  console.log(`${R.length} ataques · ${R.length - vuln - dec - sin} bloqueados · ${vuln} VULN · ${sin} sin probar · ${dec} por decisión del dueño`);
+  process.exit(vuln === 0 && sin === 0 ? 0 : 1);
 }

@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FormattedTextarea } from "@/components/dashboard/formatted-textarea";
@@ -53,7 +52,7 @@ export function PaymentMethodDialog({
     }
 
     setError(null);
-    toast.success(method ? "Método de pago actualizado" : "Método de pago agregado", PROFILE_TOAST);
+    toast.success(method ? "Método de pago actualizado" : "Método de pago agregado");
     onSaved(result.method);
     onOpenChange(false);
   }

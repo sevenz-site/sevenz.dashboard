@@ -34,9 +34,34 @@ import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon
 // two resolved independently. If this app ever grows a real theme switcher,
 // mount ThemeProvider and pass its resolved value — but the description colour
 // is now token-derived in globals.css too, so that day cannot reintroduce this.
+//
+// TOASTS OPEN AT THE TOP, BELOW THE HEADER — at every width.
+//
+// Sonner's default is the bottom edge, which on a phone is exactly where this
+// app pins what the owner taps next: the navigation bar, the floating
+// "Registrar", and every `StickyActions` bar. Measured on 2026-11-02 at 375px
+// in "Mi negocio": the "Cambios guardados" toast spanned y 743–796 over the
+// pinned "Guardar cambios" (732–772), and a second tap within those seconds
+// landed on the toast and never reached the server. Fixed there first, then
+// here for every screen at the owner's request («arregla el solape de avisos
+// en las otras pantallas»).
+//
+// Not phone-only, on purpose: between Sonner's phone breakpoint (600px) and a
+// wide desktop, its bottom-right default can still sit on a pinned bar that
+// spans the column. The top is clear at every width.
+//
+// The offset clears the tallest header row: the app header is 56px and
+// `ScreenBackRow` about 65px, so 4.5rem leaves the back arrow and the menu
+// button tappable while a toast is up. Plus the safe area, for a notched
+// iPhone running the installed app.
+const TOP_BELOW_HEADER = "calc(env(safe-area-inset-top) + 4.5rem)"
+
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
+      position="top-center"
+      offset={{ top: TOP_BELOW_HEADER }}
+      mobileOffset={{ top: TOP_BELOW_HEADER }}
       theme="light"
       className="toaster group"
       icons={{

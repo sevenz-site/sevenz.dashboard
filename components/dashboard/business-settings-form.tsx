@@ -3,7 +3,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
@@ -83,11 +82,11 @@ export function BusinessSettingsForm({
     const result = await updateBusinessSettings(initialState, formData);
     if (result.error) {
       setError(result.error);
-      toast.error(result.error, PROFILE_TOAST);
+      toast.error(result.error);
       return false;
     }
     setError(null);
-    toast.success("Cambios guardados", PROFILE_TOAST);
+    toast.success("Cambios guardados");
     setIsDirty(false);
     setDirty(false);
     router.refresh();
