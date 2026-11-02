@@ -70,7 +70,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // Y LA FICHA DEL PRODUCTO, desde el 2026-10-26: ni barra de abajo ni su
     // altura reservada. Su propia fila de botones termina la pantalla.
     isProductDetailRoute(pathname);
-  const hasBar = !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando;
+  // "/profile" since 2026-11-02: must match MobileNavBar, which stops drawing
+  // the bar there (see `enMiNegocio` in mobile-nav.tsx).
+  const hasBar =
+    !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando && pathname !== "/profile";
 
   // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────
   //
@@ -140,7 +143,11 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // NO ES `startsWith("/transacciones/")`: la ruta de una venta de contado
     // (`/transacciones/venta/<id>/<moneda>`) no monta esos botones, así que
     // quitarle el aire la dejaría pegada al filo sin nada que lo ocupe.
-    /^\/transacciones\/[^/]+$/.test(pathname);
+    /^\/transacciones\/[^/]+$/.test(pathname) ||
+    // "MI NEGOCIO", since 2026-11-02: its "Guardar cambios" moved into
+    // `StickyActions` at the owner's request («Fijo abajo, siempre visible»),
+    // and that bar brings its own 40px.
+    pathname === "/profile";
   // ═══════════════════════════════════════════════════════════════════════
   // LAS PANTALLAS DE «SALIÓ BIEN» QUE ADEMÁS LLEVAN EL BOTÓN FLOTANTE
   //

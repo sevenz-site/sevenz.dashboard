@@ -76,9 +76,12 @@ export function LogoUploader({
     }
   }
 
+  // Laid out as frame `1927:24166` draws it (2026-11-02): an 80px square, then
+  // "Cambiar logo" filling the row, then a red 42×40 delete button. Before
+  // that, delete was a grey ghost icon the owner did not read as a button.
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+    <div className="flex w-full items-center gap-2">
+      <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border bg-muted">
         {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={previewUrl} alt="Logo del negocio" className="h-full w-full object-cover" />
@@ -86,7 +89,7 @@ export function LogoUploader({
           <Building2 className="size-6 text-muted-foreground" />
         )}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <input
           ref={inputRef}
           type="file"
@@ -97,7 +100,7 @@ export function LogoUploader({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          className="h-10 min-w-0 flex-1 text-base font-semibold"
           disabled={uploading || deleting}
           onClick={() => inputRef.current?.click()}
         >
@@ -112,17 +115,19 @@ export function LogoUploader({
           )}
         </Button>
 
+        {/* Only with a logo: with none there is nothing to delete, and a red
+            button beside "Subir logo" would read as "cancel the upload". */}
         {previewUrl ? (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
                 type="button"
-                variant="ghost"
-                size="icon"
+                variant="destructive"
+                className="h-10 w-[42px] shrink-0 bg-destructive/20 px-0 hover:bg-destructive/30"
                 disabled={uploading || deleting}
-                title="Eliminar logo"
+                aria-label="Eliminar logo"
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>

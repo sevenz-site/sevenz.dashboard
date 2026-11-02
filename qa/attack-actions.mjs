@@ -164,16 +164,18 @@ try {
     ctx[`tok${quien}`] = `zzact${quien}${Math.random().toString(16).slice(2, 12)}`;
     await svc.from("share_links").insert({ client_id: ctx[`c${quien}`], token: ctx[`tok${quien}`] });
     ctx[`link${quien}`] = (await svc.from("catalog_share_links").insert({ owner_id: o.id }).select("token").single()).data.token;
+    // Migration 179: one payment method each, B's being the one A goes after.
+    ctx[`pm${quien}`] = (await svc.from("owner_payment_methods").insert({ owner_id: o.id, body: `Pago móvil de ${quien}` }).select("id").single()).data?.id;
   }
   ctx.mA = ctx.mA.id; ctx.codigoB = ctx.mB.transaction_code; ctx.mB = ctx.mB.id;
   // B's logo, the file the logo attack tries to take over and delete.
   await svc.storage.from("logos").upload(`${B.id}/logo.png`, new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }), { upsert: true });
-  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "Fiado de B", "12345678", ctx.tokB, B.email, "ZZ Actions b"];
+  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "Fiado de B", "12345678", ctx.tokB, B.email, "ZZ Actions b", "Pago móvil de B"];
   const filtra = (x) => { let t; try { t = JSON.stringify(x ?? ""); } catch { t = String(x); } return SECRETOS.find((s) => t.includes(s)) ?? null; };
 
   // A snapshot of everything B owns, to compare before/after each attack.
   const foto = async (o, c) => {
-    const [cli, mov, prod, ven, ped, flags, hides, links, sub, ev, own] = await Promise.all([
+    const [cli, mov, prod, ven, ped, flags, hides, links, sub, ev, own, pagos] = await Promise.all([
       svc.from("clients").select("id,name,document_id,whatsapp,trashed_at,deleted_at,is_flagged,profile_picture_path").eq("owner_id", o).order("id"),
       svc.from("movements").select("id,amount,type,deleted_at,client_id,description").eq("client_id", c).order("id"),
       svc.from("products").select("id,name,price_retail,published_retail,published_wholesale,trashed_at,owner_id").eq("owner_id", o).order("id"),
@@ -185,8 +187,9 @@ try {
       svc.from("subscriptions").select("estado,plan_code,demo_termina_el,periodo_termina_el,is_test_account,precio_pactado_usd").eq("owner_id", o).maybeSingle(),
       svc.from("subscription_events").select("id", { count: "exact", head: true }).eq("owner_id", o),
       svc.from("owners").select("business_name,country,plan,whatsapp,logo_path").eq("id", o).single(),
+      svc.from("owner_payment_methods").select("id,body,owner_id").eq("owner_id", o).order("id"),
     ]);
-    return JSON.stringify([cli.data, mov.data, prod.data, ven.data, ped.data, flags.data, hides.data, links.data, sub.data, ev.count, own.data]);
+    return JSON.stringify([cli.data, mov.data, prod.data, ven.data, ped.data, flags.data, hides.data, links.data, sub.data, ev.count, own.data, pagos.data]);
   };
   const fotoB = () => foto(B.id, ctx.cB);
   const fotoA = () => foto(A.id, ctx.cA);
@@ -304,6 +307,15 @@ try {
       juzgar: async () => { const { data } = await svc.storage.from("logos").list(B.id); return (data ?? []).some((o) => o.name === "logo.png"); } },
     { clave: P("profile/actions.ts#changePassword"), fase: 2, ataques: [["un anónimo la llama", null, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]]], control: [A.cookie, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]] },
     { clave: P("profile/actions.ts#guardarAvisosWhatsapp"), fase: 2, ataques: [["un anónimo la llama", null, () => [false, "zz"]]], control: [A.cookie, () => [false, "zz"]] },
+    // Payment methods (migration 179, 2026-11-02). The controls run with A's
+    // own cookie, so a missing grant on the new table shows up here as a
+    // failed control -- the `108` lesson -- and not only as a blocked attack.
+    { clave: P("profile/actions.ts#addPaymentMethod"), fase: 2, ataques: [["un anónimo la llama", null, () => ["zz anónimo"]]], control: [A.cookie, () => ["Zelle de A"]],
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owner_payment_methods").select("id").eq("owner_id", A.id).eq("body", "Zelle de A")).data?.length === 1 },
+    { clave: P("profile/actions.ts#updatePaymentMethod"), fase: 2, ataques: [["edita el método de pago de B", A.cookie, () => [ctx.pmB, "HACKED"]]], control: [A.cookie, () => [ctx.pmA, "Pago móvil de A, editado"]],
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owner_payment_methods").select("body").eq("id", ctx.pmA).single()).data?.body === "Pago móvil de A, editado" },
+    { clave: P("profile/actions.ts#deletePaymentMethod"), fase: 2, orden: 40, ataques: [["borra el método de pago de B", A.cookie, () => [ctx.pmB]]], control: [A.cookie, () => [ctx.pmA]],
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owner_payment_methods").select("id").eq("id", ctx.pmA)).data?.length === 0 },
     { clave: P("reportes/actions.ts#guardarUmbralDeStock"), fase: 2, ataques: [["un anónimo la llama", null, () => [3]]], control: [A.cookie, () => [3]] },
     { clave: P("reportes/actions.ts#calificarAsistente"), fase: 2, ataques: [["un anónimo la llama", null, () => ["useful"]]], control: null, sinControl: "manda un evento a Mixpanel; su ataque es solo anónimo" },
     { clave: P("clients/nuevo/actions.ts#validarCliente"), fase: 2, ataques: [["un anónimo la llama", null, () => [fd({ name: "ZZ anónimo", whatsapp: "", address: "", document_id: "45678901", document_type: "V" })]]], control: [A.cookie, () => [fd({ name: "ZZ nuevo", whatsapp: "", address: "", document_id: "45678901", document_type: "V" })]] },

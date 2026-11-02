@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
-import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
@@ -13,18 +12,25 @@ export default async function ProfilePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: owner } = await supabase
-    .from("owners")
-    .select("*")
-    .eq("id", user!.id)
-    .single();
+  const [{ data: owner }, { data: paymentMethods }] = await Promise.all([
+    supabase.from("owners").select("*").eq("id", user!.id).single(),
+    // Migration 179. Oldest first, so a new method lands at the bottom of the
+    // list where the owner just tapped "Agregar".
+    supabase
+      .from("owner_payment_methods")
+      .select("id, body")
+      .eq("owner_id", user!.id)
+      .order("created_at", { ascending: true }),
+  ]);
 
   if (!owner) return null;
 
   const logoUrl = owner.logo_path ? getPublicLogoUrl(owner.logo_path) : null;
 
+  // The line under the title («Estos datos se usan en tu cartera y en lo que
+  // ven tus clientes») went on 2026-11-02: frame `1928:24764` has none.
   return (
-    <div className="flex flex-1 flex-col gap-8">
+    <div className="flex flex-1 flex-col gap-6">
       {/* Replaces the app header on a phone (see AppHeader), so it behaves like
           one: flush to the top, edge to edge. The negative margins cancel main's
           p-4 and px-4 restores the inset for the content itself. Hidden from sm
@@ -32,19 +38,9 @@ export default async function ProfilePage() {
       <ScreenBackRow>
         <CarteraBackButton />
       </ScreenBackRow>
-      <div>
-        <ScreenTitle>Mi negocio</ScreenTitle>
-        <p className="text-sm text-muted-foreground">
-          Estos datos se usan en tu cartera y en lo que ven tus clientes.
-        </p>
-      </div>
+      <ScreenTitle>Mi negocio</ScreenTitle>
 
-      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} />
-
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium text-muted-foreground">Contraseña</h2>
-        <ChangePasswordDialog />
-      </section>
+      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} paymentMethods={paymentMethods ?? []} />
     </div>
   );
 }

@@ -74,9 +74,12 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
   return (
     <section className="flex flex-col gap-4">
       <Collapsible open={abierto} onOpenChange={setAbierto}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-muted">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Notificaciones</span>
+        {/* Padding, radius and weight from frame `1927:24445` (2026-11-02),
+            so it reads as a sibling of the "Métodos de pago" and
+            "Contraseña" cards around it: 74px tall, like them. */}
+        <CollapsibleTrigger className="flex w-full items-start justify-between gap-2 rounded-[10px] border p-4 text-left transition-colors hover:bg-muted">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm">Notificaciones</span>
             <span className="text-xs text-muted-foreground">
               {activo ? "Avisos por WhatsApp activados" : "Avisos por WhatsApp desactivados"}
             </span>

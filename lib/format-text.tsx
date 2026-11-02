@@ -13,6 +13,18 @@ export function renderFormattedText(text: string): ReactNode {
   ));
 }
 
+// The same text, rewritten for WhatsApp, which is where an owner pastes a
+// payment method after "Copiar" (frame `1928:24764`, 2026-11-02). WhatsApp
+// marks bold with ONE asterisk and italic with underscores, so pasting our
+// `**Pago móvil**` verbatim would show `*` around bold text and turn our
+// `*italic*` into bold. One pass with the renderer's own pattern, so the two
+// can never disagree on what counts as bold.
+export function toWhatsappText(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*|\*(.+?)\*/g, (_match, bold?: string, italic?: string) =>
+    bold !== undefined ? `*${bold}*` : `_${italic}_`,
+  );
+}
+
 function renderInline(line: string): ReactNode[] {
   const pattern = /\*\*(.+?)\*\*|\*(.+?)\*/g;
   const nodes: ReactNode[] = [];

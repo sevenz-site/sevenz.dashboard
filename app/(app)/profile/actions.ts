@@ -118,7 +118,6 @@ export async function updateBusinessSettings(
   const address = String(formData.get("address") ?? "").trim();
   const taxId = String(formData.get("tax_id") ?? "").trim();
   const logoPath = String(formData.get("logo_path") ?? "").trim();
-  const paymentInfo = String(formData.get("payment_info") ?? "").trim().slice(0, 500);
   const country = String(formData.get("country") ?? "CO");
 
   if (!businessName || !firstName || !lastName) {
@@ -168,7 +167,11 @@ export async function updateBusinessSettings(
       address: address || null,
       tax_id: taxId || null,
       ...logoUpdate,
-      payment_info: paymentInfo || null,
+      // `payment_info` is no longer written from here: since migration 179
+      // payment methods live in `owner_payment_methods`, one row each, saved
+      // by their own actions below. Writing `formData.get("payment_info")`
+      // now would read the absent field as "" and wipe the old text that a
+      // code rollback still depends on.
       country,
     })
     .eq("id", user.id);
@@ -180,6 +183,111 @@ export async function updateBusinessSettings(
   revalidatePath("/profile");
   revalidatePath("/dashboard");
   return { error: null, success: true };
+}
+
+// ── Payment methods ────────────────────────────────────────────────────────
+//
+// One row per method in `owner_payment_methods` (migration 179). Each save
+// stands on its own the moment the dialog closes -- the owner's choice on
+// 2026-11-02, «Al instante» -- so these never go through the "Guardar
+// cambios" of the form and never make it dirty.
+//
+// Every query names `owner_id = user.id` even though RLS already does: the
+// method id comes from the browser, and CLAUDE.md wants the ownership check
+// written in code, with RLS as the backstop. An update or delete that matches
+// no row returns an error instead of a silent success, so editing someone
+// else's id reads as a failure, not as "saved".
+
+export type PaymentMethod = { id: string; body: string };
+type PaymentMethodResult = { error: string | null; method?: PaymentMethod };
+
+const PAYMENT_METHOD_MAX_LENGTH = 500;
+// No shop needs more; the cap exists so a script cannot grow the list without
+// bound. The screen hides "Agregar" at this count, and the server refuses past it.
+const PAYMENT_METHODS_LIMIT = 10;
+
+function cleanPaymentMethod(body: unknown): { body: string } | { error: string } {
+  const text = typeof body === "string" ? body.trim() : "";
+  if (!text) return { error: "Escribe el método de pago." };
+  if (text.length > PAYMENT_METHOD_MAX_LENGTH) {
+    return { error: `Máximo ${PAYMENT_METHOD_MAX_LENGTH} caracteres.` };
+  }
+  return { body: text };
+}
+
+export async function addPaymentMethod(body: string): Promise<PaymentMethodResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const clean = cleanPaymentMethod(body);
+  if ("error" in clean) return { error: clean.error };
+
+  const { count } = await supabase
+    .from("owner_payment_methods")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", user.id);
+  if ((count ?? 0) >= PAYMENT_METHODS_LIMIT) {
+    return { error: `Puedes tener hasta ${PAYMENT_METHODS_LIMIT} métodos de pago.` };
+  }
+
+  const { data, error } = await supabase
+    .from("owner_payment_methods")
+    .insert({ owner_id: user.id, body: clean.body })
+    .select("id, body")
+    .single();
+  if (error || !data) {
+    return { error: mensajeDeError("guardar el método de pago", error, "payment_method") };
+  }
+
+  revalidatePath("/profile");
+  return { error: null, method: data };
+}
+
+export async function updatePaymentMethod(id: string, body: string): Promise<PaymentMethodResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const clean = cleanPaymentMethod(body);
+  if ("error" in clean) return { error: clean.error };
+
+  const { data, error } = await supabase
+    .from("owner_payment_methods")
+    .update({ body: clean.body, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .select("id, body")
+    .maybeSingle();
+  if (error) return { error: mensajeDeError("guardar el método de pago", error, "payment_method") };
+  if (!data) return { error: "Este método de pago ya no existe. Recarga la pantalla." };
+
+  revalidatePath("/profile");
+  return { error: null, method: data };
+}
+
+export async function deletePaymentMethod(id: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { data, error } = await supabase
+    .from("owner_payment_methods")
+    .delete()
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .select("id");
+  if (error) return { error: mensajeDeError("borrar el método de pago", error, "payment_method") };
+  if (!data?.length) return { error: "Este método de pago ya no existe. Recarga la pantalla." };
+
+  revalidatePath("/profile");
+  return { error: null };
 }
 
 export type PasswordState = { error: string | null; success: boolean };
