@@ -20,7 +20,7 @@ import { SearchFocusProvider } from "@/components/dashboard/search-focus-context
 import { RevisionEnCursoProvider } from "@/components/import/revision-en-curso";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { CuentaPausadaProvider } from "@/components/dashboard/cuenta-pausada";
-import { puedeEscribir } from "@/lib/cuenta-pausada-server";
+import { motivoDeBloqueo } from "@/lib/cuenta-pausada-server";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
 import { getImportUsageForOwner } from "@/lib/import-usage";
 
@@ -38,19 +38,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  const [{ data: owner }, unreadCount, importUsage, puedeRegistrar] = await Promise.all([
+  const [{ data: owner }, unreadCount, importUsage, motivo] = await Promise.all([
     supabase.from("owners").select("business_name, onboarding_completed_at, plan, country").eq("id", user.id).single(),
     getUnreadNotificationCount(),
     getImportUsageForOwner(supabase, user.id),
     // Si la cuenta esta pausada. Va en el layout y no en la cartera porque
     // el aviso tiene que salir se entre por donde se entre, y porque desde
     // aqui lo ve cualquier pantalla que rechace una escritura.
-    puedeEscribir(supabase, user.id),
+    motivoDeBloqueo(supabase, user.id),
   ]);
 
   return (
     <ZonaDelNegocioProvider country={owner?.country ?? null}>
-    <CuentaPausadaProvider pausada={!puedeRegistrar} correo={user.email ?? null}>
+    <CuentaPausadaProvider pausada={motivo !== null} motivo={motivo} correo={user.email ?? null}>
     <ImportProvider initialUsage={importUsage}>
     <SearchFocusProvider>
     <RevisionEnCursoProvider>

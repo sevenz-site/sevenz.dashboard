@@ -4,7 +4,7 @@
 //   npm run metrics
 //   npm run metrics -- --country VE
 //   npm run metrics -- --owner <uuid>
-//   npm run metrics -- --from 2026-08-01 --to 2026-09-01
+//   npm run metrics -- --from 2026-08-01 --to 2026-08-31   (both days included)
 //   npm run metrics -- --env .env.production
 //
 // EVERY FIGURE COMES FROM lib/admin/metrics.ts, the same module /admin renders
@@ -63,11 +63,26 @@ const projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(
 // Imported after the env is in place. createServiceClient reads process.env
 // when it is called rather than at import time, so a static import would also
 // work — this is explicit so the ordering cannot be broken by accident later.
-const { getCurrencySummary, getTotals, getAverageCreditScore, getOwnerOptions } = await import(
+const { getCurrencySummary, getTotals, getAverageCreditScore, getOwnerOptions, sinNegociosDePrueba } = await import(
   "../lib/admin/metrics.ts"
 );
 
-const filters = { country, ownerId, from, to, currency: null };
+// `ownerIds`, a LIST, and not `ownerId`: that is the field lib/admin/metrics.ts
+// reads. This passed `ownerId` from 2026-09-07 (when /admin's filter became a
+// multi-select) until 2026-10-31, so `--owner` was silently ignored and the
+// report covered every business while its header said it was filtered.
+//
+// `--to` IS INCLUSIVE since migration 169 (2026-10-31): the functions read
+// both ends as calendar days, in the zone of each business, the same as the
+// date picker on /admin. Before that it was exclusive, and the example above
+// said «--to 2026-09-01» for August; that same command now includes 1 Sept.
+// Test businesses out by default, as on /admin (2026-10-31); `--incluir-pruebas`
+// puts them back.
+const filters = sinNegociosDePrueba(
+  { country, ownerIds: ownerId ? [ownerId] : [], from, to, currency: null },
+  await getOwnerOptions(),
+  args.includes("--incluir-pruebas"),
+);
 
 const money = (n) =>
   Number(n).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

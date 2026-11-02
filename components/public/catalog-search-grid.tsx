@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { foldForSearch } from "@/lib/search/fold";
 
 // EL BUSCADOR DEL CATÁLOGO QUE VE EL CLIENTE.
 //
@@ -48,15 +49,14 @@ export function CatalogSearchGrid({
 }) {
   const [query, setQuery] = useState("");
 
-  // `toLowerCase().includes()`, EXACTAMENTE lo que hace el catálogo del dueño
-  // en `catalog-filters.tsx`. No se "mejora" aquí con normalización de
-  // acentos: el día que el tendero busque «azucar» y le salga en su pantalla
-  // pero no en la de su cliente, nadie va a sospechar de dos funciones de
-  // búsqueda distintas. Si se mejora, se mejora en los dos.
+  // `foldForSearch`, EXACTLY what the owner's catalogue does in
+  // `catalog-filters.tsx`: «azucar» finding a product on the shopkeeper's
+  // screen but not on the customer's is a bug nobody would trace to two search
+  // functions. Both moved to accent-insensitive together on 2026-10-31.
   const visibles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldForSearch(query.trim());
     if (!q) return items;
-    return items.filter((i) => i.name.toLowerCase().includes(q));
+    return items.filter((i) => foldForSearch(i.name).includes(q));
   }, [items, query]);
 
   return (

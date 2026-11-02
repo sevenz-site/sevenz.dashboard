@@ -26,6 +26,7 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import type { Movement } from "@/lib/types";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { foldForSearch } from "@/lib/search/fold";
 
 const PAGE_SIZE = 10;
 
@@ -389,9 +390,9 @@ export function MovementHistoryList({
     ].join(" ");
   };
 
-  const buscado = codigo.trim().toLowerCase();
+  const buscado = foldForSearch(codigo.trim());
   const porCodigo =
-    buscado === "" ? filas : filas.filter((f) => textoDeLaFila(f).toLowerCase().includes(buscado));
+    buscado === "" ? filas : filas.filter((f) => foldForSearch(textoDeLaFila(f)).includes(buscado));
 
   const porTipo =
     tipo === "todos"

@@ -19,6 +19,7 @@ import {
   type ClientSummary,
 } from "@/lib/types";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
+import { foldForSearch } from "@/lib/search/fold";
 
 // El estado de filtros y los chips que lo tocan, compartidos por las cuatro
 // listas de clientes — Cartera, Clientes, Malas pagas y Papelera — para que no
@@ -171,14 +172,15 @@ export function useClientFilters<T extends ClientSummary>(
     });
 
   const filteredRows = useMemo(() => {
-    const query = nameQuery.trim().toLowerCase();
+    // Accent- and case-blind since 2026-10-31: «sofia» finds «Sofía».
+    const query = foldForSearch(nameQuery.trim());
     const min = minAmount.trim() ? Number(minAmount) : null;
     const max = maxAmount.trim() ? Number(maxAmount) : null;
 
     return rows.filter((row) => {
       if (query) {
-        const matchesName = row.name.toLowerCase().includes(query);
-        const matchesDocument = row.document_id?.toLowerCase().includes(query) ?? false;
+        const matchesName = foldForSearch(row.name).includes(query);
+        const matchesDocument = row.document_id ? foldForSearch(row.document_id).includes(query) : false;
         if (!matchesName && !matchesDocument) return false;
       }
       const balance = judgementBalance(row);

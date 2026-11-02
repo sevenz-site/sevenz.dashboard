@@ -55,6 +55,7 @@ import {
 } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
+import { foldForSearch } from "@/lib/search/fold";
 
 const SIN_AJUSTES: Record<string, number> = {};
 
@@ -585,10 +586,10 @@ export function AbonoReparto({
   // los productos o la descripción-- y no por el id: es lo único que el
   // tendero ve y lo único que su cliente le va a nombrar.
   const fiadosFiltrados = useMemo(() => {
-    const q = buscaFiado.trim().toLowerCase();
+    const q = foldForSearch(buscaFiado.trim());
     if (!q) return enOrden;
     return enOrden.filter((f) =>
-      [...f.productos, f.descripcion ?? ""].join(" ").toLowerCase().includes(q),
+      foldForSearch([...f.productos, f.descripcion ?? ""].join(" ")).includes(q),
     );
   }, [enOrden, buscaFiado]);
 

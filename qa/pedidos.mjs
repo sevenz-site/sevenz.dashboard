@@ -321,11 +321,16 @@ try {
   // LOS YA REGISTRADOS NO ENTRAN, que es de lo que va el contador. Antes esta
   // fila miraba `seen`; ese estado dejó de significar nada el 2026-10-25,
   // cuando el dueño eliminó el concepto de «atendido».
+  //
+  // DISCARDED ONES DO NOT COUNT EITHER (`ESTADOS_YA_ATENDIDOS`). This check
+  // used to subtract only `registered`, so it went red on 2026-10-31 the first
+  // time dev held a discarded order -- the counter was right, the check was
+  // stale.
   const { count: yaRegistrados } = await admin
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", owner.id)
-    .eq("status", "registered");
+    .in("status", ["registered", "discarded"]);
   const { count: todos } = await admin
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
@@ -333,7 +338,7 @@ try {
   check(
     "1b. y NO cuenta los ya registrados",
     antes === (todos ?? 0) - (yaRegistrados ?? 0),
-    `sin registrar ${antes} · registrados ${yaRegistrados} · total ${todos}`,
+    `sin registrar ${antes} · registrados o descartados ${yaRegistrados} · total ${todos}`,
   );
 
   // ── 5. EL ORDEN DE LA LISTA ───────────────────────────────────────────

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ImageOff } from "lucide-react";
 import { toast } from "sonner";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -323,6 +324,7 @@ export function ProductDetail({
                 startTransition(async () => {
                   const r = await trashProduct(product.id);
                   if (r.error) {
+                    if (avisarCuentaPausada(r.error)) return;
                     toast.error(r.error);
                     return;
                   }

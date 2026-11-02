@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/dashboard/client-filters";
 import { priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import { isPublished, listPrice, type ProductRow } from "@/lib/products/catalog";
+import { foldForSearch } from "@/lib/search/fold";
 
 // EL BUSCADOR Y LOS CHIPS DEL CATALOGO.
 //
@@ -108,12 +109,12 @@ export function CatalogFilterProvider({
   }, [rows, rates, compareCurrency]);
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldForSearch(query.trim());
     const min = minAmount.trim() === "" ? null : Number(minAmount.replace(",", "."));
     const max = maxAmount.trim() === "" ? null : Number(maxAmount.replace(",", "."));
 
     const filtered = rows.filter((p) => {
-      if (q && !p.name.toLowerCase().includes(q)) return false;
+      if (q && !foldForSearch(p.name).includes(q)) return false;
       // «Publicado» es estar en ALGUN catalogo, de mayor o de detal. Separar
       // el filtro en dos haria tres estados donde el tendero piensa en uno:
       // «esto se ve o no se ve».

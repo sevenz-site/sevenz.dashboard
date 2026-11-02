@@ -163,6 +163,85 @@ export async function getByOwner(f: MetricFilters): Promise<OwnerRow[]> {
   return (data ?? []) as OwnerRow[];
 }
 
+// ── METRICS BY FLOW (migration 169, plan of 2026-10-31) ─────────────────
+//
+// One row per (kind, origin, currency) and never a cross-currency sum: the
+// owner's answer of 2026-10-31 was «una cifra por moneda». A COUNT may be
+// added up across currencies -- it counts operations, not money -- and the
+// page does that; an amount never is.
+
+export type TransactionKind = "contado" | "fiado" | "abono";
+
+export type TransactionRow = {
+  kind: TransactionKind;
+  // contado: venta · fiado: venta | deuda_antigua | libreta | manual ·
+  // abono: abono | al_vender. See the header of migration 169.
+  origin: string;
+  currency: string;
+  tx_count: number;
+  amount: number;
+};
+
+export type OrderRow = {
+  status: "registrado" | "pendiente";
+  // null for a pending order: it has not been paid either way yet.
+  kind: "contado" | "fiado" | null;
+  currency: string;
+  orders: number;
+  amount: number;
+};
+
+export type OwnerMoneyRow = {
+  owner_id: string;
+  currency: string;
+  charges: number;
+  payments: number;
+  charge_total: number;
+  payment_total: number;
+};
+
+export async function getTransactions(f: MetricFilters): Promise<TransactionRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_transactions", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_transactions: ${error.message}`);
+  return (data ?? []) as TransactionRow[];
+}
+
+// The activity chart of /admin → Transacciones (migration 176): how many
+// contado, fiado and abono transactions per bucket, by the SAME rule as the
+// cards above it -- both read `admin_tx_rows`. Counts only: a bar that added
+// dollars to euros would be the fault of 2026-10-20 again.
+export type TxTrendPoint = { bucket: string; contado: number; fiado: number; abono: number };
+
+export async function getTransactionTrend(f: MetricFilters, bucket: Bucket = "week"): Promise<TxTrendPoint[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_transactions_trend", { p_bucket: bucket, ...rpcArgs(f) });
+  if (error) throw new Error(`admin_metrics_transactions_trend: ${error.message}`);
+  return ((data ?? []) as TxTrendPoint[]).map((p) => ({
+    bucket: p.bucket,
+    contado: Number(p.contado),
+    fiado: Number(p.fiado),
+    abono: Number(p.abono),
+  }));
+}
+
+export async function getOrders(f: MetricFilters): Promise<OrderRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_orders", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_orders: ${error.message}`);
+  return (data ?? []) as OrderRow[];
+}
+
+// «Por negocio» money, per currency. `admin_metrics_by_owner` still gives the
+// counts and the last activity; its money columns add dollars to euros when no
+// currency filter is set, so the page reads the amounts from here instead.
+export async function getByOwnerMoney(f: MetricFilters): Promise<OwnerMoneyRow[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_by_owner_money", rpcArgs(f));
+  if (error) throw new Error(`admin_metrics_by_owner_money: ${error.message}`);
+  return (data ?? []) as OwnerMoneyRow[];
+}
+
 // Every read below goes through a SECURITY DEFINER function rather than
 // touching a table directly.
 //
@@ -191,13 +270,38 @@ async function rpcAll<T>(fn: string, args: Record<string, unknown>): Promise<T[]
   return rows;
 }
 
+export type OwnerOption = { id: string; business_name: string; country: string; es_prueba?: boolean };
+
 // Owners, for the filter bar's select. Small enough not to need paging, and it
 // would stop being a filter bar long before it needed one.
-export async function getOwnerOptions(): Promise<{ id: string; business_name: string; country: string }[]> {
+export async function getOwnerOptions(): Promise<OwnerOption[]> {
   const db = createServiceClient();
   const { data, error } = await db.rpc("admin_owner_options");
   if (error) throw new Error(`admin_owner_options: ${error.message}`);
-  return (data ?? []) as { id: string; business_name: string; country: string }[];
+  return (data ?? []) as OwnerOption[];
+}
+
+// TEST BUSINESSES OUT BY DEFAULT -- the owner's decision of 2026-10-31
+// («excluirlos por defecto»), with the mark set in /admin → Cuentas
+// (migration 171).
+//
+// DONE HERE, NOT IN SQL: when no business is picked, the filter becomes the
+// list of businesses that are NOT test ones. Every metric function already
+// takes that list, so none of their signatures changes.
+//
+// Three edges, each decided:
+//   - businesses picked by hand are respected, test ones included: choosing
+//     one is asking for it;
+//   - if every business were a test one, an empty list would mean «no filter»
+//     -- every business, tests included. A list holding an impossible id makes
+//     the answer «nothing», which is the truth;
+//   - `incluir` (the «incluir pruebas» switch) turns all of this off.
+const NINGUNO = "00000000-0000-0000-0000-000000000000";
+export function sinNegociosDePrueba(f: MetricFilters, owners: OwnerOption[], incluir: boolean): MetricFilters {
+  if (incluir || (f.ownerIds && f.ownerIds.length > 0)) return f;
+  if (!owners.some((o) => o.es_prueba)) return f;
+  const reales = owners.filter((o) => !o.es_prueba).map((o) => o.id);
+  return { ...f, ownerIds: reales.length > 0 ? reales : [NINGUNO] };
 }
 
 // The one metric that cannot be aggregated in SQL.

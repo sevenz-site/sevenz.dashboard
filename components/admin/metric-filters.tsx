@@ -41,7 +41,7 @@ export function MetricFilters({
   // hand-edited URL is ignored rather than sent to the database as "".
   const selectedOwners = (params.get("owner") ?? "").split(",").filter(Boolean);
 
-  const hasFilters = ["country", "currency", "owner", "from", "to", "bucket"].some((k) => params.get(k));
+  const hasFilters = ["country", "currency", "owner", "from", "to", "bucket", "pruebas"].some((k) => params.get(k));
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3">
@@ -111,11 +111,33 @@ export function MetricFilters({
             </SelectContent>
           </Select>
         </div>
+
+        {/* TEST BUSINESSES -- out by default, the owner's decision of
+            2026-10-31. Marked in /admin → Cuentas. */}
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Negocios de prueba</Label>
+          <Select value={params.get("pruebas") === "1" ? "1" : "all"} onValueChange={(v) => apply("pruebas", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Excluidos</SelectItem>
+              <SelectItem value="1">Incluidos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {hasFilters ? (
         <div>
-          <Button variant="outline" size="sm" onClick={() => router.push("/admin", { scroll: false })}>
+          {/* Clearing the filters keeps the section: «Limpiar filtros» on the
+              Pedidos tab should leave you on Pedidos, not on the first tab. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const seccion = params.get("seccion");
+              router.push(seccion ? `/admin?seccion=${seccion}` : "/admin", { scroll: false });
+            }}
+          >
             Limpiar filtros
           </Button>
         </div>

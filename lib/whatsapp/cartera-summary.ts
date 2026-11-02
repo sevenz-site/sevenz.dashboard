@@ -133,6 +133,15 @@ export async function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
   //     con un solo número para toda la plataforma el quality rating baja
   //     para todos. Ese es el riesgo real de esta decisión.
   //
+  // RE-DECIDED ON 2026-10-31, when the block became automatic (migration 171).
+  // Until then an account was only paused by hand, and rarely. From then on
+  // EVERY abandoned trial ends paused, so this message goes out every week,
+  // with no end, to every expired trial that accepted the notices -- even
+  // with «Por cobrar: $0,00». Offered «4 semanas tras el bloqueo» and «solo si
+  // tiene saldo por cobrar», the owner chose «Cada semana, sin fin», knowing
+  // both costs above grow with it. If the Meta bill or the quality rating
+  // moves, the 4-week cap is the first thing to reopen.
+  //
   // Si algún día se revierte —dejar de escribirle a un pausado— el cambio es
   // una línea en las funciones de la 072: pasar `pausado` de columna a filtro,
   // `and public.owner_puede_escribir(o.id)`.

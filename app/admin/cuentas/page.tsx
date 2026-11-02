@@ -17,7 +17,9 @@ export default async function CuentasPage() {
   await requireSuperadmin();
 
   const [cuentas, ingresos] = await Promise.all([getCuentas(), getIngresosPorMes(6)]);
-  const { vencidas, porVencer } = repartirPorUrgencia(cuentas);
+  const { bloqueadas, porBloquearse } = repartirPorUrgencia(cuentas);
+  const finDePrueba = bloqueadas.filter((c) => c.motivo_de_bloqueo === "prueba_vencida").length;
+  const pagoVencido = bloqueadas.filter((c) => c.motivo_de_bloqueo === "pago_vencido").length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -29,26 +31,33 @@ export default async function CuentasPage() {
         </p>
       </div>
 
-      {/* Lo que hay que hacer HOY, antes de la tabla. Las demos no bajan solas
-          —fue la decisión— así que una que venció y sigue andando no aparece
-          por ninguna otra vía. Solo se dibuja cuando hay algo: un aviso que
-          siempre está deja de leerse. */}
-      {vencidas.length > 0 || porVencer.length > 0 ? (
+      {/* WHAT TO LOOK AT TODAY, before the table -- rewritten on 2026-10-31
+          (migration 171). Accounts now block by themselves, so the first card
+          is the one that can still be prevented: who blocks within 14 days.
+          That is where a payment you forgot to register shows up. Drawn only
+          when there is something: a notice that is always there stops being
+          read. */}
+      {porBloquearse.length > 0 || bloqueadas.length > 0 ? (
         <div className="flex flex-wrap gap-3">
-          {vencidas.length > 0 ? (
-            <div className="flex flex-col rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-              <span className="text-2xl font-semibold text-destructive tabular-nums">
-                {vencidas.length}
-              </span>
-              <span className="text-xs text-destructive">
-                {vencidas.length === 1 ? "demo vencida" : "demos vencidas"} y sigue trabajando
+          {porBloquearse.length > 0 ? (
+            <div className="flex flex-col rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+              <span className="text-2xl font-semibold tabular-nums">{porBloquearse.length}</span>
+              <span className="text-xs text-muted-foreground">
+                {porBloquearse.length === 1 ? "se bloquea sola" : "se bloquean solas"} en 14 días
               </span>
             </div>
           ) : null}
-          {porVencer.length > 0 ? (
-            <div className="flex flex-col rounded-lg border px-4 py-3">
-              <span className="text-2xl font-semibold tabular-nums">{porVencer.length}</span>
-              <span className="text-xs text-muted-foreground">vencen en 14 días</span>
+          {bloqueadas.length > 0 ? (
+            <div className="flex flex-col rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+              <span className="text-2xl font-semibold text-destructive tabular-nums">
+                {bloqueadas.length}
+              </span>
+              <span className="text-xs text-destructive">
+                {bloqueadas.length === 1 ? "bloqueada" : "bloqueadas"}
+                {finDePrueba || pagoVencido
+                  ? ` · ${[finDePrueba ? `${finDePrueba} por fin de prueba` : "", pagoVencido ? `${pagoVencido} por pago vencido` : ""].filter(Boolean).join(", ")}`
+                  : ""}
+              </span>
             </div>
           ) : null}
         </div>
@@ -56,14 +65,9 @@ export default async function CuentasPage() {
 
       <CuentasGraficas cuentas={cuentas} ingresos={ingresos} />
 
-      {/* Todavía no se puede bloquear, y decirlo es parte del trabajo: sin
-          esta línea alguien daría por hecho que "Bloqueada" en la etiqueta
-          significa que a ese tendero se le cortó el acceso. */}
-      <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        El bloqueo todavía no existe: una cuenta marcada como bloqueada sigue pudiendo registrar
-        movimientos. El botón llegará junto con la cerradura, no antes.
-      </p>
-
+      {/* «El bloqueo todavía no existe» stood here until 2026-10-31. It was
+          false since migration 061 and, with the automatic block of 171,
+          dangerously so: it told you a blocked account could still write. */}
       <CuentasTabla cuentas={cuentas} />
     </div>
   );

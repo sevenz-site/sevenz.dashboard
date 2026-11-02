@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageOff, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
@@ -416,6 +417,7 @@ function ProductCard({
               const r = await setProductPublished(product.id, tiers);
               if (r.error) {
                 setPublished(!next);
+                if (avisarCuentaPausada(r.error)) return;
                 toast.error(r.error);
                 return;
               }

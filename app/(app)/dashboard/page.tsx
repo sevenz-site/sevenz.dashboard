@@ -23,6 +23,8 @@ import { InicioResumenCards } from "@/components/dashboard/inicio-resumen-cards"
 import { ventasDelPeriodo } from "@/lib/reports/ventas-del-periodo";
 import { rangoDe } from "@/lib/reports/rango";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { TrialEndingNotice } from "@/components/dashboard/trial-ending-notice";
+import { TRIAL_NOTICE_DAYS, trialDaysLeft } from "@/lib/subscription/trial";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { HomeHeader } from "@/components/dashboard/home-header";
 import { ExchangeRateStrip } from "@/components/dashboard/exchange-rate-strip";
@@ -65,6 +67,7 @@ export default async function DashboardPage({
     { data: owner },
     ownerRate,
     ordenesSinAtender,
+    { data: trialEndsAt },
   ] = await Promise.all([
     supabase
       .from("client_summary")
@@ -92,7 +95,12 @@ export default async function DashboardPage({
     // it is a `head: true` count, and waiting for it in series would hold the
     // whole screen for a figure that decorates one line.
     countUnregisteredOrders(supabase, user!.id),
+    // The trial end date, for the notice of its last days (migration 175).
+    // An error -- this code running before 175 -- reads as «no trial» and the
+    // notice simply does not appear; nothing else on the screen depends on it.
+    supabase.rpc("mi_fin_de_prueba"),
   ]);
+  const trialDays = trialDaysLeft(trialEndsAt as string | null, owner?.country);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de
   // cliente con su primer movimiento, así que un país inventado aquí dibuja el
@@ -277,6 +285,12 @@ export default async function DashboardPage({
             Se dibuja siempre y decide el solo: lee del contexto del layout, que
             es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
         <CuentaPausada />
+
+        {/* The last days of the trial, in the spot where the blocked notice
+            appears on the end date. See `trial-ending-notice.tsx`. */}
+        {trialDays != null && trialDays <= TRIAL_NOTICE_DAYS ? (
+          <TrialEndingNotice daysLeft={trialDays} email={user?.email ?? null} />
+        ) : null}
 
         {/* BETWEEN THE HEADER AND "Por cobrar", moved here on 2026-10-08 at
             the owner's request, and it is a genuine trade.

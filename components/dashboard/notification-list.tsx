@@ -6,6 +6,7 @@ import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package } from "lu
 import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
 import { restaurarPedido } from "@/app/(app)/productos/ordenes/actions";
 import { toast } from "sonner";
+import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
 import { MovementDeletionDialog } from "@/components/dashboard/movement-deletion-dialog";
 import type { NotificationItem } from "@/app/(app)/actions";
@@ -323,6 +324,7 @@ function ProductHideRow({
     const result = await restoreProduct(n.productId);
     setBusy(false);
     if (result.error) {
+      if (avisarCuentaPausada(result.error)) return;
       toast.error(result.error);
       return;
     }

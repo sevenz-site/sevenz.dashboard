@@ -40,6 +40,15 @@ export type Cuenta = {
   ultimo_pago_el: string | null;
   clientes: number;
   creado_el: string;
+  // Migration 171. Why the account cannot write right now, or null. Read from
+  // the SAME function the policies use, so the panel cannot say «activa» about
+  // an account the database is already refusing.
+  motivo_de_bloqueo: "bloqueada" | "prueba_vencida" | "pago_vencido" | null;
+  // When the block arrives by itself: the trial's end, or the paid period's
+  // end plus the 5 days of grace. Null when nothing is scheduled.
+  se_bloquea_el: string | null;
+  // A test or demo business: left out of the metrics by default.
+  es_prueba: boolean;
 };
 
 export type EventoCuenta = {
@@ -199,29 +208,49 @@ export async function desbloquear(
 // Las tres listas en las que se parte el panel. Se calcula aquí y no en la
 // pantalla porque es la regla del negocio, no una decisión de maquetación.
 //
-// "Vencidas" son las que más importan: la demo terminó y el negocio SIGUE
-// TRABAJANDO, porque se decidió que las demos no bajan solas. Es el precio de
-// esa decisión, y por eso tiene su propia lista en vez de estar mezclada.
-export function repartirPorUrgencia(cuentas: Cuenta[]) {
-  const vencidas: Cuenta[] = [];
-  const porVencer: Cuenta[] = [];
+// CHANGED ON 2026-10-31 (migration 171). The list that mattered most used to
+// be «vencidas y sigue trabajando»: the owner had decided on 2026-09-15 that
+// demos do not expire by themselves, and that list was the price of it. Now
+// they do, so an expired demo no longer keeps working -- it is BLOCKED. What
+// matters most becomes the list BEFORE that happens: accounts that block by
+// themselves within 14 days, because one of them may be someone who paid and
+// whose payment was never registered -- the risk he accepted with the change.
+export function repartirPorUrgencia(cuentas: Cuenta[], ahora: Date = new Date()) {
+  const bloqueadas: Cuenta[] = [];
+  const porBloquearse: Cuenta[] = [];
   const resto: Cuenta[] = [];
+  const limite = ahora.getTime() + 14 * 24 * 60 * 60 * 1000;
 
   for (const c of cuentas) {
-    if (c.estado === "demo" && c.dias_restantes !== null && c.dias_restantes < 0) {
-      vencidas.push(c);
-    } else if (c.estado === "demo" && c.dias_restantes !== null && c.dias_restantes <= 14) {
-      porVencer.push(c);
+    if (c.motivo_de_bloqueo) {
+      bloqueadas.push(c);
+    } else if (c.se_bloquea_el && new Date(c.se_bloquea_el).getTime() <= limite) {
+      porBloquearse.push(c);
     } else {
       resto.push(c);
     }
   }
 
-  // Las más urgentes arriba dentro de cada grupo.
-  vencidas.sort((a, b) => (a.dias_restantes ?? 0) - (b.dias_restantes ?? 0));
-  porVencer.sort((a, b) => (a.dias_restantes ?? 0) - (b.dias_restantes ?? 0));
+  const cuando = (c: Cuenta) => (c.se_bloquea_el ? new Date(c.se_bloquea_el).getTime() : Infinity);
+  porBloquearse.sort((a, b) => cuando(a) - cuando(b));
 
-  return { vencidas, porVencer, resto };
+  return { bloqueadas, porBloquearse, resto };
+}
+
+// Mark or unmark a test business (migration 171). Recorded in the history,
+// like every other change to an account.
+export async function marcarPrueba(
+  ownerId: string,
+  esPrueba: boolean,
+  actorEmail: string,
+): Promise<{ error: string | null }> {
+  const db = createServiceClient();
+  const { error } = await db.rpc("admin_marcar_prueba", {
+    p_owner: ownerId,
+    p_es_prueba: esPrueba,
+    p_actor_email: actorEmail,
+  });
+  return { error: error?.message ?? null };
 }
 
 // ── El comprobante ──────────────────────────────────────────────────────

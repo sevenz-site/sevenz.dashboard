@@ -20,6 +20,7 @@ import {
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { MALA_PAGA_BADGE_CLASS } from "@/lib/types";
 import type { ClavePlazo, ClienteDePlazo } from "@/lib/reports/facturacion";
+import { foldForSearch } from "@/lib/search/fold";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LAS CUATRO HOJAS DE «PLAZOS DE PAGO»
@@ -215,13 +216,13 @@ export function PlazosSheet({
   const [ahora] = useState(() => new Date());
 
   const visibles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldForSearch(query.trim());
     if (!q) return clientes;
-    // `toLowerCase().includes()`, lo mismo que el catálogo y la lista de
-    // clientes. No se "mejora" aquí con normalización de acentos: el día que
-    // el tendero busque «jose» y le salga en una pantalla y no en otra, nadie
-    // va a sospechar de dos funciones de búsqueda distintas.
-    return clientes.filter((c) => c.nombre.toLowerCase().includes(q));
+    // `foldForSearch`, the same as every other search box. The point this
+    // comment used to make still holds: «jose» finding someone on one screen
+    // and not on another is a bug nobody blames on the search. So the accent
+    // rule changed everywhere at once on 2026-10-31, never here alone.
+    return clientes.filter((c) => foldForSearch(c.nombre).includes(q));
   }, [clientes, query]);
 
   return (

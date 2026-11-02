@@ -27,6 +27,7 @@ import {
   accionCambiarPlan,
   accionDarDemo,
   accionDesbloquear,
+  accionMarcarPrueba,
   accionRegistrarPago,
   type AccionState,
 } from "@/app/admin/cuentas/actions";
@@ -51,11 +52,15 @@ export function CuentaAcciones({ cuenta }: { cuenta: Cuenta }) {
       <RegistrarPago cuenta={cuenta} />
       <DarDemo cuenta={cuenta} />
       <CambiarPlan cuenta={cuenta} />
-      {cuenta.estado === "bloqueada" ? (
+      {/* `motivo_de_bloqueo` and not `estado`: since migration 171 an
+          expired trial is blocked before the daily cron writes 'bloqueada',
+          and the button that unblocks it has to be there already. */}
+      {cuenta.motivo_de_bloqueo ? (
         <Desbloquear cuenta={cuenta} />
       ) : (
         <Bloquear cuenta={cuenta} />
       )}
+      <MarcarPrueba cuenta={cuenta} />
     </div>
   );
 }
@@ -147,6 +152,15 @@ function Desbloquear({ cuenta }: { cuenta: Cuenta }) {
             más días, usa «Dar demo» después.
           </p>
         ) : null}
+        {/* Migration 171: reactivating clears an EXPIRED paid period, or the
+            rule would block the account again on the spot. Said here so it is
+            not a surprise that «Pagado hasta» disappears. */}
+        {cuenta.motivo_de_bloqueo === "pago_vencido" ? (
+          <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Su periodo pagado ya venció. Al reactivar queda activa sin fecha de pago, hasta que
+            registres el siguiente pago.
+          </p>
+        ) : null}
       </form>
     </DialogoDeAccion>
   );
@@ -218,12 +232,14 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
   const [comprobante, setComprobante] = useComprobante(state);
   // 60 días es el defecto acordado, pero se teclea: el trato real no cabe en
   // una lista de botones. Mismo razonamiento que "Otro plazo…" en el fiado.
-  const [dias, setDias] = useState("60");
+  // 90 SINCE 2026-10-31: «3 meses gratis» is the trial every signup gets now
+  // (migration 171), so a hand-given demo starts from the same length.
+  const [dias, setDias] = useState("90");
 
   return (
     <DialogoDeAccion
       titulo={`Dar demo a ${cuenta.business_name}`}
-      descripcion="Acceso completo durante los días que acuerden, y el precio que pagará después. Al vencer NO se baja sola: aparece en la lista de vencidas para que decidas."
+      descripcion="Acceso completo durante los días que acuerden, y el precio que pagará después. Al vencer, la cuenta pasa sola a solo lectura (desde el 2026-10-31)."
       disparador={
         <Button type="button" variant="outline" size="sm">
           <Gift className="size-4" />
@@ -284,7 +300,7 @@ function DarDemo({ cuenta }: { cuenta: Cuenta }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            placeholder="20"
+            placeholder="19.50"
             defaultValue={cuenta.precio_pactado_usd ?? ""}
             className="w-32"
           />
@@ -392,7 +408,7 @@ function CambiarPlan({ cuenta }: { cuenta: Cuenta }) {
                 min="0"
                 step="0.01"
                 inputMode="decimal"
-                placeholder="20"
+                placeholder="19.50"
                 defaultValue={cuenta.precio_pactado_usd ?? ""}
                 className="w-32"
               />
@@ -452,7 +468,7 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            placeholder="20"
+            placeholder="19.50"
             defaultValue={cuenta.precio_pactado_usd ?? ""}
             className="w-32"
             required
@@ -492,5 +508,24 @@ function RegistrarPago({ cuenta }: { cuenta: Cuenta }) {
         />
       </form>
     </DialogoDeAccion>
+  );
+}
+
+// TEST BUSINESS ON / OFF (migration 171). No dialog: it changes no money and
+// no access, only whether the metrics count this business, and it is undone
+// with the same button. It still goes to the history with your email.
+function MarcarPrueba({ cuenta }: { cuenta: Cuenta }) {
+  const [state, formAction, pending] = useActionState(accionMarcarPrueba, inicial);
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state]);
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="owner_id" value={cuenta.owner_id} />
+      <input type="hidden" name="es_prueba" value={cuenta.es_prueba ? "0" : "1"} />
+      <Button type="submit" variant="outline" size="sm" disabled={pending}>
+        {cuenta.es_prueba ? "Quitar marca de prueba" : "Marcar como prueba"}
+      </Button>
+    </form>
   );
 }
