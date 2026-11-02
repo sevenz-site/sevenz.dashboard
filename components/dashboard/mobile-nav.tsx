@@ -699,7 +699,13 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   // (`/productos/ordenes` a secas) conserva su barra, porque es una lista a
   // la que se llega desde el catálogo y de la que se sale navegando.
   const enPedidoConcreto = /^\/productos\/ordenes\/[^/]+(\/|$)/.test(pathname);
-  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enPedidoConcreto)
+  // "MI NEGOCIO" WITHOUT THE BAR, since 2026-11-02. Frame `1928:24764` draws a
+  // back arrow on top and "Guardar cambios" pinned at the bottom, and no
+  // navigation bar; with both, two bars would stack at the bottom of the
+  // phone. Same treatment as every other screen whose buttons live in
+  // `StickyActions`. Confirmed by the owner the same day («sí»), asked as a
+  // straight question. AppMain's `hasBar` mirrors this line.
+  if (onClientDetail || enAsistenteDeVenta || enTransaccion || enPedidoConcreto || enMiNegocio)
     return null;
 
   return (

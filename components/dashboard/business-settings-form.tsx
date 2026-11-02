@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
@@ -17,9 +18,11 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { LogoUploader } from "@/components/dashboard/logo-uploader";
-import { FormattedTextarea } from "@/components/dashboard/formatted-textarea";
+import { PaymentMethodsCard } from "@/components/dashboard/payment-methods-card";
+import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
+import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
-import { updateBusinessSettings, type ProfileState } from "@/app/(app)/profile/actions";
+import { updateBusinessSettings, type PaymentMethod, type ProfileState } from "@/app/(app)/profile/actions";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useTrampaDeAtras } from "@/hooks/use-trampa-de-atras";
 import type { Owner } from "@/lib/types";
@@ -29,12 +32,26 @@ import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
 
 const initialState: ProfileState = { error: null, success: false };
 
+// The submit button lives in the sticky footer, outside the <form>, and
+// reaches it through the `form` attribute.
+const FORM_ID = "business-settings-form";
+
+// "Mi negocio", frame `1928:24764` (2026-11-02).
+//
+// ONLY THE FIELDS ARE INSIDE THE <form>. Payment methods, notifications and
+// the password card each save on their own, and React bubbles events through
+// portals: a dialog rendered from inside the form marks it dirty on every
+// keystroke (the form listens to onChange) and its submit reaches the form's
+// own handler. Keeping them outside is what keeps the unsaved-changes guard
+// meaning "the fields above".
 export function BusinessSettingsForm({
   owner,
   logoUrl,
+  paymentMethods,
 }: {
   owner: Owner;
   logoUrl: string | null;
+  paymentMethods: PaymentMethod[];
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
@@ -66,11 +83,11 @@ export function BusinessSettingsForm({
     const result = await updateBusinessSettings(initialState, formData);
     if (result.error) {
       setError(result.error);
-      toast.error(result.error);
+      toast.error(result.error, PROFILE_TOAST);
       return false;
     }
     setError(null);
-    toast.success("Cambios guardados");
+    toast.success("Cambios guardados", PROFILE_TOAST);
     setIsDirty(false);
     setDirty(false);
     router.refresh();
@@ -110,17 +127,24 @@ export function BusinessSettingsForm({
   const consumeSentinelIfAny = useTrampaDeAtras(isDirty, guard);
 
   return (
-    <form ref={setFormRef} onSubmit={handleSubmit} onChange={markDirty} className="flex max-w-lg flex-col gap-8">
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium text-muted-foreground">Datos del negocio</h2>
+    <div className="flex max-w-lg flex-1 flex-col gap-4">
+      <form id={FORM_ID} ref={setFormRef} onSubmit={handleSubmit} onChange={markDirty} className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Datos del negocio</h2>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-4">
           <Label>Logo del negocio (opcional)</Label>
+          {/* A logo change is a pending change like any field's: it marks the
+              form dirty and is applied by "Guardar cambios" (see LogoUploader).
+              Deleting fires no change event, so the dirty mark is explicit. */}
           <LogoUploader
             ownerId={owner.id}
+            savedPath={owner.logo_path}
             initialPreviewUrl={logoUrl}
             value={logoPath}
-            onChange={setLogoPath}
+            onChange={(path) => {
+              setLogoPath(path);
+              markDirty();
+            }}
           />
         </div>
 
@@ -139,31 +163,31 @@ export function BusinessSettingsForm({
           ) : null}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="first_name">Nombre</Label>
-            <Input
-              id="first_name"
-              name="first_name"
-              defaultValue={owner.first_name ?? ""}
-              required
-              aria-invalid={Boolean(errors.first_name)}
-              onChange={() => recheck("first_name", formRef.current)}
-            />
-            {errors.first_name ? <p className="text-xs text-destructive">{errors.first_name}</p> : null}
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="last_name">Apellido</Label>
-            <Input
-              id="last_name"
-              name="last_name"
-              defaultValue={owner.last_name ?? ""}
-              required
-              aria-invalid={Boolean(errors.last_name)}
-              onChange={() => recheck("last_name", formRef.current)}
-            />
-            {errors.last_name ? <p className="text-xs text-destructive">{errors.last_name}</p> : null}
-          </div>
+        {/* One under the other since 2026-11-02 (frame `1927:24236`/`24246`);
+            side by side, two halves of 375px cut long surnames. */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="first_name">Nombres del dueño</Label>
+          <Input
+            id="first_name"
+            name="first_name"
+            defaultValue={owner.first_name ?? ""}
+            required
+            aria-invalid={Boolean(errors.first_name)}
+            onChange={() => recheck("first_name", formRef.current)}
+          />
+          {errors.first_name ? <p className="text-xs text-destructive">{errors.first_name}</p> : null}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="last_name">Apellidos del dueño</Label>
+          <Input
+            id="last_name"
+            name="last_name"
+            defaultValue={owner.last_name ?? ""}
+            required
+            aria-invalid={Boolean(errors.last_name)}
+            onChange={() => recheck("last_name", formRef.current)}
+          />
+          {errors.last_name ? <p className="text-xs text-destructive">{errors.last_name}</p> : null}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -191,7 +215,7 @@ export function BusinessSettingsForm({
         <div className="flex flex-col gap-2">
           <Label htmlFor="email">Correo</Label>
           <Input id="email" type="email" value={owner.email} disabled readOnly />
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground">
             Es el correo con el que entras a Sevenz. Para cambiarlo, escríbenos.
           </p>
         </div>
@@ -204,40 +228,36 @@ export function BusinessSettingsForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="CO">Colombia (COP)</SelectItem>
-              <SelectItem value="VE">Venezuela (Bs)</SelectItem>
+              <SelectItem value="VE">Venezuela (Bs.)</SelectItem>
             </SelectContent>
           </Select>
           <input type="hidden" name="country" value={country} readOnly />
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground">
             Para cambiar el país de tu negocio, contáctanos.
           </p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="address">Dirección del negocio (opcional)</Label>
-          <Input id="address" name="address" defaultValue={owner.address ?? ""} />
+          <Label htmlFor="address">Dirección de negocio (opcional)</Label>
+          <Input id="address" name="address" defaultValue={owner.address ?? ""} placeholder="Escribe dirección" />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="tax_id">NIT/RUT (opcional)</Label>
-          <Input id="tax_id" name="tax_id" defaultValue={owner.tax_id ?? ""} />
+          {/* Lowercase "(opcional)" like every other optional field; the frame
+              says "(Opcional)". Owner's decision, 2026-11-02. */}
+          <Label htmlFor="tax_id">RIF/NIT (opcional)</Label>
+          <Input id="tax_id" name="tax_id" defaultValue={owner.tax_id ?? ""} placeholder="Escribe RIF o NIT" />
         </div>
+      </form>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="payment_info">Método de pago (opcional)</Label>
-          <FormattedTextarea
-            id="payment_info"
-            name="payment_info"
-            defaultValue={owner.payment_info}
-            placeholder="Ej: **Nequi:** 300 123 4567"
-          />
-          <p className="text-xs text-muted-foreground">Se muestra a tus clientes en su saldo.</p>
-        </div>
-      </section>
+      <PaymentMethodsCard initialMethods={paymentMethods} />
 
+      {/* Not drawn in the frame, kept by the owner's decision on 2026-11-02
+          («Mantenerla»): it can't be changed, but it is where a Venezuelan
+          owner reads which rate the app uses and its legal note. */}
       {country === "VE" ? (
         <section className="flex flex-col gap-4">
-          <h2 className="text-sm font-medium text-muted-foreground">Tasa de cambio</h2>
+          <h2 className="text-base font-semibold">Tasa de cambio</h2>
 
           <div className="flex flex-col gap-2">
             <Label>Tasa de cambio</Label>
@@ -257,21 +277,25 @@ export function BusinessSettingsForm({
         </section>
       ) : null}
 
-      {/* Plegado y justo encima de "Guardar cambios". Va DENTRO del formulario
-          aunque no forme parte de él: su interruptor guarda solo, por su
-          cuenta, porque registra un consentimiento con su fecha y no puede
-          reescribirse cada vez que el dueño corrija su dirección.
-
-          Los dos botones de aquí dentro —el del acordeón y el del
-          interruptor— son `type="button"`, que es lo que impide que abrir
-          "Notificaciones" envíe el formulario entero. */}
+      {/* Su interruptor guarda solo, por su cuenta, porque registra un
+          consentimiento con su fecha y no puede reescribirse cada vez que el
+          dueño corrija su dirección. */}
       <NotificacionesAccordion owner={owner} />
+
+      <section className="flex items-start gap-2 rounded-[10px] border p-4">
+        <p className="flex-1 text-sm">Contraseña</p>
+        <ChangePasswordDialog />
+      </section>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <Button type="submit" disabled={pending} className="w-fit">
-        {pending ? "Guardando..." : "Guardar cambios"}
-      </Button>
-    </form>
+      {/* Pinned to the bottom (owner's choice, 2026-11-02): the screen runs
+          about 1.500px and the button used to wait at the very end of it. */}
+      <StickyActions>
+        <Button type="submit" form={FORM_ID} disabled={pending} className="h-10 w-full text-base font-semibold">
+          {pending ? "Guardando..." : "Guardar cambios"}
+        </Button>
+      </StickyActions>
+    </div>
   );
 }
