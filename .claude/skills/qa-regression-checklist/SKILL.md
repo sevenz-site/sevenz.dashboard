@@ -87,6 +87,13 @@ estaban escritos.
   `qa/plantillas-esperadas.mjs` se salva porque alguien lo importa, y eso se lee
   de los archivos. Una lista a mano habría que mantenerla, y una desactualizada
   falla en silencio — el mismo fallo que este control cierra.
+- **Run `npm run qa:attack-coverage` — un segundo, sin base de datos.** Lee las
+  migraciones y `app/api` y falla si el diff trae una tabla, una función
+  `SECURITY DEFINER`, una ruta o un bucket que el ataque simulado no conoce, o
+  si una migración cambió quién puede ejecutar una función. Va **aquí, en el
+  alcance**, porque lo que diga decide qué casos nuevos hay que escribir en la
+  sección 5b antes de seguir. Si sale en rojo, no es una alarma que se anota:
+  es trabajo de este lanzamiento.
 
 ## 2. Core money-path flows
 
@@ -1009,6 +1016,85 @@ MIME/size policies. Flag these as open follow-up in the launch report —
 they don't block a launch unless the diff being reviewed touches one of
 them directly.
 
+## 5b. Ataque simulado — en cada liberación, y crece con cada una
+
+**Pedido por el dueño el 2026-11-02**, después de la auditoría ofensiva de ese
+día: *«a partir de las prueba de cyberataque simuladas incluyelas en el QA
+checklist para que sean parte de él en cada liberación. Punto importante, con
+cada nueva liberación se debe evaluar qué nuevos casos se deben incluir en el
+qa checklist para no dejar por fuera batches de seguridad en esas nuevas
+funcionalidades»*.
+
+**Parada dura: con una sola fila `VULN`, no se lanza.**
+
+### Las tres suites, y qué hace cada una
+
+| Suite | Qué hace | Necesita |
+|---|---|---|
+| `npm run qa:attack-coverage` | Compara lo que el repo construye con lo que el ataque conoce (`qa/attack-surface.mjs`). Rojo = una pieza nueva sin clasificar, o una función cuya exposición cambió | Nada: un segundo, sin base. Va en la sección 1 |
+| `npm run qa:attack` | El ataque. Con la clave anónima (la que va en el JavaScript público) y la sesión de un dueño A contra un dueño B, recorre **todas** las tablas y **todas** las funciones `SECURITY DEFINER` de la lista, más los escenarios fijos: escribir en lo de otro, regalarle filas a otro, escalar plan o prueba, falsear el libro, una cuenta bloqueada, archivos ajenos, pedido del catálogo falsificado, crons sin clave, páginas ajenas por URL, inyección, XSS guardado y cabeceras. Termina comprobando en la base que B quedó intacto | **Dev** y `npm run dev` corriendo (trampa 1 de la sección 0). Se niega a correr contra otro proyecto |
+| `npm run qa:ledger-integrity` | El libro escrito a mano (migración `177`): `running_balance` y `created_by` | Dev |
+
+**Cómo se lee `qa:attack`**: `BLOQUEADO` es el ataque fallando, `VULN` es el
+ataque saliendo bien y `DECISIÓN` es algo que se deja pasar a propósito, o que
+espera al dueño. Solo `VULN` para el lanzamiento. Las `DECISIÓN` se nombran en el
+informe, para que el dueño vea que siguen ahí.
+
+### La pregunta de cada lanzamiento: ¿qué casos nuevos trae este diff?
+
+No basta con que la suite pase: **pasa sobre lo que conoce**. Lo nuevo hay que
+enseñárselo. Por cada tipo de cambio, esto es lo que se añade, y se añade
+**en este lanzamiento**, no en el siguiente:
+
+| El diff trae… | Qué se añade | Dónde |
+|---|---|---|
+| Una **tabla o vista** | Su fila en `MANIFEST.tables`, con `via`: cómo se llega a las filas de otro negocio (`owner`, `client`, `sale`…). Con eso ya entra en la lectura anónima, la escritura anónima y la lectura de A sobre B | `qa/attack-surface.mjs` |
+| Una **función `SECURITY DEFINER`** | Su exposición en `MANIFEST.definers`: `service` (solo el servidor), `owner` (cualquier dueño; tiene que comprobar de quién es lo que toca) o `public` (sin cuenta, a propósito). Si es `public` u `owner`, una línea de por qué | `qa/attack-surface.mjs` |
+| Una función que **escribe** con ids del navegador | Un intento con los ids de B en «A → B · escribir» | `qa/attack.mjs` sección 3 |
+| Una **ruta de API** | Su tipo en `MANIFEST.routes`: `cron`, `session` o `public` | `qa/attack-surface.mjs` |
+| Una **página pública** (sin sesión) | XSS guardado en todo texto que venga de un dueño o de un cliente, inyección en el token y que no enseñe datos que no debe | `qa/attack.mjs` sección 9 |
+| Una **página del dueño** con un id en la URL | A la abre con el id de B | `qa/attack.mjs` sección 9 |
+| Un **bucket** | Su fila en `MANIFEST.buckets`; con eso ya se prueba subir y listar en la carpeta de otro | `qa/attack-surface.mjs` |
+| Algo que la **cuenta bloqueada** no debe hacer | Su intento en «A bloqueada» | `qa/attack.mjs` sección 6 |
+| Un **dato del libro** que la app calcula y no se escribe a mano | Que el dueño lo escriba, y comprobar **en la base** que no quedó | `qa/ledger-integrity.mjs` |
+
+**Y el informe lo dice por escrito**, en la fila 5b: qué casos nuevos se
+añadieron, o «ninguno, porque el diff no trae superficie nueva», con el
+resultado de `qa:attack-coverage` como prueba. Una fila sin esa frase se lee
+como «no se miró».
+
+### Cuatro cosas que ya costaron una conclusión falsa
+
+1. **El veredicto se lee en la BASE, no en la respuesta.** Desde la `177` hay
+   ataques que la base acepta y neutraliza: un `running_balance` falseado
+   vuelve a su valor, un autor falso se sobrescribe. Juzgar por «la petición
+   pasó» los cuenta como vulnerabilidades, y así salió la primera repetición de
+   la auditoría.
+2. **El atacante anónimo no puede compartir cliente con quien inicia sesión.**
+   `verifyOtp` deja la sesión puesta en el cliente que lo llama. La primera
+   corrida de la auditoría usó uno solo y dio **16 vulnerabilidades falsas**: B
+   leyendo sus propias filas. La suite usa dos y comprueba antes de empezar que
+   el anónimo no tiene sesión.
+3. **En Supabase, `revoke … from public, anon` NO cierra una función.** El
+   proyecto concede `execute` a `anon`, `authenticated` y `service_role` de
+   forma explícita en cada función nueva, así que hay que nombrar
+   `authenticated` también, o cualquier dueño la sigue llamando. Lo encontró
+   `qa:attack` en `share_link_owner` y `get_shared_catalog_preview` el
+   2026-11-02 (hallazgo 9). Va también en la sección 6.
+4. **Una lectura que solo conoce `revoke` suelto no ve los bucles.** La `058`,
+   la `061` y la `062` quitan permisos con un `DO $$ … execute format('revoke …
+   %s …')` sobre una lista. La primera versión del lector no los veía y dio
+   ocho funciones de `/admin` como públicas mientras la base rechazaba cada
+   llamada. Si una migración inventa otra forma de dar o quitar permisos, hay
+   que enseñársela a `parseSurface`.
+
+### Lo que esta sección NO cubre, dicho para que no se lea como cubierto
+
+Llamar por HTTP a las **acciones de servidor** con ids ajenos (se revisan en el
+código y se atacan las tablas que hay debajo); el **registro, la entrada y la
+recuperación de contraseña**, que gestiona Supabase Auth; el **abuso de coste**
+de `/api/extract` y del asistente; y **producción**, que no se ataca nunca.
+
 ## 6. Migration hygiene
 
 - **Run `npm run qa:migrations` first — it takes a second and needs no
@@ -1045,6 +1131,13 @@ them directly.
   specifically to prevent a repeat of a deploy going out before its
   migrations ran — do not treat it as optional or skip it because the diff
   "looks small."
+- **A new `SECURITY DEFINER` function closes with ALL three roles named**:
+  `revoke execute on function … from public, anon, authenticated;` and then
+  `grant … to` exactly who needs it. On Supabase a new function is granted to
+  `anon`, `authenticated` and `service_role` explicitly, so revoking only
+  `public, anon` leaves every logged-in owner able to call it — hallazgo 9 of
+  the 2026-11-02 audit. `qa:attack-coverage` reads the migrations with that
+  model and fails if the result differs from what was reviewed (section 5b).
 - Every new SQL migration is idempotent / safe to re-run (matches this
   project's established pattern: `if not exists`, `create or replace`,
   guard tables for one-time data conversions).
@@ -1153,6 +1246,11 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 5b row is never skipped**, not even for a narrow diff: it carries the
+`qa:attack` result, the `qa:attack-coverage` result, and in words which new
+attack cases this release added — or «ninguno» and why. That sentence is the
+owner's rule of 2026-11-02 being followed in front of him.
 
 Add a Notes column for anything skipped and why (e.g. "skipped — diff
 doesn't touch this area"), or any caveat worth flagging. Follow the table

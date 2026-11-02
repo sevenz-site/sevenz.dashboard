@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ErrorParaElDueno, mensajeDeError } from "@/lib/errores-legibles";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import type { ExtractedMovement } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -213,8 +214,23 @@ function sleep(ms: number) {
 // owner and every server instance — this is what actually prevents two
 // simultaneous imports (from different owners) from together exceeding the
 // one shared Gemini quota.
-async function waitForGlobalSlot(supabase: SupabaseServerClient, spacingMs: number) {
-  const { data: waitUntil, error } = await supabase.rpc("claim_rate_limit_slot", {
+//
+// THE QUEUE IS CLAIMED WITH THE SERVER KEY, NOT THE OWNER'S SESSION -- finding
+// 7 of the offensive audit of 2026-11-02. `claim_rate_limit_slot` adds the
+// caller's own spacing to the next turn, and anyone could call it: one request
+// from a browser console pushed the turn 24.9 days ahead in dev, and this
+// route then slept until its time ran out, for every owner. Migration 178
+// makes it server-only; this is its one caller.
+//
+// THE WAIT IS CAPPED TOO, as a second line: whatever the queue holds, this
+// request never sleeps past MAX_QUEUE_WAIT_MS. With 4 s between calls that is
+// ~5 libretas ahead; past it the 60 s budget would be gone before the first
+// attempt, so the owner gets a clear message instead of a page that thinks
+// until the platform kills it.
+const MAX_QUEUE_WAIT_MS = 20_000;
+
+async function waitForGlobalSlot(spacingMs: number) {
+  const { data: waitUntil, error } = await createServiceClient().rpc("claim_rate_limit_slot", {
     p_key: RATE_LIMIT_KEY,
     p_spacing_ms: spacingMs,
   });
@@ -225,6 +241,11 @@ async function waitForGlobalSlot(supabase: SupabaseServerClient, spacingMs: numb
     return;
   }
   const waitMs = new Date(waitUntil as string).getTime() - Date.now();
+  if (waitMs > MAX_QUEUE_WAIT_MS) {
+    throw new ErrorParaElDueno(
+      "Hay muchas libretas leyéndose ahora mismo. Espera un minuto y vuelve a intentarlo.",
+    );
+  }
   if (waitMs > 0) await sleep(waitMs);
 }
 
@@ -360,7 +381,7 @@ async function extractFromImageViaGemini(
   }
   const [, mimeType, base64Data] = match;
 
-  await waitForGlobalSlot(supabase, SPACING_BETWEEN_CALLS_MS);
+  await waitForGlobalSlot(SPACING_BETWEEN_CALLS_MS);
 
   const model = modelo;
   const controller = new AbortController();
